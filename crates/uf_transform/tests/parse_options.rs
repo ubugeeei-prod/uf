@@ -1,29 +1,51 @@
-//! One set of parse options, and the two things that keep it one.
+//! One set of parse options, and the three things that keep it one.
 //!
-//! uf hands source to Meta's Flow parser from three places — [`uf_flow::parse`]
+//! uf hands source to Meta's Flow parser from four places — [`uf_flow::parse`]
 //! for anything that rewrites a module, [`uf_flow::validate_source`] for the
-//! linter's "does this parse", and [`uf_transform::estree::parse`] for the
-//! transform. Each used to carry its own `ParseOptions` literal, equal to the
-//! others member for member, each with a comment saying it mirrored one of
-//! them. Nothing compared them.
+//! linter's "does this parse", [`uf_transform::estree::parse`] for the
+//! transform, and `uf_check`'s checker. Each of the first three used to carry
+//! its own `ParseOptions` literal, equal to the others member for member, each
+//! with a comment saying it mirrored one of them. Nothing compared them.
 //!
 //! A drift there does not look like a bug in the parser. It looks like a file
 //! that lints clean and will not format, or transforms and will not check —
-//! and the reader has no way to tell which of the two commands is right. So
-//! there is one constant now, and these tests are what stop a second one:
+//! and the reader has no way to tell which of the two commands is right.
+//!
+//! That is not hypothetical. The fourth entry point arrived after these tests
+//! were written and was not covered by them, and it drifted: `uf_check` passed
+//! the port's own `PERMISSIVE_PARSE_OPTIONS`, which turns
+//! `esproposal_decorators` on, so `@decorate class Thing {}` was a file
+//! `uf check` accepted and the other three refused (ubugeeei-prod/uf#430).
+//!
+//! So there is one constant, [`uf_flow::PARSE_OPTIONS`], and these tests are
+//! what stop a second one:
 //!
 //! * [`every_entry_point_parses_the_same_syntax`] runs the samples through all
-//!   three and requires the same answer, which is the property a reader
+//!   four and requires the same answer, which is the property a reader
 //!   actually depends on;
+//! * [`only_uf_flow_reaches_the_port_s_parser`] reads the crates and requires
+//!   that no *fifth* place calls the port's parser or builds a second option
+//!   set. The list of entry points comes out of the source tree rather than
+//!   out of the array above it, which is the difference between a test that
+//!   covers what uf has and one that covers what someone remembered to add;
 //! * [`every_option_decides_a_sample`] requires each member of `ParseOptions`
 //!   to change the answer for at least one sample, which is what makes the
 //!   first test complete. Without it a member could be dropped from one copy
 //!   and no sample would notice.
 //!
-//! This test lives in `uf_transform` because it is the crate that can see both
-//! sides.
+//! The load-bearing half is not any of them: [`uf_flow::module::parse`] takes
+//! no options argument, so an entry point has nothing to disagree with. These
+//! tests are what catches a caller that goes around it.
+//!
+//! This test lives in `uf_transform` because it is the crate that can see
+//! every side — `uf_check` is a dev-dependency for exactly that, and for
+//! nothing else.
+
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use flow_parser::ParseOptions;
+use uf_check::{CheckLimits, DiagnosticKind, Source};
 
 /// A source, and the option whose value decides what the parser makes of it.
 ///
@@ -136,6 +158,149 @@ fn every_entry_point_parses_the_same_syntax() {
             "`{}` parses differently for `uf fmt` and the transform: {}",
             sample.option, sample.source
         );
+
+        let Some(by_check) = parses_for_the_checker(sample.source) else {
+            // A build with `uf_check`'s `upstream-typecheck` feature off has no
+            // checker to compare, and therefore no fourth entry point: every
+            // `uf_check` call returns `Unavailable` without reading the source.
+            // The three above are still compared, which is what this test was
+            // before the checker existed.
+            continue;
+        };
+        assert_eq!(
+            by_parse, by_check,
+            "`{}` parses differently for `uf fmt` and `uf check`: {}",
+            sample.option, sample.source
+        );
+    }
+}
+
+/// Whether `uf check` read `source` without a syntax error, or [`None`] when
+/// this build has no checker.
+///
+/// The checker carries diagnostics rather than stopping at the first error, and
+/// most of these samples also *fail to type check* — `Point` is not declared,
+/// `identity` is not declared. `DiagnosticKind::Parse` is the question being
+/// asked, so it is the only kind counted.
+fn parses_for_the_checker(source: &str) -> Option<bool> {
+    let checked = uf_check::check_source(
+        Source::new("sample.js", source),
+        // Not the wall clock: a loaded CI box is not a syntax error. The
+        // samples are one line each, so no other limit is near.
+        &CheckLimits::default().without_timeout(),
+    );
+    match checked {
+        Ok(diagnostics) => Some(
+            !diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.kind == DiagnosticKind::Parse),
+        ),
+        Err(error) if error.is_unavailable() => None,
+        Err(error) => panic!("the checker failed on a one-line sample: {error}"),
+    }
+}
+
+/// Nothing but [`uf_flow::module`] reaches the port's parser or builds a second
+/// option set.
+///
+/// [`every_entry_point_parses_the_same_syntax`] compares the entry points this
+/// file knows about, and that is exactly how `uf_check` drifted: it became one
+/// after the list was written, and a list nobody updated agreed with itself.
+/// So the list is read out of the crates instead. A fifth caller of
+/// `flow_parser`'s parse functions, or a second `ParseOptions` literal, fails
+/// here by path and line the day it is written, whether or not anyone
+/// remembers this file.
+///
+/// It reads `crates/*/src`, which is what ships. A test may reach the port
+/// directly — [`fingerprint`] below does, because comparing option sets is
+/// what it is for — and a test is not a command anyone runs over their code.
+#[test]
+fn only_uf_flow_reaches_the_port_s_parser() {
+    // Each needle, and the one file allowed to contain it. `None` is "nowhere":
+    // `PERMISSIVE_PARSE_OPTIONS` is the port's set for its own tooling, and
+    // uf choosing it was ubugeeei-prod/uf#430.
+    const OWNED: [(&str, Option<&str>); 5] = [
+        ("parse_program_file", Some("uf_flow/src/module.rs")),
+        ("parse_program_without_file", Some("uf_flow/src/module.rs")),
+        ("parse_module_body_with_directives", None),
+        ("PERMISSIVE_PARSE_OPTIONS", None),
+        ("ParseOptions {", Some("uf_flow/src/parse.rs")),
+    ];
+
+    let crates = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("`crates/uf_transform` has a parent")
+        .to_owned();
+    let mut sources = Vec::new();
+    collect_rust_sources(&crates, &mut sources);
+    sources.sort();
+    assert!(
+        sources.len() > 1,
+        "the crates were not found under {}",
+        crates.display()
+    );
+
+    let mut wrong = Vec::new();
+    for source in &sources {
+        let relative = source
+            .strip_prefix(&crates)
+            .unwrap_or(source)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let text = fs::read_to_string(source)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", source.display()));
+        for (number, line) in text.lines().enumerate() {
+            // Comments are prose about the parser, not a call to it — this
+            // very rule is explained in three of these files by name. Anything
+            // that is not a comment counts, including a line that only
+            // mentions the needle in a string, which is a false positive worth
+            // having: a name reached by string is a name reached.
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            for (needle, owner) in OWNED {
+                if line.contains(needle) && owner != Some(relative.as_str()) {
+                    wrong.push(format!("{relative}:{}: {needle}", number + 1));
+                }
+            }
+        }
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "these reach the Flow parser outside `uf_flow::module`, so they can \
+         parse uf's source with options of their own:\n{}",
+        wrong.join("\n")
+    );
+}
+
+/// Every `.rs` file under `<crate>/src`, for [`only_uf_flow_reaches_the_port_s_parser`].
+///
+/// `src` and not the whole crate: `tests/` and `benches/` do not ship, and this
+/// file is in one of them.
+fn collect_rust_sources(crates: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(crates)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", crates.display()));
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|error| panic!("failed to read an entry: {error}"));
+        let path = entry.path().join("src");
+        if path.is_dir() {
+            collect_recursively(&path, out);
+        }
+    }
+}
+
+fn collect_recursively(directory: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(directory)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", directory.display()));
+    for entry in entries {
+        let entry = entry.unwrap_or_else(|error| panic!("failed to read an entry: {error}"));
+        let path = entry.path();
+        if path.is_dir() {
+            collect_recursively(&path, out);
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+            out.push(path);
+        }
     }
 }
 
