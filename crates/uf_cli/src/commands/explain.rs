@@ -16,7 +16,9 @@ use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::env_files;
-use uf_config::{DeployAdapter, Prerender, RenderingPlan, ResolvedConfig, load_config};
+use uf_config::{
+    DeployAdapter, LibraryPlan, Prerender, RenderingPlan, ResolvedConfig, load_config,
+};
 use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
 use uf_term::KeyValue;
 
@@ -777,11 +779,26 @@ fn builder_provider(resolved: &ResolvedConfig) -> String {
 }
 
 fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    // Which of the two builds `uf build` runs, before anything that describes
+    // one of them. ubugeeei-prod/uf#268 asked for exactly this: whichever
+    // decides, `uf explain build` has to say which one ran and why — a
+    // question a reader asks at the moment `dist/` does not hold what they
+    // expected, and one no other command could answer.
+    if let Some(plan) = LibraryPlan::resolve(&resolved.config) {
+        return library_build_stages(resolved, &plan);
+    }
     vec![
         Stage {
             name: "configuration",
             provider: "uf".to_string(),
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
+        },
+        Stage {
+            name: "build",
+            provider: "uf".to_string(),
+            detail: "application: `app.router.enabled` is true, so the build bundles the router \
+                     entry and prerenders what it can"
+                .to_string(),
         },
         host_stage(resolved),
         env_stage(resolved, PRODUCTION),
@@ -808,6 +825,55 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         prerender_stage(resolved),
         adapter_stage(resolved),
+    ]
+}
+
+/// The other build `uf build` runs: a library rather than an application.
+///
+/// The two stages that are gone are the ones an application has and a library
+/// does not: there is nothing to prerender and no deploy artefact. `assets`
+/// stays, because the asset plugin is in the plugin set either way and a
+/// library that imports an image gets the same pipeline. What is added is the
+/// sentence at the top saying which build this is and which key said so —
+/// because `uf build` in a library used to fail on a missing `app.js`, and
+/// nothing in the toolchain could tell a reader why uf was looking for one.
+/// See ubugeeei-prod/uf#268.
+fn library_build_stages(resolved: &ResolvedConfig, plan: &LibraryPlan) -> Vec<Stage> {
+    let formats = plan
+        .formats()
+        .iter()
+        .map(|format| format.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let entries = plan
+        .entries()
+        .iter()
+        .map(compact_str::CompactString::as_str)
+        .collect::<Vec<_>>()
+        .join(", ");
+    vec![
+        Stage {
+            name: "configuration",
+            provider: "uf".to_string(),
+            detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
+        },
+        Stage {
+            name: "build",
+            provider: "uf".to_string(),
+            detail: format!("library: {}", plan.because()),
+        },
+        host_stage(resolved),
+        env_stage(resolved, PRODUCTION),
+        transform_stage(),
+        assets_stage(resolved),
+        Stage {
+            name: "bundle",
+            provider: builder_provider(resolved),
+            detail: format!(
+                "{} to {}, as {}; every package the manifest declares is left as an import",
+                entries, resolved.config.build.out_dir, formats
+            ),
+        },
     ]
 }
 
