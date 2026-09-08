@@ -1081,6 +1081,69 @@ fn exec_runs_an_installed_binary_and_forwards_its_arguments_and_status() {
     );
 }
 
+/// Every argument arrives as one `argv` entry, whatever is in it.
+///
+/// The half of ubugeeei-prod/uf#390 that is not about which file gets run.
+/// On Windows the file `installed_binary` resolves may be a `.cmd`, and since
+/// Rust 1.77 (CVE-2024-24576) the standard library spawns one of those through
+/// `cmd.exe` with batch-specific escaping — over arguments `uf exec` forwards
+/// straight from the command line, `ufx eslint --fix "src/**/*.js"` among
+/// them.
+///
+/// uf's side of that contract is to add nothing: `Command::args`, one entry
+/// each, never `raw_arg` — which is the documented way to opt *out* of the
+/// escaping std does. That is what this asserts, with the characters batch
+/// quoting is about in them: quotes, carets, percent signs, ampersands, pipes,
+/// spaces. It runs on Linux, and it is the part that can: whether std's
+/// encoding is right on Windows is std's test to have, and there is no Windows
+/// runner here to run it on (#309).
+#[test]
+fn exec_forwards_every_argument_as_one_entry_untouched() {
+    let project = Project::new(&[]);
+    let bin = project.path().join("node_modules/.bin");
+    fs::create_dir_all(&bin).unwrap();
+    let script = bin.join("uf-argv-tool");
+    // One line per argument, so a lost, split or merged one is visible.
+    fs::write(
+        &script,
+        "#!/bin/sh\nfor arg in \"$@\"; do printf '[%s]\\n' \"$arg\"; done\n",
+    )
+    .unwrap();
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let arguments = [
+        "--fix",
+        "src/**/*.js",
+        "say \"hi\"",
+        "carets^and^more",
+        "%PATH%",
+        "a & b | c",
+        "trailing\\",
+    ];
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["exec", "uf-argv-tool"])
+        .args(arguments)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let expected: String = arguments
+        .iter()
+        .map(|argument| format!("[{argument}]\n"))
+        .collect();
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        expected,
+        "uf quoted, split or dropped an argument on its way to the child"
+    );
+}
+
 /// A path is the third way to spell what `uf exec` runs, and adopts a status too.
 ///
 /// `ufx ./scripts/codegen.js` is a thing people do and it is not a package
