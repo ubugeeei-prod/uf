@@ -37,9 +37,6 @@
 
 import axe from "axe-core";
 
-/** Longest a report waits for the DOM to stop moving, in milliseconds. */
-const SETTLE_MS = 750;
-
 /** Most violations one report names; the rest are counted. */
 const MAX_VIOLATIONS_REPORTED = 8;
 
@@ -55,6 +52,11 @@ const MAX_NODE_CHARS = 100;
  */
 export function start(options) {
   const endpoint = options.endpoint;
+  // How long the DOM has to stop moving before an audit runs. Decided by
+  // `./a11y.js` and written into this module's last line rather than kept here
+  // as a constant, so there is one number rather than two — and so a test can
+  // drive the loop without waiting three quarters of a second per assertion.
+  const settleMs = options.settleMs;
   const runOptions = axeOptions(options.axe ?? {});
   const floor = options.axe?.minImpact ?? null;
   let timer = null;
@@ -93,10 +95,11 @@ export function start(options) {
     timer = setTimeout(() => {
       timer = null;
       void audit();
-    }, SETTLE_MS);
+    }, settleMs);
   };
 
-  new MutationObserver(schedule).observe(document.documentElement, {
+  const observer = new MutationObserver(schedule);
+  observer.observe(document.documentElement, {
     subtree: true,
     childList: true,
     attributes: true,
@@ -105,6 +108,14 @@ export function start(options) {
     if (!document.hidden) schedule();
   });
   schedule();
+
+  // Returned so a caller that owns the page's lifetime can end the loop. The
+  // generated call in `./a11y.js` ignores it: a dev server's page is over when
+  // the document is, and nothing outlives that.
+  return () => {
+    if (timer != null) clearTimeout(timer);
+    observer.disconnect();
+  };
 }
 
 /** The project's rule set in axe's own vocabulary. */

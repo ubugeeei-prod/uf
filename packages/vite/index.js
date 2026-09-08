@@ -269,6 +269,10 @@ function flowPlugin({ routerRoot, appEntry, command, accessibility }) {
     config(userConfig, env) {
       const projectRoot = path.resolve(userConfig.root ?? process.cwd());
       isProduction = env.mode === "production" || env.command === "build";
+      // Decided here rather than in `configResolved`, because the answer has to
+      // reach `optimizeDeps.include` below and that is written in this hook.
+      auditsPage =
+        !isProduction && (accessibility?.devAudit ?? true) && auditAvailable(projectRoot);
       return {
         // uf serves HTML itself; there is no index.html to fall back to.
         appType: "custom",
@@ -283,6 +287,16 @@ function flowPlugin({ routerRoot, appEntry, command, accessibility }) {
             "react/compiler-runtime",
             "react-dom",
             "react-dom/client",
+            // The accessibility audit's engine, when this project has one.
+            //
+            // Named up front rather than left to be discovered. axe-core is
+            // CommonJS, and the only thing that imports it is a *virtual*
+            // module reached from the document — so Vite would meet it for the
+            // first time after a page had already loaded, optimise it then, and
+            // reload the page it had just served. A full reload in the middle
+            // of the first render of every `uf dev` session is a high price for
+            // a feature whose whole manner is to be quiet.
+            ...(auditsPage ? ["axe-core"] : []),
           ],
           // uf's packages ship Flow. The dependency optimiser pre-bundles
           // with a JavaScript parser and would reject every one of them.
@@ -302,7 +316,6 @@ function flowPlugin({ routerRoot, appEntry, command, accessibility }) {
       base = config.base;
       appRoot = path.resolve(root, routerRoot);
       entryPath = path.resolve(root, appEntry);
-      auditsPage = !isProduction && (accessibility?.devAudit ?? true) && auditAvailable(root);
     },
 
     buildStart() {

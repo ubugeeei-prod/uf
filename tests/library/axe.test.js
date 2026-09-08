@@ -24,7 +24,7 @@
 
 import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
-import { render } from "@uniflowed/react-testing";
+import { cleanup, render } from "@uniflowed/react-testing";
 
 component Accessible() {
   return (
@@ -90,6 +90,12 @@ describe("toHaveNoAxeViolations", () => {
   // level down.
   afterEach(() => {
     uft.unstubAllEnvs();
+    // And the tree goes with the run. `render` clears its own containers on the
+    // way *in*, so a file that never calls this leaves its last one in
+    // `document.body` for whichever file the scheduler puts next on this
+    // worker — ubugeeei-prod/uf#607, which is not a thing to add another
+    // instance of.
+    cleanup();
   });
 
   it("passes over a tree axe has nothing to say about", async () => {

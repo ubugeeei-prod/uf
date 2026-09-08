@@ -33,6 +33,16 @@ export const AUDIT_RESOLVED_ID = "\0uf:a11y-audit";
 const RUNTIME_SOURCE_PATH = fileURLToPath(new URL("./a11y-runtime.js", import.meta.url));
 
 /**
+ * How long the DOM has to stop moving before an audit runs, in milliseconds.
+ *
+ * A React render is hundreds of mutations and axe walks the whole subtree, so
+ * without a window this would be a stutter rather than a background job. Long
+ * enough to sit out a render and short enough that somebody who has just saved
+ * a file hears about it while they are still looking at the page.
+ */
+export const SETTLE_MS = 750;
+
+/**
  * Whether the project has axe-core.
  *
  * Resolved from the project root rather than from this package, because the
@@ -63,6 +73,7 @@ export function auditAvailable(root) {
 export function auditRuntimeSource(settings) {
   const options = {
     endpoint: DIAGNOSTIC_ENDPOINT,
+    settleMs: SETTLE_MS,
     axe: {
       tags: settings?.tags ?? [],
       disabledRules: settings?.disabledRules ?? [],
