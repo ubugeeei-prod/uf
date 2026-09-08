@@ -97,13 +97,6 @@ pub(crate) enum BundleMove {
 }
 
 impl BundleMove {
-    /// The module the move is about.
-    fn module(&self) -> &Utf8Path {
-        match self {
-            Self::Entered { module, .. } | Self::Left { module } => module,
-        }
-    }
-
     /// The move as the sentence the terminal prints.
     fn line(&self) -> String {
         match self {
@@ -253,15 +246,25 @@ impl RscReport {
     /// module exists to say; a manifest that could not be written costs the
     /// reader a split, and a second warning channel about `.uf/` on every save
     /// would cost them the diagnostics.
-    fn persist(&self, analysis: &uf_rsc::RscAnalysis) {
+    /// Returns whether the manifest on disk now describes `analysis` — either
+    /// because it already did, or because the write succeeded.
+    ///
+    /// The caller needs the answer, not just the attempt. `bundle_moves`
+    /// advances the bundle it compares against, so letting it run after a
+    /// failed write would record the move as reported while Vite was still
+    /// reading the old manifest — and the next *successful* write would then
+    /// compare against the state it had already advanced to and say nothing
+    /// moved. The edit would land silently, which is the one thing this report
+    /// exists to prevent.
+    fn persist(&self, analysis: &uf_rsc::RscAnalysis) -> bool {
         let manifest = analysis.manifest();
         let Ok(json) = manifest.to_json() else {
-            return;
+            return false;
         };
         if std::fs::read_to_string(&self.manifest).is_ok_and(|current| current == json) {
-            return;
+            return true;
         }
-        let _ = write_manifest(&self.root.join(RSC_MANIFEST_BUILD_DIR), &manifest);
+        write_manifest(&self.root.join(RSC_MANIFEST_BUILD_DIR), &manifest).is_ok()
     }
 
     /// Rescan the project and decide whether there is anything new to say.
@@ -291,12 +294,19 @@ impl RscReport {
         // even when the *diagnostics* are unchanged, because adding a
         // `"use client"` import moves what the browser gets without moving what
         // the contract says.
-        self.persist(&analysis);
         // And, for the same reason, so does the report about it. This is the
         // edit that changes what a visitor downloads while changing nothing
         // the contract has an opinion about, and it was the one edit `uf dev`
         // said nothing at all about.
-        self.moved = self.bundle_moves(&analysis.graph);
+        //
+        // Only when the manifest actually landed, though: `bundle_moves` moves
+        // the baseline it compares against, and moving it over a write that
+        // did not happen loses the report for good. Left alone, the next write
+        // that succeeds compares against the last state Vite really saw and
+        // says what moved since then.
+        if self.persist(&analysis) {
+            self.moved = self.bundle_moves(&analysis.graph);
+        }
 
         let diagnostics = analysis.graph.diagnostics().to_vec();
         if self.last.as_ref() == Some(&diagnostics) {
@@ -344,25 +354,40 @@ impl RscReport {
             return BundleUpdate::default();
         };
 
-        let mut moves: Vec<BundleMove> = current
+        // Paths first, explanations after the cut. `reason_line` walks the
+        // import graph and formats a chain, and at most `MAX_MOVES` of them
+        // are ever printed; explaining every arrival first made a directive
+        // added at the root of a large tree pay a graph walk and a `String`
+        // per module in it, to throw all but twelve away.
+        let mut moves: Vec<(&Utf8Path, bool)> = current
             .difference(&previous)
-            .map(|module| BundleMove::Entered {
-                module: module.clone(),
-                reason: reason_line(graph, module),
-            })
+            .map(|module| (module.as_path(), true))
             .chain(
                 previous
                     .difference(&current)
-                    .map(|module| BundleMove::Left {
-                        module: module.clone(),
-                    }),
+                    .map(|module| (module.as_path(), false)),
             )
             .collect();
         let total = moves.len();
         // By path, so that a page and the components under it read as one
         // change rather than as arrivals interleaved with departures.
-        moves.sort_by(|left, right| left.module().cmp(right.module()));
+        moves.sort_by_key(|(module, _)| *module);
         moves.truncate(MAX_MOVES);
+        let moves = moves
+            .into_iter()
+            .map(|(module, entered)| {
+                if entered {
+                    BundleMove::Entered {
+                        module: module.to_owned(),
+                        reason: reason_line(graph, module),
+                    }
+                } else {
+                    BundleMove::Left {
+                        module: module.to_owned(),
+                    }
+                }
+            })
+            .collect();
         BundleUpdate { moves, total }
     }
 }

@@ -329,3 +329,44 @@ fn a_large_move_is_counted_in_full_and_listed_in_part() {
     assert_eq!(report.moved.total, depth + 2);
     assert_eq!(report.moved.moves.len(), super::MAX_MOVES);
 }
+
+/// A manifest that could not be written keeps the move for the next write.
+///
+/// `persist` used to swallow the failure and `refresh` reported the move
+/// anyway, which advanced the bundle it compares against. Vite went on reading
+/// the old manifest, and the *next* successful write compared against a
+/// baseline that had already moved and said nothing had changed — so the edit
+/// landed silently and the one report that exists to catch it never came.
+#[test]
+fn a_manifest_that_cannot_be_written_keeps_the_move_for_the_next_write() {
+    use uf_rsc::{RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_FILE_NAME};
+
+    let (_dir, root) = project_with_a_component(A_SERVER_COMPONENT);
+    let mut report = RscReport::new(&root);
+    report.refresh();
+    assert_eq!(report.moved.total, 0);
+
+    // A directory where the manifest file goes: `create_dir_all` still
+    // succeeds and `fs::write` does not, which is the failure being modelled
+    // — a full disk, a read-only checkout, a `.uf` somebody chowned.
+    let manifest = root
+        .join(RSC_MANIFEST_BUILD_DIR)
+        .join(RSC_MANIFEST_FILE_NAME);
+    std::fs::remove_file(&manifest).unwrap();
+    std::fs::create_dir(&manifest).unwrap();
+
+    std::fs::write(root.join("app/Counter.js"), A_CLIENT_COMPONENT).unwrap();
+    report.refresh();
+    assert_eq!(
+        moved(&report),
+        Vec::<String>::new(),
+        "nothing to report while the browser is still being served the old manifest"
+    );
+
+    // And once it can be written, the move is still there to report — three
+    // modules, not none.
+    std::fs::remove_dir(&manifest).unwrap();
+    report.refresh();
+    assert_eq!(report.moved.total, 3, "{:?}", moved(&report));
+    assert!(manifest.exists(), "and the manifest landed this time");
+}

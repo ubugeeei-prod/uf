@@ -71,12 +71,21 @@
 // `$$FORM_ACTION` property that turns the submit into a *native* form post,
 // and a native form post is `multipart/form-data`: the content type this
 // endpoint refuses, deliberately, as one of the three things standing between
-// it and a cross-site call. A reference therefore carries no `$$FORM_ACTION`,
-// and React writes the form it writes for any client action —
+// it and a cross-site call. Supporting the pre-hydration submit would mean
+// accepting that content type, so a reference carries no `$$FORM_ACTION`, and
+// React writes the form it writes for any client action —
 // `action="javascript:throw new Error('React form unexpectedly submitted.')"`
 // — so a submit before hydration throws in the page rather than posting
 // anywhere. Nothing reaches a server that was not meant to; what is missing is
 // the submit working at all. See ubugeeei-prod/uf#252.
+//
+// The refusal is why the property is withheld, not what would stop it: no
+// request is made, so nothing is refused. Nor would a native form post aimed
+// at a page by hand be refused as multipart — `createActionDispatcher` reads
+// the `uf-action` header before it looks at the method or the content type and
+// returns `null` when it is absent, so the request is not an action call at
+// all and falls through to the route handlers. The `415` answers a request
+// that claims to be an action, which is the only kind that reaches it.
 //
 // # What Flow checks, and where
 //
@@ -151,6 +160,32 @@ export type ServerActionFunction = (...args: Array<ActionArgument>) => Promise<A
  * The bound is [`ActionArgument`] and not [`ActionValue`], which is the whole
  * of what makes `<form action={fn}>` type-check: a form action's parameter is
  * a `FormData`, and a `FormData` crosses as an argument and only as one.
+ *
+ * # What this does not catch, and why
+ *
+ * The bound is element-wise, so it holds each argument against the grammar and
+ * says nothing about the list as a whole. The wire has one rule that is about
+ * the list: a call carries at most one form, because the envelope names the
+ * form's position once. So `(a: FormData, b: FormData)` type-checks here and
+ * throws `ActionValueError` at `encodeActionArguments` — a rule enforced at
+ * run time that the types ought to have caught.
+ *
+ * Saying it in the type needs a walk over the tuple, and the walk is blocked by
+ * ubugeeei-prod/uf#300: a spread in a conditional type's tuple pattern binds
+ * `infer` as `unknown` and the rest as the whole array widened. The obvious
+ * recursion is not merely rejected, it quietly answers wrongly —
+ *
+ *   type NoForm<T> = T extends [] ? true
+ *     : T extends [infer H, ...infer R]
+ *       ? (H extends FormData ? false : NoForm<R>) : true;
+ *
+ * — gives `true` for `[string, FormData]`, because the spread pattern never
+ * matches and every tuple falls through to the last branch. A constraint built
+ * on that would be worse than none: it would report every signature as fine.
+ *
+ * `tests/type-tests/server-actions.js` pins the gap, so that whoever fixes
+ * #300 is told this is waiting on it. The run-time guard and its test are in
+ * `internal/action-wire.js` and `tests/library/server-actions.test.js`.
  */
 export type ActionArguments<TArgs extends $ReadOnlyArray<ActionArgument>> = TArgs;
 

@@ -53,6 +53,9 @@ declare function usersByName(): Promise<Map<string, number>>;
 declare function saveNote(previous: string | null, form: FormData): Promise<string>;
 declare function draftNote(): Promise<FormData>;
 
+// And one that takes two, which the wire refuses and the types do not.
+declare function mergeNotes(first: FormData, second: FormData): Promise<string>;
+
 // And one the RSC graph rejects for a different reason, kept here because the
 // wire says the same thing about it: React's calling convention makes a
 // synchronous `"use server"` export a correctness *and* a safety issue, and a
@@ -116,5 +119,20 @@ export const noArguments: Promise<void> = clearUsers();
 // against the declaration the module wrote.
 export const formCall: Promise<string> = saveNote(null, new FormData());
 export type ArgsFitTheWire = ActionArguments<Parameters<Actions[Name]>>;
+
+// A second form is refused by the wire and not by the bound, so this line is
+// accepted today and should not be. It is here without an `expect:` because
+// that is the truth about the checker right now, and because a line that
+// changes behaviour is the cheapest way to tell whoever fixes
+// ubugeeei-prod/uf#300 that this was waiting on them: adding the tuple-level
+// constraint makes this start being reported, which fails this test and brings
+// them here. Move it up to the refusals above with an `expect:` when it does.
+//
+// `ActionArguments`' doc says why the constraint cannot be written yet — the
+// recursion #300 breaks does not fail, it answers `true` for every tuple. What
+// stops a second form reaching a server in the meantime is
+// `encodeActionArguments`, which throws, and
+// `tests/library/server-actions.test.js` covers that.
+export type TwoFormsFitTheWire = ActionArguments<Parameters<typeof mergeNotes>>;
 export type ResultsFitTheWire = ActionResult<ReturnType<Actions[Name]>>;
 export const aValue: ActionValue = { rows: [1, "two", null, true], nested: { deep: [] } };

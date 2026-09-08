@@ -696,10 +696,24 @@ in flight. One argument of a call may therefore be a form, written beside the
 values under its own key rather than as a tag inside one — the value grammar
 does not move, and the only constructor the decoder can call is fixed in the
 source. What that does not buy is a form that submits before the page has
-hydrated: React's progressive enhancement turns the submit into a native form
-post, and a native form post is the content type the endpoint refuses — so
-React writes the form it writes for any client action, whose submit throws in
-the page rather than posting anywhere.
+hydrated. React's progressive enhancement works through a `$$FORM_ACTION`
+property that turns the submit into a native form post, and a native form post
+is `multipart/form-data` — the content type the endpoint refuses, as one of the
+three things standing between it and a cross-site call. Supporting the
+pre-hydration submit would mean accepting that content type, so uf does not
+ship `$$FORM_ACTION` on a reference, and React writes the form it writes for
+any client action: `action="javascript:throw …"`, whose submit throws in the
+page rather than posting anywhere.
+
+The refusal is the reason for the choice and not what enforces it, which is
+worth separating because they fail differently. No request is made at all, so
+nothing is refused. And a native form post aimed at a page by hand would not be
+refused either: `createActionDispatcher` reads the `uf-action` header first and
+returns `null` when it is absent, before it looks at the method or the content
+type, so such a request is not an action call — it falls through to the route
+handlers, where a matching `POST` handler receives it and anything else is a
+`404`. The `415` guards a request that claims to be an action, which is the
+only kind that gets that far.
 
 One thing does still come back. A uf build links the stylesheets it finds in
 the *client* graph, so a route removed from that graph outright loses its rules
