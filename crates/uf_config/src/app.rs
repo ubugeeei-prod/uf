@@ -312,6 +312,15 @@ pub struct MdxConfig {
     pub extensions: Vec<CompactString>,
     pub jsx_import_source: CompactString,
     pub pipeline_plugin: MdxPipelinePluginConfig,
+    /// Syntax highlighting for fenced code.
+    ///
+    /// A field here rather than nowhere. `HighlightConfig` was declared,
+    /// exported and documented in the configuration reference — and was a
+    /// field of no struct, so nothing deserialized those keys and nothing
+    /// read them. `packages/vite` has read `mdxConfig.highlight` the whole
+    /// time; what it got was `undefined`, and a project that set a theme got
+    /// no error and no effect. See ubugeeei-prod/uf#646.
+    pub highlight: HighlightConfig,
 }
 
 impl Default for MdxConfig {
@@ -321,6 +330,7 @@ impl Default for MdxConfig {
             extensions: vec![CompactString::const_new(".mdx")],
             jsx_import_source: CompactString::const_new("@uniflowed/jsx-runtime"),
             pipeline_plugin: MdxPipelinePluginConfig::BuiltIn,
+            highlight: HighlightConfig::default(),
         }
     }
 }
