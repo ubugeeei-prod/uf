@@ -50,6 +50,7 @@ import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
 import {
   assetsFromManifest,
+  createPrerenderGate,
   createServeHandler,
   loadBuild,
   nodeListener,
@@ -341,6 +342,16 @@ function watchEnvFiles(server) {
  * The static middleware still runs first, and that is deliberate rather than
  * incidental; see `internal/serve.js` for why `uf start` orders itself the
  * same way.
+ *
+ * One request is the exception, and it is the only thing uf mounts in *front*
+ * of Vite here: a request carrying the draft cookie, which no front door may
+ * answer from a prerendered document. `createStaticHandler` applies that rule
+ * and cannot reach a request Vite's file middleware answered first, so under
+ * `uf preview` draft mode appeared to be off while it worked under `uf dev`
+ * and `uf start` — ubugeeei-prod/uf#620. `configurePreviewServer` is where a
+ * middleware goes ahead of Vite's own; the hook's *body* runs before they are
+ * installed and a function it returns runs after, which is why this is a body
+ * and the handler below is a `use` on the started server.
  */
 async function preview() {
   const { preview: startPreview } = await import("vite");
@@ -361,25 +372,53 @@ async function preview() {
         serverDir: path.join(".uf", "build", "server"),
       });
 
-  const server = await startPreview({ ...inline, appType: "custom" });
-  if (build != null) {
-    const handle = createServeHandler({ ...build, cache: config.app?.rendering?.cache });
-    server.middlewares.use(async (request, response, next) => {
-      try {
-        const asRequest = await toRequest(request, server.config);
-        // The same lifecycle `uf start` gets from `nodeListener`, spelled out
-        // because this door is Vite's connect chain rather than a bare
-        // `node:http` server: the whole request runs inside it, and it settles
-        // once `send` has returned. A preview whose `after()` fired at a
-        // different moment from the production server's would be a preview that
-        // is checked and believed and wrong.
-        await withRequest(build.entry, asRequest, async () => {
-          await send(response, await handle(asRequest));
-        });
-      } catch (error) {
-        next(error);
-      }
-    });
+  // One handler for both positions in the chain. A draft request meets it in
+  // front of Vite's file middleware and every other request meets it behind,
+  // and because it is the same handler the two give the same answer — which is
+  // the whole reason `uf preview` exists.
+  const handle =
+    build == null ? null : createServeHandler({ ...build, cache: config.app?.rendering?.cache });
+  const answer = (previewServer) => async (request, response, next) => {
+    try {
+      const asRequest = await toRequest(request, previewServer.config);
+      // The same lifecycle `uf start` gets from `nodeListener`, spelled out
+      // because this door is Vite's connect chain rather than a bare
+      // `node:http` server: the whole request runs inside it, and it settles
+      // once `send` has returned. A preview whose `after()` fired at a
+      // different moment from the production server's would be a preview that
+      // is checked and believed and wrong.
+      await withRequest(build.entry, asRequest, async () => {
+        await send(response, await handle(asRequest));
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  const mayAnswerFromPrerender = createPrerenderGate();
+  const draftFirst = {
+    name: "uf:draft-before-files",
+    configurePreviewServer(previewServer) {
+      if (handle == null) return;
+      const run = answer(previewServer);
+      previewServer.middlewares.use((request, response, next) => {
+        // Not `await`ed by connect, which takes no promise: the gate is
+        // resolved inside and `next()` is called from there. A rejection is a
+        // `next(error)` for the same reason.
+        mayAnswerFromPrerender(request.headers.cookie ?? null)
+          .then((mayAnswer) => (mayAnswer ? next() : run(request, response, next)))
+          .catch(next);
+      });
+    },
+  };
+
+  const server = await startPreview({
+    ...inline,
+    appType: "custom",
+    plugins: [...(inline.plugins ?? []), draftFirst],
+  });
+  if (handle != null) {
+    server.middlewares.use(answer(server));
   }
 
   const urls = server.resolvedUrls ?? { local: [], network: [] };

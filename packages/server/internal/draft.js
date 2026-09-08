@@ -161,6 +161,43 @@ export function carriesDraftCookie(header: string | null): boolean {
 }
 
 /**
+ * Whether a prerendered document may answer this request.
+ *
+ * **This is the reason, and it is written here once.** Four front doors answer
+ * a request from bytes that were written before it arrived — `uf start`'s
+ * static handler in `../node.js`, the compiled binary's embedded index in
+ * `../standalone.js`, the worker's assets binding in `../edge.js`, and
+ * `uf preview`, where the file server is Vite's own and runs in front of
+ * everything uf mounts. Each of them asks this, and none of them argues it
+ * again.
+ *
+ * A file in `dist/` is what the site said *before* the draft existed. Handing
+ * one to an editor who came to look at the draft answers a different question
+ * from the one they asked, and it would make draft mode a feature that works
+ * everywhere except on the pages a build was able to prerender — which are
+ * exactly the pages a CMS produces. So a request that carries the draft cookie
+ * is rendered, on every door, or draft mode is a property of which command
+ * somebody happened to run.
+ *
+ * **Documents only.** A stylesheet and a chunk are the same bytes in draft mode
+ * as out of it, and skipping those would leave the page unstyled and
+ * unhydrated for no gain. Deciding *which* bytes are a document is each door's
+ * own — a file extension here, an embedded key there, a `content-type` at the
+ * edge — because that is the one part of the question that depends on where
+ * the bytes are kept.
+ *
+ * The cookie's **name** decides it and not its signature, for the reason in
+ * [`carriesDraftCookie`]: these doors run before any application code and
+ * cannot reach the request context where the verified answer lives. What a
+ * forged cookie buys is a live render of a page that is public anyway.
+ *
+ * See ubugeeei-prod/uf#282, #615 and #620.
+ */
+export function prerenderedMayAnswer(cookieHeader: string | null): boolean {
+  return !carriesDraftCookie(cookieHeader);
+}
+
+/**
  * Whether `value` is a draft cookie this deployment issued and still honours.
  *
  * `false` for every way of not being one — absent, the wrong shape, a signature

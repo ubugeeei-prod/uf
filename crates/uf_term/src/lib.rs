@@ -35,6 +35,14 @@
 //! Japanese, an emoji, or a combining mark lines up in a column exactly like an
 //! ASCII one.
 //!
+//! # Text that came off a checkout
+//!
+//! A diagnostic names a file, and a file name in a cloned repository is
+//! attacker-authored input to a terminal: nothing stops it holding `ESC [ 2 J`.
+//! [`safe_path`] and [`safe_message`] are the one place that is dealt with —
+//! control characters dropped, width bounded — and [`CodeFrame`] draws
+//! everything it is given through them, so a reporter cannot forget.
+//!
 //! # Allocation
 //!
 //! Every primitive appends to a caller-owned `String`. Nothing allocates per
@@ -64,6 +72,7 @@ mod image;
 mod progress;
 pub mod prompt;
 mod render;
+mod sanitize;
 mod style;
 mod table;
 mod text;
@@ -80,6 +89,10 @@ pub use crate::glyph::{ASCII_GLYPHS, Glyphs, Status, UNICODE_GLYPHS};
 pub use crate::image::{ImageEnv, ImageProtocol, Placement, inline_image};
 pub use crate::progress::{DEFAULT_TICK, LIVE_WIDTH, Live, Progress};
 pub use crate::render::{KeyValue, Renderer};
+pub use crate::sanitize::{
+    MAX_MESSAGE_SCALARS, MAX_MESSAGE_WIDTH, MAX_PATH_SCALARS, MAX_PATH_WIDTH, push_safe_message,
+    push_safe_path, safe_message, safe_path,
+};
 pub use crate::style::{Attributes, Color, Style};
 pub use crate::table::{Cell, Column, Table};
 pub use crate::text::{

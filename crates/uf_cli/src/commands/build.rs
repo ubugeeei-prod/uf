@@ -855,7 +855,10 @@ fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagno
             .collect();
 
         ui.render(|renderer, out| {
-            renderer.theme().path.paint(renderer.color(), &module, out);
+            renderer
+                .theme()
+                .path
+                .paint(renderer.color(), &uf_term::safe_path(&module), out);
             out.push_str("  ");
             renderer.theme().muted.paint(renderer.color(), &header, out);
             out.push('\n');

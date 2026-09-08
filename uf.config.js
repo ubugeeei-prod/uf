@@ -372,9 +372,29 @@ export default defineConfig({
       inputs: ["tools/ci/security-scan.sh", "tools/ci/test-security-scan.sh"],
     },
 
+    // The response headers the documentation site is served with, checked
+    // against the site itself.
+    //
+    // `security:scan` deliberately does not cover these — its own header says
+    // why, and the reason is that the only headers in this repository are set
+    // by a Cloudflare worker, which is a deployment rather than something
+    // `uf build` writes, and asserting a server's behaviour by grepping its
+    // source would be asserting a file. So this one drives the worker: it
+    // imports `infra/cloudflare/workers/docs.js`, calls its `fetch` with an
+    // `ASSETS` binding over `docs/dist/docs`, and compares the policy that
+    // comes back against what the pages actually load. See #598.
+    //
+    // No `inputs`, and the same reason `docs:links` has none: what it reads is
+    // what `docs:build` wrote, and a cache in front of this one would replay a
+    // verdict about a build that no longer exists.
+    "docs:csp": {
+      command: "tools/ci/docs-csp.sh",
+      dependsOn: ["docs:build"],
+    },
+
     // The `Docs build` job, in one command.
     //
-    // `uf run` takes one task, and four of the five below need the site on
+    // `uf run` takes one task, and five of the six below need the site on
     // disk — so four invocations would build it four times, because
     // `docs:build` declares no `inputs` and is always run. One invocation is
     // one graph and `docs:build` is one node in it. Same shape as `ci`
@@ -387,6 +407,7 @@ export default defineConfig({
         "docs:links:test",
         "security:scan",
         "security:scan:test",
+        "docs:csp",
       ],
     },
 
@@ -707,11 +728,11 @@ export default defineConfig({
         "ci:gate:test",
         "ci:runtimes",
         "ci:runtimes:test",
-        // `docs:verify` rather than the four checks under it, because that is
+        // `docs:verify` rather than the five checks under it, because that is
         // what the `Docs build` job runs and this list is the whole of
         // `uf run` in `.github/workflows/`. It reaches `docs:links`,
-        // `docs:links:test`, `security:scan` and `security:scan:test`, and
-        // builds the site once for all of them.
+        // `docs:links:test`, `security:scan`, `security:scan:test` and
+        // `docs:csp`, and builds the site once for all of them.
         "docs:verify",
         // Not `docs:links:external`. It is the same check with the network
         // turned on, and an external host that is slow or rate limiting would

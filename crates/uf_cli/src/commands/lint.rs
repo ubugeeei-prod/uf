@@ -425,7 +425,10 @@ pub(crate) fn render_group(ui: &mut Ui, group: &[Diagnostic], sources: &[SourceF
     let header = problem_summary(group_errors, group.len() - group_errors);
 
     ui.render(|renderer, out| {
-        renderer.theme().path.paint(renderer.color(), path, out);
+        renderer
+            .theme()
+            .path
+            .paint(renderer.color(), &uf_term::safe_path(path), out);
         out.push_str("  ");
         renderer.theme().muted.paint(renderer.color(), &header, out);
         out.push('\n');
@@ -468,7 +471,7 @@ pub(crate) fn render_file_summary(ui: &mut Ui, groups: &[&[Diagnostic]]) {
                 .filter(|diagnostic| diagnostic.severity == Severity::Error)
                 .count();
             (
-                diagnostic_path(&group[0]).to_string(),
+                uf_term::safe_path(diagnostic_path(&group[0])).into_owned(),
                 group_errors.to_string(),
                 (group.len() - group_errors).to_string(),
             )

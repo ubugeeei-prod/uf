@@ -1891,9 +1891,37 @@ fn preview_and_start_serve_the_whole_of_a_build() {
          the `Location` assertion below would be about a document rather than a redirect"
     );
 
+    // A mark in the prerendered document, so that "this came off disk" and
+    // "this was rendered" are two visibly different answers below. The build
+    // wrote this file a moment ago and the servers have not started, so this is
+    // the same document either of them would have served.
+    let guide = root.join("dist/guide/index.html");
+    let published = fs::read_to_string(&guide).unwrap();
+    assert!(
+        published.contains("served-app guide"),
+        "the prerendered guide is not the guide: {published}"
+    );
+    fs::write(&guide, format!("{published}<!--{FROM_DISK}-->")).unwrap();
+
     for command in ["preview", "start"] {
         serve_and_assert(&root, command);
     }
+}
+
+/// The mark that says a document came off disk rather than out of a render.
+const FROM_DISK: &str = "uf-test-prerendered";
+
+/// Any value: the doors read the cookie's *name* and never its signature,
+/// which `packages/server/internal/draft.js` argues at `carriesDraftCookie` —
+/// they run before any application code and cannot reach the verified answer.
+const DRAFT_COOKIE: &str = "__Host-uf.draft=1.whatever";
+
+/// The hydration script a served document names, as a path to ask for.
+fn document_script(body: &str) -> Option<String> {
+    let at = body.find("<script type=\"module\" src=\"")?;
+    let rest = &body[at + "<script type=\"module\" src=\"".len()..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_owned())
 }
 
 /// The script a deployed directory is asked with, when no socket may be had.
@@ -2895,6 +2923,63 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("did not serve the nested route", &guide)
     );
+    assert!(
+        guide.contains(FROM_DISK),
+        "{}",
+        context(
+            "rendered a route it had a prerendered document for; the assertion below is only \
+             about draft mode if this one is about a file",
+            &guide
+        )
+    );
+
+    // 2b. The same route, asked for by somebody carrying the draft cookie. It
+    //     has to be *rendered* — a file in `dist/` is what the site said before
+    //     the draft existed, and `packages/server/internal/draft.js`'s
+    //     `prerenderedMayAnswer` is where that is argued for every front door.
+    //
+    //     Asked of both servers because they used to disagree: `uf start` owns
+    //     its socket and applied the rule in its own static handler, while
+    //     `uf preview` delegates the static half to Vite, whose file middleware
+    //     runs in front of anything uf mounts behind it — so draft mode looked
+    //     switched off there and worked everywhere else. See
+    //     ubugeeei-prod/uf#620, and #342 for the same shape one layer up.
+    let drafting = http_get_with("127.0.0.1", port, "/guide/", &[("Cookie", DRAFT_COOKIE)]);
+    assert!(
+        drafting.starts_with("HTTP/1.1 200"),
+        "{}",
+        context("did not answer a draft request at all", &drafting)
+    );
+    assert!(
+        drafting.contains("served-app guide"),
+        "{}",
+        context(
+            "answered a draft request with something that is not the route",
+            &drafting
+        )
+    );
+    assert!(
+        !drafting.contains(FROM_DISK),
+        "{}",
+        context(
+            "handed a draft request the prerendered document, so draft mode is off here and \
+             on everywhere else",
+            &drafting
+        )
+    );
+
+    // And its assets still come off disk, because a chunk is the same bytes in
+    // draft mode as out of it — skipping those would leave the page unstyled
+    // and unhydrated for no gain.
+    let script = document_script(body);
+    if let Some(script) = script.as_deref() {
+        let chunk = http_get_with("127.0.0.1", port, script, &[("Cookie", DRAFT_COOKIE)]);
+        assert!(
+            chunk.starts_with("HTTP/1.1 200"),
+            "{}",
+            context("refused a draft request its own hydration script", &chunk)
+        );
+    }
 
     // 3. A route with a parameter and no `generateStaticParams`, which the
     //    build wrote no file for: the only way this can be a 200 is a render
@@ -3330,6 +3415,27 @@ fn http_get(host: &str, port: u16, path: &str) -> String {
 /// the only thing that can answer, and therefore the half a build that serves
 /// only files gets wrong.
 fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&str>) -> String {
+    http_request_with(host, port, method, path, body, &[])
+}
+
+/// One `GET` carrying extra headers, which is how a cookie reaches a server.
+///
+/// Written as a separate entry point rather than a sixth parameter on every
+/// call site: the requests above are the ones a browser makes with nothing
+/// attached, and that is what makes them the requests every other assertion
+/// here is about.
+fn http_get_with(host: &str, port: u16, path: &str, headers: &[(&str, &str)]) -> String {
+    http_request_with(host, port, "GET", path, None, headers)
+}
+
+fn http_request_with(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    headers: &[(&str, &str)],
+) -> String {
     let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
     stream
         .set_read_timeout(Some(Duration::from_secs(60)))
@@ -3343,10 +3449,14 @@ fn http_request(host: &str, port: u16, method: &str, path: &str, body: Option<&s
             body.len()
         )
     });
+    let extra = headers
+        .iter()
+        .map(|(name, value)| format!("{name}: {value}\r\n"))
+        .collect::<String>();
     write!(
         stream,
         "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\n\
-         Connection: close\r\n{}",
+         Connection: close\r\n{extra}{}",
         if entity.is_empty() {
             String::from("\r\n")
         } else {

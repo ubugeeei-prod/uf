@@ -477,7 +477,10 @@ fn render_type_group(ui: &mut Ui, sources: &[SourceFile], group: &[TypeDiagnosti
         .collect();
 
     ui.render(|renderer, out| {
-        renderer.theme().path.paint(renderer.color(), path, out);
+        renderer
+            .theme()
+            .path
+            .paint(renderer.color(), &uf_term::safe_path(path), out);
         out.push_str("  ");
         renderer.theme().muted.paint(renderer.color(), &header, out);
         out.push('\n');

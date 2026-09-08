@@ -275,3 +275,83 @@ fn a_four_digit_line_number_widens_the_gutter_consistently() {
     assert!(rendered.contains("1234 │ const value"));
     assert_eq!(caret_offset(&rendered), source_offset(&rendered, "any"));
 }
+
+/// A repository is attacker-authored input, and a code frame is where its
+/// filenames, its messages and its source text meet a terminal. Nothing a
+/// frame draws may steer one. See ubugeeei-prod/uf#640.
+mod nothing_a_checkout_wrote_can_steer_the_terminal {
+    use super::*;
+
+    /// Every escape byte in a rendered frame. The renderer's own styling is
+    /// off in these tests, so any of these came from the frame's content.
+    fn escapes(rendered: &str) -> Vec<char> {
+        rendered
+            .chars()
+            .filter(|ch| ch.is_control() && *ch != '\n')
+            .collect()
+    }
+
+    #[test]
+    fn a_filename_holding_an_ansi_sequence_is_drawn_inert() {
+        let mut frame = frame("const value: any = load();", 14, 3);
+        frame.path = "src/\u{1b}[2J\u{1b}[Hevil.js";
+        let rendered = render(&frame);
+
+        assert_eq!(escapes(&rendered), Vec::<char>::new());
+        assert!(rendered.contains("src/[2J[Hevil.js:3:14"), "{rendered}");
+    }
+
+    #[test]
+    fn a_message_quoting_a_module_is_drawn_inert() {
+        let mut frame = frame("const value: any = load();", 14, 3);
+        frame.message = "client module `src/\rerror: nothing to see.js` imports server-only `db`";
+        let rendered = render(&frame);
+
+        assert_eq!(escapes(&rendered), Vec::<char>::new());
+    }
+
+    #[test]
+    fn a_source_line_holding_an_escape_is_drawn_inert() {
+        // The line under the caret is source text out of the same checkout.
+        let frame = frame("const value = \"\u{1b}[2J\"; // any", 15, 3);
+        let rendered = render(&frame);
+
+        assert_eq!(escapes(&rendered), Vec::<char>::new());
+        // And the caret still lands where it did, because a control character
+        // was already worth zero columns to `measure`.
+        assert_eq!(caret_offset(&rendered), source_offset(&rendered, "\"[2J"));
+    }
+
+    #[test]
+    fn a_very_long_path_cannot_wrap_the_row_it_is_drawn_on() {
+        let long = format!("{}page.js", "nested/".repeat(80));
+        let mut frame = frame("const value: any = load();", 14, 3);
+        frame.path = &long;
+        let rendered = render(&frame);
+
+        let location = rendered
+            .lines()
+            .find(|line| line.contains("page.js"))
+            .expect("the location row");
+        let drawn = location
+            .trim_start()
+            .trim_start_matches(|ch: char| ch != ' ')
+            .trim_start()
+            .strip_suffix(":3:14")
+            .expect("a location ends with its line and column");
+        assert!(display_width(drawn) <= crate::MAX_PATH_WIDTH, "{drawn}");
+        assert!(drawn.ends_with("nested/page.js"), "{drawn}");
+        assert!(drawn.starts_with("..."), "{drawn}");
+    }
+
+    #[test]
+    fn a_japanese_filename_is_left_alone() {
+        let mut frame = frame("const value: any = load();", 14, 3);
+        frame.path = "src/コンポーネント/ボタン.js";
+        let rendered = render(&frame);
+        assert!(
+            rendered.contains("src/コンポーネント/ボタン.js:3:14"),
+            "{rendered}"
+        );
+    }
+}

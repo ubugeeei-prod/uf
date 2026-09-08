@@ -234,6 +234,14 @@ fn the_platform_globals_resolve() {
         ("const p: string = process.platform;", "node"),
         ("const s: Storage = localStorage;", "bom/storage"),
         ("const t: EventTarget = new EventTarget();", "dom/events"),
+        // `CryptoKey` is uf's own libdef rather than the submodule's, and it
+        // is a name `bom.js` never had. See ubugeeei-prod/uf#619.
+        (
+            "const k: Promise<CryptoKey> = crypto.subtle.importKey(\n  \"raw\",\n  \
+             new Uint8Array(32),\n  { name: \"HMAC\", hash: \"SHA-256\" },\n  false,\n  \
+             [\"sign\"],\n);",
+            "web-crypto",
+        ),
     ] {
         let diagnostics = check_source(
             Source::new("app.js", &format!("// @flow\n{source}\n")),

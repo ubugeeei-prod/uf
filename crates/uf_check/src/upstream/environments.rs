@@ -71,4 +71,10 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
         "vite-assets.js",
         include_str!("../../libdefs/vite-assets.js"),
     ),
+    // Web Crypto. `bom.js` gives `Crypto.subtle` exactly one method, `digest`,
+    // so a module that signs anything reported errors for correct code
+    // (ubugeeei-prod/uf#619). This restates `Crypto` — shadowing is per name,
+    // not per member — and declares the whole of `SubtleCrypto` and the types
+    // it reads, so the next gap is not found the same way.
+    ("web-crypto.js", include_str!("../../libdefs/web-crypto.js")),
 ];
