@@ -54,9 +54,11 @@ The rest is spread evenly. A form the browser submits reaches a server action,
 and `uf dev` says which module put a component in the client bundle and why.
 Every route has a typed link, including the ones that take no parameters. A
 test can live beside the code it tests, and an accessibility audit reads the
-tree while you edit it. And `uf profile` is a profiler rather than a wall-clock
-number — hierarchical spans, a counting allocator, and a report saying where
-the time and the memory went. Its first findings are in this release: building
+tree while you edit it. And `uf_profiler` is a profiler rather than a
+wall-clock number — hierarchical spans, a counting allocator, and a report
+saying where the time and the memory went, for the benches and the
+`alloc_report` examples that link against it. Its first findings are in this
+release: building
 a Babel tree costs 31% fewer allocations, the effects rule stopped asking for a
 tree it never used, and the formatter lost two more passes. `uf lint` over a
 111 KiB module went from 839,000 allocations to 442,000.
@@ -112,8 +114,8 @@ no `sign`, `importKey` or `CryptoKey`, so correct code was told it was wrong. Fo
 parsers now share one option set, so a syntax error says the same thing
 whichever of them found it. `uf build --adapter static` refuses what a static
 host cannot serve rather than writing output that 404s. `OgImage` is a template
-uf draws, with fonts it subsets and icons it sprites. And `uf rm` is the command
-that replaces `uf` rather than the one that only said so.
+uf draws, with fonts it subsets and icons it sprites. And `uf self-update` is
+the command that replaces `uf`, rather than the one that only said so.
 
 ### Added
 
@@ -270,7 +272,7 @@ section that has already been published — both of which had happened.
 - **run**: a task graph, a concurrency limit, and a cache keyed on declared inputs (#466)
 - **rsc**: a `"use server"` export the browser can call (#473)
 - **temporal, web, hooks**: Temporal on every host, and the two values a render has to fix (#554)
-- **pm**: `uf approve-builds`, and the sentence npm gets instead (#545)
+- **pm**: `uf pm approve-builds`, and the sentence npm gets instead (#545)
 - **pm**: `uf update` reports what the ranges hold back, and rewrites them (#541)
 - **cell, state**: state and derived, and no way back to cell and computed (#544)
 - **env**: one .uf, and the toolchain links out of the project (#539)

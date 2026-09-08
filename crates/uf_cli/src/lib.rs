@@ -606,6 +606,144 @@ mod tests {
         Cli::command().debug_assert();
     }
 
+    /// Every `uf <command>` the changelog names is a command `uf` has.
+    ///
+    /// `uf@0.0.0-alpha.16`'s notes said "`uf profile` is a profiler rather than
+    /// a wall-clock number". There is no `uf profile`: #660 shipped
+    /// `crates/uf_profiler`, a library the benches and the `alloc_report`
+    /// examples link against, and running the command a release note told a
+    /// reader to run answers `unrecognized subcommand 'profile'`.
+    ///
+    /// The changelog rather than the whole repository, and the reason is what
+    /// each kind of prose is for. `docs/roadmap.md` names commands on purpose
+    /// that do not exist yet; a *release note* is a statement about what
+    /// shipped, and a command in one is a thing a reader will type.
+    #[test]
+    fn the_changelog_names_no_command_uf_does_not_have() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let changelog = std::fs::read_to_string(root.join("CHANGELOG.md"))
+            .expect("the repository has a changelog");
+        let parser = Cli::command();
+        let mut unknown: Vec<String> = Vec::new();
+        for span in backticked(&changelog) {
+            let Some(rest) = span.strip_prefix("uf ") else {
+                continue;
+            };
+            if let Some(named) = unnameable_command(&parser, rest)
+                && !unknown.contains(&named)
+            {
+                unknown.push(named);
+            }
+        }
+
+        assert!(
+            unknown.is_empty(),
+            "CHANGELOG.md names {} command(s) uf does not have: {}",
+            unknown.len(),
+            unknown.join(", ")
+        );
+    }
+
+    /// What the walk above accepts and refuses, spelled out.
+    ///
+    /// The changelog is the input this test really has, and it is a poor place
+    /// to prove a negative from: a case it happens not to contain looks the
+    /// same as a case the walk cannot see. These are the cases.
+    #[test]
+    fn a_command_path_is_walked_to_the_end_and_no_further() {
+        let parser = Cli::command();
+        let unnameable = |rest: &str| unnameable_command(&parser, rest);
+
+        // Real, at both depths.
+        assert_eq!(unnameable("check"), None);
+        assert_eq!(unnameable("pm approve-builds"), None);
+        assert_eq!(unnameable("i"), None, "an alias is a name");
+
+        // Not real, at both depths. The second is what taking only the first
+        // word could not see.
+        assert_eq!(unnameable("profile"), Some("`uf profile`".to_owned()));
+        assert_eq!(
+            unnameable("pm approve-build"),
+            Some("`uf pm approve-build`".to_owned())
+        );
+
+        // Arguments are not command names. `run` takes a task, `build` takes
+        // flags, and `test` takes a suite selector after a `#`.
+        assert_eq!(unnameable("run ci --why"), None);
+        assert_eq!(unnameable("build --adapter static"), None);
+        assert_eq!(unnameable("test#library"), None);
+        assert_eq!(unnameable("--version"), None);
+    }
+
+    /// The `uf …` path in `rest`, when the parser has no such command.
+    ///
+    /// Walks as deep as the parser goes, so `uf pm approve-builds` is checked
+    /// against `pm`'s subcommands and not merely against the top level. Taking
+    /// the first word alone would have called `uf pm anything-at-all` a
+    /// command, and the mistake this test exists for — `uf approve-builds` for
+    /// `uf pm approve-builds` — is exactly a nested path written short.
+    ///
+    /// It stops where the parser stops. A command with no subcommands takes
+    /// arguments, so `uf run ci --why` names the task `ci`, which is
+    /// `uf.config.js`'s business and not the parser's; a flag ends the path for
+    /// the same reason. That is what keeps this a check on command *names*
+    /// rather than a spellchecker for everything a release note quotes.
+    fn unnameable_command(parser: &clap::Command, rest: &str) -> Option<String> {
+        let mut current = parser;
+        let mut path: Vec<&str> = Vec::new();
+        for word in rest.split_whitespace() {
+            if word.starts_with('-') {
+                break;
+            }
+            // `uf test#library` names `test`; the rest is a suite selector.
+            let end = word
+                .find(|character: char| !(character.is_ascii_lowercase() || character == '-'))
+                .unwrap_or(word.len());
+            let name = &word[..end];
+            if name.is_empty() {
+                break;
+            }
+            match current.get_subcommands().find(|command| {
+                command.get_name() == name || command.get_all_aliases().any(|alias| alias == name)
+            }) {
+                Some(next) => {
+                    path.push(name);
+                    current = next;
+                }
+                // A word in a *command position* is a claim about the parser.
+                // The same word after a command that takes no subcommands is an
+                // argument, and this test has nothing to say about it.
+                None if current.get_subcommands().next().is_some() => {
+                    path.push(name);
+                    return Some(format!("`uf {}`", path.join(" ")));
+                }
+                None => break,
+            }
+        }
+        None
+    }
+
+    /// Every span between a pair of backticks on one line.
+    ///
+    /// Line by line, because an unpaired backtick in prose would otherwise
+    /// swallow the rest of the file into one "span" and the scan above would
+    /// read a single `uf ` out of a hundred kilobytes.
+    fn backticked(text: &str) -> Vec<&str> {
+        let mut spans = Vec::new();
+        for line in text.lines() {
+            let mut rest = line;
+            while let Some(open) = rest.find('`') {
+                let after = &rest[open + 1..];
+                let Some(close) = after.find('`') else {
+                    break;
+                };
+                spans.push(&after[..close]);
+                rest = &after[close + 1..];
+            }
+        }
+        spans
+    }
+
     /// A retired name has to be gone from the parser, or the message naming
     /// its replacements is dead code and the command it names is whatever clap
     /// still has under that spelling.
