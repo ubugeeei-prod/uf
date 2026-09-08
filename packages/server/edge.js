@@ -48,6 +48,7 @@ import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import { prerenderedMayAnswer } from "./internal/draft.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
@@ -111,6 +112,21 @@ export type ExecutionContext = {
   ...
 };
 
+/**
+ * Whether a response the assets binding gave is a document.
+ *
+ * The `content-type` and nothing else. uf holds no index of what is behind the
+ * binding — that is the platform's, and asking it is the fetch that just
+ * happened — so the answer has to be read off what came back. A missing type
+ * is not a document: the binding names one for every file it serves, and
+ * guessing "document" for the one case where it did not would send an asset
+ * through a render.
+ */
+function isDocument(response: Response): boolean {
+  const type = response.headers.get("content-type");
+  return type != null && type.toLowerCase().startsWith("text/html");
+}
+
 /** Everything the worker half needs to answer a request. */
 export type WorkerHandlerOptions = {|
   /** The application, from the generated `handler.js`. */
@@ -133,6 +149,16 @@ export type WorkerHandlerOptions = {|
  * miss falls through to here, and the 404 a visitor sees is the project's own
  * `_uf.not-found` rendered by the application. Any other status is the asset's
  * answer and is returned as it stands.
+ *
+ * Except a **document** answering a **draft** request, which is
+ * `./internal/draft.js`'s `prerenderedMayAnswer` — the rule the other three
+ * front doors apply, applied here too, or draft mode would be a property of
+ * where an application was deployed. This door is the one that cannot decide
+ * what a document is before it looks: the assets binding is the platform's and
+ * uf holds no index of what is behind it, so the answer is read off the
+ * response it gave. A `content-type` of `text/html` is a document; everything
+ * else is a chunk, a stylesheet or an image, and those are the same bytes in
+ * draft mode as out of it.
  */
 export function createWorkerFetch(
   options: WorkerHandlerOptions,
@@ -156,7 +182,15 @@ export function createWorkerFetch(
         const method = request.method.toUpperCase();
         if (assets != null && (method === "GET" || method === "HEAD")) {
           const asset = await assets.fetch(request);
-          if (asset.status !== 404) return asset;
+          if (asset.status !== 404) {
+            if (prerenderedMayAnswer(request.headers.get("cookie")) || !isDocument(asset)) {
+              return asset;
+            }
+            // The application will answer instead, so this body has no reader.
+            // Cancelled rather than abandoned: a stream nobody drains is a
+            // stream the runtime keeps open until the request is torn down.
+            await asset.body?.cancel();
+          }
         }
         return await handle(request);
       });
