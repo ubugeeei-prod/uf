@@ -55,7 +55,7 @@
 // *mocked* package still gets a URL of its own, from its revision — being
 // stood in for is exactly the case where identity has to be given up.
 //
-// # Bun, and the three doors that are shut
+// # Bun, and the doors that were shut
 //
 // Bun is a declared host, and a suite that can replace a module on one host and
 // not the other is a suite a person cannot move between them
@@ -64,6 +64,22 @@
 // section is what a run of Bun 1.1.27 said when each way of using it was tried,
 // written down because "it did not work" is the kind of thing that gets tried
 // twice — and because each of the three looks obviously right until it is run.
+//
+// **Two of the three have since opened.** Re-run on **Bun 1.3.13**, the third
+// door below — a stand-in written after the process started — loads, and an
+// `onResolve` answering with its path redirects an `import` *declaration* and
+// not merely a dynamic `import()`. That is a whole mechanism: with the hook
+// installed once and a mutable registry consulted per resolution, a mock
+// registers and clears the way it does on Node. So the reason this file still
+// raises `UnsupportedError` on Bun is that nobody has written it, not that
+// Bun cannot — which is the opposite of what the three paragraphs below said
+// when they were written, and the reason they are kept with a date on them
+// rather than deleted.
+//
+// The first door is half open and it is not the useful half: the `ENOENT` is
+// gone, so a query-carrying path resolves and loads, but `onLoad` still never
+// sees the query and so cannot serve the stand-in's contents. The second is
+// still shut. The re-entrancy warning at the end of this section still holds.
 //
 // The whole design turns on giving the stand-in an identity of its own, so all
 // three questions are "where does *somewhere else* go":
@@ -87,6 +103,8 @@
 //     `ENOENT reading "file:/…"` even though `Bun.resolveSync` finds it and
 //     `import()` of the same absolute path loads it, so a mock registered
 //     while the suite runs cannot be written down anywhere Bun will read.
+//     **This is the one that opened**: on Bun 1.3.13 the file created after
+//     start-up loads, and this is the door to build on.
 //
 // Bun's own `mock.module` does all of this and is available outside `bun test`.
 // It is not the answer here, and the reason is above: it maintains live
@@ -104,7 +122,13 @@
 //
 // So `uft.mock` raises `UnsupportedError` on Bun, naming the host and what it
 // would take, and `crates/uf_cli/tests/bun_host.rs` starts a real Bun and holds
-// it to that. Until one of the three doors opens, that message is the feature.
+// it to that.
+//
+// That message is still the right one to give today, and it is worth being
+// exact about why now that a door has opened: it says this *implementation*
+// needs `registerHooks` and Bun has none, which stays true. What is no longer
+// true is the conclusion a reader would draw from it. The work is writing a
+// second implementation against the plugin API, not waiting for Bun.
 
 import * as nodeModule from "node:module";
 
