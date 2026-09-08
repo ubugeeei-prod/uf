@@ -32,6 +32,61 @@
 // above the page — and it is not a substitute for the action authorizing
 // itself; `internal/action-endpoint.js` says why in the paragraph that matters.
 //
+// # A form
+//
+// The same reference is what React 19's form APIs take, because a reference is
+// an ordinary async function and that is all they ask for:
+//
+//   // app/counter/_components/Note.js
+//   "use client";
+//   import { useActionState } from "@uniflowed/react";
+//   import { useFormStatus } from "react-dom";
+//   import { submitNote } from "../_actions/notes.js";
+//
+//   component Save() {
+//     const { pending } = useFormStatus();
+//     return <button disabled={pending}>Save</button>;
+//   }
+//
+//   component Note() {
+//     const [saved, save] = useActionState(submitNote, null);
+//     return (
+//       <form action={save}>
+//         <input name="note" />
+//         <Save />
+//         <output>{saved}</output>
+//       </form>
+//     );
+//   }
+//
+// `<form action={save}>` hands the reference a `FormData`, `useActionState`
+// hands it the previous state and then the `FormData`, and both cross under
+// the grammar in `internal/action-wire.js` — one form per call, beside the
+// values rather than inside one, entries of strings and nothing else. Flow
+// still reads `submitNote`'s own declaration, so a form action whose first
+// parameter is not the state it was given `null` for is a `uf check` error.
+//
+// **This needs the page to be hydrated.** React's progressive enhancement —
+// the form that submits before its JavaScript has arrived — works through a
+// `$$FORM_ACTION` property that turns the submit into a *native* form post,
+// and a native form post is `multipart/form-data`: the content type this
+// endpoint refuses, deliberately, as one of the three things standing between
+// it and a cross-site call. Supporting the pre-hydration submit would mean
+// accepting that content type, so a reference carries no `$$FORM_ACTION`, and
+// React writes the form it writes for any client action —
+// `action="javascript:throw new Error('React form unexpectedly submitted.')"`
+// — so a submit before hydration throws in the page rather than posting
+// anywhere. Nothing reaches a server that was not meant to; what is missing is
+// the submit working at all. See ubugeeei-prod/uf#252.
+//
+// The refusal is why the property is withheld, not what would stop it: no
+// request is made, so nothing is refused. Nor would a native form post aimed
+// at a page by hand be refused as multipart — `createActionDispatcher` reads
+// the `uf-action` header before it looks at the method or the content type and
+// returns `null` when it is absent, so the request is not an action call at
+// all and falls through to the route handlers. The `415` answers a request
+// that claims to be an action, which is the only kind that reaches it.
+//
 // # What Flow checks, and where
 //
 // Flow reads `app/_actions/clicks.js`, not the reference the bundler
@@ -51,12 +106,13 @@
 import {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
+  type ActionArgument,
   type ActionValue,
   decodeActionResult,
   encodeActionArguments,
 } from "./internal/action-wire.js";
 
-export type { ActionValue } from "./internal/action-wire.js";
+export type { ActionArgument, ActionValue } from "./internal/action-wire.js";
 export {
   ACTION_CONTENT_TYPE,
   ACTION_HEADER,
@@ -65,17 +121,22 @@ export {
   MAX_ACTION_BODY_BYTES,
   MAX_ACTION_DEPTH,
   MAX_ACTION_VALUES,
+  MAX_FORM_ENTRIES,
+  MAX_FORM_NAME_LENGTH,
 } from "./internal/action-wire.js";
 
 /**
  * A function that can be a server action.
  *
- * Both halves of the signature are the wire grammar: an action is called with
- * values that can cross and answers with one that can. `void` is a result and
- * not an argument, because JSON has no `undefined` and an action declared to
- * take one would be taking something the caller cannot send.
+ * Both halves of the signature are the wire grammar, and they are not the same
+ * half: an action is called with values that can cross *or* the one form a
+ * submit produces, and answers with a value that can cross. `void` is a result
+ * and not an argument, because JSON has no `undefined` and an action declared
+ * to take one would be taking something the caller cannot send; a `FormData`
+ * is an argument and not a result, because a form is something a browser
+ * submits and not something a server answers with.
  */
-export type ServerActionFunction = (...args: Array<ActionValue>) => Promise<ActionValue | void>;
+export type ServerActionFunction = (...args: Array<ActionArgument>) => Promise<ActionValue | void>;
 
 /**
  * An action's arguments, held against what a wire can carry.
@@ -95,8 +156,38 @@ export type ServerActionFunction = (...args: Array<ActionValue>) => Promise<Acti
  *
  * `ServerActionName` is every action's name, so `ServerActionArgs` of it is
  * every action's argument list, and one line checks all of them.
+ *
+ * The bound is [`ActionArgument`] and not [`ActionValue`], which is the whole
+ * of what makes `<form action={fn}>` type-check: a form action's parameter is
+ * a `FormData`, and a `FormData` crosses as an argument and only as one.
+ *
+ * # What this does not catch, and why
+ *
+ * The bound is element-wise, so it holds each argument against the grammar and
+ * says nothing about the list as a whole. The wire has one rule that is about
+ * the list: a call carries at most one form, because the envelope names the
+ * form's position once. So `(a: FormData, b: FormData)` type-checks here and
+ * throws `ActionValueError` at `encodeActionArguments` — a rule enforced at
+ * run time that the types ought to have caught.
+ *
+ * Saying it in the type needs a walk over the tuple, and the walk is blocked by
+ * ubugeeei-prod/uf#300: a spread in a conditional type's tuple pattern binds
+ * `infer` as `unknown` and the rest as the whole array widened. The obvious
+ * recursion is not merely rejected, it quietly answers wrongly —
+ *
+ *   type NoForm<T> = T extends [] ? true
+ *     : T extends [infer H, ...infer R]
+ *       ? (H extends FormData ? false : NoForm<R>) : true;
+ *
+ * — gives `true` for `[string, FormData]`, because the spread pattern never
+ * matches and every tuple falls through to the last branch. A constraint built
+ * on that would be worse than none: it would report every signature as fine.
+ *
+ * `tests/type-tests/server-actions.js` pins the gap, so that whoever fixes
+ * #300 is told this is waiting on it. The run-time guard and its test are in
+ * `internal/action-wire.js` and `tests/library/server-actions.test.js`.
  */
-export type ActionArguments<TArgs extends $ReadOnlyArray<ActionValue>> = TArgs;
+export type ActionArguments<TArgs extends $ReadOnlyArray<ActionArgument>> = TArgs;
 
 /**
  * An action's result, held against the same grammar.
@@ -144,9 +235,15 @@ export class ServerActionError extends Error {
  * The returned function is `async` and refuses before it sends: an argument
  * outside the wire grammar throws an `ActionValueError` naming the argument's
  * position, at the call site, rather than becoming a `400` with nothing in it.
+ *
+ * It carries no `$$FORM_ACTION`, which is deliberate and is the header's last
+ * section: React uses that property to make a form submit *natively* before
+ * hydration, and a native submit is a content type this endpoint refuses.
  */
 export function createServerReference(id: string, name: string): ServerActionFunction {
-  return async function callServerAction(...args: Array<ActionValue>): Promise<ActionValue | void> {
+  return async function callServerAction(
+    ...args: Array<ActionArgument>
+  ): Promise<ActionValue | void> {
     const body = encodeActionArguments(args);
     // Built rather than written as a literal, because the header's name is a
     // constant and a computed key in an object literal is a shape Flow

@@ -336,3 +336,160 @@ fn a_client_module_importing_server_only_code_directly_is_still_a_leak() {
         "rsc/server-only-import-in-client"
     );
 }
+
+/// The chain a module's path into the client bundle is, spelled out.
+fn reason(graph: &RscGraph, path: &str) -> ClientBundleReason {
+    let id = graph
+        .module_id(path)
+        .unwrap_or_else(|| panic!("no module at {path}"));
+    graph.client_bundle_reason(id)
+}
+
+/// The chain as paths, which is what a report prints.
+fn chain(graph: &RscGraph, path: &str) -> Vec<String> {
+    match reason(graph, path) {
+        ClientBundleReason::Imports(chain) => chain
+            .into_iter()
+            .map(|id| graph.module_by_id(id).unwrap().path.to_string())
+            .collect(),
+        other => panic!("expected a chain for {path}, got {other:?}"),
+    }
+}
+
+/// The answer for the module the directive is on: itself.
+#[test]
+fn a_use_client_module_is_its_own_reason() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(
+        reason(&graph, "app/Counter.js"),
+        ClientBundleReason::Declared
+    );
+}
+
+/// And for a module above one: the imports that get there, in order.
+#[test]
+fn a_module_above_a_boundary_names_the_imports_that_reach_it() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./section.js"));
+    builder.add_module(server("app/section.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(
+        chain(&graph, "app/page.js"),
+        ["app/page.js", "app/section.js", "app/Counter.js"]
+    );
+    assert_eq!(
+        chain(&graph, "app/section.js"),
+        ["app/section.js", "app/Counter.js"]
+    );
+}
+
+/// Server code that reaches no boundary has no chain, and says so.
+#[test]
+fn a_module_the_browser_never_evaluates_is_isolated() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./almanac.js"));
+    builder.add_module(server("app/almanac.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(reason(&graph, "app/page.js"), ClientBundleReason::Isolated);
+    assert_eq!(
+        reason(&graph, "app/almanac.js"),
+        ClientBundleReason::Isolated
+    );
+}
+
+/// The shortest of several, because the point of the chain is to be read.
+///
+/// Both routes below reach the same boundary, one in a hop and one in three.
+/// A depth-first walk would answer with whichever import was written first,
+/// which is a fact about the source order and not about the graph.
+#[test]
+fn the_chain_is_the_shortest_way_to_a_boundary() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(
+        server("app/page.js")
+            .with_import("./long/a.js")
+            .with_import("./Counter.js"),
+    );
+    builder.add_module(server("app/long/a.js").with_import("../long/b.js"));
+    builder.add_module(server("app/long/b.js").with_import("../Counter.js"));
+    builder.add_module(client("app/Counter.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(
+        chain(&graph, "app/page.js"),
+        ["app/page.js", "app/Counter.js"]
+    );
+}
+
+/// A cycle above a boundary terminates, and the chain out of it is acyclic.
+///
+/// The import graph this crate walks contains cycles; the chain a reader is
+/// handed must not. One predecessor per module is what makes that true by
+/// construction rather than by a check afterwards.
+#[test]
+fn a_cycle_above_a_boundary_still_answers_with_an_acyclic_chain() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./a.js"));
+    builder.add_module(
+        server("app/a.js")
+            .with_import("./b.js")
+            .with_import("./Counter.js"),
+    );
+    builder.add_module(server("app/b.js").with_import("./a.js"));
+    builder.add_module(client("app/Counter.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let chain = chain(&graph, "app/b.js");
+    assert_eq!(chain, ["app/b.js", "app/a.js", "app/Counter.js"]);
+    let mut unique = chain.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), chain.len(), "a chain never repeats a module");
+}
+
+/// The invariant that keeps the explanation and the split one decision.
+///
+/// `requires_client_bundle` is what the bundler asks and
+/// `client_bundle_reason` is what a person asks, and the moment they can
+/// disagree there are two analyses of the same question. Asserted over every
+/// module of a graph that has all three answers in it rather than over a
+/// module chosen to make the point.
+#[test]
+fn every_module_the_bundler_ships_has_a_reason_and_no_other_module_does() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(
+        server("app/page.js")
+            .with_import("./section.js")
+            .with_import("./almanac.js"),
+    );
+    builder.add_module(server("app/section.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js").with_import("./format.js"));
+    builder.add_module(server("app/format.js"));
+    builder.add_module(server("app/almanac.js"));
+    builder.add_module(server("app/orphan.js"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    for module in graph.modules() {
+        let id = graph.module_id(&module.path).unwrap();
+        let isolated = graph.client_bundle_reason(id) == ClientBundleReason::Isolated;
+        assert_eq!(
+            module.requires_client_bundle(),
+            !isolated,
+            "{} disagrees with itself",
+            module.path
+        );
+    }
+}
