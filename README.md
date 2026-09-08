@@ -67,9 +67,11 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
   ([#246](https://github.com/ubugeeei-prod/uf/issues/246)). The per-host
   matrix — what works, what does not, and what each gap is waiting for — is
   [`docs/hosts.md`](./docs/hosts.md).
-- **Deployment.** `uf build --adapter node` writes a directory that runs on a
-  bare JavaScript runtime, and `--compile` writes a single executable file. The
-  other six adapters are names in an enum
+- **Deployment.** `uf build --adapter` writes for `node`, `container`, `edge`,
+  `serverless` and `static`, all five against one `@uniflowed/server/fetch`
+  handler, and `--compile` writes a single executable file. No server output
+  has ever been deployed to a real platform. `bun` and `deno` are names in an
+  enum, waiting on a benchmark
   ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
 - **Server Components.** `"use client"` and `"use server"` are scanned, graphed
   and manifested, and the build reads that: a route no client boundary reaches
@@ -303,7 +305,7 @@ reference, with every flag and exit code.
 | `uf info`, `uf inspect`, `uf explain` | What uf found, what your config resolved to, and which provider does each stage of a command |
 | `uf prepare` | The code generation and checks a commit should not go without; `--fix` makes the checks write |
 | `uf lsp` | The language server, over stdio |
-| `uf env`, `uf use`, `uf upgrade` | The JavaScript hosts a project pins, the shared store they live in, and the uf that runs it |
+| `uf env`, `uf use`, `uf self-update` | The JavaScript hosts a project pins, the shared store they live in, and the uf that runs it |
 
 ## One config file
 

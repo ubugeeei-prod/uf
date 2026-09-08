@@ -37,7 +37,24 @@
 //! A package this batch holds no manifest for stays unresolved and is recorded
 //! in [`crate::CheckReport::untyped_modules`], exactly as before: `react` is
 //! Flow's own `declare module`, and a dependency under `node_modules` is not a
-//! source `uf check` collects.
+//! source `uf check` collects until something asks for it.
+//!
+//! # Two copies of one name
+//!
+//! Node resolves a bare specifier by climbing from the importing file, so a
+//! file inside `node_modules/foo` that imports `bar` gets
+//! `node_modules/foo/node_modules/bar` when that exists and the hoisted
+//! `node_modules/bar` only when it does not. This module does the same, and
+//! that is why every entry point takes the importer: an index from name to
+//! manifest cannot express two versions of one name, and one that kept the
+//! first would make which types a file sees depend on the batch's order.
+//! ubugeeei-prod/uf#486.
+//!
+//! A manifest that is *not* under a `node_modules` directory is the project's
+//! own — a workspace package such as `packages/cell` — and is visible from
+//! everywhere, which is what a monorepo means and what no climb would find,
+//! since `packages/cell` is not on any importer's path. The climb comes first
+//! so that a package inside `node_modules` still gets its own nested copy.
 
 use std::collections::HashMap;
 
@@ -53,6 +70,9 @@ use crate::Source;
 
 /// The file name a package manifest is recognised by.
 const MANIFEST: &str = "package.json";
+
+/// The directory an installed package sits under, with its separator.
+const INSTALLED_PREFIX: &str = "node_modules/";
 
 /// The path a bare specifier named, and how much of a path it is.
 ///
@@ -77,7 +97,7 @@ pub(super) enum PackageFile {
     Implied(CompactString),
 }
 
-/// One workspace package: where its manifest is, and what the manifest says.
+/// One package: where its manifest is, and what the manifest says.
 struct Package {
     /// The manifest's own path in the batch.
     ///
@@ -90,44 +110,92 @@ struct Package {
     manifest: PackageJson,
 }
 
-/// Every package the batch declares, indexed by the name it publishes.
+/// One installed copy of a package, and where it is installed.
+struct Installed {
+    /// The directory whose `node_modules` holds this copy, without a trailing
+    /// slash; empty for the batch root's own `node_modules`.
+    ///
+    /// This is what an importer has to be inside for Node to find this copy,
+    /// and comparing its length is how the deepest copy wins.
+    enclosing: CompactString,
+    package: Package,
+}
+
+/// Every package the batch declares, indexed so that a specifier can be
+/// resolved from the file that wrote it.
 pub(super) struct WorkspacePackages {
-    by_name: HashMap<CompactString, Package>,
+    /// Manifests outside any `node_modules`, by the name they publish.
+    ///
+    /// The project's own packages. Visible from every file in the batch: a
+    /// workspace package is on no importer's `node_modules` path, so a climb
+    /// would never reach one, and it is exactly the package a uf repository
+    /// imports by name.
+    project: HashMap<CompactString, Package>,
+    /// Manifests under a `node_modules`, by the directory name that holds
+    /// them, deepest installation first.
+    ///
+    /// Keyed by the directory rather than by `name`, because that is what Node
+    /// resolves by: a package whose manifest claims a different name is still
+    /// loaded from the directory the specifier spells.
+    installed: HashMap<CompactString, Vec<Installed>>,
     /// The `exports` conditions a subpath is resolved under, from [`Options`].
     conditions: Vec<FlowSmolStr>,
 }
 
 impl WorkspacePackages {
-    /// Read every manifest in the batch and index it by its published name.
+    /// Read every manifest in the batch and index it by how a specifier reaches it.
     ///
     /// Built once per batch, eagerly: a repository has one manifest per package
     /// against hundreds of Flow files, and parsing one is a fraction of the
     /// cost of checking one. Doing it lazily would buy nothing — the first
     /// bare specifier in the batch would force it anyway.
     ///
-    /// A manifest with no `name`, or one whose name is already taken, is
-    /// skipped. First-in-the-batch wins, which is the rule
+    /// A project manifest with no `name`, or one whose name is already taken,
+    /// is skipped. First-in-the-batch wins, which is the rule
     /// [`super::resolve::ModuleIndex`] already applies to a duplicated path, so
-    /// the answer stays a function of the batch's order and nothing else.
+    /// the answer stays a function of the batch's order and nothing else. An
+    /// *installed* manifest needs no `name`, because the directory it sits in
+    /// is the name a specifier reaches it by; two copies at one path are the
+    /// same collision and the first still wins.
     pub(super) fn new(sources: &[Source<'_>], options: &Options) -> Self {
-        let mut by_name: HashMap<CompactString, Package> = HashMap::new();
+        let mut project: HashMap<CompactString, Package> = HashMap::new();
+        let mut installed: HashMap<CompactString, Vec<Installed>> = HashMap::new();
         for source in sources.iter().filter(|source| is_manifest(source.path)) {
             let Some(manifest) = parse_manifest(source, options) else {
                 continue;
             };
-            let Some(name) = manifest.name() else {
-                continue;
+            let package = Package {
+                manifest_path: source.path.to_compact_string(),
+                manifest,
             };
-            by_name
-                .entry(name.as_str().to_compact_string())
-                .or_insert_with(|| Package {
-                    manifest_path: source.path.to_compact_string(),
-                    manifest,
-                });
+            match installed_at(source.path) {
+                Some((enclosing, name)) => installed
+                    .entry(name.to_compact_string())
+                    .or_default()
+                    .push(Installed {
+                        enclosing: enclosing.to_compact_string(),
+                        package,
+                    }),
+                None => {
+                    let Some(name) = package.manifest.name() else {
+                        continue;
+                    };
+                    project
+                        .entry(name.as_str().to_compact_string())
+                        .or_insert(package);
+                }
+            }
+        }
+        // Deepest first, so the climb is a linear scan that stops at the first
+        // copy the importer can see. Ties keep batch order, which only a
+        // duplicated path can produce.
+        for copies in installed.values_mut() {
+            copies.sort_by_key(|copy| std::cmp::Reverse(copy.enclosing.len()));
         }
 
         Self {
-            by_name,
+            project,
+            installed,
             conditions: options
                 .node_package_export_conditions
                 .iter()
@@ -136,11 +204,27 @@ impl WorkspacePackages {
         }
     }
 
-    /// The file `specifier` names, or [`None`] when no package in the batch
-    /// publishes it — or publishes that subpath of it.
-    pub(super) fn resolve(&self, specifier: &str) -> Option<PackageFile> {
+    /// The package `name` means to a file at `importer`, by Node's climb.
+    ///
+    /// The nearest installed copy wins; a project package answers only when no
+    /// installed copy is on the importer's path at all.
+    fn lookup(&self, importer: &str, name: &str) -> Option<&Package> {
+        if let Some(copies) = self.installed.get(name)
+            && let Some(nearest) = copies
+                .iter()
+                .find(|copy| encloses(&copy.enclosing, importer))
+        {
+            return Some(&nearest.package);
+        }
+        self.project.get(name)
+    }
+
+    /// The file `specifier` names when it is written in `importer`, or [`None`]
+    /// when no package the importer can see publishes it — or publishes that
+    /// subpath of it.
+    pub(super) fn resolve(&self, importer: &str, specifier: &str) -> Option<PackageFile> {
         let (name, subpath) = split(specifier)?;
-        let package = self.by_name.get(name)?;
+        let package = self.lookup(importer, name)?;
 
         match package.manifest.exports() {
             // The map is authoritative once it exists: Node stops consulting
@@ -179,10 +263,45 @@ impl WorkspacePackages {
     /// because the manifest is where the name comes from. So whatever pulls a
     /// package's file into a batch has to pull the manifest that named it in
     /// alongside. See [`super::closure`].
-    pub(super) fn manifest_of(&self, specifier: &str) -> Option<&str> {
+    pub(super) fn manifest_of(&self, importer: &str, specifier: &str) -> Option<&str> {
         let (name, _) = split(specifier)?;
-        Some(self.by_name.get(name)?.manifest_path.as_str())
+        Some(self.lookup(importer, name)?.manifest_path.as_str())
     }
+}
+
+/// Where an installed package is installed, and under what name.
+///
+/// [`None`] for a manifest that is not inside a `node_modules` directory — the
+/// project's own — and for one whose directory under `node_modules` is not a
+/// package name: Node reads one segment there, or two when the first is a
+/// scope, so `node_modules/a/b/package.json` names no package and is left to
+/// be indexed by whatever its manifest publishes.
+fn installed_at(manifest_path: &str) -> Option<(&str, &str)> {
+    let directory = manifest_path.strip_suffix(MANIFEST)?.strip_suffix('/')?;
+    let (enclosing, name) = directory.rsplit_once(INSTALLED_PREFIX)?;
+    // A path boundary, not a substring: `vendor/mynode_modules/x` holds no
+    // installed package.
+    if !(enclosing.is_empty() || enclosing.ends_with('/')) {
+        return None;
+    }
+    let segments = name.split('/').count();
+    let scoped = name.starts_with('@');
+    if segments != usize::from(scoped) + 1 {
+        return None;
+    }
+    Some((enclosing.strip_suffix('/').unwrap_or(enclosing), name))
+}
+
+/// Whether a file at `importer` is inside `enclosing`, so that Node's climb
+/// from it reaches that directory's `node_modules`.
+///
+/// The batch root encloses everything, which is the hoisted copy: it is what a
+/// climb reaches last and what answers when no nested copy does.
+fn encloses(enclosing: &str, importer: &str) -> bool {
+    enclosing.is_empty()
+        || (importer.len() > enclosing.len()
+            && importer.starts_with(enclosing)
+            && importer.as_bytes()[enclosing.len()] == b'/')
 }
 
 /// Whether a batch path is a package manifest.
@@ -239,8 +358,15 @@ mod tests {
     }
 
     /// The file an `exports` map named, or a panic saying what came instead.
+    ///
+    /// Imported from a file at the batch root, which is the hoisted case: a
+    /// test about the climb names its own importer.
     fn exact(packages: &WorkspacePackages, specifier: &str) -> CompactString {
-        match packages.resolve(specifier) {
+        exact_from(packages, "app.js", specifier)
+    }
+
+    fn exact_from(packages: &WorkspacePackages, importer: &str, specifier: &str) -> CompactString {
+        match packages.resolve(importer, specifier) {
             Some(PackageFile::Exact(path)) => path,
             other => panic!("expected an `exports` target for {specifier}, got {other:?}"),
         }
@@ -291,7 +417,7 @@ mod tests {
         // refuse to load.
         assert!(
             packages
-                .resolve("@uniflowed/core/internal/native-runtime.js")
+                .resolve("app.js", "@uniflowed/core/internal/native-runtime.js")
                 .is_none()
         );
     }
@@ -304,7 +430,7 @@ mod tests {
             r#"{ "name": "@uniflowed/host", "exports": { "./transform": "./transform.js" } }"#,
         )]);
 
-        assert!(packages.resolve("@uniflowed/host").is_none());
+        assert!(packages.resolve("app.js", "@uniflowed/host").is_none());
         assert_eq!(
             exact(&packages, "@uniflowed/host/transform"),
             "packages/host/transform.js"
@@ -345,7 +471,7 @@ mod tests {
         )]);
 
         assert_eq!(
-            packages.resolve("legacy"),
+            packages.resolve("app.js", "legacy"),
             Some(PackageFile::Implied("vendor/legacy/lib/entry.js".into()))
         );
     }
@@ -360,7 +486,7 @@ mod tests {
         // The directory, which the caller resolves the way it resolves
         // `./internal` — with an extension, then with an `index`.
         assert_eq!(
-            packages.resolve("bare"),
+            packages.resolve("app.js", "bare"),
             Some(PackageFile::Implied("vendor/bare".into()))
         );
     }
@@ -373,7 +499,7 @@ mod tests {
         )]);
 
         assert_eq!(
-            packages.resolve("legacy/lib/util"),
+            packages.resolve("app.js", "legacy/lib/util"),
             Some(PackageFile::Implied("vendor/legacy/lib/util".into()))
         );
     }
@@ -382,9 +508,9 @@ mod tests {
     fn a_name_no_manifest_in_the_batch_publishes_resolves_to_nothing() {
         let packages = packages(&[Source::new("packages/cell/package.json", CELL)]);
 
-        assert!(packages.resolve("react").is_none());
-        assert!(packages.resolve("@uniflowed/state").is_none());
-        assert!(packages.resolve("node:fs").is_none());
+        assert!(packages.resolve("app.js", "react").is_none());
+        assert!(packages.resolve("app.js", "@uniflowed/state").is_none());
+        assert!(packages.resolve("app.js", "node:fs").is_none());
     }
 
     #[test]
@@ -394,7 +520,7 @@ mod tests {
             Source::new("packages/cell/package.json", CELL),
         ]);
 
-        assert!(packages.resolve("broken").is_none());
+        assert!(packages.resolve("app.js", "broken").is_none());
         assert_eq!(
             exact(&packages, "@uniflowed/cell"),
             "packages/cell/index.js"
@@ -415,6 +541,157 @@ mod tests {
             exact(&packages, "@uniflowed/cell"),
             "packages/cell/index.js"
         );
+    }
+
+    const HOISTED: &str = r#"{ "name": "bar", "version": "2.0.0", "exports": { ".": "./v2.js" } }"#;
+    const NESTED: &str = r#"{ "name": "bar", "version": "1.0.0", "exports": { ".": "./v1.js" } }"#;
+
+    /// Two versions of `bar`: one hoisted, one nested inside `foo`.
+    fn two_versions() -> [Source<'static>; 4] {
+        [
+            Source::new("node_modules/bar/package.json", HOISTED),
+            Source::new("node_modules/bar/v2.js", "export const bar = 2;\n"),
+            Source::new("node_modules/foo/node_modules/bar/package.json", NESTED),
+            Source::new(
+                "node_modules/foo/node_modules/bar/v1.js",
+                "export const bar = 1;\n",
+            ),
+        ]
+    }
+
+    #[test]
+    fn a_nested_copy_answers_the_package_that_holds_it() {
+        // ubugeeei-prod/uf#486: `foo`'s own `bar` is the module the runtime
+        // loads for `foo`, so it is the module its types come from.
+        let packages = packages(&two_versions());
+
+        assert_eq!(
+            exact_from(&packages, "node_modules/foo/index.js", "bar"),
+            "node_modules/foo/node_modules/bar/v1.js"
+        );
+    }
+
+    #[test]
+    fn the_hoisted_copy_answers_everyone_the_nested_one_does_not_enclose() {
+        let packages = packages(&two_versions());
+
+        assert_eq!(
+            exact_from(&packages, "src/app.js", "bar"),
+            "node_modules/bar/v2.js"
+        );
+        // A sibling package under `node_modules` is not inside `foo`, so the
+        // nested copy is not on its path either.
+        assert_eq!(
+            exact_from(&packages, "node_modules/other/index.js", "bar"),
+            "node_modules/bar/v2.js"
+        );
+        // Nor is a directory whose name merely starts the same way.
+        assert_eq!(
+            exact_from(&packages, "node_modules/food/index.js", "bar"),
+            "node_modules/bar/v2.js"
+        );
+    }
+
+    #[test]
+    fn a_nested_copy_is_the_deepest_one_the_importer_is_inside() {
+        let packages = packages(&[
+            Source::new("node_modules/bar/package.json", HOISTED),
+            Source::new("node_modules/bar/v2.js", "export const bar = 2;\n"),
+            Source::new("node_modules/foo/node_modules/bar/package.json", NESTED),
+            Source::new(
+                "node_modules/foo/node_modules/bar/v1.js",
+                "export const bar = 1;\n",
+            ),
+            Source::new(
+                "node_modules/foo/node_modules/deep/node_modules/bar/package.json",
+                r#"{ "name": "bar", "exports": { ".": "./v0.js" } }"#,
+            ),
+            Source::new(
+                "node_modules/foo/node_modules/deep/node_modules/bar/v0.js",
+                "export const bar = 0;\n",
+            ),
+        ]);
+
+        assert_eq!(
+            exact_from(
+                &packages,
+                "node_modules/foo/node_modules/deep/index.js",
+                "bar"
+            ),
+            "node_modules/foo/node_modules/deep/node_modules/bar/v0.js"
+        );
+        assert_eq!(
+            exact_from(&packages, "node_modules/foo/lib/util.js", "bar"),
+            "node_modules/foo/node_modules/bar/v1.js"
+        );
+    }
+
+    #[test]
+    fn an_installed_package_is_found_by_its_directory_and_not_by_its_name() {
+        // npm aliases (`npm i bar@npm:other`) install a package whose manifest
+        // publishes another name. Node loads it from the directory the
+        // specifier spells, so this must too.
+        let packages = packages(&[Source::new(
+            "node_modules/bar/package.json",
+            r#"{ "name": "other", "exports": { ".": "./index.js" } }"#,
+        )]);
+
+        assert_eq!(exact(&packages, "bar"), "node_modules/bar/index.js");
+        assert!(packages.resolve("app.js", "other").is_none());
+    }
+
+    #[test]
+    fn a_workspace_package_is_visible_from_everywhere() {
+        // `packages/cell` is on no importer's `node_modules` path, so a climb
+        // alone would never find it — and it is the package this repository's
+        // own files import by name.
+        let packages = packages(&[Source::new("packages/cell/package.json", CELL)]);
+
+        assert_eq!(
+            exact_from(&packages, "tests/library/cell.test.js", "@uniflowed/cell"),
+            "packages/cell/index.js"
+        );
+        assert_eq!(
+            exact_from(&packages, "node_modules/foo/index.js", "@uniflowed/cell"),
+            "packages/cell/index.js"
+        );
+    }
+
+    #[test]
+    fn the_manifest_a_specifier_reaches_is_the_one_that_answered_it() {
+        let packages = packages(&two_versions());
+
+        assert_eq!(
+            packages.manifest_of("node_modules/foo/index.js", "bar"),
+            Some("node_modules/foo/node_modules/bar/package.json")
+        );
+        assert_eq!(
+            packages.manifest_of("src/app.js", "bar"),
+            Some("node_modules/bar/package.json")
+        );
+    }
+
+    #[test]
+    fn an_installed_package_is_recognised_by_where_it_sits() {
+        assert_eq!(
+            installed_at("node_modules/bar/package.json"),
+            Some(("", "bar"))
+        );
+        assert_eq!(
+            installed_at("node_modules/@scope/bar/package.json"),
+            Some(("", "@scope/bar"))
+        );
+        assert_eq!(
+            installed_at("node_modules/foo/node_modules/bar/package.json"),
+            Some(("node_modules/foo", "bar"))
+        );
+        // Not under a `node_modules` at all: the project's own.
+        assert_eq!(installed_at("packages/cell/package.json"), None);
+        // A directory whose name merely ends in the same characters.
+        assert_eq!(installed_at("vendor/mynode_modules/x/package.json"), None);
+        // Too many segments to be a package name.
+        assert_eq!(installed_at("node_modules/a/b/package.json"), None);
+        assert_eq!(installed_at("node_modules/@scope/a/b/package.json"), None);
     }
 
     #[test]

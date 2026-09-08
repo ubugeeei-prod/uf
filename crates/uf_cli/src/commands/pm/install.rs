@@ -182,8 +182,9 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     // `uf.lock` that comes out different is the workspace having drifted from
     // it. `guard_uf_lock` puts the old one back and says so.
     let guard = UfLockGuard::read(&resolved.root, &resolved.config, frozen);
-    install_workspace(&resolved.root, &resolved.config)?;
+    let workspace = install_workspace(&resolved.root, &resolved.config)?;
     guard.check()?;
+    let plan_file = write_plan(&resolved, &plan, &workspace)?;
 
     // Which manager is about to run has to be settled here rather than left to
     // the runner, because the lockfile it is about to rewrite must be read
@@ -251,6 +252,7 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         command: outcome.invocation.to_string(),
         runtime: runtime_label(&resolved.config),
         lockfile: lockfile_label(&resolved.root, &after),
+        plan: plan_file.to_string(),
         phases: phases(&prelude, outcome.watch.as_ref(), lockfile),
         total,
         delta,
@@ -269,6 +271,55 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         render_summary(renderer, out, &report);
     });
     Ok(())
+}
+
+/// Record what the workspace resolved to, in `.uf/install.json`.
+///
+/// This is what `uf upgrade` did, and all it did: read the workspace, resolve
+/// it, and write the package-resolver and runtime-manager plan to a file
+/// (ubugeeei-prod/uf#424). `uf install` already does the first two on the way
+/// to installing — `install_workspace` above is the same call — so folding the
+/// third in costs one file write and lets the name go. There is no command
+/// left that means "the first half of an install", because there was never a
+/// reason to have one.
+///
+/// The file is a record rather than an input: nothing in uf reads it back, and
+/// a run that cannot write it is not a run that failed to install anything.
+/// It is still an error, because a `.uf/` uf cannot write is a `.uf/` the
+/// router and the type cache are about to fail on for the same reason, and
+/// finding that out here names the directory.
+///
+/// # Errors
+///
+/// When `.uf/` cannot be created or the file cannot be written.
+fn write_plan(
+    resolved: &uf_config::ResolvedConfig,
+    plan: &PackageManagerPlan,
+    workspace: &uf_pm::PackageManagerApplyReport,
+) -> Result<Utf8PathBuf> {
+    let runtime = uf_rm::RuntimeManagerPlan::infer_from_config(&resolved.config);
+    let state_dir = resolved.root.join(".uf");
+    std::fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
+    let path = state_dir.join("install.json");
+    crate::support::write_json_file(
+        &path,
+        &serde_json::json!({
+            "version": 1,
+            "packageManager": {
+                "resolver": plan.resolver,
+                "lockfile": workspace.lockfile.as_str(),
+                "storeManifest": workspace.store_manifest.as_str(),
+                "packages": workspace.packages.len(),
+                "storeEntries": workspace.store_entries.len(),
+            },
+            "runtimeManager": {
+                "engine": runtime.engine,
+                "acquisition": runtime.acquisition,
+                "hosts": &runtime.hosts,
+            },
+        }),
+    )?;
+    Ok(path)
 }
 
 /// `uf.lock` as it stood before `install_workspace` rewrote it.
@@ -515,6 +566,7 @@ struct InstallReport {
     command: String,
     runtime: Option<String>,
     lockfile: String,
+    plan: String,
     phases: Vec<Phase>,
     total: Duration,
     delta: LockfileDelta,
@@ -536,6 +588,7 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &InstallReport)
         rows.push(KeyValue::toned("runtime", runtime, Tone::Path));
     }
     rows.push(KeyValue::toned("lockfile", &report.lockfile, Tone::Path));
+    rows.push(KeyValue::toned("plan", &report.plan, Tone::Path));
     renderer.key_values(out, 2, &rows);
 
     let elapsed = format_duration(report.total);

@@ -27,6 +27,7 @@ mod support;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use support::{Project, uf};
 
@@ -545,5 +546,318 @@ fn a_second_build_of_the_same_source_writes_the_same_names() {
         srcset_files(&first, "<img"),
         srcset_files(&second, "<img"),
         "a rebuild renamed the variants"
+    );
+}
+
+/// A project whose one page imports an icon, the sprite, and a card.
+///
+/// Separate from [`asset_app`] rather than folded into it: these three go
+/// through hooks the image and font path never touches — a virtual module
+/// resolved by uf's own scheme, a `generateBundle` rewrite, and a compound
+/// extension — and a failure in one of them should name the feature that
+/// broke.
+fn icon_and_card_app() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "uf.config.js",
+            r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    router: { entry: "app.js", root: "app" },
+    builtins: { icons: { dir: "icons" }, og: { font: "Fixture.ttf" } },
+  },
+  build: { entries: ["app.js"], outDir: "dist" },
+});
+"#,
+        ),
+        (
+            "app.js",
+            r#"// @flow
+import { routerView } from "@uniflowed/router";
+
+export default routerView("./app");
+"#,
+        ),
+        (
+            "app/_uf.layout.js",
+            r#"// @flow
+import * as React from "@uniflowed/react";
+
+export component Layout(children: React.Node) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+"#,
+        ),
+        (
+            "app/_uf.page.js",
+            r#"// @flow
+import * as React from "@uniflowed/react";
+import { Icon, IconSprite, OgImage } from "@uniflowed/web";
+
+import card from "../card.og.json";
+import sprite from "uf:icon-sprite";
+import star from "uf:icon/star";
+
+export component Page() {
+  return (
+    <main>
+      <OgImage card={card} origin="https://example.com" />
+      <IconSprite sprite={sprite} />
+      <button type="button"><Icon icon={star} label="Favourite" /></button>
+    </main>
+  );
+}
+"#,
+        ),
+        (
+            "icons/star.svg",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12 2 3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z"/></svg>"#,
+        ),
+        (
+            "icons/dot.svg",
+            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>"#,
+        ),
+        (
+            "card.og.json",
+            // `r##` and not `r#`: the accent is a hex colour, so the file
+            // contains the sequence `"#`, which is what closes an `r#"` raw
+            // string.
+            r##"{
+  "eyebrow": "Testing",
+  "title": "A card the build drew",
+  "subtitle": "from a template and a font",
+  "accent": "#7c8cff"
+}
+"##,
+        ),
+    ]
+}
+
+/// A real TrueType font with outlines, which a card needs and metrics do not.
+fn write_outline_font(path: &Path) {
+    let mut characters: Vec<char> = ('A'..='Z').chain('a'..='z').collect();
+    characters.extend([' ', '.', ',', '-']);
+    fs::write(path, uf_assets::test_font(&characters)).unwrap();
+}
+
+#[test]
+fn a_build_emits_a_sprite_of_the_icons_it_reached_and_no_others() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&icon_and_card_app());
+    write_outline_font(&project.path().join("Fixture.ttf"));
+
+    build(project.path());
+    let html = fs::read_to_string(project.path().join("dist/index.html"))
+        .expect("the page is prerendered");
+
+    // The icon is a `<use>` into the sprite, not another copy of the path.
+    let at = html
+        .find("<use")
+        .unwrap_or_else(|| panic!("no <use> in:\n{html}"));
+    // To the end of the tag rather than a fixed number of bytes: a fixed
+    // window runs off the end of a document that is shorter than expected,
+    // and then the failure is a slice panic instead of the assertion that
+    // would have said what was actually missing.
+    let tag = html[at..].split_once('>').map_or("", |(open, _)| open);
+    assert!(tag.contains("#uf-icon-star-"), "{tag}");
+    // The sprite is inline and holds the symbol that `<use>` points at. This
+    // is the assertion that catches an empty sprite, which is what a service
+    // that accumulated the icons itself produced: the plugin closes it in
+    // `buildEnd`, before `generateBundle` asks for the sprite.
+    assert!(
+        html.contains("<symbol id=\"uf-icon-star-"),
+        "the sprite has no symbol in:\n{html}"
+    );
+    // `dot.svg` exists in the project and nothing imported it. A sprite that
+    // held it would be the whole directory, which is what a runtime icon
+    // library does and what this exists not to do.
+    assert!(
+        !html.contains("uf-icon-dot-"),
+        "the sprite holds an icon nothing imported"
+    );
+}
+
+#[test]
+fn a_build_draws_the_card_and_points_the_meta_tags_at_it() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&icon_and_card_app());
+    write_outline_font(&project.path().join("Fixture.ttf"));
+
+    build(project.path());
+    let dist = project.path().join("dist");
+    let html = fs::read_to_string(dist.join("index.html")).expect("the page is prerendered");
+
+    let at = html
+        .find("og:image\"")
+        .unwrap_or_else(|| panic!("no og:image in:\n{html}"));
+    let tag = &html[at..at + 200];
+    assert!(tag.contains("https://example.com/assets/"), "{tag}");
+    assert!(html.contains("og:image:width\" content=\"1200\""), "{html}");
+    assert!(html.contains("summary_large_image"), "{html}");
+
+    // And the file the tag names is on disk, at the size the tag claims.
+    let name = tag
+        .split("content=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .and_then(|url| url.rsplit('/').next())
+        .expect("the og:image has no file name");
+    let written = dist.join("assets").join(name);
+    assert!(written.exists(), "{name} was named but not written");
+    assert!(fs::metadata(&written).unwrap().len() > 0);
+}
+
+#[test]
+fn a_card_uf_cannot_lay_out_fails_the_build_rather_than_drawing_it() {
+    // The whole point of the template: a wrong Open Graph card is worse than
+    // no card, because nobody looks at one until it is on another website.
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = icon_and_card_app();
+    for entry in &mut files {
+        if entry.0 == "card.og.json" {
+            entry.1 = r#"{ "title": "مرحبا بالعالم" }"#;
+        }
+    }
+    let project = Project::new(&files);
+    write_outline_font(&project.path().join("Fixture.ttf"));
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "the build should have failed");
+    let message = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(message.contains("right-to-left"), "{message}");
+}
+
+/// How long a program that resizes one image may take to finish and exit.
+///
+/// Generous on purpose, and for the reason `tests/bun_host.rs` gives about its
+/// own: this is not a performance assertion, it is the line between "failed"
+/// and "hung", and the machine may be building something else. A run that is
+/// over this has not decoded a PNG slowly, it has stopped exiting.
+const EXIT_DEADLINE: Duration = Duration::from_secs(120);
+
+/// Run `entry` under plain `node` in `project`, or fail saying it never ended.
+///
+/// The two streams go to files rather than pipes, and that is not tidiness: a
+/// pipe holds about 64 KB and a child that fills one blocks until somebody
+/// reads it. Nothing here can read while it is also watching the clock, so a
+/// talkative failure would look exactly like the hang this exists to catch.
+fn run_until_it_exits(project: &Project, entry: &str) -> (Option<i32>, String, String) {
+    let out_path = project.path().join("node.stdout");
+    let err_path = project.path().join("node.stderr");
+    let mut child = Command::new("node")
+        .arg(project.path().join(entry))
+        .current_dir(project.path())
+        .env("UF_BINARY", support::uf_path())
+        .env("UF_PROJECT_ROOT", project.path())
+        .stdout(std::process::Stdio::from(
+            fs::File::create(&out_path).unwrap(),
+        ))
+        .stderr(std::process::Stdio::from(
+            fs::File::create(&err_path).unwrap(),
+        ))
+        .spawn()
+        .expect("node is on PATH");
+
+    let deadline = Instant::now() + EXIT_DEADLINE;
+    let status = loop {
+        match child.try_wait().expect("waiting on node") {
+            Some(status) => break status,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!(
+                    "node did not exit within {EXIT_DEADLINE:?} after running {entry}. The \
+                     program itself finishes; what keeps the process alive is the `uf assets` \
+                     child the service started, which `AssetService` unreferences between \
+                     requests precisely so this cannot happen.\nstdout:\n{}\nstderr:\n{}",
+                    fs::read_to_string(&out_path).unwrap_or_default(),
+                    fs::read_to_string(&err_path).unwrap_or_default(),
+                );
+            }
+            None => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+
+    (
+        status.code(),
+        fs::read_to_string(&out_path).unwrap_or_default(),
+        fs::read_to_string(&err_path).unwrap_or_default(),
+    )
+}
+
+/// A host that drove the asset pipeline and has nothing left to do.
+///
+/// Deliberately without `service.close()`: the Vite driver calls it in
+/// `buildEnd` and that is why this was invisible, but "the host closed it" is
+/// not the property under test. A service holds its host open for exactly as
+/// long as it owes an answer, and this program owes none by the time it ends.
+const DRIVES_ASSETS: &str = r#"import { AssetService } from "@uniflowed/host/assets";
+
+const service = new AssetService({ root: process.cwd() });
+const manifest = await service.image(new URL("./hero.png", import.meta.url).pathname, {
+  outDir: new URL("./out", import.meta.url).pathname,
+  widths: [100],
+});
+console.log(`image=${manifest.width}x${manifest.height} variants=${manifest.variants.length}`);
+"#;
+
+/// #596: a host that drives assets and then has nothing left to do exits.
+///
+/// The shape is `tests/bun_host.rs`'s and so is the reason for it: a live
+/// child process and its pipes are handles, a host with a handle open does not
+/// exit, and a regression here does not fail a test that reads its output — it
+/// hangs one. So this asserts on a *finished* process, with a deadline instead
+/// of `output()`, and the panic names the service rather than the symptom.
+///
+/// It runs on Node, which is the host that has one of these today, and Node is
+/// enough to see it: the accident that hid this in `TransformService` was that
+/// module hooks run on a loader thread whose handles do not keep the process
+/// alive, and nothing about `AssetService` is on a loader thread. It is
+/// constructed by the Vite plugin, on the main thread, where a reffed child is
+/// a build that finishes and then sits there.
+#[test]
+fn a_host_that_drove_the_asset_pipeline_exits_when_it_is_done() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[("drives-assets.js", DRIVES_ASSETS)]);
+    write_png(&project.path().join("hero.png"), 200, 150);
+
+    let (status, stdout, stderr) = run_until_it_exits(&project, "drives-assets.js");
+
+    assert_eq!(status, Some(0), "stdout:\n{stdout}\nstderr:\n{stderr}");
+    // And it did the work rather than exiting early: an exit code of zero from
+    // a program that never reached the service would prove nothing at all. The
+    // intrinsic size is the file's own and the variant count is the pipeline's
+    // to decide, so the assertion names the first exactly and the second only
+    // as "more than none".
+    assert!(
+        stdout.contains("image=200x150"),
+        "the image was not measured:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        !stdout.contains("variants=0"),
+        "the image was not resized:\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }

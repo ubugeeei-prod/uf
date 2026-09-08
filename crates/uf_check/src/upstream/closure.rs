@@ -61,7 +61,7 @@ use flow_parser::file_key::{FileKey, FileKeyInner};
 use super::packages::{PackageFile, WorkspacePackages, is_manifest};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
-use crate::Source;
+use crate::{Source, UnresolvedImport};
 
 /// What a set of seeds reaches.
 pub(super) struct Closure {
@@ -73,9 +73,14 @@ pub(super) struct Closure {
     /// which seed was walked first, and two orders would be two cache keys for
     /// the same check.
     pub(super) reached: Vec<usize>,
-    /// Specifiers nothing searched answered and no libdef declares, sorted and
-    /// de-duplicated.
-    pub(super) unresolved: Vec<CompactString>,
+    /// Specifiers nothing searched answered and no libdef declares, each
+    /// beside the file that imported it, sorted and de-duplicated.
+    ///
+    /// The importer is kept because a bare specifier means whatever Node's
+    /// climb from *that file* finds, and a caller that goes looking for the
+    /// package has to climb from the same place. Two files importing one name
+    /// are two entries for that reason, and not a redundancy.
+    pub(super) unresolved: Vec<UnresolvedImport>,
 }
 
 /// The closure of `seeds` over `available`.
@@ -99,7 +104,7 @@ pub(super) fn closure(
 
     let mut seen = vec![false; available.len()];
     let mut frontier: Vec<usize> = Vec::new();
-    let mut unresolved: BTreeSet<CompactString> = BTreeSet::new();
+    let mut unresolved: BTreeSet<UnresolvedImport> = BTreeSet::new();
 
     for seed in seeds {
         if let Some(target) = index.index_of(seed) {
@@ -118,12 +123,12 @@ pub(super) fn closure(
                 // does not hold still has to be able to answer for the ones it
                 // does.
                 if let Some(manifest) = packages
-                    .manifest_of(&specifier)
+                    .manifest_of(source.path, &specifier)
                     .and_then(|path| index.index_of(path))
                 {
                     reach(manifest, &mut seen, &mut frontier);
                 }
-                match packages.resolve(&specifier) {
+                match packages.resolve(source.path, &specifier) {
                     Some(PackageFile::Exact(path)) => index.lookup(&path),
                     Some(PackageFile::Implied(base)) => index.resolve_file(&base),
                     None => None,
@@ -132,7 +137,10 @@ pub(super) fn closure(
             match resolved {
                 Some(target) => reach(target, &mut seen, &mut frontier),
                 None if !declared(&specifier) => {
-                    unresolved.insert(specifier);
+                    unresolved.insert(UnresolvedImport {
+                        specifier,
+                        importer: source.path.to_compact_string(),
+                    });
                 }
                 None => {}
             }
@@ -216,7 +224,7 @@ mod tests {
         )
         .unresolved
         .into_iter()
-        .map(Into::into)
+        .map(|left_over| format!("{} in {}", left_over.specifier, left_over.importer))
         .collect()
     }
 
@@ -332,7 +340,13 @@ mod tests {
             &|specifier| specifier == "react",
         );
 
-        assert_eq!(found.unresolved, ["nope"]);
+        assert_eq!(
+            found.unresolved,
+            [UnresolvedImport {
+                specifier: "nope".into(),
+                importer: "app.js".into(),
+            }]
+        );
     }
 
     #[test]
@@ -344,7 +358,11 @@ mod tests {
 
         assert_eq!(
             unresolved(&["app.js"], &available),
-            ["./missing.js", "@uniflowed/nope", "react"]
+            [
+                "./missing.js in app.js",
+                "@uniflowed/nope in app.js",
+                "react in app.js"
+            ]
         );
     }
 
@@ -359,6 +377,68 @@ mod tests {
         ];
 
         assert_eq!(reached(&["app.js"], &available), ["app.js", "plain.js"]);
+    }
+
+    #[test]
+    fn one_specifier_written_in_two_packages_is_two_entries() {
+        // ubugeeei-prod/uf#486: the two may mean two different copies of one
+        // package, so a caller that deduplicated them to a name could only
+        // ever go looking for one.
+        let available = [
+            Source::new("app.js", "import 'bar';\nimport './lib.js';\n"),
+            Source::new("node_modules/foo/index.js", "import 'bar';\n"),
+            Source::new("node_modules/foo/package.json", r#"{ "name": "foo" }"#),
+            Source::new("lib.js", "import 'foo';\n"),
+        ];
+
+        assert_eq!(
+            unresolved(&["app.js"], &available),
+            ["bar in app.js", "bar in node_modules/foo/index.js"]
+        );
+    }
+
+    #[test]
+    fn a_nested_copy_is_reached_by_the_package_that_holds_it() {
+        // The hoisted copy answers the application and the nested one answers
+        // `foo`, so the closure holds both files and both manifests.
+        let available = [
+            Source::new("app.js", "import 'foo';\nimport 'bar';\n"),
+            Source::new(
+                "node_modules/bar/package.json",
+                r#"{ "exports": { ".": "./v2.js" } }"#,
+            ),
+            Source::new("node_modules/bar/v2.js", "export const bar = 2;\n"),
+            Source::new(
+                "node_modules/foo/index.js",
+                "import { bar } from 'bar';\nexport { bar };\n",
+            ),
+            Source::new(
+                "node_modules/foo/node_modules/bar/package.json",
+                r#"{ "exports": { ".": "./v1.js" } }"#,
+            ),
+            Source::new(
+                "node_modules/foo/node_modules/bar/v1.js",
+                "export const bar = 1;\n",
+            ),
+            Source::new(
+                "node_modules/foo/package.json",
+                r#"{ "exports": { ".": "./index.js" } }"#,
+            ),
+        ];
+
+        assert_eq!(
+            reached(&["app.js"], &available),
+            [
+                "app.js",
+                "node_modules/bar/package.json",
+                "node_modules/bar/v2.js",
+                "node_modules/foo/index.js",
+                "node_modules/foo/node_modules/bar/package.json",
+                "node_modules/foo/node_modules/bar/v1.js",
+                "node_modules/foo/package.json",
+            ]
+        );
+        assert!(unresolved(&["app.js"], &available).is_empty());
     }
 
     #[test]

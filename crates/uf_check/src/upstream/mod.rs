@@ -51,6 +51,7 @@ use flow_common_errors::error_utils::ConcreteLocPrintableErrorSet;
 use flow_parser::ast;
 use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::{LOC_NONE, Loc};
+use flow_parser::parse_error::ParseError;
 use flow_typing::{merge, type_inference};
 use flow_typing_context::Context;
 use flow_typing_errors::error_message::ErrorMessage;
@@ -84,34 +85,37 @@ use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
 pub(super) const VIRTUAL_ROOT: &str = "/.uf-check-virtual-root";
 
 /// Merge the builtins, on the check thread so the merge gets its stack too.
-pub(crate) fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
-    on_check_thread("<builtins>", builtins::prepare)?
+pub(crate) fn prepare_builtins(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError> {
+    on_check_thread("<builtins>", || builtins::prepare(libs))?
 }
 
 /// Check every source in one batch, sharing one builtin environment.
 pub(crate) fn check_sources(
     sources: &[Source<'_>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
     let path = sources.first().map_or("<empty>", |source| source.path);
-    on_check_thread(path, || check_batch(sources, limits, cache))?
+    on_check_thread(path, || check_batch(sources, libs, limits, cache))?
 }
 
 /// The closure of `seeds` over `available`, by the batch's own rules.
 pub(crate) fn module_closure<'a>(
     seeds: &[&str],
     available: &[Source<'a>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
 ) -> Result<crate::ModuleClosure<'a>, CheckError> {
     let path = seeds.first().copied().unwrap_or("<empty>");
     on_check_thread(path, || {
-        // The builtins are merged here so that a specifier Flow's own library
-        // definitions already describe is not handed back as something the
-        // caller should go and find. Once per process and shared, so the check
-        // that follows this walk pays nothing for having asked.
-        builtins::prepare()?;
-        let master_cx = builtins::master_context()?;
+        // The builtins are merged here so that a specifier the library
+        // definitions already describe — Flow's own or the project's — is not
+        // handed back as something the caller should go and find. Once per
+        // process and shared, so the check that follows this walk pays nothing
+        // for having asked.
+        builtins::prepare(libs)?;
+        let master_cx = builtins::master_context(libs)?;
         let options = options::options(limits);
         let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
         let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
@@ -176,6 +180,7 @@ where
 /// once and now parses twice.
 fn check_batch(
     sources: &[Source<'_>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
@@ -195,8 +200,8 @@ fn check_batch(
         }
     }
 
-    let builtins = builtins::prepare()?;
-    let master_cx = builtins::master_context()?;
+    let builtins = builtins::prepare(libs)?;
+    let master_cx = builtins::master_context(libs)?;
     let options = options::options(limits);
     // One builtin environment for the batch, made from the metadata a file has
     // before its own docblock is applied — `mk_check_file` keeps exactly this
@@ -217,10 +222,11 @@ fn check_batch(
     // What each file's record is filed under. Computed even for a file the
     // cache turns out to know nothing about, because it is also where the
     // recomputed answer is written back.
+    let libdefs = builtins::digest(libs);
     let keys: Vec<Digest> = match cache {
         Some(cache) => sources
             .iter()
-            .map(|source| file_key(cache, limits, source))
+            .map(|source| file_key(cache, limits, &libdefs, source))
             .collect(),
         None => Vec::new(),
     };
@@ -337,13 +343,21 @@ fn check_batch(
 /// Where one file's record is filed.
 ///
 /// The compiler's identity is first because it is the input a reader is most
-/// likely to forget is one: see [`crate::cache`]. The limits are here rather
-/// than in the dependency digest because they are not a property of any file —
-/// raising the recursion limit changes what every file in the batch reports.
-fn file_key(cache: &CheckCache, limits: &CheckLimits, source: &Source<'_>) -> Digest {
+/// likely to forget is one: see [`crate::cache`]. The limits and the library
+/// definitions are here rather than in the dependency digest because neither is
+/// a property of any file — raising the recursion limit, or adding a
+/// `declare module` to `flow-typed`, changes what every file in the batch
+/// reports, including the files that reach nothing at all.
+fn file_key(
+    cache: &CheckCache,
+    limits: &CheckLimits,
+    libdefs: &Digest,
+    source: &Source<'_>,
+) -> Digest {
     let mut fields = Fields::new("uf-check-file-v1");
     fields.push(cache.identity());
     fields.push(&limits_field(limits));
+    fields.push_digest(libdefs);
     fields.push(source.path);
     fields.push(source.source);
     fields.finish()
@@ -427,12 +441,7 @@ fn check_one(
         // `ProjectModules::facts`' answer, not this one: a run that reads this
         // file's diagnostics from the cache never gets here and must still
         // count it the same way.
-        let errors = printable(&parsed, parse_error_set(&parsed));
-        return Ok(convert::diagnostics(
-            &errors,
-            &ConcreteLocPrintableErrorSet::empty(),
-            source.path,
-        ));
+        return Ok(parse_diagnostics(&parsed, source));
     }
 
     // `@noflow`. The file parsed, and that is all uf asked of it.
@@ -495,14 +504,65 @@ fn job_error(path: &str, error: JobError) -> CheckError {
     }
 }
 
-fn parse_error_set(parsed: &parse::Parsed) -> ErrorSet {
+/// This file's syntax errors, in uf's words rather than the port's.
+///
+/// `uf fmt`, `uf lint` and `uf transform` all pass a parse error through
+/// [`uf_flow::explain`], which is where uf says what a construct the parser
+/// does not implement actually is. The checker did not, so the same file was
+/// described one way by `uf check` and another by `uf lint`, and which of the
+/// two a reader saw depended on the command they happened to run first
+/// (ubugeeei-prod/uf#431).
+///
+/// Every error is offered to that function and nearly all of them come back
+/// unchanged, which is the decision the issue asks for: the fallback is the
+/// parser's own sentence, so the four commands agree by construction rather
+/// than because a list of interesting errors was kept in step in two places.
+///
+/// # One error at a time
+///
+/// The port renders an *ordered set*, which has no way back from an entry to
+/// the error it was made from — and the explanation is a function of that
+/// error's own location and message. So each is rendered on its own and paired
+/// with its explanation by construction. It costs nothing:
+/// `make_errors_printable` is a fold, so folding one error N times is the work
+/// of folding N once. What it gives up is the set's deduplication, which the
+/// parser cannot exercise: it reports errors as it advances, so no two of them
+/// carry the same location *and* the same message.
+///
+/// It also gains the parser's order. `ConcreteLocPrintableErrorSet` is a
+/// `BTreeSet`, so a file that ends mid-declaration reported its five
+/// end-of-input errors alphabetically — `)`, `,`, `{`, `}` — where `uf lint`
+/// reports them in the order the parser reached them. Same errors, one order
+/// now.
+fn parse_diagnostics(parsed: &parse::Parsed, source: &Source<'_>) -> Vec<TypeDiagnostic> {
+    parsed
+        .parse_errors
+        .iter()
+        .flat_map(|(loc, error)| {
+            let mut diagnostics = convert::diagnostics(
+                &printable(parsed, parse_error_set(parsed, loc, error)),
+                &ConcreteLocPrintableErrorSet::empty(),
+                source.path,
+            );
+            if let Some(explanation) =
+                uf_flow::explain::explanation(source.source, loc, &error.to_string())
+            {
+                for diagnostic in &mut diagnostics {
+                    convert::explain(diagnostic, &explanation);
+                }
+            }
+            diagnostics
+        })
+        .collect()
+}
+
+/// One syntax error, as the set the port's renderer takes.
+fn parse_error_set(parsed: &parse::Parsed, loc: &Loc, error: &ParseError) -> ErrorSet {
     let mut errors = ErrorSet::empty();
-    for (loc, error) in parsed.parse_errors.iter().cloned() {
-        errors.add(flow_error::error_of_msg(
-            parsed.file_key.dupe(),
-            ErrorMessage::EParseError(Box::new((ALoc::of_loc(loc), error))),
-        ));
-    }
+    errors.add(flow_error::error_of_msg(
+        parsed.file_key.dupe(),
+        ErrorMessage::EParseError(Box::new((ALoc::of_loc(loc.clone()), error.clone()))),
+    ));
     errors
 }
 
