@@ -965,8 +965,23 @@ pub fn tui_contract() -> TuiFrameworkContract {
 /// Component has no client. `useIsomorphicLayoutEffect` is the exception
 /// because it is inert on a server by construction.
 ///
-/// The list had drifted: it named `useEvent`, `useLocalStorage` and
-/// `useServerValue`, none of which the package has ever exported.
+/// The list had drifted twice, in both directions, which is why
+/// `the_hook_table_names_exactly_the_hooks_the_package_exports` now holds it
+/// rather than care does. First it named `useEvent`,
+/// `useLocalStorage` and `useServerValue`, none of which the package has ever
+/// exported. Then it fell six behind — `useEventSource`, and the five of
+/// `packages/hooks/render.js` — because a hook added to the package and to the
+/// export list above is complete as far as an editor is concerned, and this
+/// table is a second place with the same name in it.
+///
+/// The six are `(true, false)` like almost everything here, and for the two
+/// separate reasons the paragraphs above give. `useEventSource` holds a
+/// connection open from an effect and reports it through state, so it writes
+/// nothing during a render and cannot have a connection on a server.
+/// `render.js`'s five read a `RenderProvider`'s decisions through
+/// `useContext`, which is what makes both renders of a prerendered page agree
+/// — and `useContext` is the API a Server Component may not call, so the hook
+/// that is *about* rendering twice is not one a Server Component can use.
 pub fn hook_descriptors() -> Vec<HookDescriptor> {
     vec![
         HookDescriptor::new("useAnimationFrame", true, false),
@@ -983,6 +998,7 @@ pub fn hook_descriptors() -> Vec<HookDescriptor> {
         HookDescriptor::new("useElementSize", true, false),
         HookDescriptor::new("useElementState", true, false),
         HookDescriptor::new("useEventListener", true, false),
+        HookDescriptor::new("useEventSource", true, false),
         HookDescriptor::new("useFocusWithin", true, false),
         HookDescriptor::new("useGeolocation", true, false),
         HookDescriptor::new("useHash", true, false),
@@ -1006,10 +1022,15 @@ pub fn hook_descriptors() -> Vec<HookDescriptor> {
         HookDescriptor::new("usePreferredColorScheme", true, false),
         HookDescriptor::new("usePrefersReducedMotion", true, false),
         HookDescriptor::new("usePrevious", true, false),
+        HookDescriptor::new("useRandom", true, false),
+        HookDescriptor::new("useRenderEnvelope", true, false),
+        HookDescriptor::new("useRenderTimeZone", true, false),
+        HookDescriptor::new("useRenderedAt", true, false),
         HookDescriptor::new("useRerender", true, false),
         HookDescriptor::new("useScroll", true, false),
         HookDescriptor::new("useScrollLock", true, false),
         HookDescriptor::new("useSet", true, false),
+        HookDescriptor::new("useShuffled", true, false),
         HookDescriptor::new("useStableCallback", true, false),
         HookDescriptor::new("useStorage", true, false),
         HookDescriptor::new("useSupported", true, false),
