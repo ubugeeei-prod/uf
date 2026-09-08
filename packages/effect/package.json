@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/effect",
-  "version": "0.0.0-alpha.13",
+  "version": "0.0.0-alpha.14",
   "description": "Flow implementation for @uniflowed/effect, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -21,6 +21,6 @@
     "stream.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.13"
+    "@uniflowed/core": "0.0.0-alpha.14"
   }
 }
