@@ -89,6 +89,83 @@ pub fn display_width(text: &str) -> usize {
     width
 }
 
+/// One scalar's contribution to the rendered width, and whether a cut may
+/// land on it.
+#[derive(Clone, Copy)]
+struct Column {
+    /// What this scalar adds to the width of the whole string.
+    cost: usize,
+    /// Whether this scalar opens a cluster rather than continuing one.
+    ///
+    /// A cut may only land here. Anywhere else the scalar's rendered width
+    /// depends on what came before it, which the cut has just thrown away, and
+    /// so the width [`cost`](Self::cost) recorded and the width the terminal
+    /// draws part ways.
+    opens_cluster: bool,
+}
+
+/// What each scalar in `kept` adds to the rendered width, and where it is safe
+/// to cut.
+///
+/// The same rule [`display_width`] applies, as a per-scalar cost so a running
+/// total can use it: a variation selector has no width of its own and instead
+/// widens the narrow scalar before it, and a scalar joined by a zero-width
+/// joiner adds nothing because the cluster it continues already paid.
+///
+/// Summing [`char_width`] instead gets both wrong, and one of them unsafely.
+/// A path of `a\u{fe0f}` repeated a hundred and twenty times sums to 120 and
+/// renders as 240 — twice the bound the cap exists to hold — so a name built
+/// out of emoji-presentation sequences could wrap the row whatever the cap
+/// said. See ubugeeei-prod/uf#671.
+///
+/// The cut points come from this same pass rather than from a predicate over
+/// the scalars, because whether a scalar continues a cluster is a fact about
+/// the state machine and not about the scalar. A joiner's reach survives a
+/// variation selector — neither this function nor [`display_width`] clears
+/// `joined` on one — so `ZWJ VS16 X` leaves `X` joined, which a predicate
+/// reading only `kept[at - 1]` calls the start of a cluster and is wrong by
+/// the full width of `X`.
+///
+/// Escapes are not handled here and do not need to be: both callers drop every
+/// control character before measuring, and `\x1b` is one.
+fn columns(kept: &[char]) -> Vec<Column> {
+    let mut columns = Vec::with_capacity(kept.len());
+    let mut joined = false;
+    let mut previous_narrow = false;
+    for &ch in kept {
+        let column = match ch {
+            ZWJ => {
+                joined = true;
+                previous_narrow = false;
+                Column {
+                    cost: 0,
+                    opens_cluster: false,
+                }
+            }
+            VS16 => {
+                let widened = usize::from(previous_narrow);
+                previous_narrow = false;
+                Column {
+                    cost: widened,
+                    opens_cluster: false,
+                }
+            }
+            _ => {
+                let width = char_width(ch);
+                let column = Column {
+                    cost: if joined { 0 } else { width },
+                    opens_cluster: !joined,
+                };
+                joined = false;
+                previous_narrow = width == 1;
+                column
+            }
+        };
+        columns.push(column);
+    }
+    columns
+}
+
 /// The widest a path is drawn before it is elided.
 ///
 /// Wide enough that a real path in a real repository is never cut, and narrow
@@ -117,23 +194,33 @@ pub const MAX_PATH_WIDTH: usize = 120;
 /// directories every one of which was the same.
 pub fn push_safe_path(out: &mut String, path: &str) {
     let kept: Vec<char> = path.chars().filter(|ch| !ch.is_control()).collect();
-    let width: usize = kept.iter().copied().map(char_width).sum();
-    if width <= MAX_PATH_WIDTH {
+    let columns = columns(&kept);
+    let total: usize = columns.iter().map(|column| column.cost).sum();
+    if total <= MAX_PATH_WIDTH {
         out.extend(kept);
         return;
     }
-    let mut tail = Vec::with_capacity(kept.len());
-    let mut budget = MAX_PATH_WIDTH - 1;
-    for ch in kept.iter().rev().copied() {
-        let width = char_width(ch);
-        if width > budget {
-            break;
-        }
-        budget -= width;
-        tail.push(ch);
+    // Dropped from the front until what is left fits beside the ellipsis. The
+    // costs are read forward, because that is the direction the rule runs in —
+    // a variation selector's column belongs to the scalar before it.
+    let mut kept_width = total;
+    let mut start = 0usize;
+    while start < kept.len() && kept_width > MAX_PATH_WIDTH - 1 {
+        kept_width -= columns[start].cost;
+        start += 1;
+    }
+    // And then on to a cluster boundary, because the ellipsis is drawn in front
+    // of what is kept and a cluster's leftovers would attach themselves to it.
+    // A dangling variation selector asks for the *ellipsis* in emoji
+    // presentation and takes a second column doing it, which is how a path that
+    // measured 119 came out at 121; a scalar left behind by its joiner is
+    // charged nothing here and its full width by the terminal. Advancing only
+    // ever drops more, so the budget still holds.
+    while start < kept.len() && !columns[start].opens_cluster {
+        start += 1;
     }
     out.push('\u{2026}');
-    out.extend(tail.iter().rev());
+    out.extend(&kept[start..]);
 }
 
 /// [`push_safe_path`] as a value, for a caller that is not building a line.
@@ -160,18 +247,21 @@ pub const MAX_MESSAGE_WIDTH: usize = 512;
 /// left, because a sentence is read from its start. See ubugeeei-prod/uf#659.
 pub fn push_safe_message(out: &mut String, message: &str) {
     let kept: Vec<char> = message.chars().filter(|ch| !ch.is_control()).collect();
-    let width: usize = kept.iter().copied().map(char_width).sum();
-    if width <= MAX_MESSAGE_WIDTH {
+    let columns = columns(&kept);
+    if columns.iter().map(|column| column.cost).sum::<usize>() <= MAX_MESSAGE_WIDTH {
         out.extend(kept);
         return;
     }
+    // The ellipsis goes on the end here, so there is no cluster to land on: the
+    // scalars kept are the ones the rule already measured, in the state it
+    // measured them in. A joiner left dangling at the cut only ever makes the
+    // ellipsis cost less, never more.
     let mut budget = MAX_MESSAGE_WIDTH - 1;
-    for ch in kept {
-        let width = char_width(ch);
-        if width > budget {
+    for (ch, column) in kept.into_iter().zip(columns) {
+        if column.cost > budget {
             break;
         }
-        budget -= width;
+        budget -= column.cost;
         out.push(ch);
     }
     out.push('\u{2026}');
