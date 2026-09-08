@@ -1,6 +1,21 @@
 name: CI
 
+# `merge_group` as well as `pull_request`, because `main` requires branches to
+# be up to date and this pipeline takes about eleven minutes. Those two
+# multiply: every merge makes every other open pull request `BEHIND`, so they
+# land one at a time, each paying a full pipeline for a base change that did
+# not touch it — ten green pull requests is roughly two hours of CI to land
+# work that was already green.
+#
+# A merge queue builds the *result* of merging a batch together, once, and
+# merges the batch if that is green. It is also a stronger guarantee than
+# `strict`: `strict` proves each branch against the base it was rebased onto
+# and never against the other branch merging beside it. The queue only has
+# that to build with if the checks it must pass run on `merge_group`, which is
+# what this line is. `tools/ci/gate-covers-every-job.sh` holds every workflow
+# that reports a required context to it. See #588.
 on:
+  merge_group:
   pull_request:
   push:
     branches:
