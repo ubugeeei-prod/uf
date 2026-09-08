@@ -395,10 +395,15 @@ function longestFirst(a: number, b: number): number {
  * teardown would report a half-measured page every time a React root remounted.
  *
  * That is also what makes this safe under `StrictMode`, where an effect is set
- * up, torn down and set up again. The first collector is stopped before any
- * observer callback can run — they are delivered in a later task — so it
- * reports nothing at all and the second collector, replaying the same buffered
- * entries, reports each metric exactly once.
+ * up, torn down and set up again. Nothing here reports from the call itself:
+ * observer callbacks are delivered in a later task, the page-visibility
+ * listeners fire later still, and the one value that *could* be read at once —
+ * TTFB, off the navigation entry — is deferred by a microtask for exactly this
+ * reason. So the first collector is stopped before any of them runs, reports
+ * nothing at all, and the second collector, replaying the same buffered
+ * entries, reports each metric exactly once. `uf dev` mounts every application
+ * under Strict Mode since ubugeeei-prod/uf#516, so this is the ordinary case
+ * rather than a corner of it.
  *
  * On a server this observes nothing and returns immediately, so a component
  * that renders in both places can call it unconditionally.
@@ -434,11 +439,12 @@ export function collectVitals(options: CollectOptions): () => void {
     report({ name, value, rating: rate(name, value), navigationType });
   };
 
-  // Attempted twice: once now, and once when the page is put away. The
-  // navigation entry exists from the start and its timings can still be zero
-  // when it is first read, so a collector that only looked now would report
-  // nothing on a browser that fills the entry in later — and one that only
-  // looked at the end would report nothing for a page nobody ever leaves.
+  // Attempted twice: once shortly after this call, and once when the page is
+  // put away. The navigation entry exists from the start and its timings can
+  // still be zero when it is first read, so a collector that only looked at the
+  // beginning would report nothing on a browser that fills the entry in later —
+  // and one that only looked at the end would report nothing for a page nobody
+  // ever leaves.
   const tryTtfb = (): void => {
     const responseStart = navigation?.responseStart ?? 0;
     if (responseStart > 0) {
@@ -578,7 +584,26 @@ export function collectVitals(options: CollectOptions): () => void {
     }
   }
 
-  tryTtfb();
+  // The first attempt, one microtask away rather than here, and that deferral
+  // is what makes the Strict Mode paragraph in this function's header true
+  // rather than nearly true.
+  //
+  // Every other value this collector produces arrives through an observer
+  // callback or a page-visibility event, and both are delivered in a later
+  // task — so a collector that is set up and torn down inside one React commit
+  // reports none of them. This call was the exception: it read the navigation
+  // entry synchronously, before anything could stop the collector, so the
+  // discarded first collector of a Strict Mode double-mount reported TTFB and
+  // the surviving second one reported it again. One page load, two TTFBs, and
+  // with #602's `/__uf/vitals` two web-vitals lines in the terminal — which is
+  // the report a reader would trust least and check first. See
+  // ubugeeei-prod/uf#516.
+  //
+  // A microtask rather than a timer: it is the shortest delay that is still
+  // after the synchronous work React does in a commit, and it needs no handle
+  // to cancel — `emit` already refuses to report from a stopped collector, so
+  // a microtask that runs after the teardown does nothing.
+  queueMicrotask(tryTtfb);
 
   return () => {
     if (stopped) {
