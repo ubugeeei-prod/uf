@@ -33,9 +33,11 @@ binaries behind it. Two of the three doors Bun shut on module mocking have
 opened on 1.3.13, so what is left there is writing an implementation rather
 than waiting for Bun — the opposite of what that file said. And three release
 notes named a command uf does not have, one of them in the release before this:
-`uf profile`, `uf rm` and `uf approve-builds` are `uf_profiler`,
+what they called uf profile, uf rm and uf approve-builds are `uf_profiler`,
 `uf self-update` and `uf pm approve-builds`. A test asks clap now, and walks a
-nested path to its end, so there will not be a fourth.
+nested path to its end, so there will not be a fourth — and the three wrong
+names are unquoted right there because that test reads this file, and a
+backticked `uf <name>` in it is a thing a reader will type.
 
 ### Added
 
