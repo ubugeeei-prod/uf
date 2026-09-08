@@ -654,13 +654,24 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: Option<CatalogCommand>,
     },
-    /// Re-read the workspace and record the package and runtime plan.
+    /// Replace this uf with the newest release.
     ///
-    /// It fetches nothing and it does not replace the uf binary, in spite of
-    /// its name: `uf update` moves your dependencies and `uf use` moves the
-    /// toolchain. See ubugeeei-prod/uf#287.
-    Upgrade,
+    /// The command `uf upgrade` was named after and never was. It resolves the
+    /// newest release, downloads it, checks it against the sha256 published
+    /// beside it and links it — through the same installer
+    /// `curl -fsSL https://setup.uniflowed.dev | sh` runs, because a second
+    /// implementation of a checked download is a second one to get wrong. See
+    /// ubugeeei-prod/uf#424 and ubugeeei-prod/uf#499.
+    ///
+    /// `UF_VERSION` pins a version, `UF_RELEASE_BASE` points at a mirror, and
+    /// both mean here what they mean to the installer.
+    SelfUpdate,
     /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
+    ///
+    /// A version this machine does not have is downloaded and verified, by the
+    /// same installer `uf self-update` uses. It is not fabricated by copying
+    /// the running binary under another name, which is what it used to be:
+    /// ubugeeei-prod/uf#534.
     Use {
         /// The toolchain to activate.
         runtime: String,

@@ -707,8 +707,10 @@ Implemented native slices already cover:
 - Rust-native `uf dev` HTTP state and health endpoint
 - `uf install` workspace discovery, `uf.lock`, store manifest, and
   content-addressed package entries
-- `uf use` local current-binary runtime activation through XDG directories
-- `uf upgrade` package/runtime manifest generation
+- `uf use` and `uf self-update` runtime acquisition and activation, through the
+  installer `curl -fsSL https://setup.uniflowed.dev | sh` runs and the store it
+  unpacks into
+- `uf install` package/runtime plan generation into `.uf/install.json`
 - `ufx` native execution for known `@uniflowed/*` package entrypoints
 - `uf publish` and `uf release` metadata generation for trusted publishing
 - source-level native `uf test` execution for the first assertion subset,

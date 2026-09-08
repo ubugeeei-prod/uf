@@ -39,94 +39,53 @@ struct Stage {
 /// delegate nothing — `info`, `inspect`, `explain`, `completion`, `create` —
 /// are absent on purpose: there is no provider to name, and an entry saying
 /// "uf" three times would be a list of nothing.
+///
+/// This is also the list `uf explain <TAB>` offers: `completion` matches
+/// against this constant rather than against a copy of it. It used to be a
+/// copy, and the copy had drifted in both directions at once
+/// (ubugeeei-prod/uf#425). `known_is_exactly_what_explain_answers` in `tests`
+/// holds the other half of the same problem: a name here that [`stages_for`]
+/// does not answer, or an answer that is not named here.
 pub(crate) const KNOWN: &[&str] = &[
-    "dev", "build", "preview", "start", "doc", "test", "fmt", "lint", "check", "run", "exec",
-    "install", "add", "remove", "update", "patch", "pm", "catalog", "why", "upgrade", "use", "env",
-    "prepare", "publish", "release", "lsp",
+    "dev",
+    "build",
+    "preview",
+    "start",
+    "doc",
+    "test",
+    "fmt",
+    "lint",
+    "check",
+    "run",
+    "exec",
+    "install",
+    "add",
+    "remove",
+    "uninstall",
+    "update",
+    "patch",
+    "pm",
+    "catalog",
+    "why",
+    "ls",
+    "audit",
+    "search",
+    "self-update",
+    "use",
+    "env",
+    "prepare",
+    "publish",
+    "release",
+    "lsp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let stages = match command {
-        "dev" => dev_stages(&resolved),
-        "build" => build_stages(&resolved),
-        "preview" => preview_stages(&resolved),
-        "start" => start_stages(&resolved),
-        "doc" => doc_stages(),
-        "test" => test_stages(&resolved),
-        "fmt" => fmt_stages(&resolved),
-        "lint" => lint_stages(&resolved),
-        "check" => check_stages(&resolved),
-        "run" => run_stages(&resolved),
-        "exec" => exec_stages(&resolved),
-        "install" => install_stages(&resolved),
-        "add" => dependency_stages(
-            &resolved,
-            Operation::Add {
-                kind: DependencyKind::Prod,
-            },
-            "writes the specifiers into dependencies, the lockfile and node_modules",
-        ),
-        "remove" | "uninstall" => dependency_stages(
-            &resolved,
-            Operation::Remove,
-            "takes the names out of every dependency field, the lockfile and node_modules",
-        ),
-        "update" => dependency_stages(
-            &resolved,
-            Operation::Update,
-            "moves the lockfile to the newest versions the manifest ranges already allow",
-        ),
-        // The listing is uf's own — it reads the workspace's manifests and
-        // nothing else — and `uf catalog set` rewrites them and then delegates
-        // an install, which is the part with a provider worth naming.
-        "pm" => query_stages(
-            &resolved,
-            Operation::Install,
-            "`uf pm approve-builds` reads node_modules for the packages that declare an install \
-             script and the root manifest for the ones this project has approved; the manager is \
-             what enforces the list, which is why the list lives in the field the manager reads",
-        ),
-        "patch" => query_stages(
-            &resolved,
-            Operation::Patch,
-            "the manager extracts a copy of the package into a temporary directory and prints \
-             the path; `uf patch --commit` turns your edits into a patch file and reinstalls",
-        ),
-        "catalog" => dependency_stages(
-            &resolved,
-            Operation::Install,
-            "`uf catalog` reads the manifests and reports; `uf catalog set` rewrites the range \
-             in each of them and the manager installs what they now say",
-        ),
-        "why" => why_stages(&resolved),
-        "ls" => query_stages(
-            &resolved,
-            Operation::List,
-            "the manager reads its own lockfile and prints the tree it installed",
-        ),
-        "audit" => query_stages(
-            &resolved,
-            Operation::Audit,
-            "the manager sends the tree to its registry's advisory endpoint and reports what \
-             came back",
-        ),
-        "search" => query_stages(
-            &resolved,
-            Operation::Search,
-            "the manager queries its own registry — which is the reason uf does not substitute \
-             another manager's search for one that has none",
-        ),
-        "upgrade" => upgrade_stages(&resolved),
-        "use" | "env" => runtime_stages(&resolved),
-        "prepare" => prepare_stages(&resolved),
-        "publish" => publish_stages(&resolved),
-        "release" => release_stages(&resolved),
-        "lsp" => lsp_stages(&resolved),
-        other => bail!(
-            "uf explain does not describe {other:?}; it knows {}",
+    let Some(stages) = stages_for(command, &resolved) else {
+        bail!(
+            "uf explain does not describe {command:?}; it knows {}",
             KNOWN.join(", ")
-        ),
+        )
     };
 
     let sources = config_sources(&resolved);
@@ -175,6 +134,93 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         renderer.bullet_list(out, 4, &rows);
     });
     Ok(())
+}
+
+/// The stages of one command, or `None` when `uf explain` does not describe it.
+///
+/// Split from [`explain`] so that [`KNOWN`] can be checked against what this
+/// actually answers rather than against a reading of it. The two used to be a
+/// `match` and a hand-written list beside it, and the list was missing four of
+/// the arms.
+fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
+    Some(match command {
+        "dev" => dev_stages(resolved),
+        "build" => build_stages(resolved),
+        "preview" => preview_stages(resolved),
+        "start" => start_stages(resolved),
+        "doc" => doc_stages(),
+        "test" => test_stages(resolved),
+        "fmt" => fmt_stages(resolved),
+        "lint" => lint_stages(resolved),
+        "check" => check_stages(resolved),
+        "run" => run_stages(resolved),
+        "exec" => exec_stages(resolved),
+        "install" => install_stages(resolved),
+        "add" => dependency_stages(
+            resolved,
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            "writes the specifiers into dependencies, the lockfile and node_modules",
+        ),
+        "remove" | "uninstall" => dependency_stages(
+            resolved,
+            Operation::Remove,
+            "takes the names out of every dependency field, the lockfile and node_modules",
+        ),
+        "update" => dependency_stages(
+            resolved,
+            Operation::Update,
+            "moves the lockfile to the newest versions the manifest ranges already allow",
+        ),
+        // The listing is uf's own — it reads the workspace's manifests and
+        // nothing else — and `uf catalog set` rewrites them and then delegates
+        // an install, which is the part with a provider worth naming.
+        "pm" => query_stages(
+            resolved,
+            Operation::Install,
+            "`uf pm approve-builds` reads node_modules for the packages that declare an install \
+             script and the root manifest for the ones this project has approved; the manager is \
+             what enforces the list, which is why the list lives in the field the manager reads",
+        ),
+        "patch" => query_stages(
+            resolved,
+            Operation::Patch,
+            "the manager extracts a copy of the package into a temporary directory and prints \
+             the path; `uf patch --commit` turns your edits into a patch file and reinstalls",
+        ),
+        "catalog" => dependency_stages(
+            resolved,
+            Operation::Install,
+            "`uf catalog` reads the manifests and reports; `uf catalog set` rewrites the range \
+             in each of them and the manager installs what they now say",
+        ),
+        "why" => why_stages(resolved),
+        "ls" => query_stages(
+            resolved,
+            Operation::List,
+            "the manager reads its own lockfile and prints the tree it installed",
+        ),
+        "audit" => query_stages(
+            resolved,
+            Operation::Audit,
+            "the manager sends the tree to its registry's advisory endpoint and reports what \
+             came back",
+        ),
+        "search" => query_stages(
+            resolved,
+            Operation::Search,
+            "the manager queries its own registry — which is the reason uf does not substitute \
+             another manager's search for one that has none",
+        ),
+        "self-update" => self_update_stages(),
+        "use" | "env" => runtime_stages(resolved),
+        "prepare" => prepare_stages(resolved),
+        "publish" => publish_stages(resolved),
+        "release" => release_stages(resolved),
+        "lsp" => lsp_stages(resolved),
+        _ => return None,
+    })
 }
 
 /// Where the answers came from.
@@ -414,20 +460,42 @@ fn why_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     }]
 }
 
-fn upgrade_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+/// `uf self-update`, whose every stage is somebody else's and says so.
+///
+/// The provider is the installer, named as a file rather than as "uf",
+/// because that is the whole answer to "what will this do": it runs the same
+/// script `curl -fsSL https://setup.uniflowed.dev | sh` runs, embedded in this
+/// binary at build time. A plan that said "uf" four times would hide the one
+/// fact a reader is checking — that nothing here is a second download path
+/// with its own idea of what a verified archive is.
+fn self_update_stages() -> Vec<Stage> {
+    const INSTALLER: &str = "install.sh (embedded)";
     vec![
         Stage {
-            name: "packages",
-            provider: resolver_name(resolved).to_string(),
-            detail: format!("re-resolves against {}", resolved.config.pm.lockfile),
+            name: "resolution",
+            provider: INSTALLER.to_string(),
+            detail: "the newest release, stable channel first and prereleases after; UF_VERSION \
+                     pins one and UF_RELEASE_BASE points at a mirror"
+                .to_string(),
         },
         Stage {
-            name: "toolchain",
-            provider: "uf_rm".to_string(),
-            detail: format!(
-                "acquisition {:?}, applied {:?}",
-                resolved.config.rm.acquisition, resolved.config.rm.apply
-            ),
+            name: "download",
+            provider: INSTALLER.to_string(),
+            detail: "uf-<target>.tar.gz and the sha256 published beside it, over curl".to_string(),
+        },
+        Stage {
+            name: "verification",
+            provider: INSTALLER.to_string(),
+            detail: "the digest must match, and an archive whose members escape their own \
+                     directory is refused before tar is given it"
+                .to_string(),
+        },
+        Stage {
+            name: "activation",
+            provider: "uf".to_string(),
+            detail: "uf, ufr and ufx are linked at the unpacked version, and runtime.json \
+                     records where it came from"
+                .to_string(),
         },
     ]
 }
@@ -1131,4 +1199,98 @@ fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: "uf does not type-check; Flow is the type system".to_string(),
         },
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use clap::CommandFactory;
+
+    use super::*;
+
+    /// A project that is nothing but a directory, which is the config every
+    /// command has to work with when nobody wrote one.
+    fn defaults() -> (tempfile::TempDir, ResolvedConfig) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap().to_path_buf();
+        let resolved = load_config(&root).unwrap();
+        (dir, resolved)
+    }
+
+    /// The list and the dispatch are one thing said twice, and this is what
+    /// keeps the two sayings the same.
+    ///
+    /// `KNOWN` is what `uf explain <unknown>` offers and what `uf explain <TAB>`
+    /// completes; [`stages_for`] is what `uf explain <name>` actually answers.
+    /// Before ubugeeei-prod/uf#425 there were three lists — this one, the
+    /// dispatch, and a copy in `completion` — and no two of them agreed.
+    #[test]
+    fn known_is_exactly_what_explain_answers() {
+        let (_guard, resolved) = defaults();
+
+        let answered = crate::Cli::command()
+            .get_subcommands()
+            .flat_map(|sub| {
+                std::iter::once(sub.get_name().to_owned())
+                    .chain(sub.get_all_aliases().map(ToOwned::to_owned))
+            })
+            .filter(|name| stages_for(name, &resolved).is_some())
+            .collect::<BTreeSet<_>>();
+        let known = KNOWN
+            .iter()
+            .map(ToString::to_string)
+            .collect::<BTreeSet<_>>();
+
+        similar_asserts::assert_eq!(known, answered);
+    }
+
+    /// Every name in the list has to be a command, or completion offers a word
+    /// that is not one and the "it knows …" line names something untypeable.
+    #[test]
+    fn every_explainable_name_is_a_command() {
+        let command = crate::Cli::command();
+        let names = command
+            .get_subcommands()
+            .flat_map(|sub| std::iter::once(sub.get_name()).chain(sub.get_all_aliases()))
+            .collect::<BTreeSet<_>>();
+
+        for name in KNOWN {
+            assert!(names.contains(name), "uf has no `{name}` to explain");
+        }
+    }
+
+    /// The commands that are deliberately absent: they delegate to nobody, so
+    /// a plan for them would be the word "uf" repeated.
+    #[test]
+    fn a_command_with_no_provider_is_not_explained() {
+        let (_guard, resolved) = defaults();
+
+        for command in ["info", "inspect", "explain", "completion", "init", "new"] {
+            assert!(
+                stages_for(command, &resolved).is_none(),
+                "uf {command} has no provider to name and should not be explained"
+            );
+        }
+    }
+
+    /// `uf self-update` replaced `uf upgrade`, and the plan has to say what the
+    /// new command does rather than inherit the old one's stages.
+    #[test]
+    fn self_update_names_the_installer_and_the_checksum() {
+        let (_guard, resolved) = defaults();
+        let stages = stages_for("self-update", &resolved).expect("self-update is explainable");
+
+        assert!(
+            stages
+                .iter()
+                .any(|stage| stage.provider.contains("install.sh")),
+            "the plan does not name the installer"
+        );
+        assert!(
+            stages.iter().any(|stage| stage.detail.contains("sha256")),
+            "the plan does not mention the checksum"
+        );
+        assert!(stages_for("upgrade", &resolved).is_none());
+    }
 }
