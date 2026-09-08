@@ -1,0 +1,21 @@
+[package]
+name = "uf_i18n"
+description = "Message catalogue extraction and translation merge for `@uniflowed/i18n`."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+camino.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The digest that says a message changed since it was sent out. Not a security
+# boundary; see `MessageEntry::digest` for what it is and is not.
+sha2.workspace = true
+thiserror.workspace = true
+uf_config = { path = "../uf_config" }
+uf_flow = { path = "../uf_flow" }
+uf_project = { path = "../uf_project" }

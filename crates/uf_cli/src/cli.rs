@@ -324,6 +324,16 @@ pub(crate) enum Commands {
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
     },
+    /// The message catalogue: out to a translator, and back.
+    ///
+    /// `@uniflowed/i18n` declares each message beside its parameters in source.
+    /// `uf i18n extract` turns that into one JSON file a translation vendor
+    /// accepts, and `uf i18n merge` reads the translated file back into the
+    /// locale module `defineLocales` loads.
+    I18n {
+        #[command(subcommand)]
+        command: I18nCommand,
+    },
     /// Print the toolchain's version, host, and resolved paths.
     Info,
     /// Print the resolved configuration, after defaults and plugins.
@@ -755,6 +765,10 @@ impl Commands {
             Self::Check { json: true, .. }
                 | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
+                | Self::I18n {
+                    command: I18nCommand::Extract { json: true, .. }
+                        | I18nCommand::Merge { json: true, .. },
+                }
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true, .. }
                 | Self::Test { json: true, .. }
@@ -939,6 +953,53 @@ pub(crate) enum CatalogCommand {
         /// Say what would change, and change nothing.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum I18nCommand {
+    /// Write every message the project declares as one JSON catalogue.
+    ///
+    /// The file holds each message's MessageFormat 2 source, the parameters it
+    /// takes, where it is declared and a digest of the two. A `translation`
+    /// field starts equal to the source, which is what gives a translator
+    /// something to edit rather than an empty box.
+    ///
+    /// A `message(…)` uf cannot read with certainty is reported and nothing is
+    /// written: a catalogue quietly missing a message is invisible in review
+    /// and visible to a reader of the page.
+    Extract {
+        /// The locale the messages are written in, e.g. `en-US`.
+        ///
+        /// Read from the project's `defineCatalogue` calls when they name one
+        /// literal tag, and required when they name none or several.
+        #[arg(long, value_name = "TAG")]
+        locale: Option<String>,
+        /// Where to write it. Defaults to `i18n/<locale>.json`.
+        #[arg(long, value_name = "PATH")]
+        out: Option<Utf8PathBuf>,
+        /// Emit machine-readable JSON on stdout, and write no file.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read a translated catalogue back into a locale module.
+    ///
+    /// The file is the one `uf i18n extract` wrote, with each `translation`
+    /// filled in and `locale` set to the language they are in. uf extracts the
+    /// project again and holds every returned entry against what its message
+    /// says today: one whose source or parameters changed while the file was
+    /// out is named and left out, because a translation of a sentence that no
+    /// longer exists is not a translation of the one that replaced it.
+    Merge {
+        /// The translated catalogue.
+        #[arg(value_name = "FILE")]
+        file: Utf8PathBuf,
+        /// Where to write the module. Defaults to `<locale>.js` beside FILE.
+        #[arg(long, value_name = "PATH")]
+        out: Option<Utf8PathBuf>,
+        /// Emit machine-readable JSON on stdout, and write no file.
+        #[arg(long)]
+        json: bool,
     },
 }
 

@@ -79,6 +79,7 @@ import {
 } from "./internal/routes.js";
 import { TransformService, isFlowModule } from "@uniflowed/host/transform";
 import { createChannelMiddleware } from "./internal/diagnostics.js";
+import { devtoolsPreamble } from "./internal/devtools.js";
 import { send, toRequest } from "./internal/http.js";
 import { beginRequest } from "./internal/serve.js";
 
@@ -122,9 +123,14 @@ export default function uniflowed(options = {}) {
   const appEntry = app.router?.entry ?? ufConfig.build?.entries?.[0] ?? "app.js";
   const markdown = app.builtins?.markdown ?? {};
   const builtins = app.builtins ?? {};
+  // On unless the project says otherwise, and read as `!== false` rather than
+  // `=== true` because that is what "on by default" means for a field almost
+  // no `uf.config.js` will mention. It only ever reaches the *development*
+  // client entry; see `flowPlugin`'s `load`. ubugeeei-prod/uf#516.
+  const strictMode = app.react?.strictMode !== false;
 
   return [
-    flowPlugin({ routerRoot, appEntry, command: options.command }),
+    flowPlugin({ routerRoot, appEntry, strictMode, command: options.command }),
     mdxPlugin(markdown),
     assetPlugin({
       images: builtins.images ?? {},
@@ -136,7 +142,7 @@ export default function uniflowed(options = {}) {
   ];
 }
 
-function flowPlugin({ routerRoot, appEntry, command }) {
+function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
   let root = process.cwd();
   let isProduction = false;
   let base = "/";
@@ -307,7 +313,12 @@ function flowPlugin({ routerRoot, appEntry, command }) {
         if (isSsr(this, loadOptions)) return routesModuleSource(table);
         return clientRoutesModule(table);
       }
-      if (id === resolved(VIRTUAL.client)) return clientModuleSource(entryPath);
+      // Strict Mode belongs to the client entry and to development only: a
+      // build passes `false`, so the generated module is the one that existed
+      // before #516 and a visitor's browser renders once.
+      if (id === resolved(VIRTUAL.client)) {
+        return clientModuleSource(entryPath, { strictMode: strictMode && !isProduction });
+      }
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
       // Only `virtual:uf/server` imports this, so it is only ever asked for in
       // the server environment — but the table it carries is every callable
@@ -406,9 +417,26 @@ function flowPlugin({ routerRoot, appEntry, command }) {
       }
     },
 
+    // The two scripts a development document loads before its own, and
+    // nothing at all in a build — which is the whole of "the hook is out of a
+    // production build" (ubugeeei-prod/uf#503) and of "production does not run
+    // under Strict Mode" (#516, whose flag is generated into
+    // `virtual:uf/client` rather than injected here).
+    //
+    // DevTools first, and as a *classic* script rather than a module: React
+    // registers itself with `__REACT_DEVTOOLS_GLOBAL_HOOK__` while `react-dom`
+    // is evaluated and never again, so the hook has to exist before any module
+    // runs. A classic inline script runs while the parser is on it; a module
+    // waits for the document. `internal/devtools.js` has the rest of the
+    // argument, and the three conditions DevTools needs.
     transformIndexHtml() {
       if (isProduction) return [];
       return [
+        {
+          tag: "script",
+          children: devtoolsPreamble(),
+          injectTo: "head-prepend",
+        },
         {
           tag: "script",
           attrs: { type: "module" },

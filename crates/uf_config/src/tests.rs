@@ -12,6 +12,9 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(config.app.react.async_react);
     assert!(config.app.react.suspense);
     assert!(config.app.react.use_hook);
+    // Strict Mode is on unless a project turns it off, and `uf dev` is the only
+    // command that acts on it. ubugeeei-prod/uf#516.
+    assert!(config.app.react.strict_mode);
     assert!(config.app.rsc);
     assert!(config.app.server_actions);
     assert_eq!(config.app.runtime.default, RuntimeEngine::Node);
