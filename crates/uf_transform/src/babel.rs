@@ -65,7 +65,10 @@ impl LineTable {
 }
 
 fn convert(node: &mut Value) -> Result<Edit, TransformError> {
-    let Some(kind) = node_type(node).map(str::to_owned) else {
+    // Classified rather than owned, for the reason [`Final::of`] gives: the
+    // arms below need the node mutably, and paying a `String` per node to hold
+    // a name across that borrow is the cost this avoids.
+    let Some(kind) = node_type(node).map(Convert::of) else {
         return Ok(Edit::Keep);
     };
     // The parser attaches comments to nodes in its own shape; the compiler
@@ -74,36 +77,36 @@ fn convert(node: &mut Value) -> Result<Edit, TransformError> {
     for key in ["leadingComments", "trailingComments", "innerComments"] {
         remove_key(node, key);
     }
-    Ok(match kind.as_str() {
-        "Literal" => Edit::Replace(literal(node)),
-        "Property" => Edit::Replace(property(node)?),
-        "MethodDefinition" => Edit::Replace(method_definition(node)),
-        "PropertyDefinition" => Edit::Replace(property_definition(node)),
-        "PrivateIdentifier" => Edit::Replace(private_name(node)),
-        "ImportExpression" => Edit::Replace(import_expression(node)),
-        "ExportAllDeclaration" if !node["exported"].is_null() => {
+    Ok(match kind {
+        Convert::Literal => Edit::Replace(literal(node)),
+        Convert::Property => Edit::Replace(property(node)?),
+        Convert::MethodDefinition => Edit::Replace(method_definition(node)),
+        Convert::PropertyDefinition => Edit::Replace(property_definition(node)),
+        Convert::PrivateIdentifier => Edit::Replace(private_name(node)),
+        Convert::ImportExpression => Edit::Replace(import_expression(node)),
+        Convert::ExportAllDeclaration if !node["exported"].is_null() => {
             Edit::Replace(export_namespace(node))
         }
-        "ChainExpression" => Edit::Replace(chain(take(node, "expression"))),
-        "Program" | "BlockStatement" => {
+        Convert::ChainExpression => Edit::Replace(chain(take(node, "expression"))),
+        Convert::Block => {
             lift_directives(node);
             Edit::Keep
         }
-        "JSXText" => {
+        Convert::JsxText => {
             let value = node["value"].clone();
             let raw = take(node, "raw");
             node["extra"] = json!({ "rawValue": value, "raw": raw });
             Edit::Keep
         }
-        "ArrayExpression" => {
+        Convert::ArrayExpression => {
             remove_key(node, "trailingComma");
             Edit::Keep
         }
-        "VariableDeclaration" => {
+        Convert::VariableDeclaration => {
             remove_key(node, "__ufEnum");
             Edit::Keep
         }
-        "ClassDeclaration" | "ClassExpression" => {
+        Convert::Class => {
             if node
                 .get("decorators")
                 .and_then(Value::as_array)
@@ -113,7 +116,7 @@ fn convert(node: &mut Value) -> Result<Edit, TransformError> {
             }
             Edit::Keep
         }
-        "ImportDeclaration" => {
+        Convert::ImportDeclaration => {
             for key in ["attributes", "assertions"] {
                 if node
                     .get(key)
@@ -125,12 +128,58 @@ fn convert(node: &mut Value) -> Result<Edit, TransformError> {
             }
             Edit::Keep
         }
-        "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration" => {
+        Convert::Function => {
             remove_key(node, "expression");
             Edit::Keep
         }
         _ => Edit::Keep,
     })
+}
+
+/// The node types [`convert`] treats specially, as a value rather than a name.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Convert {
+    ArrayExpression,
+    Block,
+    ChainExpression,
+    Class,
+    ExportAllDeclaration,
+    Function,
+    ImportDeclaration,
+    ImportExpression,
+    JsxText,
+    Literal,
+    MethodDefinition,
+    PrivateIdentifier,
+    Property,
+    PropertyDefinition,
+    VariableDeclaration,
+    Other,
+}
+
+impl Convert {
+    fn of(kind: &str) -> Self {
+        match kind {
+            "ArrayExpression" => Self::ArrayExpression,
+            "Program" | "BlockStatement" => Self::Block,
+            "ChainExpression" => Self::ChainExpression,
+            "ClassDeclaration" | "ClassExpression" => Self::Class,
+            "ExportAllDeclaration" => Self::ExportAllDeclaration,
+            "ArrowFunctionExpression" | "FunctionExpression" | "FunctionDeclaration" => {
+                Self::Function
+            }
+            "ImportDeclaration" => Self::ImportDeclaration,
+            "ImportExpression" => Self::ImportExpression,
+            "JSXText" => Self::JsxText,
+            "Literal" => Self::Literal,
+            "MethodDefinition" => Self::MethodDefinition,
+            "PrivateIdentifier" => Self::PrivateIdentifier,
+            "Property" => Self::Property,
+            "PropertyDefinition" => Self::PropertyDefinition,
+            "VariableDeclaration" => Self::VariableDeclaration,
+            _ => Self::Other,
+        }
+    }
 }
 
 fn remove_key(node: &mut Value, key: &str) {
@@ -458,17 +507,75 @@ fn comment(node: &Value) -> Value {
 /// The keys `finalize` never descends into.
 const SKIPPED: [&str; 4] = ["type", "loc", "range", "extra"];
 
+/// Overwrite an existing `loc` with a recomputed start and end.
+///
+/// `false` when there is nothing of the right shape to write into and the
+/// caller has to build one — a node the translator gave no `loc`, or one whose
+/// `loc` is not the two-point object every other node's is.
+///
+/// The keys are all present already, so every write is an assignment into a
+/// slot rather than an insert: no key is allocated and no map is grown.
+fn overwrite_position(object: &mut Map<String, Value>, start: (u32, u32), end: (u32, u32)) -> bool {
+    let Some(loc) = object.get_mut("loc").and_then(Value::as_object_mut) else {
+        return false;
+    };
+    // Babel's `loc` has no `source`, and the translator's does.
+    loc.remove("source");
+    let mut written = 0;
+    for (key, (line, column)) in [("start", start), ("end", end)] {
+        let Some(point) = loc.get_mut(key).and_then(Value::as_object_mut) else {
+            continue;
+        };
+        // One at a time: two `get_mut` on the same map cannot be live at once,
+        // and both keys are checked before either is written so a `loc`
+        // missing one of them is left alone rather than half-updated.
+        if !(point.contains_key("line") && point.contains_key("column")) {
+            continue;
+        }
+        if let Some(slot) = point.get_mut("line") {
+            *slot = Value::from(line);
+        }
+        if let Some(slot) = point.get_mut("column") {
+            *slot = Value::from(column);
+        }
+        written += 1;
+    }
+    written == 2
+}
+
+/// The node types [`finalize`] treats specially, as a value rather than a name.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Final {
+    Call,
+    ExpressionStatement,
+    Identifier,
+    MemberExpression,
+    Other,
+}
+
+impl Final {
+    fn of(kind: &str) -> Self {
+        match kind {
+            "CallExpression" | "NewExpression" => Self::Call,
+            "ExpressionStatement" => Self::ExpressionStatement,
+            "Identifier" => Self::Identifier,
+            "MemberExpression" => Self::MemberExpression,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// Assign node ids and Babel's `start`/`end`, and tidy the fields Babel
 /// omits, throughout the file.
 fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
     let Some(object) = node.as_object_mut() else {
         return;
     };
-    let Some(kind) = object
-        .get("type")
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-    else {
+    // Classified rather than owned. Reading the type borrows the node and
+    // every arm below needs it mutably, which is what `str::to_owned` was
+    // paying for: one `String` per node, for a name compared four times and
+    // dropped. See ubugeeei-prod/uf#668.
+    let Some(kind) = object.get("type").and_then(Value::as_str).map(Final::of) else {
         return;
     };
 
@@ -487,30 +594,39 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
     if let Some((start, end)) = offsets {
         let (start_line, start_column) = lines.position(u32::try_from(start).unwrap_or(u32::MAX));
         let (end_line, end_column) = lines.position(u32::try_from(end).unwrap_or(u32::MAX));
-        object.insert(
-            "loc".to_owned(),
-            json!({
-                "start": { "line": start_line, "column": start_column },
-                "end": { "line": end_line, "column": end_column },
-            }),
-        );
+        // Written into the `loc` the translator already attached, when there
+        // is one. Its columns count code points where everything downstream
+        // counts UTF-16 units, so the numbers are wrong — but the shape is
+        // exactly right, and overwriting four of them costs nothing where
+        // building a replacement cost three maps and six keys, on every node
+        // of every module. `estree::parse` asks for `include_locs`, so there
+        // is one to write into almost always. See ubugeeei-prod/uf#668.
+        if !overwrite_position(object, (start_line, start_column), (end_line, end_column)) {
+            object.insert(
+                "loc".to_owned(),
+                json!({
+                    "start": { "line": start_line, "column": start_column },
+                    "end": { "line": end_line, "column": end_column },
+                }),
+            );
+        }
     } else if let Some(loc) = object.get_mut("loc").and_then(Value::as_object_mut) {
         loc.remove("source");
     }
 
-    match kind.as_str() {
-        "ExpressionStatement" => {
+    match kind {
+        Final::ExpressionStatement => {
             object.remove("directive");
         }
-        "MemberExpression" => {
+        Final::MemberExpression => {
             object.remove("optional");
         }
-        "CallExpression" | "NewExpression" => {
+        Final::Call => {
             if object.get("optional") == Some(&Value::Bool(false)) {
                 object.remove("optional");
             }
         }
-        "Identifier" => {
+        Final::Identifier => {
             let name = object.get("name").cloned();
             if let (Some(loc), Some(name)) =
                 (object.get_mut("loc").and_then(Value::as_object_mut), name)
@@ -518,22 +634,27 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
                 loc.insert("identifierName".to_owned(), name);
             }
         }
-        _ => {}
+        Final::Other => {}
     }
 
-    let keys: Vec<String> = object
-        .keys()
-        .filter(|key| !SKIPPED.contains(&key.as_str()))
-        .cloned()
-        .collect();
-    for key in keys {
-        match object.get_mut(&key) {
-            Some(Value::Array(items)) => {
+    // Walked through the map itself. This used to collect the keys into a
+    // `Vec<String>` first — a vector and an owned copy of every key, on every
+    // node — because `get_mut` cannot run while `keys` is borrowed. `iter_mut`
+    // hands out the key and the child together and needs neither, and it is
+    // the same order, so `_nodeId` still counts the tree the way it did.
+    // On `packages/router/internal/runtime.js` this was the largest single
+    // line in ubugeeei-prod/uf#668.
+    for (key, child) in object.iter_mut() {
+        if SKIPPED.contains(&key.as_str()) {
+            continue;
+        }
+        match child {
+            Value::Array(items) => {
                 for item in items {
                     finalize(item, next_id, lines);
                 }
             }
-            Some(child @ Value::Object(_)) => finalize(child, next_id, lines),
+            Value::Object(_) => finalize(child, next_id, lines),
             _ => {}
         }
     }
