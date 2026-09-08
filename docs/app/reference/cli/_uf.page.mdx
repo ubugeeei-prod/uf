@@ -93,6 +93,51 @@ people actually ask when a command surprises them, which is "who is doing
 this, and which file decided that". An integrated toolchain that cannot say
 what it is doing is a black box — see [Architecture](/guide/architecture).
 
+### uf routes list
+
+Prints the route table `uf build` counts from: the path, the parameters it
+captures, how many middlewares run before it answers, and the page file each
+one resolved to.
+
+It is the same `discover_routes` the build runs, so a route that is missing
+here is a route that will be missing from the site. A directory uf reserves
+without serving, or a `[...rest]` with a segment after it, is reported as the
+error `uf build` would give rather than silently left out of the table.
+
+### uf routes add PATH [--layout] [--loader] [--middleware]
+
+Writes a route: the directory, `_uf.page.js`, and whichever of the rest was
+asked for.
+
+```
+uf routes add /articles/[slug] --loader
+```
+
+`PATH` is a URL path in the spelling the directories already use —
+`/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what you type
+is what appears in `RoutePath`. The page is typed from the path: a `[slug]`
+becomes `+slug: string` and a `[...path]` becomes
+`+path: $ReadOnlyArray<string>`.
+
+`--loader` is the one flag that is not a file. A loader is an export of the
+page module rather than a name uf reserves, so `--loader` adds the export and
+the `data` prop rather than writing a file of its own.
+
+What it writes is exported by name — `Page`, `Layout`, `middleware` — which is
+the spelling `uf new` uses and the one `react/no-default-export-component` does
+not report. A scaffold that made `uf lint` speak on its first run would be
+teaching that the rule is noise.
+
+The file names come from the same grammar `uf build` discovers routes with, so
+a scaffold uf writes is a route uf finds. A spelling uf reserves without
+serving — `@team`, `(.)photo` — is refused here with the sentence `uf build`
+and `uf lint` give for it, rather than written now and reported later. Nothing
+is overwritten: a route whose page already exists is an error, and a run that
+stops has written none of its files.
+
+`uf prepare` regenerates `router.js`, so the new path joins `RoutePath` on the
+next run of it.
+
 ## Running and building
 
 ### uf dev
@@ -263,8 +308,9 @@ host answers. Deploy the output directory to any static host, or check it with
 ### uf build --adapter TARGET
 
 Writes `.uf/deploy/TARGET/`: everything the target needs and nothing that is
-still in your checkout — no `node_modules`, no source, no `uf`. Four targets
-are implemented, and they share every line of the application:
+still in your checkout — no `node_modules`, no source, no `uf`. Five targets
+are implemented. Four of them run an application and share every line of it;
+the fifth runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
@@ -272,12 +318,17 @@ are implemented, and they share every line of the application:
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json`, `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
+| `static` | your build, file for file, and nothing else | upload it to any static host |
 
-`handler.js` is the seam and is identical work in all four: it is
+`handler.js` is the seam and is identical work in the four that have one: it is
 `@uniflowed/server/fetch`'s handler over your server bundle, it touches no
 filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
 lives — not a second application.
+
+`static` has no `handler.js` at all, because a static host runs no
+application — see [static](#static) below, whose whole implementation is the
+refusal.
 
 The one thing `handler.js` does say per target is what that target can do,
 because two of the answers differ:
@@ -301,14 +352,19 @@ around them, because the server bundle leaves `react` and `react-dom` as bare
 imports. An adapter's output links them in, so the directory is the whole of
 what has to travel.
 
-**No adapter output has ever been deployed.** uf is developed in a sandbox with
-no cloud credentials, no Docker daemon and no ability to bind a socket. What
-its tests establish is that each directory has the file set the platform
-documents, that the emitted entry answers when it is driven in process, and
-that all four answer *identically* — byte for byte, the same as `uf start`.
-None of that is a deployment. The first person to run `wrangler deploy` or
-upload the zip is finding something out, and
+**No server adapter's output has ever been deployed.** uf is developed in a
+sandbox with no cloud credentials, no Docker daemon and no ability to bind a
+socket. What its tests establish is that each directory has the file set the
+platform documents, that the emitted entry answers when it is driven in
+process, and that all four answer *identically* — byte for byte, the same as
+`uf start`, including a loader's `redirect()`, whose whole answer is a
+`Location` header. None of that is a deployment. The first person to run
+`wrangler deploy` or upload the zip is finding something out, and
 [#391](https://github.com/ubugeeei-prod/uf/issues/391) is where to say what.
+
+`static` is the exception, and only because there is nothing to deploy *to*: a
+directory of files is what every static host serves, and uf's own
+documentation site is built through this target in the test suite.
 
 #### node and container
 
@@ -407,16 +463,43 @@ comes back in the result's `cookies` rather than in `headers`, because
 iterating headers would join two cookies into one field nothing can parse
 apart. A response body whose media type is not text comes back base64-encoded.
 
-#### The three that are not written
+#### static
 
-`bun`, `deno` and `static` are names in `DeployAdapter` and nothing else.
-Asking for one is an error that says which and why, and names
+The output is your build — `dist/`, file for file, at the top of
+`.uf/deploy/static/` rather than inside a `static/` beside a server. There is
+no `handler.js`, no `server.js` and no `package.json`, because a static host
+serves whatever is in the directory and a file the application never mentions
+is a URL you did not mean to publish. Upload it to a CDN, an object store, or
+anything else that returns files; uf names no host, because naming one would
+be uf choosing a hosting company on your behalf.
+
+**The implementation is the refusal.** `uf build` has always written `dist/`,
+so this target adds no output. What it adds is that a project a static host
+*cannot* serve is now rejected by name instead of published with holes in it:
+
+| What | Why a file is not it |
+| --- | --- |
+| a `_uf.route.js` | it answers a request, and a `POST` has no file behind it |
+| a `_uf.middleware.js` | it runs once per request, before the route resolves, and nothing runs on a static host |
+| a route the prerender wrote no document for — parameters and no `generateStaticParams` | there is nothing to upload for it |
+| a `"use server"` export the browser can call | an action is a `POST` back to the application, at the page's own URL |
+
+Each finding names the URL, the file it is in, and what to do instead — which
+is usually `--adapter node`, since the application is the same file in all
+four server targets and the project does not have to change to use one. One
+prerendered document is enough for a parameterised route: a
+`generateStaticParams` that named three slugs wrote three files, and whether it
+named *every* slug is a question about your data that no build can ask.
+
+#### The two that are not written
+
+`bun` and `deno` are names in `DeployAdapter` and nothing else. Asking for one
+is an error that says which and why, and names
 [#391](https://github.com/ubugeeei-prod/uf/issues/391).
 
 | Target | Why not |
 | --- | --- |
 | `bun`, `deno` | The `node` output already runs unchanged on both. An adapter here is `Bun.serve` or `Deno.serve` in place of `node:http`, and it is worth writing only once a benchmark shows the native server beating `node:http` *under the same handler* — otherwise it is a directory with a different name on it. Nobody has run that benchmark. |
-| `static` | It emits nothing new: `uf build` already writes `dist/`. Its whole job is to **refuse** — a project whose routes include a handler, a middleware, or a route with parameters and no `generateStaticParams` cannot be served statically, and a build that silently dropped them is the failure this target exists to prevent. That needs the route table rather than a bundler, and it is a different piece of work from the other six. |
 
 `app.runtime.deploy.adapters` lists what this toolchain can actually produce,
 and `uf explain build` names the adapter a build will run.
@@ -535,11 +618,15 @@ Nothing is being decided on your behalf, so `--fix` applies it without asking.
 
 An **unsafe** fix is the edit the rule is asking for, spelled correctly, whose
 *correctness* rests on something the rule could not check. `export let count =
-0` → `export const count = 0` (`flow/non-const-var-export`) is the one uf has:
-the file still parses and still formats, and it throws at run time if anything
-reassigns the binding. It is not a guess at intent — a fix uf cannot spell at
-all is in neither tier — but it can change what the program does, so it waits
-to be asked for by name. Read the diff before committing it.
+0` → `export const count = 0` (`flow/non-const-var-export`) is one: the file
+still parses and still formats, and it throws at run time if anything reassigns
+the binding. `import.meta.hot.accept(…)` → `import.meta.hot?.accept(…)`
+(`vite/hot-needs-optional-chaining`) is the other, and it is the clearer
+illustration — in a dev server the two spellings are the same program, and in a
+build they are not, which is the bug being fixed and is still a change. Neither
+is a guess at intent — a fix uf cannot spell at all is in neither tier — but
+both can change what the program does, so they wait to be asked for by name.
+Read the diff before committing it.
 
 Most rules have no fix in either tier, and that is deliberate rather than
 unfinished: `flow/unclear-type` has three plausible answers, which is none, and
@@ -698,6 +785,13 @@ to run next. An install that changed nothing says so in a line and stops.
 The manager's own output is passed through untouched, on the stream it wrote it
 to. A failed install still says why in the manager's words.
 
+It also records what the workspace resolved to, in `.uf/install.json`: the
+resolver, the lockfile and store manifest it wrote, how many packages and store
+entries there are, and the runtime engine, acquisition and hosts the config
+implies. That file is a record and not an input — nothing reads it back — and
+it is what `uf upgrade` used to write under a name that promised a new uf
+([#424](https://github.com/ubugeeei-prod/uf/issues/424)).
+
 ### uf install --frozen-lockfile
 
 What CI runs. Installs exactly what the lockfiles pin, and **fails** rather than
@@ -789,8 +883,8 @@ config — and the install that follows is still the manager's. A registry that
 cannot be reached is reported next to the packages it could not answer for; it
 does not fail the command.
 
-This is **not** `uf upgrade`, which is about the toolchain and the workspace
-plan rather than about your dependencies.
+This is **not** [`uf self-update`](#uf-self-update), which replaces the uf
+binary rather than moving your dependencies.
 
 ### uf pm approve-builds [NAME...]
 
@@ -983,7 +1077,21 @@ be one typo away from taking a directory nobody named.
 
 Switches the active uf toolchain: `uf use uf@0.1.0`. It takes a `uf@<version>`
 and nothing else — the host a project runs on is `host.runtime` in
-`uf.config.js`, not this command.
+`uf.config.js`, not this command, and a name that is not `uf` is refused rather
+than installed as one.
+
+A version this machine already has is activated: `uf`, `ufr` and `ufx` in
+`~/.local/bin` are relinked at it, all three together. A version it does not
+have is **downloaded and verified first**, by the same installer
+[`uf self-update`](#uf-self-update) uses — so `uf use uf@0.9.9` for a release
+that does not exist fails and installs nothing, where it used to succeed by
+copying the running binary into a directory named after a version it was not
+([#534](https://github.com/ubugeeei-prod/uf/issues/534)).
+
+The exception, and the only one, is the version uf already is: a `uf` built
+from source can install itself into the store under its own version, with no
+network. `runtime.json` beside the runtime records which of the three it was —
+`release`, `mirror` or `running-binary`.
 
 ### uf env doctor
 
@@ -1020,14 +1128,37 @@ whatever the command exited with.
 Deletes store entries no repository is using. `--dry-run` says what would go and
 removes nothing.
 
-### uf upgrade
+### uf self-update
 
-Re-reads the workspace, rewrites `uf.lock` and the store, and records the
-package-resolver and runtime-manager plan in `.uf/upgrade.json`. It does not
-fetch anything and it does not replace the uf binary, in spite of its name; to
-move your dependencies use [`uf update`](#uf-update-package), and to move the
-toolchain use [`uf use`](#uf-use-toolchain)
-([#287](https://github.com/ubugeeei-prod/uf/issues/287)).
+Replaces this uf with the newest release: resolves it, downloads
+`uf-<target>.tar.gz`, checks it against the `sha256` published beside it,
+refuses an archive whose members escape their own directory, unpacks it into
+the runtime store and relinks `uf`, `ufr` and `ufx`.
+
+All six of those are the installer's —
+`infra/cloudflare/setup-assets/install.sh`, the script
+`curl -fsSL https://setup.uniflowed.dev | sh` runs — embedded in the uf binary
+at build time and piped into `sh`. uf does not carry a second downloader: a
+checked download written twice is a checked download to get wrong twice, and
+the shell one is the copy every new user's first command already runs.
+Embedding rather than fetching it means a self-update executes only what this
+uf was built from, and the only thing crossing the network is an archive whose
+digest is checked.
+
+It reads no project, so a `uf.config.js` uf cannot parse is not a reason to be
+unable to install a uf that can. `UF_VERSION` pins a version instead of
+resolving the newest, `UF_RELEASE_BASE` points at a mirror, and
+`UF_INSTALL_ROOT` and `UF_BIN_DIR` move the store and the links — each meaning
+here exactly what it means to the installer.
+
+`uf upgrade` was the name this was meant to be, and never what it did: it
+re-read the workspace and wrote a plan file, fetching nothing and replacing no
+binary ([#424](https://github.com/ubugeeei-prod/uf/issues/424),
+[#499](https://github.com/ubugeeei-prod/uf/issues/499)). It has been retired.
+Typing it now names the three commands it could have meant —
+`uf self-update` for a newer uf, [`uf update`](#uf-update-package) for newer
+dependencies, and [`uf install`](#uf-install), which is where re-reading the
+workspace and recording the plan now lives, in `.uf/install.json`.
 
 ## Publishing
 

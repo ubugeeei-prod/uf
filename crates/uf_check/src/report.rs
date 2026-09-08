@@ -42,7 +42,8 @@ pub struct ModuleClosure<'a> {
     /// because both use the same rules. A package's `package.json` is in here
     /// beside the file it publishes, since that is where the name comes from.
     pub sources: Vec<Source<'a>>,
-    /// Specifiers no source answered, sorted and de-duplicated.
+    /// Specifiers no source answered, each beside the file that imported it,
+    /// sorted and de-duplicated.
     ///
     /// Not all of these are holes. `react` is Flow's own `declare module` and
     /// `node:fs` is a builtin; the walk has no builtin environment to ask, and
@@ -50,7 +51,28 @@ pub struct ModuleClosure<'a> {
     /// library definitions. This list is for the caller that can go and find
     /// more sources — reading `node_modules` for a bare specifier, say — and
     /// then ask again.
-    pub unresolved: Vec<CompactString>,
+    ///
+    /// The importer is here and not deduplicated away because *where* a
+    /// specifier was written decides what it means: Node resolves a bare
+    /// specifier by climbing from the importing file, so `bar` imported from
+    /// inside `node_modules/foo` is `node_modules/foo/node_modules/bar` when
+    /// that exists and the hoisted `node_modules/bar` only when it does not.
+    /// A caller handed a bare set of names could only ever find one copy.
+    /// ubugeeei-prod/uf#486.
+    pub unresolved: Vec<UnresolvedImport>,
+}
+
+/// A specifier nothing in the batch answered, and the file that wrote it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UnresolvedImport {
+    /// The specifier, exactly as the import wrote it.
+    pub specifier: CompactString,
+    /// The batch path of the file that imported it.
+    ///
+    /// What a caller resolving the specifier itself must climb from. It is one
+    /// importer of possibly many — the same specifier written in two packages
+    /// appears twice, because the two may mean different files.
+    pub importer: CompactString,
 }
 
 /// What one call to [`crate::prepare_builtins`] cost.

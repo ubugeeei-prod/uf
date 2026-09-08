@@ -265,3 +265,165 @@ pub(crate) fn extract_first_string_arg(tail_after_ident: &str) -> Option<String>
 pub(crate) fn is_identifier_char(ch: char) -> bool {
     ch == '_' || ch == '$' || ch.is_ascii_alphanumeric()
 }
+
+/// One name a static `import` brings into a file, and where it came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ImportedBinding<'a> {
+    /// The name as it is written in this file.
+    pub(crate) local: &'a str,
+    /// The module specifier, exactly as written.
+    pub(crate) module: &'a str,
+}
+
+/// Longest import statement this scanner will read, in bytes.
+///
+/// A bound rather than a limit anybody should reach: the point is that a stray
+/// `import` the mask did not exclude cannot make the scan walk the rest of a
+/// generated file looking for a specifier that is not there.
+const MAX_IMPORT_BYTES: usize = 4096;
+
+/// Every value a file's static imports bind, with the module each came from.
+///
+/// This is what lets discovery tell `import { test } from "@uniflowed/test"`
+/// from `import test from "node:test"` — the same call, in the same shape, and
+/// only one of them is a declaration this runner can execute. See
+/// [`crate::discovery`].
+///
+/// Static imports only, and deliberately: `import(…)` is a promise whose
+/// binding is decided at run time, and `require` is not a form these files
+/// take. A name this misses is a name discovery treats as it always did, which
+/// is the safe direction — the run-time check in [`crate::runner`] is what
+/// catches the rest.
+///
+/// Type imports are skipped: `import type { Test } from "…"` binds nothing a
+/// call can reach, and treating it as a value binding would make a file that
+/// imports a *type* called `test` stop declaring tests.
+pub(crate) fn value_imports<'a>(source: &'a str, mask: &[bool]) -> Vec<ImportedBinding<'a>> {
+    const KEYWORD: &str = "import";
+    let mut bindings = Vec::new();
+    let mut search_start = 0;
+    while let Some(relative) = source[search_start..].find(KEYWORD) {
+        let offset = search_start + relative;
+        search_start = offset + KEYWORD.len();
+
+        if !mask.get(offset).copied().unwrap_or(false) {
+            continue;
+        }
+        // The tail of a longer word (`reimport`), or somebody's property.
+        let before = source[..offset].chars().next_back();
+        if before.is_some_and(|ch| is_identifier_char(ch) || ch == '.') {
+            continue;
+        }
+        let Some((next, next_offset)) = next_significant(source, search_start) else {
+            continue;
+        };
+        // `import(…)` is dynamic and `import.meta` is not an import at all.
+        // `import "./side-effect.js"` binds nothing.
+        if matches!(next, '(' | '.' | '"' | '\'') {
+            continue;
+        }
+        let Some((clause, module, end)) = import_statement(source, next_offset) else {
+            continue;
+        };
+        search_start = end;
+        push_bindings(clause, module, &mut bindings);
+    }
+    bindings
+}
+
+/// Split one `import` statement into its clause and its module specifier.
+///
+/// Returns the text between the keyword and the specifier, the specifier
+/// itself, and the offset one past the closing quote. A statement whose
+/// specifier is not found within [`MAX_IMPORT_BYTES`] yields nothing.
+fn import_statement(source: &str, from: usize) -> Option<(&str, &str, usize)> {
+    let bytes = source.as_bytes();
+    let end = source.len().min(from + MAX_IMPORT_BYTES);
+    let mut i = from;
+    while i < end {
+        match bytes[i] {
+            // The specifier is the only string literal a static import holds.
+            quote @ (b'"' | b'\'') => {
+                let start = i + 1;
+                let mut j = start;
+                while j < bytes.len() {
+                    if bytes[j] == b'\\' {
+                        j += 2;
+                        continue;
+                    }
+                    if bytes[j] == quote {
+                        return Some((&source[from..i], &source[start..j], j + 1));
+                    }
+                    j += 1;
+                }
+                return None;
+            }
+            // Nothing that can follow these belongs to an import statement, so
+            // whatever this `import` was, it was not one.
+            b';' | b'=' | b'(' | b'`' => return None,
+            _ => i += 1,
+        }
+    }
+    None
+}
+
+/// Record the value names one import clause binds.
+fn push_bindings<'a>(clause: &'a str, module: &'a str, out: &mut Vec<ImportedBinding<'a>>) {
+    let clause = clause.trim();
+    // `import type …` and `import typeof …` bind types; a call cannot reach
+    // one, so the file has no value by that name.
+    if first_word(clause) == "type" || first_word(clause) == "typeof" {
+        return;
+    }
+    let (head, named) = match (clause.find('{'), clause.find('}')) {
+        (Some(open), Some(close)) if close > open => {
+            (&clause[..open], Some(&clause[open + 1..close]))
+        }
+        _ => (clause, None),
+    };
+
+    // Whatever is left of the braces runs up to the `from` keyword, which is
+    // part of the statement rather than a name it binds.
+    let head = head.trim();
+    let head = match head.strip_suffix("from") {
+        Some(rest) if rest.ends_with(char::is_whitespace) => rest.trim(),
+        _ => head,
+    };
+
+    // The default binding, and `* as name`, in whichever order they appear.
+    for part in head.split(',') {
+        let part = part.trim();
+        match part.strip_prefix('*') {
+            Some(rest) => {
+                if let Some(local) = rest.trim().strip_prefix("as") {
+                    push_local(local.trim(), module, out);
+                }
+            }
+            None => push_local(part, module, out),
+        }
+    }
+
+    for specifier in named.into_iter().flat_map(|named| named.split(',')) {
+        let specifier = specifier.trim();
+        if specifier.is_empty() || first_word(specifier) == "type" {
+            continue;
+        }
+        match specifier.split_once(" as ") {
+            Some((_, local)) => push_local(local.trim(), module, out),
+            None => push_local(specifier, module, out),
+        }
+    }
+}
+
+/// Keep `local` if it is a plain identifier.
+fn push_local<'a>(local: &'a str, module: &'a str, out: &mut Vec<ImportedBinding<'a>>) {
+    if !local.is_empty() && local.chars().all(is_identifier_char) {
+        out.push(ImportedBinding { local, module });
+    }
+}
+
+/// The leading identifier of `text`, or an empty string.
+fn first_word(text: &str) -> &str {
+    let end = identifier_len(text);
+    &text[..end]
+}

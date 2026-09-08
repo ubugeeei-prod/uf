@@ -3,6 +3,22 @@
 version = 4
 
 [[package]]
+name = "ab_glyph"
+version = "0.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01c0457472c38ea5bd1c3b5ada5e368271cb550be7a4ca4a0b4634e9913f6cc2"
+dependencies = [
+ "ab_glyph_rasterizer",
+ "owned_ttf_parser",
+]
+
+[[package]]
+name = "ab_glyph_rasterizer"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -310,6 +326,20 @@ name = "bytemuck"
 version = "1.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95832e849adfb21180ccb6826a99da14e5d266ae5c2e668e1602cf234f153797"
+dependencies = [
+ "bytemuck_derive",
+]
+
+[[package]]
+name = "bytemuck_derive"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc0e56a716f1e132ff6bf4bdac1c944a3fcdc1cae65f70a4a2a1ac3b401d2d1f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
 
 [[package]]
 name = "byteorder"
@@ -875,6 +905,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow_common_semver"
+version = "0.0.0"
+
+[[package]]
 name = "flow_common_tarjan"
 version = "0.0.0"
 dependencies = [
@@ -913,6 +947,21 @@ name = "flow_common_xx"
 version = "0.0.0"
 dependencies = [
  "xxhash-rust",
+]
+
+[[package]]
+name = "flow_config"
+version = "0.0.0"
+dependencies = [
+ "flow_common",
+ "flow_common_semver",
+ "flow_data_structure_wrapper",
+ "flow_lint_settings",
+ "hostname",
+ "libc",
+ "regex",
+ "serde_json",
+ "starlark_map",
 ]
 
 [[package]]
@@ -1594,6 +1643,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
+name = "font-types"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e64eb721ca85a34323425f4041adc5d82704d3782d5f8f03793bc012419dce23"
+dependencies = [
+ "bytemuck",
+]
+
+[[package]]
 name = "futures-core"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1718,6 +1776,17 @@ name = "hmac-sha256"
 version = "1.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec9d92d097f4749b64e8cc33d924d9f40a2d4eb91402b458014b781f5733d60f"
+
+[[package]]
+name = "hostname"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617aaa3557aef3810a6369d0a99fac8a080891b68bd9f9812a1eeda0c0730cbd"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-link",
+]
 
 [[package]]
 name = "human_bytes"
@@ -2119,6 +2188,15 @@ name = "outref"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a80800c0488c3a21695ea981a54918fbb37abf04f4d0720c453632255e2ff0e"
+
+[[package]]
+name = "owned_ttf_parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
+dependencies = [
+ "ttf-parser",
+]
 
 [[package]]
 name = "owo-colors"
@@ -2882,6 +2960,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.43.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "005c8acf251756c478b0bf402885bfd88a1476020c4c7e6060edc1aa68da38ea"
+dependencies = [
+ "bytemuck",
+ "font-types",
+ "once_cell",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3139,6 +3228,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "skera"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a1d01450896c50d4062dea69f97a3e8d6dd5932adde3ff4b3ef898812d97f9c"
+dependencies = [
+ "hashbrown 0.17.1",
+ "skrifa",
+ "thiserror",
+ "write-fonts",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.46.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4febebda507fb889c545a37a135517769d1391941013561292897961d1887d6"
+dependencies = [
+ "bytemuck",
+ "read-fonts",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3382,6 +3493,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b40688ea6389c8171614b25491f71d4a27946e0c7ce2da1c6de27e25abf1a0ae"
 
 [[package]]
+name = "ttf-parser"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
+
+[[package]]
 name = "twox-hash"
 version = "2.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3401,8 +3518,9 @@ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 
 [[package]]
 name = "uf_assets"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
+ "ab_glyph",
  "base64",
  "brotli",
  "camino",
@@ -3412,15 +3530,17 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "skera",
  "tempfile",
  "thiserror",
  "uf_bundle",
  "uf_infra",
+ "write-fonts",
 ]
 
 [[package]]
 name = "uf_bundle"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "base64",
  "brotli",
@@ -3438,7 +3558,7 @@ dependencies = [
 
 [[package]]
 name = "uf_check"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "bumpalo",
  "compact_str",
@@ -3446,6 +3566,7 @@ dependencies = [
  "flow_aloc",
  "flow_common",
  "flow_common_errors",
+ "flow_config",
  "flow_data_structure_wrapper",
  "flow_flowlib",
  "flow_lazy",
@@ -3473,7 +3594,7 @@ dependencies = [
 
 [[package]]
 name = "uf_cli"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3516,7 +3637,7 @@ dependencies = [
 
 [[package]]
 name = "uf_config"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3534,7 +3655,7 @@ dependencies = [
 
 [[package]]
 name = "uf_doc"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "serde",
@@ -3548,7 +3669,7 @@ dependencies = [
 
 [[package]]
 name = "uf_env"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "serde",
@@ -3561,7 +3682,7 @@ dependencies = [
 
 [[package]]
 name = "uf_flow"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "flow_parser",
  "thiserror",
@@ -3569,7 +3690,7 @@ dependencies = [
 
 [[package]]
 name = "uf_fmt"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3587,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "uf_infra"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "bumpalo",
  "compact_str",
@@ -3601,7 +3722,7 @@ dependencies = [
 
 [[package]]
 name = "uf_lib"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3616,7 +3737,7 @@ dependencies = [
 
 [[package]]
 name = "uf_lint"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "criterion",
  "phf",
@@ -3633,7 +3754,7 @@ dependencies = [
 
 [[package]]
 name = "uf_plugin"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3649,7 +3770,7 @@ dependencies = [
 
 [[package]]
 name = "uf_pm"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "base64",
  "camino",
@@ -3665,7 +3786,7 @@ dependencies = [
 
 [[package]]
 name = "uf_prepare"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3678,7 +3799,7 @@ dependencies = [
 
 [[package]]
 name = "uf_project"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3691,7 +3812,7 @@ dependencies = [
 
 [[package]]
 name = "uf_react_compiler"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "compact_str",
  "criterion",
@@ -3708,7 +3829,7 @@ dependencies = [
 
 [[package]]
 name = "uf_rm"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "compact_str",
  "serde",
@@ -3719,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "uf_router"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3734,7 +3855,7 @@ dependencies = [
 
 [[package]]
 name = "uf_rsc"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3752,7 +3873,7 @@ dependencies = [
 
 [[package]]
 name = "uf_runtime"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "serde",
  "smallvec",
@@ -3760,7 +3881,7 @@ dependencies = [
 
 [[package]]
 name = "uf_std"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "compact_str",
  "rustc-hash",
@@ -3774,7 +3895,7 @@ dependencies = [
 
 [[package]]
 name = "uf_stylex"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "compact_str",
  "criterion",
@@ -3790,7 +3911,7 @@ dependencies = [
 
 [[package]]
 name = "uf_task"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "base64",
  "camino",
@@ -3808,14 +3929,14 @@ dependencies = [
 
 [[package]]
 name = "uf_term"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "uf_test"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "camino",
  "compact_str",
@@ -3833,7 +3954,7 @@ dependencies = [
 
 [[package]]
 name = "uf_transform"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "criterion",
  "flow_parser",
@@ -3858,7 +3979,7 @@ dependencies = [
 
 [[package]]
 name = "uf_tui"
-version = "0.0.0-alpha.13"
+version = "0.0.0-alpha.14"
 dependencies = [
  "compact_str",
  "serde",
@@ -4119,6 +4240,17 @@ name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+
+[[package]]
+name = "write-fonts"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "843cebb7bd36359861dbce43d54ac8b33dfdf7b80a95913adc1ef7c7bb881e62"
+dependencies = [
+ "font-types",
+ "log",
+ "read-fonts",
+]
 
 [[package]]
 name = "xxhash-rust"

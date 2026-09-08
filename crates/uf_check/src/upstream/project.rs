@@ -317,7 +317,7 @@ impl ProjectModules {
         if resolve::is_relative(specifier) {
             self.index.resolve(importer, specifier)
         } else {
-            self.resolve_package(specifier)
+            self.resolve_package(importer, specifier)
         }
     }
 
@@ -438,7 +438,7 @@ impl ProjectModules {
             }
             return self.unchecked(cx, name);
         }
-        if let Some(index) = self.resolve_package(name)
+        if let Some(index) = self.resolve_package(importer, name)
             && let Some(signature) = self.signature(index)
         {
             return ResolvedRequire::TypedModule(self.module_thunk(index, &signature));
@@ -450,9 +450,14 @@ impl ProjectModules {
     }
 
     /// The batch's source for a package specifier, through the manifest that
-    /// publishes it.
-    pub(super) fn resolve_package(&self, specifier: &str) -> Option<usize> {
-        match self.packages.resolve(specifier)? {
+    /// publishes it *to this importer*.
+    ///
+    /// The importer decides when the batch holds two copies of one package:
+    /// Node climbs `node_modules` from the file that wrote the specifier, so a
+    /// file inside `node_modules/foo` sees `foo`'s own copy. See
+    /// [`super::packages`].
+    pub(super) fn resolve_package(&self, importer: &str, specifier: &str) -> Option<usize> {
+        match self.packages.resolve(importer, specifier)? {
             PackageFile::Exact(path) => self.index.lookup(&path),
             PackageFile::Implied(base) => self.index.resolve_file(&base),
         }
