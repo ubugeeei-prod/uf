@@ -12,7 +12,54 @@ pub struct LintConfig {
     pub files: Vec<CompactString>,
     pub flow: FlowLintConfig,
     pub ignore: Vec<CompactString>,
+    /// Rule levels, **merged over** [`DEFAULT_LINT_RULES`] rather than
+    /// replacing it. See [`rules_over_defaults`].
+    #[serde(deserialize_with = "rules_over_defaults")]
     pub rules: BTreeMap<CompactString, RuleLevel>,
+}
+
+/// Read `lint.rules` as changes to uf's table, not as the whole of it.
+///
+/// A map field deserializes to exactly what the document said, and for this
+/// one field that is the wrong answer in a way nothing reports. `lint: { rules:
+/// { "flow/unclear-type": "warn" } }` used to *be* the rule table: the other
+/// fifty-odd rules were not lowered or turned off, they stopped existing, and
+/// `uf lint` stopped looking for them. `flow/syntax` went with them, so a
+/// project that lowered one rule to a warning also stopped being told its
+/// sources do not parse. The run then passed, which is the part that makes it
+/// severe rather than surprising — a green build that means nothing looks
+/// exactly like a green build that means something. See
+/// ubugeeei-prod/uf#475.
+///
+/// So the defaults are laid down first and the document is applied on top of
+/// them. Every level in the table is still reachable: `"off"` is what switches
+/// a rule off, and it says so at the point it is written. What is no longer
+/// reachable is switching a rule off *by not mentioning it*, which nobody
+/// could have meant to ask for.
+///
+/// A rule id uf does not know is kept rather than rejected. Deserialization is
+/// not where that is decided: `uf_lint` owns the catalogue, a config may name
+/// a rule a newer uf added or an older one retired, and refusing the whole
+/// config over one unknown key would make a uf downgrade unrunnable.
+fn rules_over_defaults<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<CompactString, RuleLevel>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut rules = default_lint_rules();
+    for (rule, level) in BTreeMap::<CompactString, RuleLevel>::deserialize(deserializer)? {
+        rules.insert(rule, level);
+    }
+    Ok(rules)
+}
+
+/// uf's rule table, as a fresh map.
+fn default_lint_rules() -> BTreeMap<CompactString, RuleLevel> {
+    DEFAULT_LINT_RULES
+        .into_iter()
+        .map(|(rule, level)| (CompactString::const_new(rule), level))
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,7 +116,11 @@ pub enum FlowLintParser {
 /// Each rule's full rationale, category, and one-line description live on its
 /// `uf_lint::RuleDescriptor`; `uf_lint` has a test asserting this table and that
 /// catalogue agree exactly, in both directions, so the two cannot drift apart.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
+///
+/// A project's `lint.rules` is merged **over** this table rather than replacing
+/// it — see [`rules_over_defaults`] for what naming one rule used to do to the
+/// other fifty.
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -144,6 +195,28 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
     ("uniflowed/no-npm-script-invocation", RuleLevel::Error),
     // A typo'd suppression silently stops enforcing a rule.
     ("uniflowed/unknown-lint-suppression", RuleLevel::Error),
+    // An image with no text alternative is unreadable to the people who need
+    // the alternative, and the fix is mechanical: the words the image carries,
+    // or `alt=""` when it carries none.
+    ("a11y/alt-text", RuleLevel::Error),
+    // The quietest bug on this list. A misspelled `aria-*` is not rejected by
+    // the browser, not reported by React and not read by anything: the control
+    // is unlabelled and there is no symptom at all.
+    ("a11y/aria-props", RuleLevel::Error),
+    // Style, and a claim about a document uf cannot see the whole of: a `<h1>`
+    // in a layout and a `<h3>` in a card are only a skip if the one renders
+    // inside the other. `warn`, and compared within one function body.
+    ("a11y/heading-order", RuleLevel::Warn),
+    // A label attached to nothing leaves its field with no accessible name and
+    // makes the label itself dead to a click. Both are defects, not opinions.
+    ("a11y/label-has-associated-control", RuleLevel::Error),
+    // A handler only a mouse can reach is a feature a keyboard user does not
+    // have. Reported only where neither a `role` nor a key handler is present,
+    // which is where nobody has considered the keyboard at all.
+    ("a11y/no-static-element-interactions", RuleLevel::Error),
+    // `<p><div>` is a hydration bug rather than a style opinion: the browser's
+    // parser repairs it before React sees it, and the repair is the mismatch.
+    ("markup/no-invalid-nesting", RuleLevel::Error),
     // Style preferences during the migration to Flow component/hook syntax.
     ("react/component-syntax", RuleLevel::Warn),
     ("react/hook-syntax", RuleLevel::Warn),
@@ -151,6 +224,23 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
     ("react/hooks-rules", RuleLevel::Error),
     // Framework routes are wired by name; `warn` while the scaffold migrates.
     ("react/no-default-export-component", RuleLevel::Warn),
+    // An effect whose whole body writes state computed from its own
+    // dependencies. `error`, because the code is wrong rather than untidy: the
+    // component renders once with the value it had before the effect ran, and
+    // then again, so a user sees the stale one — and the fix is to move the
+    // expression into render, which is mechanical. The rule reports only the
+    // shape where that move is provably safe; `uf_lint::runner::react_tree`
+    // lists what it leaves alone and why.
+    ("react/no-derived-state-effect", RuleLevel::Error),
+    // A `useMemo`/`useCallback` the official React Compiler removed when it
+    // compiled the function around it. `warn`, not `error`: nothing is broken
+    // — the compiler already did the work, so the hand-written call is a
+    // second dependency array to keep correct rather than a defect — and
+    // deleting memoization is a refactor, which is not something a build
+    // should fail over. Off when `app.builtins.reactCompiler.enabled` is
+    // false, because then the hand-written one is the only memoization there
+    // is.
+    ("react/no-redundant-memo", RuleLevel::Warn),
     // Non-idempotent render breaks streaming SSR and hydration.
     ("react/no-render-side-effects", RuleLevel::Error),
     // Platform branches are a preference, not a correctness problem.
@@ -167,6 +257,10 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
     ("router/unsupported-segment", RuleLevel::Error),
     ("package/no-npm-scripts", RuleLevel::Error),
     ("fetch/no-global-override", RuleLevel::Error),
+    // `import.meta.hot.accept(...)` throws in a production build, and the
+    // guard Vite's own documentation writes around it does not refine in Flow.
+    // One shape crashes a build and the other fails `uf check`; both block.
+    ("vite/hot-needs-optional-chaining", RuleLevel::Error),
     // XSS and arbitrary code execution: never a warning.
     ("security/no-dangerously-set-inner-html", RuleLevel::Error),
     ("security/no-eval", RuleLevel::Error),
@@ -174,10 +268,7 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 54] = [
 
 impl Default for LintConfig {
     fn default() -> Self {
-        let mut rules = BTreeMap::new();
-        for (rule, level) in DEFAULT_LINT_RULES {
-            rules.insert(CompactString::const_new(rule), level);
-        }
+        let rules = default_lint_rules();
 
         Self {
             engine: LintEngine::Rust,

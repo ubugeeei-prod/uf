@@ -57,7 +57,7 @@ import {
 } from "../../packages/router/internal/action-wire.js";
 import { beginRequest, createActionDispatcher } from "@uniflowed/router/server";
 import { createFetchHandler } from "@uniflowed/server/fetch";
-import { cookies, headers } from "@uniflowed/server";
+import { cookies, draftMode, headers } from "@uniflowed/server";
 
 /** An id shaped the way `uf_rsc::ActionId::to_hex` writes one. */
 const idOf = (seed: string): string => seed.repeat(64).slice(0, 64);
@@ -273,6 +273,48 @@ describe("the endpoint a server action is dialled at", () => {
     expect(await status(response)).toBe(200);
     expect(seen).toBe(4);
     expect(response == null ? "" : await response.text()).toBe('{"value":{"total":8}}');
+  });
+
+  it("lets an action turn draft mode on, which is the other place that may", async () => {
+    // A server action and a route handler are the two things that own a
+    // response, so they are the two places `draftMode().enable()` is allowed.
+    // A CMS whose "preview" is a button rather than a link ends up here rather
+    // than in `route-handler.test.js`. ubugeeei-prod/uf#282.
+    const callAction = createActionDispatcher({
+      actions: tableFor(async () => {
+        draftMode().enable();
+        return "previewing";
+      }),
+    });
+
+    const response = await hosted(callAction, call(JSON.stringify({ args: [] })));
+
+    expect(response?.status).toBe(200);
+    const set = (response?.headers.getSetCookie() ?? []).find((value) =>
+      value.startsWith("__Host-uf.draft="),
+    );
+    expect(set == null).toBe(false);
+    expect((set ?? "").includes("HttpOnly")).toBe(true);
+  });
+
+  it("does not put the cookie on a refusal, which ran no action at all", async () => {
+    // The scope covers the action and not the guards above it: a `403` for a
+    // cross-origin call must not carry a cookie, and nothing in that path could
+    // have asked for one.
+    const callAction = createActionDispatcher({
+      actions: tableFor(async () => {
+        draftMode().enable();
+        return "previewing";
+      }),
+    });
+
+    const response = await hosted(
+      callAction,
+      call(JSON.stringify({ args: [] }), { origin: "https://evil.example" }),
+    );
+
+    expect(response?.status).toBe(403);
+    expect(response?.headers.getSetCookie() ?? []).toEqual([]);
   });
 
   it("runs the action inside the host's request, so it can read one", async () => {

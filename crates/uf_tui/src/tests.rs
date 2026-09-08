@@ -8,7 +8,7 @@ fn describes_a_flow_react_renderer_that_follows_opentui() {
     assert_eq!(contract.standard, TuiStandard::OpenTui);
     assert_eq!(contract.renderer, TuiRenderer::CellDiff);
     assert_eq!(contract.layout, TuiLayoutEngine::FlexboxCells);
-    assert_eq!(contract.input, TuiInputModel::KeyboardFocus);
+    assert_eq!(contract.input, TuiInputModel::KeyboardMouseFocus);
     assert_eq!(contract.runtime_binding, TuiRuntimeBinding::FlowReact);
 }
 
@@ -20,6 +20,7 @@ fn claims_only_the_features_the_package_implements() {
         TuiFeature::Flexbox,
         TuiFeature::CellDiff,
         TuiFeature::Keyboard,
+        TuiFeature::Mouse,
         TuiFeature::Focus,
         TuiFeature::RichText,
         TuiFeature::Scrollback,
@@ -34,7 +35,6 @@ fn claims_only_the_features_the_package_implements() {
     // function that threw. Removing one from this list is how a feature gets
     // announced, so announcing one requires deleting a line here.
     for feature in [
-        TuiFeature::Mouse,
         TuiFeature::Selection,
         TuiFeature::Keymap,
         TuiFeature::TerminalAutomation,
@@ -105,7 +105,7 @@ fn serialises_the_contract_as_the_names_the_cli_prints() {
     assert_eq!(json["engine"], "flow-react-open-tui-compatible");
     assert_eq!(json["renderer"], "cell-diff");
     assert_eq!(json["layout"], "flexbox-cells");
-    assert_eq!(json["input"], "keyboard-focus");
+    assert_eq!(json["input"], "keyboard-mouse-focus");
     assert_eq!(
         json["reactInkTarget"]["performanceTarget"],
         "writes-only-changed-cells"

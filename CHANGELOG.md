@@ -1,5 +1,75 @@
 # Changelog
 
+## uf@0.0.0-alpha.14
+
+_2026-09-07_
+
+Twenty-one changes, and the ones worth reading first are the two that were
+wrong in a way nothing could see.
+
+`@uniflowed/test` could not be imported on Bun at all. `ref()`/`unref()` set a
+flag on Node and *count* on Bun, and the transform service said what it wanted
+on every request rather than on the transition — so two sibling imports left
+the host referenced for ever, and every program that imports the test package
+is fifteen modules. This lands a week after the Bun host was made to load at
+all, which is the argument for the test that now starts a real Bun process
+rather than a claim in a README.
+
+Every React Compiler finding pointed at the wrong line, and a quarter of them
+did not exist. The position fell back to a field this compiler never populates,
+so all 173 findings named their `component` or `hook` keyword; the plugin's
+de-duplication then collapsed them to 119 lines, and the 54 it dropped were
+distinct sites — five different ref reads in one component. Findings also could
+not name their function, so all 173 said `a function`. They name 74 distinct
+functions now.
+
+`uf check` gives the same answer twice. The wall-clock inference budget is
+gone: a file the clock aborted was written to no record, so the next run
+inferred it again, off the clock that time, and reported errors the first run
+had thrown away. What bounds the checker now is work — recursion depth, type
+expansion, source bytes — and four cold runs over the same tree that varied by
+1.77× from machine load are why.
+
+And a build that emits no server refuses a callable server action instead of
+shipping a wired button and a 404; `uf build --adapter static` says which route
+handler, which middleware, which unprerendered route and which action stand in
+the way. Draft mode survives the request it was enabled in. `lint.rules` merges
+into uf's table instead of replacing it, so naming one rule no longer switches
+the other fifty-three off. The manual's "next page" reaches the end.
+
+### Added
+
+- **router, cli**: the files a route is, and a render anchor nobody has to wire (#616)
+- **lint, config**: accessibility and markup rules, a guard that does not refine, and a rule table that stopped being one (#623)
+- **runtime, config, test**: a permission set uf owns, and a host table that is checked (#617)
+- **server, router**: draft mode that survives the request, and every refusal said out loud (#615)
+- **ui, form**: the other three menus, the Enter a checkbox owes its form, and one place that computes aria-describedby (#613)
+- **build, config**: what a build produces, the two settings that decide it, and a builder that is a provider (#609)
+- **tui**: the mouse, routed by a grid the painter records (#608)
+- **lint, hooks, router, state**: an effect that is not one, a memo the compiler already did, and a literal that was never conditional (#606)
+- **pm, config, release**: provenance, a scope bound to one registry, and an origin the release host cannot forge (#604)
+- **vite, dev, router**: one renderer, a watched environment, and a channel from the browser (#602)
+
+### Fixed
+
+- **test**: a tick over work that did not happen, and four more the runner told itself (#605)
+- **cli**: one list of what `uf explain` describes, rather than two that drifted (#624)
+- **test, cli, host**: `expect`'s last any, the port `uf dev` bound, and a Bun host that could not load the test package (#622)
+- **transform, vite**: a React Compiler finding that names its function and points at itself (#611)
+- **hooks**: `useHash` hears a `pushState` it did not make (#610)
+- **check**: one record per file, an answer per batch, and no clock in the answer (#603)
+- **prepare, lint, test**: a path a run names survives `.gitignore` (#601)
+- **router**: every extension the build runs is a route, and a name it cannot run is not (#580)
+- **docs**: the manual lists State once, so "next page" reaches the end (#587)
+
+### Documentation
+
+- **security**: the threat model's rows are inside its table again (#592)
+
+### Internal
+
+- **docs, security, vite**: every link the build wrote resolves, and a scan that is uf's own (#595)
+
 ## uf@0.0.0-alpha.13
 
 _2026-09-08_
