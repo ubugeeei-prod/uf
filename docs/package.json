@@ -4,12 +4,12 @@
   "type": "module",
   "description": "The uf documentation site, built with uf itself.",
   "dependencies": {
-    "@uniflowed/brand": "0.0.0-alpha.17",
-    "@uniflowed/config": "0.0.0-alpha.17",
-    "@uniflowed/react": "0.0.0-alpha.17",
-    "@uniflowed/router": "0.0.0-alpha.17",
-    "@uniflowed/vite": "0.0.0-alpha.17",
-    "@uniflowed/web": "0.0.0-alpha.17",
+    "@uniflowed/brand": "0.0.0-alpha.18",
+    "@uniflowed/config": "0.0.0-alpha.18",
+    "@uniflowed/react": "0.0.0-alpha.18",
+    "@uniflowed/router": "0.0.0-alpha.18",
+    "@uniflowed/vite": "0.0.0-alpha.18",
+    "@uniflowed/web": "0.0.0-alpha.18",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   }

@@ -1,5 +1,62 @@
 # Changelog
 
+## uf@0.0.0-alpha.18
+
+_2026-09-08_
+
+Nine changes, and the thread running through most of them is a gap between
+what uf said and what uf did.
+
+`uf dev` streams a page now instead of collecting it. That was the one place a
+developer would notice streaming and the one place it did not happen, so a slow
+page showed nothing until it was finished and `_uf.loading.js` looked broken.
+`uf mcp` serves the read-only commands over a protocol an agent speaks, instead
+of leaving one to shell out and parse `--json`. And `uf build --adapter bun`
+writes a directory `bun server.js` runs — the second host, and it exists
+because somebody ran the benchmark the seam had been waiting on rather than
+assuming its result. Bun answers a dynamic route 32% faster and a small static
+asset 54% faster, and the whole of the static win is `Bun.file` rather than the
+handler around it, which is why the traversal and cookie policy stayed shared
+and only one line differs per host.
+
+The RSC check decides 57 hooks it used to ask about. `@uniflowed/hooks` has
+carried `server_component_safe` for every hook it exports since before
+`uf_rsc` existed, and nothing read it: a Server Component calling
+`useMediaQuery` got a warning saying uf could not say, from a binary that
+could. It is an error now, and it names the package. The hooks uf still cannot
+decide — `useRoute`, and anything a project wrote — say so exactly as before.
+
+The rest is the release pipeline and the notes about it. The Intel macOS target
+is built on Apple silicon and verified natively, which is the answer to the job
+that cost four times every other target and shipped alpha.9 to npm with no
+binaries behind it. Two of the three doors Bun shut on module mocking have
+opened on 1.3.13, so what is left there is writing an implementation rather
+than waiting for Bun — the opposite of what that file said. And three release
+notes named a command uf does not have, one of them in the release before this:
+what they called uf profile, uf rm and uf approve-builds are `uf_profiler`,
+`uf self-update` and `uf pm approve-builds`. A test asks clap now, and walks a
+nested path to its end, so there will not be a fourth — and the three wrong
+names are unquoted right there because that test reads this file, and a
+backticked `uf <name>` in it is a thing a reader will type.
+
+### Added
+
+- **rsc, lib**: the hooks the registry already knew about are decided, not asked about (#690)
+- **server, vite, cli**: the bun deploy adapter, and the one line that makes it one (#689)
+- **cli, ui**: the commands an agent can call over MCP, and the stdout a protocol needs (#688)
+- **vite, router**: `uf dev` streams a page instead of collecting it (#685)
+
+### Documentation
+
+- **cli**: three release notes named a command uf does not have (#692)
+- **host**: two of Bun's three shut doors are open on 1.3.13 (#693)
+- **roadmap, config**: say that uf runs its own tasks, because it does (#687)
+
+### Internal
+
+- **deps**: Bump the fuzz group in /tools/fuzz with 2 updates (#691)
+- **release**: build the Intel macOS target on Apple silicon, verify it natively (#686)
+
 ## uf@0.0.0-alpha.17
 
 _2026-09-08_
