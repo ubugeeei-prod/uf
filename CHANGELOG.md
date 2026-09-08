@@ -1,5 +1,37 @@
 # Changelog
 
+## uf@0.0.0-alpha.17
+
+_2026-09-08_
+
+Two changes, and both are a thing this repository already knew and had no way
+to check.
+
+`uf check` now has the allocation report `uf lint` and `uf transform` have had
+since alpha.16 — and running it settles a question that had been open since the
+checker's cost was first counted. The cache saves 93% of a re-check of an
+unchanged file, and one allocation of a re-check after a keystroke. The first
+is the caller nobody was worried about and the second is the caller everybody
+was: a record's key is over the file's own text, so an editor holding a buffer
+asks for a key nothing has been filed under. That is not a defect in the cache,
+it is what content addressing means — and it is now the measured reason an
+editor needs something the cache is not, rather than a suspicion about it.
+
+The other is a table that had fallen six names behind the package it describes.
+`hook_descriptors()` says it names every hook `@uniflowed/hooks` exports and
+named 52 of the 58, so `uf inspect` under-reported and anything asking what a
+compiler may assume about `useRenderedAt` was told nothing at all. The registry
+entry beside it was complete, and held there by a test; this one had none. It
+does now, and it compares the two lists both ways round.
+
+### Fixed
+
+- **lib**: the hook table had fallen six behind the package it describes (#683)
+
+### Performance
+
+- **check**: count what a check allocates, and answer whether the cache avoids it (#682)
+
 ## uf@0.0.0-alpha.16
 
 _2026-09-08_
