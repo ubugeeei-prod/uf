@@ -2,7 +2,7 @@
 
 use camino::Utf8PathBuf;
 
-use super::{RscReport, RscUpdate};
+use super::{BundleMove, RscReport, RscUpdate};
 
 /// A helper a Server Component imports, with nothing client-only in it.
 const CLEAN: &str = "export function greeting() {\n  return \"hello\";\n}\n";
@@ -151,4 +151,222 @@ fn a_clean_project_across_a_failed_scan_stays_quiet() {
 
     std::fs::remove_file(root.join("app/half-written.js")).unwrap();
     assert_eq!(report.refresh(), RscUpdate::Unchanged);
+}
+
+/// The counter the page renders, before anybody makes it the browser's.
+const A_SERVER_COMPONENT: &str = "export function Counter() {\n  return null;\n}\n";
+
+/// And after: one directive, and the module is a client bundle root.
+const A_CLIENT_COMPONENT: &str =
+    "\"use client\";\nexport function Counter() {\n  return null;\n}\n";
+
+/// A project whose page imports a component through one module in between.
+///
+/// Three modules deep on purpose: the chain a reader is shown is the whole
+/// point of the report, and a chain of two hops proves nothing about the walk
+/// that builds it.
+fn project_with_a_component(counter: &str) -> (tempfile::TempDir, Utf8PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    std::fs::create_dir_all(root.join("app")).unwrap();
+    std::fs::write(
+        root.join("app/_uf.page.js"),
+        "import { Section } from \"./section.js\";\nexport default function Page() {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("app/section.js"),
+        "import { Counter } from \"./Counter.js\";\nexport function Section() {}\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("app/Counter.js"), counter).unwrap();
+    (dir, root)
+}
+
+/// The lines the report would print, in the order it prints them.
+fn moved(report: &RscReport) -> Vec<String> {
+    report.moved.moves.iter().map(BundleMove::line).collect()
+}
+
+/// Nothing moved on the first scan, because there was nothing to move from.
+///
+/// The alternative is a list of every client module in the project every time
+/// `uf dev` starts, which is the banner `a_project_with_no_violations_is_quiet`
+/// exists to keep off the screen — the same argument, about the other half of
+/// what this module reports.
+#[test]
+fn the_first_scan_reports_no_movement() {
+    let (_dir, root) = project_with_a_component(A_CLIENT_COMPONENT);
+    let mut report = RscReport::new(&root);
+
+    report.refresh();
+    assert_eq!(moved(&report), Vec::<String>::new());
+    assert_eq!(report.moved.total, 0);
+}
+
+/// One directive moves three modules, and each is told why it moved.
+///
+/// This is ubugeeei-prod/uf#520's question — *why is this in the client
+/// bundle* — asked at the moment the answer changes. The page and the section
+/// are in the bundle because uf's client re-renders the matched tree from the
+/// same modules the server did, so a module above a boundary is one React
+/// needs in order to reach the boundary at all; the chain is what says so
+/// without the reader having to know that.
+#[test]
+fn adding_use_client_reports_the_module_and_everything_above_it() {
+    let (_dir, root) = project_with_a_component(A_SERVER_COMPONENT);
+    let mut report = RscReport::new(&root);
+    report.refresh();
+    assert_eq!(report.moved.total, 0);
+
+    std::fs::write(root.join("app/Counter.js"), A_CLIENT_COMPONENT).unwrap();
+    report.refresh();
+
+    assert_eq!(
+        moved(&report),
+        [
+            "app/Counter.js is now in the client bundle — it declares `\"use client\"`",
+            "app/_uf.page.js is now in the client bundle — app/_uf.page.js imports \
+             app/section.js imports app/Counter.js, which declares `\"use client\"`",
+            "app/section.js is now in the client bundle — app/section.js imports \
+             app/Counter.js, which declares `\"use client\"`",
+        ]
+    );
+    assert_eq!(report.moved.total, 3);
+}
+
+/// And taking it away again moves them back out, once.
+///
+/// The second `refresh` is the half that makes this a report rather than a
+/// log: a save that changes nothing about the bundle says nothing about it.
+#[test]
+fn removing_use_client_reports_the_modules_leaving_and_then_stays_quiet() {
+    let (_dir, root) = project_with_a_component(A_CLIENT_COMPONENT);
+    let mut report = RscReport::new(&root);
+    report.refresh();
+
+    std::fs::write(root.join("app/Counter.js"), A_SERVER_COMPONENT).unwrap();
+    report.refresh();
+    assert_eq!(
+        moved(&report),
+        [
+            "app/Counter.js is out of the client bundle",
+            "app/_uf.page.js is out of the client bundle",
+            "app/section.js is out of the client bundle",
+        ]
+    );
+
+    std::fs::write(
+        root.join("app/section.js"),
+        "export function Section() {}\n",
+    )
+    .unwrap();
+    report.refresh();
+    assert_eq!(moved(&report), Vec::<String>::new());
+}
+
+/// A failed scan does not make the next one report the whole bundle as new.
+///
+/// A failure recomputes nothing, so it knows nothing about what the browser
+/// gets — which is why the remembered bundle survives one, where the
+/// remembered *diagnostics* deliberately do not. Forgetting it here would
+/// answer every half-written file with the entire client bundle arriving.
+#[test]
+fn a_failed_scan_does_not_reintroduce_the_whole_bundle() {
+    let (_dir, root) = project_with_a_component(A_CLIENT_COMPONENT);
+    let mut report = RscReport::new(&root);
+    report.refresh();
+
+    std::fs::write(root.join("app/half-written.js"), [0xff, 0xfe, 0x00]).unwrap();
+    let update = report.refresh();
+    assert!(matches!(update, RscUpdate::Failed(_)), "{update:?}");
+    assert_eq!(report.moved.total, 0);
+
+    std::fs::remove_file(root.join("app/half-written.js")).unwrap();
+    report.refresh();
+    assert_eq!(moved(&report), Vec::<String>::new());
+}
+
+/// The number is exact and the list is not, which is the right way round.
+///
+/// A directive added deep in a tree can move a great many modules at once. The
+/// count is what tells a reader how big the change was; the chains are what
+/// they read, and a screen of them is a screen nobody reads. `MAX_MOVES` is
+/// the ceiling `docs/security.md`'s "no unbounded anything" asks of a report
+/// as much as of a parser.
+#[test]
+fn a_large_move_is_counted_in_full_and_listed_in_part() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    std::fs::create_dir_all(root.join("app")).unwrap();
+    // A chain of pages, each importing the next, ending at the component.
+    let depth = super::MAX_MOVES + 5;
+    std::fs::write(
+        root.join("app/_uf.page.js"),
+        "import { Step } from \"./step-0.js\";\nexport default function Page() {}\n",
+    )
+    .unwrap();
+    for step in 0..depth {
+        let next = if step + 1 == depth {
+            "./Counter.js".to_owned()
+        } else {
+            format!("./step-{}.js", step + 1)
+        };
+        std::fs::write(
+            root.join(format!("app/step-{step}.js")),
+            format!("import {{ Step }} from \"{next}\";\nexport function Step() {{}}\n"),
+        )
+        .unwrap();
+    }
+    std::fs::write(root.join("app/Counter.js"), A_SERVER_COMPONENT).unwrap();
+
+    let mut report = RscReport::new(&root);
+    report.refresh();
+    std::fs::write(root.join("app/Counter.js"), A_CLIENT_COMPONENT).unwrap();
+    report.refresh();
+
+    // The page, the component and every step between them.
+    assert_eq!(report.moved.total, depth + 2);
+    assert_eq!(report.moved.moves.len(), super::MAX_MOVES);
+}
+
+/// A manifest that could not be written keeps the move for the next write.
+///
+/// `persist` used to swallow the failure and `refresh` reported the move
+/// anyway, which advanced the bundle it compares against. Vite went on reading
+/// the old manifest, and the *next* successful write compared against a
+/// baseline that had already moved and said nothing had changed — so the edit
+/// landed silently and the one report that exists to catch it never came.
+#[test]
+fn a_manifest_that_cannot_be_written_keeps_the_move_for_the_next_write() {
+    use uf_rsc::{RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_FILE_NAME};
+
+    let (_dir, root) = project_with_a_component(A_SERVER_COMPONENT);
+    let mut report = RscReport::new(&root);
+    report.refresh();
+    assert_eq!(report.moved.total, 0);
+
+    // A directory where the manifest file goes: `create_dir_all` still
+    // succeeds and `fs::write` does not, which is the failure being modelled
+    // — a full disk, a read-only checkout, a `.uf` somebody chowned.
+    let manifest = root
+        .join(RSC_MANIFEST_BUILD_DIR)
+        .join(RSC_MANIFEST_FILE_NAME);
+    std::fs::remove_file(&manifest).unwrap();
+    std::fs::create_dir(&manifest).unwrap();
+
+    std::fs::write(root.join("app/Counter.js"), A_CLIENT_COMPONENT).unwrap();
+    report.refresh();
+    assert_eq!(
+        moved(&report),
+        Vec::<String>::new(),
+        "nothing to report while the browser is still being served the old manifest"
+    );
+
+    // And once it can be written, the move is still there to report — three
+    // modules, not none.
+    std::fs::remove_dir(&manifest).unwrap();
+    report.refresh();
+    assert_eq!(report.moved.total, 3, "{:?}", moved(&report));
+    assert!(manifest.exists(), "and the manifest landed this time");
 }

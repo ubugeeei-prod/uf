@@ -10,7 +10,7 @@
 //
 // # The boundary
 //
-// **A server action's arguments are plain JSON data and nothing else.**
+// **A server action's arguments are plain JSON data, plus at most one form.**
 //
 // One JSON object, `{"args": [...]}`, at most `MAX_ACTION_BODY_BYTES` of valid
 // UTF-8, holding at most `MAX_ACTION_ARGUMENTS` values, nested at most
@@ -18,7 +18,8 @@
 // Each of those values is `null`, a boolean, a finite number, a string, an
 // array of them, or a plain object whose keys are ordinary strings. The result
 // travels back under exactly the same grammar, plus `undefined` for an action
-// that returns nothing.
+// that returns nothing — and with no form, because a form is something a
+// browser submits and not something a server answers with.
 //
 // Nothing in a payload can name a function, a module, a class, a prototype, a
 // React element, an id or a reference, and nothing in it is revived into an
@@ -26,6 +27,35 @@
 // `JSON.parse` already produced; what this adds is the refusal of everything
 // `JSON.parse` would have let through — which is the whole of what a decoder
 // has to get right.
+//
+// # The one thing that is not a value: `<form action={fn}>`
+//
+// React 19 hands a form action a `FormData`, and `useActionState` hands it the
+// previous state and then a `FormData`. So one argument of a call may be a
+// form, and the envelope grows a second key to say which:
+//
+//   {"args": [null, null], "form": {"at": 1, "entries": [["note", "hi"]]}}
+//
+// It is written *beside* the values rather than inside one, and that placement
+// is the whole design. A tag in the value tree — `{"$formData": …}` — would be
+// a payload saying which constructor to call, which is the shape of every
+// deserialisation CVE and the thing the list below refuses on principle.
+// Outside the tree there is no tag: `checkActionValue` is unchanged and still
+// knows nothing but JSON data, `at` names a position and not a type, and the
+// slot it names must hold `null` so a sender cannot say two things about one
+// argument. At most one form crosses per call, it is never nested inside a
+// value, its entries are `[name, value]` pairs of strings, and the decoder's
+// only constructor is `FormData` — fixed here, never named by the payload.
+//
+// What that buys is `<form action={fn}>`, `useActionState` and `useFormStatus`
+// against a real endpoint. What it does not buy is a form that works before
+// hydration: React's progressive enhancement needs `$$FORM_ACTION` on the
+// reference, which makes the submit a *native* form post, and a native form
+// post is `multipart/form-data` — a content type this endpoint refuses on
+// purpose (see `./action-endpoint.js`, rule 4). Without it React writes the
+// form it writes for any client action, whose `action` is a `javascript:` URL
+// that throws, so such a submit does nothing rather than posting somewhere it
+// should not. That is still open; see ubugeeei-prod/uf#252.
 //
 // # What is deliberately absent, and why
 //
@@ -39,11 +69,11 @@
 //   tag naming a constructor is the oracle every deserialisation CVE is made
 //   of. An action that wants a date takes an ISO string and parses it, where
 //   the parse is the application's and is checked.
-// * **`FormData` and `<form action={fn}>`.** Multipart parsing is its own
-//   attack surface with its own bounds, and a form post is a *simple* CORS
-//   request — it reaches a server with the visitor's cookies and no preflight.
-//   Both are worth having and neither is worth having by accident; see the
-//   security note in `./action-endpoint.js`.
+// * **A file in a form.** A `File` entry is refused at the call site rather
+//   than encoded: bytes in this envelope would be base64 in a JSON string with
+//   no ceiling of their own, and an upload wants a content type, a streaming
+//   read and a size limit that are not this module's. Multipart parsing is its
+//   own attack surface and is still deliberately absent.
 // * **Cycles and shared references.** A value that refers to itself is
 //   rejected rather than encoded, because the alternative is a marker in the
 //   payload that says "this is the object you saw earlier", which is a
@@ -88,6 +118,26 @@ export const MAX_ACTION_DEPTH: number = 24;
 export const MAX_ACTION_VALUES: number = 10000;
 
 /**
+ * Most fields one submitted form may carry.
+ *
+ * A ceiling on the *count* rather than on the bytes, because the bytes already
+ * have one: the whole body is bounded by `MAX_ACTION_BODY_BYTES` before a
+ * character of it is parsed. What this bounds is the number of `append` calls
+ * a sender can make the decoder do, and the size of the multimap they build.
+ * A form with more than 256 controls is a form that wants a different shape.
+ */
+export const MAX_FORM_ENTRIES: number = 256;
+
+/**
+ * Longest field name one form entry may have.
+ *
+ * A name is an HTML `name` attribute — `email`, `items[3][quantity]` — so this
+ * is generous by two orders of magnitude for anything a document declares, and
+ * it stops a body's whole byte budget being spent on one key.
+ */
+export const MAX_FORM_NAME_LENGTH: number = 128;
+
+/**
  * Everything that may cross the wire.
  *
  * Recursive on purpose, and closed on purpose: this type is what
@@ -102,6 +152,18 @@ export type ActionValue =
   | string
   | $ReadOnlyArray<ActionValue>
   | { readonly [string]: ActionValue };
+
+/**
+ * Everything an *argument* may be: a value, or the one form.
+ *
+ * Wider than [`ActionValue`] in exactly one place and deliberately not
+ * recursive: a `FormData` is something a call passes, never something inside
+ * something a call passes. `ActionArguments` in `../action.js` holds every
+ * action's parameter list against this, and `ActionResult` still holds every
+ * return type against `ActionValue` — an action receives a form and does not
+ * answer with one.
+ */
+export type ActionArgument = ActionValue | FormData;
 
 /**
  * A value that is outside the grammar, and where in the payload it was.
@@ -157,6 +219,28 @@ function isPlainObject(value: interface {}): boolean {
  * values. One `{}` at module scope is the exact answer and costs nothing.
  */
 const PLAIN_PROTOTYPE: mixed = Object.getPrototypeOf({});
+
+/**
+ * The value as a submitted form, or `null`.
+ *
+ * `typeof` first, because this module is imported by the browser's half and by
+ * the server's, and `FormData` is a global that a runtime is allowed not to
+ * have. `instanceof` and not a duck-type, for the reason `isPlainObject` gives
+ * about prototypes: an object with `entries` and `get` is not a form.
+ *
+ * It answers with the form rather than with a `boolean` so that the caller
+ * that goes on to read the entries has the type from the check rather than
+ * from a cast. A Flow type guard would be the direct spelling and is not
+ * available here: a guard has to refine the type away on the false branch too,
+ * and "this runtime has no `FormData` at all" is a false branch that says
+ * nothing about the value.
+ */
+function asFormData(value: mixed): FormData | null {
+  if (typeof FormData === "undefined" || !(value instanceof FormData)) {
+    return null;
+  }
+  return value;
+}
 
 /** One entry of the explicit walk stack. */
 type Pending = {| readonly value: mixed, readonly path: string, readonly depth: number |};
@@ -229,6 +313,18 @@ export function checkActionValue(root: mixed, label: string): void {
     }
 
     if (!isPlainObject(object)) {
+      // A form gets its own sentence. It is the one prototype this grammar
+      // does carry, just not here — a `FormData` is an argument of a call, and
+      // this walk only ever sees the inside of one, or a result — and "is a
+      // class instance" would send the reader looking for a class they did not
+      // write.
+      if (asFormData(object) != null) {
+        throw new ActionValueError(
+          path,
+          "is a FormData, and a form may only be an argument of a call: never part of a value, " +
+            "and never a result",
+        );
+      }
       throw new ActionValueError(
         path,
         "is a class instance, a Map, a Set, a Date, a React element or another object with a " +
@@ -253,11 +349,51 @@ export function checkActionValue(root: mixed, label: string): void {
 }
 
 /**
+ * One form's entries, as pairs of strings, or a named failure.
+ *
+ * The count is checked as the entries are read rather than afterwards, so an
+ * enormous form is refused before the whole of it has been copied. A `File`
+ * entry is refused by name: an upload is not in this grammar and the field
+ * that carried it is the useful half of saying so.
+ */
+function formEntries(form: FormData, label: string): Array<Array<string>> {
+  const entries: Array<Array<string>> = [];
+  for (const [name, value] of form.entries()) {
+    if (entries.length >= MAX_FORM_ENTRIES) {
+      throw new ActionValueError(
+        label,
+        `carries more than ${String(MAX_FORM_ENTRIES)} form fields`,
+      );
+    }
+    if (name.length > MAX_FORM_NAME_LENGTH) {
+      throw new ActionValueError(
+        label,
+        `has a form field name longer than ${String(MAX_FORM_NAME_LENGTH)} characters`,
+      );
+    }
+    if (typeof value !== "string") {
+      throw new ActionValueError(
+        `${label} field \`${name}\``,
+        "is a file, and a file cannot cross to a server action",
+      );
+    }
+    entries.push([name, value]);
+  }
+  return entries;
+}
+
+/**
  * The request body for a call, or a named failure.
  *
  * The browser's half. Refusing here is what turns "the server answered 400"
  * into "argument 2.createdAt is a class instance", at the call site, with a
  * stack that reaches the component.
+ *
+ * A `FormData` argument becomes the envelope's `form` key and leaves `null` in
+ * its own slot, so `args` stays a list of values of exactly the length the
+ * call had. Two forms is a refusal rather than a choice: React passes one, and
+ * an envelope that could carry several would need to say which is which in a
+ * place that is not `at`.
  */
 export function encodeActionArguments(args: $ReadOnlyArray<mixed>): string {
   if (args.length > MAX_ACTION_ARGUMENTS) {
@@ -267,10 +403,24 @@ export function encodeActionArguments(args: $ReadOnlyArray<mixed>): string {
         String(MAX_ACTION_ARGUMENTS),
     );
   }
+  const values: Array<mixed> = [];
+  let form: {| readonly at: number, readonly entries: Array<Array<string>> |} | null = null;
   for (let index = 0; index < args.length; index += 1) {
-    checkActionValue(args[index], `argument ${String(index + 1)}`);
+    const argument = args[index];
+    const label = `argument ${String(index + 1)}`;
+    const submitted = asFormData(argument);
+    if (submitted != null) {
+      if (form != null) {
+        throw new ActionValueError(label, "is a second form, and a call carries at most one");
+      }
+      form = { at: index, entries: formEntries(submitted, label) };
+      values.push(null);
+      continue;
+    }
+    checkActionValue(argument, label);
+    values.push(argument);
   }
-  return JSON.stringify({ args });
+  return form == null ? JSON.stringify({ args: values }) : JSON.stringify({ args: values, form });
 }
 
 /**
@@ -282,7 +432,7 @@ export function encodeActionArguments(args: $ReadOnlyArray<mixed>): string {
  * only way to keep this closed as it grows is to refuse anything that is not
  * this today.
  */
-export function decodeActionArguments(text: string): Array<ActionValue> {
+export function decodeActionArguments(text: string): Array<ActionArgument> {
   let parsed: mixed;
   try {
     parsed = JSON.parse(text);
@@ -293,8 +443,9 @@ export function decodeActionArguments(text: string): Array<ActionValue> {
     throw new ActionValueError("the body", "is not a JSON object");
   }
   const keys: $ReadOnlyArray<string> = Object.getOwnPropertyNames(parsed);
-  if (keys.length !== 1 || keys[0] !== "args") {
-    throw new ActionValueError("the body", 'has keys other than "args"');
+  const named = keys.length === 1 ? keys[0] === "args" : keys.length === 2 && keys.includes("form");
+  if (!named || !keys.includes("args")) {
+    throw new ActionValueError("the body", 'has keys other than "args" and "form"');
   }
   const args: mixed = parsed.args;
   if (!Array.isArray(args)) {
@@ -309,7 +460,79 @@ export function decodeActionArguments(text: string): Array<ActionValue> {
   for (let index = 0; index < args.length; index += 1) {
     checkActionValue(args[index], `argument ${String(index + 1)}`);
   }
-  return args as $FlowFixMe;
+  const decoded: Array<ActionArgument> = args as $FlowFixMe;
+  if (keys.length === 2) {
+    const at = decodeForm(parsed.form, decoded);
+    decoded[at.index] = at.form;
+  }
+  return decoded;
+}
+
+/**
+ * The envelope's `form`, as a `FormData` and the position it belongs at.
+ *
+ * Every field of the envelope is checked before anything is built, and the
+ * slot it names must already hold `null`: `args` and `form` are two statements
+ * about one call, and a payload that makes both about the same argument is a
+ * payload whose sender believed something that is not true. The only thing
+ * constructed is a `FormData`, from strings, and which constructor that is was
+ * decided here rather than by the bytes.
+ */
+function decodeForm(
+  candidate: mixed,
+  args: $ReadOnlyArray<ActionArgument>,
+): {| readonly index: number, readonly form: FormData |} {
+  if (typeof FormData === "undefined") {
+    throw new ActionValueError("the body", "carries a form, and this runtime has no FormData");
+  }
+  if (candidate == null || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new ActionValueError("the form", "is not a JSON object");
+  }
+  const keys: $ReadOnlyArray<string> = Object.getOwnPropertyNames(candidate);
+  if (keys.length !== 2 || !keys.includes("at") || !keys.includes("entries")) {
+    throw new ActionValueError("the form", 'has keys other than "at" and "entries"');
+  }
+
+  const at: mixed = candidate.at;
+  if (typeof at !== "number" || !Number.isInteger(at) || at < 0 || at >= args.length) {
+    throw new ActionValueError("the form", "names no argument of this call");
+  }
+  if (args[at] !== null) {
+    throw new ActionValueError(
+      "the form",
+      `names argument ${String(at + 1)}, which the payload also gives a value`,
+    );
+  }
+
+  const entries: mixed = candidate.entries;
+  if (!Array.isArray(entries)) {
+    throw new ActionValueError("the form", 'has an "entries" that is not an array');
+  }
+  if (entries.length > MAX_FORM_ENTRIES) {
+    throw new ActionValueError(
+      "the form",
+      `carries more than ${String(MAX_FORM_ENTRIES)} form fields`,
+    );
+  }
+
+  const form: FormData = new FormData();
+  for (const entry of entries) {
+    if (!Array.isArray(entry) || entry.length !== 2) {
+      throw new ActionValueError("the form", "has an entry that is not a name and a value");
+    }
+    const [name, value] = entry;
+    if (typeof name !== "string" || typeof value !== "string") {
+      throw new ActionValueError("the form", "has an entry whose name or value is not a string");
+    }
+    if (name.length > MAX_FORM_NAME_LENGTH) {
+      throw new ActionValueError(
+        "the form",
+        `has a form field name longer than ${String(MAX_FORM_NAME_LENGTH)} characters`,
+      );
+    }
+    form.append(name, value);
+  }
+  return { index: at, form };
 }
 
 /**

@@ -793,78 +793,67 @@ fn dev_reports_a_contract_violation_when_one_appears() {
     }
     let root = project_with_a_clean_server_component();
     let helper = root.join("app/greeting.js");
-    let mut refused = Vec::new();
+    let said = Mutex::new(String::new());
 
-    for attempt in 1..=PORT_ATTEMPTS {
-        let port = free_port();
-        let said = Mutex::new(String::new());
-
-        let served = std::thread::scope(|scope| {
-            let mut server =
-                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
-            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
-                refused.push(format!(
-                    "attempt {attempt} on port {port}: {}",
-                    server.evidence(&said)
-                ));
-                drop(server);
-                return false;
-            }
-
-            // A clean project says nothing. Asserted after the server has
-            // answered a request, which is well after the start-up analysis.
-            assert!(
-                !said_contains(&said, "server components"),
-                "a project with no violations must not report any:\n{}",
-                server_said(&said)
-            );
-
-            fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
-            let reported = wait_for_said(
-                &said,
-                "rsc/client-only-api-in-server",
-                Duration::from_secs(30),
-            );
-            assert!(
-                reported,
-                "the dev server did not report the violation that appeared:\n{}",
+    std::thread::scope(|scope| {
+        // See the note in `dev_answers_the_fixture_the_way_a_build_does`.
+        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
                 server.evidence(&said)
             );
-            let text = server_said(&said);
-            assert!(
-                text.contains("app/greeting.js"),
-                "the report must name the module:\n{text}"
-            );
-            assert!(
-                text.contains("localStorage"),
-                "the report must name the API:\n{text}"
-            );
-
-            // And it goes away again: a report that only ever accumulates is a
-            // report nobody can use to tell whether they fixed it.
-            fs::write(&helper, CLEAN_HELPER).unwrap();
-            let cleared = wait_for_said(
-                &said,
-                "the server-component contract holds",
-                Duration::from_secs(30),
-            );
-            assert!(
-                cleared,
-                "the dev server never said the violation was gone:\n{}",
+        };
+        if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+            panic!(
+                "the dev server announced port {port} and did not answer on it\n{}",
                 server.evidence(&said)
             );
-            true
-        });
-
-        if served {
-            return;
         }
-    }
 
-    panic!(
-        "the dev server never answered, on {PORT_ATTEMPTS} different ports\n{}",
-        refused.join("\n\n")
-    );
+        // A clean project says nothing. Asserted after the server has
+        // answered a request, which is well after the start-up analysis.
+        assert!(
+            !said_contains(&said, "server components"),
+            "a project with no violations must not report any:\n{}",
+            server_said(&said)
+        );
+
+        fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
+        let reported = wait_for_said(
+            &said,
+            "rsc/client-only-api-in-server",
+            Duration::from_secs(30),
+        );
+        assert!(
+            reported,
+            "the dev server did not report the violation that appeared:\n{}",
+            server.evidence(&said)
+        );
+        let text = server_said(&said);
+        assert!(
+            text.contains("app/greeting.js"),
+            "the report must name the module:\n{text}"
+        );
+        assert!(
+            text.contains("localStorage"),
+            "the report must name the API:\n{text}"
+        );
+
+        // And it goes away again: a report that only ever accumulates is a
+        // report nobody can use to tell whether they fixed it.
+        fs::write(&helper, CLEAN_HELPER).unwrap();
+        let cleared = wait_for_said(
+            &said,
+            "the server-component contract holds",
+            Duration::from_secs(30),
+        );
+        assert!(
+            cleared,
+            "the dev server never said the violation was gone:\n{}",
+            server.evidence(&said)
+        );
+    });
 }
 
 /// Whether the server has said `needle` yet, waiting up to `budget` for it.
@@ -1329,11 +1318,21 @@ impl Drop for Server {
 /// times and prints three servers' reasons, which is more than the one line
 /// this used to give.
 ///
-/// [`dev_serves_the_docs_site_through_vite`] no longer needs it: `uf dev
-/// --port 0` asks the operating system for a port through the process that
-/// then holds it, and prints the answer, so there is no window to lose. The
-/// commands that have no such flag are still here, and this is still the best
-/// available answer for them.
+/// Most of the `uf dev` tests no longer need it: `uf dev --port 0` asks the
+/// operating system for a port *through the process that then holds it*, and
+/// prints the answer, so there is no window to lose. Three of them have moved
+/// — the two here and [`dev_serves_the_docs_site_through_vite`] — after this
+/// race failed CI five times in one afternoon, three of those on
+/// `Port … is already in use` after all three attempts lost, which is what a
+/// loaded runner does to a window this wide.
+///
+/// What is left needs a port it can name twice.
+/// [`dev_rereads_an_env_file_that_changed_under_it`] asserts across a
+/// **restart**: `--port` carries `--strict-port`, so a server that came back
+/// on the same number is the property being tested, and `--port 0` would give
+/// it a different one and turn a real regression into a passing test. The
+/// commands with no such flag are in the same position. For those this is
+/// still the best available answer.
 const PORT_ATTEMPTS: usize = 3;
 
 /// The port in the first `http://host:port` URL a server has printed, if any.
@@ -1528,36 +1527,28 @@ fn dev_answers_the_fixture_the_way_a_build_does() {
     // of them wrote.
     let _served = served_lock();
     let root = served_app_root();
-    let mut refused = Vec::new();
+    let said = Mutex::new(String::new());
 
-    for attempt in 1..=PORT_ATTEMPTS {
-        let port = free_port();
-        let said = Mutex::new(String::new());
-
-        let served = std::thread::scope(|scope| {
-            let mut server =
-                Server::start(&root, &["dev", "--port", &port.to_string()], scope, &said);
-            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
-                assert_dev_served(&mut server, port, &said, &body);
-                return true;
-            }
-            refused.push(format!(
-                "attempt {attempt} on port {port}: {}",
+    std::thread::scope(|scope| {
+        // `--port 0` rather than a port chosen here: asking the operating
+        // system *through the process that will hold the socket* leaves no
+        // window for anything else on the machine to take it. See
+        // [`Server::bound_port`].
+        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
                 server.evidence(&said)
-            ));
-            drop(server);
-            false
-        });
-
-        if served {
-            return;
-        }
-    }
-
-    panic!(
-        "the dev server never answered `served-app`, on {PORT_ATTEMPTS} different ports\n{}",
-        refused.join("\n\n")
-    );
+            );
+        };
+        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
+            panic!(
+                "the dev server announced port {port} and never answered `served-app`\n{}",
+                server.evidence(&said)
+            );
+        };
+        assert_dev_served(&mut server, port, &said, &body);
+    });
 }
 
 /// Everything `uf dev` has to answer for `served-app`, once it is listening.
@@ -2134,14 +2125,20 @@ if (adapter === "edge" || adapter === "serverless") {
 }
 "#;
 
-/// What the `rsc-split-app` artefact is asked: one server action, five ways.
+/// What the `rsc-split-app` artefact is asked: two server actions, nine ways.
 ///
-/// The id is read out of the manifest the build copied into `static/`, because
-/// it is keyed on a per-build secret and there is nowhere else it could come
-/// from — which is the point of it. The five are the call itself, the call
-/// with a cookie the action reads, and the three refusals a browser can be
-/// made to attempt from somewhere else: another origin, an id nobody has, and
-/// a content type a cross-origin form could have produced.
+/// The ids are read out of the manifest the build wrote, because they are
+/// keyed on a per-build secret and there is nowhere else they could come from
+/// — which is the point of them. The first five are the click action: the call
+/// itself, the call with a cookie the action reads, and the three refusals a
+/// browser can be made to attempt from somewhere else — another origin, an id
+/// nobody has, and a content type a cross-origin form could have produced.
+///
+/// The last four are the form action, which is the same endpoint reached the
+/// way React reaches it: the previous state, then the submitted fields. A form
+/// that validates, a form that does not, a form envelope that is malformed,
+/// and the same cross-origin refusal — because a form call is not a different
+/// kind of request and must not be guarded as though it were.
 ///
 /// A `POST` to the page's own URL, because that is where an action call goes:
 /// no path is reserved for it, and the middleware guarding that page is the
@@ -2153,6 +2150,7 @@ const SERVER_ACTION_QUESTIONS: &str = r#"
 // action with the ids the server dials is the last file to hand a browser.
 // `deployed_action_id` reads it from the project's own `.uf/build/meta/`.
 const actionId = "__UF_ACTION_ID__";
+const formActionId = "__UF_FORM_ACTION_ID__";
 const post = (headers, body) => ({ method: "POST", headers, body });
 const dialable = {
   origin: "http://127.0.0.1",
@@ -2160,6 +2158,12 @@ const dialable = {
   "content-type": "application/json",
   "uf-action": actionId,
 };
+const formDialable = { ...dialable, "uf-action": formActionId };
+// What `useActionState` sends: the state it is holding, then the form. The
+// form is beside the values under its own key, and the slot it names is
+// `null` — see `packages/router/internal/action-wire.js`.
+const submit = (entries) =>
+  JSON.stringify({ args: [{ saved: null, problem: null }, null], form: { at: 1, entries } });
 
 await ask("action", "/counter", post(dialable, JSON.stringify({ args: [4] })));
 await ask(
@@ -2182,7 +2186,50 @@ await ask(
   "/counter",
   post({ ...dialable, "content-type": "text/plain" }, "args=1"),
 );
+
+await ask("form", "/counter", post(formDialable, submit([["note", "hello"]])));
+await ask("form-refused", "/counter", post(formDialable, submit([["note", "   "]])));
+await ask(
+  "form-malformed",
+  "/counter",
+  post(formDialable, JSON.stringify({ args: [null, null], form: { at: 5, entries: [] } })),
+);
+await ask(
+  "form-cross-origin",
+  "/counter",
+  post({ ...formDialable, origin: "http://evil.example" }, submit([["note", "hello"]])),
+);
 "#;
+
+/// One server action's id, by the export it belongs to, out of the build that
+/// just ran.
+///
+/// `.uf/build/meta/`, never `dist/` or a deploy artefact's `static/`: the
+/// manifest is not served, by design (ubugeeei-prod/uf#339), so a test that
+/// found it there would be reporting a disclosure rather than reading a value.
+///
+/// By export name rather than by position: the fixture declares two actions,
+/// and a test that read `serverActions[0]` would be asserting about the order
+/// the manifest happens to sort in rather than about the action it means.
+///
+/// Read again after every build, because the id is an HMAC over a per-build
+/// secret and each build mints a new one.
+fn deployed_action_id(root: &Path, export: &str) -> String {
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/uf-rsc-manifest.json"))
+            .expect("`uf build` writes the RSC manifest beside the output directory"),
+    )
+    .expect("the RSC manifest is JSON");
+    manifest["serverActions"]
+        .as_array()
+        .expect("the RSC manifest carries a `serverActions` array")
+        .iter()
+        .find(|action| action["export"] == serde_json::json!(export))
+        .unwrap_or_else(|| panic!("no `{export}` in the manifest: {manifest}"))["id"]
+        .as_str()
+        .expect("an action id is a string")
+        .to_owned()
+}
 
 /// Build one adapter's artefact and copy it out of the checkout.
 ///
@@ -2190,26 +2237,6 @@ await ask(
 /// because `dist/`, `node_modules` and the source are all still there and an
 /// artefact quietly reading one of them would pass. Returns the build's stdout
 /// and the temporary directory holding `app/`, which the caller keeps alive.
-/// The single server action's id, out of the build that just ran.
-///
-/// `.uf/build/meta/`, never `dist/` or a deploy artefact's `static/`: the
-/// manifest is not served, by design (ubugeeei-prod/uf#339), so a test that
-/// found it there would be reporting a disclosure rather than reading a value.
-///
-/// Read again after every build, because the id is an HMAC over a per-build
-/// secret and each build mints a new one.
-fn deployed_action_id(root: &Path) -> String {
-    let manifest: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(root.join(".uf/build/meta/uf-rsc-manifest.json"))
-            .expect("`uf build` writes the RSC manifest beside the output directory"),
-    )
-    .expect("the RSC manifest is JSON");
-    manifest["serverActions"][0]["id"]
-        .as_str()
-        .expect("the fixture declares exactly one server action")
-        .to_owned()
-}
-
 fn deploy_and_copy(root: &Path, adapter: &str) -> (String, tempfile::TempDir) {
     let output = uf()
         .arg("--cwd")
@@ -3419,13 +3446,17 @@ fn server_said(said: &Mutex<String>) -> String {
 /// port stopped listening, and `http_get`'s bare `expect` reported
 /// `ConnectionRefused` and nothing about the process that had refused it.
 fn get(server: &mut Server, port: u16, path: &str, said: &Mutex<String>) -> String {
-    if TcpStream::connect(("127.0.0.1", port)).is_err() {
-        panic!(
-            "the dev server answered `/` and then stopped listening, before {path}\n{}",
+    match try_http_request("127.0.0.1", port, "GET", path, None, &[]) {
+        Ok(response) => response,
+        // The whole exchange, not just the connect. A server that has gone
+        // away mid-request resets rather than refusing, and reporting that as
+        // a bare `unwrap` on a read threw away the one thing the failure was
+        // written to carry: what the process itself said before it went.
+        Err(error) => panic!(
+            "the dev server answered `/` and then stopped answering, at {path}: {error}\n{}",
             server.evidence(said)
-        );
+        ),
     }
-    http_get("127.0.0.1", port, path)
 }
 
 /// A port nothing is listening on, released before the server binds it.
@@ -3452,23 +3483,27 @@ fn free_port() -> u16 {
 }
 
 /// Poll until the server answers, or give up.
+///
+/// The request is the probe. Connecting first and then asking looked like the
+/// careful order and was the opposite: a server that has bound its port but is
+/// not serving yet accepts the connection and resets it, so the poll would
+/// connect happily, hand the socket to a helper that unwrapped the read, and
+/// panic with `Connection reset by peer` — inside the loop written to wait for
+/// exactly that. It cost two green pull requests an hour apart.
+///
+/// So the whole exchange is fallible here, and an error is a reason to sleep
+/// rather than a reason to stop. The connect is also no longer made twice.
 fn wait_for_http(port: u16, path: &str, budget: Duration) -> Option<String> {
     let started = Instant::now();
     while started.elapsed() < budget {
-        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            let body = http_get("127.0.0.1", port, path);
-            if !body.is_empty() {
-                return Some(body);
-            }
+        if let Ok(body) = try_http_request("127.0.0.1", port, "GET", path, None, &[])
+            && !body.is_empty()
+        {
+            return Some(body);
         }
         std::thread::sleep(Duration::from_millis(200));
     }
     None
-}
-
-/// One plain HTTP/1.1 request, so the test depends on nothing but the server.
-fn http_get(host: &str, port: u16, path: &str) -> String {
-    http_request(host, port, "GET", path, None)
 }
 
 /// The same, for a method and a body — which is the half a route handler is
@@ -3496,10 +3531,29 @@ fn http_request_with(
     body: Option<&str>,
     headers: &[(&str, &str)],
 ) -> String {
-    let mut stream = TcpStream::connect((host, port)).expect("connect to the server");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(60)))
-        .unwrap();
+    match try_http_request(host, port, method, path, body, headers) {
+        Ok(response) => response,
+        Err(error) => panic!("{method} {path} on {host}:{port} did not complete: {error}"),
+    }
+}
+
+/// The same exchange, for a caller that has a reason to expect it to fail.
+///
+/// [`wait_for_http`] is that caller: while a server is coming up, a connect
+/// that succeeds and a read that is reset are the same event seen half a
+/// millisecond apart, and a poll cannot tell them apart by connecting first.
+/// Everything above this returns the response or panics, because by then the
+/// server has answered once and a failure is the test's finding.
+fn try_http_request(
+    host: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+    headers: &[(&str, &str)],
+) -> std::io::Result<String> {
+    let mut stream = TcpStream::connect((host, port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(60)))?;
     // The body's headers only when there is a body: a `GET` carrying
     // `Content-Length: 0` is legal and is still not the request a browser
     // makes, and this is the request every other assertion here is made about.
@@ -3522,11 +3576,10 @@ fn http_request_with(
         } else {
             entity
         }
-    )
-    .unwrap();
+    )?;
     let mut response = String::new();
-    stream.read_to_string(&mut response).unwrap();
-    response
+    stream.read_to_string(&mut response)?;
+    Ok(response)
 }
 
 /// The whole claim, end to end: one file, an empty directory, a served page.
@@ -5065,12 +5118,19 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    // 1. The reference, named by the `module#export` the manifest keys.
-    assert!(
-        bundle.contains("app/counter/_actions/tally.js#recordCount"),
-        "the client bundle has no reference to the action the counter calls:\n{}",
-        script_names(&scripts)
-    );
+    // 1. The references, named by the `module#export` the manifest keys. Both
+    //    of them: a reference module declares one name per callable export,
+    //    and a form action is an export like any other.
+    for reference in [
+        "app/counter/_actions/tally.js#recordCount",
+        "app/counter/_actions/tally.js#submitNote",
+    ] {
+        assert!(
+            bundle.contains(reference),
+            "the client bundle has no reference to {reference:?}:\n{}",
+            script_names(&scripts)
+        );
+    }
 
     // 2. And nothing of the module the reference stands in for.
     for absent in [
@@ -5089,6 +5149,21 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
         !bundle.contains("async_hooks"),
         "`@uniflowed/server` reached the browser through the action:\n{}",
         script_names(&scripts)
+    );
+
+    // 4. And the prerendered document, for the one thing the form deliberately
+    //    does not do. A reference carries no `$$FORM_ACTION`, so React writes
+    //    the form it writes for any client action — one whose `action` is a
+    //    `javascript:` URL that throws — and a submit before hydration does
+    //    nothing rather than sending a native `multipart/form-data` post at an
+    //    endpoint that refuses one. Giving a reference a `$$FORM_ACTION` would
+    //    change this line, and would need `docs/security.md`'s CSRF row
+    //    changed with it; that is what this assertion is for.
+    let counter = fs::read_to_string(dist.join("counter/index.html"))
+        .expect("the counter route is prerendered");
+    assert!(
+        counter.contains("<form action=\"javascript:throw"),
+        "the form's pre-hydration behaviour is not React's client-action one:\n{counter}"
     );
 
     // The server bundle is the other half of the same sentence: what the
@@ -5116,36 +5191,46 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
     )
     .unwrap();
     let actions = manifest["serverActions"].as_array().unwrap();
-    assert_eq!(actions.len(), 1, "manifest: {manifest}");
-    assert_eq!(actions[0]["module"], "app/counter/_actions/tally.js");
-    assert_eq!(actions[0]["export"], "recordCount");
-    let id = actions[0]["id"].as_str().unwrap();
-    assert_eq!(
-        id.len(),
-        64,
-        "an action id is 64 hex characters, got {id:?}"
-    );
-    assert!(
-        id.bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
-        "an action id is lowercase hexadecimal, got {id:?}"
-    );
-    assert!(
-        bundle.contains(id),
-        "the browser holds a different id from the one the manifest published:\n{}",
-        script_names(&scripts)
-    );
-    assert!(
-        server.contains(id),
-        "the server's table does not carry the id the browser was given"
-    );
+    assert_eq!(actions.len(), 2, "manifest: {manifest}");
+    let mut exports: Vec<&str> = actions
+        .iter()
+        .map(|action| {
+            assert_eq!(action["module"], "app/counter/_actions/tally.js");
+            action["export"].as_str().unwrap()
+        })
+        .collect();
+    exports.sort_unstable();
+    assert_eq!(exports, ["recordCount", "submitNote"]);
 
-    // And the summary counts it, so a reader sees that the build produced an
-    // endpoint rather than only an analysis.
+    for action in actions {
+        let id = action["id"].as_str().unwrap();
+        assert_eq!(
+            id.len(),
+            64,
+            "an action id is 64 hex characters, got {id:?}"
+        );
+        assert!(
+            id.bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)),
+            "an action id is lowercase hexadecimal, got {id:?}"
+        );
+        assert!(
+            bundle.contains(id),
+            "the browser holds a different id from the one the manifest published:\n{}",
+            script_names(&scripts)
+        );
+        assert!(
+            server.contains(id),
+            "the server's table does not carry the id the browser was given"
+        );
+    }
+
+    // And the summary counts them, so a reader sees that the build produced
+    // endpoints rather than only an analysis.
     assert_eq!(
         summary_value(&stdout, "server actions"),
-        "1",
-        "the summary must count the callable action:\n{stdout}"
+        "2",
+        "the summary must count the callable actions:\n{stdout}"
     );
 }
 
@@ -5177,8 +5262,15 @@ fn every_adapter_answers_the_same_server_action_call() {
         // which is the property that makes an id from a previous build useless
         // to somebody who kept one, and the reason this cannot be hoisted out
         // of the loop.
-        let questions =
-            SERVER_ACTION_QUESTIONS.replace("__UF_ACTION_ID__", &deployed_action_id(&root));
+        let questions = SERVER_ACTION_QUESTIONS
+            .replace(
+                "__UF_ACTION_ID__",
+                &deployed_action_id(&root, "recordCount"),
+            )
+            .replace(
+                "__UF_FORM_ACTION_ID__",
+                &deployed_action_id(&root, "submitNote"),
+            );
         let said = ask_the_artefact(empty.path(), adapter, &questions);
 
         // The action ran, inside the request the host began, and answered with
@@ -5208,13 +5300,44 @@ fn every_adapter_answers_the_same_server_action_call() {
                 "the `{adapter}` artefact answered {expected:?} differently:\n{said}"
             );
         }
-        // Nothing about the build leaks out of a refusal.
+
+        // The form action, reached the way React reaches it. `tallyFor(5)` is
+        // `11` and the visitor is anonymous, so the whole of the answer is the
+        // server's: the fields arrived as a `FormData`, the schema accepted
+        // them, and the module that ran is the one the browser does not have.
         assert!(
-            !said.contains("tally-marker-only-the-server-runs-this/ledger")
-                || said
-                    .matches("tally-marker-only-the-server-runs-this")
-                    .count()
-                    == 2,
+            said.contains("form 200")
+                && said.contains(
+                    "\"saved\":\"hello/11/anonymous/tally-marker-only-the-server-runs-this\""
+                ),
+            "the `{adapter}` artefact did not run the form action:\n{said}"
+        );
+        // A field the schema refuses is the action's own answer and not an
+        // error: `"   "` trims to nothing, so the note is rejected and the
+        // state carries the reason. Validation happening on the server is the
+        // half a `maxlength` attribute cannot do.
+        assert!(
+            said.contains("form-refused 200") && said.contains("a note is 1 to 80 characters"),
+            "the `{adapter}` artefact did not validate the submitted form:\n{said}"
+        );
+        // And the two refusals a form call gets for being a request rather
+        // than for being a form: an envelope naming an argument that is not
+        // there, and a page on somebody else's origin posting it.
+        for expected in ["form-malformed 400", "form-cross-origin 403"] {
+            assert!(
+                said.contains(expected),
+                "the `{adapter}` artefact answered {expected:?} differently:\n{said}"
+            );
+        }
+
+        // Nothing about the build leaks out of a refusal. Three answers carry
+        // the marker and they are the three that ran the action: two calls to
+        // `recordCount`, which returns it beside the ledger's, and the one
+        // form that validated. Every refusal has the fixed body.
+        assert!(
+            said.matches("tally-marker-only-the-server-runs-this")
+                .count()
+                == 3,
             "a refusal carried something about the build:\n{said}"
         );
 

@@ -16,6 +16,7 @@ members = [
   "crates/uf_plugin",
   "crates/uf_pm",
   "crates/uf_prepare",
+  "crates/uf_profiler",
   "crates/uf_project",
   "crates/uf_react_compiler",
   "crates/uf_rm",
