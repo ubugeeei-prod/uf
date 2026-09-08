@@ -100,8 +100,10 @@ A server action is not the only thing a browser can reach any more: `QUERY`,
 server-sent events, an upgrade a handler can accept, and a queue; OAuth as a
 contract rather than a provider; and a logger whose request id reaches a
 render. The router streams its loaders instead of awaiting them, keeps the
-site around a 404, and understands parallel and intercepting routes. A
-message's arguments are in its type. And `uf release` can no longer lose a
+site around a 404, and recognises `@slot` and `(.)segment` — refusing each by
+name rather than serving it as a literal URL, which is the first half of
+parallel and intercepting routes and not the whole of them. A message's
+arguments are in its type. And `uf release` can no longer lose a
 commit whose subject carries no pull request number, or rewrite a changelog
 section that has already been published — both of which had happened.
 
