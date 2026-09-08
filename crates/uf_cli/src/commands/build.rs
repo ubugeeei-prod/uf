@@ -854,8 +854,10 @@ fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagno
             })
             .collect();
 
+        // A module id out of the bundler names a file in the checkout. #640.
+        let drawn = uf_term::safe_path(&module);
         ui.render(|renderer, out| {
-            renderer.theme().path.paint(renderer.color(), &module, out);
+            renderer.theme().path.paint(renderer.color(), &drawn, out);
             out.push_str("  ");
             renderer.theme().muted.paint(renderer.color(), &header, out);
             out.push('\n');
