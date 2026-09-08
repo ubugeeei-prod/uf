@@ -103,12 +103,41 @@ export class AssetError extends Error {
  * there are no correlation ids: the service replies once per request and in
  * order, so a plain queue of resolvers pairs a reply with its caller. Any exit
  * is final and every outstanding request is rejected at once.
+ *
+ * # Why the child is unreferenced between requests
+ *
+ * The same reason, stated once next door and applied here: a live child
+ * process and its pipes are handles, and a host with a handle open does not
+ * exit. So this service holds its host open for exactly as long as it owes an
+ * answer — referenced when a request joins an empty queue, unreferenced when
+ * the queue drains, and unreferenced from the start — and `#holdHost` acts
+ * only on the edge because `ref`/`unref` *count* on Bun where they set a flag
+ * on Node. `TransformService.#holdHost` carries that argument in full.
+ *
+ * It was invisible here for as long as it was, and that is worth saying rather
+ * than discovering: the only thing that constructs an `AssetService` is the
+ * Node-based Vite driver, and it closes the service in `buildEnd`. A host that
+ * drives assets and does not — which is where runtime independence goes, since
+ * `ubugeeei-redundancy.md` requires it be real rather than an enum — got a
+ * build that finished and then sat there, with the symptom nowhere near the
+ * cause. See ubugeeei-prod/uf#596, and #418 for the same defect in the service
+ * that is asked about every module.
  */
 export class AssetService {
   #child;
   #pending = [];
   #identity;
   #failure = null;
+  /**
+   * Whether the host is currently held open for this service.
+   *
+   * `true` before the constructor's first release, because that is what a
+   * freshly spawned child and its pipes are: referenced. Starting it `false`
+   * would make that release a no-op and leave the service holding the host
+   * from the moment it was made, which is the bug this field exists to end
+   * rather than a second spelling of it.
+   */
+  #held = true;
 
   /**
    * @param {object} [options]
@@ -130,18 +159,26 @@ export class AssetService {
     createInterface({ input: this.#child.stdout }).on("line", (line) => {
       const waiting = this.#pending.shift();
       if (!waiting) return;
-      let reply;
+      // `finally`, so the hold is released down every path out of this handler
+      // and not only the successful one. A rejected request is still a request
+      // that has been answered, and staying referenced after one would turn an
+      // image that failed to decode into a process that never exits.
       try {
-        reply = JSON.parse(line);
-      } catch {
-        waiting.reject(new Error(`uf assets sent a malformed reply: ${line}`));
-        return;
+        let reply;
+        try {
+          reply = JSON.parse(line);
+        } catch {
+          waiting.reject(new Error(`uf assets sent a malformed reply: ${line}`));
+          return;
+        }
+        if (reply.error != null) {
+          waiting.reject(new AssetError(waiting.id, reply.error));
+          return;
+        }
+        waiting.resolve(reply);
+      } finally {
+        this.#holdHost(this.#pending.length > 0);
       }
-      if (reply.error != null) {
-        waiting.reject(new AssetError(waiting.id, reply.error));
-        return;
-      }
-      waiting.resolve(reply);
     });
 
     this.#child.on("error", (error) => {
@@ -150,10 +187,36 @@ export class AssetService {
     this.#child.on("close", (code) => {
       this.#settleAll(new Error(`uf assets exited (${code})`));
     });
+
+    this.#holdHost(false);
+  }
+
+  /**
+   * Keep the host process alive, or stop keeping it alive.
+   *
+   * The pipes as well as the child, every call optional-chained, and the
+   * current state tracked so that only the edge is acted on — all three for
+   * the reasons `TransformService.#holdHost` sets out, which are the same
+   * reasons because this is the same shape of service. The third is the one
+   * that is not obvious and is a hang when it is got wrong: `ref()` and
+   * `unref()` set a flag on Node and **count** on Bun, so a service that said
+   * what it wanted on every reply would accumulate references and hold the
+   * host open for ever.
+   */
+  #holdHost(hold) {
+    if (hold === this.#held) return;
+    this.#held = hold;
+    const method = hold ? "ref" : "unref";
+    this.#child[method]?.();
+    this.#child.stdin?.[method]?.();
+    this.#child.stdout?.[method]?.();
   }
 
   #send(request) {
     if (this.#failure) return Promise.reject(this.#failure);
+    // Before the push, so the host is held from the moment it is owed an
+    // answer rather than from the moment the write lands.
+    this.#holdHost(true);
     return new Promise((resolve, reject) => {
       this.#pending.push({ id: request.id, resolve, reject });
       this.#child.stdin.write(`${JSON.stringify(request)}\n`);
@@ -163,6 +226,7 @@ export class AssetService {
   #settleAll(error) {
     this.#failure = error;
     while (this.#pending.length > 0) this.#pending.shift().reject(error);
+    this.#holdHost(false);
   }
 
   /**

@@ -280,23 +280,32 @@ export function decodeMouse(
 }
 
 /**
+ * How long an old-style `ESC [ M` report is: three introducer bytes and one
+ * each for the button, the column and the row.
+ *
+ * Named rather than written twice, because `keys.js` needs the same number to
+ * know when one of these has not all arrived yet.
+ */
+export const LEGACY_REPORT_LENGTH: number = 6;
+
+/**
  * How many bytes an old-style `ESC [ M` report occupies, or zero.
  *
- * Six: the three-byte introducer and one byte each for the button, the column
- * and the row. The caller consumes them and emits nothing, which is the
- * documented behaviour of this package on a terminal that does not implement
- * SGR mouse reporting — see this module's header for why that is better than
- * decoding them.
+ * {@link LEGACY_REPORT_LENGTH} of them. The caller consumes them and emits
+ * nothing, which is the documented behaviour of this package on a terminal
+ * that does not implement SGR mouse reporting — see this module's header for
+ * why that is better than decoding them.
  *
- * Returns zero when fewer than six bytes have arrived, so that a report split
- * across two reads is not half-consumed. The caller then falls back to
- * whatever it does with an unfinished sequence, which delivers three bytes as
- * keys — the one case where this leaks, and it needs a terminal without SGR
- * *and* a read boundary inside a six-byte report.
+ * Returns zero when fewer than that have arrived, so that a report split
+ * across two reads is not half-consumed. A decoder reading a stream holds
+ * those bytes until the rest of them arrive (`keys.js`, `incomplete`); the
+ * pure `decodeInput` has no later chunk to wait for and delivers three payload
+ * bytes as keys, which is the one case where this still leaks and needs a
+ * terminal without SGR *and* a caller that is not buffering.
  */
 export function legacyReportLength(input: string, start: number): number {
   if (input[start + 2] !== "M") {
     return 0;
   }
-  return input.length - start >= 6 ? 6 : 0;
+  return input.length - start >= LEGACY_REPORT_LENGTH ? LEGACY_REPORT_LENGTH : 0;
 }

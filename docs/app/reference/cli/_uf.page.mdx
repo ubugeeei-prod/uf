@@ -795,6 +795,89 @@ two checks are skipped.
 staged is checked as it is on disk; uf does not stash the unstaged half the way
 `lint-staged` does.
 
+## Messages
+
+Two commands over `@uniflowed/i18n`'s catalogue: one that takes it out to a
+translator, one that reads it back. They share a file, and the shape of that
+file is the same in both directions, so a vendor who fills in the extraction
+has produced something `uf i18n merge` reads with no conversion step in
+between.
+
+The walk is Rust rather than the package for the reason the formatter and the
+checker are: it is repeated, repository-wide, CPU-bound work. The half that is
+a *parse of one message* stays in `@uniflowed/i18n`, and neither command
+implements MessageFormat 2 — see
+[the package reference](/reference/i18n) for what that division means.
+
+### uf i18n extract
+
+Writes every message the project declares as one JSON file:
+
+```json
+{
+  "format": "uf-i18n-catalogue/1",
+  "sourceLocale": "en-US",
+  "locale": "en-US",
+  "messages": {
+    "greeting": {
+      "source": "Hello, {$name}!",
+      "translation": "Hello, {$name}!",
+      "parameters": { "name": "string" },
+      "declaredAt": "src/messages.js:10",
+      "digest": "2f1c0b4a7d9e5a63"
+    }
+  }
+}
+```
+
+The text is MessageFormat 2, unchanged from the source — uf copies the literal
+and never parses it. `translation` starts equal to `source`, which gives a
+translator something to edit rather than an empty box and is how `uf i18n
+merge` later tells a translated entry from one that came back untouched.
+`digest` covers the source and the parameters together, and nothing else: a
+message that moved to another file is not a message that changed.
+
+`--locale TAG` names the locale the messages are written in. Without it uf
+reads the project's `defineCatalogue` calls and uses the one literal tag they
+name, and says so rather than guessing when they name none or several.
+`--out PATH` writes somewhere other than `i18n/<locale>.json`. `--json`
+reports on stdout and writes no file.
+
+**A `message(…)` uf cannot read fails the command and nothing is written.**
+A source that is not a literal or a module-level `const` holding one, a
+parameter that is not one of the four kinds, a message declared under no name,
+two messages under one key: each is reported with its file and line. A
+catalogue quietly missing a message is invisible in the extraction, invisible
+in review, and visible only to somebody reading English on a Japanese page.
+
+### uf i18n merge FILE
+
+Reads a translated catalogue and writes the locale module `defineLocales`
+loads — a `// @flow` module default-exporting the keys and their translations,
+next to `FILE` and named for the locale, which is where
+`() => import("./ja-JP.js")` already points. `--out PATH` puts it elsewhere;
+`--json` reports and writes nothing.
+
+uf extracts the project again first, because a translation round takes weeks
+and the English does not stop. Every returned entry is held against what its
+message says today:
+
+| What uf found | What it does |
+| --- | --- |
+| The message changed since the file went out | Names it, writes nothing, exits non-zero |
+| The key is no longer declared | Reports it, leaves it out |
+| A key the file does not carry | Reports it as still to translate |
+| `translation` still equal to `source` | Reports it, leaves it out |
+
+Only the first is a failure. The rest are what a translation in progress looks
+like, and a key left out here is one `translate` falls back to the source for
+and lists on the catalogue as `untranslated`.
+
+What merging does **not** check is whether a translation's placeholders agree
+with the message's parameters. That needs MessageFormat 2 parsed, and it is
+checked by `translate` when the locale loads, against the real parser, in the
+one place this repository implements it.
+
 ## Dependencies
 
 Five commands, all of them the project's own package manager. uf's resolver
@@ -867,6 +950,18 @@ manager would read it as a flag.
 exclusive, and with none of them the package goes in `dependencies`. The
 summary names the field the package actually landed in, read back out of
 `package.json` rather than repeated from the flag.
+
+In a pnpm workspace, `uf add` at the workspace root passes pnpm's
+`--workspace-root`. pnpm refuses to add to a root without it —
+`ERR_PNPM_ADDING_TO_ROOT` — and the advice it gives, to run the command again
+with `-w`, was advice nobody could follow through uf, which never passed that
+flag. The root is where a workspace's development dependencies belong, so the
+command now works there.
+
+It is passed only where the project root *is* the workspace root. Run inside a
+member package, `uf add` resolves to that member and the flag is not passed, so
+the dependency still lands where you are. npm, Yarn and Bun add to a workspace
+root without being asked twice, and none of them is given the flag.
 
 Running it twice changes nothing the second time, and says so in a line.
 

@@ -16,8 +16,11 @@
 //
 //   * `POST /__uf/diagnostic` — a diagnostic a browser-side runtime produced
 //     and wants a person to read. `@uniflowed/router`'s `internal/diagnostics.js`
-//     is the client half, and the hydration-mismatch report beside it is what
-//     calls it.
+//     is the client half; the hydration-mismatch report beside it is what calls
+//     it, and so is `internal/devtools.js`, which reads back after hydration
+//     whether React DevTools can attach to this page at all
+//     (ubugeeei-prod/uf#503). One channel and not one per feature is the whole
+//     point: a second endpoint would be a second thing to notice.
 //   * `POST /__uf/vitals`     — the five numbers `@uniflowed/web/vitals`
 //     measures, posted by `vitalsBeacon()`. In production a project points the
 //     beacon at an endpoint of its own; in development there was nothing at

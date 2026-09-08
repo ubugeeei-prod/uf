@@ -205,7 +205,9 @@ pub(crate) fn render_frame(
     theme.gutter.close(level, out);
     out.push(' ');
     theme.path.open(level, out);
-    out.push_str(frame.path);
+    // Not `push_str`: the path came off a filesystem uf did not author, and
+    // this is a line being written to a terminal. #640.
+    crate::text::push_safe_path(out, frame.path);
     out.push(':');
     push_usize(out, frame.line);
     out.push(':');

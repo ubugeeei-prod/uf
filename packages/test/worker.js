@@ -53,18 +53,8 @@ import { writeChangedSnapshots } from "./internal/snapshot.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { reset } from "./internal/registry.js";
-import { resetModuleState } from "./internal/modules.js";
+import { restoreSharedState } from "./internal/isolation.js";
 import { run } from "./internal/run.js";
-import { unstubAllEnvs, unstubAllGlobals } from "./internal/namespace.js";
-// Renamed at the door, for two reasons that agree. It reads as the resets
-// beside it do — `reset`, `unstubAllEnvs`, `resetModuleState` are all
-// verb-first, and so is what this does to the clock. And `useRealTimers` is
-// not a React hook: it is uf's own timer control, which happens to be named
-// the way every runner names it, and calling it bare in a plain function is
-// a `react/hooks-rules` error on the name alone. A suppression would assert
-// something about this call; the name is simply accurate.
-import { useRealTimers as restoreRealClock } from "./internal/timers.js";
 
 /** What `uf` sends for one file. */
 type Request = {|
@@ -148,38 +138,21 @@ function write(event: { readonly [string]: mixed }): void {
  */
 async function runFile(request: Request, generation: number): Promise<void> {
   const started = performance.now();
-  reset();
-  // Every environment variable and global the previous file replaced goes back
-  // too. A spy lives in the registry `reset` clears, but a stub is a write to
-  // something the whole process shares: `uft.stubEnv("NODE_ENV", "production")`
-  // stays set for every later file this worker serves, and `uf test` fans files
-  // across workers by size, so which files those are changes with the timings
-  // file. That is a suite whose result depends on its schedule — and worse, one
-  // whose failure names the file that read the value rather than the file that
-  // wrote it. See ubugeeei-prod/uf#417.
-  unstubAllEnvs();
-  unstubAllGlobals();
-  // And the clock goes back, whatever the previous file did with it. A spy
-  // lives in the registry `reset` clears; a fake clock is a write to the
-  // scheduling globals the whole process shares, so `uft.useFakeTimers()` in
-  // one file is still installed when the next one imports.
-  //
-  // Worse than a leaked value, and worse in a way that hides it. A leaked stub
-  // makes the next file read something wrong, which arrives as an assertion
-  // naming the value. A leaked clock makes the next file's `setTimeout` never
-  // fire — including the one `withTimeout` races each case against — so the
-  // file hangs with nothing on screen until `uf`'s own deadline kills the
-  // worker, and the report names the file that waited rather than the file
-  // that stopped time. See ubugeeei-prod/uf#581.
+  // Everything the previous file changed and this package shares with it goes
+  // back: the registry, the stubbed environment and globals, the clock, the
+  // module stand-ins, and the document. What each of those is and why it is on
+  // the list is `internal/isolation.js`, which is one place rather than five
+  // calls here — a worker serves many files out of one process, `uf test` fans
+  // files across workers by size, and a leak therefore makes the *result* of a
+  // suite a function of the timings file rather than of the code under test.
+  // See ubugeeei-prod/uf#417, #581 and #607, which are that sentence three
+  // times over.
   //
   // Before the import rather than after the run, so a file that throws while
-  // loading still hands the next one a real clock.
-  restoreRealClock();
-  // Every module this file stood in for goes back, before the next file can
-  // import one of them and be handed the previous file's stand-in. A worker
-  // serves many files out of one module registry, so this is the difference
-  // between "one file at a time" and "one file's mocks at a time".
-  resetModuleState();
+  // loading still hands the next one a clean process.
+  restoreSharedState();
+  // Not a restore, and so not on that list: this is the output budget for the
+  // file about to run, rather than something the previous file left behind.
   output.startFile();
 
   try {
