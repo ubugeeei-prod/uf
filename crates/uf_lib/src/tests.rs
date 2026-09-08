@@ -454,6 +454,73 @@ fn the_registry_names_exactly_what_each_package_exports() {
     assert_eq!(exempt, ["@uniflowed/react", "@uniflowed/relay"]);
 }
 
+/// `hook_descriptors()` names exactly the hooks `@uniflowed/hooks` exports.
+///
+/// The companion to [`the_registry_names_exactly_what_each_package_exports`],
+/// and it exists because that test could not see this drift. The registry's
+/// export list for `@uniflowed/hooks` was complete; the hook table beside it
+/// was six short, so an editor offering completions was right and `uf inspect`
+/// — which reports `hook_descriptors().len()` — was quietly wrong, and nothing
+/// compared the two lists that were supposed to agree.
+///
+/// Hooks and nothing else: the package also exports `RENDER_META`,
+/// `RenderProvider` and `browserWindow`, which are a string, a component and a
+/// function. A hook is a `use` followed by a capital, which is React's own rule
+/// for the name and the same one `uf_rsc`'s scanner applies.
+#[test]
+fn the_hook_table_names_exactly_the_hooks_the_package_exports() {
+    let entry = repository_root()
+        .join("packages")
+        .join("hooks")
+        .join("index.js");
+    let source = fs::read_to_string(&entry)
+        .unwrap_or_else(|error| panic!("{} cannot be read: {error}", entry.display()));
+    let exported = exported_values(&source)
+        .unwrap_or_else(|error| panic!("{} does not parse: {error}", entry.display()))
+        .unwrap_or_else(|| panic!("{} hands on another package's surface", entry.display()));
+
+    let exports_hooks: Vec<&str> = exported
+        .iter()
+        .map(String::as_str)
+        .filter(|name| is_hook_name(name))
+        .collect();
+    let described: Vec<String> = hook_descriptors()
+        .into_iter()
+        .map(|hook| hook.name.to_string())
+        .collect();
+    let mut table: Vec<&str> = described.iter().map(String::as_str).collect();
+    table.sort_unstable();
+    table.dedup();
+
+    let missing: Vec<&&str> = exports_hooks
+        .iter()
+        .filter(|name| !table.contains(name))
+        .collect();
+    let absent: Vec<&&str> = table
+        .iter()
+        .filter(|name| !exports_hooks.contains(name))
+        .collect();
+    assert!(
+        missing.is_empty() && absent.is_empty(),
+        "hook_descriptors() and @uniflowed/hooks disagree\n  \
+         the package exports and the table does not name: {missing:?}\n  \
+         the table names and the package does not export: {absent:?}"
+    );
+    // A floor as well as an equality, so a barrel that stopped parsing into
+    // anything cannot make two empty lists agree.
+    assert!(
+        exports_hooks.len() > 50,
+        "the barrel yielded almost no hooks, so this is not checking anything: {}",
+        exports_hooks.len()
+    );
+}
+
+/// React's rule for the name, which is the whole of what makes a hook one.
+fn is_hook_name(name: &str) -> bool {
+    name.strip_prefix("use")
+        .is_some_and(|rest| rest.chars().next().is_some_and(char::is_uppercase))
+}
+
 /// The components `@uniflowed/ui` ships, and the parts each one exposes.
 ///
 /// Read from `packages/ui/index.js`, which is where the parts are: a subpath
