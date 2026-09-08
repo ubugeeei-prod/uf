@@ -1,6 +1,10 @@
 name: Security
 
+# `merge_group` because `Zizmor` is a required context, and a required check
+# that does not run on the queue's speculative merge leaves the queue with
+# nothing to wait for. See #588.
 on:
+  merge_group:
   pull_request:
   push:
     branches:
