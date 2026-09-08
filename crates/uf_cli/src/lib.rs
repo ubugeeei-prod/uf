@@ -624,34 +624,14 @@ mod tests {
         let changelog = std::fs::read_to_string(root.join("CHANGELOG.md"))
             .expect("the repository has a changelog");
         let parser = Cli::command();
-        let known: Vec<&str> = parser
-            .get_subcommands()
-            .flat_map(|command| {
-                std::iter::once(command.get_name())
-                    .chain(command.get_all_aliases())
-                    .chain(command.get_visible_aliases())
-            })
-            .collect();
-
         let mut unknown: Vec<String> = Vec::new();
         for span in backticked(&changelog) {
-            // The first word after `uf `, and only that: `uf run ci --why`
-            // names `run`, and what a task is called is `uf.config.js`'s
-            // business rather than the parser's.
             let Some(rest) = span.strip_prefix("uf ") else {
                 continue;
             };
-            let word: String = rest
-                .chars()
-                .take_while(|character| character.is_ascii_lowercase() || *character == '-')
-                .collect();
-            // A flag, a version, or `uf` followed by prose: not a command being
-            // named, so not this test's business.
-            if word.is_empty() || known.contains(&word.as_str()) {
-                continue;
-            }
-            let named = format!("`uf {word}`");
-            if !unknown.contains(&named) {
+            if let Some(named) = unnameable_command(&parser, rest)
+                && !unknown.contains(&named)
+            {
                 unknown.push(named);
             }
         }
@@ -662,6 +642,85 @@ mod tests {
             unknown.len(),
             unknown.join(", ")
         );
+    }
+
+    /// What the walk above accepts and refuses, spelled out.
+    ///
+    /// The changelog is the input this test really has, and it is a poor place
+    /// to prove a negative from: a case it happens not to contain looks the
+    /// same as a case the walk cannot see. These are the cases.
+    #[test]
+    fn a_command_path_is_walked_to_the_end_and_no_further() {
+        let parser = Cli::command();
+        let unnameable = |rest: &str| unnameable_command(&parser, rest);
+
+        // Real, at both depths.
+        assert_eq!(unnameable("check"), None);
+        assert_eq!(unnameable("pm approve-builds"), None);
+        assert_eq!(unnameable("i"), None, "an alias is a name");
+
+        // Not real, at both depths. The second is what taking only the first
+        // word could not see.
+        assert_eq!(unnameable("profile"), Some("`uf profile`".to_owned()));
+        assert_eq!(
+            unnameable("pm approve-build"),
+            Some("`uf pm approve-build`".to_owned())
+        );
+
+        // Arguments are not command names. `run` takes a task, `build` takes
+        // flags, and `test` takes a suite selector after a `#`.
+        assert_eq!(unnameable("run ci --why"), None);
+        assert_eq!(unnameable("build --adapter static"), None);
+        assert_eq!(unnameable("test#library"), None);
+        assert_eq!(unnameable("--version"), None);
+    }
+
+    /// The `uf …` path in `rest`, when the parser has no such command.
+    ///
+    /// Walks as deep as the parser goes, so `uf pm approve-builds` is checked
+    /// against `pm`'s subcommands and not merely against the top level. Taking
+    /// the first word alone would have called `uf pm anything-at-all` a
+    /// command, and the mistake this test exists for — `uf approve-builds` for
+    /// `uf pm approve-builds` — is exactly a nested path written short.
+    ///
+    /// It stops where the parser stops. A command with no subcommands takes
+    /// arguments, so `uf run ci --why` names the task `ci`, which is
+    /// `uf.config.js`'s business and not the parser's; a flag ends the path for
+    /// the same reason. That is what keeps this a check on command *names*
+    /// rather than a spellchecker for everything a release note quotes.
+    fn unnameable_command(parser: &clap::Command, rest: &str) -> Option<String> {
+        let mut current = parser;
+        let mut path: Vec<&str> = Vec::new();
+        for word in rest.split_whitespace() {
+            if word.starts_with('-') {
+                break;
+            }
+            // `uf test#library` names `test`; the rest is a suite selector.
+            let end = word
+                .find(|character: char| !(character.is_ascii_lowercase() || character == '-'))
+                .unwrap_or(word.len());
+            let name = &word[..end];
+            if name.is_empty() {
+                break;
+            }
+            match current.get_subcommands().find(|command| {
+                command.get_name() == name || command.get_all_aliases().any(|alias| alias == name)
+            }) {
+                Some(next) => {
+                    path.push(name);
+                    current = next;
+                }
+                // A word in a *command position* is a claim about the parser.
+                // The same word after a command that takes no subcommands is an
+                // argument, and this test has nothing to say about it.
+                None if current.get_subcommands().next().is_some() => {
+                    path.push(name);
+                    return Some(format!("`uf {}`", path.join(" ")));
+                }
+                None => break,
+            }
+        }
+        None
     }
 
     /// Every span between a pair of backticks on one line.
