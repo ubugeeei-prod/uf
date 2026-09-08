@@ -11,6 +11,7 @@ pub use uf_runtime::{Permission, PermissionError, Permissions, ToolchainAccess};
 
 mod app;
 pub mod env_files;
+mod library;
 mod lint;
 pub mod plugins;
 mod rendering;
@@ -25,6 +26,7 @@ pub use app::{
     RenderingConfig, RenderingMode, RouterConfig, RouterConvention, RuntimeTarget, StyleEngine,
     TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
 };
+pub use library::{LibraryConfig, LibraryFormat, LibraryPlan};
 pub use lint::{
     FlowBuiltinLintMode, FlowLintConfig, FlowLintParser, LintConfig, LintEngine, RuleLevel,
 };
@@ -192,6 +194,17 @@ pub struct BuildConfig {
     pub budgets: BundleBudgets,
     pub entries: Vec<CompactString>,
     pub hooks: BTreeMap<CompactString, TaskDefinition>,
+    /// What a library build writes, or `None` for a project that said nothing.
+    ///
+    /// An `Option` rather than a struct with defaults, and for the same reason
+    /// [`UniflowedConfig::permissions`] is one: "absent" and "present and
+    /// empty" are different instructions here. A library needs none of these
+    /// keys — `app.router.enabled: false` is the whole declaration and
+    /// [`LibraryPlan`] fills the rest in — so the only thing presence can
+    /// mean is that the project wrote them, which is what lets
+    /// `library::check` refuse a library build declared inside an
+    /// application instead of resolving the contradiction by precedence.
+    pub lib: Option<LibraryConfig>,
     pub out_dir: CompactString,
     pub static_build: bool,
     pub sourcemap: bool,
@@ -205,6 +218,7 @@ impl Default for BuildConfig {
             budgets: BundleBudgets::default(),
             entries: vec![CompactString::const_new("app.js")],
             hooks: BTreeMap::new(),
+            lib: None,
             out_dir: CompactString::const_new("dist"),
             static_build: false,
             sourcemap: true,
@@ -1490,6 +1504,44 @@ pub enum ConfigError {
          this project's routes need."
     )]
     StaticBuildWithoutSsg { path: Utf8PathBuf },
+    /// `build.lib` in a project whose file-system router is on.
+    ///
+    /// One project is one kind of build. `app.router.enabled` is what says
+    /// which, and `build.lib` describes a build only a library has, so the two
+    /// together are a project that has asked for both — and whichever were
+    /// read second would silently win, which is the failure
+    /// ubugeeei-prod/uf#385 is about with different keys.
+    #[error(
+        "{path}: build.lib describes a library build, and app.router.enabled is true, so this \
+         project is an application. Set `app: {{ router: {{ enabled: false }} }}` to make it a \
+         library, or drop `build.lib`."
+    )]
+    LibraryBuildInAnApplication { path: Utf8PathBuf },
+    /// `build.lib.entries: []`.
+    #[error(
+        "{path}: build.lib.entries is empty, so this library build has nothing to build. Name \
+         the modules a consumer imports — `entries: [\"index.js\"]` is the default."
+    )]
+    LibraryWithoutEntries { path: Utf8PathBuf },
+    /// `build.lib.formats: []`.
+    #[error(
+        "{path}: build.lib.formats is empty, so this library build would write no module at \
+         all. Name at least one — `formats: [\"es\"]` is the default, and `\"cjs\"` is what a \
+         consumer calling `require` needs."
+    )]
+    LibraryWithoutFormats { path: Utf8PathBuf },
+    /// `build.lib.formats` naming a format uf does not write.
+    ///
+    /// Refused rather than skipped: a build that quietly writes two of the
+    /// three formats a project asked for is a build whose gap is found by a
+    /// consumer.
+    #[error(
+        "{path}: build.lib.formats names {formats}, which uf does not write. Each needs a \
+         global name per entry, and what a Flow library's global should be is not a decision uf \
+         has made. The formats uf writes are `es` — what a bundler and a modern Node consume — \
+         and `cjs`, for a consumer that calls `require`."
+    )]
+    LibraryFormatNotImplemented { path: Utf8PathBuf, formats: String },
 }
 
 pub fn load_config(start: impl AsRef<Utf8Path>) -> Result<ResolvedConfig, ConfigError> {
@@ -1563,6 +1615,11 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
             // infallible after it, which is why every caller downstream can
             // ask for the plan without handling an error.
             rendering::check(path, &config)?;
+            // And what a build *is*, which is the question one level above
+            // that: `app.router.enabled: false` makes the project a library,
+            // and `build.lib` describes a build only a library has. See
+            // ubugeeei-prod/uf#268.
+            library::check(path, &config)?;
             Ok(config)
         }
         _ => Err(ConfigError::UnsupportedExpression {

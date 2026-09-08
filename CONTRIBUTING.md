@@ -153,3 +153,39 @@ so in a comment instead:
 `uf run ci:gate` reads the workflow and fails on a job that is in neither, and
 on a required context that could report `skipped` for any other reason, so this
 is not something a review has to remember to catch.
+
+### The merge queue
+
+`main` requires branches to be up to date and the pipeline takes about eleven
+minutes. Those two multiply: every merge makes every other open pull request
+`BEHIND`, so pull requests land one at a time, each paying a full pipeline for
+a base change that did not touch it. Ten green pull requests is roughly two
+hours of CI to land work that was already green, and dropping the requirement
+is not the answer — it is what stopped `main` from being broken by two pull
+requests that were each green apart.
+
+A merge queue is the mechanism for that shape. It batches pull requests, builds
+the *result* of merging them together once, and merges the batch if that build
+is green. Ten pull requests cost one pipeline instead of ten, and the guarantee
+is stronger than being up to date: up to date proves a branch against the base
+it was rebased onto, never against the other branch merging beside it.
+
+So `ci.yml` and `security.yml` run on `merge_group` as well as
+`pull_request` — those are the two files that report a context branch
+protection requires, and a required check that does not run on the queue's
+speculative merge commit is not a check that fails, it is one the batch sits
+behind until it times out. `uf run ci:gate` holds every such workflow to that
+trigger, so adding a required context from a new file cannot quietly leave the
+queue waiting.
+
+Nothing here changes what a contributor runs: `uf run ci` describes the same
+checks, and `gh pr merge --squash --auto` still arms a merge.
+
+**When the queue kicks a pull request out.** It does that when the batch built
+red and yours is the change that broke it — usually against another pull
+request in the same batch, not against `main`, which is the case being up to
+date could never have caught. GitHub comments on the pull request and removes
+it from the queue; the branch is untouched. Read the failed `merge_group` run
+to see what the combination broke, push the fix, and re-arm the merge. Nothing
+has to be reset by hand, and a pull request that was kicked out for somebody
+else's failure can simply be queued again.

@@ -320,3 +320,84 @@ fn a_frame_header_is_one_line_whatever_the_path_contains() {
         "{rendered:?}"
     );
 }
+
+/// The message beside a frame cannot steer the terminal either.
+///
+/// #649 prepared the path and stopped there, which its `docs/security.md` row
+/// said. A message quotes module paths and import specifiers, and those came
+/// out of the same clone the filename did. See ubugeeei-prod/uf#659.
+#[test]
+fn a_frame_message_cannot_be_made_to_clear_the_screen() {
+    let hostile = CodeFrame::new(
+        DiagnosticLevel::Error,
+        "cannot resolve \x1b[2Jgotcha\r fabricated",
+        "src/app.js",
+        3,
+        1,
+    );
+    let rendered = render(&hostile);
+    assert!(!rendered.contains('\x1b'), "{rendered:?}");
+    assert!(!rendered.contains('\r'), "{rendered:?}");
+    assert!(
+        rendered.contains("cannot resolve [2Jgotcha fabricated"),
+        "{rendered:?}"
+    );
+}
+
+/// A source line is checkout text, and the caret still lands where it did.
+///
+/// This is the half that could have gone wrong: the caret is placed by
+/// counting display columns, so dropping characters from the line would
+/// misalign it — unless the characters dropped are the ones already worth zero
+/// columns, which every control character but the tab is. That is why the
+/// assertion here is the caret offset and not only the absence of the escape.
+#[test]
+fn a_source_line_is_sanitised_without_moving_the_caret() {
+    let clean = frame("const x = 1;", 7, 1);
+    let hostile = frame("const \x1b[2Jx = 1;", 7, 1);
+
+    let rendered = render(&hostile);
+    assert!(!rendered.contains('\x1b'), "{rendered:?}");
+    // The escape is gone and the code is still readable.
+    assert!(rendered.contains("const [2Jx = 1;"), "{rendered:?}");
+    // And the caret is where it would have been without it.
+    assert_eq!(caret_offset(&rendered), caret_offset(&render(&clean)));
+}
+
+/// A carriage return in a source line would redraw the row above it.
+#[test]
+fn a_carriage_return_in_a_source_line_is_dropped() {
+    let rendered = render(&frame("const x = 1;\rerror: fabricated", 7, 1));
+    assert!(!rendered.contains('\r'), "{rendered:?}");
+}
+
+/// A tab is a control character and is the one that must survive, because the
+/// caret is aligned to the columns it expands to.
+#[test]
+fn a_tab_in_a_source_line_still_expands() {
+    let tabbed = render(&frame("\tconst x = 1;", 8, 1));
+    // Four columns of indent from the tab, then the code.
+    assert!(tabbed.contains("    const x = 1;"), "{tabbed:?}");
+}
+
+/// A legitimate non-ASCII source line renders as it is.
+#[test]
+fn a_source_line_in_another_script_is_not_touched() {
+    let rendered = render(&frame("const 名前 = \"ユーザー\";", 7, 1));
+    assert!(
+        rendered.contains("const 名前 = \"ユーザー\";"),
+        "{rendered:?}"
+    );
+}
+
+/// A label names a type out of the checkout, so it gets the same treatment.
+#[test]
+fn a_caret_label_cannot_move_the_cursor() {
+    let hostile = CodeFrame::new(DiagnosticLevel::Error, "unclear type", "src/app.js", 3, 1)
+        .with_span(1)
+        .with_source_line("const x = 1;")
+        .with_label("expected \x1b[2JT");
+    let rendered = render(&hostile);
+    assert!(!rendered.contains('\x1b'), "{rendered:?}");
+    assert!(rendered.contains("expected [2JT"), "{rendered:?}");
+}

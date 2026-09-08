@@ -268,6 +268,31 @@ pub fn detect_package_manager_with(root: &Utf8Path, options: &DetectionOptions<'
     }
 }
 
+/// The file pnpm looks for when it decides where a workspace begins.
+const PNPM_WORKSPACE_FILE: &str = "pnpm-workspace.yaml";
+
+/// Whether `dir` is *itself* the root of a pnpm workspace.
+///
+/// pnpm locates a workspace by walking up for `pnpm-workspace.yaml`, so the
+/// directory holding that file is the workspace root and no other directory
+/// is. That makes this a one-file question rather than a walk.
+///
+/// Deliberately not [`find_workspace_root`], which starts at `dir`'s *parent*
+/// and answers the other question — which workspace `dir` belongs to. A member
+/// package must answer `false` here even though it is inside a workspace, and
+/// it does.
+///
+/// The file is not followed through a symlink, for the reason every read in
+/// this module gives: a marker pointing out of the checkout does not get a
+/// vote. The content is not read at all — pnpm's own refusal
+/// ([`crate::run`], `ERR_PNPM_ADDING_TO_ROOT`) is keyed on the file's
+/// location, and parsing YAML uf does not otherwise parse would be a second
+/// thing to be wrong about.
+#[must_use]
+pub fn is_pnpm_workspace_root(dir: &Utf8Path) -> bool {
+    lockfile::is_regular_file(&dir.join(PNPM_WORKSPACE_FILE))
+}
+
 /// Resolve `.` and `..` without touching the filesystem.
 ///
 /// Purely lexical on purpose: resolving through symlinks would let a crafted

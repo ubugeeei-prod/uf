@@ -156,6 +156,28 @@ fn add_writes_the_manifest_the_lockfile_and_the_tree() {
         stdout.contains("1 package recorded in dependencies"),
         "{stdout}"
     );
+
+    // And the dependency tree, which for a project whose only dependency is a
+    // path used to be missing altogether. npm records a link with no `version`
+    // of its own — the version is on the row for the directory it points at —
+    // and `uf_pm::delta` skipped every row without one, so `uf add` reported
+    // an empty tree straight after linking something into it.
+    // ubugeeei-prod/uf#426; this fixture is the case the issue names.
+    let tree = stdout
+        .split_once("dependency tree")
+        .unwrap_or_else(|| panic!("the tree section is missing:\n{stdout}"))
+        .1;
+    // Read after the heading, because npm's own "added 1 package" line is
+    // above it and uf's count row is the one under test.
+    assert!(
+        row(tree, "added").split_whitespace().eq(["added", "1"]),
+        "{stdout}"
+    );
+    assert!(
+        tree.lines()
+            .any(|line| line.contains("tiny") && line.contains("1.2.3")),
+        "the linked package is not in the tree table at its own version:\n{stdout}"
+    );
     assert_plain(&stdout);
 }
 

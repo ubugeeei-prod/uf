@@ -83,7 +83,7 @@ use uf_router::{Route, ServerModule};
 use uf_rsc::RSC_MANIFEST_ENV;
 
 use crate::commands::build::Prerendered;
-use crate::commands::compile::binary_name;
+use crate::commands::compile::binary_names;
 use crate::commands::vite::{Driver, Event, LinkContext, LogLevel, render_error, render_log};
 use crate::support::project_label;
 use crate::ui::Ui;
@@ -274,14 +274,16 @@ pub(crate) fn deploy(
     // compiled binary is for the project that uses both flags at once: `dist/`
     // is where `--compile` writes, so without this a `--compile --adapter node`
     // would copy a 60 MB executable into the directory as a static asset.
+    //
+    // Both spellings, because `--target` decides the extension and this step
+    // does not see it: a `--compile --target x86_64-pc-windows-msvc --adapter
+    // node` writes `dist/<name>.exe` on a Linux build machine, and a list of
+    // one would have copied it.
     let mut copied = Copied::default();
-    copy_tree(
-        out_dir,
-        &directory.join("static"),
-        &binary_name(root),
-        &mut copied,
-    )
-    .with_context(|| format!("copying {out_dir} into {directory}"))?;
+    let compiled = binary_names(root);
+    let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
+    copy_tree(out_dir, &directory.join("static"), &compiled, &mut copied)
+        .with_context(|| format!("copying {out_dir} into {directory}"))?;
 
     // A `package.json` with nothing in it but `type`, and it is not optional:
     // Node reads `.js` as CommonJS unless something says otherwise, and the
@@ -372,7 +374,9 @@ pub(crate) fn deploy_static(
         .with_context(|| format!("failed to create {directory}"))?;
 
     let mut copied = Copied::default();
-    copy_tree(out_dir, &directory, &binary_name(root), &mut copied)
+    let compiled = binary_names(root);
+    let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
+    copy_tree(out_dir, &directory, &compiled, &mut copied)
         .with_context(|| format!("copying {out_dir} into {directory}"))?;
     // The one shape check this target has. The other four are checked by
     // `entry_files`, which asks whether the link step wrote the entry it
@@ -612,7 +616,7 @@ impl Copied {
 /// directory is meant to be copied to another machine, where a link pointing
 /// outside it resolves to nothing. `fs::copy` follows, which is what makes a
 /// linked asset in `public/` arrive as its bytes.
-fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &str, copied: &mut Copied) -> Result<()> {
+fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &[&str], copied: &mut Copied) -> Result<()> {
     fs::create_dir_all(to.as_std_path()).with_context(|| format!("failed to create {to}"))?;
     for entry in fs::read_dir(from.as_std_path())
         .with_context(|| format!("failed to read {from}"))?
@@ -624,13 +628,13 @@ fn copy_tree(from: &Utf8Path, to: &Utf8Path, skip: &str, copied: &mut Copied) ->
             // file this build can ever have served.
             continue;
         };
-        if name == skip {
+        if skip.contains(&name) {
             continue;
         }
         let source = from.join(name);
         let target = to.join(name);
         if entry.file_type()?.is_dir() {
-            copy_tree(&source, &target, "", copied)?;
+            copy_tree(&source, &target, &[], copied)?;
             continue;
         }
         let bytes = fs::copy(source.as_std_path(), target.as_std_path())
