@@ -3615,6 +3615,7 @@ dependencies = [
  "uf_env",
  "uf_flow",
  "uf_fmt",
+ "uf_i18n",
  "uf_infra",
  "uf_lib",
  "uf_lint",
@@ -3704,6 +3705,20 @@ dependencies = [
  "uf_flow",
  "uf_infra",
  "unicode-width",
+]
+
+[[package]]
+name = "uf_i18n"
+version = "0.0.0-alpha.14"
+dependencies = [
+ "camino",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "uf_config",
+ "uf_flow",
+ "uf_project",
 ]
 
 [[package]]
