@@ -64,6 +64,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
             DeployAdapter::Node,
             DeployAdapter::Edge,
             DeployAdapter::Serverless,
+            DeployAdapter::Static,
             DeployAdapter::Container,
         ]
     );
@@ -72,13 +73,14 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(DeployAdapter::Edge.is_implemented());
     assert!(DeployAdapter::Serverless.is_implemented());
     assert!(DeployAdapter::Container.is_implemented());
-    // And the three that are not, each of which is waiting for something
-    // named rather than for somebody's attention.
-    for adapter in [
-        DeployAdapter::Bun,
-        DeployAdapter::Deno,
-        DeployAdapter::Static,
-    ] {
+    // `static` joined them by growing the only thing it was ever going to be:
+    // the refusal. It links nothing, and a project that needs a server is
+    // named and rejected rather than half-published.
+    assert!(DeployAdapter::Static.is_implemented());
+    assert_eq!(DeployAdapter::Static.tracking_issue(), None);
+    // And the two that are not, each of which is waiting for something named
+    // rather than for somebody's attention.
+    for adapter in [DeployAdapter::Bun, DeployAdapter::Deno] {
         assert!(!adapter.is_implemented(), "{}", adapter.as_str());
         assert_eq!(adapter.tracking_issue(), Some(391));
         assert!(
@@ -771,6 +773,52 @@ fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
     );
 }
 
+/// ubugeeei-prod/uf#475: naming one rule switched the other fifty-three off.
+///
+/// Silently, and the ones that vanished included `flow/syntax` — so a project
+/// that lowered `unclear-type` to a warning also stopped being told its sources
+/// do not parse.
+#[test]
+fn naming_one_rule_leaves_the_others_where_they_were() {
+    let config: UniflowedConfig = serde_json::from_value(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-type": "warn" } }
+    }))
+    .expect("a config naming one rule");
+
+    let defaults = UniflowedConfig::default();
+    assert_eq!(
+        config.lint.rules.len(),
+        defaults.lint.rules.len(),
+        "the table shrank"
+    );
+    assert_eq!(
+        config.lint.rules.get("flow/unclear-type"),
+        Some(&RuleLevel::Warn),
+        "the one rule that was named did not change"
+    );
+    for (rule, level) in &defaults.lint.rules {
+        if rule == "flow/unclear-type" {
+            continue;
+        }
+        assert_eq!(config.lint.rules.get(rule), Some(level), "{rule} moved");
+    }
+}
+
+/// Switching a rule off is what `"off"` is for, and it still works.
+#[test]
+fn a_rule_is_switched_off_by_saying_so() {
+    let config: UniflowedConfig = serde_json::from_value(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-type": "off" } }
+    }))
+    .expect("a config switching one rule off");
+
+    assert_eq!(
+        config.lint.rules.get("flow/unclear-type"),
+        Some(&RuleLevel::Off)
+    );
+    assert!(config.lint.rules.len() > 50, "the table shrank");
+}
+
 /// The permission set a project declares, read as written.
 #[test]
 fn parses_a_permission_set() {
@@ -911,4 +959,108 @@ fn a_scope_can_be_bound_to_a_registry_and_provenance_can_be_turned_off() {
             .provenance
             .reads_attestations()
     );
+}
+
+/// Naming one rule changes that rule, not the size of the linter.
+///
+/// The regression for ubugeeei-prod/uf#475. `lint.rules` used to *be* the rule
+/// table, so the config below described a one-rule linter: `flow/syntax`,
+/// `react/hooks-rules` and fifty others were not lowered, they were gone, and
+/// the run that no longer looked for them passed.
+#[test]
+fn naming_one_lint_rule_keeps_the_rest_of_uf_s_table() {
+    let source = r#"
+        import { defineConfig } from "@uniflowed/config";
+
+        export default defineConfig({
+          lint: { rules: { "flow/unclear-type": "warn" } },
+        });
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    let defaults = UniflowedConfig::default();
+    assert_eq!(parsed.lint.rules.len(), defaults.lint.rules.len());
+    assert_eq!(parsed.lint.rules["flow/unclear-type"], RuleLevel::Warn);
+    // The three named in the issue, and the one whose loss is worst: a project
+    // that lowers a rule to a warning must not stop being told its sources do
+    // not parse.
+    for kept in [
+        "flow/syntax",
+        "react/hooks-rules",
+        "flow/nested-component",
+        "flow/mixed-import-and-require",
+    ] {
+        assert_eq!(
+            parsed.lint.rules.get(kept).copied(),
+            defaults.lint.rules.get(kept).copied(),
+            "{kept} lost its default level"
+        );
+    }
+}
+
+/// Switching a rule off is still spelled `"off"`, and still works.
+#[test]
+fn a_rule_set_to_off_is_off_and_its_neighbours_are_not() {
+    let source = r#"
+        export default {
+          lint: { rules: { "uniflowed/no-tabs": "off" } },
+        };
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(parsed.lint.rules["uniflowed/no-tabs"], RuleLevel::Off);
+    assert_eq!(
+        parsed.lint.rules["uniflowed/no-trailing-whitespace"],
+        RuleLevel::Error
+    );
+}
+
+/// A rule id this uf does not know is carried rather than refused.
+///
+/// `uf_lint` owns the catalogue and reports an unknown id where it can say
+/// something useful about it. Refusing the config here would make a uf
+/// downgrade — or a config written for the next release — unrunnable.
+#[test]
+fn an_unknown_rule_id_is_kept_rather_than_rejected() {
+    let source = r#"
+        export default {
+          lint: { rules: { "future/rule-from-a-newer-uf": "error" } },
+        };
+    "#;
+
+    let object = extract_config_object(source).expect("object");
+    let parsed: UniflowedConfig = json5::from_str(&object).expect("config");
+
+    assert_eq!(
+        parsed.lint.rules["future/rule-from-a-newer-uf"],
+        RuleLevel::Error
+    );
+    assert_eq!(
+        parsed.lint.rules.len(),
+        UniflowedConfig::default().lint.rules.len() + 1
+    );
+}
+
+/// Serializing a config and reading it back is the identity.
+///
+/// Merging makes this true rather than accidental: the serialized map names
+/// every rule, so laying it over the defaults reproduces it exactly. Anything
+/// that round-trips a config through JSON — `uf inspect --json`, a plugin host
+/// — depends on it.
+#[test]
+fn a_serialized_config_reads_back_with_the_same_rule_table() {
+    let mut config = UniflowedConfig::default();
+    config.lint.rules.insert(
+        CompactString::const_new("flow/unclear-type"),
+        RuleLevel::Off,
+    );
+
+    let json = serde_json::to_string(&config).expect("serialize");
+    let parsed: UniflowedConfig = serde_json::from_str(&json).expect("deserialize");
+
+    assert_eq!(parsed.lint.rules, config.lint.rules);
 }

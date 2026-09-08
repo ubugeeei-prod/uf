@@ -8,6 +8,13 @@
 //! port's types are re-exported here as [`ast`] and [`Loc`], and [`parse`]
 //! hands back a [`Parsed`] built from them.
 //!
+//! [`ast_visitor`] comes with them, for the same reason. A caller that only
+//! wants one kind of node still has to descend through every other kind to
+//! find it, and a hand-written descent is a second definition of Flow syntax:
+//! it goes quietly out of date on the next `tools/upstream/sync.sh`, with a
+//! rule that stopped firing as the symptom. The port's own visitor walks
+//! whatever the port parses.
+//!
 //! # Ceilings
 //!
 //! The port is a recursive-descent parser, and a stack overflow cannot be
@@ -34,6 +41,7 @@ use flow_parser::ParseOptions;
 use thiserror::Error;
 
 pub use flow_parser::ast;
+pub use flow_parser::ast_visitor;
 pub use flow_parser::loc::{Loc, Position};
 
 use crate::ParseDiagnostic;
@@ -152,19 +160,43 @@ pub const MAX_DEPTH_FREED_IN_PLACE: usize = 1_024;
 /// # The only copy
 ///
 /// Everything in uf that hands source to the Flow parser hands it *this*:
-/// [`parse`], [`validate_source`](crate::validate_source), and the transform
-/// in `uf_transform`, which re-exports it rather than declaring its own. There
-/// were three literals, equal member for member by coincidence, each with a
-/// comment claiming it mirrored one of the others. Nothing checked that, and a
-/// file that parses for the linter and not for the formatter is worse than one
-/// that parses for neither: the linter says the file is fine, the formatter
-/// refuses it, and the reader has no way to tell which is right.
+/// [`parse`], [`validate_source`](crate::validate_source), the transform in
+/// `uf_transform`, and `uf_check`'s checker. There were three literals, equal
+/// member for member by coincidence, each with a comment claiming it mirrored
+/// one of the others. Nothing checked that, and a file that parses for the
+/// linter and not for the formatter is worse than one that parses for neither:
+/// the linter says the file is fine, the formatter refuses it, and the reader
+/// has no way to tell which is right.
+///
+/// Then the checker became a fourth entry point and passed the port's
+/// `PERMISSIVE_PARSE_OPTIONS` instead — `esproposal_decorators` on where every
+/// other command has it off, so a decorated class checked and would not format
+/// (ubugeeei-prod/uf#430). [`module::parse`](crate::module::parse) takes no
+/// options argument now, so there is nothing left for an entry point to
+/// disagree with; the constant is read there, once.
 ///
 /// `uf_transform`'s `tests/parse_options.rs` is what keeps it one copy. It
-/// runs the same syntax through all three entry points and requires the same
-/// answer, and it requires every member of [`ParseOptions`] to decide at least
-/// one of those samples — so a member added upstream fails the test until a
-/// sample covers it, rather than drifting unwatched.
+/// runs the same syntax through all four entry points and requires the same
+/// answer; it reads the workspace to find any *fifth* place that reaches the
+/// port's parser; and it requires every member of [`ParseOptions`] to decide
+/// at least one of those samples — so a member added upstream fails the test
+/// until a sample covers it, rather than drifting unwatched.
+///
+/// # Why decorators stay off, when Flow leaves them on
+///
+/// `esproposal_decorators` is the one member where uf's answer differs from
+/// the checker it embeds, and it is a decision rather than an oversight.
+/// `flow check` at 0.330.0 accepts `@decorate class Thing {}` and reports
+/// nothing — not even `cannot-resolve-name` for a decorator that is not
+/// declared, because it parses the syntax and then types none of it. Flow can
+/// afford that: it only ever *reads* a file.
+///
+/// uf also has to emit one. `uf fmt` prints the tree back, [`crate::strip`]
+/// erases types to get the JavaScript a browser runs, and `uf transform`
+/// lowers it — and none of the three has a rule for a decorator. Accepting the
+/// syntax in the checker alone would mean `uf check` blessing a module that
+/// `uf fmt`, `uf test` and `uf build` cannot process, which is a worse answer
+/// than one syntax error from all four.
 pub const PARSE_OPTIONS: ParseOptions = ParseOptions {
     components: true,
     enums: true,
@@ -408,10 +440,8 @@ pub fn parse(source: &str) -> Result<Parsed, ParseFailure> {
         });
     }
 
-    let (program, errors) = catch_unwind(AssertUnwindSafe(|| {
-        crate::module::parse(source, &PARSE_OPTIONS, None)
-    }))
-    .map_err(|_| ParseFailure::ParserPanicked)?;
+    let (program, errors) = catch_unwind(AssertUnwindSafe(|| crate::module::parse(source, None)))
+        .map_err(|_| ParseFailure::ParserPanicked)?;
 
     Ok(Parsed {
         program,

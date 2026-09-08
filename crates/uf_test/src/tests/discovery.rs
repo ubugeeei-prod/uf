@@ -233,3 +233,113 @@ fn a_declaration_without_a_string_name_is_not_recorded() {
     let plan = discover_tests("a.test.js", "it(name, () => {});");
     assert!(plan.cases.is_empty());
 }
+
+#[test]
+fn another_runners_test_is_not_a_test_this_one_will_run() {
+    // The file from ubugeeei-prod/uf#482, verbatim. `uf test --list` counted
+    // its one case as runnable, the run scheduled the file, `node:test`
+    // accepted the registration and kept it for a runner that was never
+    // started, and `uf test` printed a tick over a case that had not run.
+    let source = r#"// @flow
+import assert from "node:assert/strict";
+import test from "node:test";
+
+test("a case uf lists but does not run", () => {
+  assert.equal(1, 2);
+});
+"#;
+
+    let plan = discover_tests("scripts/Probe.test.js", source);
+
+    assert_eq!(plan.runnable_count(), 0);
+    assert!(plan.cases.is_empty(), "{:?}", plan.cases);
+    let [declaration] = plan.unsupported.as_slice() else {
+        panic!("the declaration is named, never dropped: {plan:?}");
+    };
+    assert_eq!(declaration.call, "test");
+    assert_eq!(declaration.imported_from.as_deref(), Some("node:test"));
+    assert_eq!(declaration.line, 5);
+    // And the report says which of the two kinds of unsupported this is: a
+    // form uf cannot expand, or a name that was never uf's.
+    assert_eq!(declaration.describe(), "test (imported from `node:test`)");
+}
+
+#[test]
+fn only_the_name_the_other_runner_bound_stops_being_a_test() {
+    // A file being migrated has both. `describe` and `it` are uf's and run;
+    // `test` is `node:test`'s and cannot.
+    let source = r#"
+        import { describe, it } from "@uniflowed/test";
+        import { test } from "node:test";
+
+        describe("migration", () => {
+          it("runs under uf", () => {});
+          test("does not", () => {});
+        });
+    "#;
+
+    let plan = discover_tests("a.test.js", source);
+
+    assert_eq!(names(source), vec!["migration", "runs under uf"]);
+    assert_eq!(plan.runnable_count(), 1);
+    assert_eq!(plan.unsupported.len(), 1, "{:?}", plan.unsupported);
+    assert_eq!(
+        plan.unsupported[0].imported_from.as_deref(),
+        Some("node:test")
+    );
+}
+
+#[test]
+fn a_test_imported_from_anywhere_else_is_still_this_runners() {
+    // The direction that matters more than the one above. Re-exporting uf's
+    // `it` from a project's own helper is an ordinary thing to write, and a
+    // rule of "imported from somewhere that is not `@uniflowed/test`" would
+    // call every one of those files unsupported and fail a suite that runs
+    // perfectly well. Only a runner that can be named is treated as one.
+    for import in [
+        "import { it } from \"../support/setup.js\";",
+        "import { it } from \"@acme/test-utils\";",
+        "import { it } from \"@uniflowed/testing\";",
+        "import type { it } from \"node:test\";",
+    ] {
+        let source = format!("{import}\n\nit(\"runs\", () => {{}});\n");
+        let plan = discover_tests("a.test.js", &source);
+        assert_eq!(plan.runnable_count(), 1, "{import}: {plan:?}");
+        assert!(plan.unsupported.is_empty(), "{import}: {plan:?}");
+    }
+}
+
+#[test]
+fn an_import_that_binds_no_test_name_changes_nothing() {
+    // A `node:test` import that does not bind `test`, a namespace import, and
+    // a dynamic one. None of them is the file's `test`, so the call is uf's.
+    for import in [
+        "import { mock } from \"node:test\";",
+        "import * as runner from \"node:test\";",
+        "const runner = await import(\"node:test\");",
+        "// import test from \"node:test\";",
+    ] {
+        let source = format!("{import}\n\ntest(\"runs\", () => {{}});\n");
+        let plan = discover_tests("a.test.js", &source);
+        assert_eq!(plan.runnable_count(), 1, "{import}: {plan:?}");
+    }
+}
+
+#[test]
+fn a_renamed_import_binds_the_name_it_was_renamed_to() {
+    // `test as check` leaves `test` unbound, so a call to it is uf's; and
+    // `it as test` makes `test` the foreign one under a name it never had.
+    let bound = discover_tests(
+        "a.test.js",
+        "import { test as check } from \"node:test\";\n\ntest(\"runs\", () => {});\n",
+    );
+    assert_eq!(bound.runnable_count(), 1);
+    assert!(bound.unsupported.is_empty(), "{bound:?}");
+
+    let renamed = discover_tests(
+        "a.test.js",
+        "import { it as test } from \"node:test\";\n\ntest(\"runs\", () => {});\n",
+    );
+    assert_eq!(renamed.runnable_count(), 0);
+    assert_eq!(renamed.unsupported.len(), 1, "{renamed:?}");
+}

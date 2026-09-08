@@ -44,7 +44,6 @@ const RUNNABLE: &[(&str, &str)] = &[
     ("inspect", "Show the resolved pipeline, stage by stage"),
     ("prepare", "Get the working tree ready to release"),
     ("publish", "Publish what `uf prepare` staged"),
-    ("upgrade", "Re-read the workspace and record its plan"),
 ];
 
 /// The row that goes back to what `uf` used to print.

@@ -184,6 +184,28 @@ pub enum FileStatus {
         /// What went wrong.
         message: String,
     },
+    /// The file loaded, ran to the end, and registered nothing.
+    ///
+    /// Discovery reads `describe`, `it` and `test` out of the source; the
+    /// worker reports what those calls actually registered with
+    /// `@uniflowed/test`. A file where the first number is positive and the
+    /// second is zero ran none of the tests it was scheduled for, and every
+    /// way that happens is a thing a person needs to be told:
+    ///
+    /// * the bindings are another runner's — `import test from "node:test"`
+    ///   accepts the registration and keeps it for a runner that never runs;
+    /// * they are the file's own — a local helper that happens to be called
+    ///   `test`, which is not a test file at all;
+    /// * or the registrations are inside a branch this run did not take.
+    ///
+    /// Reporting it as a completed file is what ubugeeei-prod/uf#482 is: two
+    /// hundred cases across twenty files reported green while none of them
+    /// ran. A file that deliberately runs nothing says so with `.skip`, which
+    /// registers and is reported as a skip.
+    RegisteredNothing {
+        /// How many runnable declarations discovery found in the source.
+        declared: usize,
+    },
     /// The run bailed before this file was scheduled.
     NotRun,
 }
@@ -193,7 +215,10 @@ impl FileStatus {
     pub fn is_fatal(&self) -> bool {
         matches!(
             self,
-            Self::TimedOut { .. } | Self::LoadFailed { .. } | Self::HostFailed { .. }
+            Self::TimedOut { .. }
+                | Self::LoadFailed { .. }
+                | Self::HostFailed { .. }
+                | Self::RegisteredNothing { .. }
         )
     }
 
@@ -206,6 +231,10 @@ impl FileStatus {
             }
             Self::LoadFailed { message, .. } => format!("failed to load: {message}"),
             Self::HostFailed { message } => format!("the host failed: {message}"),
+            Self::RegisteredNothing { declared } => format!(
+                "registered nothing with `@uniflowed/test`, though discovery found {declared} \
+                 there; none of it ran"
+            ),
             Self::NotRun => "was not scheduled because the run bailed".to_string(),
         }
     }
@@ -250,8 +279,18 @@ pub struct TestSummary {
     pub skipped: usize,
     /// Declarations marked `.todo`.
     pub todo: usize,
-    /// Registration forms discovery recognised but cannot expand.
+    /// Registration forms discovery recognised but cannot run as written.
+    ///
+    /// Both kinds, because both are worth showing: the total of
+    /// [`Self::foreign_declarations`] and the forms uf's own `it` was written
+    /// in that discovery cannot expand.
     pub unsupported_declarations: usize,
+    /// Declarations whose `describe`, `it` or `test` came from another runner.
+    ///
+    /// A subset of [`Self::unsupported_declarations`], counted apart because
+    /// it is the half that decides the exit status; see [`Self::is_success`].
+    #[serde(default)]
+    pub foreign_declarations: usize,
     /// Files that did not complete.
     pub failed_files: usize,
     /// Files ordered from a duration a previous run recorded.
@@ -271,8 +310,24 @@ impl TestSummary {
     }
 
     /// Whether the run is green.
+    ///
+    /// A declaration from another runner counts against it, and the asymmetry
+    /// with the rest of [`Self::unsupported_declarations`] is deliberate.
+    /// `it.each(…)` is uf's own `it` written in a form *discovery* cannot
+    /// expand: the worker runs it, the cases are reported, and the only cost
+    /// is that `--list` cannot name them ahead of time — failing a run over
+    /// that would turn a working suite red. `test(…)` imported from
+    /// `node:test` is not uf's `test` at all: nothing in the worker will ever
+    /// run it, and `node:test` in particular *accepts* the registration and
+    /// holds it for a runner that is never started, so the file loads, reports
+    /// nothing, and used to leave a tick over two hundred cases that had not
+    /// run. See ubugeeei-prod/uf#482.
+    ///
+    /// The dynamic half of the same guarantee is
+    /// [`FileStatus::RegisteredNothing`], which catches a file that registers
+    /// nothing for a reason discovery could not name.
     pub fn is_success(&self) -> bool {
-        self.failed == 0 && self.failed_files == 0 && !self.bailed
+        self.failed == 0 && self.failed_files == 0 && self.foreign_declarations == 0 && !self.bailed
     }
 }
 

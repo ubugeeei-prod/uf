@@ -102,8 +102,9 @@ export const sections: $ReadOnlyArray<Section> = [
       },
       {
         href: "/guide/assets",
-        title: "Images and fonts",
-        blurb: "Resized, re-encoded and self-hosted at build time — and what that stops short of.",
+        title: "Images, fonts, icons and cards",
+        blurb:
+          "Resized, self-hosted, subsetted and drawn at build time — and what that stops short of.",
       },
       {
         href: "/guide/vitals",

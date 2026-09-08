@@ -106,10 +106,41 @@ pub struct UnsupportedDeclaration {
     pub file: String,
     /// The call as written, e.g. `it.each`.
     pub call: CompactString,
+    /// The module the name came from, when it came from another runner.
+    ///
+    /// `Some("node:test")` is the difference between "uf cannot expand this
+    /// form" and "this is not uf's `test` at all", and a reader needs to be
+    /// told which: the first is a limitation of the runner and the second is a
+    /// file that will never run here whatever uf learns to expand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_from: Option<CompactString>,
     /// One-based line number.
     pub line: usize,
     /// One-based column number.
     pub column: usize,
+}
+
+impl UnsupportedDeclaration {
+    /// Whether this name belongs to another test runner.
+    ///
+    /// The distinction the exit status turns on. `it.each(…)` is uf's own
+    /// `it` in a form *discovery* cannot expand — the runner executes it, and
+    /// only `--list` is the poorer for it — whereas `test(…)` imported from
+    /// `node:test` is not uf's `test` at all and nothing in this process will
+    /// ever run it. One is a gap in the listing; the other is a file that
+    /// reports green having executed nothing. See
+    /// [`crate::TestSummary::is_success`].
+    pub fn is_foreign(&self) -> bool {
+        self.imported_from.is_some()
+    }
+
+    /// The call, and where its name came from, for a report.
+    pub fn describe(&self) -> String {
+        match &self.imported_from {
+            Some(module) => format!("{} (imported from `{module}`)", self.call),
+            None => self.call.to_string(),
+        }
+    }
 }
 
 /// Ordered native test discovery result.
@@ -129,6 +160,17 @@ impl TestPlan {
         self.cases
             .iter()
             .filter(|case| case.kind == TestKind::Test)
+            .count()
+    }
+
+    /// Count declarations whose name came from another test runner.
+    ///
+    /// These are the ones that cannot run here at all; see
+    /// [`UnsupportedDeclaration::is_foreign`].
+    pub fn foreign_count(&self) -> usize {
+        self.unsupported
+            .iter()
+            .filter(|declaration| declaration.is_foreign())
             .count()
     }
 
