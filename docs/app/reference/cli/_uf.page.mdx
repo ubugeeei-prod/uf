@@ -716,6 +716,26 @@ Type-checks the project with Flow. `--json` for the machine-readable report.
 apply the *lint* fixes. Type inference has no fix catalogue — a type error is
 not something uf knows how to rewrite.
 
+#### The `--json` report has two lists of diagnostics
+
+`uf check` is `uf lint` plus inference, and the report keeps the two kinds of
+finding apart — so **`errors` is a total, and `diagnostics` is not where the
+type errors are**:
+
+| Field | What is in it |
+| --- | --- |
+| `errors`, `warnings` | The **sum** across both lists |
+| `diagnostics` | Lint findings only — the same array `uf lint --json` writes |
+| `typeCheck.diagnostics` | Type errors, from the inference backend |
+| `typeCheck.status` | `checked`, or why inference did not run |
+| `typeCheck.backend`, `.filesChecked`, `.filesFromCache`, `.elapsedMs` | What inference did and how long it took |
+| `unavailableRules` | Lint rules that need inference uf does not implement yet, and did not run |
+
+A reader who counts `diagnostics` and reports that gets zero for a project with
+twenty type errors, because a project can fail `uf check` on inference alone
+and have nothing to say about its lints. Read `errors` for the verdict and both
+arrays for the detail.
+
 ### uf lint
 
 Runs uf's rules and Flow's built-in lints. `--json` for the report.
