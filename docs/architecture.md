@@ -303,11 +303,46 @@ a package that declares no `@flow` anywhere is not read either: it exports `any`
 whether it is in the batch or not, so reading it would buy a parse of every byte
 it ships and nothing else.
 
+*Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
+by climbing `node_modules` from the file that wrote it, so code inside
+`node_modules/foo` that imports `bar` gets `node_modules/foo/node_modules/bar`
+when one is installed and the root's copy only when it is not. The closure
+therefore hands back the importer beside each unanswered specifier rather than a
+set of names, and two versions of one package can be in one batch and resolve
+correctly per importer — before that, both resolved to the hoisted copy and the
+files inside a nested consumer were typed against the wrong version
+([#486](https://github.com/ubugeeei-prod/uf/issues/486)).
+
+### The types a project declares itself
+
+A dependency that ships no Flow types is described by the project instead, in
+library definitions: the `declare module` block that says what it exports, the
+`declare type` that says what a global is. Flow loads those through
+`.flowconfig`'s `[libs]`, and `uf check` reads that section — with `flow_config`,
+Flow's own parser for the file, so a config uf accepts is one `flow check`
+accepts. `flow-typed` is on the list whether or not the config names it, which
+is Flow's own rule, and a project with no `.flowconfig` at all still gets it.
+The version constraint is ignored: uf embeds Flow's checker rather than being
+the `flow` binary a `[version]` pin is about. Nothing else in the file is read —
+the dialect, the lint severities and what the project owns are uf's to decide,
+and `uf explain check` names the section rather than the file so that the
+listing does not promise the rest.
+
+The libdefs are merged into the builtin environment after Flow's own, in
+declaration order, because a later definition shadows an earlier one. The merged
+environment is memoised per set of libdefs rather than once per process, and the
+digest of that set is part of every cache key: adding a `declare module` to
+`flow-typed` changes what every file in the project reports, including the files
+that import nothing. Until this landed, every type a project's libdefs declared
+was an `any`-typed value, and each *use* of one as a type was an error —
+506 of them against `flow check`'s 20 on the tree
+[#480](https://github.com/ubugeeei-prod/uf/issues/480) measured.
+
 Nothing is checked twice. A run keeps one record per file under
 `.uf/cache/check/`, keyed by the identity of the `uf` that wrote it — its path,
 size and modification time, the discipline `.uf/cache/transform` already
-holds — together with every limit that can change what a check reports and the
-file's own path and text. A record carries one *answer* per batch the file has
+holds — together with every limit that can change what a check reports, a digest
+of the project's library definitions, and the file's own path and text. A record carries one *answer* per batch the file has
 been checked in, each stamped with the *dependency digest* it was computed
 under: a digest over the packed signature of every module the file reaches and
 how each of those modules' specifiers resolved. An answer is believed only while
@@ -716,7 +751,8 @@ Native engines being deepened:
 - deploy-anywhere adapters in a Nitro-like model: `node`, `container`, `edge`
   (Cloudflare Workers) and `serverless` (AWS Lambda) are written against one
   `@uniflowed/server/fetch` handler and none has been deployed to a real
-  platform; Deno, Bun and static are not written
+  platform; `static` runs no application and its implementation is the refusal
+  of a project a static host cannot serve; Deno and Bun are not written
 
 ## Testing
 

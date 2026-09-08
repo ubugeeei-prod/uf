@@ -143,6 +143,8 @@ export default function uniflowed(options = {}) {
     assetPlugin({
       images: builtins.images ?? {},
       fonts: builtins.fonts ?? {},
+      icons: builtins.icons ?? {},
+      og: builtins.og ?? {},
       command: options.command,
     }),
   ];

@@ -84,34 +84,37 @@ use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
 pub(super) const VIRTUAL_ROOT: &str = "/.uf-check-virtual-root";
 
 /// Merge the builtins, on the check thread so the merge gets its stack too.
-pub(crate) fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
-    on_check_thread("<builtins>", builtins::prepare)?
+pub(crate) fn prepare_builtins(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError> {
+    on_check_thread("<builtins>", || builtins::prepare(libs))?
 }
 
 /// Check every source in one batch, sharing one builtin environment.
 pub(crate) fn check_sources(
     sources: &[Source<'_>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
     let path = sources.first().map_or("<empty>", |source| source.path);
-    on_check_thread(path, || check_batch(sources, limits, cache))?
+    on_check_thread(path, || check_batch(sources, libs, limits, cache))?
 }
 
 /// The closure of `seeds` over `available`, by the batch's own rules.
 pub(crate) fn module_closure<'a>(
     seeds: &[&str],
     available: &[Source<'a>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
 ) -> Result<crate::ModuleClosure<'a>, CheckError> {
     let path = seeds.first().copied().unwrap_or("<empty>");
     on_check_thread(path, || {
-        // The builtins are merged here so that a specifier Flow's own library
-        // definitions already describe is not handed back as something the
-        // caller should go and find. Once per process and shared, so the check
-        // that follows this walk pays nothing for having asked.
-        builtins::prepare()?;
-        let master_cx = builtins::master_context()?;
+        // The builtins are merged here so that a specifier the library
+        // definitions already describe — Flow's own or the project's — is not
+        // handed back as something the caller should go and find. Once per
+        // process and shared, so the check that follows this walk pays nothing
+        // for having asked.
+        builtins::prepare(libs)?;
+        let master_cx = builtins::master_context(libs)?;
         let options = options::options(limits);
         let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
         let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
@@ -176,6 +179,7 @@ where
 /// once and now parses twice.
 fn check_batch(
     sources: &[Source<'_>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
@@ -195,8 +199,8 @@ fn check_batch(
         }
     }
 
-    let builtins = builtins::prepare()?;
-    let master_cx = builtins::master_context()?;
+    let builtins = builtins::prepare(libs)?;
+    let master_cx = builtins::master_context(libs)?;
     let options = options::options(limits);
     // One builtin environment for the batch, made from the metadata a file has
     // before its own docblock is applied — `mk_check_file` keeps exactly this
@@ -217,10 +221,11 @@ fn check_batch(
     // What each file's record is filed under. Computed even for a file the
     // cache turns out to know nothing about, because it is also where the
     // recomputed answer is written back.
+    let libdefs = builtins::digest(libs);
     let keys: Vec<Digest> = match cache {
         Some(cache) => sources
             .iter()
-            .map(|source| file_key(cache, limits, source))
+            .map(|source| file_key(cache, limits, &libdefs, source))
             .collect(),
         None => Vec::new(),
     };
@@ -337,13 +342,21 @@ fn check_batch(
 /// Where one file's record is filed.
 ///
 /// The compiler's identity is first because it is the input a reader is most
-/// likely to forget is one: see [`crate::cache`]. The limits are here rather
-/// than in the dependency digest because they are not a property of any file —
-/// raising the recursion limit changes what every file in the batch reports.
-fn file_key(cache: &CheckCache, limits: &CheckLimits, source: &Source<'_>) -> Digest {
+/// likely to forget is one: see [`crate::cache`]. The limits and the library
+/// definitions are here rather than in the dependency digest because neither is
+/// a property of any file — raising the recursion limit, or adding a
+/// `declare module` to `flow-typed`, changes what every file in the batch
+/// reports, including the files that reach nothing at all.
+fn file_key(
+    cache: &CheckCache,
+    limits: &CheckLimits,
+    libdefs: &Digest,
+    source: &Source<'_>,
+) -> Digest {
     let mut fields = Fields::new("uf-check-file-v1");
     fields.push(cache.identity());
     fields.push(&limits_field(limits));
+    fields.push_digest(libdefs);
     fields.push(source.path);
     fields.push(source.source);
     fields.finish()
