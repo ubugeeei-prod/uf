@@ -130,7 +130,7 @@ const OBJECTS = ["location", "history", "navigator"];
  * Storage, which is installed where the host has none *or has one that does
  * not work*.
  *
- * Node defines `globalThis.localStorage` and leaves it empty unless the
+ * Node 25 defines `globalThis.localStorage` and leaves it unusable unless the
  * process was started with `--localstorage-file`:
  *
  * ```text
@@ -141,9 +141,48 @@ const OBJECTS = ["location", "history", "navigator"];
  * So "the host already has one" is the wrong question, and asking it left
  * every `useStorage` test writing into an object with no `setItem` —
  * `globalThis.localStorage.setItem is not a function`, from a line that had
- * nothing to do with the hook under test. The question is whether it works.
+ * nothing to do with the hook under test. The question is whether it works,
+ * and [`hostStorage`] is how it is asked without Node answering out loud.
  */
 const STORAGE = ["localStorage", "sessionStorage"];
+
+/**
+ * The Storage the host has under `name`, without asking an accessor for it.
+ *
+ * The question is still "does the host's work", and it is still answered by
+ * `isUsableStorage`. What changed is how the value is fetched, because on
+ * Node 25 fetching it is not free: `localStorage` is an own accessor there, and
+ * calling its getter prints
+ *
+ * ```text
+ * (node:62028) Warning: `--localstorage-file` was provided without a valid path
+ * ```
+ *
+ * once per process — into the middle of a `uf test` report, from a component
+ * test that never mentions storage. Node 24 has no `localStorage` at all, so
+ * the paragraph appeared the day a reader upgraded their runtime and nowhere
+ * in this repository's own suite. See ubugeeei-prod/uf#308.
+ *
+ * So the descriptor is read instead of the property, and only a **data**
+ * property's value is looked at. An accessor is reported as nothing there,
+ * which is the right answer for the case that exists: Node's getter hands back
+ * an object with no `setItem`, which `isUsableStorage` was going to reject
+ * anyway. It is also the right answer for the case that does not — a Node
+ * started with a valid `--localstorage-file`, whose storage is a file shared
+ * with every other process using it, which is not the per-process state a test
+ * suite means by `localStorage`.
+ *
+ * A real browser never reaches here: `installDom` returns early when the host
+ * already has a `document`, and a page's `localStorage` is on `Window.prototype`
+ * rather than an own property in any case.
+ */
+function hostStorage(name: string): mixed {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, name);
+  if (descriptor == null || descriptor.get != null || descriptor.set != null) {
+    return undefined;
+  }
+  return descriptor.value;
+}
 
 /**
  * Whether a value is a Storage a test can actually use.
@@ -206,7 +245,7 @@ export function installDom(): HostWindow {
     }
   }
   for (const name of STORAGE) {
-    if (isUsableStorage(globals[name])) {
+    if (isUsableStorage(hostStorage(name))) {
       continue;
     }
     const value = win[name];

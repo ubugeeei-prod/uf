@@ -87,6 +87,84 @@ fn creates_flow_library_template() {
     assert!(!package.contains("@uniflowed/host"));
 }
 
+/// The library template's `build` task can actually build the library.
+///
+/// It could not. `uf create lib` wrote `tasks: { build: { command: "uf build" } }`
+/// beside `app: { router: { enabled: false } }`, and `uf build` had one build
+/// in it — the application one, which links a client entry importing the
+/// project's `app.js`. A library has no `app.js`, so the scaffold's own task
+/// failed on the first run with `Could not resolve '<root>/app.js'`, and every
+/// test this template had passed anyway: they read the files and never asked
+/// whether the project they describe works. See ubugeeei-prod/uf#268.
+///
+/// This asserts the chain that makes it work, from the template's own bytes:
+/// the config it wrote parses, `uf_config` resolves it to a **library** plan,
+/// the module that plan will build exists in the project, and the manifest's
+/// `default` export names the file that build writes. `uf build` running for
+/// real is `crates/uf_cli/tests/vite.rs`, which needs a bundler this crate
+/// does not depend on.
+#[test]
+fn the_library_template_configures_a_build_that_can_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    create_project(
+        &root,
+        &CreateOptions {
+            name: "buildable".to_string(),
+            kind: CreateKind::Lib,
+            force: false,
+        },
+    )
+    .unwrap();
+
+    let config = uf_config::load_config_file(&root.join("uf.config.js")).unwrap();
+    let plan = uf_config::LibraryPlan::resolve(&config)
+        .expect("the scaffolded config makes this project a library");
+
+    // Every entry the build will look for is a file the template wrote. The
+    // failure this replaces was exactly this assertion being false for a
+    // module nobody had written down: `app.js`.
+    for entry in plan.entries() {
+        assert!(
+            root.join(entry.as_str()).is_file(),
+            "the build entry {entry} is not in the scaffold",
+        );
+    }
+
+    // And the manifest resolves to what that build writes. Derived from the
+    // config rather than typed out, so changing the default output directory
+    // or the default entry fails here instead of publishing a package whose
+    // `default` condition points at nothing.
+    let package = fs::read_to_string(root.join("package.json")).unwrap();
+    let entry = plan.entries()[0].to_string();
+    let stem = entry.strip_suffix(".js").unwrap_or(&entry);
+    let built = format!("\"default\": \"./{}/{stem}.js\"", config.build.out_dir);
+    assert!(package.contains(&built), "expected {built} in:\n{package}");
+
+    // The source is shipped too, and behind a condition rather than as the
+    // default: a resolver that knows nothing takes `default`, so `default` has
+    // to be the file every runtime can evaluate. `docs/architecture.md` is why
+    // there is no third file — the Flow source is the declaration.
+    assert!(package.contains(r#""flow": "./index.js""#), "{package}");
+    assert!(!package.contains(".js.flow"), "{package}");
+
+    // npm falls back to `.gitignore` with no `.npmignore`, and this template's
+    // `.gitignore` ignores `dist/`. Without `files` naming it, `npm publish`
+    // packs the source and leaves out the build the `default` condition points
+    // at.
+    let ignored = fs::read_to_string(root.join(".gitignore")).unwrap();
+    assert!(
+        ignored
+            .lines()
+            .any(|line| line.trim_end_matches('/') == config.build.out_dir.as_str())
+    );
+    assert!(package.contains(r#""files""#), "{package}");
+    assert!(
+        package.contains(&format!("\"{}\"", config.build.out_dir)),
+        "{package}",
+    );
+}
+
 /// A scaffolded manifest names the uf that wrote it, exactly.
 ///
 /// Both templates said `"latest"`, which is a dist-tag and not a version, and
@@ -169,7 +247,7 @@ fn both_templates_pin_the_version_of_the_uf_that_wrote_them() {
 ///
 /// The list is not written twice: anything uf refuses to *lint* because it
 /// generated it has to be something uf refuses to *commit*, so the template
-/// is checked against `ALWAYS_IGNORED` and the default `lint.ignore`. `target`
+/// is checked against `ALWAYS_IGNORED` and the default `ignore`. `target`
 /// is the exception and is named as one — it is Cargo's, and a scaffolded
 /// Flow project has none.
 #[test]
@@ -205,7 +283,8 @@ fn both_templates_ignore_what_uf_generates() {
                 "{kind:?}: {entry} is not in .gitignore:\n{ignored}"
             );
         }
-        for entry in &UniflowedConfig::default().lint.ignore {
+        let defaults = UniflowedConfig::default();
+        for entry in defaults.project_ignore().entries {
             if entry == "target" {
                 continue;
             }
@@ -473,7 +552,9 @@ fn an_ignore_entry_with_a_separator_still_means_one_place() {
     fs::write(root.join("lib/generated/keep.js"), "// @flow\n").unwrap();
 
     let mut config = UniflowedConfig::default();
-    config.lint.ignore.push("app/generated".into());
+    let mut ignore = uf_config::DEFAULT_IGNORE.to_vec();
+    ignore.push("app/generated".into());
+    config.ignore = Some(ignore);
     config.lint.files.push("lib".into());
 
     let files = scan_source_files(&root, &config).unwrap().files;
@@ -697,7 +778,7 @@ fn a_large_project_is_walked_once_and_within_a_bound() {
 /// An ignored directory is ignored at every depth, including inside a package
 /// inside a workspace.
 ///
-/// A bare name in `lint.ignore` names a kind of directory rather than a place;
+/// A bare name in `ignore` names a kind of directory rather than a place;
 /// this is the case that makes the difference visible, because a root-anchored
 /// list would have walked into all four of these.
 #[test]
@@ -730,7 +811,7 @@ fn an_ignored_directory_is_ignored_at_every_depth() {
 
 /// `.uf` is uf's own working directory, and a project cannot opt back into it.
 ///
-/// The other names are ordinary `lint.ignore` entries a project may remove;
+/// The other names are ordinary `ignore` entries a project may remove;
 /// this one is not, because the transform cache and the compiled config are
 /// uf's own output and linting them says nothing about the project.
 #[test]
@@ -742,13 +823,13 @@ fn a_project_cannot_opt_back_into_ufs_own_working_directory() {
 
     // Everything the default list holds, removed. `.uf` is not on that list.
     let mut config = UniflowedConfig::default();
-    config.lint.ignore.clear();
+    config.ignore = Some(Vec::new());
 
     let scan = scan_source_files(&root, &config).expect("a walk");
 
     assert!(
         paths(&scan).contains(&"node_modules/dep/index.js"),
-        "clearing lint.ignore must un-ignore node_modules: {:?}",
+        "an empty `ignore` must un-ignore node_modules: {:?}",
         paths(&scan)
     );
     assert!(

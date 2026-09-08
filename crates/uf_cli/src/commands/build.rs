@@ -28,7 +28,7 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, Prerender, RenderingPlan, load_config};
+use uf_config::{DeployAdapter, LibraryPlan, Prerender, RenderingPlan, load_config};
 use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
@@ -50,6 +50,7 @@ use crate::support::{
 use crate::ui::Ui;
 
 mod guards;
+mod library;
 mod site;
 
 /// How many assets `--size-report` names before the list is cut off.
@@ -125,6 +126,7 @@ pub(crate) fn build(
     size_report: bool,
     requested_mode: Option<&str>,
     standalone: bool,
+    requested_target: Option<&str>,
     requested_adapter: Option<DeployAdapter>,
 ) -> Result<()> {
     let mut timer = PhaseTimer::start();
@@ -132,6 +134,24 @@ pub(crate) fn build(
 
     progress.draw("loading configuration");
     let resolved = timer.measure("config", || load_config(cwd))?;
+
+    // Which of the two builds this is, decided once. A project whose
+    // `app.router.enabled` is false is a library, and everything below this
+    // point — the route table, the RSC analysis, the client entry, the
+    // prerender — is an application's. `uf new --lib` scaffolded a project
+    // that ran all of it and failed on a missing `app.js`; see
+    // ubugeeei-prod/uf#268 and [`library`].
+    if let Some(plan) = LibraryPlan::resolve(&resolved.config) {
+        progress.finish();
+        drop(progress);
+        refuse_an_application_artefact(
+            &plan,
+            standalone,
+            requested_adapter.or(resolved.config.app.runtime.deploy.adapter),
+        )?;
+        return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
+    }
+
     let root = resolved.root.clone();
     // What this project said a build may produce, resolved once. Two settings
     // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
@@ -208,14 +228,41 @@ pub(crate) fn build(
     // about the same variable.
     let env = project_env(&resolved, requested_mode, PRODUCTION)?;
 
-    // Asked for before anything is built. `--compile` on a machine without Bun
-    // fails either way; failing now costs the user nothing, and failing after
-    // the bundle costs them the build.
-    let runtime = if standalone {
-        Some(timer.measure("runtime", compile::runtime)?)
+    // Asked for before anything is built. `--compile` on a machine with no
+    // usable backend fails either way; failing now costs the user nothing, and
+    // failing after the bundle costs them the build. The same call resolves
+    // `--target`, so an unknown triple, a triple the chosen backend cannot
+    // cross-compile to, and a permission set it cannot enforce are all refused
+    // here rather than a minute later.
+    // Every backend that could produce this binary, in the order the project's
+    // hosts are accepted. More than one because `--build-sea` can fail for a
+    // reason that is about the `node` binary rather than about the application
+    // — see `compile::wrap` — and a build that has already been told it may
+    // infer a host should not stop over that.
+    let runtimes = if standalone {
+        timer.measure("runtime", || {
+            compile::runtimes(&root, &resolved.config, requested_target)
+        })?
     } else {
-        None
+        Vec::new()
     };
+    let runtime = runtimes.first();
+    // And said out loud when producing the binary needs the network. A build
+    // that stops for ninety megabytes in the middle should have announced it
+    // at the start; `uf build` owns the terminal, and a silent minute is not
+    // one of the things it renders.
+    if let Some(runtime) = runtime
+        && let Some(target) = runtime.target
+        && runtime.fetches_a_runtime()
+    {
+        let notice = format!(
+            "the {} runtime for {} is not cached yet; producing this binary downloads it (about \
+             90 MB) into .uf/cache/bun",
+            runtime.backend.name(),
+            target.triple
+        );
+        ui.render(|renderer, out| renderer.status(out, Status::Info, &notice));
+    }
     // The same rule for the same reason: an adapter nobody has written is a
     // sentence, and a sentence is cheaper before the bundle than after it.
     // Not refused for a build that emits no server, and the distinction is
@@ -381,10 +428,21 @@ pub(crate) fn build(
         env: &env,
         rsc_manifest: &rsc_input,
     };
-    let compiled = match &runtime {
+    let compiled = match runtime {
         Some(runtime) => {
-            progress.tick("compiling a standalone binary");
-            Some(timer.measure("compile", || compile::compile(ui, runtime, link))?)
+            // The download is a phase of its own in the line the reader is
+            // watching, because it is the one step of a build whose duration
+            // has nothing to do with the size of their application.
+            progress.tick(&match (runtime.target, runtime.fetches_a_runtime()) {
+                (Some(target), true) => {
+                    format!("fetching the {} runtime, then compiling", target.triple)
+                }
+                (Some(target), false) => {
+                    format!("compiling a standalone binary for {}", target.triple)
+                }
+                (None, _) => String::from("compiling a standalone binary"),
+            });
+            Some(timer.measure("compile", || compile::compile(ui, &runtimes, link))?)
         }
         None => None,
     };
@@ -562,12 +620,23 @@ pub(crate) fn build(
             deploy::next_command(deployed.adapter, &resolved.root, &directory),
         )
     });
+    // Which runtime went inside, which machine it is for, and whether making
+    // it reached the network. The first of those was a constant until
+    // ubugeeei-prod/uf#312 gave the flag a second backend; it is a row rather
+    // than a word in the documentation because "compiled" now means one of two
+    // different `node:` API surfaces, and which one is a fact about the
+    // artefact a person is about to deploy.
     let binary = compiled.as_ref().map(|compiled| {
         (
             relative_to(&resolved.root, &compiled.binary),
+            compiled.runtime.label(),
+            compiled.runtime.target.map(|target| target.triple),
             ByteSize::from_bytes(compiled.bytes).to_string(),
             compiled.embedded.files.to_string(),
             ByteSize::from_bytes(compiled.embedded.bytes).to_string(),
+            compiled
+                .fetched
+                .map(|bytes| ByteSize::from_bytes(bytes).to_string()),
         )
     });
 
@@ -653,19 +722,27 @@ pub(crate) fn build(
             renderer.blank(out);
         }
 
-        if let Some((path, bytes, files, embedded)) = &binary {
+        if let Some((path, runtime, target, bytes, files, embedded, fetched)) = &binary {
             renderer.heading(out, 2, "standalone");
-            renderer.key_values(
-                out,
-                4,
-                &[
-                    KeyValue::toned("binary", path, Tone::Path),
-                    KeyValue::toned("runtime", "bun", Tone::Muted),
-                    KeyValue::toned("bytes", bytes, Tone::Accent),
-                    KeyValue::toned("embedded assets", files, Tone::Number),
-                    KeyValue::toned("embedded bytes", embedded, Tone::Number),
-                ],
-            );
+            let mut rows = vec![
+                KeyValue::toned("binary", path, Tone::Path),
+                KeyValue::toned("runtime", runtime, Tone::Muted),
+            ];
+            // Only when `--target` was asked for. A row naming this machine on
+            // every ordinary `--compile` is a row that reports no finding,
+            // which is the same rule the guards table and the split count
+            // below follow — and the reader who typed a triple is the one who
+            // needs to see which one uf built.
+            if let Some(target) = target {
+                rows.push(KeyValue::toned("target", target, Tone::Accent));
+            }
+            rows.push(KeyValue::toned("bytes", bytes, Tone::Accent));
+            rows.push(KeyValue::toned("embedded assets", files, Tone::Number));
+            rows.push(KeyValue::toned("embedded bytes", embedded, Tone::Number));
+            if let Some(fetched) = fetched {
+                rows.push(KeyValue::toned("runtime downloaded", fetched, Tone::Number));
+            }
+            renderer.key_values(out, 4, &rows);
             renderer.blank(out);
         }
 
@@ -784,6 +861,39 @@ fn refuse_unanswerable_actions(
         if listed.len() == 1 { "is" } else { "are" },
         plan.because(),
         listed.join("\n"),
+    )
+}
+
+/// Refuse `--compile` or `--adapter` on a project that is a library.
+///
+/// Both flags produce a **deployment**: an executable that serves the
+/// application, or a directory a host runs it from. A library has no
+/// application to serve — no route table, no server entry, no request to
+/// answer — so each would have to invent one, and what it invented would be an
+/// empty server that starts and 404s everything.
+///
+/// Refused by name and before anything is built, which is the rule
+/// ubugeeei-prod/uf#638 applied to the same two flags: a target uf cannot
+/// produce is a sentence, and a sentence is cheaper before the bundle than
+/// after it.
+/// The adapter is whichever of `--adapter` and `app.runtime.deploy.adapter`
+/// asked, because a setting read and not honoured is the failure this whole
+/// change is about: a project that declared a deploy target and got a library
+/// would have been told nothing.
+fn refuse_an_application_artefact(
+    plan: &LibraryPlan,
+    standalone: bool,
+    adapter: Option<DeployAdapter>,
+) -> Result<()> {
+    let asked = match (standalone, adapter) {
+        (true, _) => "`uf build --compile` writes an executable that serves an application",
+        (_, Some(_)) => "a deploy adapter writes a directory a host serves an application from",
+        (false, None) => return Ok(()),
+    };
+    bail!(
+        "{asked}, and {}. A library is imported rather than served: `uf build` writes its \
+         modules to the output directory, and what sends them anywhere is `uf publish`.",
+        plan.because(),
     )
 }
 

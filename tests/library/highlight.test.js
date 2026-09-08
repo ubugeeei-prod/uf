@@ -27,6 +27,7 @@ import { describe, expect, it } from "@uniflowed/test";
 // public surface — `package_surface.rs` enforces that, with one allowlisted
 // exception for the native bridge — and a test is not a reason to widen it.
 // This file is inside the repository, so it can just say where the module is.
+import { highlightPlugin } from "../../packages/vite/internal/highlight.js";
 import { shimFlowGrammar } from "../../packages/vite/internal/flow-grammar-shim.js";
 import {
   FLOW_MARK,
@@ -440,5 +441,54 @@ describe("Flow's syntax shown to the JavaScript grammar", () => {
     const restored = shim.restore(lines);
     expect(restored[0][0].offset).toBe(0);
     expect(restored[1][0].offset).toBe(source.indexOf("return"));
+  });
+});
+
+describe("the highlighter is configured by uf.config.js", () => {
+  // `app.builtins.markdown.mdx.highlight` was documented in the configuration
+  // reference and was a field of no struct, so nothing deserialised it and
+  // nothing read it. This module has read `mdxConfig.highlight` the whole
+  // time; what it got was `undefined`, and a project that set a theme got no
+  // error and no effect. See ubugeeei-prod/uf#646.
+  //
+  // What is asserted is the boundary uf owns: the options handed to Shiki.
+  // Shiki's own rendering is Shiki's, and a test that re-rendered it would be
+  // testing the dependency rather than the wiring that was missing.
+
+  it("hands Shiki the themes the project asked for", () => {
+    const [, options] = highlightPlugin({
+      themes: { light: "solarized-light", dark: "nord" },
+    });
+    expect(options.themes).toEqual({ light: "solarized-light", dark: "nord" });
+  });
+
+  it("falls back to both GitHub themes when a project configures nothing", () => {
+    const [, options] = highlightPlugin(undefined);
+    expect(options.themes).toEqual({ light: "github-light", dark: "github-dark-dimmed" });
+  });
+
+  it("adds the grammars a project names to the ones uf loads anyway", () => {
+    const [, options] = highlightPlugin({ langs: ["nix", "toml"] });
+    // Extended, not replaced: a project naming one extra grammar must not lose
+    // the ones its own source is written in.
+    expect(options.langs).toContain("nix");
+    expect(options.langs).toContain("javascript");
+    expect(options.langs).toContain("mdx");
+    // `toml` is one uf loads anyway, so naming it is the overlapping case —
+    // and it must appear once rather than twice.
+    expect(options.langs).toContain("toml");
+    expect(options.langs.length).toBe(new Set(options.langs).size);
+  });
+
+  it("emits both themes as variables rather than one as colours", () => {
+    // `defaultColor: false` is what makes the page follow the reader's
+    // preference: a build cannot know whether they want light or dark, so it
+    // writes both and the stylesheet chooses.
+    const [, options] = highlightPlugin({});
+    expect(options.defaultColor).toBe(false);
+  });
+
+  it("turns off when the project turns it off", () => {
+    expect(highlightPlugin({ enabled: false })).toBe(null);
   });
 });
