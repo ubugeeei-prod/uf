@@ -124,6 +124,20 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
   with no path beside it — and `await` outside an `async` function in one is
   still refused, as it is inside a function that is not `async`.
 
+  The *options* are that function's too, and take no argument. They used to,
+  and `uf check` passed the port's `PERMISSIVE_PARSE_OPTIONS` through it while
+  the other three passed `uf_flow::PARSE_OPTIONS`: a decorated class was a file
+  the checker accepted and the formatter, linter and transform refused, which
+  is the one thing four callers of one function were supposed to make
+  impossible ([#430](https://github.com/ubugeeei-prod/uf/issues/430)). A
+  parameter is a place two callers can disagree, so there is not one;
+  `crates/uf_transform/tests/parse_options.rs` runs the same samples through
+  all four and reads the crates for a fifth caller of the port's parser.
+  Syntax errors leave by one route as well — every command passes them through
+  `uf_flow::explain`, so the sentence and the caret are the same whichever
+  command found the file
+  ([#431](https://github.com/ubugeeei-prod/uf/issues/431)).
+
 `flow_flowlib` embeds Flow's library definitions with `include_str!` paths that
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
 `tools/upstream/sync.sh` checks those out too and asserts they arrived.
@@ -707,8 +721,10 @@ Implemented native slices already cover:
 - Rust-native `uf dev` HTTP state and health endpoint
 - `uf install` workspace discovery, `uf.lock`, store manifest, and
   content-addressed package entries
-- `uf use` local current-binary runtime activation through XDG directories
-- `uf upgrade` package/runtime manifest generation
+- `uf use` and `uf self-update` runtime acquisition and activation, through the
+  installer `curl -fsSL https://setup.uniflowed.dev | sh` runs and the store it
+  unpacks into
+- `uf install` package/runtime plan generation into `.uf/install.json`
 - `ufx` native execution for known `@uniflowed/*` package entrypoints
 - `uf publish` and `uf release` metadata generation for trusted publishing
 - source-level native `uf test` execution for the first assertion subset,

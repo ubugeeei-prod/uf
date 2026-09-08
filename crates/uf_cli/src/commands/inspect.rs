@@ -7,7 +7,8 @@ use serde_json::json;
 use uf_config::env_files::{self, ProjectEnv};
 use uf_config::{ResolvedConfig, load_config};
 use uf_lib::{
-    builtin_modules, hook_descriptors, std_module_descriptors, tui_contract, ui_components,
+    UiReadiness, builtin_modules, hook_descriptors, std_module_descriptors, tui_contract,
+    ui_components,
 };
 use uf_plugin::{PipelineMode, resolve_pipeline};
 use uf_pm::{DetectionOptions, PackageManagerPlan, detect_package_manager_with};
@@ -51,7 +52,28 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
     let rm_module = resolved.config.rm.module.to_string();
     let native_modules = builtin_modules().len().to_string();
     let std_modules = std_module_descriptors().len().to_string();
-    let ui_component_count = ui_components().len().to_string();
+    // Two lines rather than one number, because the table behind them is two
+    // things at once. `ui_components().len()` was reported here as a project
+    // fact and it was the size of a roadmap: at ubugeeei-prod/uf#249, fifty-one
+    // entries of which `@uniflowed/ui` shipped seven. A reader — or an agent
+    // reading `--json` — was told this project had an `AlertDialog` with nine
+    // parts.
+    //
+    // `crates/uf_lib/src/ui.rs` now carries a readiness per entry, and the
+    // JSON below emits it, so a consumer can filter rather than trust a count.
+    let ui_catalogue = ui_components();
+    let ui_by = |readiness: UiReadiness| {
+        ui_catalogue
+            .iter()
+            .filter(|component| component.readiness == readiness)
+            .count()
+    };
+    let ui_component_count = ui_by(UiReadiness::Implemented).to_string();
+    let ui_roadmap = format!(
+        "{} planned, {} declined",
+        ui_by(UiReadiness::Planned),
+        ui_by(UiReadiness::Declined)
+    );
     let tui_component_count = tui_contract().components.len().to_string();
     let hooks = hook_descriptors().len().to_string();
     let lint_rules = uf_lint::rules().len().to_string();
@@ -200,6 +222,7 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
                 KeyValue::toned("native modules", &native_modules, Tone::Number),
                 KeyValue::toned("std modules", &std_modules, Tone::Number),
                 KeyValue::toned("ui components", &ui_component_count, Tone::Number),
+                KeyValue::toned("ui roadmap", &ui_roadmap, Tone::Muted),
                 KeyValue::toned("tui components", &tui_component_count, Tone::Number),
                 KeyValue::toned("hooks", &hooks, Tone::Number),
                 KeyValue::toned("lint rules", &lint_rules, Tone::Number),

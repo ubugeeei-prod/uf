@@ -137,6 +137,27 @@ $(cat "${work}/reinstall.log")"
 "${work}/pinned/bin/uf" --version >/dev/null || fail "reinstall: uf stopped working"
 pass "reinstalling over an existing runtime is idempotent"
 
+# 3b. And while that runtime's `uf` is *running*, which is what `uf self-update`
+#     is: the process asking for the install is executing the file the install
+#     is about to write. On Linux that write is `ETXTBSY` and GNU tar does not
+#     recover from it, so an installer that unpacked over the runtime directory
+#     would fail here — in the most ordinary invocation there is. `uf lsp`
+#     blocks on a stdin that never speaks, which is a running uf and nothing
+#     else.
+sleep 60 | "${work}/pinned/bin/uf" lsp >/dev/null 2>&1 &
+running_pid=$!
+python3 -c 'import time; time.sleep(0.5)'
+kill -0 "$running_pid" 2>/dev/null || fail "running: uf lsp did not stay up"
+if ! run_installer pinned UF_VERSION="$version" >"${work}/running.log" 2>&1; then
+  kill "$running_pid" 2>/dev/null || true
+  fail "reinstalling while the installed uf was running failed:
+$(cat "${work}/running.log")"
+fi
+kill "$running_pid" 2>/dev/null || true
+"${work}/pinned/bin/uf" --version >/dev/null \
+  || fail "running: uf stopped working after the reinstall"
+pass "reinstalling while the installed uf is running is safe"
+
 # 4. A `TMPDIR` the caller set is where the download goes.
 #
 #    Pointed at a directory that does not exist, an installer that honours it
