@@ -31,6 +31,17 @@ A page, a layout and a not-found may be `.mdx` instead of `.js`. A directory who
 `_` is not a route, which is where shared components belong — this site keeps
 its design system in `app/_design/`.
 
+`uf routes add` writes them, so the names above are a reference rather than
+something to type from memory:
+
+```
+uf routes add /articles/[slug] --loader
+uf routes list
+```
+
+Both read the same grammar the build discovers routes with — see
+[`uf routes`](/reference/cli#uf-routes-list).
+
 ## Paths
 
 A directory is a path segment:
@@ -438,6 +449,16 @@ effect does not run on a server, and the page would end up with tags that are
 right in a browser and missing from every crawler. Rendering is what puts a tag
 in a server-rendered head. `useHead` from `@uniflowed/web` is the browser-only
 escape hatch and says so about itself.
+
+Where the caller renders does not decide where the tag lands. A `<title>`, a
+`<meta>` and a `<link>` are hoistable elements: React gathers every one it finds
+while rendering the shell and emits them at the front of its output, whatever
+depth they were written at, and uf lifts that run into the head — so a `useSeo`
+three components below the page reaches `<head>` on both document shapes, the
+same as a route's own `metadata`. The exception is the one above: a tag inside a
+component that only renders *after* the shell — behind a `<Suspense>` a deferred
+loader is still filling — is in a later chunk, and the head has already gone. A
+page that wants to stream keeps its metadata static.
 
 The argument is a `Metadata`, the same type a route exports, so there is one
 vocabulary rather than two. What the hook adds over writing the tags by hand is

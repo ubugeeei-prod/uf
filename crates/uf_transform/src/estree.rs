@@ -25,17 +25,6 @@ use crate::TransformError;
 /// scan in uf has an explicit ceiling rather than trusting its input.
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
-/// The parse options every part of uf uses, re-exported from `uf_flow`.
-///
-/// This crate used to declare its own literal, equal to `uf_flow`'s member for
-/// member and equal only by coincidence: nothing compared them, and a syntax
-/// the transform accepted and the linter did not would have shown up as a
-/// module that lints clean and fails to load. `uf_flow` owns Flow syntax for
-/// uf, and the options are part of what that means.
-///
-/// `tests/parse_options.rs` is what keeps this a re-export.
-pub use uf_flow::PARSE_OPTIONS;
-
 /// Parse `source` and render it as an ESTree `Program`.
 ///
 /// Comments come back twice: on the program (`comments`) and attached to the
@@ -58,9 +47,10 @@ pub fn parse(source: &str) -> Result<Value, TransformError> {
     let offsets = OffsetTable::make_with_kind(OffsetKind::JavaScript, source);
     // Through `uf_flow::module` rather than the port directly, so a module
     // that awaits at its top level transforms here for the same reason it
-    // formats and checks: one file, one reading, whichever command asked.
-    let (ast, errors): (_, Vec<(Loc, ParseError)>) =
-        uf_flow::module::parse(source, &PARSE_OPTIONS, None);
+    // formats and checks: one file, one reading, whichever command asked. The
+    // options are that call's to make, not this one's — see its documentation
+    // and ubugeeei-prod/uf#430.
+    let (ast, errors): (_, Vec<(Loc, ParseError)>) = uf_flow::module::parse(source, None);
 
     if let Some((loc, error)) = errors.first() {
         // Through `uf_flow` so a module that fails to transform is refused in

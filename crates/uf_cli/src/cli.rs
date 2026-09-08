@@ -469,6 +469,17 @@ pub(crate) enum Commands {
         #[arg(value_name = "NAME", required = true)]
         names: Vec<String>,
     },
+    /// List the routes under `app/`, or write a new one.
+    ///
+    /// A route is a directory and one to four reserved files, and both halves
+    /// of this command read `crates/uf_router/src/reserved.rs` — the same
+    /// grammar `uf build` discovers routes with. A generator with a list of
+    /// its own would be a second answer to "what is a route called", and the
+    /// first two disagreeing is what ubugeeei-prod/uf#224, #291 and #386 were.
+    Routes {
+        #[command(subcommand)]
+        command: RoutesCommand,
+    },
     /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
         /// Run in this mode, which chooses `.env.<mode>` and is what
@@ -643,13 +654,24 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: Option<CatalogCommand>,
     },
-    /// Re-read the workspace and record the package and runtime plan.
+    /// Replace this uf with the newest release.
     ///
-    /// It fetches nothing and it does not replace the uf binary, in spite of
-    /// its name: `uf update` moves your dependencies and `uf use` moves the
-    /// toolchain. See ubugeeei-prod/uf#287.
-    Upgrade,
+    /// The command `uf upgrade` was named after and never was. It resolves the
+    /// newest release, downloads it, checks it against the sha256 published
+    /// beside it and links it — through the same installer
+    /// `curl -fsSL https://setup.uniflowed.dev | sh` runs, because a second
+    /// implementation of a checked download is a second one to get wrong. See
+    /// ubugeeei-prod/uf#424 and ubugeeei-prod/uf#499.
+    ///
+    /// `UF_VERSION` pins a version, `UF_RELEASE_BASE` points at a mirror, and
+    /// both mean here what they mean to the installer.
+    SelfUpdate,
     /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
+    ///
+    /// A version this machine does not have is downloaded and verified, by the
+    /// same installer `uf self-update` uses. It is not fabricated by copying
+    /// the running binary under another name, which is what it used to be:
+    /// ubugeeei-prod/uf#534.
     Use {
         /// The toolchain to activate.
         runtime: String,
@@ -758,6 +780,45 @@ impl Commands {
             _ => false,
         }
     }
+}
+
+/// What `uf routes` can do with the route table.
+#[derive(Debug, Subcommand)]
+pub(crate) enum RoutesCommand {
+    /// Print the table `uf build` counts from.
+    List,
+    /// Write a route: the directory, its page, and whichever of the rest was
+    /// asked for.
+    ///
+    /// The path is a URL path in the spelling the directories already use —
+    /// `/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what
+    /// is typed is what appears in `RoutePath`. A spelling uf reserves without
+    /// serving (`@team`, `(.)photo`) is refused here with the same sentence
+    /// `uf build` and `uf lint` give, rather than written and reported later.
+    ///
+    /// Nothing is overwritten: a route whose page exists is an error, and a
+    /// run that stops has written none of its files.
+    Add {
+        /// The route's URL path, as its directories spell it.
+        #[arg(value_name = "PATH")]
+        path: String,
+        /// Also write `_uf.layout.js`: a wrapper for this path and everything
+        /// under it.
+        #[arg(long)]
+        layout: bool,
+        /// Give the page a `loader`, which runs before it renders.
+        ///
+        /// The one flag here that is not a file. A loader is an export of the
+        /// page module rather than a name uf reserves, and the flag is still
+        /// the right spelling: from where a reader stands the question is
+        /// "does this route load data", and which of the answers happens to be
+        /// a separate file is uf's business rather than theirs.
+        #[arg(long)]
+        loader: bool,
+        /// Also write `_uf.middleware.js`: what runs before this path answers.
+        #[arg(long)]
+        middleware: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]

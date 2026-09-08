@@ -1,6 +1,6 @@
 #![deny(missing_docs)]
 //! Native package manager for `uf install`, `uf add`, `uf remove`, `uf update`,
-//! `uf why`, `uf upgrade`, and `@uniflowed/pm`.
+//! `uf why`, and `@uniflowed/pm`.
 //!
 //! The crate has two halves. [`install_workspace`] and [`PackageManagerPlan`]
 //! describe uf's own resolver: `uf.lock` plus the content-addressed `.uf/store`.

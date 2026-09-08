@@ -109,8 +109,7 @@ fn refuses(source: &str) -> Option<ParseFailure> {
 /// would move the free onto the caller's stack, which is where it does not fit.
 fn parse_for_diagnostics(source: &str) -> Vec<ParseDiagnostic> {
     let parsed = catch_unwind(AssertUnwindSafe(|| {
-        let (_program, errors): (_, Vec<(Loc, ParseError)>) =
-            crate::module::parse(source, &crate::parse::PARSE_OPTIONS, None);
+        let (_program, errors): (_, Vec<(Loc, ParseError)>) = crate::module::parse(source, None);
         errors
             .iter()
             .map(|error| crate::diagnostic_from_error(source, error))

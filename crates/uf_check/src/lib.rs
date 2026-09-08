@@ -24,7 +24,7 @@
 //! ```
 //! # use uf_check::{CheckLimits, Source, check_sources};
 //! let sources = [Source::new("app.js", "// @flow\nconst n: number = 1;\n")];
-//! match check_sources(&sources, &CheckLimits::default()) {
+//! match check_sources(&sources, &[], &CheckLimits::default()) {
 //!     Ok(report) => assert_eq!(report.files_checked, 1),
 //!     Err(error) => assert!(error.is_unavailable()),
 //! }
@@ -35,6 +35,7 @@
 mod cache;
 mod diagnostic;
 mod error;
+mod flowconfig;
 mod limits;
 mod report;
 #[cfg(feature = "upstream-typecheck")]
@@ -46,8 +47,9 @@ pub use crate::diagnostic::{
     Severity, Span, TypeDiagnostic,
 };
 pub use crate::error::CheckError;
+pub use crate::flowconfig::{LibPaths, lib_paths};
 pub use crate::limits::{CHECK_STACK_BYTES, CheckLimits};
-pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source};
+pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source, UnresolvedImport};
 
 /// Which type checker a build compiled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,19 +85,27 @@ pub const fn backend_name(backend: CheckerBackend) -> &'static str {
     }
 }
 
-/// Merge Flow's builtin library definitions, or report that they are already
-/// merged.
+/// Merge Flow's builtin library definitions together with `libs`, or report
+/// that this combination is already merged.
 ///
 /// Calling this before a batch moves the one-time cost somewhere a caller can
 /// account for it — a progress line, a benchmark — instead of hiding it inside
 /// the first file's timing.
-pub fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
+///
+/// `libs` is the project's own library definitions, in declaration order: the
+/// files a `.flowconfig`'s `[libs]` names, which [`lib_paths`] finds and the
+/// caller reads. They are merged **after** Flow's own, so a project may
+/// override a global Flow declares, which is the order `flow check` merges in.
+/// The merged environment is memoised per set of libdefs, so passing the same
+/// ones again costs nothing.
+pub fn prepare_builtins(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError> {
     #[cfg(feature = "upstream-typecheck")]
     {
-        upstream::prepare_builtins()
+        upstream::prepare_builtins(libs)
     }
     #[cfg(not(feature = "upstream-typecheck"))]
     {
+        let _ = libs;
         Err(CheckError::Unavailable)
     }
 }
@@ -123,7 +133,7 @@ pub fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
 ///     Source::new("b.js", "export const b = 1;\n"),
 ///     Source::new("unrelated.js", "export const c = 1;\n"),
 /// ];
-/// match module_closure(&["app.js"], &available, &CheckLimits::default()) {
+/// match module_closure(&["app.js"], &available, &[], &CheckLimits::default()) {
 ///     Ok(closure) => assert_eq!(
 ///         closure.sources.iter().map(|source| source.path).collect::<Vec<_>>(),
 ///         ["app.js", "b.js"],
@@ -134,15 +144,16 @@ pub fn prepare_builtins() -> Result<BuiltinsTiming, CheckError> {
 pub fn module_closure<'a>(
     seeds: &[&str],
     available: &[Source<'a>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
 ) -> Result<ModuleClosure<'a>, CheckError> {
     #[cfg(feature = "upstream-typecheck")]
     {
-        upstream::module_closure(seeds, available, limits)
+        upstream::module_closure(seeds, available, libs, limits)
     }
     #[cfg(not(feature = "upstream-typecheck"))]
     {
-        let _ = (seeds, available, limits);
+        let _ = (seeds, available, libs, limits);
         Err(CheckError::Unavailable)
     }
 }
@@ -150,9 +161,10 @@ pub fn module_closure<'a>(
 /// Type check one source file.
 pub fn check_source(
     source: Source<'_>,
+    libs: &[Source<'_>],
     limits: &CheckLimits,
 ) -> Result<Vec<TypeDiagnostic>, CheckError> {
-    check_sources(std::slice::from_ref(&source), limits).map(|report| report.diagnostics)
+    check_sources(std::slice::from_ref(&source), libs, limits).map(|report| report.diagnostics)
 }
 
 /// Type check a batch of files against one shared builtin environment.
@@ -161,9 +173,10 @@ pub fn check_source(
 /// order, so the result is a function of the input alone.
 pub fn check_sources(
     sources: &[Source<'_>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
 ) -> Result<CheckReport, CheckError> {
-    check_sources_cached(sources, limits, None)
+    check_sources_cached(sources, libs, limits, None)
 }
 
 /// Type check a batch of files, answering from `cache` whatever it still knows.
@@ -174,16 +187,17 @@ pub fn check_sources(
 /// editor holding unsaved buffers, say) wants.
 pub fn check_sources_cached(
     sources: &[Source<'_>],
+    libs: &[Source<'_>],
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
     #[cfg(feature = "upstream-typecheck")]
     {
-        upstream::check_sources(sources, limits, cache)
+        upstream::check_sources(sources, libs, limits, cache)
     }
     #[cfg(not(feature = "upstream-typecheck"))]
     {
-        let _ = (sources, limits, cache);
+        let _ = (sources, libs, limits, cache);
         Err(CheckError::Unavailable)
     }
 }

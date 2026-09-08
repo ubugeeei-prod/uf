@@ -19,7 +19,9 @@
 // rather than after its place in a build:
 //
 // - `media.js` — the elements that load bytes, and the layout shifts and
-//   double downloads they cause.
+//   double downloads they cause. Also the icon sprite and the Open Graph card,
+//   which are the two things a build knows and a runtime cannot: which icons
+//   an application imported, and what a card the crawler will fetch says.
 // - `time.js` — an instant, rendered the same way on a server and in a
 //   browser.
 // - `regions.js` — the elements that exist for a screen reader: landmarks,
@@ -59,8 +61,17 @@
 //
 // One name, one home. Import routing from the router.
 
-export type { FontAsset, ImageAsset, Loading, Source } from "./media.js";
-export { Font, Image, Picture } from "./media.js";
+export type {
+  FontAsset,
+  FontFace,
+  IconAsset,
+  ImageAsset,
+  Loading,
+  OgAsset,
+  Source,
+  SpriteAsset,
+} from "./media.js";
+export { Font, Icon, IconSprite, Image, OgImage, Picture } from "./media.js";
 
 export type { TimeFormat, TimeValue } from "./time.js";
 export { Time, asInstant, relative } from "./time.js";

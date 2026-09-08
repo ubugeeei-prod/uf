@@ -83,5 +83,5 @@ fn xdg_env_uses_absolute_paths_and_ignores_relative_values() {
         layout.runtime_dir.as_deref(),
         Some("/run/user/1000/uniflowed")
     );
-    assert_eq!(layout.versions_dir, "/xdg/data/uniflowed/runtimes");
+    assert_eq!(layout.versions_dir, "/xdg/data/uf/runtimes");
 }

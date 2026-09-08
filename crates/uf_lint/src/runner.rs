@@ -19,6 +19,7 @@ mod router;
 mod security;
 mod server;
 mod structure;
+mod tree;
 mod uniflowed;
 
 pub(crate) use fetch::run_fetch_no_global_override;
@@ -49,4 +50,5 @@ pub(crate) use server::{
     run_server_use_client_directive_position, run_server_use_server_actions,
 };
 pub(crate) use structure::run_structure_rules;
+pub(crate) use tree::run_tree_rules;
 pub(crate) use uniflowed::{run_no_npm_script_invocation, run_no_tabs, run_no_trailing_whitespace};

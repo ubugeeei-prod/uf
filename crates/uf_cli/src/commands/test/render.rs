@@ -60,7 +60,7 @@ pub(super) fn render_list(
         .map(|entry| {
             (
                 format!("{}:{}:{}", entry.file, entry.line, entry.column),
-                entry.call.to_string(),
+                entry.describe(),
             )
         })
         .collect();
@@ -161,7 +161,10 @@ pub(super) fn render_report(
         .map(|entry| {
             format!(
                 "{}:{}:{} {}",
-                entry.file, entry.line, entry.column, entry.call
+                entry.file,
+                entry.line,
+                entry.column,
+                entry.describe()
             )
         })
         .collect();
@@ -538,10 +541,19 @@ fn summary_line(report: &TestRunReport, duration: Duration) -> String {
     if summary.todo > 0 {
         line.push_str(&format!(", {} todo", summary.todo));
     }
-    if summary.unsupported_declarations > 0 {
+    // Two words for the two kinds, because they mean different things to the
+    // reader: an unexpandable form ran and was reported, and one from another
+    // runner did not run at all — which is why only the second is red.
+    let unexpandable = summary
+        .unsupported_declarations
+        .saturating_sub(summary.foreign_declarations);
+    if unexpandable > 0 {
+        line.push_str(&format!(", {unexpandable} unexpandable"));
+    }
+    if summary.foreign_declarations > 0 {
         line.push_str(&format!(
-            ", {} unexpandable",
-            summary.unsupported_declarations
+            ", {} another runner's",
+            summary.foreign_declarations
         ));
     }
     if summary.bailed {

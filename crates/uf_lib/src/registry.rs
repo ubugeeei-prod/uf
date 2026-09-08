@@ -159,7 +159,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             NativeModuleKind::Hooks,
             Stability::Experimental,
             &[
-                "RENDER_ID",
+                "RENDER_META",
                 "RenderProvider",
                 "browserWindow",
                 "useAnimationFrame",
@@ -451,8 +451,11 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &[
                 "Announcer",
                 "Font",
+                "Icon",
+                "IconSprite",
                 "Image",
                 "Layout",
+                "OgImage",
                 "Page",
                 "Picture",
                 "SkipLink",
