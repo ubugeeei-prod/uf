@@ -5,6 +5,7 @@
 
 pub(crate) mod assets;
 pub(crate) mod build;
+pub(crate) mod builder;
 pub(crate) mod check;
 pub(crate) mod clean;
 pub(crate) mod compile;
@@ -22,6 +23,7 @@ pub(crate) mod lint;
 pub(crate) mod pm;
 pub(crate) mod prepare;
 pub(crate) mod release;
+pub(crate) mod routes;
 pub(crate) mod serve;
 pub(crate) mod task;
 pub(crate) mod test;

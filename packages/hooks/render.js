@@ -32,17 +32,53 @@
 //
 // # How the value crosses the network
 //
-// `RenderProvider` writes what it decided into the markup, as an inert
-// `<script type="application/json">`, and reads it back on the client before
-// the first render — the same carrier and the same escaping
-// `@uniflowed/router` uses for loader data, because it is the same problem and
-// a second mechanism would be a second thing to get wrong. `dangerouslySetInnerHTML`
-// rather than a text child, because the HTML parser treats a `<script>` body as
-// raw text and does not decode entities: React's escaping of `&` would survive
-// into `JSON.parse` and fail there.
+// `RenderProvider` writes what it decided into the markup, as a `<meta>`, and
+// reads it back on the client before the first render.
 //
-// A page nobody prerendered has no script to read, decides both values from the
+// A `<meta>` rather than the `<script type="application/json">` this used to
+// be, and the reason is where the two end up. React hoists a `<title>`, a
+// `<meta>` and a `<link>` and does not hoist a script: in a document React
+// rendered, the meta goes into `<head>`; in a tree that is not a document — a
+// `@uniflowed/router` application whose root layout renders content rather
+// than `<html>` — React writes it at the front, which is the run uf's shell
+// lifts into the head it wrote itself. A script had neither behaviour, so a
+// provider rendered above a root layout that owns `<html>` emitted it *before*
+// the document, and the router could not provide one without deciding where in
+// the tree the application's `<html>` was. That is ubugeeei-prod/uf#559: a
+// guarantee that depends on the application remembering to opt in is not one,
+// and the carrier was the thing standing in the way of it being automatic.
+//
+// It also removes an escaping problem rather than solving one. A `<script>`
+// body is raw text to the HTML parser, so the encoder had to remove `<` and
+// the two line separators itself and the element needed
+// `dangerouslySetInnerHTML`; an attribute value is escaped by React and decoded
+// by the parser, so what `JSON.parse` gets back is what `JSON.stringify`
+// produced, with nothing in between to get wrong.
+//
+// A page nobody prerendered has no meta to read, decides both values from the
 // host, and is correct for the reason that there is nothing to disagree with.
+//
+// # Nesting replaces; it does not add
+//
+// The router renders one of these above every application, so an application
+// that renders its own is nested inside that one. A nested provider inherits
+// the envelope above it and overrides only the fields it was given, and it
+// writes no second carrier — which is what makes "a project that wants a
+// different clock or seed *replaces* it" true rather than aspirational. Two
+// carriers would be two answers to one question, and the client reads the
+// first.
+//
+// # What it costs, which is worth saying out loud
+//
+// Every uf document now carries an envelope, so two renders of one route are no
+// longer the same bytes: the instant moved and the seed is a fresh one. That is
+// the same price an application that followed the old advice and wrapped its own
+// tree already paid — what changed is that every application pays it — and it is
+// the price of the guarantee rather than an oversight. A render that has to be
+// reproducible fixes `at` and `seed` itself, which is what those two props are
+// for; `gives the same document however the host takes it` in
+// `tests/library/streaming.test.js` is a test that compares two renders and says
+// so.
 //
 // # What belongs in this module
 //
@@ -56,6 +92,30 @@
 // — this module is about the one instant that must not move.
 
 import * as React from "@uniflowed/react";
+// The values by name and the namespace beside it for the types, which is what
+// every other module in this package already does. Not a style choice, and the
+// reason is worth the paragraph.
+//
+// `@uniflowed/react` is `export * from "react"` over a CommonJS package, so its
+// namespace is filled in by the bundle's own initializer at run time rather
+// than being known while the bundle is built. Reaching through the namespace —
+// `React.createContext(…)` — was a reference the bundler could not attribute to
+// an export, so the module's initializer was emitted *without* the call that
+// fills the namespace in, and the first line of this module ran against an
+// empty object:
+//
+//     var init_render = __esmMin(() => {
+//       init_clock();
+//       init_random();
+//       RenderContext = react_exports.createContext(null);   // TypeError
+//     });
+//
+// A named import is a reference the bundler has to resolve while it is
+// bundling, and the initializer comes back. It went unnoticed until the router
+// began rendering a `RenderProvider`, because this module reached the one build
+// where it matters — the single file `uf build --compile` links with Bun —
+// only then, and it failed at startup rather than at a call site.
+import { createContext, useContext, useState } from "@uniflowed/react";
 import { currentClock } from "@uniflowed/core/clock";
 import type { Random } from "@uniflowed/core/random";
 import { hostSeed, seededRandom, shuffled } from "@uniflowed/core/random";
@@ -72,10 +132,25 @@ export type RenderEnvelope = {
   readonly seed: string,
 };
 
-/** The element the envelope is written into, and read back out of. */
-export const RENDER_ID: string = "__uf_render";
+/**
+ * The `<meta>` name the envelope is written under, and read back out of.
+ *
+ * A name rather than an id because that is what a `<meta>` is addressed by:
+ * `document.querySelector('meta[name=…]')` is the read, and React's own
+ * hoisting treats the `name`/`content` pair as the element's identity.
+ */
+export const RENDER_META: string = "uf:render";
 
-const RenderContext: React.Context<RenderEnvelope | null> = React.createContext(null);
+/**
+ * What the render above this one was anchored to, if anything was.
+ *
+ * Null outside a provider, which is the same question two callers ask of it:
+ * [`useRenderEnvelope`] asks whether the values were fixed at all, and
+ * [`RenderProvider`] asks whether it is the outermost one and therefore the
+ * one that writes the carrier. "Is there one above me" is exactly the question
+ * a context answers, and during a render there is no other way to ask it.
+ */
+const RenderContext: React.Context<RenderEnvelope | null> = createContext(null);
 
 /**
  * The envelope the server left in the document, if there is one.
@@ -83,18 +158,22 @@ const RenderContext: React.Context<RenderEnvelope | null> = React.createContext(
  * Read from the DOM rather than from a global an inline script assigned,
  * because an inline script that runs is a script a content-security policy has
  * to allow, and this value is worth no relaxation of one.
+ *
+ * `querySelector` takes the first match rather than requiring the only one: a
+ * document that somehow carried two would still have an answer, and the first
+ * is the one every other reader of a duplicated `<meta>` takes.
  */
 function embedded(): RenderEnvelope | null {
   const document = globalThis.document;
   if (document == null) {
     return null;
   }
-  const element = document.getElementById(RENDER_ID);
+  const element = document.querySelector(`meta[name="${RENDER_META}"]`);
   if (element == null) {
     return null;
   }
   try {
-    const found = JSON.parse(element.textContent ?? "null");
+    const found = JSON.parse(element.getAttribute("content") ?? "null");
     if (found == null || typeof found.at !== "number" || typeof found.seed !== "string") {
       return null;
     }
@@ -109,9 +188,20 @@ function embedded(): RenderEnvelope | null {
   }
 }
 
-/** Decide what this render is anchored to, from props, from the markup, or from the host. */
-function envelope(given: { at?: number, timeZone?: string, seed?: string }): RenderEnvelope {
-  const found = embedded();
+/**
+ * Decide what this render is anchored to.
+ *
+ * What the caller gave, then what a provider above already fixed, then what
+ * the markup carries, then the host — in that order, per field. `inherited`
+ * comes before `embedded()` because a provider that overrode `at` for its
+ * subtree must not have `timeZone` read back out of the document and quietly
+ * paired with somebody else's instant.
+ */
+function envelope(
+  given: { at?: number, timeZone?: string, seed?: string },
+  inherited: RenderEnvelope | null,
+): RenderEnvelope {
+  const found = inherited ?? embedded();
   const clock = currentClock();
   return {
     at: given.at ?? found?.at ?? clock.now(),
@@ -121,46 +211,31 @@ function envelope(given: { at?: number, timeZone?: string, seed?: string }): Ren
 }
 
 /**
- * `envelope` as the text of a `<script type="application/json">`.
- *
- * `<` is escaped so that a zone name or a seed holding `</script>` cannot end
- * the element early, and the two line separators are escaped because they are
- * newlines to a JavaScript parser and are not to `JSON.stringify`. The same
- * three replacements `@uniflowed/router` makes, deliberately duplicated rather
- * than shared: this package does not depend on the router, and three lines are
- * not worth an import that would drag one in.
- */
-function encode(value: RenderEnvelope): string {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-/**
  * Fix this render's instant, zone and seed, and hand them to the tree.
  *
- * Render it once, above everything that reads a clock — a root layout is where
- * it belongs. Every argument is optional and the defaults are the whole point:
- * a server decides, the markup carries what it decided, and the browser reads it
- * back before its first render, so neither side has to be told which one it is.
+ * A `@uniflowed/router` application already has one: `routerView` renders this
+ * above everything, so `useRenderedAt` and `useRandom` agree across hydration
+ * without the application saying anything. Rendering one by hand is for the
+ * cases that need different values, and it is a *replacement* rather than an
+ * addition — a nested provider inherits the envelope above it, overrides only
+ * the fields it was given, and writes no second carrier. See
+ * ubugeeei-prod/uf#559.
+ *
+ * Every argument is optional and the defaults are the whole point: a server
+ * decides, the markup carries what it decided, and the browser reads it back
+ * before its first render, so neither side has to be told which one it is.
  *
  * `at` and `seed` are there for the two cases that are not that. A test passes
  * them to get a page that renders the same bytes every time; an application
  * whose instant comes from somewhere better — a request header, a loader —
- * passes that instead.
+ * passes that instead. Both have to be values the *browser* arrives at too:
+ * they are not carried, because what is carried is the outermost envelope, and
+ * a value only one side can compute is the mismatch this module exists to
+ * remove.
  *
- * `security/no-dangerously-set-inner-html` is suppressed on the one line that
- * needs it, and the argument is narrow enough to state exactly. The rule is
- * about markup that came from somewhere — a comment, a profile, a response —
- * and its escape hatch is a `@uniflowed/markdown` sanitizer, which is the right
- * answer for markup and no answer at all for JSON. What is written here is
- * three fields this module produced: two of them are typed `number` and
- * `string` and all three go through `JSON.stringify` and then `encode`, which
- * removes the only three characters that can end a `<script>` early or split a
- * line inside one. There is also no other spelling — the HTML parser reads a
- * `<script>` body as raw text and does not decode entities, so React's escaping
- * of a text child would survive into `JSON.parse` and fail there.
+ * The carrier is a `<meta>`, which is what lets this be rendered above a root
+ * layout that owns `<html>`: React hoists it into the head of the document
+ * either way. The header of this file has the whole argument.
  */
 export component RenderProvider(
   at?: number,
@@ -168,19 +243,22 @@ export component RenderProvider(
   seed?: string,
   children: React.Node,
 ) {
+  const enclosing = useContext(RenderContext);
   // The initializer runs once per mount, on both sides, which is what makes
   // this a fixed value rather than a clock: a re-render for any other reason
   // must not move the instant the page has already been drawn with.
-  const [value] = React.useState(() => envelope({ at, timeZone, seed }));
+  const [decided] = useState(() => envelope({ at, timeZone, seed }, enclosing));
+  // The outermost provider writes the carrier and a nested one does not, so a
+  // document holds one envelope however many providers a tree has. Not state,
+  // because whether there is a provider above this one is a fact about the
+  // shape of the tree: a subtree cannot gain or lose an enclosing provider
+  // without being remounted, so this cannot change under a re-render and ask
+  // React to add or remove an element the server's markup already settled.
+  const outermost = enclosing == null;
 
   return (
-    <RenderContext.Provider value={value}>
-      <script
-        id={RENDER_ID}
-        type="application/json"
-        // uf-lint-disable-next-line security/no-dangerously-set-inner-html
-        dangerouslySetInnerHTML={{ __html: encode(value) }}
-      />
+    <RenderContext.Provider value={decided}>
+      {outermost ? <meta name={RENDER_META} content={JSON.stringify(decided)} /> : null}
       {children}
     </RenderContext.Provider>
   );
@@ -194,7 +272,7 @@ export component RenderProvider(
  * clock, which is the behaviour they have always had.
  */
 export hook useRenderEnvelope(): RenderEnvelope | null {
-  return React.useContext(RenderContext);
+  return useContext(RenderContext);
 }
 
 /**
@@ -212,10 +290,11 @@ export hook useRenderEnvelope(): RenderEnvelope | null {
 export hook useRenderedAt(): Instant {
   const found = useRenderEnvelope();
   const at = found?.at;
-  // The number, not the instant, in the dependency: `Instant` is a new object
-  // every render and depending on it would rebuild this on every one.
+  // The number, not the instant, is what the memoization keys on: `Instant` is
+  // a new object every render, so a scope that depended on one would rebuild
+  // this on every render rather than on every change of clock.
   const clockAt = at ?? currentClock().now();
-  return React.useMemo(() => Temporal.Instant.fromEpochMilliseconds(clockAt), [clockAt]);
+  return Temporal.Instant.fromEpochMilliseconds(clockAt);
 }
 
 /**
@@ -243,9 +322,9 @@ export hook useRenderTimeZone(): string {
  * two sides.
  *
  * The stream is stateful, so a component that draws from it during render draws
- * different numbers on a re-render. Draw in a `useMemo` keyed by what the
- * numbers are for, or in an event, and never in the body of a component React
- * may render twice.
+ * different numbers on a re-render. Draw into a `const` keyed by what the
+ * numbers are for — which the React Compiler memoizes — or in an event, and
+ * never twice in the body of a component React may render twice.
  *
  * Outside a provider the seed is a constant rather than the host's, which looks
  * like the wrong default and is the right one: two renders with no envelope
@@ -257,18 +336,19 @@ export hook useRenderTimeZone(): string {
 export hook useRandom(label: string): Random {
   const found = useRenderEnvelope();
   const seed = found?.seed;
-  return React.useMemo(() => seededRandom(seed ?? "uf").fork(label), [seed, label]);
+  return seededRandom(seed ?? "uf").fork(label);
 }
 
 /**
  * `items`, shuffled the same way on both sides of a hydration.
  *
- * The shuffle is a `useMemo` over the seed, the label and the items, so it is
- * one shuffle rather than one per render — which matters for more than speed:
- * a fresh draw on every render would reorder the list under the reader every
- * time anything else on the page changed.
+ * The shuffle is memoized over the seed, the label and the items — by the React
+ * Compiler, which is where uf's memoization comes from — so it is one shuffle
+ * rather than one per render. That matters for more than speed: a fresh draw on
+ * every render would reorder the list under the reader every time anything else
+ * on the page changed.
  */
 export hook useShuffled<T>(items: $ReadOnlyArray<T>, label: string): Array<T> {
   const random = useRandom(label);
-  return React.useMemo(() => shuffled(items, random), [items, random]);
+  return shuffled(items, random);
 }

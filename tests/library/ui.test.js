@@ -47,6 +47,7 @@ import {
   Checkbox,
   Collapsible,
   Combobox,
+  ContextMenu,
   DatePicker,
   Dialog,
   Drawer,
@@ -54,6 +55,7 @@ import {
   HoverCard,
   InputOtp,
   Menu,
+  Menubar,
   NavigationMenu,
   Pagination,
   Popover,
@@ -76,6 +78,10 @@ import {
   toast,
   updateToast,
 } from "@uniflowed/ui";
+// The other half of ubugeeei-prod/uf#297. `Field` and `@uniflowed/form` each
+// used to compute `aria-describedby` and `aria-invalid`, and the assertion that
+// they now agree cannot be written from inside either package alone.
+import { useFieldSource, useForm } from "@uniflowed/form";
 
 // By path, not by subpath export, the way `highlight.test.js` reaches one:
 // `internal/` is not part of any package's public surface, and the whole
@@ -92,6 +98,10 @@ import { moveDate, movementForDateKey, weeksOf } from "../../packages/ui/interna
 // definition of what `Tab` reaches, and "a slide nobody can see is not one of
 // them" is a claim about that definition rather than about a rendered tree.
 import { focusable } from "../../packages/ui/internal/focus.js";
+// `document.body` is `HTMLBodyElement | null` — a parsed document need not have
+// one — so every `fireEvent` aimed at the page itself narrows through here
+// rather than thirteen times over. See ubugeeei-prod/uf#573.
+import { bodyOf } from "./dom.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -288,6 +298,166 @@ describe("Field", () => {
       message = String(error);
     }
     expect(message).toContain("Field.Label must be rendered inside a Field.Root");
+  });
+});
+
+describe("Field: bound to a form", () => {
+  // ubugeeei-prod/uf#297. `Field` and `@uniflowed/form` each computed
+  // `aria-describedby` and `aria-invalid`, and spreading both onto one input
+  // meant the later one won — so the control was described by the form's
+  // message *or* by `Field.Description`, depending on argument order, and never
+  // by both. These are the assertions that failed before one place owned them.
+
+  type Signup = {| readonly email: string |};
+
+  component SignupForm(onServerError?: boolean = false) {
+    const form = useForm<Signup>({ defaultValues: { email: "" } });
+    const email = useFieldSource(form, "email", { required: "We need an email address" });
+    return (
+      <form onSubmit={form.handleSubmit(() => {})}>
+        <Field.Root field={email}>
+          <Field.Label>Email address</Field.Label>
+          <Field.Control render={(props) => <input type="email" {...props} />} />
+          <Field.Description>We will not share it.</Field.Description>
+          <Field.Error />
+        </Field.Root>
+        <button type="submit">Sign up</button>
+        {onServerError ? (
+          <button
+            onClick={() =>
+              form.setError(
+                "email",
+                { message: "That address is already taken" },
+                { shouldFocus: true },
+              )
+            }
+            type="button"
+          >
+            Pretend the server answered
+          </button>
+        ) : null}
+      </form>
+    );
+  }
+
+  const submit = async () => {
+    await userEvent.click(screen.getByRole("button", { name: "Sign up" }));
+  };
+
+  it("takes its validity from the form rather than from a prop", async () => {
+    render(<SignupForm />);
+    expect(screen.getByLabelText("Email address")).not.toHaveAttribute("aria-invalid");
+    await submit();
+    // No `invalid` prop is passed anywhere in the markup above: the form is the
+    // one thing that knows, and it is now the one thing that says.
+    expect(screen.getByLabelText("Email address")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("describes the control with the help text and the error at once", async () => {
+    render(<SignupForm />);
+    await submit();
+    const control = screen.getByLabelText("Email address");
+    const described = (control.getAttribute("aria-describedby") ?? "").split(" ");
+    const help = screen.getByText("We will not share it.");
+    const error = screen.getByRole("alert");
+    // A token list with both ids in it, which is the assertion the collision
+    // failed: one of the two used to overwrite the other outright.
+    expect(described).toContain(help.getAttribute("id"));
+    expect(described).toContain(error.getAttribute("id"));
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("shows the message the form gave, without being handed it", async () => {
+    render(<SignupForm />);
+    await submit();
+    expect(screen.getByRole("alert").textContent).toBe("We need an email address");
+  });
+
+  it("moves focus to the first field that failed", async () => {
+    render(<SignupForm />);
+    await submit();
+    expect(screen.getByLabelText("Email address")).toHaveFocus();
+  });
+
+  it("says a field is required before it is wrong", () => {
+    render(<SignupForm />);
+    const control = screen.getByLabelText("Email address");
+    // `aria-invalid` says a field is wrong after it has been checked; this says
+    // it is required before, which is the announcement that prevents the error
+    // rather than reporting it. It comes from the rule, not from a prop.
+    expect(control).toHaveAttribute("aria-required", "true");
+    expect(control).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("carries the form's own binding onto the control", () => {
+    render(<SignupForm />);
+    // One spread, not two that overwrite each other: the store's `name` is on
+    // the element beside the attributes the field computed.
+    expect(screen.getByLabelText("Email address")).toHaveAttribute("name", "email");
+  });
+
+  it("reports an error the server sent the same way, and moves focus to it", async () => {
+    render(<SignupForm onServerError />);
+    await userEvent.click(screen.getByRole("button", { name: "Pretend the server answered" }));
+    const control = screen.getByLabelText("Email address");
+    expect(control).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert").textContent).toBe("That address is already taken");
+    expect(control).toHaveFocus();
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("says nothing about validity while the form is happy", async () => {
+    render(<SignupForm />);
+    const control = screen.getByLabelText("Email address");
+    await userEvent.type(control, "someone@example.com");
+    await submit();
+    expect(screen.getByLabelText("Email address")).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByRole("alert")).toBe(null);
+  });
+});
+
+describe("Field: a group that a label cannot point at", () => {
+  component PlanField(invalid?: boolean = false) {
+    return (
+      <Field.Root group invalid={invalid} required>
+        <Field.Label>Plan</Field.Label>
+        <RadioGroup.Root defaultValue="free">
+          <RadioGroup.Item value="free">Free</RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+        <Field.Description>You can change this later.</Field.Description>
+        <Field.Error>Choose a plan.</Field.Error>
+      </Field.Root>
+    );
+  }
+
+  it("names the set with a group rather than with a label that points at nothing", () => {
+    render(<PlanField />);
+    const group = screen.getByRole("group");
+    expect(accessibleName(group)).toBe("Plan");
+    // `<label for>` names one form control. Aimed at the wrapper around a set of
+    // radios it points at something that is not a form control, which every
+    // browser ignores — silently.
+    expect(document.querySelectorAll("label").length).toBe(0);
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("describes the set, and reports the set's validity", () => {
+    render(<PlanField invalid />);
+    const group = screen.getByRole("group");
+    const described = (group.getAttribute("aria-describedby") ?? "").split(" ");
+    expect(described).toContain(screen.getByText("You can change this later.").getAttribute("id"));
+    expect(described).toContain(screen.getByRole("alert").getAttribute("id"));
+    expect(group).toHaveAttribute("aria-invalid", "true");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("leaves the radios their own roles", () => {
+    render(<PlanField />);
+    // The group names the set; the members are still a radio group with its own
+    // roving tab stop, which is `radio-group.js`'s job and not this one's.
+    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+    expect(screen.getAllByRole("radio").length).toBe(2);
   });
 });
 
@@ -724,7 +894,7 @@ describe("Dialog", () => {
   it("closes on a press outside it", async () => {
     render(<Example />);
     await userEvent.click(screen.getByRole("button", { name: "Open" }));
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("dialog")).toBe(null);
   });
 
@@ -843,7 +1013,7 @@ describe("Alert dialog", () => {
 
   it("does not close an alert dialog on a press outside it", async () => {
     await open();
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     // The inverse of `Dialog`'s "closes on a press outside it", and the two
     // together are what say the behaviour is a choice. A confirmation that
     // disappears when the reader clicks slightly beside it has given no
@@ -1166,7 +1336,7 @@ describe("Menu", () => {
     render(<Example />);
     const trigger = screen.getByRole("button", { name: "File" });
     await userEvent.click(trigger);
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("menu")).toBe(null);
     // The reader pressed somewhere else on purpose; taking focus back to the
     // trigger would undo the thing they just did.
@@ -1419,6 +1589,413 @@ describe("Menu: named groups", () => {
       </Menu.Root>,
     );
     expect(screen.getByRole("group")).not.toHaveAttribute("aria-labelledby");
+  });
+});
+
+describe("Menu: the checkable items", () => {
+  component ViewMenu(onSort?: (value: string) => void) {
+    return (
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>View</Menu.Trigger>
+        <Menu.Body>
+          <Menu.CheckboxItem>Show hidden files</Menu.CheckboxItem>
+          <Menu.CheckboxItem defaultChecked>Show sidebar</Menu.CheckboxItem>
+          <Menu.Separator />
+          <Menu.RadioGroup defaultValue="name" onValueChange={onSort}>
+            <Menu.Label>Sort by</Menu.Label>
+            <Menu.RadioItem value="name">Name</Menu.RadioItem>
+            <Menu.RadioItem value="date">Date modified</Menu.RadioItem>
+          </Menu.RadioGroup>
+        </Menu.Body>
+      </Menu.Root>
+    );
+  }
+
+  it("toggles a checkable item without closing the menu", async () => {
+    render(<ViewMenu />);
+    const box = screen.getByRole("menuitemcheckbox", { name: "Show hidden files" });
+    expect(box).toHaveAttribute("aria-checked", "false");
+    await userEvent.click(box);
+    expect(box).toHaveAttribute("aria-checked", "true");
+    // The whole point. Checking three boxes is one visit to the menu on every
+    // platform, and a checkbox built on `Menu.Item` made it three.
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("keeps exactly one radio item checked, and tells the caller which", async () => {
+    const onSort = fn();
+    render(<ViewMenu onSort={onSort} />);
+    const chosen = () =>
+      screen
+        .getAllByRole("menuitemradio")
+        .filter((item) => item.getAttribute("aria-checked") === "true")
+        .map((item) => item.textContent);
+
+    expect(chosen()).toEqual(["Name"]);
+    await userEvent.click(screen.getByRole("menuitemradio", { name: "Date modified" }));
+    // One before and one after: the group owns the value, which is what stops
+    // two items from believing they are both checked.
+    expect(chosen()).toEqual(["Date modified"]);
+    expect(onSort).toHaveBeenCalledWith("date");
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("names the radio group after its label and points at nothing missing", () => {
+    render(<ViewMenu />);
+    const group = screen.getByRole("group");
+    expect(accessibleName(group)).toBe("Sort by");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("steps across the checkable items with the arrows and with typeahead", async () => {
+    render(<ViewMenu />);
+    // `ITEM_SELECTOR` named these two roles before there was a component that
+    // rendered them; this is the assertion that the promise was real.
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show sidebar" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitemradio", { name: "Name" })).toHaveFocus();
+    await userEvent.keyboard("d");
+    expect(screen.getByRole("menuitemradio", { name: "Date modified" })).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("menuitemradio", { name: "Date modified" })).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" })).toHaveFocus();
+  });
+
+  it("keeps exactly one of them in the tab order", async () => {
+    render(<ViewMenu />);
+    await userEvent.keyboard("{ArrowDown}");
+    const stops = [
+      ...screen.getAllByRole("menuitemcheckbox"),
+      ...screen.getAllByRole("menuitemradio"),
+    ].filter((item) => item.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("Show sidebar");
+  });
+
+  it("lets onSelect keep a command's menu open, and closes it otherwise", async () => {
+    render(
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item onSelect={(event) => event.preventDefault()}>Open</Menu.Item>
+          <Menu.Item>Save</Menu.Item>
+        </Menu.Body>
+      </Menu.Root>,
+    );
+    await userEvent.click(screen.getByRole("menuitem", { name: "Open" }));
+    // `preventDefault()` is "I handled this", which is the same sentence
+    // `composeHandlers` reads between a caller's handler and the component's.
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Save" }));
+    expect(screen.queryByRole("menu")).toBe(null);
+  });
+
+  it("closes on a checkable item that asked to", async () => {
+    render(
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>View</Menu.Trigger>
+        <Menu.Body>
+          <Menu.CheckboxItem closeOnSelect>Show hidden files</Menu.CheckboxItem>
+        </Menu.Body>
+      </Menu.Root>,
+    );
+    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" }));
+    expect(screen.queryByRole("menu")).toBe(null);
+  });
+
+  it("lets a parent own a checkable item and refuse a change", async () => {
+    component Refusing() {
+      const [on, setOn] = useState(false);
+      return (
+        <Menu.Root defaultOpen>
+          <Menu.Trigger>View</Menu.Trigger>
+          <Menu.Body>
+            <Menu.CheckboxItem checked={on} onCheckedChange={() => setOn(false)}>
+              Show hidden files
+            </Menu.CheckboxItem>
+          </Menu.Body>
+        </Menu.Root>
+      );
+    }
+    render(<Refusing />);
+    await userEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" }));
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show hidden files" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+});
+
+describe("Context menu", () => {
+  component Row() {
+    return (
+      <ContextMenu.Root>
+        <ContextMenu.Trigger>Invoice 2026-04</ContextMenu.Trigger>
+        <ContextMenu.Body aria-label="Row actions">
+          <ContextMenu.Item>Rename…</ContextMenu.Item>
+          <ContextMenu.Item>Delete</ContextMenu.Item>
+        </ContextMenu.Body>
+      </ContextMenu.Root>
+    );
+  }
+
+  it("opens from the keyboard with Shift+F10, and lands on the first item", () => {
+    render(<Row />);
+    const trigger = screen.getByText("Invoice 2026-04");
+    // Reachable at all: a command that only a right-click can reach is a
+    // command a keyboard cannot reach, which is WCAG 2.1.1.
+    expect(trigger).toHaveAttribute("tabindex", "0");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "F10", shiftKey: true });
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Rename…" })).toHaveFocus();
+  });
+
+  it("opens from the ContextMenu key as well", () => {
+    render(<Row />);
+    const trigger = screen.getByText("Invoice 2026-04");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ContextMenu" });
+    expect(screen.getByRole("menuitem", { name: "Rename…" })).toHaveFocus();
+  });
+
+  it("keeps the browser's own menu away and opens where the pointer was", () => {
+    render(<Row />);
+    const trigger = screen.getByText("Invoice 2026-04");
+    // `false` is "prevented": the platform's Back/Reload menu would otherwise
+    // cover the one the page has for what the reader pressed on.
+    expect(fireEvent.contextMenu(trigger, { clientX: 220, clientY: 140 })).toBe(false);
+    const menu = screen.getByRole("menu");
+    measure(menu, { height: 60, left: 0, top: 0, width: 120 });
+    fireEvent.scroll(document);
+    // At the point, not against the row: a menu that appeared at the top-left
+    // corner of a table row is a menu the reader has to go and find.
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.style.left).toBe("220px");
+    expect(menu.style.top).toBe("140px");
+  });
+
+  it("goes against the trigger when the keyboard opened it", () => {
+    render(<Row />);
+    const trigger = screen.getByText("Invoice 2026-04");
+    measure(trigger, { height: 40, left: 100, top: 200, width: 300 });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "F10", shiftKey: true });
+    const menu = screen.getByRole("menu");
+    measure(menu, { height: 60, left: 0, top: 0, width: 120 });
+    fireEvent.scroll(document);
+    // There is no pointer, so the menu belongs where the reader's focus is.
+    expect(menu.style.top).toBe("240px");
+    expect(menu.style.left).toBe("100px");
+  });
+
+  it("is named by the caller rather than after the row it hangs off", () => {
+    render(<Row />);
+    fireEvent.contextMenu(screen.getByText("Invoice 2026-04"), { clientX: 10, clientY: 10 });
+    const menu = screen.getByRole("menu");
+    expect(accessibleName(menu)).toBe("Row actions");
+    // Naming it after the trigger would announce the whole row as the menu's
+    // name, which is why `ContextMenu.Trigger` registers itself as the thing
+    // focus returns to and not as a label.
+    expect(menu).not.toHaveAttribute("aria-labelledby");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("closes on Escape and gives focus back to the trigger", async () => {
+    render(<Row />);
+    const trigger = screen.getByText("Invoice 2026-04");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "F10", shiftKey: true });
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBe(null);
+    expect(trigger).toHaveFocus();
+  });
+
+  it("lets a caller take the trigger out of the tab order", () => {
+    render(
+      <ContextMenu.Root>
+        <ContextMenu.Trigger tabIndex={-1}>
+          <button type="button">Invoice 2026-04</button>
+        </ContextMenu.Trigger>
+        <ContextMenu.Body aria-label="Row actions">
+          <ContextMenu.Item>Rename…</ContextMenu.Item>
+        </ContextMenu.Body>
+      </ContextMenu.Root>,
+    );
+    // The escape hatch the module header offers a caller whose trigger already
+    // contains something focusable — two hundred rows is otherwise two hundred
+    // extra stops. A `tabIndex` written after the caller's spread would win
+    // over it silently, which is a documented promise that does nothing.
+    const trigger = screen.getByRole("button", { name: "Invoice 2026-04" }).parentElement;
+    expect(trigger).toHaveAttribute("tabindex", "-1");
+    // And the keys still arrive, because the handler is on the trigger and the
+    // event bubbles up to it from whatever the caller put inside.
+    screen.getByRole("button", { name: "Invoice 2026-04" }).focus();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Invoice 2026-04" }), {
+      key: "F10",
+      shiftKey: true,
+    });
+    expect(screen.getByRole("menuitem", { name: "Rename…" })).toHaveFocus();
+  });
+
+  it("still has the keyboard map of a menu inside it", async () => {
+    render(<Row />);
+    const trigger = screen.getByText("Invoice 2026-04");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "F10", shiftKey: true });
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Rename…" })).toHaveFocus();
+  });
+});
+
+describe("Menubar", () => {
+  component Bar(direction?: "ltr" | "rtl" = "ltr") {
+    return (
+      <div dir={direction}>
+        <Menubar.Root aria-label="Main">
+          <Menubar.Menu value="file">
+            <Menubar.Trigger>File</Menubar.Trigger>
+            <Menubar.Body>
+              <Menubar.Item>New</Menubar.Item>
+              <Menubar.Item>Open</Menubar.Item>
+            </Menubar.Body>
+          </Menubar.Menu>
+          <Menubar.Menu value="edit">
+            <Menubar.Trigger>Edit</Menubar.Trigger>
+            <Menubar.Body>
+              <Menubar.Item>Undo</Menubar.Item>
+            </Menubar.Body>
+          </Menubar.Menu>
+          <Menubar.Menu value="view">
+            <Menubar.Trigger>View</Menubar.Trigger>
+            <Menubar.Body>
+              <Menubar.Item>Zoom in</Menubar.Item>
+            </Menubar.Body>
+          </Menubar.Menu>
+        </Menubar.Root>
+      </div>
+    );
+  }
+
+  /** How many menus are showing, which must never be two. */
+  const openMenus = () => screen.queryAllByRole("menu").length;
+
+  it("takes one stop in the tab order for the whole bar", () => {
+    render(<Bar />);
+    expect(accessibleName(screen.getByRole("menubar"))).toBe("Main");
+    const stops = screen
+      .getAllByRole("menuitem")
+      .filter((trigger) => trigger.getAttribute("tabindex") === "0");
+    // Six menus behind six tab presses is what makes an application menubar
+    // something a keyboard user goes around rather than through.
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("File");
+  });
+
+  it("moves between the menus with the arrows and the ends", async () => {
+    render(<Bar />);
+    screen.getByRole("menuitem", { name: "File" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveFocus();
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("menuitem", { name: "View" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("menuitem", { name: "File" })).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("menuitem", { name: "File" })).toHaveFocus();
+  });
+
+  it("moves the tab stop with the focus", async () => {
+    render(<Bar />);
+    screen.getByRole("menuitem", { name: "File" }).focus();
+    await userEvent.keyboard("{ArrowRight}");
+    const stops = screen
+      .getAllByRole("menuitem")
+      .filter((trigger) => trigger.getAttribute("tabindex") === "0");
+    expect(stops.length).toBe(1);
+    expect(stops[0].textContent).toBe("Edit");
+  });
+
+  it("opens a menu onto its first item, and onto its last for ArrowUp", async () => {
+    render(<Bar />);
+    const file = screen.getByRole("menuitem", { name: "File" });
+    file.focus();
+    fireEvent.keyDown(file, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "New" })).toHaveFocus();
+    await userEvent.keyboard("{Escape}");
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "File" }), { key: "ArrowUp" });
+    expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+  });
+
+  it("walks File to Edit to View with a menu open, and never shows two", async () => {
+    render(<Bar />);
+    screen.getByRole("menuitem", { name: "File" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(openMenus()).toBe(1);
+    expect(screen.getByRole("menuitem", { name: "New" })).toHaveFocus();
+
+    await userEvent.keyboard("{ArrowRight}");
+    // Closed and reopened as one assignment, so there is never a frame with two
+    // of them — the part of a menubar that is always missing.
+    expect(openMenus()).toBe(1);
+    expect(screen.getByRole("menuitem", { name: "Undo" })).toHaveFocus();
+
+    await userEvent.keyboard("{ArrowRight}");
+    expect(openMenus()).toBe(1);
+    expect(screen.getByRole("menuitem", { name: "Zoom in" })).toHaveFocus();
+
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(openMenus()).toBe(1);
+    expect(screen.getByRole("menuitem", { name: "Undo" })).toHaveFocus();
+  });
+
+  it("closes on Escape and leaves focus on the trigger, in the bar", async () => {
+    render(<Bar />);
+    screen.getByRole("menuitem", { name: "File" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    await userEvent.keyboard("{Escape}");
+    expect(openMenus()).toBe(0);
+    expect(screen.getByRole("menuitem", { name: "File" })).toHaveFocus();
+  });
+
+  it("says what a trigger controls only while there is a menu to control", async () => {
+    render(<Bar />);
+    const file = screen.getByRole("menuitem", { name: "File" });
+    expect(file).toHaveAttribute("aria-haspopup", "menu");
+    expect(file).toHaveAttribute("aria-expanded", "false");
+    expect(file).not.toHaveAttribute("aria-controls");
+    await userEvent.click(file);
+    expect(screen.getByRole("menuitem", { name: "File" })).toHaveAttribute("aria-expanded", "true");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("mirrors the bar's arrows in a right-to-left page", async () => {
+    render(<Bar direction="rtl" />);
+    screen.getByRole("menuitem", { name: "File" }).focus();
+    // The inline axis, so the key that means "the next menu" is the one
+    // pointing the way the page reads.
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("menuitem", { name: "File" })).toHaveFocus();
+  });
+
+  it("leaves the keys inside a menu to the menu", async () => {
+    render(<Bar />);
+    screen.getByRole("menuitem", { name: "File" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    // `Home` in an open menu is that menu's first item, not the bar's first
+    // menu: `Menu.Body` claims it and stops it before the bar hears it.
+    await userEvent.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    expect(screen.getByRole("menuitem", { name: "New" })).toHaveFocus();
+    expect(openMenus()).toBe(1);
   });
 });
 
@@ -1740,7 +2317,7 @@ describe("Combobox", () => {
   it("closes on a press outside it", async () => {
     render(<Example />);
     await userEvent.type(screen.getByRole("combobox"), "a");
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("listbox")).toBe(null);
   });
 
@@ -2155,7 +2732,7 @@ describe("Select", () => {
   it("closes on a press outside it", async () => {
     render(<Example />);
     await openFromTheKeyboard();
-    fireEvent.pointerDown(document.body);
+    fireEvent.pointerDown(bodyOf());
     expect(screen.queryByRole("listbox")).toBe(null);
   });
 
@@ -3429,7 +4006,7 @@ describe("Tooltip", () => {
 
     // Nothing has focus, so the key is answered on the document — which is why
     // the hand-written version cannot answer it at all.
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(bodyOf(), { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBe(null);
   });
 
@@ -3439,7 +4016,7 @@ describe("Tooltip", () => {
     const trigger = screen.getByRole("button", { name: "Bold" });
     fireEvent.pointerEnter(trigger);
     advance(700);
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.keyDown(bodyOf(), { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBe(null);
 
     // Nothing has moved, so nothing may bring it back: a dismissal the pointer
@@ -5439,16 +6016,143 @@ describe("Switch and Checkbox", () => {
     expect(control).toBeChecked();
   });
 
-  it("toggles a checkbox on Space and leaves Enter to the form", async () => {
+  it("toggles a checkbox on Space", async () => {
     render(<Checkbox aria-label="Subscribe" />);
     const control = screen.getByRole("checkbox");
-    await userEvent.keyboard("{Enter}");
-    expect(control).not.toBeChecked();
     control.focus();
-    // Not prevented, so a checkbox inside a form still submits it.
-    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(true);
     await userEvent.keyboard(" ");
     expect(control).toBeChecked();
+  });
+
+  it("submits the form on Enter rather than toggling itself", async () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Checkbox aria-label="Subscribe" />
+        <button type="submit">Sign up</button>
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    // Focused, which is the only version of this that would ever have failed —
+    // ubugeeei-prod/uf#324. The old case pressed Enter at `<body>` and then
+    // fired a bare `keyDown`, and neither of those produces the browser's own
+    // click, which is the default action of Enter on a focused `<button>` and
+    // the thing that used to toggle this control.
+    control.focus();
+    // Prevented: the click, and the toggle behind it, do not happen.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(control).not.toBeChecked();
+    // And the form is submitted, which is what "left to the form" always meant
+    // and what a `<button type="button">` had never once done.
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
+  it("submits through the default button the form owns from outside it", () => {
+    let submitter = null;
+    render(
+      <div>
+        <form
+          id="signup"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitter = (event.nativeEvent as $FlowFixMe).submitter;
+          }}
+        >
+          <Checkbox aria-label="Subscribe" />
+        </form>
+        <button form="signup" type="submit">
+          Sign up
+        </button>
+      </div>,
+    );
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    // A form's default button is the first submit button *it owns*, which is
+    // not the same as the first one inside it: a footer button beside the form
+    // is the everyday spelling, and a subtree search never sees it. Missing it
+    // falls through to a submission with no submitter, which is the one thing
+    // passing the button was for.
+    expect(submitter).toBe(screen.getByRole("button", { name: "Sign up" }));
+  });
+
+  it("leaves a buttonless form alone when two of its fields block submission", () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input aria-label="Email" type="email" />
+        <input aria-label="Password" type="password" />
+        <Checkbox aria-label="Remember me" />
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    // What the platform does, which is the whole claim: a form with no submit
+    // button submits implicitly only while at most one field blocks it, and
+    // `Enter` in either of these two text fields does nothing in any browser.
+    // `requestSubmit()` does not know that rule, so this component applies it.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(control).not.toBeChecked();
+  });
+
+  it("submits a buttonless form with one blocking field, which is the search box", () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <input aria-label="Query" type="search" />
+        <Checkbox aria-label="Match case" />
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    // The other side of the same rule. A checkbox is not a blocking field, so
+    // one search box and any number of checkboxes still submits.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(onSubmit).toHaveBeenCalled();
+  });
+
+  it("does nothing on Enter outside a form", () => {
+    render(<Checkbox aria-label="Subscribe" />);
+    const control = screen.getByRole("checkbox");
+    control.focus();
+    // Which is what a native `<input type="checkbox">` with no form around it
+    // does with the key: implicit submission needs a form to submit.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(control).not.toBeChecked();
+  });
+
+  it("does not submit on Enter while it is disabled", () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Checkbox aria-label="Subscribe" disabled />
+        <button type="submit">Sign up</button>
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    fireEvent.keyDown(control, { key: "Enter" });
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("does not toggle while disabled", async () => {
@@ -6091,6 +6795,257 @@ describe("Accordion", () => {
       message = String(error);
     }
     expect(message).toContain("Accordion.Trigger must be rendered inside an Accordion.Item");
+  });
+});
+
+describe("the height a closed disclosure would have", () => {
+  // ubugeeei-prod/uf#330. `height: 0 → var(--uf-collapsible-height)` is the
+  // whole of animating a disclosure, and the number in that property is wanted
+  // while the panel is still closed, because a transition has to know its
+  // destination before it starts.
+
+  /**
+   * A panel with a height, and none while it is hidden.
+   *
+   * This DOM computes no layout, so `getBoundingClientRect` answers zero for
+   * everything — which is *also* what a browser answers for an element that is
+   * `display: none`, and the difference between those two zeroes is the whole
+   * of what the measuring pass has to do. So the stub answers the way a browser
+   * does: nothing while the element is hidden and nobody has overridden its
+   * display, and the real height once it has been laid out. A component that
+   * measured the hidden element would read `0px` here, exactly as it would in a
+   * page.
+   */
+  function laidOut(element: HTMLElement, height: number): void {
+    (element as $FlowFixMe).getBoundingClientRect = () => {
+      const painted = !element.hasAttribute("hidden") || element.style.display !== "";
+      const box = painted ? height : 0;
+      return { bottom: box, height: box, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0 };
+    };
+  }
+
+  /**
+   * A panel with the documented stylesheet on it, `height: 0` and all.
+   *
+   * `.panel { height: 0 }` with `.panel:not([hidden]) { height: var(…) }` is the
+   * rule the property exists for, and the first half of it is *in force while
+   * the panel is closed* — which is the moment the pass runs. So laying the
+   * panel out is not enough on its own: an author `height: 0` that nothing
+   * overrides measures zero however visible the box has been made. The stub
+   * answers the way a browser would, which means only an inline `height` beats
+   * it.
+   */
+  function styledClosed(element: HTMLElement, height: number): void {
+    (element as $FlowFixMe).getBoundingClientRect = () => {
+      const laidOut = !element.hasAttribute("hidden") || element.style.display !== "";
+      const flattened = element.style.height === "" || element.style.height === "0px";
+      const box = laidOut && !flattened ? height : 0;
+      return { bottom: box, height: box, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0 };
+    };
+  }
+
+  /**
+   * A panel whose text wraps, so its height depends on the width it is given.
+   *
+   * The other half of laying a hidden panel out: `position: absolute` makes a
+   * box shrink-to-fit against its containing block rather than against its
+   * parent, so the same paragraph is `unwrapped` tall out of flow and `wrapped`
+   * tall where the panel actually lives.
+   */
+  function wrapsAt(
+    element: HTMLElement,
+    at: string,
+    heights: { unwrapped: number, wrapped: number },
+  ): void {
+    (element as $FlowFixMe).getBoundingClientRect = () => {
+      const laidOut = !element.hasAttribute("hidden") || element.style.display !== "";
+      const box = laidOut ? (element.style.width === at ? heights.wrapped : heights.unwrapped) : 0;
+      return { bottom: box, height: box, left: 0, right: 0, top: 0, width: 0, x: 0, y: 0 };
+    };
+  }
+
+  /** A parent with a width, in a DOM that computes none. */
+  function widthOfEveryParent(width: string): () => void {
+    const host: $FlowFixMe = window;
+    const previous = host.getComputedStyle;
+    host.getComputedStyle = () => ({ width });
+    return () => {
+      host.getComputedStyle = previous;
+    };
+  }
+
+  /** A `ResizeObserver` this file can fire by hand; there is none in this DOM. */
+  const resizeCallbacks: Array<() => void> = [];
+  function installResizeObserver(): () => void {
+    const host: $FlowFixMe = window;
+    const previous = host.ResizeObserver;
+    host.ResizeObserver = function (callback: () => void) {
+      resizeCallbacks.push(callback);
+      return { disconnect: () => {}, observe: () => {} };
+    };
+    return () => {
+      host.ResizeObserver = previous;
+      resizeCallbacks.length = 0;
+    };
+  }
+
+  const remeasure = () => {
+    act(() => {
+      for (const fire of resizeCallbacks) {
+        fire();
+      }
+    });
+  };
+
+  const heightOf = (element: HTMLElement) =>
+    element.style.getPropertyValue("--uf-collapsible-height");
+
+  component Details(measure?: boolean = false) {
+    return (
+      <Collapsible.Root measure={measure}>
+        <Collapsible.Trigger>Details</Collapsible.Trigger>
+        <Collapsible.Content>the small print</Collapsible.Content>
+      </Collapsible.Root>
+    );
+  }
+
+  it("reports the height while the panel is still closed", () => {
+    const restore = installResizeObserver();
+    try {
+      render(<Details measure />);
+      const content = screen.getByText("the small print");
+      expect(content).toHaveAttribute("hidden", "until-found");
+      laidOut(content, 120);
+      remeasure();
+
+      // Not `0px`, which is what `ResizeObserver`, `getBoundingClientRect` and
+      // `scrollHeight` all answer for a panel with no box — and which is
+      // exactly the moment the number is wanted.
+      expect(heightOf(content)).toBe("120px");
+      // And the pass put everything back: still hidden, still findable, and no
+      // inline layout left behind for a stylesheet to fight.
+      expect(content).toHaveAttribute("hidden");
+      expect(content.style.boxSizing).toBe("");
+      expect(content.style.display).toBe("");
+      expect(content.style.height).toBe("");
+      expect(content.style.position).toBe("");
+      expect(content.style.visibility).toBe("");
+      expect(content.style.width).toBe("");
+    } finally {
+      restore();
+    }
+  });
+
+  it("beats the `height: 0` the stylesheet has on while the panel is closed", () => {
+    const restore = installResizeObserver();
+    try {
+      render(<Details measure />);
+      const content = screen.getByText("the small print");
+      styledClosed(content, 120);
+      remeasure();
+
+      // Laying the panel out is half the job. The other half is the author
+      // declaration this property exists to replace: a panel measured with
+      // `height: 0` still applying reports zero and writes back the `0px` the
+      // caller asked it to fill, which is the whole bug wearing the rule it was
+      // written for. Defeating `display` and not `height` is the same mistake
+      // as defeating `display` and not `content-visibility`.
+      expect(heightOf(content)).toBe("120px");
+      expect(content.style.height).toBe("");
+    } finally {
+      restore();
+    }
+  });
+
+  it("measures at the width the panel has in flow, not shrink-to-fit", () => {
+    const restore = installResizeObserver();
+    const restoreWidths = widthOfEveryParent("300px");
+    try {
+      render(<Details measure />);
+      const content = screen.getByText("the small print");
+      wrapsAt(content, "300px", { unwrapped: 40, wrapped: 120 });
+      remeasure();
+
+      // Out of flow a box is as wide as its content wants to be, bounded by its
+      // containing block — the nearest positioned ancestor, which on most pages
+      // is the viewport. A paragraph that wraps to four lines in a sidebar
+      // measures one line there, and the property then holds a height the panel
+      // never has.
+      expect(heightOf(content)).toBe("120px");
+      expect(content.style.width).toBe("");
+      expect(content.style.boxSizing).toBe("");
+    } finally {
+      restoreWidths();
+      restore();
+    }
+  });
+
+  it("keeps up with content that changes size while the panel is open", async () => {
+    const restore = installResizeObserver();
+    try {
+      render(<Details measure />);
+      const content = screen.getByText("the small print");
+      laidOut(content, 120);
+      remeasure();
+      await userEvent.click(screen.getByRole("button", { name: "Details" }));
+      expect(content).not.toHaveAttribute("hidden");
+
+      // A caller rendered a list into a panel that is already open.
+      laidOut(content, 320);
+      remeasure();
+      expect(heightOf(content)).toBe("320px");
+    } finally {
+      restore();
+    }
+  });
+
+  it("measures nothing at all without the opt-in", () => {
+    const restore = installResizeObserver();
+    try {
+      render(<Details />);
+      const content = screen.getByText("the small print");
+      laidOut(content, 120);
+      // No observer, no property, and no forced layout: a page with forty
+      // collapsibles and no animation pays nothing for this.
+      expect(resizeCallbacks.length).toBe(0);
+      expect(heightOf(content)).toBe("");
+    } finally {
+      restore();
+    }
+  });
+
+  it("gives each accordion panel its own height", () => {
+    const restore = installResizeObserver();
+    try {
+      render(
+        <Accordion.Root measure type="multiple">
+          <Accordion.Item value="shipping">
+            <Accordion.Header level={3}>
+              <Accordion.Trigger>Shipping</Accordion.Trigger>
+            </Accordion.Header>
+            <Accordion.Content>ships in two days</Accordion.Content>
+          </Accordion.Item>
+          <Accordion.Item value="returns">
+            <Accordion.Header level={3}>
+              <Accordion.Trigger>Returns</Accordion.Trigger>
+            </Accordion.Header>
+            <Accordion.Content>thirty days</Accordion.Content>
+          </Accordion.Item>
+        </Accordion.Root>,
+      );
+      const shipping = screen.getByText("ships in two days");
+      const returns = screen.getByText("thirty days");
+      laidOut(shipping, 90);
+      laidOut(returns, 240);
+      remeasure();
+
+      expect(heightOf(shipping)).toBe("90px");
+      expect(heightOf(returns)).toBe("240px");
+      expect(shipping).toHaveAttribute("hidden");
+      expect(returns).toHaveAttribute("hidden");
+    } finally {
+      restore();
+    }
   });
 });
 

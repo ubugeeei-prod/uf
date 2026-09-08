@@ -160,8 +160,39 @@ impl HostCommand {
             // Deno has no loader hook in `@uniflowed/host` yet, so it can run
             // plain JavaScript tests and nothing else. Saying so is better
             // than a syntax error from a file the host could not transform.
+            //
+            // `-A` is all-access, and it is here because Deno's *default* is
+            // the opposite of every other host's: no flag means no filesystem,
+            // no network and no environment, so a worker started without one
+            // could not read the file it was told to run. What `-A` buys is
+            // parity with what Node and Bun give a process for free — it is
+            // not an extra grant, it is the same grant spelled out — and
+            // `with_permissions` replaces it the moment a project declares a
+            // permission set, which is the only way to end up with less.
             HostKind::Deno => vec![String::from("run"), String::from("-A")],
         };
+        self
+    }
+
+    /// Put a translated permission set in force on every worker.
+    ///
+    /// The arguments come from `uf_runtime::permissions::host_arguments`, which
+    /// is where the per-host translation and the refusals live; this only has
+    /// to place them. They go after the loader registration and before the
+    /// worker module, which is where every host wants its own flags — and on
+    /// Deno *after* the `run` subcommand, which is why they are appended rather
+    /// than prepended.
+    ///
+    /// Deno's `-A` is removed rather than added to. A declared set that left it
+    /// in place would be a set nothing enforced: `-A` grants everything and
+    /// nothing later on the command line takes any of it back, so the run would
+    /// look sandboxed in `uf explain` and be wide open in fact. That is the
+    /// exact failure `uf_runtime::permissions` refuses on Bun, and it would be
+    /// worse here for being invisible.
+    #[must_use]
+    pub fn with_permissions(mut self, arguments: Vec<String>) -> Self {
+        self.leading_args.retain(|argument| argument != "-A");
+        self.leading_args.extend(arguments);
         self
     }
 
@@ -1033,6 +1064,56 @@ mod tests {
 
         assert_eq!(command.leading_args, ["run", "-A"]);
         assert!(!command.loads_flow());
+    }
+
+    /// A declared permission set takes Deno's all-access grant away.
+    ///
+    /// The order matters as much as the contents: `run` stays first because it
+    /// is the subcommand, and `-A` has to be gone rather than merely followed —
+    /// Deno reads every flag it is given, so an `-A` left in front of
+    /// `--allow-read=/p` grants everything and the narrower flag changes
+    /// nothing at all.
+    #[test]
+    fn a_declared_permission_set_replaces_denos_all_access_flag() {
+        let command = HostCommand::new(
+            HostKind::Deno,
+            Utf8PathBuf::from("/usr/bin/deno"),
+            Utf8PathBuf::from("/p/worker.js"),
+            Utf8PathBuf::from("/p"),
+        )
+        .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"))
+        .with_permissions(vec![String::from("--allow-read=/p")]);
+
+        assert_eq!(command.leading_args, ["run", "--allow-read=/p"]);
+    }
+
+    #[test]
+    fn a_node_permission_set_follows_the_loader_registration() {
+        let command = HostCommand::new(
+            HostKind::Node,
+            Utf8PathBuf::from("/usr/bin/node"),
+            Utf8PathBuf::from("/p/worker.js"),
+            Utf8PathBuf::from("/p"),
+        )
+        .with_flow_loader(
+            Utf8Path::new("@uniflowed/host/register"),
+            Utf8Path::new("/p/bun-preload.js"),
+        )
+        .with_permissions(vec![
+            String::from("--permission"),
+            String::from("--allow-fs-read=/p"),
+        ]);
+
+        assert_eq!(
+            command.leading_args,
+            [
+                "--enable-source-maps",
+                "--import",
+                "@uniflowed/host/register",
+                "--permission",
+                "--allow-fs-read=/p",
+            ]
+        );
     }
 
     #[test]

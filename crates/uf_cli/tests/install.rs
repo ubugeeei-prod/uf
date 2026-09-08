@@ -168,3 +168,114 @@ fn the_verbosity_uf_asked_for_is_not_printed_back_at_the_reader() {
         "and the report says uf asked for it:\n{stdout}"
     );
 }
+
+/// A project that binds `@company` to a registry only it publishes to.
+fn bound_scope_project(dir: &Path) {
+    fs::write(
+        dir.join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\
+         export default defineConfig({\n  \
+           app: { router: { enabled: false } },\n  \
+           pm: { scopes: { \"@company\": \"https://npm.company.example\" } },\n\
+         });\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("package.json"),
+        "{\n  \"name\": \"confusion-fixture\",\n  \"version\": \"1.0.0\"\n}\n",
+    )
+    .unwrap();
+}
+
+/// Dependency confusion, end to end: a lockfile that resolves a bound scope
+/// from the public registry must not be installed from.
+///
+/// ubugeeei-prod/uf#553. The refusal happens before npm is spawned — there is
+/// no network in this test and none is needed, because the evidence is in the
+/// lockfile the repository was cloned with. That is the point: the attack has
+/// already succeeded on whichever machine wrote this file, and installing from
+/// it is letting it succeed again here.
+#[test]
+fn an_install_refuses_a_lockfile_that_resolves_a_bound_scope_elsewhere() {
+    let dir = tempfile::tempdir().unwrap();
+    bound_scope_project(dir.path());
+    // The attacker's copy, on the registry anybody may publish to.
+    fs::write(
+        dir.path().join("package-lock.json"),
+        r#"{
+  "name": "confusion-fixture",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "packages": {
+    "": { "name": "confusion-fixture", "version": "1.0.0" },
+    "node_modules/@company/internal-thing": {
+      "version": "9.9.9",
+      "resolved": "https://registry.npmjs.org/@company/internal-thing/-/internal-thing-9.9.9.tgz",
+      "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    let (stdout, stderr, success) = install(dir.path());
+
+    assert!(!success, "this install must be refused:\n{stdout}{stderr}");
+    assert!(
+        stderr.contains("@company/internal-thing"),
+        "the package has to be named:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("https://npm.company.example"),
+        "and the registry the scope is bound to:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("registry.npmjs.org"),
+        "and the one that actually answered:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("@scope:registry"),
+        "and what to do about it:\n{stderr}"
+    );
+    // Nothing was installed: the refusal is before the manager runs.
+    assert!(!dir.path().join("node_modules").exists(), "{stderr}");
+    assert_plain(&stderr);
+}
+
+/// The same project, resolving from the registry it bound: an ordinary install.
+///
+/// The other half of the check, and the one that keeps it from being a
+/// refusal of every scoped package. The lockfile names the bound registry, so
+/// nothing is found and npm is allowed to run.
+#[test]
+fn a_bound_scope_resolved_from_its_own_registry_is_not_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    bound_scope_project(dir.path());
+    fs::write(
+        dir.path().join("package-lock.json"),
+        r#"{
+  "name": "confusion-fixture",
+  "version": "1.0.0",
+  "lockfileVersion": 3,
+  "packages": {
+    "": { "name": "confusion-fixture", "version": "1.0.0" },
+    "node_modules/@company/internal-thing": {
+      "version": "1.0.0",
+      "resolved": "https://npm.company.example/@company/internal-thing/-/internal-thing-1.0.0.tgz",
+      "integrity": "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+    }
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    let (stdout, stderr, success) = install(dir.path());
+
+    assert!(
+        !stderr.contains("scope is not bound to"),
+        "a package from the registry its scope names is not a finding:\n{stderr}"
+    );
+    assert!(success, "and the install runs:\n{stdout}{stderr}");
+}

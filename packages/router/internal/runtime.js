@@ -15,10 +15,8 @@ import {
   createContext,
   startTransition,
   use,
-  useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -30,6 +28,12 @@ import {
 // imports `react-dom/server` — and this entry touches no document while it is
 // being evaluated.
 import { flushSync } from "react-dom";
+
+// The two things a render has to fix — its instant and its random seed — and
+// the provider that fixes them. Imported here rather than left to the
+// application, because a hydration guarantee nobody wires is not a guarantee:
+// see [`routerView`] and ubugeeei-prod/uf#559.
+import { RenderProvider } from "@uniflowed/hooks/render";
 
 // The id of the script the loader data is embedded in. It moved out of the
 // head and into the tree with ubugeeei-prod/uf#373 — see [`loaderDataScript`]
@@ -1530,9 +1534,9 @@ component RouteErrorView(module: ?ErrorModule, error: RouteError, reset: () => v
  */
 component ResolvedErrorPage() {
   const { resolved, router } = useRouterState();
-  const reset = useCallback(() => {
+  const reset = () => {
     router.refresh().catch(() => {});
-  }, [router]);
+  };
 
   if (resolved.error == null) {
     // Unreachable: this module is only ever the page of a resolved error route.
@@ -1850,7 +1854,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
   const [pending, setPending] = useState<boolean>(false);
 
-  const navigate = useCallback(async (to: string, options?: NavigateOptions): Promise<void> => {
+  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (!isBrowser()) {
       return;
     }
@@ -1899,7 +1903,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
       setPending(false);
       throw error;
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (!isBrowser()) {
@@ -1930,59 +1934,53 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     };
   }, []);
 
-  const router = useMemo<Router>(
-    () => ({
-      push: (to, options) => navigate(to, options),
-      replace: (to) => navigate(to, { replace: true }),
-      prefetch: async (to) => {
-        if (!isBrowser()) {
-          return;
-        }
-        const target = new URL(to, window.location.href);
-        const matched = matchRoute(routeTable().routes, target.pathname);
-        const load = matched?.route.page;
-        if (matched == null || load == null) {
-          return;
-        }
-        await Promise.all([
-          loadOnce(load),
-          ...matched.route.layouts.map((layout) => loadOnce(layout)),
-        ]);
-      },
-      refresh: async () => {
-        if (!isBrowser()) {
-          return;
-        }
-        const nextResolved = await resolveMatch(
-          routeTable(),
-          window.location.pathname + window.location.search,
-        );
-        // No view transition, and it is the one place that is right: a refresh
-        // is the same URL resolved again, so a transition would animate a page
-        // into itself — a cross-fade between two frames of the same thing,
-        // which is a flicker with a name.
-        startTransition(() => {
-          setResolved(nextResolved);
-        });
-      },
-      back: () => {
-        if (isBrowser()) {
-          window.history.back();
-        }
-      },
-      forward: () => {
-        if (isBrowser()) {
-          window.history.forward();
-        }
-      },
-    }),
-    [navigate],
-  );
+  const router: Router = {
+    push: (to, options) => navigate(to, options),
+    replace: (to) => navigate(to, { replace: true }),
+    prefetch: async (to) => {
+      if (!isBrowser()) {
+        return;
+      }
+      const target = new URL(to, window.location.href);
+      const matched = matchRoute(routeTable().routes, target.pathname);
+      const load = matched?.route.page;
+      if (matched == null || load == null) {
+        return;
+      }
+      await Promise.all([
+        loadOnce(load),
+        ...matched.route.layouts.map((layout) => loadOnce(layout)),
+      ]);
+    },
+    refresh: async () => {
+      if (!isBrowser()) {
+        return;
+      }
+      const nextResolved = await resolveMatch(
+        routeTable(),
+        window.location.pathname + window.location.search,
+      );
+      // No view transition, and it is the one place that is right: a refresh
+      // is the same URL resolved again, so a transition would animate a page
+      // into itself — a cross-fade between two frames of the same thing,
+      // which is a flicker with a name.
+      startTransition(() => {
+        setResolved(nextResolved);
+      });
+    },
+    back: () => {
+      if (isBrowser()) {
+        window.history.back();
+      }
+    },
+    forward: () => {
+      if (isBrowser()) {
+        window.history.forward();
+      }
+    },
+  };
 
-  const value = useMemo<RouterState>(
-    () => ({ resolved, router, pending }),
-    [resolved, router, pending],
-  );
+  const value: RouterState = { resolved, router, pending };
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 
@@ -2697,14 +2695,37 @@ function isExternal(to: string): boolean {
  * The argument documents where the routes live; the table itself is generated
  * from that directory at build time and installed by the entry that starts
  * the app, so the component only has to render it.
+ *
+ * # Why the render anchor is here
+ *
+ * `RenderProvider` fixes the render's instant, time zone and random seed once,
+ * writes them into the markup and reads them back on the client, which is what
+ * makes `useRenderedAt` and `useRandom` agree across hydration. An application
+ * that did not render one got no error — it got the old behaviour, which is a
+ * silent hydration mismatch in every page with a clock or a shuffle on it. A
+ * guarantee that depends on remembering to opt in is not one, so the router
+ * provides it and an application that wants different values *replaces* it by
+ * rendering its own inside this one. See ubugeeei-prod/uf#559.
+ *
+ * Above `RouterProvider` rather than below it, because the route's own
+ * modules — layouts as much as pages — are things that read a clock, and a
+ * masthead showing the time is the first component anybody writes that does.
+ *
+ * It is safe above a root layout that renders `<html>` only because the
+ * envelope's carrier is a `<meta>`: React hoists one into the head of a
+ * document it rendered, and to the front of a tree that is not one, where uf's
+ * shell lifts it into the head it wrote itself. `packages/hooks/render.js` has
+ * the argument, and it is the reason the carrier is no longer a `<script>`.
  */
 export function routerView(root: string): React.ComponentType<AppProps> {
   void root;
   component App(url: string, initial: ResolvedRoute) {
     return (
-      <RouterProvider url={url} initial={initial}>
-        <RouteView />
-      </RouterProvider>
+      <RenderProvider>
+        <RouterProvider url={url} initial={initial}>
+          <RouteView />
+        </RouterProvider>
+      </RenderProvider>
     );
   }
   return App;

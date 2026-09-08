@@ -23,6 +23,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { CacheOptions } from "./cache-store.js";
 import type { ServerCapabilities } from "./capabilities.js";
+import type { DraftChange } from "./draft.js";
+import { DRAFT_COOKIE, draftKeyIsPerProcess, draftSetCookie, verifyDraftCookie } from "./draft.js";
+import { processLogger } from "../log.js";
 
 /** A read-only view of one request's headers. */
 export type HeaderStore = {
@@ -83,7 +86,42 @@ export type RequestContext = {
    * establishes the request before anything has looked at the path.
    */
   route: string | null,
+  /**
+   * Whether this request is rendering draft content.
+   *
+   * Read from the request's signed `__Host-uf.draft` cookie by [`beginRequest`]
+   * before anything the host asked for runs, and settable afterwards by
+   * `../index.js`'s `draftMode()` — so a guard, a route handler and the page
+   * underneath them all agree, and a request that arrived with the cookie is in
+   * draft mode from its first line rather than from whenever something happened
+   * to call `enable()`. It was initialised `false` and never read from the
+   * request at all, which made draft mode a feature that could not be turned
+   * on: ubugeeei-prod/uf#282.
+   */
   draft: boolean,
+  /**
+   * What this request decided about draft mode, for a responder to write.
+   *
+   * `null` until `draftMode().enable()` or `.disable()` is called. It is
+   * separate from `draft` because the two are different facts: `draft` is what
+   * *this* request renders, and this is the instruction to change what the
+   * *next* one does — a `Set-Cookie` that only the thing producing the response
+   * can write. [`asResponder`] is what turns it into one, and clears it.
+   */
+  draftChange: DraftChange | null,
+  /**
+   * What is producing this request's response, or `null`.
+   *
+   * A name, e.g. `a route handler`, set by [`asResponder`] around the call into
+   * whatever owns the response. `draftMode().enable()` refuses when it is
+   * `null`, and that refusal is the whole reason this field exists: a component
+   * that set a cookie would be setting it at a moment with no defined meaning,
+   * because the headers may already be on the wire by the time a component six
+   * levels down renders. `../index.js` gives the same argument for `headers()`
+   * being read-only, and draft mode is the exception that needs somewhere to
+   * put the response half.
+   */
+  responder: string | null,
   /** Work deferred until the response has been sent. */
   readonly deferred: Array<() => mixed | Promise<mixed>>,
   /**
@@ -219,7 +257,14 @@ export function contextFor(request: Request): RequestContext {
     },
     id: newRequestId(),
     route: null,
+    // `false` here and resolved in `beginRequest`, because deciding it means
+    // verifying a signature and `crypto.subtle` is asynchronous while this
+    // function is not. A caller that builds a context by hand and never runs it
+    // gets a request that is not in draft mode, which is the safe direction of
+    // being wrong.
     draft: false,
+    draftChange: null,
+    responder: null,
     deferred: [],
     requestStateReads: 0,
     cache: null,
@@ -293,8 +338,30 @@ export function beginRequest(request: Request): RequestLifecycle {
   const context = contextFor(request);
   let settling: Promise<void> | null = null;
 
+  /**
+   * Everything the host asked for, with `draft` already decided.
+   *
+   * The draft cookie is verified here rather than in `contextFor` because
+   * verifying it is an HMAC and `crypto.subtle` is asynchronous — and here
+   * rather than in each of the three router entry points because a request has
+   * one answer to "is this a draft request", not one per module that asks.
+   *
+   * The cookie is looked up before anything is awaited, so a request that does
+   * not carry one — which is every request on an ordinary site — runs `body`
+   * synchronously exactly as it did before this existed, with no extra
+   * microtask between the host and the guard.
+   */
   function run<T>(body: () => Promise<T>): Promise<T> {
-    return runWithContext(context, body);
+    return runWithContext(context, () => {
+      const carried = context.cookies.get(DRAFT_COOKIE);
+      if (carried == null) {
+        return body();
+      }
+      return verifyDraftCookie(carried).then((valid) => {
+        context.draft = valid;
+        return body();
+      });
+    });
   }
 
   function settle(): Promise<void> {
@@ -303,6 +370,107 @@ export function beginRequest(request: Request): RequestLifecycle {
   }
 
   return { context, run, settle };
+}
+
+/**
+ * Run `body` as the thing that owns this request's response.
+ *
+ * Two things at once, and they are the same thing seen from both ends.
+ * `draftMode().enable()` refuses outside this scope — a render has no defined
+ * moment at which a response header takes effect — and inside it, whatever
+ * `body` decided about draft mode is written onto the `Response` it returned.
+ *
+ * `@uniflowed/router` calls it in exactly two places: around a route handler
+ * and around a server action. Those are the two things Next allows `enable()`
+ * in and the two things uf can honestly allow it in, because they are the two
+ * that return a response of their own. A middleware is deliberately not one:
+ * it may decline, and a guard that turned draft mode on and then let the
+ * request through would have made a decision with nowhere to be written —
+ * silently, which is the failure ubugeeei-prod/uf#282 is about wearing a
+ * different hat.
+ *
+ * Silent outside a request, and that matters for the same reason `noteRoute`
+ * is: `dispatch` refuses outside one already, and a second refusal here would
+ * only replace a good message with a worse one.
+ */
+export async function asResponder(kind: string, body: () => Promise<Response>): Promise<Response> {
+  const context = storage.getStore();
+  if (context == null) {
+    return body();
+  }
+  const outer = context.responder;
+  context.responder = kind;
+  let response: Response;
+  try {
+    response = await body();
+  } finally {
+    context.responder = outer;
+  }
+  const change = context.draftChange;
+  if (change == null) {
+    return response;
+  }
+  // Cleared before the cookie is built rather than after it: two responders on
+  // one request — an action that answered, and nothing else — must not both
+  // write the header, and a `Set-Cookie` written twice is a browser told two
+  // things about one name.
+  context.draftChange = null;
+  if (change === "enable" && draftKeyIsPerProcess()) {
+    warnAboutGeneratedKey();
+  }
+  return withSetCookie(response, await draftSetCookie(change));
+}
+
+/** Whether the per-process-key warning has already been written. */
+let warnedAboutGeneratedKey = false;
+
+/**
+ * Say once that draft mode is keyed with a secret this process invented.
+ *
+ * Once per process, and only when a cookie is actually issued: a deployment
+ * that never uses draft mode has nothing to be told, and a line per preview
+ * link would be a line per request in a CMS's hands.
+ *
+ * `warn` rather than `error`, because it is exactly right for `uf dev` and
+ * exactly wrong for two containers behind a load balancer, and this module
+ * cannot tell which it is in.
+ */
+function warnAboutGeneratedKey(): void {
+  if (warnedAboutGeneratedKey) {
+    return;
+  }
+  warnedAboutGeneratedKey = true;
+  processLogger().warn(
+    "draft mode is signed with a secret generated for this process: the cookie stops " +
+      "working when it restarts, and another instance will not accept it. Set " +
+      "UF_DRAFT_SECRET to a shared value of at least 32 bytes.",
+  );
+}
+
+/**
+ * `response` with one more `Set-Cookie` on it.
+ *
+ * Tried in place first because that keeps everything a `Response` can be that a
+ * reconstruction cannot: a `101` from an upgrade, which the `Response`
+ * constructor refuses outright, and a body that is already being consumed. A
+ * `Response.redirect` — which is what the preview flow returns — has an
+ * immutable header guard and throws instead, and the copy is for that one. The
+ * guard is not observable except by trying, which is why this is a `catch`
+ * rather than a test.
+ */
+function withSetCookie(response: Response, cookie: string): Response {
+  try {
+    response.headers.append("set-cookie", cookie);
+    return response;
+  } catch {
+    const copy = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+    copy.headers.append("set-cookie", cookie);
+    return copy;
+  }
 }
 
 /**

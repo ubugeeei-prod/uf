@@ -49,12 +49,11 @@
 
 use anyhow::{Result, bail};
 use camino::Utf8Path;
-use uf_config::load_config;
+use uf_config::{RenderingPlan, load_config};
 use uf_term::{KeyValue, Status, Tone};
 
-use crate::commands::vite::{
-    Driver, Event, LogLevel, package_dir, render_error, render_log, resolve_host,
-};
+use crate::commands::builder;
+use crate::commands::vite::{Driver, Event, LogLevel, render_error, render_log, resolve_host};
 use crate::support::{PRODUCTION, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
@@ -124,8 +123,36 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
         );
     }
 
+    // What the project said this build produces. A build that emits no server
+    // is not half a deployment — it is a whole one, for a static host — and
+    // the two commands answer it differently:
+    //
+    // * `uf preview` still runs, and serves exactly what such a host would:
+    //   the output directory, over Vite's preview server, with nothing mounted
+    //   behind it. That is the *point* of a preview, and mounting a request
+    //   handler for a build that ships none would make the preview wrong in
+    //   the one direction it must never be wrong.
+    // * `uf start` refuses. It is documented as "what a deployment runs", and
+    //   for a project that emits no server there is no deployment that runs
+    //   uf; a `uf start` that quietly served files would be uf answering
+    //   requests that the real host answers, which is the trap `preview`
+    //   exists to prevent, one deployment further along. It is also the one
+    //   command that *loads* the bundle such a build removes, which is why
+    //   this refusal is a fact rather than an opinion — `uf build --adapter`
+    //   and `--compile` link the application again from source and still
+    //   work.
+    let plan = RenderingPlan::resolve(&resolved.config);
+    if which == Server::Start && !plan.emits_a_server() {
+        bail!(
+            "`uf start` runs the server a build emits, and {}. \
+             Deploy the output directory to any static host, or run `uf preview` to check it \
+             the way one would serve it.",
+            plan.because()
+        );
+    }
+
     let host = resolve_host(&resolved.config)?;
-    let package = package_dir(&root)?;
+    let builder = builder::resolve(&root, &resolved.config)?;
     // Loaded here rather than inherited from the build: these serve a `dist/`
     // that may have been built on another machine days ago, and a server that
     // could not be pointed at a different database than the build ran against
@@ -133,13 +160,14 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
     let env = project_env(&resolved, args.mode.as_deref(), PRODUCTION)?;
     let mut driver = Driver::spawn(
         &host,
-        &package,
+        &builder,
         &root,
         which.command(),
         &driver_args(
             args.host.as_deref(),
             args.port,
             &resolved.config.build.out_dir,
+            plan,
         ),
         &env,
         &[],
@@ -148,9 +176,14 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
     let host_name = host.name();
     let project = project_label(&root).to_string();
     let banner = format!("uf {}", which.command());
-    let serves = match which {
-        Server::Preview => "the production build, through Vite's preview server",
-        Server::Start => "the production build, with no bundler in the process",
+    let serves = match (which, plan.emits_a_server()) {
+        // Said in the banner rather than left to be noticed from a route count
+        // of zero: this preview answers with files and nothing else, which is
+        // what makes it the right check for the deployment it describes and
+        // the wrong one for any other.
+        (Server::Preview, false) => "the output directory, the way a static host would",
+        (Server::Preview, true) => "the production build, through Vite's preview server",
+        (Server::Start, _) => "the production build, with no bundler in the process",
     };
     let mode = env.mode().to_owned();
     let env_files = env_file_list(&root, &env);
@@ -227,12 +260,18 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
             // as a compile error instead of as silence — which is exactly how
             // `main` stopped compiling once, see #366 and #367.
             // Neither server watches: `uf preview` and `uf start` serve a
-            // build, so a module changing under them changes nothing they are
-            // showing.
+            // build, so a module or a `.env` file changing under them changes
+            // nothing they are showing — a build's values were substituted into
+            // the bundle when it was built. Neither serves the browser's
+            // diagnostic channel either: `/__uf/` is `uf dev`'s, and a
+            // deployment has no terminal to report into.
             Event::ConfigLoaded { .. }
             | Event::Phase { .. }
             | Event::Page { .. }
+            | Event::Rendering { .. }
             | Event::SourceChanged
+            | Event::EnvChanged { .. }
+            | Event::Diagnostic(_)
             | Event::RscSplit { .. }
             | Event::Done { .. }
             | Event::Config { .. } => {}
@@ -257,8 +296,22 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
 /// rule `uf dev` already follows for the reason recorded in
 /// ubugeeei-prod/uf#234: a server up on a port nobody asked about is a server
 /// that passes a test it is not running.
-fn driver_args(host: Option<&str>, port: Option<u16>, out_dir: &str) -> Vec<String> {
+///
+/// `--static-build` is the plan, and it reaches only `uf preview` — `uf start`
+/// has already refused by the time this is called. It tells the driver to
+/// mount nothing behind Vite's file server, because the build it is previewing
+/// carries nothing to mount: the server bundle was removed at the end of the
+/// build that declared it emits none.
+fn driver_args(
+    host: Option<&str>,
+    port: Option<u16>,
+    out_dir: &str,
+    plan: RenderingPlan,
+) -> Vec<String> {
     let mut args = vec![String::from("--out-dir"), out_dir.to_owned()];
+    if !plan.emits_a_server() {
+        args.push(String::from("--static-build"));
+    }
     if let Some(bind) = host {
         args.push(String::from("--host"));
         args.push(bind.to_owned());
@@ -275,21 +328,49 @@ fn driver_args(host: Option<&str>, port: Option<u16>, out_dir: &str) -> Vec<Stri
 mod tests {
     use super::*;
 
+    /// The plan of a project that narrowed nothing.
+    fn serving() -> RenderingPlan {
+        RenderingPlan::resolve(&uf_config::UniflowedConfig::default())
+    }
+
+    /// The plan of a project that set `build.staticBuild`.
+    fn static_only() -> RenderingPlan {
+        let mut config = uf_config::UniflowedConfig::default();
+        config.build.static_build = true;
+        RenderingPlan::resolve(&config)
+    }
+
     #[test]
     fn the_output_directory_is_always_named() {
         // A project whose build went to `dist/docs` and whose server read
         // `dist/` would serve an empty directory and 404 every page it had
         // just prerendered.
         assert_eq!(
-            driver_args(None, None, "dist/docs"),
+            driver_args(None, None, "dist/docs", serving()),
             vec![String::from("--out-dir"), String::from("dist/docs")]
+        );
+    }
+
+    #[test]
+    fn a_build_that_emits_no_server_previews_the_files_and_nothing_else() {
+        // `uf preview` on a `build.staticBuild` project mounts no request
+        // handler, because the build removed the bundle one would come from.
+        // Serving it anyway is the preview being right about a deployment that
+        // is not the one happening.
+        assert_eq!(
+            driver_args(None, None, "dist", static_only()),
+            vec![
+                String::from("--out-dir"),
+                String::from("dist"),
+                String::from("--static-build"),
+            ]
         );
     }
 
     #[test]
     fn a_port_that_was_typed_is_the_port_the_server_binds() {
         assert_eq!(
-            driver_args(None, Some(4173), "dist"),
+            driver_args(None, Some(4173), "dist", serving()),
             vec![
                 String::from("--out-dir"),
                 String::from("dist"),
@@ -303,7 +384,7 @@ mod tests {
     #[test]
     fn a_host_is_forwarded_as_given() {
         assert_eq!(
-            driver_args(Some("0.0.0.0"), None, "dist"),
+            driver_args(Some("0.0.0.0"), None, "dist", serving()),
             vec![
                 String::from("--out-dir"),
                 String::from("dist"),

@@ -66,6 +66,38 @@ pub enum RuntimeHost {
     Container,
 }
 
+impl RuntimeHost {
+    /// Every host, in the order [`crate::HOSTS`] documents them.
+    pub const ALL: &'static [Self] = &[
+        Self::Node,
+        Self::Bun,
+        Self::Deno,
+        Self::Edge,
+        Self::Serverless,
+        Self::Container,
+        Self::Uf,
+    ];
+
+    /// The name this host is called by, in a message a person reads.
+    ///
+    /// Not `Debug`, and not the serialized name either: an error that says
+    /// "Node.js cannot enforce `net`" is read by somebody who has never seen
+    /// this enum, and `Node` or `node` in that sentence reads like a typo. The
+    /// serialized form stays kebab-case for machines; this is for people.
+    #[must_use]
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Uf => "the uf runtime",
+            Self::Node => "Node.js",
+            Self::Bun => "Bun",
+            Self::Deno => "Deno",
+            Self::Edge => "an edge runtime",
+            Self::Serverless => "a serverless runtime",
+            Self::Container => "a container runtime",
+        }
+    }
+}
+
 /// Runtime capability exposed to application code.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

@@ -31,6 +31,17 @@ A page, a layout and a not-found may be `.mdx` instead of `.js`. A directory who
 `_` is not a route, which is where shared components belong — this site keeps
 its design system in `app/_design/`.
 
+`uf routes add` writes them, so the names above are a reference rather than
+something to type from memory:
+
+```
+uf routes add /articles/[slug] --loader
+uf routes list
+```
+
+Both read the same grammar the build discovers routes with — see
+[`uf routes`](/reference/cli#uf-routes-list).
+
 ## Paths
 
 A directory is a path segment:
@@ -439,6 +450,16 @@ right in a browser and missing from every crawler. Rendering is what puts a tag
 in a server-rendered head. `useHead` from `@uniflowed/web` is the browser-only
 escape hatch and says so about itself.
 
+Where the caller renders does not decide where the tag lands. A `<title>`, a
+`<meta>` and a `<link>` are hoistable elements: React gathers every one it finds
+while rendering the shell and emits them at the front of its output, whatever
+depth they were written at, and uf lifts that run into the head — so a `useSeo`
+three components below the page reaches `<head>` on both document shapes, the
+same as a route's own `metadata`. The exception is the one above: a tag inside a
+component that only renders *after* the shell — behind a `<Suspense>` a deferred
+loader is still filling — is in a later chunk, and the head has already gone. A
+page that wants to stream keeps its metadata static.
+
 The argument is a `Metadata`, the same type a route exports, so there is one
 vocabulary rather than two. What the hook adds over writing the tags by hand is
 `metadataBase` — the root layout declared it, a component three levels down
@@ -632,6 +653,59 @@ reporting — and leave you unable to tell a 500 you meant from one you caused.
 
 A handler is not prerendered and its module never reaches the browser.
 
+## Draft mode: previewing what is not published
+
+A CMS previews unpublished content by linking to a route handler that turns
+draft mode on and redirects. Every request after that carries a signed cookie,
+`draftMode().isEnabled` is `true` for the whole of it — a guard, a handler and
+the page all see the same answer — and neither the route cache nor the
+prerendered document in `dist/` is allowed to answer it.
+
+```js
+// app/api/preview/_uf.route.js
+// @flow
+import { draftMode } from "@uniflowed/server";
+
+export function GET(request: Request): Response {
+  const url = new URL(request.url);
+  if (url.searchParams.get("token") !== process.env.CMS_PREVIEW_TOKEN) {
+    return new Response("no", { status: 401 });
+  }
+  draftMode().enable();
+  return Response.redirect(new URL(url.searchParams.get("to") ?? "/", request.url), 307);
+}
+```
+
+A page then asks:
+
+```js
+import { draftMode } from "@uniflowed/server";
+
+export default async function Post({ params }: PageProps): Promise<Node> {
+  const post = await load(params.id, { draft: draftMode().isEnabled });
+  return <article>{post.body}</article>;
+}
+```
+
+**`enable()` and `disable()` belong in a route handler or a server action, and
+nowhere else.** They write a cookie, and a cookie is part of a response — so
+they are allowed exactly where a response is being produced, and calling one
+from a render or from a middleware is a `DraftModeError` that says so. A
+middleware that wants draft mode on redirects to the handler that turns it on.
+
+**The token check is yours.** uf checks that the cookie is one it issued and
+has not expired; it does not and cannot check who asked for it, because only
+your application knows what an editor is. A preview handler with no check is an
+open door to everything the site has not published.
+
+The cookie is `__Host-`prefixed, `Secure`, `HttpOnly`, `SameSite=Lax` and good
+for an hour, and its value is an HMAC over its own expiry — so it cannot be
+forged and a holder cannot extend it. The key is `UF_DRAFT_SECRET`:
+
+| Variable | Meaning |
+| --- | --- |
+| `UF_DRAFT_SECRET` | The key that signs the draft cookie. At least 32 bytes, and shared by every instance of the deployment. Without it uf generates one per process, which is right for `uf dev` and wrong behind a load balancer: the cookie stops working when the process restarts and a second instance never accepts it. uf says so in a `warn` line the first time it issues one. |
+
 ## QUERY: the GET whose parameters did not fit in a URL
 
 `QUERY` is a safe, idempotent method that carries a body. It is what a search
@@ -777,6 +851,51 @@ accepted and dropped — a serverless deployment handed a WebSocket upgrader
 fails to start rather than accepting handshakes all day and delivering nothing.
 A durable queue is accepted everywhere, because pushing to one is not draining
 it.
+
+## When a route is rendered
+
+`uf build` writes a document for a route when it can, and leaves the rest to a
+server. Which one happens is a property of the page, and there are two ways to
+say so.
+
+A page with parameters is prerendered only if it enumerates them:
+
+```js
+// app/posts/[slug]/_uf.page.js
+export function generateStaticParams(): $ReadOnlyArray<{ readonly slug: string }> {
+  return [{ slug: "hello-world" }, { slug: "second-post" }];
+}
+```
+
+Without it, nothing knows what the URLs are, so `/posts/:slug` is rendered per
+request instead.
+
+A page with **no** parameters is prerendered by default, and says otherwise for
+itself:
+
+```js
+// app/now/_uf.page.js
+export const dynamic = "force-dynamic";
+```
+
+`generateStaticParams` cannot express that — there are no parameters to
+generate — which is why this exists. Use it for a page whose content depends on
+the request: one that reads `cookies()` or `headers()`, or that has to be fresh
+on every visit. `"auto"` is the default and is the same as not writing the line.
+
+Next.js's other two values, `"force-static"` and `"error"`, are *constraints* on
+what a page may do, and uf does not check them yet. A page that names one fails
+the build rather than being quietly rendered as `"auto"`.
+
+Route handlers and middleware are always per request; there is no version of
+either that a file can be written for.
+
+`uf build` lists everything it wrote no document for, under `answered by a
+server`. If your project deploys to a static host, say so with
+[`app.rendering.modes`](/reference/config#renderingmodes) or
+[`build.staticBuild`](/reference/config#buildstaticbuild) and that list becomes
+a build error naming the route — which is the difference between finding out
+now and finding out from a 404.
 
 ## Types for routes
 

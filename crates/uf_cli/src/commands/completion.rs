@@ -61,6 +61,7 @@ const COMMANDS: &[&str] = &[
     "release",
     "remove",
     "uninstall",
+    "routes",
     "run",
     "search",
     "start",
@@ -84,16 +85,6 @@ const RELEASE_BUMPS: &[&str] = &["alpha", "patch", "minor", "major"];
 
 /// What `uf create` takes.
 const CREATE_KINDS: &[&str] = &["app", "lib"];
-
-/// What `uf explain` knows how to describe.
-///
-/// The list `uf explain` itself answers, not a copy of it. It used to be a
-/// hand-maintained subset and had already drifted both ways: `install`,
-/// `upgrade`, `run`, `exec` and `env` were answerable and not offered, and
-/// `ls`, `audit`, `search` and `uninstall` were offered by a list that did not
-/// have them (ubugeeei-prod/uf#425). Completing a name is supposed to tell a
-/// reader what is explainable; a second list can only ever tell them less.
-const EXPLAINABLE: &[&str] = crate::commands::explain::KNOWN;
 
 /// Print the completion script for `shell`.
 pub(crate) fn completion(ui: &mut Ui, shell: Shell) {
@@ -182,10 +173,21 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         ["run"] => matching(current, tasks.iter().copied()),
         ["release"] => matching(current, RELEASE_BUMPS.iter().copied()),
         ["create"] => matching(current, CREATE_KINDS.iter().copied()),
-        ["explain"] => matching(current, EXPLAINABLE.iter().copied()),
+        // `explain::KNOWN` itself, not a copy of part of it. These were two
+        // hand-maintained lists and nothing compared them, so completion
+        // offered a subset — missing `install`, `upgrade`, `run`, `exec` and
+        // `env`, every one of which `uf explain` answers — and a person using
+        // tab completion to find out what is explainable was told less than
+        // the truth (ubugeeei-prod/uf#425).
+        //
+        // A test that failed when they differed was the other option, and it
+        // would have kept the second list rather than removed it. This is a
+        // list that cannot drift because there is only one of it.
+        ["explain"] => matching(current, super::explain::KNOWN.iter().copied()),
         ["env"] => matching(current, ["doctor", "use"]),
         ["catalog"] => matching(current, ["set"]),
         ["pm"] => matching(current, ["approve-builds"]),
+        ["routes"] => matching(current, ["list", "add"]),
         _ => Vec::new(),
     }
 }

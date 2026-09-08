@@ -249,7 +249,15 @@ export function createFetchHandler(
       console.error(error);
     };
 
-    if (method === "GET" && cache != null && cache.route === true) {
+    // A draft request goes down the streaming path whatever the cache says, and
+    // it is a *bypass* rather than a refusal to store. The store already
+    // refuses to keep a render that read `draftMode()`, which stops one
+    // person's draft becoming everybody's page; this is the other direction,
+    // and it is the one that makes draft mode mean anything: a cached entry is
+    // an answer from before the draft existed, so serving it to an editor who
+    // came to look at the draft answers a different question from the one they
+    // asked. See ubugeeei-prod/uf#282.
+    if (method === "GET" && cache != null && cache.route === true && context?.draft !== true) {
       return cachedDocument(app, cache, context, url, target, document, onError);
     }
 

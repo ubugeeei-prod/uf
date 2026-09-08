@@ -14,10 +14,12 @@ mod package;
 mod react;
 mod react_compiler;
 mod react_native;
+mod react_tree;
 mod router;
 mod security;
 mod server;
 mod structure;
+mod tree;
 mod uniflowed;
 
 pub(crate) use fetch::run_fetch_no_global_override;
@@ -40,6 +42,7 @@ pub(crate) use react::{
 };
 pub(crate) use react_compiler::run_react_compiler_rules;
 pub(crate) use react_native::run_react_native_platform_split;
+pub(crate) use react_tree::run_react_tree_rules;
 pub(crate) use router::{run_router_reserved_files, run_router_unsupported_segment};
 pub(crate) use security::{run_security_no_dangerously_set_inner_html, run_security_no_eval};
 pub(crate) use server::{
@@ -47,4 +50,5 @@ pub(crate) use server::{
     run_server_use_client_directive_position, run_server_use_server_actions,
 };
 pub(crate) use structure::run_structure_rules;
+pub(crate) use tree::run_tree_rules;
 pub(crate) use uniflowed::{run_no_npm_script_invocation, run_no_tabs, run_no_trailing_whitespace};

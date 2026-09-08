@@ -11,10 +11,12 @@
 
 pub mod builds;
 pub mod command;
+pub mod confusion;
 pub mod delta;
 pub mod detect;
 pub mod manifests;
 pub mod progress;
+pub mod provenance;
 pub mod ranges;
 pub mod registry;
 pub mod run;
@@ -34,6 +36,7 @@ pub use crate::builds::{Approvals, Buildable, LIFECYCLE_SCRIPTS, approvals_for};
 pub use crate::command::{
     DependencyKind, Invocation, InvocationArgs, Operation, PROGRAMS, command_for,
 };
+pub use crate::confusion::Confusion;
 pub use crate::delta::{
     ChangeKind, LockedEntry, LockfileDelta, LockfileSnapshot, MAX_LOCKFILE_BYTES, PackageChange,
 };
@@ -50,8 +53,11 @@ pub use crate::progress::{
     InstallPhase, InstallWatch, LINKING_IDLE, MAX_LABEL, ManagerEvent, PhaseProgress, PhaseState,
     Reader, safe_label,
 };
+pub use crate::provenance::{
+    Artifact, Outcome, Provenance, ProvenanceError, Subject, Transparency,
+};
 pub use crate::ranges::{Level, Prefix, Range};
-pub use crate::registry::{MAX_PACKUMENT_BYTES, Packument, RegistryError};
+pub use crate::registry::{MAX_PACKUMENT_BYTES, Packument, RegistryError, RegistryRouting, Route};
 pub use crate::run::{
     InstallObserver, ManagerRun, ManagerRunError, ManagerStream, check_operands, installable,
     invocation_for, run_install, run_install_watched, run_operation, run_watched,
@@ -84,7 +90,12 @@ pub struct PackageManagerPlan {
     pub resolver: PackageResolver,
     /// Lockfile name written by `uf install`.
     pub lockfile: CompactString,
-    /// Registry used when a package has no explicit source override.
+    /// The registry uf resolves and reports against.
+    ///
+    /// `pm.registry`, falling back to `publish.registry` — see
+    /// [`uf_config::UniflowedConfig::read_registry`] for why the two are not
+    /// the same setting, and [`registry::RegistryRouting`] for the scopes that
+    /// override it.
     pub registry: CompactString,
     /// Script execution policy for package manifests.
     pub scripts: PackageScriptPolicy,
@@ -181,7 +192,7 @@ impl Default for PackageManagerPlan {
         Self {
             resolver: PackageResolver::UfNative,
             lockfile: CompactString::const_new("uf.lock"),
-            registry: CompactString::const_new("https://registry.npmjs.org"),
+            registry: CompactString::const_new(uf_config::DEFAULT_REGISTRY),
             scripts: PackageScriptPolicy::Forbid,
             store: PackageStore {
                 strategy: PackageStoreStrategy::ContentAddressed,
@@ -206,7 +217,7 @@ impl PackageManagerPlan {
     pub fn infer_from_config(config: &UniflowedConfig) -> Self {
         Self {
             lockfile: CompactString::from(config.pm.lockfile.as_str()),
-            registry: CompactString::from(config.publish.registry.as_str()),
+            registry: CompactString::from(config.read_registry().url),
             scripts: PackageScriptPolicy::from_config(config.pm.allow_lifecycle_scripts),
             store: PackageStore {
                 strategy: PackageStoreStrategy::ContentAddressed,

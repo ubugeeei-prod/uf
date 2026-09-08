@@ -58,10 +58,12 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { Readable } from "node:stream";
 
+import type { Instant } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import { carriesDraftCookie } from "./internal/draft.js";
 import type { Logger } from "./internal/log.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
@@ -309,7 +311,24 @@ export function createStaticHandler(options: {|
         ? [path.join(resolved, "index.html")]
         : [resolved, path.join(resolved, "index.html"), `${resolved}.html`];
 
+    // A draft request is never answered with a prerendered document. A file in
+    // `dist/` is what the site said before the draft existed, so handing one to
+    // an editor who came to look at the draft answers a different question from
+    // the one they asked — and draft mode would be a feature that works
+    // everywhere except on the pages a build was able to prerender, which are
+    // the ones a CMS produces. Only documents: a stylesheet and a chunk are the
+    // same bytes in draft mode as out of it, and skipping those would leave the
+    // page unstyled and unhydrated for no gain.
+    //
+    // The *name* of the cookie decides it, not the signature. This module is
+    // the host's copy of `@uniflowed/server` rather than the bundle's, so it
+    // cannot reach the request context where the verified answer lives —
+    // `internal/draft.js`'s `carriesDraftCookie` says what a forged one is
+    // worth, which is one live render of a page that is public anyway.
+    const drafting = carriesDraftCookie(request.headers.get("cookie"));
+
     for (const candidate of candidates) {
+      if (drafting && candidate.toLowerCase().endsWith(".html")) continue;
       const info = await statFile(candidate);
       if (info == null || !info.isFile()) continue;
       // The containment check above is textual, and a symlink is how a path
@@ -535,18 +554,13 @@ export function createServeHandler(options: {|
  *
  * # The request that never became one
  *
- * `clientError` is the other half of ubugeeei-prod/uf#405. Bytes that Node's
- * own parser refuses never reach a listener, so nothing above this function can
- * know about them: the runtime answers `400 Bad Request`, closes the socket,
- * and — with no handler attached — says so to nobody. An operator whose client
- * is sending a header Node will not accept sees a failing request and an empty
- * terminal, which is the worst combination a server can offer.
- *
- * The handler below writes the same 400 the default one does, because replacing
- * the default means taking over its job as well as adding to it, and then
- * records what happened at `warn`. `warn` rather than `error` for the reason
- * `logRequest` uses the status for the level: a malformed request is somebody
- * else's mistake far more often than it is this server's.
+ * [`reportMalformedRequests`] is the other half of ubugeeei-prod/uf#405, and it
+ * is a separate function because this one cannot be called without a socket and
+ * that one can: a `stream.Duplex` handed to an `http.Server` as a connection
+ * drives the real parser with no `listen` at all, which is what makes the
+ * behaviour testable on a machine where `bind` is refused. `./standalone.js`
+ * calls it too, so a compiled binary is not the one front door that stays
+ * silent.
  */
 export async function serve(options: {|
   readonly staticDir: string,
@@ -576,19 +590,7 @@ export async function serve(options: {|
   const server = createServer((request, response) => {
     void listener(request, response);
   });
-  server.on("clientError", (error, socket) => {
-    // `error.code` and nothing else. Node puts the offending bytes on
-    // `error.rawPacket`, and those are whatever the client sent — the one thing
-    // `@uniflowed/server/log` exists to keep out of a log line.
-    log.warn("malformed request", { code: errorCode(error) });
-    // A socket that is already gone, or one whose error was a timeout Node has
-    // handled itself, must not be written to; the check is the one Node's own
-    // documentation gives for replacing this handler.
-    if (errorCode(error) === "ECONNRESET" || socket.writableEnded) {
-      return;
-    }
-    socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
-  });
+  reportMalformedRequests(server, log);
 
   const host = options.host ?? argument("--host") ?? process.env.HOST ?? "0.0.0.0";
   const port = options.port ?? Number(argument("--port") ?? process.env.PORT ?? 3000);
@@ -615,6 +617,119 @@ export async function serve(options: {|
         server.close(() => resolve());
       }),
   };
+}
+
+/** The pieces of a `node:http` server this module attaches to. */
+export type ClientErrorServer = {
+  on(event: string, listener: (error: mixed, socket: ClientErrorSocket) => mixed): mixed,
+  ...
+};
+
+/** The pieces of a socket a refused request is answered on. */
+export type ClientErrorSocket = {
+  readonly writableEnded: boolean,
+  end(chunk?: string): mixed,
+  ...
+};
+
+/**
+ * Most `malformed request` lines one server writes per window.
+ *
+ * Twenty is enough to see the shape of a fault — the same `code` twenty times
+ * is one client with a broken library, twenty different ones are a scan — and
+ * few enough that a window's worth is a paragraph rather than a page.
+ */
+const MALFORMED_LOG_BURST = 20;
+
+/** How long that budget lasts, in milliseconds. */
+const MALFORMED_LOG_WINDOW_MS = 60_000;
+
+/**
+ * Say what the runtime's own parser refused, on a server that says nothing.
+ *
+ * The whole of ubugeeei-prod/uf#405. Bytes Node's parser rejects never reach a
+ * request listener: `http.Server` answers `400 Bad Request`, closes the socket,
+ * and — with no `clientError` handler attached — says so to nobody. An operator
+ * whose client is sending a header Node will not accept sees a failing request
+ * and an empty terminal, which is the worst combination a server can offer, and
+ * a day was spent on exactly that (`assert_served` built a request target with
+ * a space in it, and the space was invisible from every side).
+ *
+ * Node's own `400` is still what goes on the wire. This handler writes the same
+ * bytes the default one does, because replacing the default means taking over
+ * its job as well as adding to it, and answering differently would make the
+ * change a behaviour change rather than a diagnostic one.
+ *
+ * # The log-volume question, answered
+ *
+ * This is the reason somebody might not want it, so it is decided here rather
+ * than left to be discovered on a public address. A malformed request is two
+ * dozen bytes to send and, unbounded, one line to write — which makes a line
+ * per rejection an amplifier: a client that can saturate a link can fill a disk
+ * and a log bill with it, and can push whatever an operator actually needed off
+ * the end of the retention window.
+ *
+ * So the budget is **twenty lines a minute per server, and a count of what that
+ * hid**. The first twenty in a window are written; the rest are counted, and
+ * the count is written once, when the next window opens, as its own record. A
+ * flood therefore costs a fixed number of lines per minute and still says how
+ * big it was, which is the number an operator wants from a flood — the
+ * individual lines of one are all the same line.
+ *
+ * Sampling was the alternative and it is worse for this: one in a hundred of a
+ * flood is still unbounded, and one in a hundred of *three* malformed requests
+ * is nothing at all, which is the case where the line matters most.
+ *
+ * The budget is per call rather than per process, so two servers in one
+ * process — `uf preview` beside a test harness — cannot spend each other's.
+ *
+ * # And what is in the line
+ *
+ * `error.code` and nothing else. Node puts the offending bytes on
+ * `error.rawPacket`, and those are whatever the client sent: the one thing
+ * `@uniflowed/server/log`'s header spends its length explaining does not belong
+ * in a log line. The `code` is llhttp's own enumeration — `HPE_INVALID_METHOD`,
+ * `HPE_HEADER_OVERFLOW` — which is a closed set uf did not have to invent, and
+ * it is the half that says what to fix.
+ *
+ * `warn` rather than `error`, for the reason `logRequest` picks a level from a
+ * status: a malformed request is somebody else's mistake far more often than it
+ * is this server's.
+ */
+export function reportMalformedRequests(server: ClientErrorServer, log: Logger): void {
+  let windowStarted: Instant | null = null;
+  let written = 0;
+  let suppressed = 0;
+
+  server.on("clientError", (error: mixed, socket: ClientErrorSocket) => {
+    const code = errorCode(error);
+    const now = Temporal.Now.instant();
+    if (windowStarted == null || elapsedMs(windowStarted) >= MALFORMED_LOG_WINDOW_MS) {
+      if (suppressed > 0) {
+        // The count is its own record with its own message, so a collector can
+        // alert on the *shape* — "this server is being flooded" — without
+        // parsing a number out of a sentence about one request.
+        log.warn("malformed requests not logged", { count: suppressed });
+      }
+      windowStarted = now;
+      written = 0;
+      suppressed = 0;
+    }
+    if (written < MALFORMED_LOG_BURST) {
+      written += 1;
+      log.warn("malformed request", { code });
+    } else {
+      suppressed += 1;
+    }
+
+    // A socket that is already gone, or one whose error was a timeout Node has
+    // handled itself, must not be written to; the check is the one Node's own
+    // documentation gives for replacing this handler.
+    if (code === "ECONNRESET" || socket.writableEnded) {
+      return;
+    }
+    socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+  });
 }
 
 /** The value of a `--flag value` pair on the command line, if it is there. */

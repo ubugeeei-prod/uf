@@ -293,6 +293,12 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             "devServer": "vite",
             "runtime": "capability-js-host-contract",
             "runtimeContract": runtime,
+            // Beside the contract on purpose. The contract names the hosts uf
+            // is *written for*; this says what each of them does when you run
+            // it, and the two were being read as one thing — which is how
+            // `hosts: [node, deno, bun]` came to be quoted as a statement that
+            // a uf project runs on Deno. See `uf_runtime::HostSupport`.
+            "hostSupport": host_support(),
             "server": {
                 "engine": resolved.config.server.engine,
                 "streaming": resolved.config.server.native.streaming,
@@ -340,4 +346,32 @@ fn inspected_env(resolved: &ResolvedConfig) -> Result<ProjectEnv, String> {
     let mode = env_files::resolve_mode(&resolved.root, &resolved.config, None, DEVELOPMENT)
         .map_err(|error| error.to_string())?;
     env_files::load(&resolved.root, &resolved.config, &mode).map_err(|error| error.to_string())
+}
+
+/// Every host, and what it actually does — the JSON half of `docs/hosts.md`.
+///
+/// `uf inspect --json` is what a person pastes into an issue, so the row a
+/// reader needs is the one that says whether the host they are on is a host uf
+/// runs on. `missing` and `trackingIssue` are carried through rather than
+/// summarized: "planned" without "planned on what" is the shape of claim this
+/// table replaced.
+fn host_support() -> serde_json::Value {
+    json!(
+        uf_runtime::HOSTS
+            .iter()
+            .map(|support| json!({
+                "host": support.host,
+                "level": support.level.as_str(),
+                "flowLoader": support.flow_loader,
+                "enforcesPermissions": support
+                    .enforces
+                    .iter()
+                    .map(|permission| permission.as_str())
+                    .collect::<Vec<_>>(),
+                "verifiedBy": support.verified_by,
+                "missing": support.missing,
+                "trackingIssue": support.tracking_issue,
+            }))
+            .collect::<Vec<_>>()
+    )
 }

@@ -350,7 +350,23 @@ pub enum RuntimeUseStep {
     ResolveVersion,
     /// Download the runtime archive.
     DownloadRuntime,
-    /// Verify checksum and signature metadata.
+    /// Compare the archive against the digest the publisher advertised.
+    ///
+    /// Transit, and only transit. A digest fetched from the host that served
+    /// the archive proves the bytes arrived intact and nothing more, because
+    /// whoever can replace one can replace the other. Origin is a separate
+    /// question with a separate answer — the Sigstore bundle
+    /// `infra/cloudflare/setup-assets/install.sh` verifies against the release
+    /// workflow's certificate identity, which is where `uf` itself is actually
+    /// acquired.
+    ///
+    /// This variant used to say "checksum and signature metadata", which
+    /// claimed the second half of a check nothing here makes. It is not
+    /// renamed to promise one either: `uf use` copies the running binary
+    /// rather than downloading anything, so every step in this list is the
+    /// contract an acquiring implementation has to satisfy, not a description
+    /// of work being done today. See ubugeeei-prod/uf#551 and
+    /// `docs/security.md`.
     VerifyChecksum,
     /// Install the runtime under the XDG data directory.
     InstallVersion,

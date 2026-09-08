@@ -145,7 +145,18 @@ a loader running on a thread of its own cannot see it. Bun's `node:module` has
 no such hook and Deno has no uf loader at all
 ([#246](https://github.com/ubugeeei-prod/uf/issues/246)), so on either host all
 seven bindings raise `UnsupportedError` naming the host, the hook and what to do
-instead. None of them silently does nothing.
+instead. None of them silently does nothing, and on Bun that is checked by
+starting a real Bun and asking.
+
+Bun's plugin API is not a second route to this, which is worth saying because it
+looks like one:
+[#419](https://github.com/ubugeeei-prod/uf/issues/419) has what a Bun 1.1
+`onResolve` does with each of the three places a stand-in could be given an
+identity of its own, and none of them survives an `import` declaration — which
+is the case the feature exists for. Bun's own `mock.module` survives one, and it
+maintains live bindings: it changes a module somebody has already imported,
+which is a different promise from the one above rather than the same one on a
+second host.
 
 ## Running them
 
@@ -294,6 +305,31 @@ project's name.
 Reporting a module that could not load as having no failing tests would be a
 lie.
 
+**A file that registers nothing is a file failure too.** `uf test` reads
+`describe`, `it` and `test` out of your source to decide what to schedule, and
+the worker reports what those calls actually registered. When the first number
+is positive and the second is zero, none of the file ran — the bindings were
+another runner's, or the file's own, or the registrations were inside a branch
+this run did not take — and the run says so instead of counting the file as
+done. A file that deliberately runs nothing writes `it.skip`, which registers
+and is reported as a skip.
+
+**Another runner's `test` is not a test uf can run, and saying so is the
+run's job.** `test("...")` is the same eight characters whoever exports the
+binding, so `uf test` reads the import it came from. A name bound by
+`node:test`, `vitest`, `jest` or their peers is listed under *unsupported
+declarations*, is not counted as runnable by `--list`, and makes the run
+non-zero — `node:test` especially, because it accepts the registration and
+keeps it for a runner that is never started, so the file loads, reports
+nothing, and would otherwise pass. Only a runner that can be named is treated
+as one: `import { it } from "../support/setup.js"` re-exporting uf's own `it`
+is an ordinary thing to write and runs as it always did.
+
+`it.each(...)` is listed there too and does *not* fail the run. It is uf's own
+`it` in a form discovery cannot expand, so `--list` cannot name the cases ahead
+of time — but the worker runs them and the report counts them, which is the
+whole difference.
+
 **A test that never settles is failed, not hung.** The worker races each case
 against its budget, and Rust keeps its own wall-clock deadline and kills the
 process — because a wedged event loop would never have run the worker's timer
@@ -305,6 +341,17 @@ run would.
 
 **`.only` is decided after the module body runs**, since a file's `.only` can
 appear below the tests it excludes.
+
+**One worker serves many files, and each one starts from the same place.**
+Between files the worker clears the registry, puts every `stubEnv` and
+`stubGlobal` back, restores the real clock, and drops the module stand-ins a
+`mock` installed. Spies and mocks live in state the runner owns; a stub and a
+fake clock are writes to something the whole process shares, so without this a
+file that called `uft.useFakeTimers()` and forgot to restore it would leave the
+*next* file's `setTimeout` never firing — a hang, with nothing on screen,
+blamed on the file that waited rather than the file that stopped time. Which
+files follow which changes with the timings cache, so a suite that depended on
+it would fail differently every run.
 
 ## Where it stands
 

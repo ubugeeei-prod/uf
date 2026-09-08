@@ -18,6 +18,7 @@ use uf_infra::LineIndex;
 use crate::plan::{TestCase, TestKind, TestModifier, TestPlan, UnsupportedDeclaration};
 use crate::scan::{
     CallShape, call_shape_at, code_byte_mask, extract_first_string_arg, matching_delimiter,
+    value_imports,
 };
 
 /// Largest source file discovery will scan, in bytes.
@@ -36,6 +37,37 @@ const REGISTRATIONS: [(&str, TestKind); 3] = [
     ("test", TestKind::Test),
 ];
 
+/// Modules whose `describe`, `it` and `test` belong to a different runner.
+///
+/// `test("…", …)` is the same eight characters whoever exports the binding,
+/// and `uf test` can only execute the one that registers with
+/// `@uniflowed/test`. A file that imports it from `node:test` declares tests
+/// this runner will never run — and `node:test` is the case that hurts,
+/// because it *accepts* the registration and keeps it for a runner that is not
+/// there, so the file loads, reports nothing, and used to be counted as
+/// runnable by `--list` and passed by the run (ubugeeei-prod/uf#482).
+///
+/// A named list rather than "anything that is not `@uniflowed/test`", and the
+/// asymmetry is the whole of the design. A project may well re-export uf's
+/// `it` from a local helper or an internal package — `import { it } from
+/// "../support/setup.js"` is an ordinary thing to write — and calling that
+/// unsupported would turn a suite that runs perfectly well red. Claiming "this
+/// is another runner's" is only honest when the runner can be named. Whatever
+/// this list misses is caught at run time instead, by a file that registered
+/// nothing failing rather than passing; see [`crate::runner`].
+const FOREIGN_RUNNERS: &[&str] = &[
+    "@jest/globals",
+    "ava",
+    "bun:test",
+    "jest",
+    "mocha",
+    "node:test",
+    "tap",
+    "tape",
+    "uvu",
+    "vitest",
+];
+
 /// Discover test declarations in a single source file.
 ///
 /// Returns an empty plan for a source past [`MAX_SOURCE_BYTES`]; the runner
@@ -48,10 +80,12 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
 
     let line_index = LineIndex::new(source);
     let code_mask = code_byte_mask(source);
+    let imports = value_imports(source, &code_mask);
     let mut cases = Vec::new();
     let mut unsupported = Vec::new();
 
     for (call, kind) in REGISTRATIONS {
+        let foreign = foreign_runner(&imports, call);
         let mut search_start = 0;
         while let Some(relative) = source[search_start..].find(call) {
             let offset = search_start + relative;
@@ -64,6 +98,24 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
                 continue;
             };
 
+            // Somebody else's `test`, named as such. Recorded rather than
+            // dropped: the file is still handed to a worker — it may hold
+            // uf's own declarations too — and `--list` has to stop counting
+            // this one as a test the run will execute.
+            if let Some(module) = foreign {
+                if unsupported.len() < MAX_CASES_PER_FILE {
+                    let position = line_index.line_col(offset);
+                    unsupported.push(UnsupportedDeclaration {
+                        file: file.to_string(),
+                        call: call.to_compact_string(),
+                        imported_from: Some(module.to_compact_string()),
+                        line: position.line,
+                        column: position.column,
+                    });
+                }
+                continue;
+            }
+
             let (modifier, args_from) = match shape {
                 CallShape::Plain => (TestModifier::None, offset + call.len()),
                 CallShape::Property { name, end } => match modifier_for(name) {
@@ -74,6 +126,7 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
                             unsupported.push(UnsupportedDeclaration {
                                 file: file.to_string(),
                                 call: format_args!("{call}.{name}").to_compact_string(),
+                                imported_from: None,
                                 line: position.line,
                                 column: position.column,
                             });
@@ -96,6 +149,7 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
                     unsupported.push(UnsupportedDeclaration {
                         file: file.to_string(),
                         call: call.to_compact_string(),
+                        imported_from: None,
                         line: position.line,
                         column: position.column,
                     });
@@ -123,6 +177,21 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
     cases.sort_by(|a, b| a.line.cmp(&b.line).then(a.column.cmp(&b.column)));
     unsupported.sort_by(|a, b| a.line.cmp(&b.line).then(a.column.cmp(&b.column)));
     TestPlan { cases, unsupported }
+}
+
+/// The other runner `call` was imported from, when the file imports it from
+/// one.
+///
+/// Reads the file's own imports rather than guessing from the name, because
+/// the name is all the two have in common. A file with no import of `call` at
+/// all — a project whose host installs the globals, or one being read out of
+/// context — is not foreign: it is the shape discovery has always assumed.
+fn foreign_runner<'a>(imports: &[crate::scan::ImportedBinding<'a>], call: &str) -> Option<&'a str> {
+    imports
+        .iter()
+        .find(|binding| binding.local == call)
+        .map(|binding| binding.module)
+        .filter(|module| FOREIGN_RUNNERS.contains(module))
 }
 
 /// Map a member suffix onto a modifier, or reject it as unexpandable.

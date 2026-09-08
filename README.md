@@ -62,9 +62,11 @@ before it.
 
 The specific shape of "alpha", so you can decide before you spend an afternoon:
 
-- **Runtimes.** Node.js and Bun load Flow. `HostKind::Deno` loads none, and the
-  edge runtimes have no host at all
-  ([#246](https://github.com/ubugeeei-prod/uf/issues/246)).
+- **Runtimes.** Node.js and Bun load Flow, and a test starts each of them.
+  Deno loads none and the edge runtimes have no host at all
+  ([#246](https://github.com/ubugeeei-prod/uf/issues/246)). The per-host
+  matrix — what works, what does not, and what each gap is waiting for — is
+  [`docs/hosts.md`](./docs/hosts.md).
 - **Deployment.** `uf build --adapter node` writes a directory that runs on a
   bare JavaScript runtime, and `--compile` writes a single executable file. The
   other six adapters are names in an enum

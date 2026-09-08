@@ -62,6 +62,7 @@ fn report(delta: LockfileDelta) -> InstallReport {
         ],
         total: Duration::from_millis(6_900),
         delta,
+        provenance: ProvenanceSummary::default(),
     }
 }
 
@@ -611,4 +612,63 @@ fn the_columns_leave_in_the_order_a_reader_misses_them_least() {
     assert!(!Ladder::for_width(7).mark);
     assert_eq!(Ladder::for_width(7).label, 7);
     assert_eq!(Ladder::for_width(1).label, 1);
+}
+
+/// ubugeeei-prod/uf#552: the summary says what it read, and names the packages
+/// that arrived with nothing to read.
+#[test]
+fn the_provenance_block_counts_what_was_read_and_names_what_was_not_attested() {
+    let mut report = report(changed());
+    report.provenance = ProvenanceSummary {
+        attested: 2,
+        unattested: vec!["left-pad".to_owned()],
+        unavailable: 1,
+        past_the_cap: 0,
+        origin: Some(
+            "https://github.com/facebook/react (.github/workflows/publish.yml)".to_owned(),
+        ),
+    };
+
+    let mut out = String::new();
+    render_summary(&plain(), &mut out, &report);
+    assert!(out.contains("provenance"), "{out}");
+    assert!(out.contains("attested"), "{out}");
+    assert!(out.contains("unknown"), "{out}");
+    assert!(out.contains("left-pad"), "{out}");
+    assert!(
+        out.contains("https://github.com/facebook/react"),
+        "the reader has to be able to see what an attestation actually said:\n{out}"
+    );
+    // Absence is a note, never a failure.
+    assert!(out.contains("most of npm has none"), "{out}");
+}
+
+/// An install that read no attestations gets no block. A `0 attested` row would
+/// read as a finding rather than as an absence of work.
+#[test]
+fn an_install_that_read_no_attestations_says_nothing_about_provenance() {
+    let mut out = String::new();
+    render_summary(&plain(), &mut out, &report(changed()));
+
+    assert!(!out.contains("provenance"), "{out}");
+}
+
+/// A ceiling nobody is told about is a summary that overstates its own
+/// coverage. `250 attested` under a first install of a thousand packages reads
+/// as a report of the tree rather than of how far uf looked.
+#[test]
+fn a_provenance_read_that_stopped_at_its_ceiling_says_how_many_it_did_not_read() {
+    let mut report = report(changed());
+    report.provenance = ProvenanceSummary {
+        attested: MAX_PROVENANCE_READS,
+        unattested: Vec::new(),
+        unavailable: 0,
+        past_the_cap: 12,
+        origin: None,
+    };
+
+    let mut out = String::new();
+    render_summary(&plain(), &mut out, &report);
+    assert!(out.contains("12 packages were not read"), "{out}");
+    assert!(out.contains(&MAX_PROVENANCE_READS.to_string()), "{out}");
 }

@@ -306,16 +306,42 @@ it ships and nothing else.
 Nothing is checked twice. A run keeps one record per file under
 `.uf/cache/check/`, keyed by the identity of the `uf` that wrote it — its path,
 size and modification time, the discipline `.uf/cache/transform` already
-holds — together with the limits the check ran under and the file's own path and
-text. A record also carries a *dependency digest*, over the packed signature of
-every module the file reaches and how each of those modules' specifiers
-resolved; the diagnostics in it are believed only while that digest still
-describes the batch. So editing one file re-checks that file and the files that
-reach it, and nothing else — and editing a function body, which moves no
-declaration and changes no exported type, re-checks only the file itself. A
-process that cannot name its own binary caches nothing in either direction, and
-an entry that is unreadable, out of date, or about another file is a miss rather
-than an error.
+holds — together with every limit that can change what a check reports and the
+file's own path and text. A record carries one *answer* per batch the file has
+been checked in, each stamped with the *dependency digest* it was computed
+under: a digest over the packed signature of every module the file reaches and
+how each of those modules' specifiers resolved. An answer is believed only while
+its digest still describes the batch in front of it. So editing one file
+re-checks that file and the files that reach it, and nothing else — and editing
+a function body, which moves no declaration and changes no exported type,
+re-checks only the file itself.
+
+Several answers rather than one, because a file is checked in more than one
+batch: `uf check` hands over the whole project, `uf check <path>` hands over the
+closure of one file, and an editor hands over less again. Those are different
+batches and so different digests, and a record that held one of them had the two
+runs taking each other's entry back for every file they both named — alternating
+between them left the project's cache permanently cold
+([#406](https://github.com/ubugeeei-prod/uf/issues/406)). Four answers per
+record, least recently used first, so a project checked many ways stays bounded.
+The cap is a bound on disk and never on correctness: a digest still has to match
+exactly, and a record with no answer for this batch is a miss like any other. It
+is the inner of two bounds — the directory-wide sweep described below is the
+outer one, and it was already the ceiling before a record held more than one
+answer.
+
+A process that cannot name its own binary caches nothing in either direction,
+and an entry that is unreadable, out of date, over its bounds, or about another
+file is a miss rather than an error.
+
+None of this may change what `uf check` reports, and neither may the machine it
+runs on. The limits inference runs under are a recursion depth, a type-expansion
+depth and a source size — all three functions of the file — and there is no
+wall-clock budget: a flat 30-second one used to abort a 6,300-line test file on
+a loaded runner and pass it on an idle laptop, with a failure a reader could not
+tell from a real one ([#565](https://github.com/ubugeeei-prod/uf/issues/565)).
+The bound against inference that does not terminate is Flow's own recursion
+limit, which counts work rather than time.
 
 All three disk caches — `.uf/cache/check`, `.uf/cache/transform` and
 `.uf/cache/task` — are bounded by one policy in `uf_infra::cache`: 128 MiB per
@@ -604,6 +630,13 @@ function component typing and toward Flow component syntax. React Native support
 starts with platform split diagnostics for generic files that branch on
 `Platform.OS` or `Platform.select`.
 
+Because `uf_lint` reads the official Flow parser's tree, it also sees JSX
+exactly, and the `a11y/*` and `markup/*` rules are built in rather than a plugin
+— a rule that needs installing is a rule most projects do not have. The two sets
+are one pass over one tree, and the second is a correctness rule rather than a
+style opinion: `<p><div>` is repaired by the browser's parser before React sees
+it, and the repair is a hydration mismatch.
+
 ## Runtime Agnostic Direction
 
 `uf_lib` follows the Bun-style shape for builtin modules, but the user project
@@ -612,11 +645,18 @@ configuration, linting, Flow parsing/type checking, Flow formatting, test
 scheduling, package metadata, and builtin binding contracts — while ordinary
 JavaScript execution is delegated to a Capability JS Host.
 
-The zero-config host set is Node.js, Deno, and Bun. `uf.config.js` names the
-default host and the accepted host set once, and `@uniflowed/rm` detects and
-applies that host instead of installing a bespoke runtime. The self-hosted
-Hermes-backed `uf` runtime is still documented as a later line, but it is no
-longer the default direction for app execution.
+The zero-config host set is Node.js, Deno, and Bun — as *targets*. What each of
+them does today is a different question and is answered in one place,
+[`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
+test that starts the binary, Deno has neither and is waiting on an ahead-of-time
+transform and an import map, and the edge runtimes have no host at all. Reading
+the host set as a support matrix is how "uf runs on Deno" came to be written
+down; the matrix is the matrix.
+
+`uf.config.js` names the default host and the accepted host set once, and
+`@uniflowed/rm` detects and applies that host instead of installing a bespoke
+runtime. The self-hosted Hermes-backed `uf` runtime is still documented as a
+later line, but it is no longer the default direction for app execution.
 
 User-authored Flow source uses `.js` files with `// @flow`, and so do the
 published `@uniflowed/*` packages: there are no `.js.flow` declaration files.
@@ -774,7 +814,12 @@ and a worker whose imports are pre-bundled, neither of which is done.
 the Rust lint/typecheck/format/test work, and the transform every module goes
 through. Users never write `vite.config.*`.
 
-`uf dev` and `uf build` start `@uniflowed/vite`'s driver on the project's
+Vite is the **default builder**, and `builder.module` in `uf.config.js` selects
+another. The contract between `uf` and a builder is written out under [The
+builder contract](#the-builder-contract) below; the rest of this section
+describes `@uniflowed/vite`, which is one implementation of it.
+
+`uf dev` and `uf build` start the builder's driver on the project's
 Capability JS Host — Node.js, Bun or Deno, whichever `uf.config.js` names and
 the machine has — and keep the terminal: the driver writes one JSON event per
 line and `uf` renders them. The driver loads `uf.config.js` (through `uf
@@ -796,6 +841,94 @@ under `.uf/build/server/`, never in `dist/`), and every static route
 prerendered to `dist/<route>/index.html` — with `generateStaticParams` on a
 page enumerating a parameterised route. `uf` then measures `dist/` and
 enforces `build.budgets`.
+
+### What gets rendered when
+
+The third pass has three answers per route, not two, and which ones a project
+allows is `app.rendering.modes` and `build.staticBuild`. `uf` resolves those
+two together into a *rendering plan* (`uf_config`'s `RenderingPlan`) and hands
+the builder one word — `everything`, `possible` or `nothing` — because they
+only mean something read together and three commands read them.
+
+| Route | Answer |
+| --- | --- |
+| no parameters | prerendered |
+| parameters, page exports `generateStaticParams` | prerendered, once per set |
+| parameters, no `generateStaticParams` | rendered per request |
+| any page exporting `dynamic = "force-dynamic"` | rendered per request |
+| a `_uf.route.js` handler, or anything under a `_uf.middleware.js` | answered per request |
+
+Under a plan of `everything` — `rendering.modes: ["ssg"]`, or
+`build.staticBuild` — a route in one of the last three rows is a **build
+error** naming it and both ways out, because there is no process to render it
+and a `dist/` with a hole in it is a 404 nobody sees until the deploy. Under
+`nothing` no document is written at all, which is what `["ssr"]` has always
+claimed to mean and, until it was read, did not.
+
+`build.staticBuild` additionally removes `.uf/build/server/` once the last
+document is written: the bundle is a build intermediate — the prerender renders
+through it — and the declaration is about what the build leaves behind. So
+`uf start` refuses for such a project, being the one command that loads it, and
+`uf preview` serves the output directory the way a static host would.
+`--adapter` and `--compile` still work, because each links the application
+again from source rather than reading that bundle.
+
+A fourth thing needs a process and is not a route: a `"use server"` export the
+browser can reach. The client bundle carries a server reference for it — an id
+and a `fetch` — so the call site exists whether or not anything answers, and a
+build that emits no server is where nothing does. `uf` refuses it before the
+bundle, from the RSC analysis it has already run, rather than in the builder
+with the three route-shaped reasons: it is not a route, its fix is a different
+sentence, and finding it needs no module evaluated. `--adapter` and `--compile`
+lift the refusal, because each writes something that can answer.
+
+### The builder contract
+
+A builder is a directory with a `package.json` and a driver module. uf spawns
+the driver on the Capability JS Host, holds its stdin open, and reads one JSON
+event per line from its stdout; the driver exits when that stdin closes, so it
+cannot outlive the command that started it. `builder.module` in `uf.config.js`
+selects one, and `uf explain build` names the one that will run and its
+version.
+
+**What the package declares**, under `uf.builder` in its manifest: `driver`,
+the module to spawn (default `./driver.js`), and `preload.bun`, a module handed
+to Bun's `--preload` because Bun has no `module.register` — a path inside the
+builder, or a package specifier such as `@uniflowed/host/bun-preload`.
+Optional; a builder that transforms nothing needs neither.
+
+**What uf hands the driver**: a subcommand, then arguments.
+
+| Command | Arguments | What it does |
+| --- | --- | --- |
+| `dev` | `--root --mode [--host --port --strict-port]` | Serves the project, rendering every navigation |
+| `build` | `--root --mode --out-dir --prerender --because [--static-build]` | Writes the client bundle, the server bundle and the prerendered documents |
+| `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build]` | Serves the build through the builder's own preview server |
+| `start` | `--root --out-dir [--host --port]` | Serves the build with no bundler in the process |
+| `compile` | `--root --mode --out-dir --assets --bundle` | Links the application into one module, for `uf build --compile` |
+| `deploy` | `--root --mode --out-dir --adapter --work --output` | Links the application into a directory to copy |
+| `config` | `--root` | Prints `uf.config.js` as JSON, for the Rust side to read |
+
+`--mode` is what uf resolved from `--mode`, `.uniflowed/profile` and
+`env.active`; the `.env` files it selected have already been read, by uf, into
+the driver's environment. `--prerender` is the rendering plan above and
+`--because` is the sentence to quote when refusing, so a refusal in the builder
+names the same config key a refusal in uf does. `UF_BINARY` names the `uf` that
+started it, and `UF_RSC_MANIFEST` the server-component analysis.
+
+**What the driver says**, one JSON object per line, `{"event": "...", ...}`:
+`config-loaded`, `phase`, `log`, `listening`, `page`, `page-failed`,
+`rendering`, `rsc-split`, `source-changed`, `done`, `config` and `error`. The
+full shape of each is `Event` in `crates/uf_cli/src/commands/vite.rs`, which is
+the only reader. A command a builder has not implemented is answered with
+`error` and a message naming the ones it has — never with silence and a zero
+exit, which would be a build that produced nothing and said it succeeded.
+
+**Readiness.** The seam is Implemented; `@uniflowed/vite` is the only builder
+uf ships, and `crates/uf_cli/tests/fixtures/paper-builder` is a second
+implementation that exists to keep the contract honest rather than to be used.
+A production builder for Rolldown, rspack or esbuild is **Planned**, and is a
+separate piece of work: nothing in the contract above waits on it.
 
 `@uniflowed/router` is the runtime the virtual modules call into: matching
 (`[param]`, `[...rest]`, `(group)`, most specific wins), nested layouts,

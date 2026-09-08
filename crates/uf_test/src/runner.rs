@@ -70,6 +70,17 @@ impl TestFile {
     }
 }
 
+/// One selected file, and what discovery read out of it.
+///
+/// The plan travels with the file because two decisions need it after the
+/// worker has answered: whether the file registered the tests it declared
+/// (see [`FileStatus::RegisteredNothing`]), and what the report's own plan is.
+#[derive(Debug)]
+struct SelectedFile<'a> {
+    file: &'a TestFile,
+    plan: crate::plan::TestPlan,
+}
+
 /// Notified as each file finishes, so a caller can draw a progress line.
 ///
 /// Called from worker threads, hence [`Sync`]; implementations are expected to
@@ -214,7 +225,7 @@ impl TestRunner {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         Ok(assemble(
             outcomes,
-            &selected,
+            selected,
             &schedule,
             started,
             self.options.bail,
@@ -235,11 +246,21 @@ impl TestRunner {
         requested.min(files.max(1)).max(1)
     }
 
-    /// Files that survive the path filter, in the caller's order.
-    fn select<'a>(&self, files: &'a [TestFile]) -> Vec<&'a TestFile> {
+    /// Files that survive the path filter, in the caller's order, each with
+    /// what discovery says it contains.
+    ///
+    /// Discovered once here rather than per use: the schedule, the check that
+    /// a file registered what it declared, and the plan in the report are
+    /// three readings of one scan, and a suite of a thousand files should pay
+    /// for it once.
+    fn select<'a>(&self, files: &'a [TestFile]) -> Vec<SelectedFile<'a>> {
         files
             .iter()
             .filter(|file| self.filter.matches_path(&file.relative))
+            .map(|file| SelectedFile {
+                plan: crate::discovery::discover_tests(&file.relative, &file.source),
+                file,
+            })
             .collect()
     }
 
@@ -247,7 +268,7 @@ impl TestRunner {
     fn drive(
         &self,
         host: &HostCommand,
-        selected: &[&TestFile],
+        selected: &[SelectedFile<'_>],
         schedule: &[ScheduleEntry],
         state: &RunState,
         observer: &dyn RunObserver,
@@ -263,12 +284,13 @@ impl TestRunner {
                 // Leave the slot empty; `assemble` reports it as not run.
                 continue;
             }
-            let Some(file) = selected
+            let Some(selected) = selected
                 .iter()
-                .find(|file| file.relative == schedule[at].file)
+                .find(|selected| selected.file.relative == schedule[at].file)
             else {
                 continue;
             };
+            let file = selected.file;
 
             if worker.is_none() {
                 worker = match Worker::spawn(host) {
@@ -313,6 +335,26 @@ impl TestRunner {
                 retire(&mut worker, host);
             } else if self.options.retry.max_attempts() > 1 {
                 self.retry_failures(host, file, &mut outcome, &mut worker);
+            }
+
+            // A file that loaded, finished, and reported not one case, when
+            // discovery said it holds cases. The worker reports every
+            // declaration it registered — a skip and a filtered-out case
+            // included — so an empty report from a file with declarations in
+            // it means none of them reached `@uniflowed/test`, and the run
+            // executed nothing while counting the file as done. See
+            // [`FileStatus::RegisteredNothing`], and ubugeeei-prod/uf#482 for
+            // the migration this hid: two hundred cases reported green.
+            //
+            // After the retries, not before: a status set here is not a reason
+            // to throw away a working worker, and nothing above can produce
+            // this shape without also producing records.
+            let declared = selected.plan.runnable_count();
+            if declared > 0
+                && outcome.records.is_empty()
+                && matches!(outcome.status, FileStatus::Completed)
+            {
+                outcome.status = FileStatus::RegisteredNothing { declared };
             }
 
             let report = FileReport {
@@ -473,10 +515,15 @@ impl RunState {
     }
 }
 
-fn sources_of<'a>(files: &[&'a TestFile]) -> Vec<(&'a str, &'a str)> {
+fn sources_of<'a>(files: &[SelectedFile<'a>]) -> Vec<(&'a str, &'a str)> {
     files
         .iter()
-        .map(|file| (file.relative.as_str(), file.source.as_str()))
+        .map(|selected| {
+            (
+                selected.file.relative.as_str(),
+                selected.file.source.as_str(),
+            )
+        })
         .collect()
 }
 
@@ -486,7 +533,7 @@ fn sources_of<'a>(files: &[&'a TestFile]) -> Vec<(&'a str, &'a str)> {
 /// does not depend on the schedule.
 fn assemble(
     outcomes: Vec<Option<FileReport>>,
-    selected: &[&TestFile],
+    selected: Vec<SelectedFile<'_>>,
     schedule: &[ScheduleEntry],
     started: Instant,
     bail: Bail,
@@ -504,15 +551,15 @@ fn assemble(
     }
     files.sort_by(|a, b| a.file.cmp(&b.file));
 
-    let plan = merge_plans(
-        selected
-            .iter()
-            .map(|file| crate::discovery::discover_tests(&file.relative, &file.source)),
-    );
+    // The scan every file was selected on, handed over rather than repeated:
+    // the schedule, the check that a file registered what it declared, and
+    // this plan are three readings of one discovery pass.
+    let plan = merge_plans(selected.into_iter().map(|selected| selected.plan));
 
     let mut summary = TestSummary {
         files: files.len(),
         unsupported_declarations: plan.unsupported.len(),
+        foreign_declarations: plan.foreign_count(),
         scheduled_warm: schedule
             .iter()
             .filter(|entry| matches!(entry.basis, crate::schedule::ScheduleBasis::Recorded))

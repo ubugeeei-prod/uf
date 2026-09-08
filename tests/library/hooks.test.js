@@ -765,7 +765,7 @@ describe("useScrollLock", () => {
 describe("useKeyCombo", () => {
   // This document reports a non-Apple user agent, so `mod` is Ctrl here. The
   // point of the hook is that the caller never writes that test themselves.
-  const type = (init: { ... }) => fireEvent.keyDown(globalThis.document.body, init);
+  const type = (init: { ... }) => fireEvent.keyDown(bodyOf(), init);
 
   it("needs the modifier, and refuses the ones that were not asked for", () => {
     const opened = fn();
@@ -867,9 +867,9 @@ describe("useKeyHeld", () => {
     }
     render(<Probe />);
     expect(screen.getByText("up")).toBeInTheDocument();
-    fireEvent.keyDown(globalThis.document.body, { key: "Shift" });
+    fireEvent.keyDown(bodyOf(), { key: "Shift" });
     expect(screen.getByText("held")).toBeInTheDocument();
-    fireEvent.keyUp(globalThis.document.body, { key: "Shift" });
+    fireEvent.keyUp(bodyOf(), { key: "Shift" });
     expect(screen.getByText("up")).toBeInTheDocument();
   });
 
@@ -879,7 +879,7 @@ describe("useKeyHeld", () => {
       return <output>{space ? "held" : "up"}</output>;
     }
     render(<Probe />);
-    fireEvent.keyDown(globalThis.document.body, { key: " " });
+    fireEvent.keyDown(bodyOf(), { key: " " });
     expect(screen.getByText("held")).toBeInTheDocument();
     // The `keyup` goes to whatever the reader switched to, so without this the
     // canvas would still be panning when they come back.
@@ -1076,7 +1076,7 @@ describe("more timing hooks", () => {
     expect(screen.getByText("here")).toBeInTheDocument();
 
     advance(20);
-    fireEvent.pointerMove(globalThis.document.body);
+    fireEvent.pointerMove(bodyOf());
     advance(39);
     // Past the moment the *first* wait would have expired. A version that
     // started a new timer without clearing the old one would say "idle" here,
@@ -1089,7 +1089,7 @@ describe("more timing hooks", () => {
     advance(1);
     expect(screen.getByText("idle")).toBeInTheDocument();
 
-    fireEvent.pointerMove(globalThis.document.body);
+    fireEvent.pointerMove(bodyOf());
     expect(screen.getByText("here")).toBeInTheDocument();
   });
 
@@ -1830,6 +1830,143 @@ describe("useHash", () => {
       fireEvent.popState(globalThis.window);
     });
     expect(screen.getByText("[section-three]")).toBeInTheDocument();
+  });
+
+  /**
+   * The Navigation API, modelled the way a browser implements it.
+   *
+   * happy-dom has no `navigation`, so these tests supply one — and what makes
+   * the supplied one worth anything is that the test never fires the event
+   * itself. `currententrychange` is dispatched from inside `pushState` and
+   * `replaceState`, which is exactly where the platform dispatches it, so a
+   * test below calls `history.pushState` the way `@uniflowed/router` does and
+   * the hook hears about it or does not. A stub the test poked directly would
+   * only assert that `subscribe` had called `addEventListener`, which is the
+   * shape of test the issue this fixes warns against.
+   *
+   * `listenerCount` is how the unmount test sees that the subscription is
+   * balanced, and it counts the hook's listeners because it is the set the
+   * hook adds to.
+   */
+  const installNavigationApi = () => {
+    const win = globalThis.window;
+    const listeners = new Set<() => mixed>();
+    const realPush = win.history.pushState.bind(win.history);
+    const realReplace = win.history.replaceState.bind(win.history);
+    const announce = () => {
+      // A copy, because a listener is allowed to unsubscribe while it runs.
+      for (const listener of [...listeners]) {
+        listener();
+      }
+    };
+    win.navigation = {
+      addEventListener: (type: string, listener: () => mixed) => {
+        if (type === "currententrychange") {
+          listeners.add(listener);
+        }
+      },
+      removeEventListener: (type: string, listener: () => mixed) => {
+        if (type === "currententrychange") {
+          listeners.delete(listener);
+        }
+      },
+    };
+    win.history.pushState = (state: mixed, unused: string, url: string) => {
+      realPush(state, unused, url);
+      announce();
+    };
+    win.history.replaceState = (state: mixed, unused: string, url: string) => {
+      realReplace(state, unused, url);
+      announce();
+    };
+    return {
+      listenerCount: () => listeners.size,
+      restore: () => {
+        delete win.navigation;
+        win.history.pushState = realPush;
+        win.history.replaceState = realReplace;
+      },
+    };
+  };
+
+  /**
+   * The case the hook could not see before: a write made by somebody else.
+   *
+   * `@uniflowed/router` navigates with `window.history.pushState(null, "",
+   * next + target.hash)`, and that call fires neither `hashchange` nor
+   * `popstate`. Before `currententrychange` there was no listener that would
+   * hear it, so a page whose tab strip reads `useHash` went on showing the
+   * section it was on while the address bar said otherwise.
+   */
+  it("sees a pushState made by other code where the Navigation API exists", () => {
+    const navigation = installNavigationApi();
+    component Probe() {
+      const [fragment] = useHash();
+      return <output>{`[${fragment}]`}</output>;
+    }
+    try {
+      render(<Probe />);
+      expect(screen.getByText("[]")).toBeInTheDocument();
+
+      // Not through the hook, and no event fired by hand: this is the router's
+      // call, and everything after it is the platform's doing.
+      act(() => {
+        const win = globalThis.window;
+        win.history.pushState(null, "", `${win.location.pathname}${win.location.search}#invoices`);
+      });
+
+      expect(screen.getByText("[invoices]")).toBeInTheDocument();
+    } finally {
+      navigation.restore();
+    }
+  });
+
+  /**
+   * And the honest half of the same sentence.
+   *
+   * Chrome and Edge have had the Navigation API since 102, Safari since 26.2
+   * and Firefox since 147; an older Safari or Firefox has none of it, and
+   * there this is what a router navigation still looks like. The hook does not
+   * pretend otherwise and neither does its documentation — pinning it here is
+   * what keeps the two in step, and what would fail if somebody ever removed
+   * the registry on the theory that `currententrychange` had made it
+   * redundant.
+   */
+  it("cannot see that same pushState in a browser without the Navigation API", () => {
+    component Probe() {
+      const [fragment] = useHash();
+      return <output>{`[${fragment}]`}</output>;
+    }
+    render(<Probe />);
+    expect(screen.getByText("[]")).toBeInTheDocument();
+
+    act(() => {
+      const win = globalThis.window;
+      win.history.pushState(null, "", `${win.location.pathname}${win.location.search}#invoices`);
+    });
+
+    expect(globalThis.window.location.hash).toBe("#invoices");
+    expect(screen.getByText("[]")).toBeInTheDocument();
+  });
+
+  it("removes its Navigation API listener at unmount", () => {
+    // As below: whatever the previous test left mounted comes down first, so
+    // its cleanup is not counted against this one.
+    render(<output>nothing yet</output>);
+
+    const navigation = installNavigationApi();
+    component Probe() {
+      const [fragment] = useHash();
+      return <output>{`[${fragment}]`}</output>;
+    }
+    try {
+      const { unmount } = render(<Probe />);
+      expect(navigation.listenerCount()).toBe(1);
+      unmount();
+      expect(navigation.listenerCount()).toBe(0);
+    } finally {
+      navigation.restore();
+    }
   });
 
   it("removes both of its listeners at unmount", () => {
