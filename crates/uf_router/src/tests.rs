@@ -677,3 +677,73 @@ fn a_refused_directory_never_reaches_the_generated_types() {
         "a manifest was written for a project the router refuses"
     );
 }
+
+/// The two roles a static host has no answer for, found where the route table
+/// cannot report them.
+///
+/// Both halves of that are the assertion. `app/api/health` has a handler and
+/// no page, so it is in no `Route` at all; `app/dashboard` declares a
+/// middleware and has no page either, so it is in no `Route::middleware`
+/// list — the only route below it that would have carried the chain is
+/// `/dashboard/settings`, and a project may guard a subtree before it has one.
+/// A caller asking "can this project be served by a static host" got `false`
+/// from neither.
+#[test]
+fn discovers_the_route_handlers_and_middleware_the_route_table_does_not_carry() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/api/health")).unwrap();
+    fs::create_dir_all(root.join("app/dashboard")).unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/api/health/_uf.route.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/_uf.middleware.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+    assert_eq!(routes.len(), 1, "only `/` has a page");
+    assert!(routes[0].middleware.is_empty());
+
+    let modules = discover_server_modules(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(modules.len(), 2);
+    assert_eq!(modules[0].path, "/api/health");
+    assert_eq!(modules[0].kind, ServerModuleKind::RouteHandler);
+    assert_eq!(modules[0].file, root.join("app/api/health/_uf.route.js"));
+    assert_eq!(modules[1].path, "/dashboard");
+    assert_eq!(modules[1].kind, ServerModuleKind::Middleware);
+}
+
+/// One report per directory, whichever spelling the build's router would run.
+///
+/// `find_module` decides that for pages, and it has to decide it here too: a
+/// directory holding both spellings is one handler, and reporting two would
+/// make a refusal that lists them read as if the project had a problem twice.
+#[test]
+fn a_directory_with_two_spellings_of_a_handler_is_one_handler() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/api")).unwrap();
+    fs::write(root.join("app/api/_uf.route.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/api/_uf.route.jsx"), "// @flow\n").unwrap();
+
+    let modules = discover_server_modules(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(modules.len(), 1);
+    assert_eq!(modules[0].file, root.join("app/api/_uf.route.js"));
+}
+
+/// A project with neither is a project a static host can serve, and says so
+/// with an empty list rather than with an absent one.
+#[test]
+fn a_project_with_no_server_modules_reports_none() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/guide")).unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/guide/_uf.page.js"), "// @flow\n").unwrap();
+
+    assert!(
+        discover_server_modules(&root, &UniflowedConfig::default())
+            .unwrap()
+            .is_empty()
+    );
+}
