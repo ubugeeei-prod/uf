@@ -79,6 +79,7 @@ pub(crate) const KNOWN: &[&str] = &[
     "publish",
     "release",
     "lsp",
+    "mcp",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -221,6 +222,7 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
         "publish" => publish_stages(resolved),
         "release" => release_stages(resolved),
         "lsp" => lsp_stages(resolved),
+        "mcp" => mcp_stages(),
         _ => return None,
     })
 }
@@ -603,6 +605,38 @@ fn lsp_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: format!(
                 "the same printer `uf fmt` uses, at {} columns",
                 resolved.config.fmt.line_width
+            ),
+        },
+    ]
+}
+
+/// `uf mcp`, whose two facts are the framing and the fact that it runs the
+/// commands rather than reimplementing them.
+fn mcp_stages() -> Vec<Stage> {
+    let tools = crate::commands::mcp::tools();
+    let writes = tools
+        .iter()
+        .filter(|tool| {
+            tool["description"]
+                .as_str()
+                .is_some_and(|text| text.contains("WRITES"))
+        })
+        .count();
+    vec![
+        Stage {
+            name: "transport",
+            provider: "uf".to_string(),
+            // Not `uf lsp`'s framing, and the difference is the whole reason
+            // this line is here: MCP's stdio transport is one JSON message per
+            // line, with no `Content-Length` header.
+            detail: "JSON-RPC over stdio, newline-delimited".to_string(),
+        },
+        Stage {
+            name: "tools",
+            provider: "uf".to_string(),
+            detail: format!(
+                "{} tools over the same commands this CLI runs; {writes} of them write",
+                tools.len()
             ),
         },
     ]

@@ -30,6 +30,17 @@ pub(crate) struct Ui {
     stderr: Renderer,
     mode: OutputMode,
     buffer: String,
+    /// Where stdout goes, when it is not going to stdout.
+    ///
+    /// `None` for every command a person runs. `Some` for a caller that has to
+    /// *read* what a command wrote rather than let it reach the terminal —
+    /// which is `uf mcp`, where stdout carries the JSON-RPC frames and a
+    /// command's own output written there would corrupt the protocol.
+    ///
+    /// stderr is deliberately not captured. It is where a server logs, no
+    /// machine output goes there, and a command's warnings reaching the
+    /// operator is correct in both cases.
+    captured: Option<String>,
 }
 
 impl Ui {
@@ -41,6 +52,43 @@ impl Ui {
             stderr: Renderer::new(Capabilities::for_stderr(choice, &env)),
             mode,
             buffer: String::with_capacity(8 * 1024),
+            captured: None,
+        }
+    }
+
+    /// A [`Ui`] whose stdout is a string the caller can read back.
+    ///
+    /// The command runs unchanged — same code, same `--json`, same everything
+    /// a terminal would have got — and what it wrote is taken with
+    /// [`Ui::take_captured`]. Capabilities are resolved as if stdout were not
+    /// a terminal, because it is not: a captured stream has no width and no
+    /// colour, and a caller reading it back wants the plain form.
+    pub(crate) fn capturing(mode: OutputMode) -> Self {
+        Self {
+            stdout: Renderer::new(Capabilities::plain()),
+            stderr: Renderer::new(Capabilities::plain()),
+            mode,
+            buffer: String::with_capacity(8 * 1024),
+            captured: Some(String::new()),
+        }
+    }
+
+    /// Everything written to stdout since the last take, leaving it empty.
+    ///
+    /// Empty for a [`Ui`] that is not capturing, which is the honest answer:
+    /// what it wrote went to the terminal and is not uf's to hand back.
+    pub(crate) fn take_captured(&mut self) -> String {
+        self.captured
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    /// Write to stdout, or to the capture buffer when there is one.
+    fn write_out(&mut self, text: &str) {
+        match &mut self.captured {
+            Some(sink) => sink.push_str(text),
+            None => write_all(&mut io::stdout().lock(), text),
         }
     }
 
@@ -56,7 +104,11 @@ impl Ui {
         }
         self.buffer.clear();
         body(&self.stdout, &mut self.buffer);
-        write_all(&mut io::stdout().lock(), &self.buffer);
+        // Lent out and put back, so the reusable allocation survives a write
+        // that needs `&mut self` while the text it writes lives in `self`.
+        let rendered = std::mem::take(&mut self.buffer);
+        self.write_out(&rendered);
+        self.buffer = rendered;
     }
 
     /// Render a block to stderr. Always rendered, including in JSON mode,
@@ -77,7 +129,7 @@ impl Ui {
     /// the silence [`Ui::render`] would give it, since both commands are in
     /// JSON mode precisely because they own stdout.
     pub(crate) fn plain(&mut self, text: &str) {
-        write_all(&mut io::stdout().lock(), text);
+        self.write_out(text);
     }
 
     /// Write text to stderr exactly as given, with no styling and no framing.
@@ -96,7 +148,7 @@ impl Ui {
     pub(crate) fn json(&mut self, value: &serde_json::Value) -> serde_json::Result<()> {
         let mut rendered = serde_json::to_string_pretty(value)?;
         rendered.push('\n');
-        write_all(&mut io::stdout().lock(), &rendered);
+        self.write_out(&rendered);
         Ok(())
     }
 
@@ -175,6 +227,46 @@ pub(crate) fn widest<'a>(values: impl IntoIterator<Item = &'a str>) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A capturing `Ui` hands back what a command wrote instead of printing it.
+    ///
+    /// The property `uf mcp` needs: stdout carries the JSON-RPC frames there,
+    /// so a command that wrote its own output to the real stdout would corrupt
+    /// the protocol. See ubugeeei-prod/uf#507.
+    #[test]
+    fn a_capturing_ui_keeps_stdout_instead_of_printing_it() {
+        let mut ui = Ui::capturing(OutputMode::Json);
+        ui.json(&serde_json::json!({ "ok": true }))
+            .expect("serialises");
+        ui.plain("tail\n");
+
+        let written = ui.take_captured();
+        assert!(written.contains("\"ok\": true"), "{written:?}");
+        assert!(written.ends_with("tail\n"), "{written:?}");
+        // Taken, not copied: a second call sees only what came after.
+        assert_eq!(ui.take_captured(), "");
+    }
+
+    /// Human rendering is captured too, not only the machine output.
+    ///
+    /// `--json` is not the only thing an in-process caller might want back, and
+    /// a capture that silently dropped the rendered form would be a second
+    /// surface — which is the thing #507 exists to avoid.
+    #[test]
+    fn a_capturing_ui_keeps_rendered_output_as_well() {
+        let mut ui = Ui::capturing(OutputMode::Human);
+        ui.render(|_, out| out.push_str("rendered\n"));
+        ui.render(|_, out| out.push_str("twice\n"));
+
+        assert_eq!(ui.take_captured(), "rendered\ntwice\n");
+    }
+
+    /// And a `Ui` that is not capturing says so rather than inventing output.
+    #[test]
+    fn an_ordinary_ui_captures_nothing() {
+        let mut ui = Ui::new(ColorChoice::Never, OutputMode::Json);
+        assert_eq!(ui.take_captured(), "");
+    }
 
     #[test]
     fn json_mode_suppresses_human_rendering() {

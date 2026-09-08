@@ -56,6 +56,7 @@ const COMMANDS: &[&str] = &[
     "lint",
     "ls",
     "lsp",
+    "mcp",
     "prepare",
     "preview",
     "publish",

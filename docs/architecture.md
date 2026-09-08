@@ -1173,6 +1173,36 @@ it, reading `.` instead of the directory it resolved. That is a bug in the
 server rather than in the clients; until it is fixed, `cwd` is the only thing
 that works, and every README under `editors/` says so.
 
+`uf mcp` is the same idea for an agent rather than an editor, and shares no code
+with `uf lsp` beyond the observation that both are JSON-RPC. The transports are
+different: LSP frames each message with a `Content-Length` header, and MCP's
+stdio transport is one JSON message per line. `tests/library/mcp.test.js`
+asserts the framing against the real binary for exactly that reason — a server
+that confused the two would pass every unit test and talk to no client.
+
+What it exposes is the commands themselves. Each tool calls the function
+`crates/uf_cli/src/lib.rs` already dispatches to, with a `Ui` that captures
+stdout instead of writing it (`Ui::capturing`), and returns what the command
+printed. That is not a preference: in a stdio server stdout *is* the protocol,
+so a command writing its own output would corrupt the stream. It also means
+there is no second surface to drift — a diagnostic that gains a field gains it
+here on the same commit.
+
+One table, `SPECS`, is what `tools/list` advertises and what `tools/call`
+dispatches, and it carries two things per tool. `Effect` is the three-way
+distinction a caller needs before choosing: reads, writes, or runs the
+project's code — stated in the name for the two that write (`uf_fmt_write`,
+`uf_lint_fix`) and in the last sentence of every description. `Speaks` is which
+`OutputMode` the command needs, and it is load-bearing rather than
+housekeeping: `Ui::render` writes nothing at all in JSON mode, so `uf info` and
+`uf routes list` return an empty string if they are asked for JSON. Both of
+those were found by pointing the official MCP SDK's client at the server, which
+is the check a unit test cannot make.
+
+Unlike `uf lsp`, `uf mcp` takes the resolved working directory as an argument,
+so `uf --cwd <project> mcp` works and an agent can name the project on the
+command line.
+
 Native package output follows a napi-rs-style target model. The generated
 TypeScript declaration files are converted into Flow declaration files so the
 repository and published library surface remain Flow-first.

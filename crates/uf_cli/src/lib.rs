@@ -328,6 +328,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         ),
         Commands::Clean { deps, dry_run } => commands::clean::clean(&cwd, ui, deps, dry_run),
         Commands::Lsp => commands::dev::lsp(&cwd),
+        Commands::Mcp => commands::mcp::mcp(&cwd),
         Commands::Preview { host, port, mode } => {
             commands::serve::preview(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }
