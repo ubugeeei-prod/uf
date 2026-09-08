@@ -26,6 +26,11 @@
 import { Buffer } from "node:buffer";
 
 import { describe, expect, it } from "@uniflowed/testing";
+// From the implementation package rather than through `@uniflowed/testing`,
+// which re-exports the declarations and the React Testing Library surface and
+// not the `uft` namespace. One import reaching past the façade is a smaller
+// thing than widening a published package's exports for a test's convenience.
+import { uft } from "@uniflowed/test";
 import { beginRequest } from "@uniflowed/server/host";
 import { createHandler } from "@uniflowed/server/standalone";
 
@@ -355,9 +360,16 @@ describe("writing a handler's body to the socket", () => {
    *
    * Endless on purpose: a body that finishes on its own proves nothing about
    * pacing or about cancelling, because the loop stops either way.
+   *
+   * `reading` is true from the moment a pull is asked for until the chunk it
+   * produces is enqueued, and it is what lets a test wait for the producer to
+   * be *idle* rather than guess how long idle takes. A count alone cannot say
+   * that: a pull already in flight raises it after the count was taken, which
+   * is not the stream being read on — it is the same read finishing. See
+   * ubugeeei-prod/uf#593.
    */
   function endless() {
-    const state = { pulls: 0, cancelled: false };
+    const state = { pulls: 0, reading: false, cancelled: false };
     const handle = createHandler({
       app: {
         beginRequest,
@@ -371,9 +383,11 @@ describe("writing a handler's body to the socket", () => {
               // producer that resolves in a microtask starves the timers this
               // test is driven by — and no real body is instant either.
               async pull(controller) {
+                state.reading = true;
                 await new Promise((resolve) => setTimeout(resolve, 2));
                 state.pulls += 1;
                 controller.enqueue(new TextEncoder().encode(`chunk ${String(state.pulls)}\n`));
+                state.reading = false;
               },
               cancel() {
                 state.cancelled = true;
@@ -401,18 +415,36 @@ describe("writing a handler's body to the socket", () => {
       response,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // Waited for rather than timed, and the wait is for a *state* rather than
+    // for a number: the writer is parked on `drain` — that listener is its
+    // own, attached only while it is waiting to be told the socket can take
+    // more — and nothing is in flight behind it. Thirty milliseconds and a
+    // count used to stand in for both, and on a loaded machine the pull that
+    // was already in flight when `write` came back `false` landed on the wrong
+    // side of the line: `expected 2 to be 1`, two runs in three. That number
+    // was the scheduler's to choose and never the code's. See
+    // ubugeeei-prod/uf#593.
+    //
+    // Two seconds rather than `waitUntil`'s default second, and both waits in
+    // this case together stay inside the five-second budget a case is given —
+    // so a genuinely broken drain is reported as the wait that failed rather
+    // than as a case that ran out of time, which says much less.
+    await uft.waitUntil(() => response.listening("drain") === 1 && !state.reading, {
+      timeout: 2_000,
+    });
     const held = state.pulls;
     expect(held > 0).toBe(true);
-    // Nothing more was pulled while the socket said it was full, however many
-    // turns of the loop went by.
+
+    // And there it stays. Nothing is reading, nothing is in flight, and the
+    // stream's own one-chunk buffer is full, so no length of wait can move the
+    // count — while a loop that read on regardless of `write`'s answer moves
+    // it about fifteen times in this window.
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(state.pulls).toBe(held);
 
     // And it is a pause rather than a stop.
     response.emit("drain");
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(state.pulls > held).toBe(true);
+    await uft.waitUntil(() => state.pulls > held, { timeout: 2_000 });
 
     response.emit("close");
     await request;
