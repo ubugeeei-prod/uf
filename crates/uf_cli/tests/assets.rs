@@ -27,6 +27,7 @@ mod support;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use support::{Project, uf};
 
@@ -745,4 +746,118 @@ fn a_card_uf_cannot_lay_out_fails_the_build_rather_than_drawing_it() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(message.contains("right-to-left"), "{message}");
+}
+
+/// How long a program that resizes one image may take to finish and exit.
+///
+/// Generous on purpose, and for the reason `tests/bun_host.rs` gives about its
+/// own: this is not a performance assertion, it is the line between "failed"
+/// and "hung", and the machine may be building something else. A run that is
+/// over this has not decoded a PNG slowly, it has stopped exiting.
+const EXIT_DEADLINE: Duration = Duration::from_secs(120);
+
+/// Run `entry` under plain `node` in `project`, or fail saying it never ended.
+///
+/// The two streams go to files rather than pipes, and that is not tidiness: a
+/// pipe holds about 64 KB and a child that fills one blocks until somebody
+/// reads it. Nothing here can read while it is also watching the clock, so a
+/// talkative failure would look exactly like the hang this exists to catch.
+fn run_until_it_exits(project: &Project, entry: &str) -> (Option<i32>, String, String) {
+    let out_path = project.path().join("node.stdout");
+    let err_path = project.path().join("node.stderr");
+    let mut child = Command::new("node")
+        .arg(project.path().join(entry))
+        .current_dir(project.path())
+        .env("UF_BINARY", support::uf_path())
+        .env("UF_PROJECT_ROOT", project.path())
+        .stdout(std::process::Stdio::from(
+            fs::File::create(&out_path).unwrap(),
+        ))
+        .stderr(std::process::Stdio::from(
+            fs::File::create(&err_path).unwrap(),
+        ))
+        .spawn()
+        .expect("node is on PATH");
+
+    let deadline = Instant::now() + EXIT_DEADLINE;
+    let status = loop {
+        match child.try_wait().expect("waiting on node") {
+            Some(status) => break status,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!(
+                    "node did not exit within {EXIT_DEADLINE:?} after running {entry}. The \
+                     program itself finishes; what keeps the process alive is the `uf assets` \
+                     child the service started, which `AssetService` unreferences between \
+                     requests precisely so this cannot happen.\nstdout:\n{}\nstderr:\n{}",
+                    fs::read_to_string(&out_path).unwrap_or_default(),
+                    fs::read_to_string(&err_path).unwrap_or_default(),
+                );
+            }
+            None => std::thread::sleep(Duration::from_millis(50)),
+        }
+    };
+
+    (
+        status.code(),
+        fs::read_to_string(&out_path).unwrap_or_default(),
+        fs::read_to_string(&err_path).unwrap_or_default(),
+    )
+}
+
+/// A host that drove the asset pipeline and has nothing left to do.
+///
+/// Deliberately without `service.close()`: the Vite driver calls it in
+/// `buildEnd` and that is why this was invisible, but "the host closed it" is
+/// not the property under test. A service holds its host open for exactly as
+/// long as it owes an answer, and this program owes none by the time it ends.
+const DRIVES_ASSETS: &str = r#"import { AssetService } from "@uniflowed/host/assets";
+
+const service = new AssetService({ root: process.cwd() });
+const manifest = await service.image(new URL("./hero.png", import.meta.url).pathname, {
+  outDir: new URL("./out", import.meta.url).pathname,
+  widths: [100],
+});
+console.log(`image=${manifest.width}x${manifest.height} variants=${manifest.variants.length}`);
+"#;
+
+/// #596: a host that drives assets and then has nothing left to do exits.
+///
+/// The shape is `tests/bun_host.rs`'s and so is the reason for it: a live
+/// child process and its pipes are handles, a host with a handle open does not
+/// exit, and a regression here does not fail a test that reads its output — it
+/// hangs one. So this asserts on a *finished* process, with a deadline instead
+/// of `output()`, and the panic names the service rather than the symptom.
+///
+/// It runs on Node, which is the host that has one of these today, and Node is
+/// enough to see it: the accident that hid this in `TransformService` was that
+/// module hooks run on a loader thread whose handles do not keep the process
+/// alive, and nothing about `AssetService` is on a loader thread. It is
+/// constructed by the Vite plugin, on the main thread, where a reffed child is
+/// a build that finishes and then sits there.
+#[test]
+fn a_host_that_drove_the_asset_pipeline_exits_when_it_is_done() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[("drives-assets.js", DRIVES_ASSETS)]);
+    write_png(&project.path().join("hero.png"), 200, 150);
+
+    let (status, stdout, stderr) = run_until_it_exits(&project, "drives-assets.js");
+
+    assert_eq!(status, Some(0), "stdout:\n{stdout}\nstderr:\n{stderr}");
+    // And it did the work rather than exiting early: an exit code of zero from
+    // a program that never reached the service would prove nothing at all. The
+    // intrinsic size is the file's own and the variant count is the pipeline's
+    // to decide, so the assertion names the first exactly and the second only
+    // as "more than none".
+    assert!(
+        stdout.contains("image=200x150"),
+        "the image was not measured:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(
+        !stdout.contains("variants=0"),
+        "the image was not resized:\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
 }

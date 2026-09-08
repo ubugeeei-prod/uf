@@ -47,7 +47,7 @@
 // character.
 
 import type { MouseEvent } from "./mouse.js";
-import { decodeMouse, legacyReportLength } from "./mouse.js";
+import { LEGACY_REPORT_LENGTH, decodeMouse, legacyReportLength } from "./mouse.js";
 
 /** Which of the two parsers produced an event. */
 export type KeySource = "raw" | "escape";
@@ -114,6 +114,12 @@ const ESC = "\u001b";
 /** What a terminal in bracketed paste mode puts around pasted text. */
 const PASTE_START = "\u001b[200~";
 const PASTE_END = "\u001b[201~";
+
+/** What an SGR-1006 mouse report begins with; `mouse.js` has the rest. */
+const MOUSE_SGR = "\u001b[<";
+
+/** What a terminal that ignored `?1006h` begins one with instead. */
+const MOUSE_LEGACY = "\u001b[M";
 
 /** The `CSI …` final bytes that name a key on their own. */
 const CSI_FINAL: { [string]: string } = {
@@ -216,49 +222,117 @@ function pasteEvent(text: string, raw: string): KeyEvent {
 }
 
 /**
- * A decoder that survives a paste arriving in pieces.
+ * A decoder that survives a sequence arriving in pieces.
  *
  * {@link decodeInput} is a pure function of one chunk, which is right for
- * every key: a terminal delivers an escape sequence in a single read. A paste
- * is the exception — it is as long as the clipboard, and the operating system
- * splits a large one across reads wherever it likes, including in the middle
- * of a word and including between the text and its terminator. So a driver
- * reading a real stream holds one of these across chunks, and the text that
- * arrives is the text that was pasted rather than the first sixty-four
- * kilobytes of it followed by a burst of keys.
+ * every key: a terminal delivers a key's escape sequence in a single read, and
+ * `ESC` at the end of a chunk is the Escape key. Two things a terminal sends
+ * are not keys and do not keep that promise — a paste, which is as long as the
+ * clipboard, and a mouse report, which a terminal in any-motion mode sends one
+ * of per cell the pointer crosses. The operating system splits either wherever
+ * it likes. So a driver reading a real stream holds one of these across
+ * chunks.
+ *
+ * # The one rule, and what bounds it
+ *
+ * `push` holds back a trailing run of bytes that **cannot be anything but the
+ * beginning of a sequence this decoder must see whole** — see `incomplete`,
+ * which is the whole of that judgement and the only place it is made. Nothing
+ * else is buffered: a chunk that ends anywhere else is decoded completely,
+ * because every other sequence a terminal sends either fits in a read or is
+ * ambiguous with a key that must fire now.
+ *
+ * A held run is released by exactly two things. The next chunk completes it,
+ * or {@link InputDecoder.flush} says no next chunk is coming and the bytes are
+ * decoded as they stand. And a run that grows past {@link HOLD_LIMIT} without
+ * completing is not one of these sequences however it began, so it is decoded
+ * rather than held — which is what keeps a terminal emitting nonsense from
+ * wedging the decoder even where nobody calls `flush`.
  */
 export type InputDecoder = {
-  /** Decode one chunk, holding back a paste that has not ended yet. */
+  /** Decode one chunk, holding back a sequence that has not ended yet. */
   push(chunk: string): Array<InputEvent>,
-  /** Give up on an unterminated paste and emit what arrived. */
+  /** Give up on an unfinished sequence and emit what arrived. */
   flush(): Array<InputEvent>,
 };
 
 /**
- * Whether `input` from `start` could still become a paste introducer.
+ * The longest run of bytes this decoder will hold waiting for the rest of it.
+ *
+ * Every sequence `incomplete` waits for is shorter: the paste introducer is
+ * six bytes, an old-style mouse report is six, and an SGR report is
+ * `ESC [ <` plus three decimal parameters, two semicolons and a final byte —
+ * nineteen bytes for coordinates larger than any terminal has. Past this, the
+ * bytes are not the sequence they looked like and are decoded as what they
+ * are.
+ *
+ * The bound is what makes the hold safe without a timer. `flush` is the
+ * ordinary way out and a driver calls it when its stream ends; this is for the
+ * case where nothing ever calls it and the terminal has sent `ESC [ <` and
+ * then a thousand digits.
+ */
+const HOLD_LIMIT = 32;
+
+/**
+ * Whether the bytes from `start` begin a sequence whose rest has not arrived.
+ *
+ * The one buffering rule. It answers for the three sequences a read boundary
+ * can fall inside and this decoder would otherwise mis-decode:
+ *
+ *   * `ESC [ 2 0 0 ~`, the paste introducer, where a split turns the marker
+ *     into Alt-and-a-bracket followed by three digits and the paste's first
+ *     line then runs as typing;
+ *   * `ESC [ <` …, an SGR mouse report, where a split turns a click into the
+ *     characters of its coordinates — ubugeeei-prod/uf#612, and the traffic
+ *     `?1003h` produces is a report per cell crossed, which is the traffic
+ *     most likely to be split;
+ *   * `ESC [ M` …, the old-style report, whose three payload bytes are
+ *     arbitrary and become arbitrary keys.
  *
  * Two bytes at least, so a lone `ESC` is still the Escape key: holding that
  * back would mean Escape never fires until the next keystroke, which is worse
- * than the ambiguity it would solve. From `ESC[` on there is nothing else it
- * could be that this decoder would get right anyway — an unfinished CSI at the
- * end of a chunk decodes today as Alt and a bracket.
+ * than the ambiguity it would solve. From `ESC[` on there is nothing else the
+ * bytes could be that this decoder would get right anyway — an unfinished CSI
+ * at the end of a chunk decodes as Alt and a bracket.
+ *
+ * It is deliberately *not* asked about a complete sequence with more input
+ * after it. A run is held only when it reaches the end of the chunk, which is
+ * what "the rest has not arrived" means; a report followed by a keystroke has
+ * a final byte and is decoded where it stands.
  */
-function beginsPaste(input: string, start: number): boolean {
-  const rest = input.length - start;
-  return rest >= 2 && rest < PASTE_START.length && PASTE_START.startsWith(input.slice(start));
+function incomplete(input: string, start: number): boolean {
+  const rest = input.slice(start);
+  if (rest.length < 2 || rest.length > HOLD_LIMIT || !rest.startsWith(ESC)) {
+    return false;
+  }
+  if (rest.length < PASTE_START.length && PASTE_START.startsWith(rest)) {
+    return true;
+  }
+  if (rest.startsWith(MOUSE_SGR)) {
+    // Complete when the final byte has arrived, and no longer a report at all
+    // once something that is not a parameter byte has: `decodeMouse` answers
+    // `null` for that and the bytes fall through to the key grammar, which is
+    // where they should fall through rather than being waited on for ever.
+    const parameters = rest.slice(MOUSE_SGR.length);
+    return /^[0-9;]*$/.test(parameters);
+  }
+  if (rest.startsWith(MOUSE_LEGACY)) {
+    return rest.length < LEGACY_REPORT_LENGTH;
+  }
+  return false;
 }
 
-/** A decoder with somewhere to keep a half-arrived paste. */
+/** A decoder with somewhere to keep a half-arrived sequence. */
 export function createInputDecoder(): InputDecoder {
   let pending: string | null = null;
-  /** A chunk that ended part-way through `ESC[200~`. */
-  let introducer = "";
+  /** A chunk that ended part-way through a sequence; see `incomplete`. */
+  let waiting = "";
 
   const decoder: InputDecoder = {
     push(chunk: string): Array<InputEvent> {
       const events: Array<InputEvent> = [];
-      let input = introducer + chunk;
-      introducer = "";
+      let input = waiting + chunk;
+      waiting = "";
       if (pending != null) {
         const end = input.indexOf(PASTE_END);
         if (end < 0) {
@@ -273,8 +347,8 @@ export function createInputDecoder(): InputDecoder {
 
       let index = 0;
       while (index < input.length) {
-        if (beginsPaste(input, index)) {
-          introducer = input.slice(index);
+        if (incomplete(input, index)) {
+          waiting = input.slice(index);
           return events;
         }
         if (input.startsWith(PASTE_START, index)) {
@@ -294,11 +368,11 @@ export function createInputDecoder(): InputDecoder {
       return events;
     },
     flush(): Array<InputEvent> {
-      if (introducer !== "") {
-        // Not a paste after all: no more input is coming, so the bytes are
-        // whatever they decode to on their own.
-        const held = introducer;
-        introducer = "";
+      if (waiting !== "") {
+        // Not the sequence it looked like after all: no more input is coming,
+        // so the bytes are whatever they decode to on their own.
+        const held = waiting;
+        waiting = "";
         const events: Array<InputEvent> = [];
         let index = 0;
         while (index < held.length) {
@@ -325,9 +399,11 @@ export function createInputDecoder(): InputDecoder {
  * rest loses characters under exactly the conditions — fast typing — where
  * losing them is most obvious.
  *
- * One chunk, decoded completely: a paste this chunk begins and does not end is
- * emitted anyway, because there is no later chunk for a pure function to wait
- * for. A driver reading a stream wants {@link createInputDecoder} instead.
+ * One chunk, decoded completely. A sequence this chunk begins and does not end
+ * is not held, because there is no later chunk for a pure function to wait for:
+ * an unfinished paste is emitted as the paste it was becoming, and an
+ * unfinished mouse report is decoded as the bytes it is. A driver reading a
+ * stream wants {@link createInputDecoder} instead, which holds them.
  */
 export function decodeInput(input: string): Array<InputEvent> {
   const decoder = createInputDecoder();
