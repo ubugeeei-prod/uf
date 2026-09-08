@@ -27,6 +27,7 @@
     "./standalone": "./standalone.js"
   },
   "files": [
+    "bun.js",
     "cache.js",
     "edge.js",
     "events.js",
