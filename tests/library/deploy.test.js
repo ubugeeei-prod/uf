@@ -10,14 +10,22 @@
 // themselves are built, copied somewhere with no `node_modules` above them,
 // and asked.
 //
-// There are four adapters that run an application, and three host halves
+// There are five adapters that run an application, and four host halves
 // rather than one: `@uniflowed/server/node` for `node` and `container`,
-// `@uniflowed/server/edge` for a Cloudflare Worker, and
-// `@uniflowed/server/lambda` for an AWS Lambda invocation. Each of them wraps
-// the *same* `createFetchHandler`, and the last `describe` in this file is
-// what says so out loud.
+// `@uniflowed/server/bun` for `bun`, `@uniflowed/server/edge` for a
+// Cloudflare Worker, and `@uniflowed/server/lambda` for an AWS Lambda
+// invocation. Each of them wraps the *same* `createFetchHandler`, and the last
+// `describe` in this file is what says so out loud.
 //
-// `--adapter static` is the fifth and is not here, because it has no handler
+// Three of the four are driven here. `@uniflowed/server/bun` is not, and
+// cannot be: `Bun.serve` and `Bun.file` are not defined in the host running
+// this suite, which is Node. What that module does *not* have of its own is
+// the part that would be worth driving — the path policy is
+// `@uniflowed/server/internal/static.js`, shared with the Node half and
+// therefore already under every static assertion below.
+// `crates/uf_cli/tests/vite.rs` is where its socket runs, on Bun.
+//
+// `--adapter static` is the sixth and is not here, because it has no handler
 // to reuse: a static host runs nothing, so that target's whole implementation
 // is deciding whether the project may be served that way at all. That decision
 // is Rust — it needs the route table and what the prerender wrote — and lives

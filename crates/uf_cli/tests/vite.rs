@@ -1945,7 +1945,7 @@ fn preview_and_start_serve_the_whole_of_a_build() {
 ///
 /// `routerView` fixes *this* render's instant and *this* render's seed into
 /// the anchor ([`without_the_render_anchor`] is the same fact from the other
-/// side, where four adapters differ there by construction). So two reads of
+/// side, where five adapters differ there by construction). So two reads of
 /// one prerendered file carry the same envelope and two renders never do,
 /// which is a discriminator every front door already emits — nothing has to be
 /// planted in `dist/` to get one. That matters here: [`assert_served`] is
@@ -2010,9 +2010,14 @@ fn document_script(body: &str) -> Option<String> {
 /// probe living inside the artefact could be resolving something the artefact
 /// happens to sit next to; one outside it can only reach what was copied.
 ///
-/// One script for the four server adapters, because the whole claim of the
-/// seam is that they differ in one file. `node` and `container` are asked through
-/// `handler.js` and own the request themselves, the way `server.js` does;
+/// One script for the five server adapters, because the whole claim of the
+/// seam is that they differ in one file. `node`, `bun` and `container` are
+/// asked through `handler.js` and own the request themselves, the way
+/// `server.js` does — and `bun` is asked here under *Node*, deliberately: what
+/// this compares is the application, which is host-independent by
+/// construction. What is Bun's about that adapter is `server.js`, and
+/// `the_bun_adapter_writes_a_directory_bun_serves_from_an_empty_one` is where
+/// that runs on Bun;
 /// `edge` is asked through `worker.js`'s default export, with the two
 /// arguments Cloudflare passes; `serverless` is asked through `lambda.js`'s
 /// `handler`, with the payload format 2.0 event a Function URL sends. The
@@ -2109,6 +2114,7 @@ async function lambdaDoor() {
 
 const doors = {
   node: applicationDoor,
+  bun: applicationDoor,
   container: applicationDoor,
   edge: workerDoor,
   serverless: lambdaDoor,
@@ -2466,7 +2472,33 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
     );
 
     match adapter {
-        "node" => assert!(deployed.join("server.js").is_file()),
+        "node" => {
+            assert!(deployed.join("server.js").is_file());
+            assert!(
+                !fs::read_to_string(deployed.join("handler.js"))
+                    .unwrap()
+                    .contains("Bun."),
+                "the `node` artefact must run anywhere a JavaScript runtime does"
+            );
+        }
+        // The assertion the issue asks for by name: an adapter that is not
+        // actually a different server is "a directory with a different name on
+        // it". `bun`'s bundle has to hold `Bun.serve` and `Bun.file` and no
+        // `node:http` server — see ubugeeei-prod/uf#391.
+        "bun" => {
+            assert!(deployed.join("server.js").is_file());
+            let bundled = fs::read_to_string(deployed.join("handler.js")).unwrap();
+            for expected in ["Bun.serve", "Bun.file"] {
+                assert!(
+                    bundled.contains(expected),
+                    "the `bun` artefact must actually use {expected}"
+                );
+            }
+            assert!(
+                !bundled.contains("createServer"),
+                "a `bun` artefact carrying `node:http`'s server is the `node` one renamed"
+            );
+        }
         "container" => {
             assert!(deployed.join("server.js").is_file());
             let dockerfile = fs::read_to_string(deployed.join("Dockerfile")).unwrap();
@@ -2638,6 +2670,77 @@ fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
     );
 }
 
+/// `uf build --adapter bun` writes a directory Bun serves, from an empty one.
+///
+/// The sibling of the `node` test above, and the half of ubugeeei-prod/uf#391
+/// that only Bun can establish: everything else about this adapter is asserted
+/// through `handler.js` in the comparison below, and `handler.js` is not the
+/// part that differs. `server.js` is — `Bun.serve` where `node`'s takes a
+/// `node:http` socket — and a `Bun.serve` that never bound would be invisible
+/// to every other test here.
+///
+/// It asks through `assert_served`, which is the function `uf preview` and
+/// `uf start` are asked with, so what is established is the same sentence the
+/// `node` adapter's test establishes: the deployment answers what the preview
+/// answered.
+///
+/// Like the two `--compile` tests, this fails rather than skips when Bun is
+/// absent: an adapter for a runtime nobody ran it on is an adapter nobody has.
+#[test]
+fn the_bun_adapter_writes_a_directory_bun_serves_from_an_empty_one() {
+    if !fixture_ready() || !bun_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let (stdout, empty) = deploy_and_copy(&root, "bun");
+    assert!(
+        stdout.contains("bun server.js"),
+        "the summary must say how to run it; missing \"bun server.js\" in:\n{stdout}"
+    );
+    let deployed = empty.path().join("app");
+    assert_artefact_shape("bun", &deployed);
+
+    if !loopback_ready() {
+        return;
+    }
+
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut command = Command::new("bun");
+            command
+                .arg("server.js")
+                .args(["--host", "127.0.0.1", "--port", &port.to_string()])
+                .current_dir(&deployed);
+            let mut server = Server::spawn(command, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_served(&mut server, port, &said, &body, "build --adapter bun");
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the deployed `bun` directory never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
 /// The other three adapters, and the one thing they may not differ in.
 ///
 /// `uf build --adapter node` has its own test above, because it is the one
@@ -2648,7 +2751,7 @@ fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
 /// `export default { fetch }`, a Lambda's `handler(event)`, and for the
 /// container the same `handler.js` the Node adapter writes.
 ///
-/// The assertion is that the four answers are **byte-identical**, `node`
+/// The assertion is that the five answers are **byte-identical**, `node`
 /// included. That is the whole claim of the seam: `createFetchHandler` is one
 /// function, an adapter is the file wrapped around it, and an adapter that
 /// answered differently would be a second application wearing the first one's
@@ -2673,7 +2776,7 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
     let root = served_app_root();
 
     let mut reference: Option<(&str, Vec<String>)> = None;
-    for adapter in ["node", "edge", "serverless", "container"] {
+    for adapter in ["node", "bun", "edge", "serverless", "container"] {
         let (_, empty) = deploy_and_copy(&root, adapter);
         assert_artefact_shape(adapter, &empty.path().join("app"));
 
@@ -5330,12 +5433,15 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
 
 /// Every adapter serves the same server action, and refuses the same calls.
 ///
-/// ubugeeei-prod/uf#447 established that the four deploy targets answer
+/// ubugeeei-prod/uf#447 established that the deploy targets answer
 /// identically, and `handler.js` being byte-for-byte the same file in all of
 /// them is why. A server action is answered by that file, so it is answered by
-/// all four or by none — and this is what says so, rather than the reasoning.
+/// all of them or by none — and this is what says so, rather than the
+/// reasoning. `bun` is in the list for that reason and not because anything
+/// about an action is host-specific: it shares the file, so it shares the
+/// claim.
 ///
-/// It is a second four-adapter test rather than five more questions in the
+/// It is a second all-adapter test rather than five more questions in the
 /// first because it needs a different fixture: `served-app` has no
 /// `"use client"` module anywhere, so it can declare no callable action, and
 /// giving it one would change what the split does to it and what three other
@@ -5349,10 +5455,10 @@ fn every_adapter_answers_the_same_server_action_call() {
     let root = rsc_split_app_root();
 
     let mut answers: Option<(String, String)> = None;
-    for adapter in ["node", "edge", "serverless", "container"] {
+    for adapter in ["node", "bun", "edge", "serverless", "container"] {
         let (_, empty) = deploy_and_copy(&root, adapter);
         // After the build, and once per adapter. The id is an HMAC over a
-        // per-build secret, so every one of these four builds mints its own —
+        // per-build secret, so every one of these builds mints its own —
         // which is the property that makes an id from a previous build useless
         // to somebody who kept one, and the reason this cannot be hoisted out
         // of the loop.

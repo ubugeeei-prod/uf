@@ -344,7 +344,7 @@ pub(crate) struct SiteFacts<'a> {
 /// valid the next time `uf build` ran would be a trap.
 ///
 /// The copy lands at the top of the directory rather than in a `static/`
-/// beside a server. The four server targets need both halves and have to keep
+/// beside a server. The five server targets need both halves and have to keep
 /// them apart; here the directory *is* the site, and a `static/` inside it
 /// would put every URL one segment deeper than the build decided.
 ///
@@ -410,18 +410,19 @@ pub(crate) fn deploy_static(
 /// thing wrapped around it.
 const fn entry_files(adapter: DeployAdapter) -> &'static [&'static str] {
     match adapter {
-        DeployAdapter::Node | DeployAdapter::Container => &["handler.js", "server.js"],
+        DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Container => {
+            &["handler.js", "server.js"]
+        }
         DeployAdapter::Edge => &["handler.js", "worker.js"],
         DeployAdapter::Serverless => &["handler.js", "lambda.js"],
         // `static` links nothing and so promises no entry — it is written by
         // [`deploy_static`], which never reaches this table, and its own shape
         // check is that the copy was not empty.
         //
-        // `bun` and `deno` are refused in `resolve` before anything is built,
-        // so their empty row is unreachable rather than permissive: reaching
-        // it would make "the adapter wrote nothing" indistinguishable from
-        // success.
-        DeployAdapter::Bun | DeployAdapter::Deno | DeployAdapter::Static => &[],
+        // `deno` is refused in `resolve` before anything is built, so its
+        // empty row is unreachable rather than permissive: reaching it would
+        // make "the adapter wrote nothing" indistinguishable from success.
+        DeployAdapter::Deno | DeployAdapter::Static => &[],
     }
 }
 
@@ -575,6 +576,7 @@ const DOCKERIGNORE: &str = "Dockerfile\n.dockerignore\n";
 pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &str) -> String {
     match adapter {
         DeployAdapter::Node => format!("cd {directory} && node server.js"),
+        DeployAdapter::Bun => format!("cd {directory} && bun server.js"),
         DeployAdapter::Container => {
             let name = worker_name(root);
             format!("docker build -t {name} {directory} && docker run -p 3000:3000 {name}")
@@ -587,8 +589,8 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         // choosing a hosting company on the reader's behalf, which is the one
         // thing `ubugeeei-redundancy.md` says a deployment must never require.
         DeployAdapter::Static => format!("upload the contents of {directory} to a static host"),
-        // Unreachable: `resolve` refuses these before anything is built.
-        DeployAdapter::Bun | DeployAdapter::Deno => format!("cd {directory}"),
+        // Unreachable: `resolve` refuses this one before anything is built.
+        DeployAdapter::Deno => format!("cd {directory}"),
     }
 }
 
@@ -678,19 +680,32 @@ mod tests {
 
     #[test]
     fn an_unwritten_adapter_is_refused_by_name_and_by_issue() {
-        let message = resolve(&config(), Some(DeployAdapter::Bun))
+        let message = resolve(&config(), Some(DeployAdapter::Deno))
             .unwrap_err()
             .to_string();
-        assert!(message.contains("no `bun` deploy adapter"), "{message}");
+        assert!(message.contains("no `deno` deploy adapter"), "{message}");
         assert!(
-            message.contains("Implemented: node, edge, serverless, static, container"),
+            message.contains("Implemented: node, bun, edge, serverless, static, container"),
             "{message}"
         );
-        // Not merely "not yet": `bun` is unwritten because the design says to
+        // Not merely "not yet": `deno` is unwritten because the design says to
         // measure first, and a reader told only "not yet" is a reader who opens
-        // the issue to find out whether to write it themselves.
+        // the issue to find out whether to write it themselves. `bun` had the
+        // same row until that benchmark was run — see ubugeeei-prod/uf#391.
         assert!(message.contains("benchmark"), "{message}");
         assert!(message.contains("issues/391"), "{message}");
+    }
+
+    /// `bun` is no longer refused, and the reason is a measurement.
+    #[test]
+    fn the_bun_adapter_is_written_and_no_longer_names_an_issue() {
+        assert_eq!(
+            resolve(&config(), Some(DeployAdapter::Bun)).unwrap(),
+            Some(DeployAdapter::Bun)
+        );
+        assert!(DeployAdapter::Bun.is_implemented());
+        assert_eq!(DeployAdapter::Bun.tracking_issue(), None);
+        assert_eq!(DeployAdapter::Bun.unimplemented_because(), None);
     }
 
     #[test]
