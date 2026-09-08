@@ -618,10 +618,10 @@ export component ComboboxOption(
  * a boundary they cannot see, and the heading is never a place the cursor can
  * land, because it is not an option.
  *
- * `children` is narrower than `Select.Group`'s `React.Node`, and the narrower
- * one is the true statement: a `group` inside a `listbox` may own options and
- * its own heading, and nothing else. `Select.Group` should say the same and
- * does not yet.
+ * `children` is the true statement rather than a `React.Node` that would take
+ * anything: a `group` inside a `listbox` may own options and its own heading,
+ * and nothing else. `Select.Group` says the same since ubugeeei-prod/uf#562 —
+ * it is the same listbox, and it took a second breaking change to get there.
  */
 export component ComboboxGroup(
   children: renders* (ComboboxOption | ComboboxGroupLabel),

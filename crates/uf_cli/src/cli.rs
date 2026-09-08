@@ -339,6 +339,16 @@ pub(crate) enum Commands {
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
     },
+    /// The message catalogue: out to a translator, and back.
+    ///
+    /// `@uniflowed/i18n` declares each message beside its parameters in source.
+    /// `uf i18n extract` turns that into one JSON file a translation vendor
+    /// accepts, and `uf i18n merge` reads the translated file back into the
+    /// locale module `defineLocales` loads.
+    I18n {
+        #[command(subcommand)]
+        command: I18nCommand,
+    },
     /// Print the toolchain's version, host, and resolved paths.
     Info,
     /// Print the resolved configuration, after defaults and plugins.
@@ -669,13 +679,24 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: Option<CatalogCommand>,
     },
-    /// Re-read the workspace and record the package and runtime plan.
+    /// Replace this uf with the newest release.
     ///
-    /// It fetches nothing and it does not replace the uf binary, in spite of
-    /// its name: `uf update` moves your dependencies and `uf use` moves the
-    /// toolchain. See ubugeeei-prod/uf#287.
-    Upgrade,
+    /// The command `uf upgrade` was named after and never was. It resolves the
+    /// newest release, downloads it, checks it against the sha256 published
+    /// beside it and links it — through the same installer
+    /// `curl -fsSL https://setup.uniflowed.dev | sh` runs, because a second
+    /// implementation of a checked download is a second one to get wrong. See
+    /// ubugeeei-prod/uf#424 and ubugeeei-prod/uf#499.
+    ///
+    /// `UF_VERSION` pins a version, `UF_RELEASE_BASE` points at a mirror, and
+    /// both mean here what they mean to the installer.
+    SelfUpdate,
     /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
+    ///
+    /// A version this machine does not have is downloaded and verified, by the
+    /// same installer `uf self-update` uses. It is not fabricated by copying
+    /// the running binary under another name, which is what it used to be:
+    /// ubugeeei-prod/uf#534.
     Use {
         /// The toolchain to activate.
         runtime: String,
@@ -759,6 +780,10 @@ impl Commands {
             Self::Check { json: true, .. }
                 | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
+                | Self::I18n {
+                    command: I18nCommand::Extract { json: true, .. }
+                        | I18nCommand::Merge { json: true, .. },
+                }
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true, .. }
                 | Self::Test { json: true, .. }
@@ -943,6 +968,53 @@ pub(crate) enum CatalogCommand {
         /// Say what would change, and change nothing.
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum I18nCommand {
+    /// Write every message the project declares as one JSON catalogue.
+    ///
+    /// The file holds each message's MessageFormat 2 source, the parameters it
+    /// takes, where it is declared and a digest of the two. A `translation`
+    /// field starts equal to the source, which is what gives a translator
+    /// something to edit rather than an empty box.
+    ///
+    /// A `message(…)` uf cannot read with certainty is reported and nothing is
+    /// written: a catalogue quietly missing a message is invisible in review
+    /// and visible to a reader of the page.
+    Extract {
+        /// The locale the messages are written in, e.g. `en-US`.
+        ///
+        /// Read from the project's `defineCatalogue` calls when they name one
+        /// literal tag, and required when they name none or several.
+        #[arg(long, value_name = "TAG")]
+        locale: Option<String>,
+        /// Where to write it. Defaults to `i18n/<locale>.json`.
+        #[arg(long, value_name = "PATH")]
+        out: Option<Utf8PathBuf>,
+        /// Emit machine-readable JSON on stdout, and write no file.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read a translated catalogue back into a locale module.
+    ///
+    /// The file is the one `uf i18n extract` wrote, with each `translation`
+    /// filled in and `locale` set to the language they are in. uf extracts the
+    /// project again and holds every returned entry against what its message
+    /// says today: one whose source or parameters changed while the file was
+    /// out is named and left out, because a translation of a sentence that no
+    /// longer exists is not a translation of the one that replaced it.
+    Merge {
+        /// The translated catalogue.
+        #[arg(value_name = "FILE")]
+        file: Utf8PathBuf,
+        /// Where to write the module. Defaults to `<locale>.js` beside FILE.
+        #[arg(long, value_name = "PATH")]
+        out: Option<Utf8PathBuf>,
+        /// Emit machine-readable JSON on stdout, and write no file.
+        #[arg(long)]
+        json: bool,
     },
 }
 

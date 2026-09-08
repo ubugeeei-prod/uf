@@ -151,6 +151,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The same ref the publish job used, for the same reason.
+          ref: ${{ inputs.version && format('uf@{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -160,10 +162,16 @@ jobs:
       # it was asked to publish — `uf@0.0.0-alpha.2` had a tag, a GitHub
       # release and nothing on npm, and nothing between that and a user
       # noticed. This reads the registry back and installs from it.
+      # On a tag push `github.ref_name` is `uf@<version>`; on a dispatch it is
+      # the branch the workflow was started from — `main` — and this job then
+      # asked npm for `@uniflowed/react@main` and reported every package
+      # missing while the publish above had just succeeded. The version comes
+      # from the same expression the publish job resolves, so the two cannot
+      # disagree about which release they are talking about.
       - name: What actually reached npm
         env:
-          REF_NAME: ${{ github.ref_name }}
-        run: tools/release/verify-npm.sh "${REF_NAME#uf@}"
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: tools/release/verify-npm.sh "${VERSION#uf@}"
       # The one part of a release this pipeline cannot do, said where it is
       # noticed: at the end of the release, rather than in a script nobody has
       # a reason to open. It prints and does not check, because at this moment

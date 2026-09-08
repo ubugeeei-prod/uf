@@ -64,6 +64,10 @@ const COVERAGE: &[(&str, &str)] = &[
     ("exec", "cli.rs: runs a package, or refuses to fetch one"),
     ("explain", "here, and cli.rs for what it says"),
     ("fmt", "here, and cli.rs for what it rewrites"),
+    (
+        "i18n",
+        "i18n.rs: extracts a project's catalogue and merges a translation",
+    ),
     ("info", "here, and output.rs for the brand surface"),
     ("inspect", "here, and inspect.rs for the resolved config"),
     ("install", "workflow.rs: runs the package manager"),
@@ -99,8 +103,11 @@ const COVERAGE: &[(&str, &str)] = &[
         "catalog",
         "here, and catalog/tests.rs for the table and the disagreements",
     ),
-    ("upgrade", "workflow.rs: resolves new versions"),
-    ("use", "workflow.rs: rewrites the config"),
+    (
+        "self-update",
+        "toolchain.rs: runs the installer against a release on disk",
+    ),
+    ("use", "toolchain.rs: acquires, activates, and refuses"),
     ("ls", "dependencies.rs: asks the package manager"),
     ("audit", "dependencies.rs: asks the package manager"),
     (

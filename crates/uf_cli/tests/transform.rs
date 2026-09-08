@@ -132,6 +132,66 @@ fn development_output_registers_for_fast_refresh() {
     assert!(code.contains("jsxDEV"), "{code}");
 }
 
+/// Every component keeps the name its author gave it.
+///
+/// This is what React DevTools shows in the tree, and nothing else can supply
+/// it: DevTools reads `type.name` off the function React is rendering, so a
+/// component the pipeline renamed is a row in somebody's panel that says
+/// nothing. The pipeline has three chances to lose it — Flow's `component`
+/// lowering, the React Compiler's rewrite of the body, and the Fast Refresh
+/// transform's registrations — and the compiler's is the one worth naming,
+/// because it moves every value in a component into `t0`, `t1`, `$[0]` and
+/// leaves the function it took them out of behind.
+///
+/// Three shapes, because they are lowered by three different paths: a declared
+/// component, a default-exported one (the shape every `_uf.page.js` uses), and
+/// a plain arrow assigned to a `const`, whose name comes from JavaScript's own
+/// inference rather than from a binding the transform wrote.
+///
+/// Asserted in the development configuration, because that is the only one
+/// DevTools ever sees. See ubugeeei-prod/uf#503.
+#[test]
+fn a_component_keeps_its_name_through_the_compiler() {
+    let dir = project();
+    let development = serde_json::json!({ "development": true, "refresh": true });
+    let replies = exchange(
+        dir.path(),
+        &[
+            serde_json::json!({
+                "id": "/app/Greeting.js",
+                "code": "// @flow\nimport {useState} from 'react';\nexport component Greeting(name: string) {\n  const [seen, setSeen] = useState(0);\n  return <p onClick={() => setSeen(seen + 1)}>{name}{seen}</p>;\n}\n",
+                "options": development,
+            }),
+            serde_json::json!({
+                "id": "/app/_uf.page.js",
+                "code": "// @flow\nimport {useState} from 'react';\nexport default component Page() {\n  const [n] = useState(0);\n  return <main>{n}</main>;\n}\n",
+                "options": development,
+            }),
+            serde_json::json!({
+                "id": "/app/Row.js",
+                "code": "// @flow\nconst Row = () => <li>row</li>;\nexport default Row;\n",
+                "options": development,
+            }),
+        ],
+    );
+
+    let greeting = replies[0]["code"].as_str().expect("transformed");
+    assert!(greeting.contains("function Greeting("), "{greeting}");
+    // The compiler did run over it — otherwise this asserts that a name
+    // survived a transform that never happened.
+    assert!(greeting.contains("react/compiler-runtime"), "{greeting}");
+
+    let page = replies[1]["code"].as_str().expect("transformed");
+    assert!(page.contains("export default function Page("), "{page}");
+    assert!(page.contains("react/compiler-runtime"), "{page}");
+
+    // Not a declaration, so there is no name in the output to match on: what
+    // gives this one its name is the assignment, and a transform that hoisted
+    // the arrow into a temporary would take it away.
+    let row = replies[2]["code"].as_str().expect("transformed");
+    assert!(row.contains("const Row = () =>"), "{row}");
+}
+
 /// uf's own packages ship Flow, so they are transformed even under
 /// `node_modules`; a third-party package is already JavaScript and is not.
 #[test]

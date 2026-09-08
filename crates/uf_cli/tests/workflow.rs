@@ -146,6 +146,21 @@ fn install_runs_the_package_manager_that_drives_the_project() {
         stdout.contains("uf install"),
         "the banner should still be rendered:\n{stdout}"
     );
+
+    // The package and runtime plan `uf upgrade` used to write is `uf install`'s
+    // now (ubugeeei-prod/uf#424). It records the workspace resolution, which
+    // happened — the manager failing afterwards does not un-resolve it.
+    let plan = fs::read_to_string(dir.path().join(".uf/install.json")).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&plan).unwrap();
+    assert_eq!(plan["packageManager"]["resolver"], "uf-native");
+    assert!(
+        plan["packageManager"]["lockfile"]
+            .as_str()
+            .unwrap()
+            .ends_with("uf.lock")
+    );
+    assert_eq!(plan["runtimeManager"]["engine"], "node");
+    assert_eq!(plan["runtimeManager"]["acquisition"], "auto");
 }
 
 #[test]
@@ -178,8 +193,13 @@ fn install_rejects_npm_scripts() {
     assert!(stderr.contains("uf tasks"));
 }
 
+/// `uf upgrade` is retired, and the answer names the three commands it could
+/// have meant rather than clap's guess at a spelling.
+///
+/// Exit 2, not 1: uf did not run a command and find a problem, it does not
+/// have the command. See `docs/app/reference/cli/_uf.page.mdx`.
 #[test]
-fn upgrade_reports_package_and_runtime_manager_plan() {
+fn upgrade_is_retired_and_names_what_replaced_it() {
     let dir = tempfile::tempdir().unwrap();
 
     let output = uf()
@@ -189,68 +209,15 @@ fn upgrade_reports_package_and_runtime_manager_plan() {
         .output()
         .unwrap();
 
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("uf self-update"), "{stderr}");
+    assert!(stderr.contains("uf update"), "{stderr}");
+    assert!(stderr.contains("uf install"), "{stderr}");
     assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        !dir.path().join(".uf/upgrade.json").exists(),
+        "a retired command wrote a file"
     );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("package resolver  UfNative"));
-    assert!(stdout.contains("runtime engine    Node"));
-    assert!(stdout.contains("acquisition       Auto"));
-    assert!(stdout.contains("upgrade.json"));
-    assert!(stdout.contains("✓ workspace upgraded"));
-    assert!(dir.path().join("uf.lock").exists());
-    assert!(dir.path().join(".uf/upgrade.json").exists());
-}
-
-#[test]
-fn use_reports_xdg_runtime_switch_plan() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = dir.path().join("home");
-    let config_home = dir.path().join("xdg-config");
-    let data_home = dir.path().join("xdg-data");
-    let cache_home = dir.path().join("xdg-cache");
-    let state_home = dir.path().join("xdg-state");
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["use", "uf@0.1.0"])
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", &config_home)
-        .env("XDG_DATA_HOME", &data_home)
-        .env("XDG_CACHE_HOME", &cache_home)
-        .env("XDG_STATE_HOME", &state_home)
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("uf use \u{b7} uf@0.1.0"), "{stdout}");
-    assert!(stdout.contains("auto switch  enabled"));
-    assert!(stdout.contains(".local/bin/uf"));
-    assert!(stdout.contains("active-runtime.json"));
-    assert!(stdout.contains("runtime.json"));
-    assert!(stdout.contains("WriteShim"));
-    assert!(stdout.contains("ActivateVersion"));
-    assert!(stdout.contains("✓ now using uf@0.1.0"));
-    assert!(
-        data_home
-            .join("uniflowed/runtimes/uf/0.1.0/bin/uf")
-            .exists()
-    );
-    assert!(
-        data_home
-            .join("uniflowed/runtimes/uf/0.1.0/runtime.json")
-            .exists()
-    );
-    assert!(state_home.join("uniflowed/active-runtime.json").exists());
-    assert!(home.join(".local/bin/uf").exists());
 }
 
 #[test]

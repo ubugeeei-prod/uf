@@ -128,6 +128,8 @@ fn request<'a>(
         fallback,
         out_dir: out,
         base_url: "/assets/",
+        subset: crate::subset::SubsetMode::Off,
+        preload: true,
     }
 }
 
@@ -419,4 +421,159 @@ fn the_local_face_table_matches_the_fonts_it_was_read_from() {
 /// A minimal but real SFNT, for tests in other modules that need a font file.
 pub(crate) fn sfnt_fixture() -> Vec<u8> {
     sfnt(&tables(1000, 800, -200, 0, 500))
+}
+
+#[test]
+fn a_font_hosted_as_supplied_is_one_face_and_says_nothing_about_subsetting() {
+    let (_guard, dir) = temp();
+    let source = dir.join("Inter.ttf");
+    std::fs::write(&source, sfnt_fixture()).unwrap();
+    let out = dir.join("out");
+
+    let asset = self_host(&request(&source, &out, Some("Arial"))).unwrap();
+
+    assert_eq!(asset.faces.len(), 1);
+    assert_eq!(asset.faces[0].file, asset.file);
+    assert!(asset.faces[0].unicode_range.is_none());
+    assert!(asset.subset.is_none());
+    assert!(asset.subset_declined.is_none());
+    assert_eq!(asset.source_bytes, asset.bytes);
+    assert!(asset.faces[0].preload);
+}
+
+#[test]
+fn ranges_emit_one_file_per_script_with_its_own_unicode_range() {
+    let (_guard, dir) = temp();
+    let source = dir.join("Wide.ttf");
+    std::fs::write(
+        &source,
+        crate::testfont::font_with(&['A', 'B', 'a', 'b', 'Ω', 'α', 'Д', 'д']),
+    )
+    .unwrap();
+    let out = dir.join("out");
+
+    let asset = self_host(&FontRequest {
+        subset: crate::subset::SubsetMode::Ranges,
+        ..request(&source, &out, Some("Arial"))
+    })
+    .unwrap();
+
+    assert_eq!(asset.subset.as_deref(), Some("ranges"));
+    assert!(asset.subset_declined.is_none());
+    assert!(asset.faces.len() >= 3, "{:?}", asset.faces);
+    for face in &asset.faces {
+        assert!(
+            out.join(&face.file).exists(),
+            "{} was not written",
+            face.file
+        );
+        assert!(face.unicode_range.is_some(), "{face:?}");
+        assert_eq!(face.container, crate::font::FontContainer::Woff);
+        assert!(
+            asset.css.contains(&format!(
+                "unicode-range:{};",
+                face.unicode_range.as_ref().unwrap()
+            )),
+            "{}",
+            asset.css
+        );
+    }
+    // Every rule declares the same family: that is what makes the browser
+    // treat them as one face and choose between the files by character.
+    assert_eq!(
+        asset.css.matches("font-family:\"Test Sans\"").count(),
+        asset.faces.len()
+    );
+}
+
+#[test]
+fn exactly_one_face_is_preloaded_however_many_there_are() {
+    // A preload per bucket downloads the whole family up front, which is the
+    // one thing the split existed to stop.
+    let (_guard, dir) = temp();
+    let source = dir.join("Wide.ttf");
+    std::fs::write(
+        &source,
+        crate::testfont::font_with(&['A', 'B', 'Ω', 'Д', '中']),
+    )
+    .unwrap();
+    let out = dir.join("out");
+
+    let asset = self_host(&FontRequest {
+        subset: crate::subset::SubsetMode::Ranges,
+        ..request(&source, &out, None)
+    })
+    .unwrap();
+
+    assert_eq!(asset.faces.iter().filter(|face| face.preload).count(), 1);
+    let preloaded = asset.faces.iter().find(|face| face.preload).unwrap();
+    assert_eq!(preloaded.bucket.as_deref(), Some("latin"));
+    assert_eq!(preloaded.file, asset.file);
+}
+
+#[test]
+fn preload_off_marks_no_face_at_all() {
+    let (_guard, dir) = temp();
+    let source = dir.join("Inter.ttf");
+    std::fs::write(&source, sfnt_fixture()).unwrap();
+    let out = dir.join("out");
+
+    let asset = self_host(&FontRequest {
+        preload: false,
+        ..request(&source, &out, None)
+    })
+    .unwrap();
+    assert!(asset.faces.iter().all(|face| !face.preload));
+    // And the manifest still names a primary file, because the stylesheet has
+    // to point at one.
+    assert_eq!(asset.file, asset.faces[0].file);
+}
+
+#[test]
+fn a_woff2_that_cannot_be_subsetted_is_still_self_hosted() {
+    // A refusal is a sentence, not a build failure: the font works, and the
+    // project is told it is the whole font and what to point at instead.
+    let (_guard, dir) = temp();
+    let source = dir.join("Inter.woff2");
+    std::fs::write(&source, woff2(&tables(1000, 800, -200, 0, 500))).unwrap();
+    let out = dir.join("out");
+
+    let asset = self_host(&FontRequest {
+        subset: crate::subset::SubsetMode::Ranges,
+        ..request(&source, &out, Some("Arial"))
+    })
+    .unwrap();
+
+    assert!(asset.subset.is_none());
+    let reason = asset.subset_declined.expect("a refusal has to say why");
+    assert!(reason.contains("WOFF2"), "{reason}");
+    assert!(reason.contains(".ttf"), "{reason}");
+    assert_eq!(asset.faces.len(), 1);
+    assert!(out.join(&asset.file).exists());
+    assert!(asset.css.contains("@font-face"));
+}
+
+#[test]
+fn a_woff_round_trips_through_the_container_uf_writes() {
+    // `pack_woff` is what a subsetted face is emitted as, and `woff_tables` is
+    // what reads one. They are each other's only check outside a browser.
+    let sfnt = crate::testfont::font_with(&['A', 'B', 'C']);
+    let woff = crate::font::pack_woff(&sfnt).unwrap();
+    assert_eq!(&woff[0..4], b"wOFF");
+
+    let path = Utf8PathBuf::from("round.woff");
+    let (container, metrics) = read_metrics(&path, &woff).unwrap();
+    assert_eq!(container, FontContainer::Woff);
+    let (_, original) = read_metrics(&Utf8PathBuf::from("round.ttf"), &sfnt).unwrap();
+    assert_eq!(metrics, original);
+}
+
+#[test]
+fn a_font_from_a_woff_container_can_be_flattened_and_subsetted() {
+    let sfnt = crate::testfont::font_with(&['A', 'B', 'Ω']);
+    let woff = crate::font::pack_woff(&sfnt).unwrap();
+    let path = Utf8PathBuf::from("wide.woff");
+    let flattened = crate::font::to_sfnt(&path, &woff).unwrap();
+    let plan = crate::subset::plan(&flattened, &crate::subset::SubsetMode::Ranges).unwrap();
+    assert!(plan.faces.iter().any(|face| face.bucket == "greek"));
 }

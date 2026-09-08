@@ -3,6 +3,69 @@
 //! Data in the same sense as the module registry: the component names, the slot
 //! names they render, whether they need the client, and which of them carry a
 //! validator-backed form contract.
+//!
+//! # What an entry claims, and what holds it to it
+//!
+//! Every entry carries a [`crate::UiReadiness`], and that field decides whether
+//! the rest of it is a fact or a sketch. It exists because for a long time this
+//! table was read as an inventory while only ever having been written as a
+//! roadmap: when ubugeeei-prod/uf#249 was filed it held fifty-one names, of
+//! which the package shipped seven, and `uf inspect` reported the fifty-one as
+//! a project fact.
+//!
+//! No count is written down here now, and that is deliberate — a number in a
+//! comment is the thing that went wrong. `uf inspect` counts the readinesses,
+//! and the tests below hold each one to `packages/ui`, so the count is produced
+//! rather than remembered.
+//!
+//! * **Implemented** — `packages/ui` exports it, and `parts` is exactly what
+//!   its namespace object in `packages/ui/index.js` holds. Two tests in
+//!   `crates/uf_lib/src/tests.rs` read the package and fail naming both
+//!   directions.
+//! * **Planned** — nobody has written it yet. The parts are the shape it is
+//!   expected to take, which is a design note rather than a promise.
+//! * **Declined** — deliberately not a component in this package. The entry
+//!   stays, because a decision nobody can find where they went looking for the
+//!   component gets re-made by the next contributor; the comment on each one
+//!   says what was decided and what would reopen it.
+//!
+//! The check is ubugeeei-prod/uf#561, and the reason it had to exist is on the
+//! record: `Combobox` grew `Group` and `GroupLabel` in #558 and this file went
+//! on saying seven parts with every test passing. It was found by reading,
+//! which is not a check.
+//!
+//! # The line between this table and the preset
+//!
+//! About twenty of the catalogue this table was copied from have no behaviour
+//! at all. `Badge`, `Card`, `Button`, `Input`, `Label`, `Textarea`,
+//! `AspectRatio` and the rest are, between them, a class list and a `<div>`.
+//! For a library whose product *is* the styles that is coherent. uf split
+//! behaviour from styling on purpose — `packages/ui/index.js` ships no styles
+//! and `packages/stylex/index.js` is deliberately not a component library, and
+//! both headers say so — and the split left that half of the catalogue with no
+//! home. That is ubugeeei-prod/uf#298.
+//!
+//! The line that holds is not "styled versus headless" but **whether the thing
+//! has a decision in it**:
+//!
+//! * an ARIA decision, a state machine or a keyboard requirement makes it a
+//!   component here, even when it renders a single element. `Progress` is one
+//!   `<div>` and it belongs, because the conditional that omits
+//!   `aria-valuenow` when the amount is unknown, rather than setting it to
+//!   zero, *is* the component.
+//! * a class list makes it a preset function, because
+//!   `buttonStyles({ tone, size })` returns `{ className }` for a caller to
+//!   spread onto their own element, and a `<Badge>` that renders
+//!   `<span>{children}</span>` is a worse answer to the same question — it
+//!   takes the element away and gives nothing back.
+//! * so the second group stays here `Declined`, with `preset_styles` naming
+//!   the functions that are the answer instead. Stating it is the point:
+//!   left as an omission it reads as an oversight, and somebody adds the
+//!   `<Badge>`.
+//!
+//! Five of that twenty are in the first group and are `Planned` rather than
+//! declined — `Alert`, `Avatar`, `Breadcrumb`, `Separator` and `Skeleton` —
+//! each for one specific reason its entry gives.
 
 use crate::descriptor::{FormContract, UiComponent, UiRuntime};
 
@@ -18,11 +81,21 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Item", "Header", "Trigger", "Content"],
             UiRuntime::Split,
         ),
+        // Planned, and it is the one of the presentational twenty whose shadcn
+        // shape is arguably wrong to copy. `role="alert"` is a live region: an
+        // element that is *already in the document* when the page loads
+        // announces on insertion or not at all, so a permanently rendered "your
+        // trial ends soon" box with that role is either an interruption on every
+        // load or silence. The component has to distinguish the static callout —
+        // a container with a heading and no live semantics — from the one that
+        // appears in response to something. `packages/ui/field.js` already makes
+        // this call correctly for `Field.Error`, which is the shape to follow.
         UiComponent::new(
             "Alert",
             &["Root", "Title", "Description"],
             UiRuntime::Server,
-        ),
+        )
+        .planned(),
         // Implemented in `packages/ui/alert-dialog.js`: `Dialog` with the three
         // decisions that module names taken the other way — `alertdialog`
         // rather than `dialog`, no dismissal from a press outside, and focus on
@@ -46,16 +119,49 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "Cancel",
             ],
             UiRuntime::Split,
-        ),
-        UiComponent::new("AspectRatio", &["Root"], UiRuntime::Server),
-        UiComponent::new("Avatar", &["Root", "Image", "Fallback"], UiRuntime::Split),
-        UiComponent::new("Badge", &["Root"], UiRuntime::Server),
+        )
+        .styled_by(&["backdropStyles", "dialogStyles"]),
+        // Declined, and for the opposite reason to the rest of them: the CSS
+        // `aspect-ratio` property has done this in every browser uf supports for
+        // years. There is no decision left for a component to make and no
+        // element it could render that a caller could not, so the honest answer
+        // is a line of documentation. Reopens if a layout uf ships ever needs a
+        // ratio held in JavaScript, which no part of this package does.
+        UiComponent::new("AspectRatio", &["Root"], UiRuntime::Server).declined(),
+        // Planned, and a component rather than a class list because it is a
+        // three-state machine: loading, loaded, failed, with the fallback held
+        // back briefly so it does not flash before a cached image paints. The
+        // second decision is the alt text — an avatar beside the person's name
+        // is decorative and takes `alt=""`, and a component that puts the name
+        // there by default makes every screen reader say it twice.
+        UiComponent::new("Avatar", &["Root", "Image", "Fallback"], UiRuntime::Split).planned(),
+        // Declined: a badge with no styles is a `<span>`. Nothing about it is a
+        // decision — no role, no state, no key — so shipping one from a package
+        // that ships no styles would be shipping an empty element. It has no
+        // `preset_styles` yet either, and that is a gap in the preset rather
+        // than in this table: the thing to add is a `badgeStyles`, not a
+        // `<Badge>`.
+        UiComponent::new("Badge", &["Root"], UiRuntime::Server).declined(),
+        // Planned, and three decisions deep rather than presentational: a
+        // `<nav aria-label="Breadcrumb">` around an ordered list, exactly one
+        // `aria-current="page"` on the last item, and the "/" separators
+        // `aria-hidden` so the trail is not read as "Home slash Settings slash
+        // Billing". `Pagination` below is the same shape and already shipped.
         UiComponent::new(
             "Breadcrumb",
             &["Root", "List", "Item", "Link", "Page", "Separator"],
             UiRuntime::Server,
-        ),
-        UiComponent::new("Button", &["Root"], UiRuntime::Server),
+        )
+        .planned(),
+        // Declined, and the clearest case of the line this table draws: the
+        // platform's `<button>` already has the role, the keyboard and the
+        // focus, so what shadcn's `Button` adds is a class list. The answer is
+        // `buttonStyles({ tone, size })` on the caller's own `<button>`, which
+        // keeps `type="submit"`, a `formAction` and everything else an element
+        // wrapped in a component quietly loses.
+        UiComponent::new("Button", &["Root"], UiRuntime::Server)
+            .declined()
+            .styled_by(&["buttonStyles"]),
         // Implemented in `packages/ui/calendar.js`. `Month` is the grid and its
         // caption rather than a wrapper around several months: one month is one
         // `role="grid"` with one caption naming it, and a component that put two
@@ -72,11 +178,17 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Day", "Month", "Next", "Previous"],
             UiRuntime::Split,
         ),
+        // Declined: six parts, and every one of them is a `<div>` with a class
+        // on it. A card has no role — `role="region"` needs a name, and naming
+        // every card on a page is how a landmark list becomes useless — so the
+        // heading a caller writes is the whole of its semantics.
         UiComponent::new(
             "Card",
             &["Root", "Header", "Title", "Description", "Body", "Footer"],
             UiRuntime::Server,
-        ),
+        )
+        .declined()
+        .styled_by(&["surfaceStyles", "cardStyles"]),
         // Implemented in `packages/ui/carousel.js`. `Pause` beyond the first
         // guess, and it is the part the component exists for: WCAG 2.2.2
         // requires a mechanism to stop anything that moves by itself for more
@@ -89,8 +201,21 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Content", "Item", "Pause", "Previous", "Next"],
             UiRuntime::Split,
         ),
-        UiComponent::new("Chart", &["Root", "Tooltip", "Legend"], UiRuntime::Split),
-        UiComponent::new("Checkbox", &["Root", "Indicator"], UiRuntime::Client),
+        // Declined, and the one whose reason is a product decision rather than
+        // an accessibility one: shadcn's `Chart` is a Recharts wrapper, and uf
+        // has no charting library to wrap. Shipping one would mean taking on a
+        // whole dependency, which is a decision about what this project is
+        // rather than a component gap. Reopens the day somebody makes it, and
+        // the entry stays so that the day is a decision rather than a surprise.
+        UiComponent::new("Chart", &["Root", "Tooltip", "Legend"], UiRuntime::Split).declined(),
+        // Implemented in `packages/ui/checkbox.js` as one component with no
+        // namespace, which is why there is one part and not the `Root` and
+        // `Indicator` this entry used to claim. That was not a typo and the
+        // answer is not to grow the part: an indicator is a tick, a tick is a
+        // drawing, and a package that ships no styles has nothing to draw. A
+        // caller renders their own mark against `data-state`, and
+        // `controlStyles({ shape: "box" })` is the preset's.
+        UiComponent::new("Checkbox", &["Root"], UiRuntime::Client).styled_by(&["controlStyles"]),
         // Implemented in `packages/ui/collapsible.js`: the WAI-ARIA disclosure
         // pattern on its own, and the module the accordion's argument about a
         // closed panel staying findable is written against.
@@ -130,7 +255,8 @@ pub fn ui_components() -> Vec<UiComponent> {
             "Command",
             &["Root", "Input", "List", "Item", "Group", "Empty"],
             UiRuntime::Client,
-        ),
+        )
+        .declined(),
         // Implemented in `packages/ui/context-menu.js`, which is `menu.js` with
         // the two things that make a context menu a component rather than an
         // `oncontextmenu` handler: it opens at the *pointer* through the
@@ -160,7 +286,8 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "SubTrigger",
             ],
             UiRuntime::Client,
-        ),
+        )
+        .styled_by(&["menuStyles", "menuItemStyles"]),
         // Deliberately not implemented, which is the same answer shadcn gives:
         // it ships a guide rather than a component, because a data table is a
         // table-state library composed with a table. uf has no TanStack Table
@@ -172,7 +299,8 @@ pub fn ui_components() -> Vec<UiComponent> {
             "DataTable",
             &["Root", "Header", "Body", "Row", "Cell", "Pagination"],
             UiRuntime::Split,
-        ),
+        )
+        .declined(),
         // Implemented in `packages/ui/date-picker.js`: `Popover` and `Calendar`
         // composed, plus the three joins between them.
         //
@@ -201,7 +329,8 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "Close",
             ],
             UiRuntime::Split,
-        ),
+        )
+        .styled_by(&["backdropStyles", "dialogStyles"]),
         // Implemented in `packages/ui/drawer.js`, and rendered by `sheet.js`
         // rather than written a second time: a drawer is a sheet plus a
         // gesture. `Handle` is that gesture, and it is a `role="slider"` over
@@ -228,6 +357,10 @@ pub fn ui_components() -> Vec<UiComponent> {
         // Implemented in `packages/ui/field.js`, and listed here for the first
         // time: it shipped with #276 and this table never learned about it,
         // while carrying a `Form` entry for a component that does not exist.
+        // That pair — a real module the table did not know about beside an
+        // imagined one it asserted a contract for — is ubugeeei-prod/uf#249 in
+        // one line, and the reason the checks in `crates/uf_lib/src/tests.rs`
+        // now read the package rather than trusting this file.
         //
         // `Control` is a render function rather than an element, because a field
         // wraps a select, a textarea or somebody else's component as often as an
@@ -239,19 +372,29 @@ pub fn ui_components() -> Vec<UiComponent> {
             "Field",
             &["Root", "Label", "Control", "Description", "Error"],
             UiRuntime::Client,
-        ),
-        // `Root`, `Field`, `Label`, `Control`, `Message` and `Submit` is
-        // shadcn's Form over react-hook-form, and uf does not ship a component
-        // by that name: the same job is `@uniflowed/form` for the state and
-        // `Field` above for the markup, joined by `useFieldSource` — which is
-        // where it has to live, because `@uniflowed/ui` is published and
-        // `@uniflowed/form` is not, and `tools/ci/publishable.sh` refuses that
-        // dependency. The contract below is about the pair.
+        )
+        .styled_by(&["fieldStyles"]),
+        // Declined. `Root`, `Field`, `Label`, `Control`, `Message` and `Submit`
+        // is shadcn's Form over react-hook-form, and uf does not ship a
+        // component by that name: the same job is `@uniflowed/form` for the
+        // state and `Field` above for the markup, joined by `useFieldSource` —
+        // which is where it has to live, because `@uniflowed/ui` is published
+        // and `@uniflowed/form` is not, and `tools/ci/publishable.sh` refuses
+        // that dependency. The contract below is about that pair, and it stays
+        // on this entry rather than moving to `Field`: it is a claim about
+        // where a form's validation lives, and `Field` renders markup for a
+        // value it does not own.
+        //
+        // This is the entry ubugeeei-prod/uf#249 names. The contract asserted
+        // that a `Form` was validator-backed, React Compiler-safe and mutated
+        // only in an event or a Server Action, and there was no `Form` to be
+        // any of those things. The readiness is what now says so.
         UiComponent::new(
             "Form",
             &["Root", "Field", "Label", "Control", "Message", "Submit"],
             UiRuntime::Split,
         )
+        .declined()
         .with_form(FormContract::validator_backed()),
         // Implemented in `packages/ui/hover-card.js`: the third of the anchored
         // overlays, and the one that is neither of the other two. It is not a
@@ -262,7 +405,15 @@ pub fn ui_components() -> Vec<UiComponent> {
         // clause both of the others share: the pointer, and `Tab`, can get to
         // it before it closes.
         UiComponent::new("HoverCard", &["Root", "Trigger", "Body"], UiRuntime::Client),
-        UiComponent::new("Input", &["Root"], UiRuntime::Client),
+        // Declined: an `<input>` already is the component. Wrapping one costs a
+        // caller `type`, `inputMode`, `autoComplete` and the ref, and buys a
+        // class name. `Field` above is the part that is genuinely uf's — the
+        // label, the description, the error and the one `aria-describedby` that
+        // joins them — and `Field.Control` hands the props to the caller's own
+        // `<input>` rather than rendering one.
+        UiComponent::new("Input", &["Root"], UiRuntime::Client)
+            .declined()
+            .styled_by(&["fieldStyles"]),
         // Implemented in `packages/ui/input-otp.js`, and the parts say the
         // decision the component is: `Slot` draws a character and is
         // `aria-hidden`, because there is exactly one real `<input>` underneath
@@ -275,7 +426,14 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Group", "Slot", "Separator"],
             UiRuntime::Client,
         ),
-        UiComponent::new("Label", &["Root"], UiRuntime::Server),
+        // Declined twice over: `<label htmlFor>` is the platform's, and the
+        // part of labelling that is hard — a control whose id the caller never
+        // has to write, and a label that is a `<label>` for one control and a
+        // `<span>` for a group — is `Field.Label`, which exists. What is left
+        // is the type scale.
+        UiComponent::new("Label", &["Root"], UiRuntime::Server)
+            .declined()
+            .styled_by(&["textStyles"]),
         // Implemented in `packages/ui/menu.js`, and the base the menu-shaped
         // components above and below it are built from.
         //
@@ -306,7 +464,8 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "SubTrigger",
             ],
             UiRuntime::Client,
-        ),
+        )
+        .styled_by(&["menuStyles", "menuItemStyles"]),
         // Implemented in `packages/ui/menubar.js`: a row of `Menu`s with a
         // keyboard map the set has and a single menu does not. One tab stop for
         // the whole bar, arrows between the top-level menus, and — the part
@@ -332,7 +491,8 @@ pub fn ui_components() -> Vec<UiComponent> {
                 "SubTrigger",
             ],
             UiRuntime::Client,
-        ),
+        )
+        .styled_by(&["menuStyles", "menuItemStyles"]),
         // Implemented in `packages/ui/navigation-menu.js`, and deliberately not
         // one of the menus above: it is the practices' *Disclosure Navigation
         // Menu* — a `<nav>` of links behind `aria-expanded` buttons — because
@@ -417,7 +577,15 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Client,
         ),
-        UiComponent::new("Separator", &["Root"], UiRuntime::Server),
+        // Planned, and two lines with one real decision in them: a separator
+        // between groups of content is `role="separator"` with an
+        // `aria-orientation`, and a decorative rule is `aria-hidden` and
+        // announced to nobody. `packages/ui/menu.js` already ships the first
+        // kind and explains why; getting it backwards adds a line of noise to
+        // every reading of the page. Not `Resizable.Handle`, which is the APG
+        // window splitter — a separator that behaves like a slider — and says
+        // so in its own entry.
+        UiComponent::new("Separator", &["Root"], UiRuntime::Server).planned(),
         // Implemented in `packages/ui/sheet.js`, and deliberately small: a
         // sheet is a modal dialog attached to an edge, and every modal promise
         // is `dialog.js`'s. What it adds is the two things a class name cannot
@@ -455,7 +623,12 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Trigger", "Header", "Body", "Footer", "Item"],
             UiRuntime::Split,
         ),
-        UiComponent::new("Skeleton", &["Root"], UiRuntime::Server),
+        // Planned, and the one that silently makes a page worse: a screen of
+        // skeletons is a screen of empty boxes, so the reader hears nothing and
+        // is told nothing is happening. The skeletons want `aria-hidden="true"`,
+        // the region they stand in for wants `aria-busy="true"`, and something
+        // has to say "Loading" out loud.
+        UiComponent::new("Skeleton", &["Root"], UiRuntime::Server).planned(),
         // Implemented in `packages/ui/slider.js`: the APG slider, with
         // `role="slider"` on the thumb rather than on the track — which is what
         // makes it reachable — and a second thumb for the range case, each with
@@ -465,8 +638,12 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Track", "Range", "Thumb"],
             UiRuntime::Client,
         ),
-        UiComponent::new("Sonner", &["Root", "Toast", "Action"], UiRuntime::Client),
-        UiComponent::new("Switch", &["Root", "Thumb"], UiRuntime::Client),
+        // Implemented in `packages/ui/switch.js` as one component with no
+        // namespace, for the reason `Checkbox` above gives at length: a `Thumb`
+        // is a drawing, and this package draws nothing. `data-state` is what a
+        // caller moves their own thumb against, and
+        // `controlStyles({ shape: "track" })` is the preset's.
+        UiComponent::new("Switch", &["Root"], UiRuntime::Client).styled_by(&["controlStyles"]),
         // Implemented in `packages/ui/table.js`. A real `<table>` and
         // deliberately not a `role="grid"`: a grid is a two-dimensional
         // keyboard contract rather than an attribute, and declaring one
@@ -496,16 +673,26 @@ pub fn ui_components() -> Vec<UiComponent> {
         // `Tab` and `Panel` rather than `Trigger` and `Body`: the shipped parts
         // are named after the ARIA roles they render, so `Tabs.Tab` is a `tab`
         // and `Tabs.Panel` is a `tabpanel`. See `packages/ui/tabs.js`.
-        UiComponent::new("Tabs", &["Root", "List", "Tab", "Panel"], UiRuntime::Split),
-        UiComponent::new("Textarea", &["Root"], UiRuntime::Client),
+        UiComponent::new("Tabs", &["Root", "List", "Tab", "Panel"], UiRuntime::Split)
+            .styled_by(&["tabListStyles", "tabStyles"]),
+        // Declined, for `Input`'s reasons exactly. The one thing a `Textarea`
+        // component is sometimes written for — growing with its content — is a
+        // `field-sizing: content` away in CSS and belongs to the preset if it
+        // belongs anywhere.
+        UiComponent::new("Textarea", &["Root"], UiRuntime::Client)
+            .declined()
+            .styled_by(&["fieldStyles"]),
         // Implemented in `packages/ui/toast.js`. `Region` is the part the table
         // was missing and the one the component exists for: the live region has
         // to be in the document before the notification it announces, so it is
         // a part a caller renders once in the layout rather than something a
         // `Root` conjures when a message arrives.
         //
-        // `Sonner` below is the same component under another project's name,
-        // which is ubugeeei-prod/uf#249's to settle rather than this entry's.
+        // **`Sonner` was a separate entry below and is gone.** It was this
+        // component under another project's name, and ubugeeei-prod/uf#249 asked
+        // for that to be settled: a second name is a second surface to keep in
+        // step, and it is the shape of claim this table was full of — an entry
+        // for something no import could reach.
         UiComponent::new(
             "Toast",
             &["Region", "Root", "Title", "Description", "Action", "Close"],

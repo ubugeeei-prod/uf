@@ -39,6 +39,52 @@
 // the same components with exactly the same behaviour; the design-system layer
 // that adds uf's default styles is built *on* these, not into them.
 //
+// # What is not here, and where it went instead
+//
+// About twenty of the catalogue this package is measured against have no
+// behaviour at all. Badge, Card, Button, Input, Textarea, Label and Aspect
+// Ratio are, between them, a class list and a `<div>`. For a library whose
+// product *is* the styles that is coherent — you copy them in and you own
+// them. It is not coherent here: a `Badge` with no styles is a `<span>`, a
+// `Card` with no styles is a `<div>`, and shipping them from a package that
+// ships no styles would make this a library of empty elements. Shipping them
+// from `@uniflowed/stylex` would make *that* a component library, which its
+// own header forbids. So for a long time the answer on record was both and
+// neither, which is ubugeeei-prod/uf#298.
+//
+// The line that holds is not "styled versus headless". It is **whether the
+// thing has a decision in it**:
+//
+// - An ARIA decision, a state machine or a keyboard requirement makes it a
+//   component here, even when it renders a single element. `Progress` is one
+//   `<div>`, and it belongs, because the conditional that omits
+//   `aria-valuenow` when the amount is unknown — rather than sending
+//   `aria-valuenow={0}`, which says "nothing has happened" — is the whole
+//   component. `Toggle` and `Checkbox` are the same shape for the same reason.
+// - Anything that is only a class list belongs in `@uniflowed/stylex/preset`,
+//   which already has the right form: `buttonStyles({ tone, size })`,
+//   `cardStyles()`, `textStyles({ size, tone })` and `fieldStyles()` return
+//   `{ className }` for a caller to spread onto their own element. That is a
+//   better answer than a `<Badge>`, not a lesser one — a component wrapping a
+//   `<button>` takes away `type="submit"`, `formAction`, the ref and every
+//   attribute nobody thought to forward, and gives back a class name the
+//   caller could have written.
+//
+// This is stated rather than left as an omission, because an omission reads as
+// an oversight and the next contributor closes it with a `<Badge>`.
+// `crates/uf_lib/src/ui.rs` carries the same decision as data: those entries
+// are `Declined` with the preset functions that replace them named on each,
+// and `cargo test -p uf_lib` fails if a name there stops existing.
+//
+// Five of that twenty are not presentational and are missing rather than
+// declined — Alert, Avatar, Breadcrumb, Separator and Skeleton — each for one
+// specific reason, and the registry entry for each says which. The shortest is
+// Alert: `role="alert"` is a live region, an element already in the document
+// when the page loads announces on insertion or not at all, and a permanently
+// rendered "your trial ends soon" box carrying that role is either an
+// interruption on every page load or silence. `field.js` already makes that
+// call correctly for `Field.Error`.
+//
 // # What these components promise React
 //
 // Nothing here mutates during a render, reads a ref during a render, or depends

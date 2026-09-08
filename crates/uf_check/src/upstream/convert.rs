@@ -182,6 +182,32 @@ fn diagnostic(
     }
 }
 
+/// Replace what the port said about a syntax error with what uf says.
+///
+/// Two fields and no others. The severity, the kind and the file stay the
+/// port's, because uf is not disagreeing about what happened — only about how
+/// to describe it, and where to point while describing it. See
+/// [`uf_flow::explain`] for what "where" means: the parser's caret is on the
+/// token it tripped over, and uf's is on the construct that is actually
+/// unsupported.
+///
+/// The related locations go with the message that numbered them. uf's sentence
+/// references nothing, so a `[1]` left behind would be a number in the frame
+/// with no text pointing at it.
+pub(super) fn explain(
+    diagnostic: &mut TypeDiagnostic,
+    explanation: &uf_flow::explain::Explanation,
+) {
+    if let Some(span) = span_of_loc(&explanation.loc) {
+        diagnostic.primary = span;
+    }
+    diagnostic.message = MessageFeatures::from_iter([MessageSegment::Text {
+        text: CompactString::new(explanation.message),
+    }]);
+    diagnostic.root = None;
+    diagnostic.related = RelatedLocations::new();
+}
+
 /// Drop the ` [error-code]` Flow appends to every rendered message.
 ///
 /// `json_output` renders for a CLI that prints nothing else, so it folds the

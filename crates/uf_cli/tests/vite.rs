@@ -4446,6 +4446,127 @@ fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
     }
 }
 
+/// Nothing `uf build` writes installs the React DevTools hook.
+///
+/// `uf dev` installs it deliberately — `packages/vite/internal/devtools.js`,
+/// injected by `transformIndexHtml` — and that installer does exactly two
+/// things in a deployment: it is dead weight in every document, and it is a
+/// page saying out loud which framework and which build it is. See
+/// ubugeeei-prod/uf#503.
+///
+/// # What is asserted, and what cannot be
+///
+/// Not "the string `__REACT_DEVTOOLS_GLOBAL_HOOK__` appears nowhere". It does
+/// appear, twice, in `react-dom`'s own *production* build: React reads the
+/// global while it is being evaluated and hands the panel a renderer if it
+/// finds one, which is how DevTools attaches to a deployed React application at
+/// all. That is React's code and its decision, and a test that demanded its
+/// absence would be demanding a different React rather than a smaller uf.
+///
+/// What is uf's is the *installer*, and it is distinguishable by exactly the
+/// thing it does that React never does: it assigns. `window.<hook> =` is the
+/// preamble's own line and appears in no build of React, so it is what the
+/// assertion is written against. Beside it, two things whose absence needs no
+/// interpretation — the Fast Refresh preamble, injected from the same hook, and
+/// the wording of the browser-side check in
+/// `@uniflowed/router`'s `internal/devtools.js`, which is behind
+/// `import.meta.hot` and must therefore be unreachable rather than merely
+/// unused. And a document gets the strict version: `transformIndexHtml` writes
+/// the HTML, so the HTML must carry no mention of the hook at all.
+///
+/// Asserted over `dist/` rather than over the plugin, because the plugin's
+/// answer is already covered without a build by
+/// `tests/library/devtools.test.js`. What only a real build can say is that
+/// nothing *else* in the pipeline put it back: the prerendered documents go
+/// through `transformIndexHtml` too.
+///
+/// The project has a `"use client"` component in it so that the browser bundle
+/// is a bundle rather than an entry with nothing behind it — a build whose
+/// client graph is empty would pass this by shipping nothing, and would in
+/// particular ship no `react-dom` for the paragraph above to be about.
+#[test]
+fn a_build_ships_no_devtools_hook() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/Counter.js",
+        "\"use client\";\n// @flow\nimport * as React from \"@uniflowed/react\";\nimport { useState } from \"@uniflowed/react\";\n\nexport component Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button type=\"button\" onClick={() => setCount(count + 1)}>\n      {count}\n    </button>\n  );\n}\n",
+    ));
+    files[2] = (
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
+    );
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dist = project.path().join("dist");
+    // Not empty, so the negative assertions below are about a build that
+    // happened rather than about a directory that is not there.
+    assert!(!client_assets(&dist).is_empty());
+    let index = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    assert!(
+        index.contains("home"),
+        "the page did not prerender:\n{index}"
+    );
+
+    for file in walk_files(&dist) {
+        let text = String::from_utf8_lossy(&fs::read(&file).unwrap()).into_owned();
+        assert!(
+            !text.contains("window.__REACT_DEVTOOLS_GLOBAL_HOOK__"),
+            "the DevTools installer reached {}",
+            file.display()
+        );
+        // The Fast Refresh preamble comes from the same hook and is the other
+        // half of what a document gets in development only. A build that
+        // shipped it would be serving a module the deployment does not have.
+        assert!(
+            !text.contains("/@react-refresh"),
+            "the Fast Refresh preamble reached {}",
+            file.display()
+        );
+        // And the browser-side check. It is behind `import.meta.hot`, which
+        // Vite replaces with `undefined` in a build, so the branch is dead and
+        // the dynamic import behind it is unreachable — which is a claim about
+        // what Rollup did and is worth reading off the artefact. The source
+        // maps are walked too, and a module that survived only in
+        // `sourcesContent` would be caught here.
+        assert!(
+            !text.contains("React DevTools cannot attach"),
+            "the development DevTools check reached {}",
+            file.display()
+        );
+    }
+
+    // A document is stricter than a chunk, because `transformIndexHtml` is what
+    // writes one: every mention of the hook in an HTML file uf emitted would
+    // have been put there by the injector this test is about.
+    for file in walk_files(&dist) {
+        if file.extension().is_none_or(|kind| kind != "html") {
+            continue;
+        }
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(
+            !text.contains("__REACT_DEVTOOLS_GLOBAL_HOOK__"),
+            "a prerendered document mentions the DevTools hook: {}",
+            file.display()
+        );
+    }
+}
+
 /// Every file under `directory`, however deep.
 fn walk_files(directory: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
