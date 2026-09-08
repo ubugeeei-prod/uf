@@ -314,3 +314,47 @@ fn a_path_wider_than_the_cap_is_elided_from_its_head() {
     let padded = format!("{}src/a.js", "\x1b".repeat(500));
     assert_eq!(safe_path(&padded), "src/a.js");
 }
+
+/// A diagnostic message gets the treatment a path does.
+///
+/// A message quotes module paths and import specifiers, which came out of the
+/// same clone the filename did. See ubugeeei-prod/uf#659.
+#[test]
+fn a_message_cannot_move_the_cursor() {
+    assert_eq!(
+        safe_message("cannot resolve \x1b[2Jgotcha"),
+        "cannot resolve [2Jgotcha"
+    );
+    assert_eq!(safe_message("a\rb"), "ab");
+    assert_eq!(safe_message("a\nb"), "ab");
+    // A message is a sentence, so the prose survives whole.
+    assert_eq!(
+        safe_message("Cannot get `x.y` because property `y` is missing."),
+        "Cannot get `x.y` because property `y` is missing."
+    );
+    assert_eq!(safe_message("型が合いません"), "型が合いません");
+}
+
+/// A message longer than the cap is cut from the right, because a sentence is
+/// read from its start — the opposite end from a path, which is identified by
+/// its tail.
+#[test]
+fn a_message_wider_than_the_cap_is_cut_from_its_tail() {
+    let long = "x".repeat(MAX_MESSAGE_WIDTH * 2);
+    let drawn = safe_message(&long);
+    assert_eq!(display_width(&drawn), MAX_MESSAGE_WIDTH);
+    assert!(drawn.ends_with('\u{2026}'), "{drawn}");
+    assert!(
+        drawn.starts_with("xxx"),
+        "the start of the sentence is what survives"
+    );
+
+    // Exactly at the cap is not cut.
+    let exact = "y".repeat(MAX_MESSAGE_WIDTH);
+    assert_eq!(safe_message(&exact), exact);
+
+    // And the control characters go before the width is measured, so a message
+    // padded with escapes is not cut for a width nobody can see.
+    let padded = format!("{}short", "\x1b".repeat(2_000));
+    assert_eq!(safe_message(&padded), "short");
+}

@@ -83,9 +83,9 @@ pub use crate::render::{KeyValue, Renderer};
 pub use crate::style::{Attributes, Color, Style};
 pub use crate::table::{Cell, Column, Table};
 pub use crate::text::{
-    Align, MAX_PATH_WIDTH, char_width, display_width, push_padded, push_repeat, push_repeat_str,
-    push_safe_path, push_spaces, push_truncated, push_u32, push_usize, safe_path,
-    truncate_to_width,
+    Align, MAX_MESSAGE_WIDTH, MAX_PATH_WIDTH, char_width, display_width, push_padded, push_repeat,
+    push_repeat_str, push_safe_message, push_safe_path, push_spaces, push_truncated, push_u32,
+    push_usize, safe_message, safe_path, truncate_to_width,
 };
 pub use crate::theme::{Theme, Tone};
 pub use crate::timing::{Phase, PhaseTimer, format_duration, push_duration};
