@@ -3813,6 +3813,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "uf_profiler"
+version = "0.0.0-alpha.14"
+dependencies = [
+ "criterion",
+]
+
+[[package]]
 name = "uf_project"
 version = "0.0.0-alpha.14"
 dependencies = [
