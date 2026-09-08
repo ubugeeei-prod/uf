@@ -144,6 +144,47 @@ pub fn safe_path(path: &str) -> String {
     out
 }
 
+/// The widest a diagnostic message is drawn before it is cut.
+///
+/// Generous on purpose. A message is a sentence, and a sentence cut in half is
+/// a finding nobody can act on; Flow's longest real messages are a few hundred
+/// columns. What this bounds is the attacker's half — an import specifier as
+/// long as the file it was read from — without touching anybody's diagnostic.
+pub const MAX_MESSAGE_WIDTH: usize = 512;
+
+/// Append a diagnostic message in a form that cannot steer the terminal.
+///
+/// The same treatment [`push_safe_path`] gives a path, and for the same
+/// reason: a message quotes module paths and import specifiers, and those come
+/// out of the same clone the filenames do. Cut from the right rather than the
+/// left, because a sentence is read from its start. See ubugeeei-prod/uf#659.
+pub fn push_safe_message(out: &mut String, message: &str) {
+    let kept: Vec<char> = message.chars().filter(|ch| !ch.is_control()).collect();
+    let width: usize = kept.iter().copied().map(char_width).sum();
+    if width <= MAX_MESSAGE_WIDTH {
+        out.extend(kept);
+        return;
+    }
+    let mut budget = MAX_MESSAGE_WIDTH - 1;
+    for ch in kept {
+        let width = char_width(ch);
+        if width > budget {
+            break;
+        }
+        budget -= width;
+        out.push(ch);
+    }
+    out.push('\u{2026}');
+}
+
+/// [`push_safe_message`] as a value.
+#[must_use]
+pub fn safe_message(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    push_safe_message(&mut out, message);
+    out
+}
+
 /// The longest prefix of `text` that fits in `max` columns.
 ///
 /// Slices on a character boundary, never in the middle of one.
