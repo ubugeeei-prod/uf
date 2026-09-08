@@ -392,7 +392,7 @@ pub fn scan_selected_source_files(
             let Ok(path) = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()) else {
                 continue;
             };
-            // `ALWAYS_IGNORED` and `lint.ignore` still apply: naming a path
+            // `ALWAYS_IGNORED` and `ignore` still apply: naming a path
             // says "this one too", not "everything uf knows to stay out of".
             let Some(kind) = SourceKind::from_path(&path) else {
                 continue;
@@ -455,7 +455,7 @@ fn write_generated_file(path: &Utf8Path, contents: &str, force: bool) -> Result<
 /// `.uf` is uf's own working directory — the transform cache, compiled
 /// configs, build output — and a project cannot opt back into having its
 /// tooling's scratch files linted, formatted or run as tests. The others are
-/// removable from `lint.ignore`, which is why they are not here.
+/// removable from `ignore`, which is why they are not here.
 const ALWAYS_IGNORED: &[&str] = &[".uf", ".git"];
 
 /// Whether a path is excluded from linting, formatting and test discovery.
@@ -468,13 +468,17 @@ const ALWAYS_IGNORED: &[&str] = &[".uf", ".git"];
 /// `uf fmt` walked into generated bundles and offered to reformat them. A
 /// path — `src/generated`, `packages/legacy/vendor` — names one place and is
 /// matched as a prefix, which is what someone writing a path means.
+///
+/// The entries come from [`UniflowedConfig::project_ignore`], which is the
+/// top-level `ignore` and — for a project that has not moved yet — the
+/// `lint.ignore` it replaced.
 fn is_ignored(root: &Utf8Path, path: &Utf8Path, config: &UniflowedConfig) -> bool {
     let relative = path.strip_prefix(root).unwrap_or(path).as_str();
     let mut segments = relative.split('/');
     if segments.any(|segment| ALWAYS_IGNORED.contains(&segment)) {
         return true;
     }
-    config.lint.ignore.iter().any(|ignored| {
+    config.project_ignore().entries.iter().any(|ignored| {
         let ignored = ignored.as_str();
         if ignored.contains('/') {
             relative.starts_with(ignored)

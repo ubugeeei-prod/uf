@@ -173,6 +173,30 @@ declared. What a permission set denies is *the rest of the machine*: `~/.ssh`,
 declared, because a permission model whose additions are invisible is one nobody
 can check.
 
+### A compiled binary
+
+`uf build --compile` embeds one of these hosts and writes an executable, so the
+permission set has to survive a machine uf will never see. It does, on one of
+the two backends.
+
+| backend | how the set travels | what happens when it cannot |
+| --- | --- | --- |
+| `node --build-sea` | `execArgv` in the SEA config, so `--permission` and its `--allow-fs-*` flags are in force from the executable's first line | a category Node cannot enforce is refused, exactly as it is for a run |
+| `bun build --compile` | nowhere: Bun has no permission model and no equivalent of `execArgv` | the compile is refused, naming Node as the backend that can |
+
+Two things about the compiled case differ from a run, and both are in the
+direction that matters.
+
+**uf adds no grants of its own.** The grants below exist because a *run* has to
+load the project — the module graph, `node_modules`, the loader thread, the
+`uf transform` child. A compiled binary has none of that: the bundle is one
+file inside the executable and the output directory is bytes beside it. So the
+declared set is the whole set, and the two holes named below are not in it.
+
+**Nothing downstream can check it.** A run can be inspected with
+`uf explain test` on the machine it runs on; a binary is a file somebody
+receives. That asymmetry is why `--compile` on Bun refuses rather than warns.
+
 ### The holes, named
 
 On Node, uf's own Flow loader needs two grants that Node itself warns about at

@@ -312,6 +312,15 @@ pub struct MdxConfig {
     pub extensions: Vec<CompactString>,
     pub jsx_import_source: CompactString,
     pub pipeline_plugin: MdxPipelinePluginConfig,
+    /// Syntax highlighting for fenced code.
+    ///
+    /// A field here rather than nowhere. `HighlightConfig` was declared,
+    /// exported and documented in the configuration reference — and was a
+    /// field of no struct, so nothing deserialized those keys and nothing
+    /// read them. `packages/vite` has read `mdxConfig.highlight` the whole
+    /// time; what it got was `undefined`, and a project that set a theme got
+    /// no error and no effect. See ubugeeei-prod/uf#646.
+    pub highlight: HighlightConfig,
 }
 
 impl Default for MdxConfig {
@@ -321,6 +330,7 @@ impl Default for MdxConfig {
             extensions: vec![CompactString::const_new(".mdx")],
             jsx_import_source: CompactString::const_new("@uniflowed/jsx-runtime"),
             pipeline_plugin: MdxPipelinePluginConfig::BuiltIn,
+            highlight: HighlightConfig::default(),
         }
     }
 }
@@ -537,6 +547,29 @@ pub struct ReactConfig {
     pub async_react: bool,
     pub suspense: bool,
     pub use_hook: bool,
+    /// Whether `uf dev` hydrates the application inside `<StrictMode>`.
+    ///
+    /// On by default, and a development-only default: `uf build` never emits
+    /// it, so what a visitor runs is unaffected by this field whatever it says.
+    /// What Strict Mode buys is that React runs a render, a state initialiser
+    /// and a `useMemo` factory twice and mounts every effect, unmounts it and
+    /// mounts it again — so a component that is not pure, and an effect whose
+    /// cleanup does not undo its setup, fail while they are being written
+    /// rather than in the one production render that happens to interleave.
+    ///
+    /// It is a default rather than a feature because the argument against it is
+    /// always the same one — double invocation surprises people — and the
+    /// answer is always the same too: it surprises them in development, once,
+    /// about a bug they already have. A project that disagrees writes
+    /// `app: { react: { strictMode: false } }` and gets a dev server that
+    /// renders the way the deployment does.
+    ///
+    /// See ubugeeei-prod/uf#516. `@uniflowed/vite` reads this out of the loaded
+    /// `uf.config.js` and generates the flag into `virtual:uf/client`; nothing
+    /// on the Rust side acts on it, which is why it is declared here rather
+    /// than plumbed — a field `uf.config.js` may set and `uf inspect` may
+    /// report has to exist in the schema that describes the file.
+    pub strict_mode: bool,
 }
 
 impl Default for ReactConfig {
@@ -546,6 +579,7 @@ impl Default for ReactConfig {
             async_react: true,
             suspense: true,
             use_hook: true,
+            strict_mode: true,
         }
     }
 }

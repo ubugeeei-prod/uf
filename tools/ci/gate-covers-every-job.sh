@@ -32,6 +32,11 @@
 #      inside `ci.yml` that means the gate covers it, and outside it means the
 #      job has no `needs:` of its own. Either way it must carry no job-level
 #      `if:`, which is the other way a job reports `skipped`.
+#   5. Every workflow that reports a required context runs on `merge_group`.
+#      The merge queue merges a batch when the required checks pass on its
+#      speculative merge commit; a required context whose workflow has no
+#      `merge_group` trigger never reports there, and the queue waits on a
+#      check that is never coming. See #588.
 #
 # What this cannot check is branch protection itself — whether `CI` is in the
 # required set for `main` is a repository setting, readable only with admin
@@ -60,15 +65,14 @@ gate_context="CI"
 # The contexts required on `main`, newline-separated because two of them have a
 # space in them.
 #
-# Six of these are what branch protection lists today: `Format`, `Clippy`,
-# `Test`, `Bench Compile`, `Metadata`, `Zizmor`. `CI` is the seventh, and it is
-# the one that is *not* set yet — #367 asks for it, and until somebody with
-# admin rights adds it the gate is advisory: it goes red and nothing stops the
-# merge, which is what happened on 2026-09-07 while `main` was failing it.
+# All seven are what branch protection lists today. `CI` was the last to be
+# added: #367 asked for it, the gate spent a day advisory — red while nothing
+# stopped the merge, which is what happened on 2026-09-07 while `main` was
+# failing it — and the setting has since caught up.
 #
-# Listing it here anyway is deliberate. Everything asserted below is true of
-# `CI` whether or not the setting has caught up, and this file is then the one
-# place in the repository that says what the setting is supposed to be.
+# The list stays here rather than being read from the API. Everything asserted
+# below is true whether or not the setting agrees, and this file is then the
+# one place in the repository that says what the setting is supposed to be.
 required_contexts="Format
 Clippy
 Test
@@ -195,6 +199,20 @@ parse() {
         next
       }
     }
+  ' "$1"
+}
+
+# Does $1 declare `merge_group` in its `on:` block?
+#
+# Line-oriented for the same reason `parse` is: this runs in the `Metadata`
+# job, which installs nothing. `on:` is a key at column 0 and closes at the
+# next one, so a `merge_group` inside that region counts however it is
+# written — bare, or with keys under it.
+declares_merge_group() {
+  awk '
+    /^[^[:space:]#]/ { inon = ($0 ~ /^on:[[:space:]]*$/); next }
+    inon && $0 ~ /^[[:space:]]+merge_group:/ { found = 1 }
+    END { exit found ? 0 : 1 }
   ' "$1"
 }
 
@@ -347,8 +365,29 @@ while IFS= read -r context; do
     fail "\`$context\` is required and carries \`if: $cond\` — a job whose condition is false reports \`skipped\`, which is a pass, and that is the same hole by a different route"
   fi
 
+  printf '%s\n' "$file" >> "$work/context-files"
+
   printf '  required   %-16s %s (%s)\n' "$context" "$id" "$file"
 done < "$work/required"
+
+# 5. And each of those workflows runs on `merge_group`.
+#
+# One complaint per file rather than one per context, because `ci.yml` reports
+# six of the seven and six copies of the same sentence is not six problems.
+if [ -f "$work/context-files" ]; then
+  sort -u "$work/context-files" | while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    if declares_merge_group "$file"; then
+      printf '  queued     %s\n' "$file"
+    else
+      printf '  FAIL  %s reports a required context and has no `merge_group` in its `on:` — the merge queue merges a batch when the required checks pass on its speculative merge commit, and a check that never runs there is a check the queue waits on forever. See #588.\n' "$file" >&2
+      echo x >> "$work/queue-errors"
+    fi
+  done
+  if [ -f "$work/queue-errors" ]; then
+    errors=$((errors + $(wc -l < "$work/queue-errors")))
+  fi
+fi
 
 if [ "$errors" -ne 0 ]; then
   printf '\n%s problem(s). The gate is what stands between a `Toolchain` that does not\n' "$errors" >&2

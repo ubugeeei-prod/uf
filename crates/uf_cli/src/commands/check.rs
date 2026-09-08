@@ -31,9 +31,9 @@ use crate::commands::lint::{
     render_group, render_unreadable, render_verdict, run_lint, severity_count,
 };
 use crate::fix::files::{FixMode, FixSummary, fix_project};
-use crate::support::plural;
 #[cfg(feature = "upstream-typecheck")]
 use crate::support::problem_summary;
+use crate::support::{plural, render_ignore_deprecation};
 use crate::ui::Ui;
 
 /// How many untyped imports are named before the list is summarised.
@@ -184,6 +184,7 @@ pub(crate) fn check(
         unreadable,
         root,
         available,
+        ignore_deprecation,
     } = run_lint(cwd, paths)?;
     progress.draw("type checking");
     let types = type_check(&sources, &available, &root);
@@ -195,6 +196,7 @@ pub(crate) fn check(
     } else {
         render(ui, &lint, &sources, &types, fixed.as_ref());
         render_unreadable(ui, &unreadable);
+        render_ignore_deprecation(ui, ignore_deprecation);
     }
 
     // Before the counts: a file nobody could read has no diagnostics, and
@@ -514,8 +516,11 @@ fn render_type_group(ui: &mut Ui, sources: &[SourceFile], group: &[TypeDiagnosti
         })
         .collect();
 
+    // As in `lint::render_group`: the header draws the path itself, and the
+    // frames under it are `CodeFrame`'s job. #640.
+    let drawn = uf_term::safe_path(path);
     ui.render(|renderer, out| {
-        renderer.theme().path.paint(renderer.color(), path, out);
+        renderer.theme().path.paint(renderer.color(), &drawn, out);
         out.push_str("  ");
         renderer.theme().muted.paint(renderer.color(), &header, out);
         out.push('\n');

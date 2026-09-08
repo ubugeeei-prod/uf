@@ -195,7 +195,11 @@ pub(crate) fn render_frame(
     }
     level_style.close(level, out);
     out.push_str(": ");
-    theme.title.paint(level, frame.message, out);
+    // The message quotes module paths and import specifiers, which came out of
+    // the same checkout the filename did. #659.
+    theme
+        .title
+        .paint(level, &crate::text::safe_message(frame.message), out);
     out.push('\n');
 
     let gutter = crate::text::decimal_digits(frame.line);
@@ -205,7 +209,9 @@ pub(crate) fn render_frame(
     theme.gutter.close(level, out);
     out.push(' ');
     theme.path.open(level, out);
-    out.push_str(frame.path);
+    // Not `push_str`: the path came off a filesystem uf did not author, and
+    // this is a line being written to a terminal. #640.
+    crate::text::push_safe_path(out, frame.path);
     out.push(':');
     push_usize(out, frame.line);
     out.push(':');
@@ -244,7 +250,12 @@ pub(crate) fn render_frame(
         if col >= window_start && col + width <= window_end {
             if ch == '\t' {
                 push_spaces(out, width);
-            } else {
+            } else if !ch.is_control() {
+                // A source line is checkout text by definition, and the first
+                // line of a file can be `\x1b[2J` as easily as its name can.
+                // Dropping it cannot move the caret: every control character
+                // but the tab handled above is zero columns wide, so `col` is
+                // unchanged either way. #659.
                 out.push(ch);
             }
         }
@@ -273,7 +284,9 @@ pub(crate) fn render_frame(
     push_repeat(out, glyphs.caret, caret_len);
     if let Some(label) = frame.label {
         out.push(' ');
-        out.push_str(label);
+        // A label names a type or a binding out of the checkout, like the
+        // message does. #659.
+        crate::text::push_safe_message(out, label);
     }
     level_style.close(level, out);
     out.push('\n');

@@ -218,6 +218,7 @@ impl<'a> Printer<'a> {
     pub fn concat<I>(&self, parts: I) -> Doc<'a>
     where
         I: IntoIterator<Item = Doc<'a>>,
+        I::IntoIter: ExactSizeIterator,
     {
         self.docs.concat(parts)
     }

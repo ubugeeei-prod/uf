@@ -35,20 +35,23 @@ export default defineConfig({
     },
   },
 
-  lint: {
-    // `upstream/` is Meta's and React's source, vendored as submodules. It is
-    // not ours to format or lint, and a diff there would be lost on the next
-    // sync.
-    //
-    // `crates/` is Rust. The only JavaScript under it is test fixtures — for
-    // the formatter, which needs badly formatted input, and for the checker,
-    // which needs input that fails to check. Both are exercised by the Rust
-    // tests that own them. Checking them again from the repository root would
-    // report every fixture's deliberate defect as this project's defect: 1868
-    // of the 3782 type errors `uf check` used to report here came from
-    // `crates/uf_fmt/tests/fixtures` alone.
-    ignore: ["upstream", "crates", "dist", "target", "node_modules"],
-  },
+  // What no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test` and
+  // `uf doc` all read this one list, which is why it is here rather than under
+  // `lint`, where it used to be and where it only ever looked like one
+  // command's business.
+  //
+  // `upstream/` is Meta's and React's source, vendored as submodules. It is
+  // not ours to format or lint, and a diff there would be lost on the next
+  // sync.
+  //
+  // `crates/` is Rust. The only JavaScript under it is test fixtures — for
+  // the formatter, which needs badly formatted input, and for the checker,
+  // which needs input that fails to check. Both are exercised by the Rust
+  // tests that own them. Checking them again from the repository root would
+  // report every fixture's deliberate defect as this project's defect: 1868
+  // of the 3782 type errors `uf check` used to report here came from
+  // `crates/uf_fmt/tests/fixtures` alone.
+  ignore: ["upstream", "crates", "dist", "target", "node_modules"],
 
   test: {
     // `uf run test:lib:coverage` measures the packages this repository ships,
@@ -629,6 +632,18 @@ export default defineConfig({
     "ci:gate:test": {
       command: "tools/ci/test-gate-covers-every-job.sh",
       inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
+    },
+
+    // The crates `cargo semver-checks` cannot compare, which is computed and
+    // therefore capable of being wrong in two directions: too narrow and the
+    // job fails for every pull request, which is what #633 did by adding a
+    // crate that reaches `uf_flow` and appeared in nobody's list; too wide and
+    // crates leave the gate with nothing going red. There is no `ci:semver`
+    // task beside this one because the check needs a baseline revision, and
+    // the workflow is the only place that knows which one.
+    "ci:semver:test": {
+      command: "tools/ci/test-semver-exclude.sh",
+      inputs: ["tools/ci/semver-exclude.sh", "tools/ci/test-semver-exclude.sh"],
     },
 
     // And that a job which runs the workspace suite installs the runtimes the

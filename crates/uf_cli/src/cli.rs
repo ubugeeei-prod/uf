@@ -137,9 +137,24 @@ pub(crate) enum Commands {
         #[arg(long, value_name = "MODE")]
         mode: Option<String>,
         /// Also write the application as one executable file, next to the
-        /// build. Needs Bun on PATH; the file itself needs nothing.
+        /// build. Produced on the project's Capability JS Host — Bun or Node
+        /// 25.5 and newer; the file itself needs nothing.
         #[arg(long)]
         compile: bool,
+        /// Compile for this platform rather than for this machine, as a
+        /// target triple: `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`.
+        ///
+        /// Cross-compiling downloads that platform's runtime, so the first
+        /// build for a target needs the network. Bun's backend only; Node
+        /// single-executable applications cannot cross-compile.
+        //
+        // A free-form string rather than a `ValueEnum`, for the reason
+        // `--adapter` is one: clap's list of accepted values cannot say *why*
+        // a triple is not accepted, and "uf has never built for this" and
+        // "your Bun is too old for this" are different sentences that a reader
+        // has to be able to tell apart. `compile::parse_target` says both.
+        #[arg(long, value_name = "TRIPLE", requires = "compile")]
+        target: Option<String>,
         /// Also write a directory that can be copied to a host with a
         /// JavaScript runtime and nothing else. Overrides
         /// `app.runtime.deploy.adapter`.
@@ -323,6 +338,16 @@ pub(crate) enum Commands {
         /// Only format files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
+    },
+    /// The message catalogue: out to a translator, and back.
+    ///
+    /// `@uniflowed/i18n` declares each message beside its parameters in source.
+    /// `uf i18n extract` turns that into one JSON file a translation vendor
+    /// accepts, and `uf i18n merge` reads the translated file back into the
+    /// locale module `defineLocales` loads.
+    I18n {
+        #[command(subcommand)]
+        command: I18nCommand,
     },
     /// Print the toolchain's version, host, and resolved paths.
     Info,
@@ -755,6 +780,10 @@ impl Commands {
             Self::Check { json: true, .. }
                 | Self::Doc { json: true, .. }
                 | Self::Explain { json: true, .. }
+                | Self::I18n {
+                    command: I18nCommand::Extract { json: true, .. }
+                        | I18nCommand::Merge { json: true, .. },
+                }
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true, .. }
                 | Self::Test { json: true, .. }
@@ -943,6 +972,53 @@ pub(crate) enum CatalogCommand {
 }
 
 #[derive(Debug, Subcommand)]
+pub(crate) enum I18nCommand {
+    /// Write every message the project declares as one JSON catalogue.
+    ///
+    /// The file holds each message's MessageFormat 2 source, the parameters it
+    /// takes, where it is declared and a digest of the two. A `translation`
+    /// field starts equal to the source, which is what gives a translator
+    /// something to edit rather than an empty box.
+    ///
+    /// A `message(…)` uf cannot read with certainty is reported and nothing is
+    /// written: a catalogue quietly missing a message is invisible in review
+    /// and visible to a reader of the page.
+    Extract {
+        /// The locale the messages are written in, e.g. `en-US`.
+        ///
+        /// Read from the project's `defineCatalogue` calls when they name one
+        /// literal tag, and required when they name none or several.
+        #[arg(long, value_name = "TAG")]
+        locale: Option<String>,
+        /// Where to write it. Defaults to `i18n/<locale>.json`.
+        #[arg(long, value_name = "PATH")]
+        out: Option<Utf8PathBuf>,
+        /// Emit machine-readable JSON on stdout, and write no file.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read a translated catalogue back into a locale module.
+    ///
+    /// The file is the one `uf i18n extract` wrote, with each `translation`
+    /// filled in and `locale` set to the language they are in. uf extracts the
+    /// project again and holds every returned entry against what its message
+    /// says today: one whose source or parameters changed while the file was
+    /// out is named and left out, because a translation of a sentence that no
+    /// longer exists is not a translation of the one that replaced it.
+    Merge {
+        /// The translated catalogue.
+        #[arg(value_name = "FILE")]
+        file: Utf8PathBuf,
+        /// Where to write the module. Defaults to `<locale>.js` beside FILE.
+        #[arg(long, value_name = "PATH")]
+        out: Option<Utf8PathBuf>,
+        /// Emit machine-readable JSON on stdout, and write no file.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
 pub(crate) enum EnvCommand {
     /// Report which tools are installed on this machine.
     Doctor,
@@ -1003,6 +1079,7 @@ mod tests {
                 size_report: false,
                 mode: None,
                 compile: false,
+                target: None,
                 adapter: None
             }
             .wants_json()
@@ -1040,6 +1117,7 @@ mod tests {
                 size_report: false,
                 mode: None,
                 compile: false,
+                target: None,
                 adapter: None
             }
             .owns_stdout()

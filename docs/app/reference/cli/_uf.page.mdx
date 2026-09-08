@@ -52,6 +52,12 @@ spellings.
 Scaffolds a library rather than an application: no router, no document, and a
 `package.json` shaped for publishing. `uf init --lib` does it in place.
 
+Its `uf.config.js` says `app: { router: { enabled: false } }`, and that one
+line is what makes `uf build` [build a library](#uf-build-for-a-library) rather
+than look for an application entry. The manifest it writes ships the Flow
+source and the compiled build, named by export conditions; see
+[`build.lib`](/reference/config#buildlib).
+
 ### uf info
 
 Prints the version, the resolved JavaScript host, and the project uf found.
@@ -222,6 +228,44 @@ writes a directory for one deployment target — a host with a JavaScript
 runtime, a container image, a Cloudflare Worker or a Lambda function — and
 `--compile` writes a single executable file that needs not even a runtime.
 Both are described below, beside the two ways to serve a build in place.
+
+Everything above is the build of an **application**. A project whose
+[`app.router.enabled`](/reference/config#app) is false takes a different one.
+
+### uf build, for a library
+
+A project with the file-system router off is a library, and `uf build`
+compiles its entries to the output directory instead of bundling an
+application. Nothing above happens: there is no route table, no client entry,
+no server bundle, no prerender and no `sitemap.xml`.
+
+```
+uf build
+
+  build             library
+  because           `app.router.enabled` is false, so this project is a
+                    library rather than an application
+  engine            vite
+  entries           index.js
+  formats           es
+  external packages 0
+```
+
+**Every package the manifest declares stays an import** — `dependencies`,
+`peerDependencies`, `optionalDependencies`, and the host's built-in modules —
+which is the opposite of the application build and the reason a library does
+not ship a second copy of React to everyone who installs it.
+[`build.lib`](/reference/config#buildlib) is where the entries, the formats and
+any extra externals go, and its defaults are what `uf new --lib` scaffolds, so
+most libraries write none of it.
+
+`--compile` and `--adapter` are refused here, by name and before anything is
+built: both write a deployment that serves an application, and a library is
+imported. What sends a library anywhere is `uf publish`.
+
+The build warns when `package.json` names an `exports` target inside the output
+directory that it did not write — a package that installs and cannot be
+imported, which every other check passes.
 
 ### Serving a build
 
@@ -523,14 +567,70 @@ the runtime too and needs nothing — which is also the trade, because the copy
 inside it is fixed at build time and changing a single asset means building
 again.
 
-Producing one needs `bun` on PATH, because Bun's runtime is what gets embedded;
-running one needs nothing. A project that imports a native `.node` addon cannot
-be a single file, and the build says which addon and which importer rather than
-producing something that fails on its first request — but an addon loaded
-through a runtime string, with `process.dlopen` or `require(variable)`, is
-invisible to any bundler and will still compile and still fail when a request
-reaches it. Building for a platform other than the one you are on is
-[#310](https://github.com/ubugeeei-prod/uf/issues/310).
+Producing one needs a runtime to embed, and **which one is the project's
+choice**: uf reads `app.runtime.capabilityJsHost`, the same setting that
+decides which host `uf dev` and `uf test` run on, and uses the first of the
+accepted hosts that can build a binary. Running one still needs nothing.
+
+| host | how | cross-compiles | needs |
+| --- | --- | --- | --- |
+| `bun` | `bun build --compile` | yes | `bun` on PATH |
+| `node` | `node --build-sea`, a single-executable application | no | Node 25.5 or newer |
+| `deno` | — | — | not written; uf says so and names the two that are |
+
+The summary's `standalone` block names the runtime and its version, because
+"compiled" is now one of two `node:` API surfaces and which one you shipped is
+a fact about the artefact. A host that cannot be used is passed over with a
+reason — `node` below the floor, no `bun` installed — and a project that set
+`autoDetect: false` has one candidate, so the reason is the refusal.
+
+Single-executable support is compiled into a `node` binary as well as being a
+version of it, and a few distributions ship it turned off; that shows up as
+`sentinel NODE_SEA_FUSE_… not found`. uf cannot see that in advance, so it
+tries the next accepted host instead and says so — neither backend compiles or
+evaluates your application, it only wraps a runtime around it, so a failure
+there is never yours. A project with `autoDetect: false` has one host and gets
+that failure as the build's.
+
+`--target TRIPLE` builds for a machine that is not this one — the triples uf
+publishes *itself* for, so one vocabulary rather than two:
+
+```console
+$ uf build --compile --target x86_64-unknown-linux-gnu
+```
+
+`aarch64-apple-darwin`, `x86_64-apple-darwin`, `aarch64-unknown-linux-gnu`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-musl`,
+`x86_64-unknown-linux-musl`, `aarch64-pc-windows-msvc` and
+`x86_64-pc-windows-msvc`. Anything else is refused with that list before the
+build starts. Cross-compiling is Bun's backend only, so a project pinned to
+Node is told that Node cannot do it rather than handed a binary for the wrong
+machine — and a project on the default configuration falls through to Bun,
+which the summary names.
+
+It works by downloading that platform's runtime, about 90 MB, and uf says so
+before the bundle rather than going quiet in the middle. The download is cached
+at `.uf/cache/bun` **inside the project**, so a build behaves the same on a
+laptop and on a sandboxed runner that cannot write to `$HOME`; set
+`BUN_INSTALL_CACHE_DIR` yourself to share one cache across checkouts. A
+runtime already in the cache is not fetched again. Which platforms a given Bun
+actually has runtimes for changes between its releases, so a target Bun
+declines is reported with the triple you typed and the Bun that declined it.
+
+If the project declares [`permissions`](/reference/config#permissions), the
+compiled binary carries them: Node bakes `--permission` and its `--allow-fs-*`
+flags into the executable, so the set is in force on a machine uf will never
+see. Bun has no permission model and no equivalent, so `--compile` on Bun
+refuses a project that declared one rather than shipping a binary that looks
+sandboxed and is not. Unlike a `uf test` run, uf adds no grants of its own — a
+compiled binary loads no project — so what you declared is the whole of what
+it may reach.
+
+A project that imports a native `.node` addon cannot be a single file, and the
+build says which addon and which importer rather than producing something that
+fails on its first request — but an addon loaded through a runtime string, with
+`process.dlopen` or `require(variable)`, is invisible to any bundler and will
+still compile and still fail when a request reaches it.
 
 ### uf doc
 
@@ -751,6 +851,89 @@ two checks are skipped.
 staged is checked as it is on disk; uf does not stash the unstaged half the way
 `lint-staged` does.
 
+## Messages
+
+Two commands over `@uniflowed/i18n`'s catalogue: one that takes it out to a
+translator, one that reads it back. They share a file, and the shape of that
+file is the same in both directions, so a vendor who fills in the extraction
+has produced something `uf i18n merge` reads with no conversion step in
+between.
+
+The walk is Rust rather than the package for the reason the formatter and the
+checker are: it is repeated, repository-wide, CPU-bound work. The half that is
+a *parse of one message* stays in `@uniflowed/i18n`, and neither command
+implements MessageFormat 2 — see
+[the package reference](/reference/i18n) for what that division means.
+
+### uf i18n extract
+
+Writes every message the project declares as one JSON file:
+
+```json
+{
+  "format": "uf-i18n-catalogue/1",
+  "sourceLocale": "en-US",
+  "locale": "en-US",
+  "messages": {
+    "greeting": {
+      "source": "Hello, {$name}!",
+      "translation": "Hello, {$name}!",
+      "parameters": { "name": "string" },
+      "declaredAt": "src/messages.js:10",
+      "digest": "2f1c0b4a7d9e5a63"
+    }
+  }
+}
+```
+
+The text is MessageFormat 2, unchanged from the source — uf copies the literal
+and never parses it. `translation` starts equal to `source`, which gives a
+translator something to edit rather than an empty box and is how `uf i18n
+merge` later tells a translated entry from one that came back untouched.
+`digest` covers the source and the parameters together, and nothing else: a
+message that moved to another file is not a message that changed.
+
+`--locale TAG` names the locale the messages are written in. Without it uf
+reads the project's `defineCatalogue` calls and uses the one literal tag they
+name, and says so rather than guessing when they name none or several.
+`--out PATH` writes somewhere other than `i18n/<locale>.json`. `--json`
+reports on stdout and writes no file.
+
+**A `message(…)` uf cannot read fails the command and nothing is written.**
+A source that is not a literal or a module-level `const` holding one, a
+parameter that is not one of the four kinds, a message declared under no name,
+two messages under one key: each is reported with its file and line. A
+catalogue quietly missing a message is invisible in the extraction, invisible
+in review, and visible only to somebody reading English on a Japanese page.
+
+### uf i18n merge FILE
+
+Reads a translated catalogue and writes the locale module `defineLocales`
+loads — a `// @flow` module default-exporting the keys and their translations,
+next to `FILE` and named for the locale, which is where
+`() => import("./ja-JP.js")` already points. `--out PATH` puts it elsewhere;
+`--json` reports and writes nothing.
+
+uf extracts the project again first, because a translation round takes weeks
+and the English does not stop. Every returned entry is held against what its
+message says today:
+
+| What uf found | What it does |
+| --- | --- |
+| The message changed since the file went out | Names it, writes nothing, exits non-zero |
+| The key is no longer declared | Reports it, leaves it out |
+| A key the file does not carry | Reports it as still to translate |
+| `translation` still equal to `source` | Reports it, leaves it out |
+
+Only the first is a failure. The rest are what a translation in progress looks
+like, and a key left out here is one `translate` falls back to the source for
+and lists on the catalogue as `untranslated`.
+
+What merging does **not** check is whether a translation's placeholders agree
+with the message's parameters. That needs MessageFormat 2 parsed, and it is
+checked by `translate` when the locale loads, against the real parser, in the
+one place this repository implements it.
+
 ## Dependencies
 
 Five commands, all of them the project's own package manager. uf's resolver
@@ -823,6 +1006,18 @@ manager would read it as a flag.
 exclusive, and with none of them the package goes in `dependencies`. The
 summary names the field the package actually landed in, read back out of
 `package.json` rather than repeated from the flag.
+
+In a pnpm workspace, `uf add` at the workspace root passes pnpm's
+`--workspace-root`. pnpm refuses to add to a root without it —
+`ERR_PNPM_ADDING_TO_ROOT` — and the advice it gives, to run the command again
+with `-w`, was advice nobody could follow through uf, which never passed that
+flag. The root is where a workspace's development dependencies belong, so the
+command now works there.
+
+It is passed only where the project root *is* the workspace root. Run inside a
+member package, `uf add` resolves to that member and the flag is not passed, so
+the dependency still lands where you are. npm, Yarn and Bun add to a workspace
+root without being asked twice, and none of them is given the flag.
 
 Running it twice changes nothing the second time, and says so in a line.
 

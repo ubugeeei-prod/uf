@@ -7,7 +7,9 @@ use uf_config::load_config;
 use uf_doc::{DocDiagnostic, DocReport, generate, write_markdown};
 use uf_term::{KeyValue, Status, Tone};
 
-use crate::support::{plural, project_label, relative_to};
+use crate::support::{
+    ignore_deprecation, plural, project_label, relative_to, render_ignore_deprecation,
+};
 use crate::ui::Ui;
 
 pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -> Result<()> {
@@ -50,6 +52,7 @@ pub(crate) fn doc(cwd: &Utf8Path, ui: &mut Ui, out_dir: &Utf8Path, json: bool) -
     if report.has_diagnostics() {
         render_diagnostics(ui, &report);
     }
+    render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));
     if !report.unreadable.is_empty() {
         bail!(
             "{} could not be read",

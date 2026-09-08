@@ -17,7 +17,7 @@
 // what matters there is what React does with the snapshot it is handed.
 
 import * as React from "@uniflowed/react";
-import { useState } from "@uniflowed/react";
+import { StrictMode, useState } from "@uniflowed/react";
 import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import {
@@ -462,6 +462,70 @@ describe("useQuery", () => {
     await waitFor(() => {
       expect(screen.getByText("loaded")).toBeInTheDocument();
     });
+  });
+
+  it("asks once under Strict Mode, however many times React subscribes", async () => {
+    // `uf dev` hydrates under `<StrictMode>` since ubugeeei-prod/uf#516, so
+    // every `useQuery` now subscribes, unsubscribes and subscribes again in one
+    // commit — on every development machine, for every query. Before
+    // `Query.abandon` this asked twice: the unsubscribe was the last observer
+    // leaving, which cancelled the request in flight and reverted the entry, and
+    // the resubscribe found a stale key and asked again. It was also invisible.
+    // A cancelled request beside a fresh one looks exactly like one request on
+    // screen and shows up only as twice the load on whatever the development
+    // API is.
+    //
+    // The fetcher reads `signal` because that is the path with something to
+    // lose: a fetcher that ignores it is never cancelled on unsubscribe, so it
+    // could not have been double-fetched however the timing went, and a test
+    // written that way would pass without asserting anything.
+    //
+    // `<StrictMode>` is *above* the provider, and that is not decoration. On a
+    // mount React decides whether to double-invoke effects at the topmost fiber
+    // it is placing: if that fiber is not in Strict Mode it stops there and does
+    // not look inside it. So a `<StrictMode>` under the provider — under
+    // anything — still doubles the render and does not double a single effect,
+    // and a test written that way asserts nothing about the thing it names. Here
+    // it is where the router puts it, at the root React renders.
+    const client = new QueryClient();
+    const queryFn = fn(async (context: $FlowFixMe) => {
+      const { signal } = context;
+      expect(signal).not.toBe(undefined);
+      return "loaded";
+    });
+
+    render(<StrictMode>{withClient(client, <Thing queryFn={queryFn} />)}</StrictMode>);
+    await waitFor(() => {
+      expect(screen.getByText("loaded")).toBeInTheDocument();
+    });
+
+    expect(queryFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("still stops a request nothing came back for", async () => {
+    // The other side of the microtask, because a deferral that never fires
+    // would pass the case above by simply never cancelling anything. A
+    // component that unmounts and stays unmounted is the case the cancellation
+    // exists for: the connection is the cost, and the fetcher took the signal.
+    const client = new QueryClient();
+    const held = deferred();
+    const signals: Array<AbortSignal> = [];
+    const queryFn = fn((context: $FlowFixMe) => {
+      signals.push(context.signal);
+      return held.promise;
+    });
+
+    const view = render(<StrictMode>{withClient(client, <Thing queryFn={queryFn} />)}</StrictMode>);
+    await waitFor(() => {
+      expect(signals.length).toBeGreaterThan(0);
+    });
+
+    view.unmount();
+    // The microtask the cancellation waits on, and nothing longer: a deferral
+    // that needed a timer to land would be one an application could observe.
+    await settle();
+
+    expect(signals[signals.length - 1].aborted).toBe(true);
   });
 
   it("shows a cached value at once and refreshes it behind", async () => {

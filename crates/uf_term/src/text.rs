@@ -89,6 +89,102 @@ pub fn display_width(text: &str) -> usize {
     width
 }
 
+/// The widest a path is drawn before it is elided.
+///
+/// Wide enough that a real path in a real repository is never cut, and narrow
+/// enough that one cannot fill a terminal on its own.
+pub const MAX_PATH_WIDTH: usize = 120;
+
+/// Append a filesystem path in a form that cannot steer the terminal.
+///
+/// A path is attacker-authored text by the same argument that makes an image
+/// from a dependency attacker input to a decoder: `uf` is run against a clone,
+/// and nothing stops a filename in that clone from containing `\x1b[2J`. It
+/// then reaches a terminal inside a diagnostic, which is the shape
+/// `uf_pm::progress` already refuses for a package name out of a registry —
+/// the difference being only where the text came from. See
+/// ubugeeei-prod/uf#640.
+///
+/// So every control character goes. [`char::is_control`] is the Unicode `Cc`
+/// category, which is `\x00`–`\x1f` and `\x7f`–`\x9f`: `\x1b` and the C1
+/// block a one-byte CSI lives in, and `\r`, which redraws the row that was
+/// already written. Nothing else is touched — a `\` separator and a filename
+/// in any script are left exactly as they are, because a sanitiser that drops
+/// what it does not recognise reports the wrong name for a real file.
+///
+/// The width cap elides from the *left*, behind one `…`: a path identifies a
+/// file by its tail, and a cap that kept the head would print a screen of
+/// directories every one of which was the same.
+pub fn push_safe_path(out: &mut String, path: &str) {
+    let kept: Vec<char> = path.chars().filter(|ch| !ch.is_control()).collect();
+    let width: usize = kept.iter().copied().map(char_width).sum();
+    if width <= MAX_PATH_WIDTH {
+        out.extend(kept);
+        return;
+    }
+    let mut tail = Vec::with_capacity(kept.len());
+    let mut budget = MAX_PATH_WIDTH - 1;
+    for ch in kept.iter().rev().copied() {
+        let width = char_width(ch);
+        if width > budget {
+            break;
+        }
+        budget -= width;
+        tail.push(ch);
+    }
+    out.push('\u{2026}');
+    out.extend(tail.iter().rev());
+}
+
+/// [`push_safe_path`] as a value, for a caller that is not building a line.
+#[must_use]
+pub fn safe_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    push_safe_path(&mut out, path);
+    out
+}
+
+/// The widest a diagnostic message is drawn before it is cut.
+///
+/// Generous on purpose. A message is a sentence, and a sentence cut in half is
+/// a finding nobody can act on; Flow's longest real messages are a few hundred
+/// columns. What this bounds is the attacker's half — an import specifier as
+/// long as the file it was read from — without touching anybody's diagnostic.
+pub const MAX_MESSAGE_WIDTH: usize = 512;
+
+/// Append a diagnostic message in a form that cannot steer the terminal.
+///
+/// The same treatment [`push_safe_path`] gives a path, and for the same
+/// reason: a message quotes module paths and import specifiers, and those come
+/// out of the same clone the filenames do. Cut from the right rather than the
+/// left, because a sentence is read from its start. See ubugeeei-prod/uf#659.
+pub fn push_safe_message(out: &mut String, message: &str) {
+    let kept: Vec<char> = message.chars().filter(|ch| !ch.is_control()).collect();
+    let width: usize = kept.iter().copied().map(char_width).sum();
+    if width <= MAX_MESSAGE_WIDTH {
+        out.extend(kept);
+        return;
+    }
+    let mut budget = MAX_MESSAGE_WIDTH - 1;
+    for ch in kept {
+        let width = char_width(ch);
+        if width > budget {
+            break;
+        }
+        budget -= width;
+        out.push(ch);
+    }
+    out.push('\u{2026}');
+}
+
+/// [`push_safe_message`] as a value.
+#[must_use]
+pub fn safe_message(message: &str) -> String {
+    let mut out = String::with_capacity(message.len());
+    push_safe_message(&mut out, message);
+    out
+}
+
 /// The longest prefix of `text` that fits in `max` columns.
 ///
 /// Slices on a character boundary, never in the middle of one.

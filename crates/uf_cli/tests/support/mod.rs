@@ -188,6 +188,99 @@ pub fn bun_ready() -> bool {
     false
 }
 
+/// The Node `crates/uf_cli/src/commands/compile.rs` refuses anything below.
+pub const NODE_SEA_FLOOR: (u64, u64, u64) = (25, 5, 0);
+
+/// The `node` on PATH, as it spells itself and as three numbers.
+///
+/// `None` when there is none. The numbers are what a comparison against
+/// [`NODE_SEA_FLOOR`] needs, and the string is what a skipped test prints —
+/// two forms of one answer, because a message saying `(25, 8, 1)` would be the
+/// test telling a reader about its own arithmetic.
+pub fn node_version() -> Option<(String, (u64, u64, u64))> {
+    let output = std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let numbers: Vec<u64> = version
+        .trim_start_matches('v')
+        .split(['.', '-'])
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    Some((
+        version,
+        (
+            numbers.first().copied().unwrap_or_default(),
+            numbers.get(1).copied().unwrap_or_default(),
+            numbers.get(2).copied().unwrap_or_default(),
+        ),
+    ))
+}
+
+/// Whether the `node` on PATH can build a single-executable application.
+///
+/// Three questions, and only the first is a misconfigured machine:
+///
+/// * **`node` is not on PATH.** That is the same failure [`bun_ready`] guards,
+///   and it asserts on the same terms — a checkout with no Node is a checkout
+///   where most of this suite proves nothing.
+/// * **`node` is older than 25.5.** `--build-sea` landed there, and before it
+///   the procedure needed `postject` installed into the project. A skip here
+///   is not a machine that was set up wrong, it is a runtime that cannot do
+///   the thing, so it needs no opt-out — and CI's Node 24 is exactly this
+///   case. `crates/uf_cli/src/commands/compile.rs` refuses the same version by
+///   name, which is what a project on it is actually told.
+/// * **`node` was built without single-executable support.** This is a
+///   *build-time* option, so a recent Node can still lack it: Homebrew's
+///   `node@25.8.1` answers `--build-sea` with `sentinel NODE_SEA_FUSE_… not
+///   found`. The only cheap way to ask is to look for the fuse in the binary,
+///   which is what this does — a hundred-megabyte read once per test run, and
+///   the alternative is a red test on a machine that was never able to pass
+///   it. uf itself deliberately does *not* do this: keying a build on a string
+///   inside somebody else's binary is a coupling a toolchain should not have,
+///   and forwarding Node's own message costs a reader nothing.
+pub fn node_sea_ready() -> bool {
+    let Some((version, numbers)) = node_version() else {
+        assert!(
+            std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+            "this test needs `node` on PATH and there is none, so it would prove nothing"
+        );
+        eprintln!("skipping: `node` is not on PATH");
+        return false;
+    };
+    if numbers < NODE_SEA_FLOOR {
+        eprintln!("skipping: node {version} is older than 25.5, which is where `--build-sea` is");
+        return false;
+    }
+    let Ok(program) = std::process::Command::new("node")
+        .args(["-p", "process.execPath"])
+        .output()
+    else {
+        eprintln!("skipping: node {version} would not say where it is");
+        return false;
+    };
+    let program = String::from_utf8_lossy(&program.stdout).trim().to_owned();
+    let Ok(bytes) = std::fs::read(&program) else {
+        eprintln!("skipping: {program} could not be read");
+        return false;
+    };
+    if bytes
+        .windows(b"NODE_SEA_FUSE".len())
+        .any(|window| window == b"NODE_SEA_FUSE")
+    {
+        return true;
+    }
+    eprintln!(
+        "skipping: node {version} at {program} was built without single-executable support, so \
+         `--build-sea` cannot work here"
+    );
+    false
+}
+
 /// Whether a test that runs Deno can run here: `deno` on PATH.
 ///
 /// The same policy as [`bun_ready`], word for word, and for a reason that is
