@@ -65,6 +65,12 @@ struct RequestOptions {
     development: bool,
     refresh: bool,
     source_map: bool,
+    /// Whether `import.meta.uf.test` reaches uf's test API in this module.
+    ///
+    /// Asked for by the hosts `uf test` starts and by nothing else, so a
+    /// build's modules cannot pick it up from a service a test run left
+    /// behind: the flag travels per request rather than per process.
+    in_source_tests: bool,
 }
 
 impl Default for RequestOptions {
@@ -75,6 +81,7 @@ impl Default for RequestOptions {
             development: false,
             refresh: false,
             source_map: true,
+            in_source_tests: false,
         }
     }
 }
@@ -131,6 +138,7 @@ impl ProjectTransform {
             react_compiler: self.react_compiler,
             jsx_import_source: self.jsx_import_source.clone(),
             source_map: request.source_map,
+            in_source_tests: request.in_source_tests,
         }
     }
 }

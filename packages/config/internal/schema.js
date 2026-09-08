@@ -156,6 +156,31 @@ export type CoverageThresholds = {
 };
 
 export type UniflowedConfig = {
+  /**
+   * The runtime accessibility audit: `expect(el).toHaveNoAxeViolations()` in a
+   * test, and the page `uf dev` is serving.
+   *
+   * One block for both on purpose. A rule a project has decided cannot be
+   * judged here — `color-contrast` against a DOM with no layout is the
+   * standing example — has to be the same rule in CI and in the loop somebody
+   * is working in, or the audit that finds a violation while the component is
+   * being written disagrees with the one that blocks the pull request.
+   *
+   * Inert without axe-core, which uf does not install: add it and both halves
+   * start working.
+   *
+   * Not the same thing as `lint.rules`' `a11y/*`, which read JSX that was
+   * never rendered.
+   */
+  readonly accessibility?: {
+    readonly devAudit?: boolean,
+    readonly axe?: {
+      // Run only rules carrying one of these axe tags; every rule when absent.
+      readonly tags?: $ReadOnlyArray<string>,
+      readonly disabledRules?: $ReadOnlyArray<string>,
+      readonly minImpact?: "minor" | "moderate" | "serious" | "critical",
+    },
+  },
   readonly app?: {
     // Whether a component with no directive is rendered on the server or
     // shipped to the browser.

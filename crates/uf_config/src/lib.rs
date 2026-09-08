@@ -44,6 +44,8 @@ pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct UniflowedConfig {
+    /// What a runtime accessibility audit runs, and where it runs.
+    pub accessibility: AccessibilityConfig,
     pub app: AppConfig,
     pub build: BuildConfig,
     /// Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive.
@@ -111,6 +113,105 @@ pub struct UniflowedConfig {
     /// ecosystem upgrade had to pass through. See `docs/red-lines.md`.
     pub vite: Option<serde_json::Value>,
     pub vrt: VrtConfig,
+}
+
+/// The runtime accessibility audit: `expect(el).toHaveNoAxeViolations()` in a
+/// test, and the page `uf dev` is serving.
+///
+/// One block for both, and that is the point of it. A rule a project has
+/// decided cannot be judged here — `color-contrast` against a DOM with no
+/// layout is the standing example — must be the same rule in the suite and in
+/// the developer's loop, or the audit that runs while somebody is writing the
+/// component disagrees with the one that will block their pull request. That
+/// is worse than having only one of them.
+///
+/// Distinct from `lint.rules`' `a11y/*`, which are static rules over JSX that
+/// was never rendered. The two do not overlap: the linter can see that an
+/// `<img>` has no `alt` in the source, and only a rendered tree can say that
+/// the heading levels the component actually produced skip a step.
+///
+/// Everything here is inert without axe-core, which uf does not install: see
+/// `packages/test/internal/axe.js` for why the engine is an optional
+/// dependency rather than a vendored reimplementation of four hundred rules.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct AccessibilityConfig {
+    /// Whether `uf dev` audits the page it renders and reports through the
+    /// diagnostic channel.
+    ///
+    /// On by default, and it costs nothing in a project that has not installed
+    /// axe-core: the dev server looks the engine up before it injects anything,
+    /// and injects nothing when there is none. Turning it off is for a project
+    /// that has the engine for its tests and does not want the report while it
+    /// works.
+    pub dev_audit: bool,
+    /// Which rules run, in both places.
+    pub axe: AxeConfig,
+}
+
+/// How much of axe-core an audit runs.
+///
+/// Data, not modules: the engine is named in `packages/test/internal/axe.js`
+/// as a constant, because `uf.config.js` arrives with a cloned repository and
+/// "which module does the runner import" is not a question it may answer.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct AxeConfig {
+    /// Run only rules carrying one of these axe tags — `"wcag2a"`,
+    /// `"wcag2aa"`, `"best-practice"` — or every rule when empty.
+    pub tags: Vec<CompactString>,
+    /// Rule ids to turn off, by axe's own id.
+    pub disabled_rules: Vec<CompactString>,
+    /// The weakest impact that counts as a violation, or every impact when
+    /// absent.
+    ///
+    /// A floor rather than a filter on ids, because "we are not fixing minor
+    /// findings this quarter" is a different decision from "this rule is wrong
+    /// about our markup", and writing the first as a list of the second goes
+    /// stale the moment axe adds a rule.
+    pub min_impact: Option<AxeImpact>,
+}
+
+/// How serious axe considers a violation, weakest first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AxeImpact {
+    /// Worth fixing, not worth blocking.
+    Minor,
+    /// A real obstacle for some readers.
+    Moderate,
+    /// An obstacle for many readers.
+    Serious,
+    /// Makes the content unusable.
+    Critical,
+}
+
+impl Default for AccessibilityConfig {
+    fn default() -> Self {
+        Self {
+            dev_audit: true,
+            axe: AxeConfig::default(),
+        }
+    }
+}
+
+impl AxeConfig {
+    /// This block as the JSON `packages/test/internal/axe.js` reads, or `None`
+    /// when it says nothing.
+    ///
+    /// `None` rather than `"{}"` for the empty case so the variable is absent
+    /// rather than present and meaningless, which is the difference between a
+    /// worker that was told nothing and one that was told to narrow to
+    /// nothing.
+    #[must_use]
+    pub fn as_json(&self) -> Option<String> {
+        if self.tags.is_empty() && self.disabled_rules.is_empty() && self.min_impact.is_none() {
+            return None;
+        }
+        serde_json::to_string(self).ok()
+    }
 }
 
 /// Which builder uf orchestrates.

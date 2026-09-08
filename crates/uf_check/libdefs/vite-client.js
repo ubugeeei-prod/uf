@@ -203,10 +203,57 @@ interface ImportGlobFunction {
   ): { [key: string]: T };
 }
 
+/**
+ * uf's own `import.meta` member: the in-source test marker.
+ *
+ * `import.meta.uf.test` is not a property anything reads at runtime. `uf`
+ * substitutes the whole expression while it compiles the module — with a call
+ * that reaches uf's test API under `uf test`, and with `void 0` everywhere
+ * else — so `import.meta.uf` itself never exists and never has to. That is why
+ * `uf` is declared as present rather than optional: writing
+ * `import.meta.uf?.test` would only be defending against a value the compiler
+ * has already removed, and the optional form compiles to the same substitution
+ * anyway.
+ *
+ * `test` is `unknown` rather than a listing of `@uniflowed/test`'s API, and
+ * that is a limitation of Flow rather than a choice. TypeScript can write
+ * `typeof import("vitest")` in a declaration file and Flow has no equivalent,
+ * so the alternatives here were a second copy of the API's type — which would
+ * drift from the real one and could not express `expect`'s forty-one matchers
+ * at all — or `unknown`. The idiom that follows from that is the better one
+ * regardless:
+ *
+ *     import { expect, it } from "@uniflowed/test";
+ *
+ *     export function add(a: number, b: number): number {
+ *       return a + b;
+ *     }
+ *
+ *     if (import.meta.uf.test) {
+ *       it("adds", () => {
+ *         expect(add(1, 2)).toBe(3);
+ *       });
+ *     }
+ *
+ * The bindings are fully typed because they are ordinary imports, and both the
+ * block and the import leave a production build: the guard folds to `void 0`,
+ * the bundler drops the branch, and `@uniflowed/test` declares
+ * `sideEffects: false` so the import goes with it. That elimination is asserted
+ * against a real build in `crates/uf_cli/tests/vite.rs` rather than assumed.
+ *
+ * The marker's *value* is uf's test API, so
+ * `const { it } = import.meta.uf.test` also works and is what somebody coming
+ * from Vitest will write. It is untyped, which is the cost of the form.
+ */
+interface ImportMetaUf {
+  readonly test?: unknown;
+}
+
 type Import$Meta = {
   [key: string]: unknown,
   url?: string,
   readonly env: ImportMetaEnv,
   readonly hot?: ImportMetaHot,
   readonly glob: ImportGlobFunction,
+  readonly uf: ImportMetaUf,
 };

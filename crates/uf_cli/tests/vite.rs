@@ -1569,6 +1569,38 @@ fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body:
         context("served a document Vite had not transformed", body)
     );
 
+    // The same page asked for without saying it takes HTML — which is what
+    // `curl` does, and what every first look at a dev server does with the URL
+    // the banner just printed. It is still a 404, because the negotiation is
+    // right; what it must not be is `Cannot GET /` from the framework
+    // underneath, which reads as "this route does not exist" for a route that
+    // does. See ubugeeei-prod/uf#675.
+    let unacceptable = http_get_with("127.0.0.1", port, "/", &[("Accept", "*/*")]);
+    assert!(
+        unacceptable.starts_with("HTTP/1.1 404"),
+        "{}",
+        context(
+            "did not refuse a navigation that does not accept HTML",
+            &unacceptable
+        )
+    );
+    assert!(
+        !unacceptable.contains("Cannot GET"),
+        "{}",
+        context(
+            "answered in the framework's words rather than its own",
+            &unacceptable
+        )
+    );
+    assert!(
+        unacceptable.contains("accepts") && unacceptable.contains("Accept: */*"),
+        "{}",
+        context(
+            "did not say which header decided it, or what the request sent",
+            &unacceptable
+        )
+    );
+
     // A route handler, asked exactly the way a browser asks: `Accept:
     // text/html`, no extension, `GET`. That is a *document* request by every
     // test the renderer can apply to it, which is why the handler was invisible
@@ -3567,9 +3599,22 @@ fn try_http_request(
         .iter()
         .map(|(name, value)| format!("{name}: {value}\r\n"))
         .collect::<String>();
+    // `Accept: text/html` unless the caller named one: these are the requests a
+    // browser makes, and a browser always says it takes HTML. A caller that
+    // names its own is asking about the other kind — `curl`'s `*/*` is the one
+    // ubugeeei-prod/uf#675 is about — and sending both would join them into a
+    // value containing `text/html`, which is the case it is trying not to be.
+    let default_accept = if headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("accept"))
+    {
+        ""
+    } else {
+        "Accept: text/html\r\n"
+    };
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\n\
+        "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\n{default_accept}\
          Connection: close\r\n{extra}{}",
         if entity.is_empty() {
             String::from("\r\n")
@@ -4949,7 +4994,17 @@ fn the_dev_server_and_the_production_server_each_read_their_own_mode() {
 ///    hydration script;
 /// 4. `uf build`'s summary says `1 of 2`, and it says it because the bundler
 ///    reported what it emitted rather than because uf predicted it;
-/// 5. the manifest published beside the build carries the same decision.
+/// 5. the manifest published beside the build carries the same decision;
+/// 6. the in-source test block in the counter is gone, while the counter is
+///    not.
+///
+/// (6) is here rather than in a fixture of its own because it needs exactly
+/// what this test already has — a built client bundle, read back as text — and
+/// a second project built for one grep would be another minute of every CI run
+/// to answer a question this one can answer for free. It is the same file and
+/// the same build that proves the module ships, which is the pairing that
+/// makes it mean something: "the bundle is missing a string" is only evidence
+/// when something else establishes the bundle is not missing the module.
 ///
 /// The stylesheet assertion inside (3) is the one that is not obvious. A uf
 /// build links the CSS it finds in the *client* graph, so the first version of
@@ -5034,6 +5089,17 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
     assert!(
         counter.contains("<script type=\"module\" src=\"/assets/"),
         "the interactive route lost its hydration script:\n{counter}"
+    );
+
+    // 6. The counter's in-source test block is not in what the browser
+    //    downloads. `uf` compiled `import.meta.uf.test` to `void 0` and the
+    //    bundler removed the branch; a build that shipped the block would ship
+    //    the assertions and, in a project that imported its API rather than
+    //    reading it from the marker, the test framework with them.
+    assert!(
+        !bundle.contains("in-source-marker-no-build-may-ship-this"),
+        "an in-source test block reached the client bundle:\n{}",
+        script_names(&scripts)
     );
 
     // 4. The summary is the bundler's own count of what it emitted, not a
