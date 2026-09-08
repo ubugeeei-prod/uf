@@ -129,17 +129,64 @@ pub(super) fn load_packages(
 /// directory a package: `node_modules/.bin/foo` and a leftover empty directory
 /// are both on the path and neither is one.
 fn installed_for(root: &Utf8Path, importer: &str, name: &str) -> Option<String> {
-    search_paths(importer).into_iter().find_map(|base| {
-        let candidate = if base.is_empty() {
-            format!("{INSTALLED}/{name}")
+    let inside = search_paths(importer)
+        .into_iter()
+        .map(|base| {
+            if base.is_empty() {
+                format!("{INSTALLED}/{name}")
+            } else {
+                format!("{base}/{INSTALLED}/{name}")
+            }
+        })
+        .collect::<Vec<String>>();
+    let above = ancestor_bases(root)
+        .into_iter()
+        .map(|base| format!("{base}/{INSTALLED}/{name}"));
+
+    // Inside the project first, then above it, which is the order Node climbs.
+    inside
+        .into_iter()
+        .chain(above)
+        .find(|candidate| root.join(candidate).join(MANIFEST).is_file())
+}
+
+/// The `..`-prefixed bases above the project root, nearest first.
+///
+/// Node's climb does not stop at whatever directory a tool decided to call the
+/// root, and npm's hoisting is why that matters: in a workspace, an app's
+/// dependencies are installed in the **repository** root's `node_modules`,
+/// which is above the app. `docs/` in this repository is such an app, and
+/// every `@uniflowed/*` type it imported was `any` — the checker never found
+/// the package, so `import type { PageProps }` was a value of unknown type and
+/// the annotations written against it were neither right nor wrong. See
+/// ubugeeei-prod/uf#654.
+///
+/// The climb stops at the first ancestor that is not part of a JavaScript
+/// project — one with no `package.json` — rather than at the filesystem root.
+/// Node would keep going; uf must not, because "keep going" ends in a home
+/// directory, and a package found there is not one the project declared.
+/// A workspace root always has a manifest, so the case this exists for is
+/// inside the bound by construction.
+fn ancestor_bases(root: &Utf8Path) -> Vec<String> {
+    let mut bases = Vec::new();
+    let mut base = String::new();
+    let mut directory = root.to_path_buf();
+    while let Some(parent) = directory.parent().map(Utf8Path::to_path_buf) {
+        if parent == directory {
+            break;
+        }
+        if !parent.join(MANIFEST).is_file() {
+            break;
+        }
+        base = if base.is_empty() {
+            String::from("..")
         } else {
-            format!("{base}/{INSTALLED}/{name}")
+            format!("../{base}")
         };
-        root.join(&candidate)
-            .join(MANIFEST)
-            .is_file()
-            .then_some(candidate)
-    })
+        bases.push(base.clone());
+        directory = parent;
+    }
+    bases
 }
 
 /// The directories whose `node_modules` Node consults for a specifier written
@@ -306,6 +353,47 @@ mod tests {
         // A scope with no package after it names nothing installable.
         assert_eq!(package_name("@uniflowed"), None);
         assert_eq!(package_name("@uniflowed/"), None);
+    }
+
+    /// The climb reaches the workspace root and stops where the project does.
+    ///
+    /// npm hoists a workspace app's dependencies to the repository root's
+    /// `node_modules`, above the app, so the climb has to leave the project
+    /// root — and has to stop. Node would go to the filesystem root; uf must
+    /// not, because that ends in a home directory and a package found there is
+    /// not one the project declared. The bound is the first ancestor with no
+    /// `package.json`, which a workspace root always has. See
+    /// ubugeeei-prod/uf#654.
+    #[test]
+    fn the_climb_stops_at_the_first_ancestor_that_is_not_a_javascript_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = Utf8Path::from_path(dir.path()).unwrap();
+
+        // outside/            — no manifest: the wall
+        //   repo/             — manifest: the workspace root
+        //     packages/       — manifest
+        //       app/          — manifest: where `uf check` runs
+        let app = outside.join("repo/packages/app");
+        fs::create_dir_all(&app).unwrap();
+        for directory in ["repo", "repo/packages", "repo/packages/app"] {
+            fs::write(outside.join(directory).join(MANIFEST), "{}").unwrap();
+        }
+
+        // Nearest first, and never past the directory with no manifest.
+        assert_eq!(ancestor_bases(&app), vec!["..", "../.."]);
+        // From the workspace root itself there is nowhere above to look.
+        assert_eq!(ancestor_bases(&outside.join("repo")), Vec::<String>::new());
+    }
+
+    /// A project with no manifest above it does not climb at all.
+    #[test]
+    fn a_project_that_is_not_in_a_workspace_stays_where_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap().join("solo");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(MANIFEST), "{}").unwrap();
+
+        assert_eq!(ancestor_bases(&root), Vec::<String>::new());
     }
 
     /// One unresolved import, as the closure hands it over.
