@@ -69,7 +69,7 @@ fn generated_router_types_are_exact() {
     }]);
 
     assert!(
-        !source.contains("..."),
+        !has_inexact_object(&source),
         "an inexact route table would accept a path this router does not \
          serve:\n{source}"
     );
@@ -79,7 +79,24 @@ fn generated_router_types_are_exact() {
     );
     assert!(source.contains("export type RouteParams = {\n"));
     assert!(source.contains(r#"  "/users/:id": { id: string },"#));
-    assert!(source.ends_with("string;\n"));
+    assert!(source.contains(r#"  "/users/:id": [{ id: string }],"#));
+    assert!(source.ends_with("  return buildRoute(path, ...params);\n}\n"));
+}
+
+/// Is there an inexact object type in `source`?
+///
+/// Not `contains("...")`: the generated `route` takes a rest parameter, and
+/// `...params` is three dots that mean the opposite of inexactness. An inexact
+/// object's `...` is the last thing before the closing brace, so it is
+/// followed by a delimiter rather than by a name — which is the difference
+/// this reads.
+fn has_inexact_object(source: &str) -> bool {
+    source.match_indices("...").any(|(at, _)| {
+        source[at + 3..]
+            .chars()
+            .next()
+            .is_none_or(|next| !next.is_alphabetic() && next != '_')
+    })
 }
 
 #[test]
@@ -91,7 +108,95 @@ fn an_empty_project_still_generates_exact_types() {
         source.contains("export type RouteParams = {};"),
         "an empty table is an empty exact object:\n{source}"
     );
-    assert!(!source.contains("..."));
+    assert!(
+        source.contains("export type RouteArgs = {};"),
+        "and so is its argument table:\n{source}"
+    );
+    assert!(!has_inexact_object(&source));
+}
+
+/// A route that takes no parameters takes no second argument.
+///
+/// It used to take one of type `empty`, which is Flow's bottom type: no value
+/// has it, so `route("/")` could not be written at all and neither could
+/// `route("/", {})`. A static link — the commonest kind there is — was
+/// untypable. `RouteParams` now says `{}` for such a route, and `RouteArgs`
+/// says `[]`, which is what makes the argument required exactly when the route
+/// has parameters. See #653.
+#[test]
+fn a_route_without_parameters_takes_no_second_argument() {
+    let source = generate_router_flow(&[
+        Route {
+            path: "/".into(),
+            directory: Utf8PathBuf::from("app"),
+            page: Utf8PathBuf::from("app/_uf.page.js"),
+            params: Vec::new(),
+            has_layout: false,
+            middleware: Vec::new(),
+        },
+        Route {
+            path: "/docs/:slug*".into(),
+            directory: Utf8PathBuf::from("app/docs/[...slug]"),
+            page: Utf8PathBuf::from("app/docs/[...slug]/_uf.page.js"),
+            params: vec![RouteParam {
+                name: "slug".into(),
+                kind: RouteParamKind::CatchAll,
+            }],
+            has_layout: false,
+            middleware: Vec::new(),
+        },
+    ]);
+
+    assert!(
+        !source.contains("empty,"),
+        "no route's parameters are the bottom type:\n{source}"
+    );
+    assert!(source.contains(r#"  "/": {},"#), "{source}");
+    assert!(source.contains(r#"  "/": [],"#), "{source}");
+    // A catch-all is every remaining segment, so it is an array of them.
+    assert!(
+        source.contains(r#"  "/docs/:slug*": { slug: $ReadOnlyArray<string> },"#),
+        "{source}"
+    );
+    assert!(
+        source.contains(r#"  "/docs/:slug*": [{ slug: $ReadOnlyArray<string> }],"#),
+        "{source}"
+    );
+}
+
+/// The link builder is a real function, and the runtime behind it is the one
+/// the matcher uses.
+///
+/// The generated module used to be `declare export function route(…)`, which
+/// is a declaration and not a definition: it type checked, and `import
+/// { route } from "./router.js"` gave `undefined` at run time. The docs told
+/// people to call it. See #653.
+#[test]
+fn the_generated_link_builder_has_a_runtime_behind_it() {
+    let source = generate_router_flow(&[Route {
+        path: "/posts/:id".into(),
+        directory: Utf8PathBuf::from("app/posts/[id]"),
+        page: Utf8PathBuf::from("app/posts/[id]/_uf.page.js"),
+        params: vec![RouteParam {
+            name: "id".into(),
+            kind: RouteParamKind::Single,
+        }],
+        has_layout: false,
+        middleware: Vec::new(),
+    }]);
+
+    assert!(
+        !source.contains("declare export"),
+        "a declaration is not an implementation:\n{source}"
+    );
+    assert!(
+        source.contains(r#"import { buildRoute } from "@uniflowed/router";"#),
+        "{source}"
+    );
+    assert!(
+        source.contains("  return buildRoute(path, ...params);"),
+        "{source}"
+    );
 }
 
 #[test]
@@ -137,6 +242,45 @@ fn writes_router_manifest() {
 
     assert_eq!(manifest.file_name(), Some("router.js"));
     assert!(fs::read_to_string(manifest).unwrap().contains("RoutePath"));
+}
+
+/// A manifest with enough routes to wrap is still one `uf fmt` accepts.
+///
+/// `generate_router_flow` writes a union on one line, and the printer breaks a
+/// long one across a line per member — so a project with thirty-seven routes
+/// got a `router.js` that `uf prepare` then failed on at `run-format-check`,
+/// on a file nobody wrote. This repository's own docs site was such a project.
+/// `write_router_manifest` runs the output through the formatter rather than
+/// predicting it, which is why this is asserted about the file on disk and not
+/// about the generator. See #653.
+#[test]
+fn a_manifest_with_many_routes_is_written_formatted() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    // Enough that the union cannot fit on one line at any sane width.
+    for index in 0..40 {
+        let directory = root.join(format!("app/section-number-{index}"));
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("_uf.page.js"), "// @flow\n").unwrap();
+    }
+
+    let config = UniflowedConfig::default();
+    let manifest = write_router_manifest(&root, &config).unwrap().unwrap();
+    let written = fs::read_to_string(&manifest).unwrap();
+
+    let formatted = uf_fmt::format_source(&written, &config.fmt).expect("the manifest parses");
+    assert!(
+        !formatted.changed,
+        "uf wrote a router.js its own formatter would rewrite:\n{}",
+        formatted.output
+    );
+    // And it wrapped rather than merely agreeing that one long line is fine.
+    assert!(
+        written.contains("export type RoutePath =\n  | \"/\"\n"),
+        "the union was not broken across lines:\n{written}"
+    );
 }
 
 /// The router types uf generates must be what `uf fmt` would write.

@@ -234,6 +234,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "RouteView",
                 "RouterProvider",
                 "UnauthorizedError",
+                "buildRoute",
                 "forbidden",
                 "hasClientPage",
                 "matchRoute",
