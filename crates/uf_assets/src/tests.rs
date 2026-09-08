@@ -141,6 +141,8 @@ fn a_font_and_an_image_can_share_one_output_directory() {
         fallback: Some(&fonts.fallback),
         out_dir: &out,
         base_url: "/assets/",
+        subset: crate::subset::SubsetMode::Off,
+        preload: true,
     })
     .unwrap();
 
