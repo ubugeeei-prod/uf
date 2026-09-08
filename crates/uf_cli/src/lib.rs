@@ -606,6 +606,85 @@ mod tests {
         Cli::command().debug_assert();
     }
 
+    /// Every `uf <command>` the changelog names is a command `uf` has.
+    ///
+    /// `uf@0.0.0-alpha.16`'s notes said "`uf profile` is a profiler rather than
+    /// a wall-clock number". There is no `uf profile`: #660 shipped
+    /// `crates/uf_profiler`, a library the benches and the `alloc_report`
+    /// examples link against, and running the command a release note told a
+    /// reader to run answers `unrecognized subcommand 'profile'`.
+    ///
+    /// The changelog rather than the whole repository, and the reason is what
+    /// each kind of prose is for. `docs/roadmap.md` names commands on purpose
+    /// that do not exist yet; a *release note* is a statement about what
+    /// shipped, and a command in one is a thing a reader will type.
+    #[test]
+    fn the_changelog_names_no_command_uf_does_not_have() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let changelog = std::fs::read_to_string(root.join("CHANGELOG.md"))
+            .expect("the repository has a changelog");
+        let parser = Cli::command();
+        let known: Vec<&str> = parser
+            .get_subcommands()
+            .flat_map(|command| {
+                std::iter::once(command.get_name())
+                    .chain(command.get_all_aliases())
+                    .chain(command.get_visible_aliases())
+            })
+            .collect();
+
+        let mut unknown: Vec<String> = Vec::new();
+        for span in backticked(&changelog) {
+            // The first word after `uf `, and only that: `uf run ci --why`
+            // names `run`, and what a task is called is `uf.config.js`'s
+            // business rather than the parser's.
+            let Some(rest) = span.strip_prefix("uf ") else {
+                continue;
+            };
+            let word: String = rest
+                .chars()
+                .take_while(|character| character.is_ascii_lowercase() || *character == '-')
+                .collect();
+            // A flag, a version, or `uf` followed by prose: not a command being
+            // named, so not this test's business.
+            if word.is_empty() || known.contains(&word.as_str()) {
+                continue;
+            }
+            let named = format!("`uf {word}`");
+            if !unknown.contains(&named) {
+                unknown.push(named);
+            }
+        }
+
+        assert!(
+            unknown.is_empty(),
+            "CHANGELOG.md names {} command(s) uf does not have: {}",
+            unknown.len(),
+            unknown.join(", ")
+        );
+    }
+
+    /// Every span between a pair of backticks on one line.
+    ///
+    /// Line by line, because an unpaired backtick in prose would otherwise
+    /// swallow the rest of the file into one "span" and the scan above would
+    /// read a single `uf ` out of a hundred kilobytes.
+    fn backticked(text: &str) -> Vec<&str> {
+        let mut spans = Vec::new();
+        for line in text.lines() {
+            let mut rest = line;
+            while let Some(open) = rest.find('`') {
+                let after = &rest[open + 1..];
+                let Some(close) = after.find('`') else {
+                    break;
+                };
+                spans.push(&after[..close]);
+                rest = &after[close + 1..];
+            }
+        }
+        spans
+    }
+
     /// A retired name has to be gone from the parser, or the message naming
     /// its replacements is dead code and the command it names is whatever clap
     /// still has under that spelling.

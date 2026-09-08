@@ -358,8 +358,8 @@ static WINDOW: Mutex<()> = Mutex::new(());
 /// that gave no sign anything was missing.
 ///
 /// So a window is exclusive. Opening one while another is open blocks until
-/// that one closes, which for the profiler's callers — a benchmark harness,
-/// `uf profile` — is the behaviour they would have written by hand.
+/// that one closes, which for the profiler's callers — a benchmark harness, an
+/// `alloc_report` example — is the behaviour they would have written by hand.
 pub struct Window {
     saved: SavedPeaks,
     /// Dropped last, after the peaks are back, so the next window opens onto a
