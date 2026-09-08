@@ -37,6 +37,11 @@ similar-asserts.workspace = true
 # only one that can see every entry point.
 uf_check = { path = "../uf_check" }
 
+# For `examples/alloc_report.rs`: the counting allocator that produced the
+# figures in ubugeeei-prod/uf#668, so the next person to touch this pipeline can
+# reproduce them rather than take them on trust.
+uf_profiler = { path = "../uf_profiler" }
+
 [[bench]]
 name = "transform"
 harness = false
