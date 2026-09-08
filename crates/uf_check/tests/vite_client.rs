@@ -23,7 +23,7 @@ fn limits() -> CheckLimits {
 }
 
 fn check(path: &str, source: &str) -> Vec<TypeDiagnostic> {
-    check_source(Source::new(path, source), &limits()).expect("the checker runs")
+    check_source(Source::new(path, source), &[], &limits()).expect("the checker runs")
 }
 
 /// The `(line, code)` of every diagnostic, which is what these tests compare.

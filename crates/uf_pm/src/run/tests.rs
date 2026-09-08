@@ -9,6 +9,15 @@ use super::*;
 use crate::command::{DependencyKind, PROGRAMS};
 use crate::detect::YarnEdition;
 
+/// A root with nothing in it, for the assertions the root does not decide.
+///
+/// Only [`workspace_root_argument`] reads the directory, and it reads one
+/// file; a path that does not exist is a project that is not a workspace root,
+/// which is what every test below except the pnpm ones is about.
+fn nowhere() -> &'static Utf8Path {
+    Utf8Path::new("/uf-tests/not-a-project")
+}
+
 fn operands(list: &[&str]) -> Vec<String> {
     list.iter().map(ToString::to_string).collect()
 }
@@ -19,7 +28,17 @@ fn args(
     list: &[&str],
     allow_scripts: bool,
 ) -> Vec<String> {
-    let invocation = invocation_for(manager, operation, &operands(list), allow_scripts)
+    args_in(nowhere(), manager, operation, list, allow_scripts)
+}
+
+fn args_in(
+    root: &Utf8Path,
+    manager: PackageManager,
+    operation: Operation<'_>,
+    list: &[&str],
+    allow_scripts: bool,
+) -> Vec<String> {
+    let invocation = invocation_for(root, manager, operation, &operands(list), allow_scripts)
         .expect("these operands are passable");
     std::iter::once(invocation.program.to_owned())
         .chain(invocation.args.iter().map(ToString::to_string))
@@ -43,6 +62,7 @@ fn a_version_range_stays_inside_one_specifier() {
         "file:../shared",
     ] {
         let invocation = invocation_for(
+            nowhere(),
             PackageManager::Npm,
             Operation::Add {
                 kind: DependencyKind::Prod,
@@ -111,8 +131,14 @@ fn allowing_lifecycle_scripts_leaves_the_flag_off() {
 #[test]
 fn a_read_only_query_is_never_told_to_ignore_scripts() {
     for manager in PackageManager::ALL {
-        let invocation = invocation_for(manager, Operation::Why, &operands(&["react"]), false)
-            .expect("a package name is passable");
+        let invocation = invocation_for(
+            nowhere(),
+            manager,
+            Operation::Why,
+            &operands(&["react"]),
+            false,
+        )
+        .expect("a package name is passable");
         assert!(
             !invocation.args.iter().any(|arg| arg == "--ignore-scripts"),
             "{manager} why carried an install flag: {invocation}"
@@ -130,8 +156,13 @@ fn a_read_only_query_is_never_told_to_ignore_scripts() {
 fn an_operand_is_always_the_last_argument() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
-            let invocation = match invocation_for(manager, operation, &operands(&["lodash"]), false)
-            {
+            let invocation = match invocation_for(
+                nowhere(),
+                manager,
+                operation,
+                &operands(&["lodash"]),
+                false,
+            ) {
                 Ok(invocation) => invocation,
                 // The manager has no such command, which is what
                 // `search_is_unsupported_where_the_manager_has_none` asserts.
@@ -154,6 +185,7 @@ fn an_operand_is_always_the_last_argument() {
 fn an_operand_that_would_be_read_as_a_flag_is_refused() {
     for operand in ["--global", "-g", "--save-dev", "-"] {
         let error = invocation_for(
+            nowhere(),
             PackageManager::Npm,
             Operation::Remove,
             &operands(&[operand]),
@@ -178,6 +210,7 @@ fn an_operand_that_would_be_read_as_a_flag_is_refused() {
 #[test]
 fn an_empty_operand_is_refused() {
     let error = invocation_for(
+        nowhere(),
         PackageManager::Bun,
         Operation::Add {
             kind: DependencyKind::Prod,
@@ -196,6 +229,7 @@ fn an_empty_operand_is_refused() {
 fn one_refused_operand_refuses_the_whole_invocation() {
     assert!(
         invocation_for(
+            nowhere(),
             PackageManager::Yarn(YarnEdition::Berry),
             Operation::Add {
                 kind: DependencyKind::Peer,
@@ -236,5 +270,155 @@ fn the_frozen_install_is_the_managers_own_immutable_install() {
             true,
         ),
         ["yarn", "install", "--immutable"]
+    );
+}
+
+/// A directory shaped like a pnpm workspace root: the one file pnpm looks for.
+fn pnpm_workspace() -> (tempfile::TempDir, Utf8PathBuf) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+    std::fs::write(
+        root.join("pnpm-workspace.yaml"),
+        "packages:\n  - packages/*\n",
+    )
+    .expect("a workspace file");
+    (dir, root)
+}
+
+/// The whole of ubugeeei-prod/uf#484.
+///
+/// `pnpm add` in a workspace root answers `ERR_PNPM_ADDING_TO_ROOT` and tells
+/// you to run the command again with `-w` — advice nobody could follow through
+/// uf, which never passed it. So `uf add --dev @uniflowed/test` in a pnpm
+/// monorepo failed and recommended the command that had just failed.
+#[test]
+fn adding_at_a_pnpm_workspace_root_says_the_root_is_meant() {
+    let (_guard, root) = pnpm_workspace();
+
+    assert_eq!(
+        args_in(
+            &root,
+            PackageManager::Pnpm,
+            Operation::Add {
+                kind: DependencyKind::Dev,
+            },
+            &["@uniflowed/test@0.0.0-alpha.10"],
+            false,
+        ),
+        [
+            "pnpm",
+            "add",
+            "--save-dev",
+            "--workspace-root",
+            "--ignore-scripts",
+            "@uniflowed/test@0.0.0-alpha.10",
+        ],
+        "uf's own additions come together, scope first, and the specifier last"
+    );
+}
+
+/// Inside a member package it is not passed, and that is the point.
+///
+/// pnpm's refusal exists because a shell can be in the workspace root by
+/// accident. uf's root is the nearest directory with a `package.json`, so
+/// `uf add` in a member resolves to the member — and `--workspace-root` there
+/// would move the dependency somewhere nobody asked for it to go.
+#[test]
+fn adding_inside_a_workspace_member_targets_the_member() {
+    let (_guard, root) = pnpm_workspace();
+    let member = root.join("packages/ui");
+    std::fs::create_dir_all(&member).expect("a member directory");
+
+    assert_eq!(
+        args_in(
+            &member,
+            PackageManager::Pnpm,
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            &["react"],
+            true,
+        ),
+        ["pnpm", "add", "react"]
+    );
+}
+
+/// One manager and one operation, because that is where pnpm's check is.
+///
+/// The other managers add to a workspace root without being asked twice, and
+/// `--workspace-root` is not a flag any of them has: passing it to npm would
+/// turn a working `uf add` into an unknown option. pnpm's own check lives in
+/// its `add` handler alone, so `remove` and `update` are left as they were.
+#[test]
+fn no_other_manager_or_operation_is_told_about_the_workspace_root() {
+    let (_guard, root) = pnpm_workspace();
+
+    for manager in PackageManager::ALL {
+        for operation in Operation::ALL {
+            let Ok(invocation) = invocation_for(&root, manager, operation, &[], false) else {
+                // The manager has no such command; that refusal is asserted on
+                // by `search_is_unsupported_where_the_manager_has_none`.
+                continue;
+            };
+            let named_the_root = invocation.args.iter().any(|arg| arg == "--workspace-root");
+            let expected =
+                manager == PackageManager::Pnpm && matches!(operation, Operation::Add { .. });
+            assert_eq!(
+                named_the_root, expected,
+                "{manager} {operation:?}: {invocation}"
+            );
+        }
+    }
+}
+
+/// A project that is not a workspace root is not told it is one.
+///
+/// `pnpm add` in an ordinary pnpm project has never needed the flag, and one
+/// added anyway would be uf changing what a command means on every project to
+/// fix it on some.
+#[test]
+fn an_ordinary_pnpm_project_is_left_alone() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+    std::fs::write(root.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n").expect("a lockfile");
+
+    assert_eq!(
+        args_in(
+            &root,
+            PackageManager::Pnpm,
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            &["react"],
+            true,
+        ),
+        ["pnpm", "add", "react"]
+    );
+}
+
+/// A `pnpm-workspace.yaml` that is a directory is not a workspace root.
+///
+/// The marker is repository content and the check is `symlink_metadata`, the
+/// same rule detection applies to a manifest: a directory, a device, or a
+/// symlink pointing out of the checkout does not get to decide which project a
+/// dependency lands in.
+#[test]
+fn a_workspace_marker_that_is_not_a_regular_file_does_not_count() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+    std::fs::create_dir(root.join("pnpm-workspace.yaml")).expect("a directory in its place");
+
+    assert!(!crate::detect::is_pnpm_workspace_root(&root));
+    assert_eq!(
+        args_in(
+            &root,
+            PackageManager::Pnpm,
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            &["react"],
+            true,
+        ),
+        ["pnpm", "add", "react"]
     );
 }

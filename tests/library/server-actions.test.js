@@ -28,7 +28,6 @@
 // reads what came out, and its `every_adapter_answers_exactly_what_the_node_
 // adapter_answers` calls a real action through all four deploy artefacts.
 
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -64,6 +63,8 @@ import {
 import { beginRequest, createActionDispatcher } from "@uniflowed/router/server";
 import { createFetchHandler } from "@uniflowed/server/fetch";
 import { cookies, draftMode, headers } from "@uniflowed/server";
+
+import { everyMisuseIsReported, repositoryRoot as repository } from "./type-tests.js";
 
 /** An id shaped the way `uf_rsc::ActionId::to_hex` writes one. */
 const idOf = (seed: string): string => seed.repeat(64).slice(0, 64);
@@ -795,44 +796,6 @@ describe("the two tables the manifest becomes", () => {
 // What the checker says about an action
 // ---------------------------------------------------------------------------
 
-// The part of `uf check --json` the block below reads. A message arrives as
-// spans rather than a string so that a renderer can mark the code inside it,
-// which is why the comparison joins it back together first.
-type CheckDiagnostic = {
-  primary: { path: string, start: { line: number, column: number } },
-  message: Array<{ kind: string, text: string }>,
-};
-type CheckReport = {
-  typeCheck: { status: string, filesChecked: number, diagnostics: Array<CheckDiagnostic> },
-};
-
-/**
- * This checkout, found by a file only it has.
- *
- * Searched for upwards rather than assumed, because `uf test` runs a suite
- * from the project root and `uf test#library` runs it from the workspace.
- */
-const repository: string = (() => {
-  const wanted = path.join("packages", "router", "internal", "action-wire.js");
-  const from = process.env.UF_PROJECT_ROOT ?? process.cwd();
-  let directory = from;
-  for (let up = 0; up < 8; up += 1) {
-    if (fs.existsSync(path.join(directory, wanted))) return directory;
-    directory = path.dirname(directory);
-  }
-  throw new Error(`could not find ${wanted} above ${from}`);
-})();
-
-// The binary running this suite: `uf test` puts its own path in `UF_BINARY`,
-// so this checks *this* build rather than whatever `uf` is on PATH.
-const UF: string = (() => {
-  const binary = process.env.UF_BINARY;
-  if (binary == null || binary === "") {
-    throw new Error("UF_BINARY is not set: this test runs `uf check`, and `uf test` names it");
-  }
-  return binary;
-})();
-
 describe("an action misused, held to what the checker actually says", () => {
   // The two claims a server action makes about types, and neither is provable
   // by calling anything. The first: a wrong argument is caught at the call
@@ -844,73 +807,14 @@ describe("an action misused, held to what the checker actually says", () => {
   //
   // `tests/type-tests/server-actions.js` is both, written down. It is
   // *supposed* to fail `uf check`, it marks each line that must fail with a
-  // `// expect:` comment, and this reads both and compares them.
-  //
-  // Both paths go to the checker in one command, and that is load-bearing:
-  // `uf check` builds its module map from the files it is asked about, so a
-  // relative import that leaves that set resolves to an any-typed value —
-  // after which `ActionValue` is `any` and every line of the fixture passes.
-  const fixture = path.join("tests", "type-tests", "server-actions.js");
+  // `// expect:` comment, and `./type-tests.js` reads both and compares them.
 
   it("reports every misuse, and only the misuses", () => {
-    const source = fs.readFileSync(path.join(repository, fixture), "utf8").split("\n");
-    const wanted = new Map<number, string>();
-    source.forEach((line, index) => {
-      const marker = line.match(/^\s*\/\/ expect: (.+)$/);
-      if (marker != null) {
-        // Lines are one-based, and the line that must fail is the next one.
-        wanted.set(index + 2, marker[1]);
-      }
+    everyMisuseIsReported({
+      fixture: path.join("tests", "type-tests", "server-actions.js"),
+      alongside: ["packages/router"],
+      atLeast: 4,
     });
-    // Without this the test would pass on a fixture somebody had emptied.
-    expect(wanted.size).toBeGreaterThan(4);
-
-    const run = spawnSync(UF, ["check", "tests/type-tests", "packages/router", "--json"], {
-      cwd: repository,
-      encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
-    });
-    // A non-zero status is expected — the fixture is a file of deliberate
-    // errors. The answer is on stdout either way, and when it is not, this
-    // says which command in which directory printed nothing rather than
-    // leaving a reader with `Unexpected end of JSON input`.
-    if (run.stdout === "") {
-      throw new Error(
-        `\`uf check tests/type-tests packages/router --json\` in ${repository} printed ` +
-          `nothing: status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
-      );
-    }
-    const report: CheckReport = JSON.parse(run.stdout);
-    expect(report.typeCheck.status).toBe("checked");
-    expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
-
-    const reported = new Map<number, string>();
-    for (const diagnostic of report.typeCheck.diagnostics) {
-      if (diagnostic.primary.path.endsWith(fixture)) {
-        reported.set(
-          diagnostic.primary.start.line,
-          diagnostic.message.map((span) => span.text).join(""),
-        );
-      }
-    }
-
-    const missing = [];
-    for (const [line, expected] of wanted) {
-      const said = reported.get(line);
-      if (said == null || !said.includes(expected)) {
-        missing.push(`${fixture}:${String(line)} should say "${expected}", said ${String(said)}`);
-      }
-    }
-    // Every marked line is an error, with the message the fixture predicted.
-    expect(missing).toEqual([]);
-
-    // And nothing else in the file is: the calls and the two instantiations at
-    // the bottom of the fixture check, which is what says an action that *can*
-    // cross the wire is still usable.
-    const unexpected = [...reported.keys()]
-      .filter((line) => !wanted.has(line))
-      .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
-    expect(unexpected).toEqual([]);
   });
 });
 

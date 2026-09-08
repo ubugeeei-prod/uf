@@ -43,7 +43,7 @@ fn a_build_without_a_checker_says_so_instead_of_failing_opaquely() {
         return;
     }
 
-    let error = check_source(Source::new("app.js", CLEAN), &CheckLimits::default())
+    let error = check_source(Source::new("app.js", CLEAN), &[], &CheckLimits::default())
         .expect_err("no checker is compiled in");
 
     assert!(error.is_unavailable());
@@ -88,7 +88,7 @@ fn a_source_keeps_the_path_diagnostics_are_reported_under() {
 
 #[test]
 fn an_empty_batch_is_not_an_error() {
-    match check_sources(&[], &CheckLimits::default()) {
+    match check_sources(&[], &[], &CheckLimits::default()) {
         Ok(report) => {
             assert_eq!(report.files_checked, 0);
             assert_eq!(report.files_skipped, 0);
@@ -144,15 +144,23 @@ fn throughput_is_unknown_when_no_time_passed() {
 fn a_file_that_opts_out_of_flow_is_not_checked() {
     require_checker!();
 
-    let checked = check_source(Source::new("app.js", TYPE_ERROR), &CheckLimits::default())
-        .expect("the checker runs");
+    let checked = check_source(
+        Source::new("app.js", TYPE_ERROR),
+        &[],
+        &CheckLimits::default(),
+    )
+    .expect("the checker runs");
     assert!(
         checked.iter().any(TypeDiagnostic::is_error),
         "the fixture must be a type error when it is checked, or this test proves nothing"
     );
 
-    let opted_out = check_source(Source::new("app.js", OPTED_OUT), &CheckLimits::default())
-        .expect("the checker runs");
+    let opted_out = check_source(
+        Source::new("app.js", OPTED_OUT),
+        &[],
+        &CheckLimits::default(),
+    )
+    .expect("the checker runs");
 
     assert!(
         opted_out.is_empty(),
@@ -169,6 +177,7 @@ fn opting_out_is_counted_as_skipped_rather_than_checked() {
             Source::new("checked.js", CLEAN),
             Source::new("plain.js", OPTED_OUT),
         ],
+        &[],
         &CheckLimits::default(),
     )
     .expect("the checker runs");
@@ -183,6 +192,7 @@ fn opting_out_does_not_hide_a_file_that_cannot_be_parsed() {
 
     let diagnostics = check_source(
         Source::new("broken.js", "// @noflow\nfunction ( {\n"),
+        &[],
         &CheckLimits::default(),
     )
     .expect("the checker runs");
@@ -193,12 +203,180 @@ fn opting_out_does_not_hide_a_file_that_cannot_be_parsed() {
     );
 }
 
+/// What `uf lint` says about a source it cannot parse, as (message, line,
+/// column).
+///
+/// `uf lint`'s answer is the reference in the four tests below, because it is
+/// the one the reader is most likely to have seen first and because it is
+/// already routed through [`uf_flow::explain`]. Its columns are zero-based; a
+/// [`Span`]'s are one-based, which is the `+ 1` at each call.
+#[cfg(feature = "upstream-typecheck")]
+fn linted(source: &str) -> Vec<(String, u32, u32)> {
+    uf_flow::validate_source(source)
+        .expect("the parser backend is always available")
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            (
+                diagnostic.message.clone(),
+                diagnostic.line.unwrap_or_default(),
+                diagnostic.column.unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+/// Only the syntax errors `uf check` reports for `source`.
+#[cfg(feature = "upstream-typecheck")]
+fn syntax_errors(path: &str, source: &str) -> Vec<TypeDiagnostic> {
+    check_source(
+        Source::new(path, source),
+        // No library definitions: a syntax error is a property of the file.
+        &[],
+        // Tests must not race the wall clock; a loaded box is not a syntax
+        // error.
+        &CheckLimits::default().without_timeout(),
+    )
+    .expect("the checker runs")
+    .into_iter()
+    .filter(|diagnostic| diagnostic.kind == DiagnosticKind::Parse)
+    .collect()
+}
+
+#[test]
+#[cfg(feature = "upstream-typecheck")]
+fn a_construct_uf_can_describe_better_is_described_better_by_the_checker_too() {
+    // `await` at the top level of a *script* — a file with no `import` and no
+    // `export`, where `await` is an ordinary identifier and this is two
+    // expressions with nothing between them. The parser reports the token
+    // *after* it, with the caret on a token that is fine; `uf_flow::explain`
+    // says which rule the file broke and moves the caret onto the `await`.
+    //
+    // `uf fmt`, `uf lint` and `uf transform` have said that since
+    // ubugeeei-prod/uf#204. `uf check` handed back the port's sentence
+    // instead, so the same file was two different problems depending on which
+    // command the reader ran first — ubugeeei-prod/uf#431.
+    let source = "// @flow\nconst value = await load();\n";
+    let expected = linted(source);
+    assert_eq!(expected.len(), 1, "{expected:?}");
+    let (message, line, column) = expected[0].clone();
+    assert!(
+        message.starts_with("`await` outside an `async` function"),
+        "{message}"
+    );
+
+    let reported = syntax_errors("script.js", source);
+
+    assert_eq!(reported.len(), 1, "{reported:#?}");
+    assert_eq!(reported[0].message_text(), message);
+    assert_eq!(
+        (
+            reported[0].primary.start.line,
+            reported[0].primary.start.column
+        ),
+        (line, column + 1),
+        "the caret belongs on the `await`, as it does for `uf lint`"
+    );
+    assert_eq!(
+        reported[0].primary.single_line_len(),
+        Some("await".len()),
+        "the span underlines the keyword rather than guessing at its width"
+    );
+}
+
+#[test]
+#[cfg(feature = "upstream-typecheck")]
+fn an_error_uf_has_no_better_sentence_for_stays_the_parsers_own() {
+    // The fallback, and the whole of the routing decision behind #431: every
+    // parse error is offered to `uf_flow::explain`, and what comes back for one
+    // it does not recognise is what the parser said. A layer only some errors
+    // passed through would be a second place to decide which errors are
+    // interesting, and the commands would disagree about the rest.
+    //
+    // The message is compared with the backticks removed because that is the
+    // one difference that is deliberate: `uf lint` carries a string, and a
+    // `TypeDiagnostic` carries typed fragments, so what the parser delimited
+    // with backticks is a `MessageSegment::Code` here. The words and the
+    // position are the same.
+    let source = "// @flow\nconst a = 1;\ntype = ;\n";
+    let expected = linted(source);
+    assert_eq!(expected.len(), 1, "{expected:?}");
+    let (message, line, column) = expected[0].clone();
+
+    let reported = syntax_errors("broken.js", source);
+
+    assert_eq!(reported.len(), 1, "{reported:#?}");
+    assert_eq!(reported[0].message_text(), message.replace('`', ""));
+    assert_eq!(
+        (
+            reported[0].primary.start.line,
+            reported[0].primary.start.column
+        ),
+        (line, column + 1),
+    );
+}
+
+#[test]
+#[cfg(feature = "upstream-typecheck")]
+fn a_file_with_several_syntax_errors_reports_them_all_in_the_parsers_order() {
+    // Five of these land at the same position — end of input, one per token
+    // the parser was still waiting for. The port's renderer collects them into
+    // a `BTreeSet`, which sorted them by message: `)`, `,`, `{`, `}`, where
+    // every other command reports them in the order the parser reached them.
+    // One file, one order.
+    let source = "// @flow\ntype = ;\nconst b = ;\nfunction ( {\n";
+    let expected = linted(source);
+    assert!(expected.len() > 5, "{expected:?}");
+
+    let reported = syntax_errors("many.js", source);
+
+    let as_lint: Vec<(String, u32, u32)> = reported
+        .iter()
+        .map(|diagnostic| {
+            (
+                diagnostic.message_text(),
+                diagnostic.primary.start.line,
+                diagnostic.primary.start.column - 1,
+            )
+        })
+        .collect();
+    let expected: Vec<(String, u32, u32)> = expected
+        .into_iter()
+        .map(|(message, line, column)| (message.replace('`', ""), line, column))
+        .collect();
+    assert_eq!(as_lint, expected);
+}
+
+#[test]
+#[cfg(feature = "upstream-typecheck")]
+fn a_decorator_is_refused_by_the_checker_as_it_is_by_every_other_command() {
+    // `uf check` parsed with the port's own `PERMISSIVE_PARSE_OPTIONS`, which
+    // turns `esproposal_decorators` on. So this file type checked clean and
+    // could not be formatted, transformed, tested or built — one source, two
+    // answers, and no way for the reader to tell which command was right
+    // (ubugeeei-prod/uf#430).
+    //
+    // `flow check` accepts it, and uf deliberately does not: see
+    // `uf_flow::PARSE_OPTIONS` for the argument. What matters here is that the
+    // four commands agree, which is what `uf_transform`'s
+    // `tests/parse_options.rs` measures over every option; this is the one
+    // that drifted, kept where the checker's own tests are.
+    let source = "// @flow\n@decorate\nclass Thing {}\nexport { Thing };\n";
+    let expected = linted(source);
+    assert!(!expected.is_empty(), "`uf lint` refuses a decorator");
+
+    let reported = syntax_errors("decorated.js", source);
+
+    assert_eq!(reported.len(), expected.len(), "{reported:#?}");
+}
+
 #[test]
 fn a_file_with_no_docblock_is_still_checked() {
     require_checker!();
 
     let diagnostics = check_source(
         Source::new("app.js", "const n: number = \"not a number\";\n"),
+        &[],
         &CheckLimits::default(),
     )
     .expect("the checker runs");
@@ -237,6 +415,7 @@ fn the_platform_globals_resolve() {
     ] {
         let diagnostics = check_source(
             Source::new("app.js", &format!("// @flow\n{source}\n")),
+            &[],
             &CheckLimits::default(),
         )
         .expect("the checker runs");
@@ -263,7 +442,8 @@ fn the_platform_globals_resolve() {
 
 /// Tests must not race the wall clock; a loaded CI box is not a type error.
 fn batch(sources: &[Source<'_>]) -> CheckReport {
-    check_sources(sources, &CheckLimits::default().without_timeout()).expect("the checker runs")
+    check_sources(sources, &[], &CheckLimits::default().without_timeout())
+        .expect("the checker runs")
 }
 
 fn codes(report: &CheckReport) -> Vec<&str> {

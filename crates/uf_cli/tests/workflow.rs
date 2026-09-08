@@ -146,6 +146,21 @@ fn install_runs_the_package_manager_that_drives_the_project() {
         stdout.contains("uf install"),
         "the banner should still be rendered:\n{stdout}"
     );
+
+    // The package and runtime plan `uf upgrade` used to write is `uf install`'s
+    // now (ubugeeei-prod/uf#424). It records the workspace resolution, which
+    // happened — the manager failing afterwards does not un-resolve it.
+    let plan = fs::read_to_string(dir.path().join(".uf/install.json")).unwrap();
+    let plan: serde_json::Value = serde_json::from_str(&plan).unwrap();
+    assert_eq!(plan["packageManager"]["resolver"], "uf-native");
+    assert!(
+        plan["packageManager"]["lockfile"]
+            .as_str()
+            .unwrap()
+            .ends_with("uf.lock")
+    );
+    assert_eq!(plan["runtimeManager"]["engine"], "node");
+    assert_eq!(plan["runtimeManager"]["acquisition"], "auto");
 }
 
 #[test]
@@ -178,8 +193,13 @@ fn install_rejects_npm_scripts() {
     assert!(stderr.contains("uf tasks"));
 }
 
+/// `uf upgrade` is retired, and the answer names the three commands it could
+/// have meant rather than clap's guess at a spelling.
+///
+/// Exit 2, not 1: uf did not run a command and find a problem, it does not
+/// have the command. See `docs/app/reference/cli/_uf.page.mdx`.
 #[test]
-fn upgrade_reports_package_and_runtime_manager_plan() {
+fn upgrade_is_retired_and_names_what_replaced_it() {
     let dir = tempfile::tempdir().unwrap();
 
     let output = uf()
@@ -189,68 +209,15 @@ fn upgrade_reports_package_and_runtime_manager_plan() {
         .output()
         .unwrap();
 
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("uf self-update"), "{stderr}");
+    assert!(stderr.contains("uf update"), "{stderr}");
+    assert!(stderr.contains("uf install"), "{stderr}");
     assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        !dir.path().join(".uf/upgrade.json").exists(),
+        "a retired command wrote a file"
     );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("package resolver  UfNative"));
-    assert!(stdout.contains("runtime engine    Node"));
-    assert!(stdout.contains("acquisition       Auto"));
-    assert!(stdout.contains("upgrade.json"));
-    assert!(stdout.contains("✓ workspace upgraded"));
-    assert!(dir.path().join("uf.lock").exists());
-    assert!(dir.path().join(".uf/upgrade.json").exists());
-}
-
-#[test]
-fn use_reports_xdg_runtime_switch_plan() {
-    let dir = tempfile::tempdir().unwrap();
-    let home = dir.path().join("home");
-    let config_home = dir.path().join("xdg-config");
-    let data_home = dir.path().join("xdg-data");
-    let cache_home = dir.path().join("xdg-cache");
-    let state_home = dir.path().join("xdg-state");
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(dir.path())
-        .args(["use", "uf@0.1.0"])
-        .env("HOME", &home)
-        .env("XDG_CONFIG_HOME", &config_home)
-        .env("XDG_DATA_HOME", &data_home)
-        .env("XDG_CACHE_HOME", &cache_home)
-        .env("XDG_STATE_HOME", &state_home)
-        .output()
-        .unwrap();
-
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("uf use \u{b7} uf@0.1.0"), "{stdout}");
-    assert!(stdout.contains("auto switch  enabled"));
-    assert!(stdout.contains(".local/bin/uf"));
-    assert!(stdout.contains("active-runtime.json"));
-    assert!(stdout.contains("runtime.json"));
-    assert!(stdout.contains("WriteShim"));
-    assert!(stdout.contains("ActivateVersion"));
-    assert!(stdout.contains("✓ now using uf@0.1.0"));
-    assert!(
-        data_home
-            .join("uniflowed/runtimes/uf/0.1.0/bin/uf")
-            .exists()
-    );
-    assert!(
-        data_home
-            .join("uniflowed/runtimes/uf/0.1.0/runtime.json")
-            .exists()
-    );
-    assert!(state_home.join("uniflowed/active-runtime.json").exists());
-    assert!(home.join(".local/bin/uf").exists());
 }
 
 #[test]
@@ -400,6 +367,84 @@ fn release_writes_the_changelog_for_the_version_it_cuts() {
     );
     let twice = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
     similar_asserts::assert_eq!(twice, changelog);
+}
+
+/// The changelog date is UTC, so two releases cannot be dated out of order.
+///
+/// `%cs` renders a commit in the timezone *that commit* recorded. This
+/// repository has both, and the pair came out backwards: alpha.13 was squashed
+/// from a `+09:00` commit and dated 2026-09-08, alpha.14 from a `+00:00`
+/// commit five hours later and dated 2026-09-07 — the later release above the
+/// earlier date, each correct by the rule that produced it. See #630.
+///
+/// The two commits here are the same shape: `02:00+09:00` is `17:00Z`, and
+/// `18:00+00:00` is an hour after it. Under `%cs` they render a day apart in
+/// the wrong direction; in one timezone they are the same day.
+#[test]
+fn the_changelog_date_is_utc_rather_than_the_commit_s_own_timezone() {
+    let changelog_date = |committed: &str| -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let git = |args: &[&str]| {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "uf")
+                .env("GIT_AUTHOR_EMAIL", "uf@example.com")
+                .env("GIT_COMMITTER_NAME", "uf")
+                .env("GIT_COMMITTER_EMAIL", "uf@example.com")
+                .env("GIT_AUTHOR_DATE", committed)
+                .env("GIT_COMMITTER_DATE", committed)
+                .output()
+                .expect("git runs");
+            assert!(
+                output.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        git(&["init", "--quiet", "--initial-branch", "main"]);
+        fs::write(root.join("a.txt"), "one\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "feat(cli): the first thing"]);
+        git(&["tag", "uf@0.0.0-alpha.2"]);
+        fs::write(root.join("b.txt"), "two\n").unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "--quiet", "-m", "fix(cli): the second thing"]);
+
+        let output = uf()
+            .arg("--cwd")
+            .arg(root)
+            .args(["release", "alpha"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let changelog = fs::read_to_string(root.join("CHANGELOG.md")).unwrap();
+        let date = changelog
+            .lines()
+            .find_map(|line| line.strip_prefix('_')?.strip_suffix('_'))
+            .unwrap_or_else(|| panic!("no dated section in {changelog}"))
+            .to_owned();
+        assert_ne!(date, "unreleased", "{changelog}");
+        date
+    };
+
+    // 2026-09-08T02:00:00+09:00 is 2026-09-07T17:00:00Z.
+    let tokyo = changelog_date("2026-09-08T02:00:00+09:00");
+    // An hour after it, recorded in a different offset.
+    let utc = changelog_date("2026-09-07T18:00:00+00:00");
+
+    assert_eq!(tokyo, "2026-09-07", "the commit's own timezone leaked in");
+    assert_eq!(utc, "2026-09-07");
+    // The point of the pair: later commit, not an earlier date.
+    assert!(tokyo <= utc, "{tokyo} then {utc} is backwards");
 }
 
 /// `uf release` refuses to rewrite a version that has already gone out.

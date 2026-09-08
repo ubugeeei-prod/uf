@@ -12,6 +12,9 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(config.app.react.async_react);
     assert!(config.app.react.suspense);
     assert!(config.app.react.use_hook);
+    // Strict Mode is on unless a project turns it off, and `uf dev` is the only
+    // command that acts on it. ubugeeei-prod/uf#516.
+    assert!(config.app.react.strict_mode);
     assert!(config.app.rsc);
     assert!(config.app.server_actions);
     assert_eq!(config.app.runtime.default, RuntimeEngine::Node);
@@ -61,6 +64,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
             DeployAdapter::Node,
             DeployAdapter::Edge,
             DeployAdapter::Serverless,
+            DeployAdapter::Static,
             DeployAdapter::Container,
         ]
     );
@@ -69,13 +73,14 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(DeployAdapter::Edge.is_implemented());
     assert!(DeployAdapter::Serverless.is_implemented());
     assert!(DeployAdapter::Container.is_implemented());
-    // And the three that are not, each of which is waiting for something
-    // named rather than for somebody's attention.
-    for adapter in [
-        DeployAdapter::Bun,
-        DeployAdapter::Deno,
-        DeployAdapter::Static,
-    ] {
+    // `static` joined them by growing the only thing it was ever going to be:
+    // the refusal. It links nothing, and a project that needs a server is
+    // named and rejected rather than half-published.
+    assert!(DeployAdapter::Static.is_implemented());
+    assert_eq!(DeployAdapter::Static.tracking_issue(), None);
+    // And the two that are not, each of which is waiting for something named
+    // rather than for somebody's attention.
+    for adapter in [DeployAdapter::Bun, DeployAdapter::Deno] {
         assert!(!adapter.is_implemented(), "{}", adapter.as_str());
         assert_eq!(adapter.tracking_issue(), Some(391));
         assert!(
@@ -766,6 +771,52 @@ fn where_the_choice_came_from_is_not_part_of_the_configuration_it_describes() {
         serde_json::json!(["--css-parse-tailwind-directives=true"]),
         "a setting the project wrote has to survive the round trip"
     );
+}
+
+/// ubugeeei-prod/uf#475: naming one rule switched the other fifty-three off.
+///
+/// Silently, and the ones that vanished included `flow/syntax` — so a project
+/// that lowered `unclear-type` to a warning also stopped being told its sources
+/// do not parse.
+#[test]
+fn naming_one_rule_leaves_the_others_where_they_were() {
+    let config: UniflowedConfig = serde_json::from_value(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-type": "warn" } }
+    }))
+    .expect("a config naming one rule");
+
+    let defaults = UniflowedConfig::default();
+    assert_eq!(
+        config.lint.rules.len(),
+        defaults.lint.rules.len(),
+        "the table shrank"
+    );
+    assert_eq!(
+        config.lint.rules.get("flow/unclear-type"),
+        Some(&RuleLevel::Warn),
+        "the one rule that was named did not change"
+    );
+    for (rule, level) in &defaults.lint.rules {
+        if rule == "flow/unclear-type" {
+            continue;
+        }
+        assert_eq!(config.lint.rules.get(rule), Some(level), "{rule} moved");
+    }
+}
+
+/// Switching a rule off is what `"off"` is for, and it still works.
+#[test]
+fn a_rule_is_switched_off_by_saying_so() {
+    let config: UniflowedConfig = serde_json::from_value(serde_json::json!({
+        "lint": { "rules": { "flow/unclear-type": "off" } }
+    }))
+    .expect("a config switching one rule off");
+
+    assert_eq!(
+        config.lint.rules.get("flow/unclear-type"),
+        Some(&RuleLevel::Off)
+    );
+    assert!(config.lint.rules.len() > 50, "the table shrank");
 }
 
 /// The permission set a project declares, read as written.

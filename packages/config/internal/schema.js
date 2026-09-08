@@ -124,6 +124,27 @@ export type UniflowedConfig = {
         // faces `uf_assets::font::LOCAL_FACES` knows the metrics of, because
         // the scaling is a ratio against real numbers rather than a guess.
         readonly fallback?: string,
+        // How an imported family is cut down. `"none"` is the default and the
+        // argued position: subsetting is lossy, and a build cannot see the
+        // text a server will render or a user will type. `"ranges"` splits the
+        // font's own coverage into script buckets with exact `unicode-range`
+        // values and loses nothing.
+        readonly subset?: "none" | "ranges",
+        // Whether `Font` preloads the primary face. Exactly one file is ever
+        // preloaded, however many buckets a split produced.
+        readonly preload?: boolean,
+      },
+      readonly icons?: {
+        readonly enabled?: boolean,
+        // Where `uf:icon/<name>` looks for `<name>.svg`, from the project
+        // root. A directory rather than a claim on `.svg`, which stays Vite's.
+        readonly dir?: string,
+      },
+      readonly og?: {
+        readonly enabled?: boolean,
+        // The typeface every `*.og.json` is drawn with unless it names its
+        // own. uf embeds none, so a project that draws cards points at one.
+        readonly font?: string | null,
       },
       readonly motion?: {
         readonly module?: "@uniflowed/motion",
@@ -178,6 +199,10 @@ export type UniflowedConfig = {
       readonly entry?: string,
       readonly root?: string,
       readonly manifest?: string,
+      // Turning the file-system router off is what makes a project a
+      // **library** rather than an application, and `uf build` reads it: see
+      // `build.lib` below and docs/app/reference/config.
+      readonly enabled?: boolean,
     },
     readonly rendering?: {
       readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr">,
@@ -196,6 +221,32 @@ export type UniflowedConfig = {
     // with `app.rendering.modes`; see docs/app/reference/config.
     readonly staticBuild?: boolean,
     readonly sourcemap?: boolean,
+    /**
+     * What a **library** build writes, for a project whose
+     * `app.router.enabled` is false.
+     *
+     * Never the switch. `app.router.enabled` decides which of the two builds
+     * `uf build` runs, and declaring this key in a project whose router is on
+     * is refused where the config is read rather than resolved by precedence.
+     * Every field has a default that builds what `uf new --lib` scaffolds, so
+     * a library ordinarily writes none of this.
+     *
+     * `"umd"` and `"iife"` are deliberately absent from `formats`: each needs
+     * a global name per entry, and what a Flow library's global should be is
+     * not a decision uf has made.
+     */
+    readonly lib?: {
+      // The modules to build, relative to the project root. Each names its own
+      // output by its path — `internal/parse.js` is written to
+      // `dist/internal/parse.js` — so two entries cannot collide.
+      readonly entries?: $ReadOnlyArray<string>,
+      readonly formats?: $ReadOnlyArray<"es" | "cjs">,
+      // Package names to leave as imports *beyond* the ones the manifest
+      // declares. A library build already externalises `dependencies`,
+      // `peerDependencies`, `optionalDependencies` and the host's built-in
+      // modules; this is for what a manifest cannot say.
+      readonly external?: $ReadOnlyArray<string>,
+    },
   },
   // Which builder uf drives. Vite is the default, not a dependency: any module
   // satisfying the contract in docs/architecture.md can be named here.

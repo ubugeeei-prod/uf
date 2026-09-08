@@ -1,5 +1,57 @@
 # Changelog
 
+## uf@0.0.0-alpha.15
+
+_2026-09-08_
+
+Nineteen changes. The one to read first is the one that was wrong in a way
+nothing could see: a diagnostic printed a module path exactly as it came off
+the filesystem, and a repository is attacker-authored input — `uf` is run
+against a clone, and a file in it can be named `src/\x1b[2Jgotcha.js`. Registry
+text has been stripped of control characters since the progress display existed;
+filenames were not, in any reporter that named one.
+
+The rest is spread evenly. `uf check` reads a project's `.flowconfig` `[libs]`
+when it has one, resolves a package to the copy Node would load, and knows the
+half of `SubtleCrypto` a module that signs anything needs — it had `digest` and
+no `sign`, `importKey` or `CryptoKey`, so correct code was told it was wrong. Four
+parsers now share one option set, so a syntax error says the same thing
+whichever of them found it. `uf build --adapter static` refuses what a static
+host cannot serve rather than writing output that 404s. `OgImage` is a template
+uf draws, with fonts it subsets and icons it sprites. And `uf rm` is the command
+that replaces `uf` rather than the one that only said so.
+
+### Added
+
+- **i18n, cli, test**: the five refusals a message's type owes, and the catalogue a translator gets (#633)
+- **vite, router, query**: React DevTools on purpose, Strict Mode by default, and the request it was cancelling (#631)
+- **lib, cli, ui, stylex**: a readiness per component, the parts list a test reads, and the constraint a select group states (#628)
+- **cli, rm**: the command that replaces uf, and the one that only said so (#627)
+- **assets**: OgImage as a template uf can draw, fonts it subsets, and icons it sprites (#625)
+- **cli, config, router**: the static target refuses what a static host cannot serve (#621)
+
+### Fixed
+
+- **pm, exec**: the root pnpm refused, the links the delta dropped, and the shim Windows runs (#637)
+- **check**: the half of SubtleCrypto a signing module needs, and the CryptoKey it names (#651)
+- **term, cli, security**: a filename is text a terminal draws, not a command it runs (#649)
+- **test, server, host, tui, cli**: five defects, and the seam behind the worst of them (#642)
+- **fmt, transform, corpus, pm**: `for await` only over `of`, and one manifest for the corpus (#629)
+- **check, flow, transform**: one option set for four parsers, and uf's words for a syntax error (#645)
+- **check**: the `[libs]` a project declares, and the copy of a package Node would load (#626)
+
+### Documentation
+
+- two claims that are ahead of what uf does (#639)
+
+### Internal
+
+- **merge-queue**: the checks a batch is merged on, and the trigger they report to (#648)
+- **semver**: compute the crates that cannot be compared, rather than listing them (#657)
+- **publish**: the verify job reads the version the publish job published (#641)
+- **publish**: the runtimes the workspace suite starts, in every job that runs it (#635)
+- **config**: the whole rule table survives naming one rule, walked entry by entry (#618)
+
 ## uf@0.0.0-alpha.14
 
 _2026-09-07_
@@ -100,8 +152,10 @@ A server action is not the only thing a browser can reach any more: `QUERY`,
 server-sent events, an upgrade a handler can accept, and a queue; OAuth as a
 contract rather than a provider; and a logger whose request id reaches a
 render. The router streams its loaders instead of awaiting them, keeps the
-site around a 404, and understands parallel and intercepting routes. A
-message's arguments are in its type. And `uf release` can no longer lose a
+site around a 404, and recognises `@slot` and `(.)segment` — refusing each by
+name rather than serving it as a literal URL, which is the first half of
+parallel and intercepting routes and not the whole of them. A message's
+arguments are in its type. And `uf release` can no longer lose a
 commit whose subject carries no pull request number, or rewrite a changelog
 section that has already been published — both of which had happened.
 

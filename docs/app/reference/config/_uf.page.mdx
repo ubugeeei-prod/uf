@@ -54,18 +54,25 @@ which is the fastest way to answer "what is it actually using".
 | --- | --- | --- |
 | `router.entry` | `"app.js"` | The module exporting `routerView()` |
 | `router.root` | `"app"` | The directory scanned for routes |
-| `router.enabled` | `true` | Turning it off makes the project a library |
+| `router.enabled` | `true` | Turning it off makes the project a library, and makes `uf build` [build one](#buildlib) |
 | `runtime.default` | `"node"` | The JavaScript host to prefer |
 | `runtime.capabilityJsHost.hosts` | `["node", "deno", "bun"]` | Hosts uf may use |
 | `runtime.capabilityJsHost.autoDetect` | `true` | Pick a host by what is installed |
 | `runtime.deploy.adapter` | none | The deploy target `uf build` writes an artefact for; `--adapter` overrides it |
-| `runtime.deploy.adapters` | `["node", "edge", "serverless", "container"]` | The targets this project may build for. Four by default, because four are implemented; naming `bun`, `deno` or `static` is an error that says why ([#391](https://github.com/ubugeeei-prod/uf/issues/391)) |
+| `runtime.deploy.adapters` | `["node", "edge", "serverless", "static", "container"]` | The targets this project may build for. Five by default, because five are implemented; naming `bun` or `deno` is an error that says why ([#391](https://github.com/ubugeeei-prod/uf/issues/391)) |
 | `runtime.deploy.enabled` | `true` | Setting it to `false` refuses `--adapter` rather than ignoring it |
 | `react.*` | — | React Compiler mode and React-specific options |
+| `react.strictMode` | `true` | `uf dev` hydrates inside `<StrictMode>`; a build never does ([#516](https://github.com/ubugeeei-prod/uf/issues/516)) |
 | `builtins.markdown` | on | Markdown and MDX |
 | `builtins.markdown.mdx.highlight.enabled` | `true` | Highlight fenced code during the build |
 | `builtins.markdown.mdx.highlight.themes` | `github-light` / `github-dark-dimmed` | The theme for each of the reader's two preferences |
 | `builtins.markdown.mdx.highlight.langs` | `[]` | Grammars beyond the ones a uf project uses |
+| `builtins.fonts.subset` | `"none"` | `"ranges"` splits a family into script buckets with exact `unicode-range` values. `"none"` is the default because subsetting is lossy and a build cannot see the text a user will type; `"ranges"` loses nothing ([guide](/guide/assets)) |
+| `builtins.fonts.preload` | `true` | Whether `Font` preloads the primary face. Exactly one face is preloaded however many buckets a split produced |
+| `builtins.icons.enabled` | `true` | Whether `uf:icon/…` resolves |
+| `builtins.icons.dir` | `"icons"` | Where `uf:icon/<name>` looks for `<name>.svg`. A directory rather than a claim on `.svg`, which stays Vite's |
+| `builtins.og.enabled` | `true` | Whether `*.og.json` templates are drawn |
+| `builtins.og.font` | none | The typeface every card is drawn with. uf embeds none, so a project that draws cards names one |
 | `builtins.reactCompiler` | on | The official React Compiler |
 | `builtins.style` | — | The style engine |
 | `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
@@ -136,11 +143,73 @@ your source tree; the reasoning is in
 | `outDir` | `"dist"` | Output directory |
 | `sourcemap` | `true` | Emit source maps |
 | `staticBuild` | `false` | Prerender everything and emit no server bundle — see below |
+| `lib` | unset | What a **library** build writes — see below |
 | `budgets` | unset | Size budgets that fail the build when exceeded |
 | `hooks` | `{}` | Commands to run around the build |
 
 Budgets are unset on purpose: failing a build nobody asked uf to police is worse
 than reporting the size and moving on.
+
+### build.lib
+
+`uf build` builds two different things, and which one it builds is
+[`app.router.enabled`](#app). A project that has turned the file-system router
+off is a **library**: `uf build` compiles its entries to the output directory
+and does none of the application work — no route table, no client entry, no
+server bundle, no prerender. `uf explain build` says which build will run and
+which key decided.
+
+That is the whole declaration. `build.lib` is only for a library that needs
+more than the defaults, and the defaults are what `uf new --lib` scaffolds:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `entries` | `["index.js"]` | The modules to build. `internal/parse.js` is written to `dist/internal/parse.js` — the path, so two entries cannot collide |
+| `formats` | `["es"]` | `"es"` writes `<name>.js`; `"cjs"` writes `<name>.cjs`, for a consumer that calls `require`. `"umd"` and `"iife"` are refused by name: each needs a global name per entry, and what a Flow library's global should be is not a decision uf has made |
+| `external` | `[]` | Extra package names to leave as imports |
+
+**Dependencies are external by default**, which is the opposite of the
+application build: everything in `dependencies`, `peerDependencies` and
+`optionalDependencies`, plus the host's built-in modules, stays an import. An
+application is the end of the line and a library is not — a bundled copy of
+React inside a library is a second React in every application that installs it.
+`external` is for what a manifest cannot say.
+
+`build.lib` in a project whose router is **on** is refused while the config is
+read. One project is one kind of build, and two keys disagreeing about which is
+exactly the failure that refusal exists for.
+
+`uf build --compile` and `uf build --adapter` are refused for a library, by
+name and before anything is built. Both write a deployment that *serves* an
+application; a library is imported.
+
+#### What a library publishes
+
+A Flow library ships **both halves** — the Flow source, and the JavaScript uf
+compiled from it — and names them with export conditions:
+
+```json
+{
+  "exports": { ".": { "flow": "./index.js", "default": "./dist/index.js" } },
+  "files": ["index.js", "dist"],
+  "sideEffects": false
+}
+```
+
+There is no `.js.flow`, here or anywhere in uf: a shipped module owns its own
+declarations, so the Flow source *is* the declaration file.
+
+`default` is the compiled build because a resolver that knows no conditions
+takes `default`, and that file has to be one every runtime can evaluate — which
+is what makes a uf library installable by someone who has never installed uf.
+`files` has to name the output directory: npm falls back to `.gitignore` when a
+package has no `.npmignore`, and `dist/` is in the `.gitignore` uf scaffolds,
+so a library that left it out would publish the source and not the build.
+
+The full argument, including why uf's own `@uniflowed/*` packages ship source
+and nothing else and why a uf application does not select the `"flow"`
+condition yet, is in
+[Architecture](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md#what-a-published-flow-library-ships).
 
 ### build.staticBuild
 

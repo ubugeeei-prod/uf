@@ -10,6 +10,8 @@
 //   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
 //                            [--prerender everything|possible|nothing]
 //                            [--static-build] [--because <sentence>]
+//   <host> driver.js library --root <dir> [--mode <m>] [--out-dir <dir>]
+//                            --entry <file>... --format <es|cjs>... [--external <name>]...
 //   <host> driver.js compile --root <dir> [--mode <m>] [--out-dir <dir>] --assets <file> --bundle <dir>
 //   <host> driver.js deploy  --root <dir> [--mode <m>] [--out-dir <dir>] --adapter <name> --work <dir> --output <dir>
 //   <host> driver.js preview --root <dir> [--mode <m>] [--out-dir <dir>] [--host <h>] [--port <n>]
@@ -38,7 +40,7 @@
 // one host that can evaluate the file evaluates it.
 
 import { createServer as createHttpServer } from "node:http";
-import { register } from "node:module";
+import { builtinModules, register } from "node:module";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -97,7 +99,7 @@ process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();
 
-const commands = { dev, build, compile, deploy, preview, start, config: printConfig };
+const commands = { dev, build, library, compile, deploy, preview, start, config: printConfig };
 const run = commands[command];
 if (run == null) {
   emit("error", { message: `unknown driver command ${JSON.stringify(command)}` });
@@ -681,6 +683,147 @@ async function build() {
 }
 
 /**
+ * The library build, for a project whose `app.router.enabled` is false.
+ *
+ * `build` above is an application build and has no other mode: it links
+ * `virtual:uf/client`, which imports the router and the project's `app.js`.
+ * A library has neither, so `uf build` in a project `uf create lib`
+ * scaffolded failed at the first pass with `Could not resolve '<root>/app.js'`
+ * — a file a library does not have and never had. See ubugeeei-prod/uf#268.
+ *
+ * This is the fourth thing the driver does, beside `dev`, `build` and
+ * `compile`, and it is one pass per format over one input list. Which of the
+ * two builds runs is **not decided here**: `uf` resolves it from the config
+ * (`uf_config`'s `LibraryPlan`) and spawns this subcommand, the same way
+ * `--prerender` arrives as one word rather than as two settings for this file
+ * to read together.
+ *
+ * # The three ways it differs from the application build
+ *
+ *   * **Every dependency stays an import.** `--external` names them, and
+ *     `uf` computes the list from the project's own manifest —
+ *     `dependencies`, `peerDependencies`, `optionalDependencies` — so a
+ *     library ships its own modules and nobody else's. That is the opposite
+ *     of the application build, which inlines what it can because an
+ *     application is the end of the line and a library is not: a bundled copy
+ *     of React inside a library is a second React in every application that
+ *     installs it.
+ *   * **One output per entry, named after the entry.** `index.js` becomes
+ *     `dist/index.js`; `internal/parse.js` becomes `dist/internal/parse.js`.
+ *     The path rather than the basename, so two entries cannot collide at the
+ *     moment one would overwrite the other.
+ *   * **No manifest, no prerender, no server bundle.** There is no document to
+ *     write and no route table to write it from.
+ *
+ * Vite's own `build.lib` does the work. uf owns *that* a library is a
+ * different build and what goes into it; how this builder performs one is the
+ * builder's, which is the same line `build` draws around `rollupOptions`.
+ */
+async function library() {
+  const vite = await import("vite");
+  const config = await loadConfig();
+  const inline = await viteConfig(config, argument("--mode") ?? "production");
+  const outDir = path.resolve(root, inline.build.outDir);
+  const entries = argumentAll("--entry");
+  const formats = argumentAll("--format");
+  const external = argumentAll("--external");
+  if (entries.length === 0) {
+    throw new Error("uf: `driver.js library` needs at least one --entry");
+  }
+  if (formats.length === 0) {
+    throw new Error("uf: `driver.js library` needs at least one --format");
+  }
+
+  // Keyed by the entry's path without its extension, which is what Vite's lib
+  // mode turns into the output file name.
+  const input = {};
+  for (const entry of entries) {
+    input[entryName(entry)] = path.resolve(root, entry);
+  }
+
+  const isExternal = externalTest(external);
+  // One pass per format rather than one build with several outputs: Vite's
+  // lib mode writes a whole `outDir` per format, and the second pass must not
+  // empty what the first wrote. So `emptyOutDir` is true exactly once, on the
+  // first, which is also what makes a build that dropped an entry leave no
+  // stale copy of it behind.
+  let first = true;
+  for (const format of formats) {
+    emit("phase", { name: `library (${format})` });
+    await vite.build({
+      ...inline,
+      build: {
+        ...inline.build,
+        // Vite's `manifest` maps source modules to hashed browser assets. A
+        // library has neither — its file names are its API — and writing one
+        // would put a `.vite/` directory into a published tarball.
+        manifest: false,
+        outDir,
+        emptyOutDir: first,
+        lib: {
+          entry: input,
+          formats: [format],
+          fileName: (_format, name) => `${name}.${format === "cjs" ? "cjs" : "js"}`,
+        },
+        rollupOptions: { external: isExternal },
+      },
+    });
+    first = false;
+  }
+
+  emit("done", { outDir: path.relative(root, outDir), pages: 0 });
+  process.exit(0);
+}
+
+/**
+ * The output name for one entry: its path, without the extension.
+ *
+ * Not the basename. `index.js` and `internal/index.js` are two entries a
+ * library can reasonably have, and under a basename they are one file written
+ * twice — the second silently winning, which is a published package whose
+ * subpath export is somebody else's module.
+ */
+function entryName(entry) {
+  const normalised = entry.replace(/\\/g, "/").replace(/^\.\//, "");
+  const dot = normalised.lastIndexOf(".");
+  const slash = normalised.lastIndexOf("/");
+  return dot > slash ? normalised.slice(0, dot) : normalised;
+}
+
+/**
+ * Whether an import is somebody else's module.
+ *
+ * Three checks, and only the one over `names` is a policy uf decided. `names`
+ * is what `uf` read out of the project's manifest and passed as `--external`,
+ * and a subpath of one of those names — `@scope/pkg/deep` for `@scope/pkg` —
+ * is the same package. The other two are the host's built-in modules, and they
+ * are a fact rather than a decision: `node:fs` has no bytes to inline.
+ *
+ * A bare relative or absolute id is never external, which is the rule that
+ * makes this a library build at all: what the author wrote is bundled, and
+ * what they installed is imported.
+ */
+function externalTest(names) {
+  const declared = new Set(names);
+  // The host's built-in module names, unprefixed. `node:`-prefixed ids are
+  // caught by the first check whatever the host is; this set is for the bare
+  // spellings — `fs`, `path`, `stream` — which a dependency written before the
+  // prefix existed still uses. Read from the running host rather than written
+  // down, because the list grows and a stale copy of it here would be a
+  // bundled `node:worker_threads` that cannot be bundled.
+  const builtins = new Set(builtinModules ?? []);
+  return (id) => {
+    if (id.startsWith("node:")) return true;
+    if (builtins.has(id)) return true;
+    if (declared.has(id)) return true;
+    for (const name of declared) {
+      if (id.startsWith(`${name}/`)) return true;
+    }
+    return false;
+  };
+}
+
+/**
  * Link the whole application into one JavaScript file, for `uf build --compile`.
  *
  * This runs after `build`, on a `dist/` that is already complete, and produces
@@ -887,6 +1030,16 @@ const SERVERLESS_CAPABILITIES = { module: "@uniflowed/server/lambda", name: "lam
  * copying every file in it is bulk work over the whole build, which belongs in
  * Rust rather than in the host process — the same division `--compile` makes
  * with its embedded assets.
+ *
+ * # `--adapter static` never reaches this function
+ *
+ * It is the one implemented target with no application to link: a static host
+ * returns files, and `uf build` has already written them. So `uf` copies the
+ * output directory itself and never spawns this driver for it, which is why
+ * [`ADAPTERS`] has four rows and not five. What that target does instead of
+ * linking is refuse a project whose route handlers, middleware, unprerendered
+ * routes or server actions a static host cannot answer — in Rust, because the
+ * facts it needs are the route table and what the prerender reported.
  */
 async function deploy() {
   const vite = await import("vite");

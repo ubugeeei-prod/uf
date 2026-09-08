@@ -6,6 +6,18 @@ on:
   push:
     tags:
       - "uf@*"
+  # And by hand, for the release that half-sent. `uf@0.0.0-alpha.14` was tagged,
+  # its binaries were built and released, and this job failed before publishing
+  # anything — so the tag existed, the GitHub release existed, and npm had
+  # nothing. A tag-only trigger leaves no way out of that but a second tag for
+  # code that has not changed. The version is the tag to publish, without the
+  # `uf@` prefix, and the checkout below uses it.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without the uf@ prefix"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +32,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The tag on a push; the tag the operator named on a dispatch. Not
+          # the default branch: a re-run has to publish the code that was
+          # released, not whatever has merged since.
+          ref: ${{ inputs.version && format('uf@{0}', inputs.version) || github.ref }}
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
@@ -43,6 +59,20 @@ jobs:
         with:
           bun-version: latest
       - run: bun --version
+      # And Deno, for `crates/uf_cli/tests/deno_host.rs`. Those tests fail
+      # rather than skip when the runtime is absent — deliberately, so that a
+      # host claim nobody checked cannot be green — and this job runs the same
+      # suite, so a runtime missing here is a publish that cannot happen.
+      #
+      # It was missing here. `uf@0.0.0-alpha.14` was tagged, its four binaries
+      # were built and released, and this job failed on six Deno tests before
+      # publishing a single package: a release with a tag, a GitHub release and
+      # nothing on npm. `tools/ci/workspace-suite-runtimes.sh` is why the next
+      # runtime cannot be added to one workflow and not the other.
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v1.x
+      - run: deno --version
       - run: cargo test --workspace
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the set that is implemented.
@@ -121,6 +151,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The same ref the publish job used, for the same reason.
+          ref: ${{ inputs.version && format('uf@{0}', inputs.version) || github.ref }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -130,10 +162,16 @@ jobs:
       # it was asked to publish — `uf@0.0.0-alpha.2` had a tag, a GitHub
       # release and nothing on npm, and nothing between that and a user
       # noticed. This reads the registry back and installs from it.
+      # On a tag push `github.ref_name` is `uf@<version>`; on a dispatch it is
+      # the branch the workflow was started from — `main` — and this job then
+      # asked npm for `@uniflowed/react@main` and reported every package
+      # missing while the publish above had just succeeded. The version comes
+      # from the same expression the publish job resolves, so the two cannot
+      # disagree about which release they are talking about.
       - name: What actually reached npm
         env:
-          REF_NAME: ${{ github.ref_name }}
-        run: tools/release/verify-npm.sh "${REF_NAME#uf@}"
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: tools/release/verify-npm.sh "${VERSION#uf@}"
       # The one part of a release this pipeline cannot do, said where it is
       # noticed: at the end of the release, rather than in a script nobody has
       # a reason to open. It prints and does not check, because at this moment

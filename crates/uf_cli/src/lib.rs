@@ -144,9 +144,62 @@ fn ask_what_to_run() -> Asked {
 /// indistinguishable. See `docs/app/reference/cli/_uf.page.mdx`.
 const COULD_NOT_RUN: u8 = 2;
 
+/// Commands uf used to have, and what to run instead of each.
+///
+/// A retired name is *removed* from the parser and answered here rather than
+/// kept as an alias, and the difference matters for the one entry in the
+/// table. Every description `uf upgrade` ever had promised either a new uf
+/// binary or newer dependencies, and it did neither — it ran the workspace
+/// half of an install and wrote a JSON plan (ubugeeei-prod/uf#424). So nobody
+/// who typed it got what they were after, and aliasing it to the command that
+/// does what it *did* would preserve the misreading for exactly the people who
+/// had it. Three sentences and three names is the migration; a silent
+/// redirect is not one.
+const RETIRED: &[(&str, &str)] = &[(
+    "upgrade",
+    "`uf upgrade` has been retired. It re-read the workspace and wrote a plan \
+     into `.uf/`; it never fetched anything and never replaced the uf binary, \
+     whatever its name suggested.\n\n  \
+     to replace uf with the newest release   uf self-update\n  \
+     to move this project's dependencies     uf update\n  \
+     to re-read the workspace and install    uf install\n\n  \
+     see ubugeeei-prod/uf#424 and ubugeeei-prod/uf#499",
+)];
+
+/// A name the parser no longer has, carried as its own error type.
+///
+/// Its own type rather than an `anyhow!` string because the exit code turns on
+/// it: a command uf does not have is "uf could not run the command at all",
+/// the documented `2`, and not the `1` that means uf ran and disliked what it
+/// found. A script that told those apart before must still tell them apart.
+#[derive(Debug)]
+struct Retired(&'static str);
+
+impl std::fmt::Display for Retired {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str(self.0)
+    }
+}
+
+impl std::error::Error for Retired {}
+
+/// The retired command on this command line, if it names one.
+fn retired_command(args: &[std::ffi::OsString]) -> Option<&'static str> {
+    let at = subcommand_index(args)?;
+    let name = args[at].to_str()?;
+    RETIRED
+        .iter()
+        .find_map(|(retired, message)| (*retired == name).then_some(*message))
+}
+
 /// Report an error raised before the output surface exists, i.e. while parsing
 /// arguments. clap renders its own help and version output.
 fn report_startup_error(error: &anyhow::Error) -> ExitCode {
+    if error.downcast_ref::<Retired>().is_some() {
+        let mut ui = Ui::new(ColorChoice::Auto, OutputMode::Human);
+        ui.error(error);
+        return ExitCode::from(COULD_NOT_RUN);
+    }
     if let Some(error) = error.downcast_ref::<clap::Error>() {
         let _ = error.print();
         return if matches!(
@@ -251,6 +304,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             commands::task::exec_package(&cwd, ui, &package, &args, yes)
         }
         Commands::Fmt { check, paths } => commands::fmt::fmt(&cwd, ui, check, &paths),
+        Commands::I18n { command } => commands::i18n::i18n(&cwd, ui, command),
         Commands::Info => commands::info::info(&cwd, ui),
         Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
@@ -373,8 +427,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             };
             commands::pm::update(&cwd, ui, &packages, level, dry_run)
         }
-        Commands::Use { runtime } => commands::pm::use_runtime(&cwd, ui, &runtime),
-        Commands::Upgrade => commands::pm::upgrade(&cwd, ui),
+        Commands::Use { runtime } => commands::toolchain::use_runtime(&cwd, ui, &runtime),
+        Commands::SelfUpdate => commands::toolchain::self_update(ui),
         Commands::Why { package } => commands::pm::why(&cwd, ui, &package),
         Commands::Ls { args } => {
             commands::pm::query(&cwd, ui, "uf ls", uf_pm::Operation::List, &args)
@@ -410,6 +464,11 @@ fn parse_cli() -> Result<(Cli, Option<String>)> {
     }
 
     let target = take_workspace_selector(&mut args);
+    // Before clap, so the answer is uf's three sentences rather than clap's
+    // "unrecognized subcommand" and whatever its edit distance suggests.
+    if let Some(message) = retired_command(&args) {
+        return Err(Retired(message).into());
+    }
     Ok((Cli::try_parse_from(args)?, target))
 }
 
@@ -542,6 +601,23 @@ mod tests {
     #[test]
     fn the_argument_parser_is_internally_consistent() {
         Cli::command().debug_assert();
+    }
+
+    /// A retired name has to be gone from the parser, or the message naming
+    /// its replacements is dead code and the command it names is whatever clap
+    /// still has under that spelling.
+    #[test]
+    fn a_retired_name_is_not_still_a_command() {
+        for (name, message) in RETIRED {
+            assert!(
+                !parses_as_command(name),
+                "`uf {name}` is retired and the parser still accepts it"
+            );
+            assert!(
+                retired_command(&args(&["uf", name])) == Some(*message),
+                "`uf {name}` is in the table and is not answered from it"
+            );
+        }
     }
 
     #[test]

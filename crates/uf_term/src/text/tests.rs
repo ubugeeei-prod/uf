@@ -238,3 +238,79 @@ fn truncation_to_nothing_still_closes_what_it_opened() {
     push_truncated(&mut out, "\x1b[31mred\x1b[0m", 0);
     assert_eq!(out, "\x1b[31m\x1b[0m");
 }
+
+/// A filename that tries to clear the screen is drawn as text.
+///
+/// `uf` is run against a clone, and nothing stops a file in that clone from
+/// being named with an escape sequence in it. The path then reaches a terminal
+/// inside a diagnostic — the same shape `uf_pm::progress` already refuses for a
+/// package name out of a registry. See ubugeeei-prod/uf#640.
+#[test]
+fn a_path_cannot_move_the_cursor() {
+    // Clear the screen, then home the cursor.
+    assert_eq!(safe_path("src/\x1b[2J\x1b[Hevil.js"), "src/[2J[Hevil.js");
+    // A carriage return redraws the row that was already written, which is how
+    // a name overwrites the diagnostic above it.
+    assert_eq!(
+        safe_path("src/a.js\rerror: nothing is wrong"),
+        "src/a.jserror: nothing is wrong"
+    );
+    // A newline ends the line the reporter is composing.
+    assert_eq!(safe_path("src/a\n.js"), "src/a.js");
+    // The one-byte C1 CSI, which is `is_control` and is not `\x1b`.
+    assert_eq!(safe_path("src/\u{9b}31m.js"), "src/31m.js");
+    // And the bell, which is not visible and is still not a filename.
+    assert_eq!(safe_path("src/\u{7}a.js"), "src/a.js");
+}
+
+/// What a path is allowed to contain, which is nearly everything.
+///
+/// A sanitiser that dropped what it did not recognise would report the wrong
+/// name for a real file, and the name is the whole point of the diagnostic.
+#[test]
+fn a_path_keeps_every_character_that_is_not_a_control() {
+    // The Windows separator is a separator, not an escape.
+    assert_eq!(
+        safe_path(r"src\components\Button.js"),
+        r"src\components\Button.js"
+    );
+    // A filename in another script is a filename.
+    assert_eq!(safe_path("src/コンポーネント.js"), "src/コンポーネント.js");
+    assert_eq!(safe_path("src/Ünïcödé-Ω.js"), "src/Ünïcödé-Ω.js");
+    assert_eq!(safe_path("src/emoji-🎉.js"), "src/emoji-🎉.js");
+    // Including the characters an escape sequence is spelled with, once the
+    // escape that starts it is gone. `[2J` on its own is four printable
+    // characters and a legal filename.
+    assert_eq!(safe_path("src/[2J.js"), "src/[2J.js");
+}
+
+/// A path too wide to draw is elided from the left, so the file it names
+/// survives.
+#[test]
+fn a_path_wider_than_the_cap_is_elided_from_its_head() {
+    let deep = format!("{}Button.js", "nested/".repeat(40));
+    let drawn = safe_path(&deep);
+    assert_eq!(display_width(&drawn), MAX_PATH_WIDTH);
+    assert!(drawn.starts_with('\u{2026}'), "{drawn}");
+    // The tail is what identifies the file, so the tail is what is kept.
+    assert!(drawn.ends_with("Button.js"), "{drawn}");
+
+    // A path exactly at the cap is not elided.
+    let exact = "a".repeat(MAX_PATH_WIDTH);
+    assert_eq!(safe_path(&exact), exact);
+
+    // The cap is columns rather than scalars, so a wide filename cannot
+    // overflow the row by counting itself twice. It is a ceiling and not a
+    // target: a double-width scalar cannot land on an odd column left over
+    // after the ellipsis, so the drawn width here is one under the cap rather
+    // than on it. Under is the safe direction — over is what wraps the row.
+    let wide = "日".repeat(MAX_PATH_WIDTH);
+    let drawn = safe_path(&wide);
+    assert!(display_width(&drawn) <= MAX_PATH_WIDTH, "{drawn}");
+    assert!(display_width(&drawn) >= MAX_PATH_WIDTH - 1, "{drawn}");
+
+    // And the control characters are removed before the width is measured, so
+    // a name padded with escapes is not elided for a width nobody can see.
+    let padded = format!("{}src/a.js", "\x1b".repeat(500));
+    assert_eq!(safe_path(&padded), "src/a.js");
+}

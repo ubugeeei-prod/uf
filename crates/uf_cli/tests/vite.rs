@@ -1903,14 +1903,14 @@ fn preview_and_start_serve_the_whole_of_a_build() {
 /// probe living inside the artefact could be resolving something the artefact
 /// happens to sit next to; one outside it can only reach what was copied.
 ///
-/// One script for four adapters, because the whole claim of the seam is that
-/// they differ in one file. `node` and `container` are asked through
+/// One script for the four server adapters, because the whole claim of the
+/// seam is that they differ in one file. `node` and `container` are asked through
 /// `handler.js` and own the request themselves, the way `server.js` does;
 /// `edge` is asked through `worker.js`'s default export, with the two
 /// arguments Cloudflare passes; `serverless` is asked through `lambda.js`'s
-/// `handler`, with the payload format 2.0 event a Function URL sends. The four
-/// questions below are the same four for all of them, and none of them has a
-/// file behind it — so what is being compared is the application, and the
+/// `handler`, with the payload format 2.0 event a Function URL sends. The
+/// questions below are the same questions for all of them, and none of them
+/// has a file behind it — so what is being compared is the application, and the
 /// static halves stay out of it. `tests/library/deploy.test.js` is where those
 /// are compared, because there they can be driven side by side.
 ///
@@ -2016,17 +2016,45 @@ const ask = async (label, url, init) => {
   process.stdout.write(`${label} ${response.status} ${body}\n`);
 };
 
+// The same question, asked of a header instead of a body. A redirect's whole
+// content is one, and the document it carries is a fallback for a static host
+// rather than the answer — so a door that wrote the status and the body and
+// dropped the headers would pass every `ask` above and still be broken.
+const askHeader = async (label, url, name, init) => {
+  const request = new Request(`http://127.0.0.1${url}`, init);
+  const response = await answer(request);
+  // Read anyway: for the application door this is the moment `settle` waits
+  // for, and skipping it here would make one question of the six behave
+  // differently from the rest.
+  await response.text();
+  const value = response.headers.get(name);
+  process.stdout.write(`${label} ${response.status} ${name}=${value ?? "-"}\n`);
+};
+
 "#;
 
 /// What the `served-app` artefact is asked.
 ///
-/// Four questions, chosen so that each says something a static host could not:
+/// Five questions, chosen so that each says something a static host could not:
 /// a route handler for a `GET` and for a `POST` with a body, a route with
-/// parameters and no `generateStaticParams`, and the project's own 404.
+/// parameters and no `generateStaticParams`, a loader's `redirect()`, and the
+/// project's own 404.
+///
+/// The redirect is the newest of them and was the gap. `uf dev` answered it
+/// with a 307 carrying no `Location` (ubugeeei-prod/uf#338), and #602 fixed
+/// that by passing a render's status *and headers* through unchanged — but its
+/// report closed by noting that the question had been asked of `uf dev`,
+/// `uf preview` and `uf start` and of no adapter. An artefact is a fourth
+/// front door, and the only thing that keeps four front doors agreeing is
+/// asking each of them. It goes through `askHeader` because the answer *is* a
+/// header: a door that wrote the status and the body and lost the headers
+/// answers 307 pointing nowhere, which a browser papers over by obeying the
+/// meta refresh one paint late and which `curl -I` cannot follow at all.
 const SERVED_APP_QUESTIONS: &str = r#"
 await ask("handler-get", "/api/health");
 await ask("handler-post", "/api/health", { method: "POST", body: JSON.stringify({ name: "uf" }) });
 await ask("rendered", "/posts/hello-world");
+await askHeader("redirect", "/old/hello-world", "location");
 await ask("missing", "/definitely-not-a-page/");
 // The two adapters whose entry carries a static half of its own: Cloudflare's
 // asset server through the binding, and the copy inside the Lambda package.
@@ -2251,9 +2279,10 @@ fn without_the_render_anchor(line: &str) -> String {
 
 /// Assert on the answers themselves, once, for whichever adapter produced them.
 ///
-/// The four are chosen so that each says something a static host could not:
-/// a route handler for a `GET` and for a `POST` with a body, a route with
-/// parameters and no `generateStaticParams`, and the project's own 404.
+/// The five are chosen so that each says something a static host could not: a
+/// route handler for a `GET` and for a `POST` with a body, a route with
+/// parameters and no `generateStaticParams`, a loader's `redirect()`, and the
+/// project's own 404.
 fn assert_artefact_answers(answers: &str) {
     for expected in [
         // A route handler, which is the clearest thing a build could not serve.
@@ -2274,6 +2303,20 @@ fn assert_artefact_answers(answers: &str) {
     assert!(
         rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
         "a route with no prerendered file has to be rendered per request:\n{rendered}"
+    );
+    // A loader's `redirect()`, whose whole answer is a header. `/old/[slug]`
+    // has parameters and no `generateStaticParams`, so the build wrote no file
+    // for it and this is a render — the same question [`assert_served`] asks
+    // `uf preview` and `uf start`, asked here of the fourth front door. See
+    // ubugeeei-prod/uf#338 and #602.
+    let redirect = answers
+        .lines()
+        .find(|line| line.starts_with("redirect "))
+        .unwrap_or_else(|| panic!("no redirect line in:\n{answers}"));
+    assert_eq!(
+        redirect, "redirect 307 location=/posts/hello-world",
+        "an artefact has to answer a loader's `redirect()` with the status and the \
+         `Location`, the way every other front door does:\n{answers}"
     );
     // The render anchor, which `shared_answers` blanks before comparing
     // adapters and which therefore has to be asserted somewhere that does not:
@@ -2563,6 +2606,241 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
     }
 }
 
+/// `--adapter static` refuses the project it cannot serve, and names it.
+///
+/// The one adapter whose whole implementation is a sentence. `uf build` has
+/// always written `dist/`, and a static host is a thing that returns files
+/// from it — so this target emits nothing new and what it had to grow is the
+/// refusal. Until it existed, `served-app` built, uploaded, and 404'd on its
+/// route handler and on all three of its parameterised routes, with nothing
+/// between the build and the visitor saying so. That is item 4 of
+/// ubugeeei-prod/uf#335, and `ubugeeei-redundancy.md` in the words it uses:
+/// static hosting does not become a server merely because an adapter exists,
+/// and an unsupported configuration is rejected clearly rather than silently
+/// changing semantics.
+///
+/// Four findings, from two different places. `/api/health` is a
+/// `_uf.route.js`, which has no page and therefore appears in no `Route` at
+/// all — the route table alone would have called this project static. The
+/// three parameterised routes are in the table and have no prerendered
+/// document, which is a fact only the prerender has.
+///
+/// And the directory is not written. A refusal that had already emptied
+/// `.uf/deploy/static/` would have destroyed a previous artefact on its way to
+/// telling somebody they cannot have a new one.
+#[test]
+fn the_static_adapter_refuses_a_project_a_static_host_cannot_serve() {
+    if !fixture_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--adapter", "static"])
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "a project with a route handler and three unprerendered routes is not a static \
+         site, and a build that said it was is the failure this target exists to \
+         prevent\n{said}"
+    );
+    for expected in [
+        // The handler: what, where, and why a file is not it.
+        "/api/health",
+        "app/api/health/_uf.route.js",
+        "a route handler answers a request",
+        // Every parameterised route, not the first one: a reader fixing this
+        // wants the list rather than one round trip per route.
+        "/posts/:slug",
+        "/slow/:id",
+        "/old/:slug",
+        "generateStaticParams",
+        // And what to do instead, which is the half a reader who chose this
+        // target on purpose actually needs.
+        "--adapter node",
+        "issues/335",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    assert!(
+        !root.join(".uf/deploy/static").exists(),
+        "a refusal must not have emptied the directory on its way to refusing"
+    );
+}
+
+/// A server action is the fourth thing a static host cannot answer, and this
+/// is the project that has one and nothing else.
+///
+/// `rsc-split-app` is two pages, both prerendered, with no handler, no
+/// middleware and no parameter — so every other reason is absent and the one
+/// finding is the action. That isolation is the assertion: an action is a
+/// `POST` the browser makes back to the application, at the page's own URL,
+/// and a directory of files has nothing to answer it with. A project that
+/// deployed this statically would render a counter that silently did nothing
+/// when it was clicked.
+#[test]
+fn the_static_adapter_names_a_server_action_a_static_host_cannot_answer() {
+    if !fixture_ready() {
+        return;
+    }
+    let _split = split_lock();
+    let root = rsc_split_app_root();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--adapter", "static"])
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!output.status.success(), "{said}");
+    assert!(
+        said.contains("a server action is a `POST`"),
+        "the reason has to be the action's, not a route's:\n{said}"
+    );
+    // By its export and its module, because that is the name in the source a
+    // reader has to go and look at — the URL it is dialled at is the page's.
+    assert!(said.contains("recordCount"), "{said}");
+    assert!(said.contains("app/counter/_actions/tally.js"), "{said}");
+    // The two pages are prerendered and are not findings, which is what makes
+    // the single row above mean the action rather than the project.
+    assert!(
+        !said.contains("generateStaticParams"),
+        "this project has no parameterised route; a finding about one would mean \
+         the check is reporting the project rather than the action:\n{said}"
+    );
+}
+
+/// And the project it *can* serve: uf's own documentation.
+///
+/// The positive half, and it is uf's own site rather than a fixture on
+/// purpose — 37 pages, no route handler, no middleware, no parameter and no
+/// server action, which is what a static deployment is. `rendering.modes` says
+/// `["ssg"]` and this is the command that makes that a checked claim rather
+/// than a field in a config file.
+///
+/// Three things are asserted about the output, and each of them is a decision:
+///
+/// * it is `dist/docs` **file for file**, because the artefact of a static
+///   target is the build's own output and anything else in it would be a
+///   second answer to what the site contains;
+/// * the copy is at the top of the directory rather than in a `static/`
+///   beside a server, because here the directory *is* the site and a wrapper
+///   would put every URL one segment deeper than the build decided; and
+/// * there is no `handler.js`, no `server.js` and no `package.json`. The four
+///   server targets need all three. A static host serves whatever is in the
+///   directory, so a stray `package.json` is a file a visitor can fetch at a
+///   URL the application never mentioned.
+#[test]
+fn the_static_adapter_writes_the_site_it_can_serve() {
+    if !fixture_ready() {
+        return;
+    }
+    let _dist = dist_lock();
+    let root = docs_root();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&root)
+        .args(["build", "--adapter", "static"])
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    assert!(
+        output.status.success(),
+        "uf's own documentation is a static site and has to build as one\nstdout:\n{stdout}\n\
+         stderr:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_plain(&stdout);
+    assert!(
+        stdout.contains(".uf/deploy/static"),
+        "the summary must say what was written:\n{stdout}"
+    );
+    // Not `node server.js`: there is nothing to start, and naming a hosting
+    // company's upload command would be uf choosing one on the reader's
+    // behalf.
+    assert!(
+        stdout.contains("upload the contents of"),
+        "what happens next to a static site is an upload:\n{stdout}"
+    );
+
+    let deployed = root.join(".uf/deploy/static");
+    let dist = root.join("dist/docs");
+    assert!(deployed.join("index.html").is_file());
+    assert!(deployed.join("404.html").is_file());
+    assert!(deployed.join("sitemap.xml").is_file());
+    assert!(
+        deployed.join("guide/routing/index.html").is_file(),
+        "a nested page has to arrive at the URL the build gave it"
+    );
+    for absent in [
+        "handler.js",
+        "server.js",
+        "package.json",
+        "static",
+        "chunks",
+    ] {
+        assert!(
+            !deployed.join(absent).exists(),
+            "`{absent}` belongs to a target that runs an application, and this one does not"
+        );
+    }
+
+    let mut copied = relative_files(&deployed);
+    let mut built = relative_files(&dist);
+    copied.sort();
+    built.sort();
+    assert_eq!(
+        copied, built,
+        "the artefact of a static target is the build's own output, file for file"
+    );
+    assert!(
+        built.len() > 30,
+        "a docs site of {} files is not the one this asserts about",
+        built.len()
+    );
+}
+
+/// Every file under `directory`, as paths relative to it.
+fn relative_files(directory: &Path) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(next) = pending.pop() {
+        for entry in fs::read_dir(&next).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if entry.file_type().unwrap().is_dir() {
+                pending.push(path);
+            } else {
+                found.push(
+                    path.strip_prefix(directory)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+    }
+    found
+}
+
 /// Copy `from` to `to`, recursively.
 ///
 /// The point of the copy is that the destination has nothing else in it, so
@@ -2622,8 +2900,8 @@ fn serve_and_assert(root: &Path, command: &str) {
 
 /// Everything a built application has to answer, whichever server is answering.
 ///
-/// The four questions are the four halves of a uf build, and before `uf
-/// preview` and `uf start` existed a build could answer only the first two.
+/// The questions are the halves of a uf build, and before `uf preview` and
+/// `uf start` existed a build could answer only the first two.
 fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &str, command: &str) {
     let context = |what: &str, response: &str| {
         format!("`uf {command}` {what}\n{response}\n{}", server_said(said))
@@ -3676,6 +3954,127 @@ fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
         assert!(
             !String::from_utf8_lossy(&bytes).contains("this-must-not-be-in-the-bundle"),
             "a variable without the client prefix reached {}",
+            file.display()
+        );
+    }
+}
+
+/// Nothing `uf build` writes installs the React DevTools hook.
+///
+/// `uf dev` installs it deliberately — `packages/vite/internal/devtools.js`,
+/// injected by `transformIndexHtml` — and that installer does exactly two
+/// things in a deployment: it is dead weight in every document, and it is a
+/// page saying out loud which framework and which build it is. See
+/// ubugeeei-prod/uf#503.
+///
+/// # What is asserted, and what cannot be
+///
+/// Not "the string `__REACT_DEVTOOLS_GLOBAL_HOOK__` appears nowhere". It does
+/// appear, twice, in `react-dom`'s own *production* build: React reads the
+/// global while it is being evaluated and hands the panel a renderer if it
+/// finds one, which is how DevTools attaches to a deployed React application at
+/// all. That is React's code and its decision, and a test that demanded its
+/// absence would be demanding a different React rather than a smaller uf.
+///
+/// What is uf's is the *installer*, and it is distinguishable by exactly the
+/// thing it does that React never does: it assigns. `window.<hook> =` is the
+/// preamble's own line and appears in no build of React, so it is what the
+/// assertion is written against. Beside it, two things whose absence needs no
+/// interpretation — the Fast Refresh preamble, injected from the same hook, and
+/// the wording of the browser-side check in
+/// `@uniflowed/router`'s `internal/devtools.js`, which is behind
+/// `import.meta.hot` and must therefore be unreachable rather than merely
+/// unused. And a document gets the strict version: `transformIndexHtml` writes
+/// the HTML, so the HTML must carry no mention of the hook at all.
+///
+/// Asserted over `dist/` rather than over the plugin, because the plugin's
+/// answer is already covered without a build by
+/// `tests/library/devtools.test.js`. What only a real build can say is that
+/// nothing *else* in the pipeline put it back: the prerendered documents go
+/// through `transformIndexHtml` too.
+///
+/// The project has a `"use client"` component in it so that the browser bundle
+/// is a bundle rather than an entry with nothing behind it — a build whose
+/// client graph is empty would pass this by shipping nothing, and would in
+/// particular ship no `react-dom` for the paragraph above to be about.
+#[test]
+fn a_build_ships_no_devtools_hook() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/Counter.js",
+        "\"use client\";\n// @flow\nimport * as React from \"@uniflowed/react\";\nimport { useState } from \"@uniflowed/react\";\n\nexport component Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button type=\"button\" onClick={() => setCount(count + 1)}>\n      {count}\n    </button>\n  );\n}\n",
+    ));
+    files[2] = (
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
+    );
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let dist = project.path().join("dist");
+    // Not empty, so the negative assertions below are about a build that
+    // happened rather than about a directory that is not there.
+    assert!(!client_assets(&dist).is_empty());
+    let index = fs::read_to_string(dist.join("index.html")).expect("the home page is prerendered");
+    assert!(
+        index.contains("home"),
+        "the page did not prerender:\n{index}"
+    );
+
+    for file in walk_files(&dist) {
+        let text = String::from_utf8_lossy(&fs::read(&file).unwrap()).into_owned();
+        assert!(
+            !text.contains("window.__REACT_DEVTOOLS_GLOBAL_HOOK__"),
+            "the DevTools installer reached {}",
+            file.display()
+        );
+        // The Fast Refresh preamble comes from the same hook and is the other
+        // half of what a document gets in development only. A build that
+        // shipped it would be serving a module the deployment does not have.
+        assert!(
+            !text.contains("/@react-refresh"),
+            "the Fast Refresh preamble reached {}",
+            file.display()
+        );
+        // And the browser-side check. It is behind `import.meta.hot`, which
+        // Vite replaces with `undefined` in a build, so the branch is dead and
+        // the dynamic import behind it is unreachable — which is a claim about
+        // what Rollup did and is worth reading off the artefact. The source
+        // maps are walked too, and a module that survived only in
+        // `sourcesContent` would be caught here.
+        assert!(
+            !text.contains("React DevTools cannot attach"),
+            "the development DevTools check reached {}",
+            file.display()
+        );
+    }
+
+    // A document is stricter than a chunk, because `transformIndexHtml` is what
+    // writes one: every mention of the hook in an HTML file uf emitted would
+    // have been put there by the injector this test is about.
+    for file in walk_files(&dist) {
+        if file.extension().is_none_or(|kind| kind != "html") {
+            continue;
+        }
+        let text = fs::read_to_string(&file).unwrap();
+        assert!(
+            !text.contains("__REACT_DEVTOOLS_GLOBAL_HOOK__"),
+            "a prerendered document mentions the DevTools hook: {}",
             file.display()
         );
     }
@@ -4831,4 +5230,284 @@ fn the_served_fixture_records_every_route_a_server_has_to_answer() {
         said.contains("answered by a server"),
         "the build did not report them:\n{said}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// The other build: a library.
+//
+// `uf new --lib` wrote a project whose `build` task could not succeed, because
+// `uf build` had one build in it and a library has no `app.js` for the client
+// entry to import. See ubugeeei-prod/uf#268. These drive the real scaffold
+// through the real driver, and the first of them ends outside uf entirely.
+// ---------------------------------------------------------------------------
+
+/// Scaffold a library into `project` with `uf init --lib`, named `name`.
+///
+/// The scaffold uf actually writes, not a hand-made copy of it: the bug this
+/// replaces was the template and the build disagreeing, and a fixture that
+/// restates the template could not have caught it.
+fn scaffold_library(project: &Project, name: &str) -> String {
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["init", "--lib", "--force", "--name", name])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "the scaffold failed:\n{said}");
+    said
+}
+
+/// The whole of ubugeeei-prod/uf#268, end to end and then one step past it.
+///
+/// `uf init --lib` writes the project, `uf build` builds it, and the result is
+/// installed into a directory that holds **nothing else** — no `uf.config.js`,
+/// no `@uniflowed/*`, no Flow transform, not even a `node_modules` above it —
+/// and imported by name from a plain `node`. That last step is the claim the
+/// whole design rests on: a library built by uf is consumable without adopting
+/// the toolchain that built it.
+///
+/// It imports by the package **name** rather than by a path, so what is being
+/// tested is the `exports` map: a resolver that knows no conditions takes
+/// `default`, and `default` has to be the compiled build. With the source
+/// there instead — which is what the template published before this — `node`
+/// answers with a syntax error on `opaque type`.
+#[test]
+fn a_scaffolded_library_builds_and_is_importable_with_no_toolchain() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "scaffolded-lib");
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "the scaffold's own build task failed:\n{said}");
+    // The summary says which of the two builds ran and which key decided,
+    // which is what #268 asked `uf explain build` for and what a reader needs
+    // when `dist/` does not hold what they expected.
+    assert!(said.contains("library"), "{said}");
+    assert!(said.contains("app.router.enabled"), "{said}");
+
+    let built = project.path().join("dist/index.js");
+    assert!(built.is_file(), "no module was written:\n{said}");
+    let source = fs::read_to_string(&built).unwrap();
+    assert!(
+        !source.contains("opaque type"),
+        "the output is still Flow:\n{source}"
+    );
+    // The sourcemap names the Flow source, which is why the manifest's `files`
+    // has to ship it: a map to a file that is not in the tarball is a map to
+    // nothing.
+    assert!(project.path().join("dist/index.js.map").is_file());
+
+    // Installed the way a consumer installs it, in a directory with nothing
+    // else in it and nothing uf's above it.
+    let consumer = tempfile::tempdir().unwrap();
+    let installed = consumer.path().join("node_modules/scaffolded-lib");
+    fs::create_dir_all(&installed).unwrap();
+    for file in ["package.json", "index.js"] {
+        fs::copy(project.path().join(file), installed.join(file)).unwrap();
+    }
+    copy_tree(&project.path().join("dist"), &installed.join("dist"));
+
+    fs::write(
+        consumer.path().join("consumer.mjs"),
+        "import { createId } from \"scaffolded-lib\";\nprocess.stdout.write(createId(\"flow\"));\n",
+    )
+    .unwrap();
+    let ran = Command::new("node")
+        .arg("consumer.mjs")
+        .current_dir(consumer.path())
+        .output()
+        .unwrap();
+    let reported = format!(
+        "{}{}",
+        String::from_utf8_lossy(&ran.stdout),
+        String::from_utf8_lossy(&ran.stderr)
+    );
+    assert!(
+        ran.status.success(),
+        "the consumer could not run:\n{reported}"
+    );
+    assert_eq!(String::from_utf8_lossy(&ran.stdout), "flow", "{reported}");
+}
+
+/// Dependencies are external by default, which is the opposite of the
+/// application build.
+///
+/// Proved by a dependency that is **not installed**: if the build tried to
+/// resolve it, it would fail. It succeeds, and the import survives into the
+/// output — which is what makes a library one copy of a package rather than a
+/// second one inside everybody who installs it.
+///
+/// The `cjs` half is here too, because the two questions share a fixture: a
+/// `.cjs` extension rather than `.js` is not cosmetic when the manifest says
+/// `"type": "module"`.
+#[test]
+fn a_library_leaves_a_declared_dependency_an_import_and_writes_both_formats() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "external-lib");
+    project.write(
+        "index.js",
+        "// @flow\nimport leftPad from \"left-pad\";\n\nexport function pad(raw: string): string {\n  return leftPad(raw, 4);\n}\n",
+    );
+    let manifest = project.path().join("package.json");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        text.replace(
+            "\"type\": \"module\",",
+            "\"type\": \"module\",\n  \"dependencies\": { \"left-pad\": \"^1.3.0\" },",
+        ),
+    )
+    .unwrap();
+    project.write(
+        "uf.config.js",
+        &config_with(
+            "  app: { router: { enabled: false } },\n  build: { lib: { formats: [\"es\", \"cjs\"] } },\n",
+        ),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(
+        succeeded,
+        "a declared dependency was resolved rather than externalised:\n{said}"
+    );
+    let es = fs::read_to_string(project.path().join("dist/index.js")).unwrap();
+    assert!(es.contains("\"left-pad\""), "the import was inlined:\n{es}");
+    let cjs = fs::read_to_string(project.path().join("dist/index.cjs")).unwrap();
+    assert!(cjs.contains("left-pad"), "{cjs}");
+    assert!(said.contains("external packages"), "{said}");
+}
+
+/// A library whose manifest names a built file the build did not write.
+///
+/// The package installs, the build succeeds, and importing that subpath fails.
+/// Every check that existed before this one passes it, which is why the build
+/// says so.
+#[test]
+fn a_library_reports_an_exports_target_it_did_not_build() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "half-exported-lib");
+    let manifest = project.path().join("package.json");
+    let text = fs::read_to_string(&manifest).unwrap();
+    fs::write(
+        &manifest,
+        text.replace(
+            "\"default\": \"./dist/index.js\"\n    }\n  },",
+            "\"default\": \"./dist/index.js\"\n    },\n    \"./parse\": \"./dist/parse.js\"\n  },",
+        ),
+    )
+    .unwrap();
+
+    // The edit above is a string replacement over the template's own bytes, so
+    // it is checked rather than assumed: a template that reformatted its
+    // manifest would otherwise turn this test into one that asserts nothing.
+    assert!(
+        fs::read_to_string(&manifest)
+            .unwrap()
+            .contains("./dist/parse.js"),
+        "the fixture did not add the unbuilt subpath",
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+    assert!(
+        said.contains("./dist/parse.js"),
+        "the unbuilt export is not named:\n{said}"
+    );
+    // And the source, which is outside the output directory, is not reported:
+    // it is in the checkout rather than in the build.
+    assert!(!said.contains("./index.js"), "{said}");
+}
+
+/// `--compile` and `--adapter` write a deployment that serves an application.
+///
+/// Refused by name and before anything is built, which is the rule
+/// ubugeeei-prod/uf#638 applied to the same two flags. `--compile` needs no
+/// Bun here for the same reason: nothing is resolved before the refusal.
+#[test]
+fn a_library_refuses_the_two_flags_that_write_a_deployment() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    scaffold_library(&project, "not-a-deployment");
+
+    for (flags, expected) in [
+        (vec!["build", "--compile"], "executable"),
+        (vec!["build", "--adapter", "node"], "directory"),
+    ] {
+        let output = uf()
+            .arg("--cwd")
+            .arg(project.path())
+            .args(&flags)
+            .output()
+            .unwrap();
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!output.status.success(), "{flags:?} was accepted:\n{said}");
+        assert!(said.contains(expected), "{flags:?}:\n{said}");
+        assert!(said.contains("app.router.enabled"), "{flags:?}:\n{said}");
+        assert!(
+            !project.path().join("dist/index.js").exists(),
+            "{flags:?} built something before refusing"
+        );
+    }
+}
+
+/// `uf explain build` says which of the two builds will run, and why.
+///
+/// ubugeeei-prod/uf#268's first acceptance item: whichever mechanism decides,
+/// the command that exists to say who does the work has to say which build it
+/// is. Both directions, because "library" printed for every project would pass
+/// half of this.
+#[test]
+fn explain_build_names_the_build_that_will_run() {
+    if !fixture_ready() {
+        return;
+    }
+    let library = Project::new(&[]);
+    scaffold_library(&library, "explained-lib");
+    let said = explain_build(library.path());
+    assert!(said.contains("library"), "{said}");
+    assert!(said.contains("app.router.enabled"), "{said}");
+    // The stages an application has and a library does not.
+    assert!(!said.contains("prerender"), "{said}");
+    assert!(!said.contains("adapter"), "{said}");
+
+    let application = Project::new(&minimal_app());
+    let said = explain_build(application.path());
+    assert!(said.contains("application"), "{said}");
+    assert!(said.contains("prerender"), "{said}");
+}
+
+/// `uf explain build` in `root`, as one string.
+fn explain_build(root: &Path) -> String {
+    let output = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{said}");
+    said
 }

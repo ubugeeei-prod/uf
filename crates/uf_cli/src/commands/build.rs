@@ -28,8 +28,8 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, Prerender, RenderingPlan, load_config};
-use uf_router::{Route, discover_routes, write_router_manifest};
+use uf_config::{DeployAdapter, LibraryPlan, Prerender, RenderingPlan, load_config};
+use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
     RscDiagnostic, RscSeverity, analyze_project,
@@ -50,6 +50,7 @@ use crate::support::{
 use crate::ui::Ui;
 
 mod guards;
+mod library;
 mod site;
 
 /// How many assets `--size-report` names before the list is cut off.
@@ -132,6 +133,24 @@ pub(crate) fn build(
 
     progress.draw("loading configuration");
     let resolved = timer.measure("config", || load_config(cwd))?;
+
+    // Which of the two builds this is, decided once. A project whose
+    // `app.router.enabled` is false is a library, and everything below this
+    // point — the route table, the RSC analysis, the client entry, the
+    // prerender — is an application's. `uf new --lib` scaffolded a project
+    // that ran all of it and failed on a missing `app.js`; see
+    // ubugeeei-prod/uf#268 and [`library`].
+    if let Some(plan) = LibraryPlan::resolve(&resolved.config) {
+        progress.finish();
+        drop(progress);
+        refuse_an_application_artefact(
+            &plan,
+            standalone,
+            requested_adapter.or(resolved.config.app.runtime.deploy.adapter),
+        )?;
+        return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
+    }
+
     let root = resolved.root.clone();
     // What this project said a build may produce, resolved once. Two settings
     // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
@@ -145,6 +164,14 @@ pub(crate) fn build(
     })?;
     let router_manifest = timer.measure("router types", || {
         write_router_manifest(&resolved.root, &resolved.config)
+    })?;
+    // The other half of the same tree: the route handlers and middleware,
+    // which have no page and so appear in no `Route`. Only `--adapter static`
+    // reads them — a project that needs a server is one this target has to
+    // refuse by name — and the walk is one pass over a directory that was just
+    // walked, so it is done here rather than made conditional on a flag.
+    let server_modules = timer.measure("server modules", || {
+        discover_server_modules(&resolved.root, &resolved.config)
     })?;
 
     let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
@@ -384,6 +411,25 @@ pub(crate) fn build(
     // exclusion rather than the binary itself: `--compile` writes into
     // `dist/`, and `deploy` copies `dist/`.
     let deployed = match adapter {
+        // The one target that links nothing. `dist/` is already what a static
+        // host serves, so what this does instead of a second Vite run is
+        // decide whether this project can be served that way at all — and say
+        // which routes cannot be, rather than publishing the half that can.
+        Some(DeployAdapter::Static) => {
+            progress.tick("writing the static adapter's output");
+            let actions = rsc
+                .registry
+                .callable_actions()
+                .map(|action| (action.export.to_string(), action.module.clone()))
+                .collect::<Vec<_>>();
+            let site = deploy::SiteFacts {
+                routes: &routes,
+                server_modules: &server_modules,
+                pages: &vite.pages,
+                actions: &actions,
+            };
+            Some(timer.measure("adapter", || deploy::deploy_static(&root, &out_dir, site))?)
+        }
         Some(adapter) => {
             progress.tick(&format!(
                 "writing the {} adapter's output",
@@ -760,6 +806,39 @@ fn refuse_unanswerable_actions(
     )
 }
 
+/// Refuse `--compile` or `--adapter` on a project that is a library.
+///
+/// Both flags produce a **deployment**: an executable that serves the
+/// application, or a directory a host runs it from. A library has no
+/// application to serve — no route table, no server entry, no request to
+/// answer — so each would have to invent one, and what it invented would be an
+/// empty server that starts and 404s everything.
+///
+/// Refused by name and before anything is built, which is the rule
+/// ubugeeei-prod/uf#638 applied to the same two flags: a target uf cannot
+/// produce is a sentence, and a sentence is cheaper before the bundle than
+/// after it.
+/// The adapter is whichever of `--adapter` and `app.runtime.deploy.adapter`
+/// asked, because a setting read and not honoured is the failure this whole
+/// change is about: a project that declared a deploy target and got a library
+/// would have been told nothing.
+fn refuse_an_application_artefact(
+    plan: &LibraryPlan,
+    standalone: bool,
+    adapter: Option<DeployAdapter>,
+) -> Result<()> {
+    let asked = match (standalone, adapter) {
+        (true, _) => "`uf build --compile` writes an executable that serves an application",
+        (_, Some(_)) => "a deploy adapter writes a directory a host serves an application from",
+        (false, None) => return Ok(()),
+    };
+    bail!(
+        "{asked}, and {}. A library is imported rather than served: `uf build` writes its \
+         modules to the output directory, and what sends them anywhere is `uf publish`.",
+        plan.because(),
+    )
+}
+
 /// What `driver.js build` is told, beyond where to put the output.
 ///
 /// Three arguments, and the third is the interesting one. `--prerender` and
@@ -827,8 +906,10 @@ fn render_rsc_diagnostics(ui: &mut Ui, root: &Utf8Path, diagnostics: &[RscDiagno
             })
             .collect();
 
+        // A module id out of the bundler names a file in the checkout. #640.
+        let drawn = uf_term::safe_path(&module);
         ui.render(|renderer, out| {
-            renderer.theme().path.paint(renderer.color(), &module, out);
+            renderer.theme().path.paint(renderer.color(), &drawn, out);
             out.push_str("  ");
             renderer.theme().muted.paint(renderer.color(), &header, out);
             out.push('\n');

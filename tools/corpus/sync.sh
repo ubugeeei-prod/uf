@@ -6,18 +6,17 @@
 # checked out. This is ~1 GB of other people's code, which is why it is not
 # part of `uf run setup`.
 #
-# Two mechanisms, for now. React, Metro, Relay and React Native are
-# submodules and predate `repos.txt`; everything since is a pinned commit in
-# that manifest, fetched one commit deep. See ubugeeei-prod/uf#137 for
-# converging them.
+# `tools/corpus/repos.txt` is the whole list: one line per repository, fetched
+# one commit deep. React, Metro, Relay and React Native were submodules until
+# ubugeeei-prod/uf#137 and are ordinary entries now — a checkout that still
+# has them as submodules keeps working, because a submodule's `.git` file and
+# the pin it is already at are exactly what the loop below looks for.
 #
 # Idempotent, so it is safe as a `dependsOn`.
 set -eu
 
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
-
-git submodule update --init --depth 1 -- tests/fixtures/git
 
 manifest=tools/corpus/repos.txt
 
@@ -32,6 +31,13 @@ while read -r name url commit; do
 
   if [ ! -e "$dest/.git" ]; then
     rm -rf "$git_dir"
+    # `git init --separate-git-dir` does not create the parent of the git
+    # directory it is handed, and `.git/corpus` does not exist until the
+    # first entry has been synced — so on a checkout that has never run this,
+    # the first entry died on `Invalid path`. `tools/upstream/sync.sh` has
+    # always had this line; this script never did, and every machine that had
+    # already synced once was past the only run that would have shown it.
+    mkdir -p "$(dirname "$git_dir")"
     git init --quiet --separate-git-dir "$git_dir" "$dest"
     git -C "$dest" remote add origin "$url"
   fi

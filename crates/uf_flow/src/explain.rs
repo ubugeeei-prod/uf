@@ -29,8 +29,28 @@ use crate::scan::tokenize;
 pub(crate) const AWAIT_OUTSIDE_ASYNC: &str = "`await` outside an `async` function is only allowed at the top level of a module — a file \
      with an `import` or an `export`";
 
-/// A parser error, as uf reports it: the parser's message and position unless
-/// uf recognises the failure and can say something truer.
+/// What uf says about a parser error instead of what the parser said.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Explanation {
+    /// uf's sentence, which names the rule the file broke rather than the
+    /// token the parser reached.
+    pub message: &'static str,
+    /// Where the caret belongs: the construct uf recognised, not the token
+    /// after it. The file is the one the parser was given.
+    pub loc: Loc,
+}
+
+/// The explanation uf has for this parser error, or [`None`] when the parser's
+/// own words are the best there are.
+///
+/// Every command asks about every error, and the [`None`] arm is the answer for
+/// nearly all of them — that is the routing decision behind
+/// ubugeeei-prod/uf#431. A layer that only some errors passed through would be
+/// a second place to decide which errors are interesting, and the commands
+/// would disagree about the ones it did not cover; a layer that rewrote
+/// messages in general would be a second, worse parser. Asking about all of
+/// them and answering about one is the shape that makes `uf fmt`, `uf lint`,
+/// `uf check` and the transform agree by construction.
 ///
 /// The message is compared rather than the error's variant because
 /// `ParseError` is the port's type and matching on it here would be a
@@ -38,14 +58,35 @@ pub(crate) const AWAIT_OUTSIDE_ASYNC: &str = "`await` outside an `async` functio
 /// parser reached in a state it did not expect — which is a detail of the
 /// parser's recovery, not of the language.
 #[must_use]
-pub fn explained(source: &str, loc: &Loc, message: String) -> (String, Position) {
-    if let Some(position) = await_outside_async(source, loc, &message) {
-        return (AWAIT_OUTSIDE_ASYNC.to_owned(), position);
-    }
-    (message, loc.start)
+pub fn explanation(source: &str, loc: &Loc, message: &str) -> Option<Explanation> {
+    let (start, end) = await_outside_async(source, loc, message)?;
+    Some(Explanation {
+        message: AWAIT_OUTSIDE_ASYNC,
+        loc: Loc {
+            source: loc.source.clone(),
+            start,
+            end,
+        },
+    })
 }
 
-/// Where the `await` is, when this error is the parser refusing one.
+/// A parser error, as a caller that wants only a sentence and a point reports
+/// it: [`explanation`] where there is one, and the parser's own message and
+/// position where there is not.
+///
+/// The fold is here rather than at each call site because it is the same fold
+/// every time, and because it is where the fallback is stated once: what uf
+/// says about an error it does not recognise is exactly what the parser said.
+#[must_use]
+pub fn explained(source: &str, loc: &Loc, message: String) -> (String, Position) {
+    match explanation(source, loc, &message) {
+        Some(explanation) => (explanation.message.to_owned(), explanation.loc.start),
+        None => (message, loc.start),
+    }
+}
+
+/// Where the `await` is, when this error is the parser refusing one: the start
+/// and end of the keyword itself.
 ///
 /// The test is that the token *before* the one the parser tripped on is the
 /// identifier `await`, and that is exact rather than a guess: `allow_await` is
@@ -60,7 +101,7 @@ pub fn explained(source: &str, loc: &Loc, message: String) -> (String, Position)
 /// It is deliberately not "the source contains `await`". A module with an
 /// `await` on line 3 and a missing brace on line 90 must still be told about
 /// the brace.
-fn await_outside_async(source: &str, loc: &Loc, message: &str) -> Option<Position> {
+fn await_outside_async(source: &str, loc: &Loc, message: &str) -> Option<(Position, Position)> {
     // The parser recovers, so it produces this message for every token that
     // cannot start a statement — a gate rather than a decision, and cheap
     // enough to run before tokenizing.
@@ -79,7 +120,11 @@ fn await_outside_async(source: &str, loc: &Loc, message: &str) -> Option<Positio
         return None;
     }
 
-    Some(crate::module::positions(source, &[previous.start])[0])
+    // Both ends, so a caller that renders a range underlines the keyword
+    // rather than guessing at its width: `uf_check`'s diagnostics carry a span
+    // where `uf lint`'s carry a point.
+    let at = crate::module::positions(source, &[previous.start, previous.end]);
+    Some((at[0], at[1]))
 }
 
 /// The byte offset of a parser position, or `None` when the source has no such

@@ -67,11 +67,11 @@
 
 use flow_parser::ast;
 use flow_parser::ast::expression::UnaryOperator;
+use flow_parser::ast::statement::ForOf;
 use flow_parser::ast_visitor::{self, AstVisitor};
 use flow_parser::file_key::FileKey;
 use flow_parser::loc::{Loc, Position};
 use flow_parser::parse_error::ParseError;
-use flow_parser::{ParseOptions, ast::statement::ForOf};
 
 use crate::scan::{Token, tokenize};
 
@@ -186,11 +186,27 @@ fn goal_of(source: &str, tokens: &[Token]) -> Goal {
 /// asked. `file` is the port's `FileKey` where the caller has one; it decides
 /// nothing here and is passed through so locations carry it.
 ///
+/// # There is no options parameter, and that is the point
+///
+/// There was one, and `uf_check` passed `PERMISSIVE_PARSE_OPTIONS` through it
+/// while the other three passed [`PARSE_OPTIONS`](crate::PARSE_OPTIONS). The
+/// two differ in `esproposal_decorators`, so a file with a decorator was one
+/// thing to `uf check` and another to `uf fmt`, `uf lint` and the transform —
+/// which is the failure the paragraph above says this function exists to
+/// prevent, arriving through this function's own argument list
+/// (ubugeeei-prod/uf#430).
+///
+/// A parameter is a place two callers can disagree, and a comment asking them
+/// not to is what the three literals this constant replaced already had. So
+/// the dialect is read from the constant here, once: an entry point cannot
+/// choose its own options because there is nothing to choose with, and a fifth
+/// one gets uf's dialect by compiling at all.
+///
 /// Syntax errors are returned, not raised: the port recovers and the caller
 /// decides what a recovered tree is worth.
 #[must_use]
-pub fn parse(source: &str, options: &ParseOptions, file: Option<&FileKey>) -> Program {
-    let script = read(source, options, file);
+pub fn parse(source: &str, file: Option<&FileKey>) -> Program {
+    let script = read(source, file);
 
     // Nothing to do for a file with no `await` in it, which is nearly every
     // file: one substring search, and the tokenizer below never runs.
@@ -223,7 +239,7 @@ pub fn parse(source: &str, options: &ParseOptions, file: Option<&FileKey>) -> Pr
     }
 
     for _ in 0..MAX_PASSES {
-        let (program, errors) = read(&rewrite(source, &wanted), options, file);
+        let (program, errors) = read(&rewrite(source, &wanted), file);
         let mut repair = Repair {
             wanted: &wanted,
             kept: Vec::new(),
@@ -245,18 +261,26 @@ pub fn parse(source: &str, options: &ParseOptions, file: Option<&FileKey>) -> Pr
 }
 
 /// Hand `source` to the port, with or without a file name.
-fn read(source: &str, options: &ParseOptions, file: Option<&FileKey>) -> Program {
+///
+/// The two calls below are the only place in uf that reaches the port's
+/// parser, which is what makes [`crate::PARSE_OPTIONS`] "the only copy" a fact
+/// rather than a convention; `uf_transform`'s `tests/parse_options.rs` reads
+/// the workspace and says so.
+fn read(source: &str, file: Option<&FileKey>) -> Program {
     match file {
         Some(file) => flow_parser::parse_program_file::<()>(
             false,
             None,
-            Some(options.clone()),
+            Some(crate::PARSE_OPTIONS),
             file.clone(),
             Ok(source),
         ),
-        None => {
-            flow_parser::parse_program_without_file(false, None, Some(options.clone()), Ok(source))
-        }
+        None => flow_parser::parse_program_without_file(
+            false,
+            None,
+            Some(crate::PARSE_OPTIONS),
+            Ok(source),
+        ),
     }
 }
 
