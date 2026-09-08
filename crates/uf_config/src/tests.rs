@@ -1065,6 +1065,51 @@ fn a_serialized_config_reads_back_with_the_same_rule_table() {
     assert_eq!(parsed.lint.rules, config.lint.rules);
 }
 
+/// A project that says nothing about accessibility gets the dev audit and no
+/// narrowing, and the workers are told nothing at all.
+#[test]
+fn accessibility_defaults_to_every_rule_and_an_audit_in_dev() {
+    let config = UniflowedConfig::default();
+
+    assert!(config.accessibility.dev_audit);
+    assert!(config.accessibility.axe.tags.is_empty());
+    assert!(config.accessibility.axe.disabled_rules.is_empty());
+    assert_eq!(config.accessibility.axe.min_impact, None);
+    // `None` rather than `"{}"`: the variable is absent, which the matcher
+    // reads as "run every rule". A present-but-empty value would be a project
+    // that had said something, and it has not.
+    assert_eq!(config.accessibility.axe.as_json(), None);
+}
+
+/// What a project *does* say reaches the workers in axe's own vocabulary.
+#[test]
+fn an_axe_rule_set_travels_as_the_json_the_matcher_reads() {
+    let axe = AxeConfig {
+        tags: vec![CompactString::const_new("wcag2aa")],
+        disabled_rules: vec![CompactString::const_new("color-contrast")],
+        min_impact: Some(AxeImpact::Serious),
+        ..AxeConfig::default()
+    };
+
+    let json = axe.as_json().expect("a configured rule set is carried");
+    let read: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+    assert_eq!(read["tags"][0], "wcag2aa");
+    assert_eq!(read["disabledRules"][0], "color-contrast");
+    // kebab-case, because that is what axe calls its own impacts and the JSON
+    // is read by `packages/test/internal/axe.js` rather than by Rust.
+    assert_eq!(read["minImpact"], "serious");
+}
+
+/// One narrowing is enough to be worth telling a worker about.
+#[test]
+fn a_single_disabled_rule_is_still_something_to_say() {
+    let axe = AxeConfig {
+        disabled_rules: vec![CompactString::const_new("region")],
+        ..AxeConfig::default()
+    };
+    assert!(axe.as_json().is_some());
+}
+
 /// The project-wide ignore list has a project-wide name.
 ///
 /// ubugeeei-prod/uf#575: `lint.ignore` was read by `uf fmt`, `uf lint`,

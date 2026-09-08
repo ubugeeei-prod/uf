@@ -38,7 +38,114 @@ transform a build uses.
 
 `describe`, `it`, `test`, `beforeAll`, `beforeEach`, `afterEach` and `afterAll`
 are there, with `.only`, `.skip`, `.todo` and `.each` on `it` and `describe`.
-`expect` has 25 matchers, `.not`, `.resolves`, `.rejects`, and `fn()` for spies.
+`expect` has 42 matchers, `.not`, `.resolves`, `.rejects`, and `fn()` for spies.
+
+## A test beside the code it tests
+
+A three-line test for a three-line function does not always want a file of its
+own. `import.meta.uf.test` is a block that lives in the module it tests, the way
+`import.meta.vitest` does:
+
+```js
+// @flow
+import { expect, it } from "@uniflowed/test";
+
+export function slugify(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+if (import.meta.uf.test) {
+  it("collapses runs of punctuation", () => {
+    expect(slugify("Hello,  world!")).toBe("hello-world");
+  });
+}
+```
+
+`uf test` finds it through the same discovery that finds a `.test.js` file —
+`uf test --list` shows it, `-t` filters it, and it is scheduled and reported
+like any other case. Nothing has to be configured, and there is no separate
+"include" pattern: a file that declares a test is a test file.
+
+**The block does not reach a build.** `uf` compiles `import.meta.uf.test` to
+`void 0` in every transform except the ones `uf test` starts, so the bundler is
+handed `if (void 0) { … }`, removes the branch, and then removes the import that
+only the branch used — `@uniflowed/test` declares `sideEffects: false` so it
+can. That is asserted against a real `uf build` rather than assumed: the fixture
+in `crates/uf_cli/tests/fixtures/rsc-split-app` carries a string that only the
+block contains, and the test reads the emitted bundle back looking for it in the
+same file the module's other marker has to be present in.
+
+The bindings come from an ordinary import, which is what makes them typed. The
+marker's *value* is uf's test API, so `const { it, expect } = import.meta.uf.test`
+works too and is what somebody arriving from Vitest will write — it is untyped,
+because Flow has no `typeof import("…")` for a library definition to use.
+
+Two things worth knowing:
+
+- A source file with a block is an ordinary module, so a `.test.js` file that
+  imports it for the function evaluates the block a second time. It does not
+  register a second time: the marker answers with the API only for the module
+  the run is currently reporting on, and with `undefined` for every other.
+- Coverage counts the whole file, block included. `test.coverage.exclude`
+  matches on paths, and an in-source test's path is the source file's.
+
+## Accessibility
+
+`expect(container).toHaveNoAxeViolations()` runs axe-core over a rendered tree:
+
+```js
+// @flow
+import { expect, it } from "@uniflowed/test";
+import { render } from "@uniflowed/react-testing";
+
+import { Invoice } from "./Invoice.js";
+
+it("is accessible", async () => {
+  const { container } = render(<Invoice total={420} />);
+  await expect(container).toHaveNoAxeViolations();
+});
+```
+
+It is the one matcher that must be awaited — axe has no synchronous entry
+point — and the published `Matchers` type says so, so forgetting the `await`
+is a checker error rather than a test that passes by accident.
+
+axe-core is an **optional dependency**: uf does not make a project that never
+audits carry a megabyte of rule definitions. Add it with `uf add -D axe-core`
+and the matcher starts working; write the matcher without it and you get one
+sentence saying so.
+
+The rule set is configured once, for the project:
+
+```js
+// uf.config.js
+export default defineConfig({
+  accessibility: {
+    axe: {
+      // `color-contrast` needs layout, and the DOM a Node worker renders into
+      // has none — axe reports it as *incomplete* rather than as a violation.
+      disabledRules: ["color-contrast"],
+      minImpact: "serious",
+    },
+  },
+});
+```
+
+An assertion may narrow further — `toHaveNoAxeViolations({ tags: ["wcag2a"] })`
+— and what it passes replaces the project's answer for that one call.
+
+**`uf dev` runs the same audit against the page on screen.** It reports through
+the diagnostic channel, so a finding arrives in the terminal beside everything
+else `uf dev` has to say, rather than as an overlay drawn over the markup it is
+complaining about. It runs once the page settles and again after the DOM stops
+changing, it is skipped while the tab is hidden, and it says nothing when
+nothing changed. `accessibility.devAudit: false` turns it off; a project with no
+axe-core never has it at all, and no script is injected.
+
+This is not the same thing as `uf lint`'s `a11y/*` rules, and neither replaces
+the other. The linter reads JSX that was never rendered and can see that an
+`<img>` has no `alt`; the audit reads what React produced and can see that the
+heading levels the component *actually* emitted skip a step.
 
 ## Replacing a module
 
@@ -383,6 +490,10 @@ between runs and a pre-bundled worker. Neither exists yet.
   out, a worker that crashed — takes its counts with it, because they are
   written when the process exits.
 - Module mocking is Node-only; see "Which hosts" above.
+- The accessibility audit is only as good as the DOM under it. On a Node worker
+  that is happy-dom, which computes no layout, so `color-contrast` and the rules
+  about overlapping targets come back *incomplete* rather than decided. `uf dev`'s
+  audit runs in a real browser and answers them.
 - `@uniflowed/react-testing` needs a DOM and says so when called; component
   tests need one supplied.
 - Deno has no Flow loader, so `uf test` refuses it with a message rather than
