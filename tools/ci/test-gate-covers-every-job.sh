@@ -18,7 +18,9 @@
 # The pipeline is a small, real-shaped `ci.yml`: eight jobs, six of them named
 # for contexts branch protection requires, one deliberately outside the gate,
 # and a `security.yml` beside it for `Zizmor`, which is required and does not
-# live in `ci.yml` at all.
+# live in `ci.yml` at all. Both run on `merge_group`, because a required
+# context that does not report on the queue's speculative merge is a check the
+# queue waits on forever (#588), and that is planted here too.
 set -eu
 
 repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)"
@@ -63,6 +65,7 @@ scratch() {
 name: CI
 
 on:
+  merge_group:
   pull_request:
   push:
     branches:
@@ -141,6 +144,7 @@ YAML
 name: Security
 
 on:
+  merge_group:
   pull_request:
 
 permissions: {}
@@ -339,5 +343,41 @@ if check "$root"; then
 fi
 said "Everything"
 pass "rejects a gate renamed away from its required context"
+
+# 14. A workflow that reports a required context and does not run on
+#     `merge_group`. The queue merges a batch when the required checks pass on
+#     the commit it built; a check that never reports there is not a check that
+#     fails, it is one the batch sits behind until it times out. #588.
+scratch unqueued
+edit "$ci_yml" '/^  merge_group:$/d'
+if check "$root"; then
+  fail "accepted a required context whose workflow does not run on merge_group"
+fi
+said "merge_group"
+said "ci.yml"
+pass "rejects a required context that cannot report to the merge queue"
+
+# 15. And the same outside `ci.yml`, because `Zizmor` is required and lives in
+#     its own file — the place a trigger is easiest to forget.
+scratch unqueued-elsewhere
+edit "$security_yml" '/^  merge_group:$/d'
+if check "$root"; then
+  fail "accepted a required context outside ci.yml with no merge_group trigger"
+fi
+said "security.yml"
+pass "rejects a required context outside ci.yml that the queue cannot see"
+
+# 16. A `merge_group` that is not in `on:` at all does not count. A workflow
+#     naming it in a job condition or a comment reports nothing to the queue,
+#     and a check that reads the file for the word rather than the trigger
+#     would pass this and leave the queue stuck.
+scratch merge-group-elsewhere
+edit "$ci_yml" '/^  merge_group:$/d'
+insert_after "$ci_yml" "  toolchain:" "    # merge_group: not here, this is a comment"
+if check "$root"; then
+  fail "accepted the word merge_group outside the on: block as a trigger"
+fi
+said "merge_group"
+pass "rejects merge_group written anywhere but the trigger"
 
 echo "test-gate-covers-every-job: ok"
