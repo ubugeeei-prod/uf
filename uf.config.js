@@ -656,6 +656,18 @@ export default defineConfig({
       inputs: ["tools/ci/workspace-suite-runtimes.sh", "tools/ci/test-workspace-suite-runtimes.sh"],
     },
 
+    // And that the crates `cargo semver-checks` cannot compare are computed
+    // rather than listed. That list was maintained by hand and went stale the
+    // moment `uf_i18n` was added: it reaches `uf_flow` through a path
+    // dependency, so its baseline copy cannot resolve `upstream/flow`, and
+    // once the baseline caught up it rejoined a gate it can never pass. The
+    // job then failed on every pull request, at `uf_i18n` — with `uf_lib` and
+    // `uf_router` latent behind it, alphabetically.
+    "semver:exclude:test": {
+      command: "tools/ci/test-semver-exclude.sh",
+      inputs: ["tools/ci/semver-exclude.sh", "tools/ci/test-semver-exclude.sh"],
+    },
+
     manifests: {
       command:
         "node -e \"for (const f of require('node:fs').globSync('packages/*/package.json')) JSON.parse(require('node:fs').readFileSync(f, 'utf8'))\"",
@@ -707,6 +719,7 @@ export default defineConfig({
         "ci:gate:test",
         "ci:runtimes",
         "ci:runtimes:test",
+        "semver:exclude:test",
         // `docs:verify` rather than the four checks under it, because that is
         // what the `Docs build` job runs and this list is the whole of
         // `uf run` in `.github/workflows/`. It reaches `docs:links`,

@@ -416,6 +416,7 @@ jobs:
       - run: ./target/release/uf run ci:gate:test
       - run: ./target/release/uf run ci:runtimes
       - run: ./target/release/uf run ci:runtimes:test
+      - run: ./target/release/uf run semver:exclude:test
 
   upstream-integrations:
     name: Upstream Integrations
