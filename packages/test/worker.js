@@ -54,8 +54,6 @@ import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { installInSourceTests } from "./in-source.js";
-import { reset } from "./internal/registry.js";
-import { resetModuleState } from "./internal/modules.js";
 import { restoreSharedState } from "./internal/isolation.js";
 import { run } from "./internal/run.js";
 

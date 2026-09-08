@@ -6,9 +6,7 @@
 // through a browser here, so it is driven where it lives: `start()` is an
 // ordinary module that reads a `document`, watches it with a `MutationObserver`
 // and posts to an endpoint, and `@uniflowed/react-testing` installs a document
-// that has all three. What that leaves unchecked is the wiring in
-// `packages/vite/index.js` — that the tag is injected, and that Vite resolves
-// the virtual module — and `tests/library/dev-channel.test.js`'s neighbours are
+// that has all three. `tests/library/dev-channel.test.js`'s neighbours are
 // where the channel's own half is checked.
 //
 // The two halves this file *does* check are the ones a mistake would be silent
@@ -39,6 +37,8 @@ import {
   auditTag,
 } from "../../packages/vite/internal/a11y.js";
 import { DIAGNOSTIC_ENDPOINT } from "../../packages/vite/internal/diagnostics.js";
+import uniflowed from "../../packages/vite/index.js";
+import { DEVTOOLS_HOOK } from "../../packages/vite/internal/devtools.js";
 
 installDom();
 
@@ -134,6 +134,88 @@ describe("the module the dev server generates", () => {
     expect(tag?.injectTo).toBe("body");
     // Vite's convention for a resolved virtual id.
     expect(AUDIT_RESOLVED_ID.startsWith("\0")).toBe(true);
+  });
+});
+
+/** uf's Flow plugin, in the state `serve` or `build` leaves it in. */
+function flowPlugin(config: $FlowFixMe, command: "serve" | "build"): $FlowFixMe {
+  const flow: $FlowFixMe = uniflowed({ root: process.cwd(), config })[0];
+  flow.config(
+    { root: process.cwd() },
+    { mode: command === "build" ? "production" : "development", command },
+  );
+  return flow;
+}
+
+describe("the wiring into a development document", () => {
+  it("adds the audit to the document DevTools already owns, and adds it last", () => {
+    // The half `tests/library/devtools.test.js` deliberately does not check.
+    // That file turns this feature off so its own count is about DevTools;
+    // this is the assertion that the two coexist — and it is the one that
+    // would have caught the collision, because "the document has two tags" and
+    // "the document has three" cannot both be somebody else's problem.
+    const flow = flowPlugin({}, "serve");
+
+    const tags = flow.transformIndexHtml();
+
+    expect(tags.length).toBe(3);
+    // Untouched, and in the order #503 requires: the classic hook script
+    // first, the Fast Refresh module second, both at the top of the head.
+    expect(tags[0].attrs).toBe(undefined);
+    expect(tags[0].injectTo).toBe("head-prepend");
+    expect(tags[0].children).toContain(DEVTOOLS_HOOK);
+    expect(tags[1].injectTo).toBe("head-prepend");
+    expect(tags[1].attrs?.type).toBe("module");
+    // And the audit after both, in the body: a module that reads a rendered
+    // tree has nothing to do until the parser has produced one, so it cannot
+    // be what gets between the hook and the renderer.
+    expect(tags[2].injectTo).toBe("body");
+    expect(tags[2].attrs?.src).toBe(AUDIT_PUBLIC_PATH);
+  });
+
+  it("adds nothing when the project turned the dev audit off", () => {
+    const flow = flowPlugin({ accessibility: { devAudit: false } }, "serve");
+
+    const tags = flow.transformIndexHtml();
+
+    expect(tags.length).toBe(2);
+    expect(tags.some((tag) => tag.attrs?.src === AUDIT_PUBLIC_PATH)).toBe(false);
+  });
+
+  it("adds nothing to a build, which has no audit to run", () => {
+    expect(flowPlugin({}, "build").transformIndexHtml()).toEqual([]);
+  });
+
+  it("serves the runtime the tag asks for", () => {
+    // The other half of the wiring: the tag names a URL, and the plugin has to
+    // resolve that URL to the virtual module and load the generated source for
+    // it. A tag whose module 404s is a red console on every page.
+    const flow = flowPlugin({ accessibility: { axe: { minImpact: "serious" } } }, "serve");
+
+    expect(flow.resolveId(AUDIT_PUBLIC_PATH)).toBe(AUDIT_RESOLVED_ID);
+    const source = flow.load(AUDIT_RESOLVED_ID);
+    expect(source).toContain("export function start(");
+    // The project's own rule set, not the default: what `load` is handed is
+    // the `accessibility.axe` block the plugin was built with.
+    expect(source).toContain('"minImpact":"serious"');
+  });
+
+  it("pre-bundles the engine rather than meeting it after a page has loaded", () => {
+    // axe-core is CommonJS and is reached only from a virtual module, so Vite
+    // would discover it during the first render, optimise it, and reload the
+    // page it had just served. Naming it up front is what stops `uf dev` from
+    // reloading itself once per session.
+    const config = uniflowed({ root: process.cwd(), config: {} })[0].config(
+      { root: process.cwd() },
+      { mode: "development", command: "serve" },
+    );
+    expect(config.optimizeDeps.include).toContain("axe-core");
+
+    const off = uniflowed({
+      root: process.cwd(),
+      config: { accessibility: { devAudit: false } },
+    })[0].config({ root: process.cwd() }, { mode: "development", command: "serve" });
+    expect(off.optimizeDeps.include).not.toContain("axe-core");
   });
 });
 
