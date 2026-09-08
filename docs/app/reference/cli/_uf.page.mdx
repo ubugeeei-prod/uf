@@ -52,6 +52,12 @@ spellings.
 Scaffolds a library rather than an application: no router, no document, and a
 `package.json` shaped for publishing. `uf init --lib` does it in place.
 
+Its `uf.config.js` says `app: { router: { enabled: false } }`, and that one
+line is what makes `uf build` [build a library](#uf-build-for-a-library) rather
+than look for an application entry. The manifest it writes ships the Flow
+source and the compiled build, named by export conditions; see
+[`build.lib`](/reference/config#buildlib).
+
 ### uf info
 
 Prints the version, the resolved JavaScript host, and the project uf found.
@@ -222,6 +228,44 @@ writes a directory for one deployment target — a host with a JavaScript
 runtime, a container image, a Cloudflare Worker or a Lambda function — and
 `--compile` writes a single executable file that needs not even a runtime.
 Both are described below, beside the two ways to serve a build in place.
+
+Everything above is the build of an **application**. A project whose
+[`app.router.enabled`](/reference/config#app) is false takes a different one.
+
+### uf build, for a library
+
+A project with the file-system router off is a library, and `uf build`
+compiles its entries to the output directory instead of bundling an
+application. Nothing above happens: there is no route table, no client entry,
+no server bundle, no prerender and no `sitemap.xml`.
+
+```
+uf build
+
+  build             library
+  because           `app.router.enabled` is false, so this project is a
+                    library rather than an application
+  engine            vite
+  entries           index.js
+  formats           es
+  external packages 0
+```
+
+**Every package the manifest declares stays an import** — `dependencies`,
+`peerDependencies`, `optionalDependencies`, and the host's built-in modules —
+which is the opposite of the application build and the reason a library does
+not ship a second copy of React to everyone who installs it.
+[`build.lib`](/reference/config#buildlib) is where the entries, the formats and
+any extra externals go, and its defaults are what `uf new --lib` scaffolds, so
+most libraries write none of it.
+
+`--compile` and `--adapter` are refused here, by name and before anything is
+built: both write a deployment that serves an application, and a library is
+imported. What sends a library anywhere is `uf publish`.
+
+The build warns when `package.json` names an `exports` target inside the output
+directory that it did not write — a package that installs and cannot be
+imported, which every other check passes.
 
 ### Serving a build
 
