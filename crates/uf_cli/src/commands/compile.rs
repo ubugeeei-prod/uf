@@ -180,8 +180,24 @@ impl Backend {
 pub(crate) struct Target {
     /// The triple, which is what `--target` takes.
     pub(crate) triple: &'static str,
-    /// Bun's name for the same machine.
+    /// Bun's name for the same machine, as `bun build --target` takes it.
     bun: &'static str,
+    /// Bun's name for the same machine in its *cache*, which is not always
+    /// the one above.
+    ///
+    /// Bun accepts `arm64` on the command line and writes `aarch64` in the
+    /// filename it caches the runtime under. That is Bun's own rule and it is
+    /// recorded here as data rather than inferred with a `replace`, because a
+    /// table is checkable and a rewrite is a guess about somebody else's
+    /// naming. Its own messages are the evidence: asking 1.1.27 for
+    /// `bun-linux-arm64-musl` is refused as `bun-linux-aarch64-musl-v1.1.27`,
+    /// and `bun-windows-arm64` as `bun-windows-aarch64-v1.1.27`.
+    ///
+    /// Getting this wrong is not cosmetic. [`cached_runtime`] is what decides
+    /// whether uf announces a 90 MB download before the build and whether it
+    /// reports one afterwards, so a name that never matches means every build
+    /// claims to be fetching and none admits to having fetched.
+    runtime: &'static str,
     /// `std::env::consts::OS` for this platform.
     os: &'static str,
     /// `std::env::consts::ARCH` for this platform.
@@ -212,6 +228,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "aarch64-apple-darwin",
         bun: "bun-darwin-arm64",
+        runtime: "bun-darwin-aarch64",
         os: "macos",
         arch: "aarch64",
         windows: false,
@@ -219,6 +236,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "x86_64-apple-darwin",
         bun: "bun-darwin-x64",
+        runtime: "bun-darwin-x64",
         os: "macos",
         arch: "x86_64",
         windows: false,
@@ -226,6 +244,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "aarch64-unknown-linux-gnu",
         bun: "bun-linux-arm64",
+        runtime: "bun-linux-aarch64",
         os: "linux",
         arch: "aarch64",
         windows: false,
@@ -233,6 +252,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "aarch64-unknown-linux-musl",
         bun: "bun-linux-arm64-musl",
+        runtime: "bun-linux-aarch64-musl",
         os: "linux",
         arch: "aarch64",
         windows: false,
@@ -240,6 +260,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "x86_64-unknown-linux-gnu",
         bun: "bun-linux-x64",
+        runtime: "bun-linux-x64",
         os: "linux",
         arch: "x86_64",
         windows: false,
@@ -247,6 +268,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "x86_64-unknown-linux-musl",
         bun: "bun-linux-x64-musl",
+        runtime: "bun-linux-x64-musl",
         os: "linux",
         arch: "x86_64",
         windows: false,
@@ -254,6 +276,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "aarch64-pc-windows-msvc",
         bun: "bun-windows-arm64",
+        runtime: "bun-windows-aarch64",
         os: "windows",
         arch: "aarch64",
         windows: true,
@@ -261,6 +284,7 @@ pub(crate) const TARGETS: &[Target] = &[
     Target {
         triple: "x86_64-pc-windows-msvc",
         bun: "bun-windows-x64",
+        runtime: "bun-windows-x64",
         os: "windows",
         arch: "x86_64",
         windows: true,
@@ -681,12 +705,13 @@ fn artefact_permissions(
 
 /// The cached runtime for `target`, if it is already there.
 ///
-/// Bun names the file `bun-<its own target>-v<version>`, so the prefix is
-/// enough and the version is deliberately not part of the question: what a
-/// reader is told is whether this build has to reach the network, and a cache
-/// holding some other Bun's copy means it does.
+/// Bun names the file `<its cache name>-v<version>` — see [`Target::runtime`],
+/// which is not always what `--target` took — so the prefix is enough and the
+/// version is deliberately not part of the question: what a reader is told is
+/// whether this build has to reach the network, and a cache holding some other
+/// Bun's copy means it does.
 fn cached_runtime(cache: &Utf8Path, target: Target) -> Option<(Utf8PathBuf, u64)> {
-    let prefix = format!("{}-v", target.bun);
+    let prefix = format!("{}-v", target.runtime);
     for entry in fs::read_dir(cache.as_std_path()).ok()?.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();

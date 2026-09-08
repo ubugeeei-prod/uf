@@ -69,15 +69,34 @@ fn bun_s_own_name_for_a_machine_is_answered_with_the_triple() {
 }
 
 #[test]
-fn every_target_uf_names_is_distinct_in_both_vocabularies() {
-    // Two entries that shared a triple would make `--target` ambiguous and two
-    // that shared Bun's name would silently build the same binary twice; both
-    // are the kind of table typo nothing else would catch.
+fn every_target_uf_names_is_distinct_in_all_three_vocabularies() {
+    // Two entries that shared a triple would make `--target` ambiguous, two
+    // that shared Bun's name would silently build the same binary twice, and
+    // two that shared a cache name would each think the other's runtime was
+    // theirs. All three are the kind of table typo nothing else would catch.
     for (at, target) in TARGETS.iter().enumerate() {
         for other in &TARGETS[at + 1..] {
             assert_ne!(target.triple, other.triple);
             assert_ne!(target.bun, other.bun);
+            assert_ne!(target.runtime, other.runtime);
         }
+    }
+}
+
+#[test]
+fn an_arm64_target_is_cached_under_the_name_bun_writes() {
+    // The bug this pins: Bun takes `arm64` on the command line and writes
+    // `aarch64` in the cache filename, so a lookup keyed on the argument never
+    // matched. Every build for such a target announced a download it might not
+    // need, and none of them reported the one it did — which is exactly the
+    // pair of claims ubugeeei-prod/uf#310 asks `--target` to get right.
+    for target in TARGETS {
+        let expected = target.bun.replace("arm64", "aarch64");
+        assert_eq!(
+            target.runtime, expected,
+            "{} is cached under a name Bun does not write",
+            target.triple
+        );
     }
 }
 

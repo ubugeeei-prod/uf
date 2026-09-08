@@ -4048,10 +4048,11 @@ fn cross_compiling_writes_a_binary_for_another_machine() {
 /// x86-64 Linux, and a little-endian 64-bit Mach-O with `cputype` 0x0100000C
 /// for arm64 macOS.
 ///
-/// The runtime prefix is what Bun names its cached copy, and it is
-/// deliberately shorter for the macOS entry: Bun spells arm64 as `aarch64` in
-/// that filename, and asserting the whole of a name from another project's
-/// implementation buys less than knowing the right *platform* was fetched.
+/// The runtime prefix is what Bun names its cached copy, and for the macOS
+/// entry that is not what `--target` took: Bun accepts `arm64` and writes
+/// `aarch64`. uf carries both spellings for exactly that reason, and this is
+/// the assertion that caught it not doing so — a cache lookup keyed on the
+/// wrong one finds nothing, so the build reports no download after making one.
 fn a_foreign_target() -> (&'static str, &'static str, fn(&[u8])) {
     if cfg!(target_os = "macos") {
         (
@@ -4069,18 +4070,22 @@ fn a_foreign_target() -> (&'static str, &'static str, fn(&[u8])) {
             },
         )
     } else {
-        ("aarch64-apple-darwin", "bun-darwin-", |bytes: &[u8]| {
-            assert_eq!(
-                &bytes[..4],
-                &[0xcf, 0xfa, 0xed, 0xfe],
-                "a macOS binary is a little-endian 64-bit Mach-O"
-            );
-            assert_eq!(
-                u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
-                0x0100_000c,
-                "the Mach-O header has to name arm64"
-            );
-        })
+        (
+            "aarch64-apple-darwin",
+            "bun-darwin-aarch64-v",
+            |bytes: &[u8]| {
+                assert_eq!(
+                    &bytes[..4],
+                    &[0xcf, 0xfa, 0xed, 0xfe],
+                    "a macOS binary is a little-endian 64-bit Mach-O"
+                );
+                assert_eq!(
+                    u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+                    0x0100_000c,
+                    "the Mach-O header has to name arm64"
+                );
+            },
+        )
     }
 }
 
