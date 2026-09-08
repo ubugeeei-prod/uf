@@ -30,6 +30,12 @@ uf_infra = { path = "../uf_infra" }
 [dev-dependencies]
 criterion.workspace = true
 similar-asserts.workspace = true
+# For `tests/parse_options.rs` and nothing else. `uf check` is the fourth
+# place uf hands source to the Flow parser, and it is the one that drifted
+# (ubugeeei-prod/uf#430); a test that pins the parse options has to be able to
+# ask it what it read. This crate is where that test lives because it is the
+# only one that can see every entry point.
+uf_check = { path = "../uf_check" }
 
 [[bench]]
 name = "transform"
