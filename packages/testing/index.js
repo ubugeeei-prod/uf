@@ -11,7 +11,7 @@
 // `@uniflowed/react-testing`, which installs a document on the host the first
 // time a test renders.
 
-export type { Body as TestBody, TestOptions } from "@uniflowed/test";
+export type { TestBody, TestOptions } from "@uniflowed/test";
 
 export {
   AssertionError,
@@ -26,7 +26,7 @@ export {
   test,
 } from "@uniflowed/test";
 
-export type { RenderResult, Screen } from "@uniflowed/react-testing";
+export type { Queries, RenderResult } from "@uniflowed/react-testing";
 export {
   act,
   cleanup,

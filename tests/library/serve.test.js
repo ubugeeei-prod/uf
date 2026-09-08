@@ -24,9 +24,12 @@ import { describe, expect, it, uft } from "@uniflowed/test";
 // promising an interface nothing has used yet.
 import {
   createApplicationHandler,
+  createPrerenderGate,
   createServeHandler,
   createStaticHandler,
 } from "../../packages/vite/internal/serve.js";
+import { createWorkerFetch } from "@uniflowed/server/edge";
+import { beginRequest } from "@uniflowed/server/host";
 // `send` moved to the package a deployment links, and this import did not
 // follow it — so this whole file stopped loading, and twenty-three assertions
 // about the two handlers stopped being made while `uf test` printed
@@ -550,5 +553,151 @@ describe("writing a `Response` to a Node response", () => {
     expect(response.written.join("")).toBe("hello");
     expect(response.ended).toBe(true);
     expect(response.listening("close")).toBe(0);
+  });
+});
+
+// A prerendered document may not answer a draft request. That is one rule,
+// `@uniflowed/server/internal/draft.js`'s `prerenderedMayAnswer`, and it is
+// argued there once — every door below asks it rather than deciding again.
+//
+// It was not one rule, and that is ubugeeei-prod/uf#620. `uf start` and the
+// compiled binary each applied it in their own static lookup and got it right;
+// `uf preview` delegates the static half to Vite, whose file middleware runs in
+// front of everything uf mounts behind it, so the skip that landed in #615 was
+// dead code on that door and draft mode looked switched off there. The worker
+// never applied it at all.
+//
+// `uf dev` is not in this table and does not need to be: it serves no
+// prerendered document. Vite's dev server serves `public/`, a route path is
+// never a file in it, and every navigation reaches uf's middleware and is
+// rendered. There is nothing there for a draft request to be given instead.
+describe("a draft request, at every front door", () => {
+  const PUBLISHED = "<!doctype html><p>published</p>";
+  const drafting = { headers: { cookie: "__Host-uf.draft=1.whatever" } };
+
+  /**
+   * A build: one prerendered page, one chunk, and an application that renders
+   * something visibly different from what the build wrote.
+   */
+  function built() {
+    const distDir = directoryWith({
+      "guide/index.html": PUBLISHED,
+      "assets/client.js": "export {};",
+    });
+    const entry = entryWith({
+      render: (url: string) => ({ status: 200, html: `<!doctype html><p>drafted ${url}</p>` }),
+    });
+    return { distDir, entry };
+  }
+
+  /**
+   * Vite's preview file middleware, as a handler.
+   *
+   * The contract it stands in for is one sentence of Vite's own: a `GET` under
+   * the output directory is answered from the output directory, `/guide`
+   * resolves through `guide/index.html`, and anything else is handed on. It has
+   * never heard of a draft cookie, it is not uf's to teach, and a stand-in that
+   * *had* heard of one would be testing a Vite that does not exist. That it
+   * cannot be taught is the whole reason uf has to go in front of it.
+   */
+  function viteFiles(root: string) {
+    return async (request: Request): Promise<Response | null> => {
+      const { pathname } = new URL(request.url);
+      for (const candidate of [
+        path.join(root, pathname),
+        path.join(root, pathname, "index.html"),
+      ]) {
+        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+          return new Response(fs.readFileSync(candidate, "utf8"));
+        }
+      }
+      return null;
+    };
+  }
+
+  /**
+   * What the assets binding would call these bytes.
+   *
+   * The extension and nothing else, because that is all a static host has to
+   * go on — and it is the whole of what `createWorkerFetch` reads to tell a
+   * document from a chunk. A stand-in that called every file `text/html`
+   * would make the chunk assertion below pass for the wrong reason.
+   */
+  function contentType(pathname: string): string {
+    if (pathname.endsWith(".js")) return "text/javascript; charset=utf-8";
+    if (pathname.endsWith(".css")) return "text/css; charset=utf-8";
+    return "text/html; charset=utf-8";
+  }
+
+  /** The three doors, each composed the way its command composes it. */
+  function doors() {
+    const { distDir, entry } = built();
+
+    // `uf start`: uf owns the socket, so its own static handler is first and
+    // the rule is inside it.
+    const start = createServeHandler({ entry, assets, distDir });
+
+    // `uf preview`: Vite's file middleware is first and cannot be moved, so uf
+    // mounts the gate in front of it and the same handler behind. This is what
+    // `packages/vite/driver.js` builds.
+    const gate = createPrerenderGate();
+    const preview = async (request: Request): Promise<Response> => {
+      if (!(await gate(request.headers.get("cookie")))) return start(request);
+      return (await viteFiles(distDir)(request)) ?? (await start(request));
+    };
+
+    // A worker: the platform's asset store answers first and uf never sees the
+    // request until it has, so the rule is applied to the answer it gave.
+    const cdn = viteFiles(distDir);
+    const fetchFromWorker = createWorkerFetch({
+      handle: createApplicationHandler({ entry, assets }),
+      beginRequest,
+    });
+    const worker = async (request: Request): Promise<Response> =>
+      fetchFromWorker(request, {
+        ASSETS: {
+          fetch: async (asked: Request) => {
+            const found = await cdn(asked);
+            // `"not_found_handling": "none"`, which is what `wrangler.json`
+            // sets, and a `content-type` off the extension on everything it
+            // does serve — both are the binding's own contract, and the second
+            // is the whole of what this door has to read a document out of.
+            if (found == null) return new Response("not found", { status: 404 });
+            const { pathname } = new URL(asked.url);
+            return new Response(await found.text(), {
+              headers: { "content-type": contentType(pathname) },
+            });
+          },
+        },
+      });
+
+    return { "uf start": start, "uf preview": preview, "a worker": worker };
+  }
+
+  it("is rendered rather than answered from the prerendered document", async () => {
+    for (const [door, handle] of Object.entries(doors())) {
+      const response = await handle(request("/guide/", drafting));
+      const body = await response.text();
+      expect(`${door}: ${String(response.status)}`).toBe(`${door}: 200`);
+      expect(`${door}: ${body}`).toBe(`${door}: <!doctype html><p>drafted /guide/</p>`);
+    }
+  });
+
+  it("still gets its stylesheets and chunks off disk", async () => {
+    // Only documents. A chunk is the same bytes in draft mode as out of it,
+    // and skipping it would leave the page unstyled and unhydrated for no gain.
+    for (const [door, handle] of Object.entries(doors())) {
+      const response = await handle(request("/assets/client.js", drafting));
+      expect(`${door}: ${await response.text()}`).toBe(`${door}: export {};`);
+    }
+  });
+
+  it("and the same request without the cookie is answered off disk", async () => {
+    // Which is what makes the two above about draft mode rather than about
+    // documents: take the cookie away and every door serves the file again.
+    for (const [door, handle] of Object.entries(doors())) {
+      const response = await handle(request("/guide/"));
+      expect(`${door}: ${await response.text()}`).toBe(`${door}: ${PUBLISHED}`);
+    }
   });
 });

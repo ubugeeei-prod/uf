@@ -12,6 +12,11 @@
 //! - the Rust registry in `uf_lib` and the shipped subpaths agree,
 //! - every `@uniflowed/*` a package imports is declared in its manifest.
 //!
+//! The names a re-export carries are checked next door, in `uf_lib`'s unit
+//! tests: `a_barrel_re_export_names_something_its_source_has` asks whether the
+//! module a `from` names really exports the name beside it, and it needs the
+//! Flow parser to tell a type from a value, which the scanners here do not use.
+//!
 //! One package is exempt from the Flow rules: `@uniflowed/vite` is executed
 //! by the JavaScript host *before* any transform exists — it is how the
 //! transform is reached — so it is plain JavaScript by necessity, and its

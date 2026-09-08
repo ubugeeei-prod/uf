@@ -664,12 +664,11 @@ impl Run<'_> {
 
     /// How the RSC scan walks this project.
     ///
-    /// The project's own `lint.ignore` on top of the directories the scan
-    /// always skips. Without it `uf prepare` walks whatever a project has
-    /// chosen to keep out of its own tooling — in this repository that is
-    /// `upstream/`, a vendored copy of Flow, and the walk went from tens of
-    /// milliseconds to seconds. A pre-commit hook has to be quick or it gets
-    /// uninstalled.
+    /// The project's own `ignore` on top of the directories the scan always
+    /// skips. Without it `uf prepare` walks whatever a project has chosen to
+    /// keep out of its own tooling — in this repository that is `upstream/`, a
+    /// vendored copy of Flow, and the walk went from tens of milliseconds to
+    /// seconds. A pre-commit hook has to be quick or it gets uninstalled.
     fn scan_options(&self) -> ProjectScanOptions {
         let ignored_directories = IGNORED_DIRECTORIES
             .iter()
@@ -677,12 +676,12 @@ impl Run<'_> {
             .chain(
                 self.resolved
                     .config
-                    .lint
-                    .ignore
+                    .project_ignore()
+                    .entries
                     .iter()
-                    // A `lint.ignore` entry with a separator names one place
-                    // rather than a kind of directory, and the RSC scan filters
-                    // by directory name only. Prefix entries are left to the
+                    // An ignore entry with a separator names one place rather
+                    // than a kind of directory, and the RSC scan filters by
+                    // directory name only. Prefix entries are left to the
                     // scan, which reads them and finds nothing to act on.
                     .filter(|ignored| !ignored.contains('/'))
                     .cloned(),
