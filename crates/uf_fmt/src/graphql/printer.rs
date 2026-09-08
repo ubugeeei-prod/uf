@@ -68,7 +68,11 @@ impl<'a> Printer<'_, 'a, '_> {
         self.docs.borrowed(text)
     }
 
-    fn concat(&self, parts: impl IntoIterator<Item = Doc<'a>>) -> Doc<'a> {
+    fn concat<I>(&self, parts: I) -> Doc<'a>
+    where
+        I: IntoIterator<Item = Doc<'a>>,
+        I::IntoIter: ExactSizeIterator,
+    {
         self.docs.concat(parts)
     }
 
