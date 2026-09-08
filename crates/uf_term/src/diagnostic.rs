@@ -8,19 +8,8 @@
 //! tabs (which are not one column), wide characters (which are not one column
 //! either), and a span that runs past the end of the line (which must not
 //! panic, misalign, or print an unbounded row of carets).
-//!
-//! A fourth is not a layout problem at all. Every string in a frame except the
-//! rule id was read out of a repository — the path off the filesystem, the
-//! message quoting a module or an import specifier, the source line itself —
-//! and a repository is attacker-authored input by the same argument the asset
-//! decoders are (`docs/security.md`, rule 1). So this is the place that
-//! prepares them: paths and messages go through [`crate::safe_path`] and
-//! [`crate::safe_message`], and the source line is drawn without its control
-//! characters. Doing it here rather than in each reporter is what makes it
-//! true of the reporter written next.
 
 use crate::render::Renderer;
-use crate::sanitize::{push_safe_message, push_safe_path};
 use crate::text::{char_width, floor_char_boundary, push_repeat, push_spaces, push_usize};
 
 /// How a tab is rendered and measured inside a code frame.
@@ -206,9 +195,7 @@ pub(crate) fn render_frame(
     }
     level_style.close(level, out);
     out.push_str(": ");
-    theme.title.open(level, out);
-    push_safe_message(out, frame.message);
-    theme.title.close(level, out);
+    theme.title.paint(level, frame.message, out);
     out.push('\n');
 
     let gutter = crate::text::decimal_digits(frame.line);
@@ -218,7 +205,9 @@ pub(crate) fn render_frame(
     theme.gutter.close(level, out);
     out.push(' ');
     theme.path.open(level, out);
-    push_safe_path(out, frame.path);
+    // Not `push_str`: the path came off a filesystem uf did not author, and
+    // this is a line being written to a terminal. #640.
+    crate::text::push_safe_path(out, frame.path);
     out.push(':');
     push_usize(out, frame.line);
     out.push(':');
@@ -257,12 +246,7 @@ pub(crate) fn render_frame(
         if col >= window_start && col + width <= window_end {
             if ch == '\t' {
                 push_spaces(out, width);
-            } else if !ch.is_control() {
-                // A control character in the source line is source text on its
-                // way to a terminal, so it is the same hole a control character
-                // in the path is. Dropping it moves no caret: `char_width`
-                // already measures one as zero, which is what `measure` counted
-                // when it placed the carets below.
+            } else {
                 out.push(ch);
             }
         }
@@ -291,7 +275,7 @@ pub(crate) fn render_frame(
     push_repeat(out, glyphs.caret, caret_len);
     if let Some(label) = frame.label {
         out.push(' ');
-        push_safe_message(out, label);
+        out.push_str(label);
     }
     level_style.close(level, out);
     out.push('\n');

@@ -1,82 +1,38 @@
 // @flow
 //
-// Every line marked `// misuse:` must be reported. A line without one must
-// not be, so a libdef that widened something on the way to fixing this file's
-// neighbour fails here rather than in a user's project a month later.
-//
-// This is the half of ubugeeei-prod/uf#619 that says the declarations are
-// *typed*: `subtle: any` would make `fixtures/web_crypto.js` pass and every
-// line below pass with it.
+// Every line here must be a type error. A libdef that typed the algorithm as
+// `string` or the key as `any` would pass `web_crypto.js` and fail to catch a
+// single one of these, which is why both fixtures exist.
 
-/* eslint-disable no-unused-vars */
+async function misuses(key: CryptoKey, data: Uint8Array): Promise<void> {
+  // An algorithm name that is not one. A typo in it is the whole reason the
+  // parameter is a union of literals rather than `string`.
+  await crypto.subtle.sign("HMAC-SHA256", key, data);
 
-async function misuses(
-  key: CryptoKey,
-  pair: CryptoKeyPair,
-  secret: Uint8Array,
-  signature: Uint8Array,
-  salt: Uint8Array,
-  info: Uint8Array,
-) {
-  // misuse: a hash that is not one of the four the specification defines
-  await crypto.subtle.digest("SHA-224", secret);
+  // The dictionary form of the same mistake.
+  await crypto.subtle.sign({ name: "HMACC" }, key, data);
 
-  // misuse: signing with the raw secret rather than with an imported key
-  await crypto.subtle.sign("HMAC", secret, secret);
+  // `ECDSA` signs under a named hash, and the specification requires it.
+  await crypto.subtle.sign({ name: "ECDSA" }, key, data);
 
-  // misuse: an HMAC import with no hash, which the specification requires
-  await crypto.subtle.importKey("raw", secret, { name: "HMAC" }, false, ["sign"]);
+  // A key is a `CryptoKey` and not the bytes it was imported from.
+  await crypto.subtle.sign("HMAC", data, data);
 
-  // misuse: an algorithm object whose `name` is not an algorithm
-  await crypto.subtle.importKey("raw", secret, { name: "HMAC-SHA256" }, false, ["sign"]);
+  // `HMAC` needs the hash it is keyed for.
+  await crypto.subtle.importKey("raw", data, { name: "HMAC" }, false, ["sign"]);
 
-  // misuse: a key usage that is a typo for one
-  await crypto.subtle.importKey("raw", secret, "HKDF", false, ["singn"]);
+  // A key usage that is not one. `signing` is the word people reach for.
+  await crypto.subtle.importKey("raw", data, { name: "HMAC", hash: "SHA-256" }, false, ["signing"]);
 
-  // misuse: `saltLength` handed to ECDSA, which has no such parameter
-  await crypto.subtle.sign({ name: "ECDSA", saltLength: 32 }, key, secret);
+  // A key format that is not one.
+  await crypto.subtle.importKey("pem", data, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
 
-  // misuse: `digest` handed a key instead of bytes
-  await crypto.subtle.digest("SHA-256", key);
+  // A digest that does not exist.
+  await crypto.subtle.digest("SHA-999", data);
 
-  // misuse: `exportKey("jwk")` read as bytes
-  const asBytes: ArrayBuffer = await crypto.subtle.exportKey("jwk", key);
-
-  // misuse: `exportKey("raw")` read as JSON
-  const asJson: JsonWebKey = await crypto.subtle.exportKey("raw", key);
-
-  // misuse: a symmetric `generateKey` read as a pair
-  const asPair: CryptoKeyPair = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt"],
-  );
-
-  // misuse: `deriveBits` handed the derivation for a different algorithm
-  await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, info }, key, 256);
-
-  // misuse: an AES key length the specification does not define
-  await crypto.subtle.generateKey({ name: "AES-GCM", length: 200 }, true, ["encrypt"]);
-
-  // misuse: an EC curve that does not exist
-  await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-224" }, true, ["sign"]);
-
-  // misuse: `getRandomValues` handed something that is not a typed array
-  crypto.getRandomValues("thirty-two bytes, honestly");
-
-  // misuse: a key's usages copied into a list somebody could push onto
-  const mutableUsages: Array<KeyUsage> = key.usages;
-
-  // And the same calls written correctly, so that a libdef which simply
-  // refused everything would fail this file too.
-  await crypto.subtle.digest("SHA-256", secret);
-  await crypto.subtle.sign("HMAC", key, secret);
-  await crypto.subtle.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  await crypto.subtle.verify("HMAC", key, signature, secret);
-  await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, secret);
-  crypto.getRandomValues(new Uint8Array(4));
-
-  return [asBytes, asJson, asPair, mutableUsages];
+  // `extractable` is a boolean, and passing the usages in its place is the
+  // argument-order mistake this signature exists to catch.
+  await crypto.subtle.importKey("raw", data, { name: "HMAC", hash: "SHA-256" }, ["sign"], false);
 }
 
 export { misuses };

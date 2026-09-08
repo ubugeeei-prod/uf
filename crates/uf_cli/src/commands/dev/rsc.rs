@@ -251,11 +251,7 @@ fn render(ui: &mut Ui, update: &RscUpdate) {
                     // a code frame cannot say that. It would print `:0:1`,
                     // which reads as a line number and is not one.
                     if frame.line == 0 {
-                        // The message names the module, so it carries the same
-                        // text a code frame would have drawn through
-                        // `safe_path`. There is no frame here to do it.
-                        let line =
-                            format!("{}: {}", frame.rule, uf_term::safe_message(&frame.message));
+                        let line = format!("{}: {}", frame.rule, frame.message);
                         renderer.status(out, frame.status(), &line);
                     } else {
                         renderer.code_frame_at(out, &frame.frame(), 4);

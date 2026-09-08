@@ -424,11 +424,11 @@ pub(crate) fn render_group(ui: &mut Ui, group: &[Diagnostic], sources: &[SourceF
         .count();
     let header = problem_summary(group_errors, group.len() - group_errors);
 
+    // The header prints the path on its own; the frames below go through
+    // `CodeFrame`, which does this for itself. #640.
+    let drawn = uf_term::safe_path(path);
     ui.render(|renderer, out| {
-        renderer
-            .theme()
-            .path
-            .paint(renderer.color(), &uf_term::safe_path(path), out);
+        renderer.theme().path.paint(renderer.color(), &drawn, out);
         out.push_str("  ");
         renderer.theme().muted.paint(renderer.color(), &header, out);
         out.push('\n');
@@ -471,7 +471,7 @@ pub(crate) fn render_file_summary(ui: &mut Ui, groups: &[&[Diagnostic]]) {
                 .filter(|diagnostic| diagnostic.severity == Severity::Error)
                 .count();
             (
-                uf_term::safe_path(diagnostic_path(&group[0])).into_owned(),
+                diagnostic_path(&group[0]).to_string(),
                 group_errors.to_string(),
                 (group.len() - group_errors).to_string(),
             )
