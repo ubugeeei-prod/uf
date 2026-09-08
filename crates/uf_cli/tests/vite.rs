@@ -1569,6 +1569,38 @@ fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body:
         context("served a document Vite had not transformed", body)
     );
 
+    // The same page asked for without saying it takes HTML — which is what
+    // `curl` does, and what every first look at a dev server does with the URL
+    // the banner just printed. It is still a 404, because the negotiation is
+    // right; what it must not be is `Cannot GET /` from the framework
+    // underneath, which reads as "this route does not exist" for a route that
+    // does. See ubugeeei-prod/uf#675.
+    let unacceptable = http_get_with("127.0.0.1", port, "/", &[("Accept", "*/*")]);
+    assert!(
+        unacceptable.starts_with("HTTP/1.1 404"),
+        "{}",
+        context(
+            "did not refuse a navigation that does not accept HTML",
+            &unacceptable
+        )
+    );
+    assert!(
+        !unacceptable.contains("Cannot GET"),
+        "{}",
+        context(
+            "answered in the framework's words rather than its own",
+            &unacceptable
+        )
+    );
+    assert!(
+        unacceptable.contains("accepts") && unacceptable.contains("Accept: */*"),
+        "{}",
+        context(
+            "did not say which header decided it, or what the request sent",
+            &unacceptable
+        )
+    );
+
     // A route handler, asked exactly the way a browser asks: `Accept:
     // text/html`, no extension, `GET`. That is a *document* request by every
     // test the renderer can apply to it, which is why the handler was invisible
@@ -3567,9 +3599,22 @@ fn try_http_request(
         .iter()
         .map(|(name, value)| format!("{name}: {value}\r\n"))
         .collect::<String>();
+    // `Accept: text/html` unless the caller named one: these are the requests a
+    // browser makes, and a browser always says it takes HTML. A caller that
+    // names its own is asking about the other kind — `curl`'s `*/*` is the one
+    // ubugeeei-prod/uf#675 is about — and sending both would join them into a
+    // value containing `text/html`, which is the case it is trying not to be.
+    let default_accept = if headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("accept"))
+    {
+        ""
+    } else {
+        "Accept: text/html\r\n"
+    };
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: text/html\r\n\
+        "{method} {path} HTTP/1.1\r\nHost: {host}:{port}\r\n{default_accept}\
          Connection: close\r\n{extra}{}",
         if entity.is_empty() {
             String::from("\r\n")
