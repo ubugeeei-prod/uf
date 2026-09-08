@@ -907,6 +907,18 @@ exclusive, and with none of them the package goes in `dependencies`. The
 summary names the field the package actually landed in, read back out of
 `package.json` rather than repeated from the flag.
 
+In a pnpm workspace, `uf add` at the workspace root passes pnpm's
+`--workspace-root`. pnpm refuses to add to a root without it —
+`ERR_PNPM_ADDING_TO_ROOT` — and the advice it gives, to run the command again
+with `-w`, was advice nobody could follow through uf, which never passed that
+flag. The root is where a workspace's development dependencies belong, so the
+command now works there.
+
+It is passed only where the project root *is* the workspace root. Run inside a
+member package, `uf add` resolves to that member and the flag is not passed, so
+the dependency still lands where you are. npm, Yarn and Bun add to a workspace
+root without being asked twice, and none of them is given the flag.
+
 Running it twice changes nothing the second time, and says so in a line.
 
 ### uf remove NAME...
