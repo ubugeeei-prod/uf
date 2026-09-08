@@ -620,7 +620,7 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
               // `POST`, and letting one try would turn a missing handler into
               // a rendered page with a 200 rather than a 404.
               //
-              // `wantsDocument` is stricter than the production handler, which
+              // `notADocumentBecause` is stricter than the production handler, which
               // renders anything a static file did not answer, and the
               // difference is Vite's chain: `/@id/…`, `/node_modules/…` and
               // any path with an extension belong to the module server, and a
@@ -630,7 +630,15 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command }) {
               // and the project's own not-found *page* under `uf preview` and
               // `uf start` — a difference in the body of a 404 for a path that
               // is an asset request in the first place.
-              if (!wantsDocument(request)) return false;
+              const notDocument = notADocumentBecause(request);
+              if (notDocument === "accept") {
+                // Everything about this is a navigation except the header, and
+                // the path is one uf renders. Say so, rather than letting the
+                // chain below answer `Cannot GET /` in somebody else's words.
+                documentNeedsHtml(request, response);
+                return true;
+              }
+              if (notDocument != null) return false;
 
               const result = await entry.render(
                 url,
@@ -730,16 +738,62 @@ async function importServerEntry(devServer) {
   return devServer.ssrLoadModule(VIRTUAL.server);
 }
 
-function wantsDocument(request) {
-  if (request.method !== "GET" && request.method !== "HEAD") return false;
+/**
+ * Why `request` is not a document request, or `null` when it is one.
+ *
+ * A reason rather than a boolean because one of the four is worth saying out
+ * loud. Three of them mean the request belongs to somebody else — Vite's module
+ * server, a static file, or a method a page cannot answer — and handing it back
+ * is the whole point. The fourth means the client asked for a page uf would
+ * have rendered and did not say it accepts HTML, and `curl` is the client that
+ * does that. See ubugeeei-prod/uf#675.
+ *
+ * The extension test moved above the `accept` test so the two cannot be
+ * confused: `/favicon.svg` with `Accept: *\/*` is an asset, not a navigation
+ * with the wrong header, and still goes back to Vite's chain untouched.
+ */
+function notADocumentBecause(request) {
+  if (request.method !== "GET" && request.method !== "HEAD") return "method";
   const url = request.url ?? "/";
-  if (url.startsWith("/@") || url.startsWith("/node_modules/")) return false;
-  const accept = request.headers.accept ?? "";
-  if (!accept.includes("text/html")) return false;
+  if (url.startsWith("/@") || url.startsWith("/node_modules/")) return "module-server";
   const pathname = url.split("?")[0];
   // A request for a file — `/favicon.svg`, `/assets/x.js` — that no static
   // middleware answered is a 404, not a page.
-  return !/\.[a-z0-9]+$/i.test(pathname);
+  if (/\.[a-z0-9]+$/i.test(pathname)) return "asset";
+  const accept = request.headers.accept ?? "";
+  if (!accept.includes("text/html")) return "accept";
+  return null;
+}
+
+/**
+ * The 404 for a navigation that did not ask for HTML.
+ *
+ * uf's own words rather than the framework underneath saying `Cannot GET /` in
+ * its: the path is one uf would have rendered, and the only thing that stopped
+ * it is a header the reader cannot see from the terminal. Development only —
+ * this middleware is the dev server — and `uf preview` and `uf start` answer a
+ * 404 with nothing in it, as `docs/security.md` requires.
+ *
+ * The client's `Accept` is quoted back, so it is treated the way every other
+ * piece of foreign text here is treated: control characters removed and the
+ * length capped. A header is not a thing a terminal should be asked to run.
+ * See ubugeeei-prod/uf#649.
+ */
+function documentNeedsHtml(request, response) {
+  const accept = String(request.headers.accept ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .slice(0, 80);
+  const path = String(request.url ?? "/").slice(0, 200);
+  const body =
+    `404  ${request.method} ${path}\n\n` +
+    "This path is a page, and a page is rendered for a request that accepts\n" +
+    `HTML. This request sent \`Accept: ${accept || "(none)"}\`.\n\n` +
+    `    curl -H 'Accept: text/html' http://${request.headers.host ?? "localhost"}${path}\n\n` +
+    "A browser sends it; `curl` does not. Nothing is wrong with the route.\n";
+  response.statusCode = 404;
+  response.setHeader("content-type", "text/plain; charset=utf-8");
+  response.end(body);
 }
 
 /** The name of the environment variable that turns every finding back on. */
