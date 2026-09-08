@@ -1048,6 +1048,86 @@ fn a_guarded_route_that_is_prerendered_is_reported() {
     );
 }
 
+/// How many times the loopback probe tries before it concludes anything.
+///
+/// Six attempts with [`LOOPBACK_BACKOFF`] doubling between them spend about
+/// three seconds before concluding a machine cannot bind — long enough to ride
+/// out a dev server in another test binary holding the limit, and short enough
+/// that a machine which genuinely forbids binding pays a few seconds per
+/// guarded test rather than a minute.
+const LOOPBACK_ATTEMPTS: usize = 6;
+
+/// How long it waits after the first refusal, doubling after each one.
+const LOOPBACK_BACKOFF: Duration = Duration::from_millis(100);
+
+/// What probing the loopback interface concluded, and how.
+///
+/// Two conclusions rather than a boolean, because they are different claims
+/// about the machine and only one of them is a reason to skip a test. See
+/// [`probe_loopback`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Loopback {
+    /// A socket was bound, on this attempt (one-based).
+    Bound {
+        /// Which attempt succeeded. Anything past the first says the refusals
+        /// before it were transient.
+        attempt: usize,
+    },
+    /// Every attempt was refused.
+    Refused {
+        /// How many were made.
+        attempts: usize,
+        /// How long was spent waiting between them.
+        waited: Duration,
+        /// What the last refusal said.
+        last: String,
+    },
+}
+
+/// Try to bind a loopback socket, with backoff, until one works or `attempts`
+/// have failed.
+///
+/// # Why a single refusal is not an answer
+///
+/// A `bind` that fails says one of two things and the error does not
+/// distinguish them: *this machine cannot bind a loopback socket*, or *not
+/// right now*. Only the first is a machine these tests cannot run on. The
+/// second is what a sandbox with a cap on concurrent sockets produces when
+/// several test binaries run at once — `cargo test --workspace` — and it made
+/// five cases here fail with a message asserting the stronger claim, on a
+/// machine where `cargo test -p uf_cli --test vite` alone passed all thirteen
+/// (ubugeeei-prod/uf#420). A retry is what separates them: a limit that is
+/// about *how many at once* clears, and a policy that forbids binding does
+/// not.
+///
+/// The bind is a parameter so that both conclusions can be tested without a
+/// machine that produces them; see the cases at the bottom of this file.
+fn probe_loopback(
+    mut bind: impl FnMut() -> std::io::Result<()>,
+    attempts: usize,
+    backoff: Duration,
+) -> Loopback {
+    let mut waited = Duration::ZERO;
+    let mut delay = backoff;
+    let mut last = String::from("it was never tried");
+    for attempt in 1..=attempts.max(1) {
+        match bind() {
+            Ok(()) => return Loopback::Bound { attempt },
+            Err(error) => last = error.to_string(),
+        }
+        if attempt < attempts {
+            std::thread::sleep(delay);
+            waited += delay;
+            delay *= 2;
+        }
+    }
+    Loopback::Refused {
+        attempts: attempts.max(1),
+        waited,
+        last,
+    }
+}
+
 /// Whether a loopback socket can be bound here.
 ///
 /// The same policy as [`fixture_ready`], for the same reason: a sandbox that
@@ -1055,15 +1135,55 @@ fn a_guarded_route_that_is_prerendered_is_reported() {
 /// failure in it teaches everyone to read `1 failed` as `0 failed` — which is
 /// how a *genuinely* flaky one goes unnoticed. `UF_ALLOW_FIXTURE_SKIP=1` opts
 /// out on such a machine; CI sets nothing and so can never skip.
+///
+/// What it will not do is reach that conclusion from one refusal. See
+/// [`probe_loopback`] for the distinction, and note that the panic below now
+/// says which of the two it decided and what it decided it from — the old one
+/// quoted a single `Operation not permitted` and asserted the machine could
+/// never bind, which on this repository's own machine was not true.
 fn loopback_ready() -> bool {
-    match std::net::TcpListener::bind(("127.0.0.1", 0)) {
-        Ok(_) => true,
-        Err(error) => {
+    // A machine that has bound one is a machine that can, and re-probing per
+    // test would spend the backoff again for an answer already known. Only the
+    // positive is remembered: a refusal is re-examined every time, because the
+    // load that caused it is the thing that passes.
+    static BOUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if BOUND.load(std::sync::atomic::Ordering::Relaxed) {
+        return true;
+    }
+    let probe = probe_loopback(
+        || std::net::TcpListener::bind(("127.0.0.1", 0)).map(drop),
+        LOOPBACK_ATTEMPTS,
+        LOOPBACK_BACKOFF,
+    );
+    match probe {
+        Loopback::Bound { attempt } => {
+            if attempt > 1 {
+                eprintln!(
+                    "bound a loopback socket on attempt {attempt} of {LOOPBACK_ATTEMPTS}: the \
+                     refusals before it were transient, which is what several test binaries \
+                     binding at once looks like"
+                );
+            }
+            BOUND.store(true, std::sync::atomic::Ordering::Relaxed);
+            true
+        }
+        Loopback::Refused {
+            attempts,
+            waited,
+            last,
+        } => {
             assert!(
                 std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
-                "this test needs a loopback socket and could not bind one: {error}"
+                "this machine cannot bind a loopback socket: {attempts} attempts over {waited:?} \
+                 were all refused, the last with `{last}`. That is the conclusion, not the \
+                 error: a refusal that clears on a retry is a machine that is busy, and this one \
+                 did not clear. Set UF_ALLOW_FIXTURE_SKIP=1 to skip the tests that need one; CI \
+                 sets nothing and so can never skip."
             );
-            eprintln!("skipping: cannot bind a loopback socket: {error}");
+            eprintln!(
+                "skipping: {attempts} attempts to bind a loopback socket over {waited:?} were \
+                 all refused, the last with `{last}`"
+            );
             false
         }
     }
@@ -3164,9 +3284,26 @@ fn get(server: &mut Server, port: u16, path: &str, said: &Mutex<String>) -> Stri
 }
 
 /// A port nothing is listening on, released before the server binds it.
+///
+/// Retried like [`loopback_ready`], and for the same reason: this bind is
+/// refused by the same limit that guard exists for, and one refusal here would
+/// panic a test the guard had just cleared — which is half of what made
+/// `cargo test --workspace` and `cargo test -p uf_cli --test vite` disagree.
 fn free_port() -> u16 {
-    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    listener.local_addr().unwrap().port()
+    let mut chosen = None;
+    let probe = probe_loopback(
+        || {
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0))?;
+            chosen = Some(listener.local_addr()?.port());
+            Ok(())
+        },
+        LOOPBACK_ATTEMPTS,
+        LOOPBACK_BACKOFF,
+    );
+    match (probe, chosen) {
+        (Loopback::Bound { .. }, Some(port)) => port,
+        (probe, _) => panic!("could not choose a free port: {probe:?}"),
+    }
 }
 
 /// Poll until the server answers, or give up.
@@ -4373,6 +4510,78 @@ fn script_names(scripts: &[(String, String)]) -> String {
         .map(|(name, source)| format!("  {name} ({} bytes)", source.len()))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// The loopback guard's own decision, without a machine that produces it.
+///
+/// Tests of a test helper, which is unusual and is the only honest way to
+/// write these: what [`probe_loopback`] has to get right is what it concludes
+/// from a *sequence* of refusals, and a machine that refuses the first bind
+/// and allows the third is not something a test can arrange. The bind is a
+/// parameter for exactly that.
+mod loopback_guard {
+    use super::{Loopback, probe_loopback};
+    use std::io::{Error, ErrorKind};
+    use std::time::Duration;
+
+    /// The refusal this repository's own sandbox produces.
+    fn refused() -> Error {
+        Error::new(
+            ErrorKind::PermissionDenied,
+            "Operation not permitted (os error 1)",
+        )
+    }
+
+    #[test]
+    fn a_refusal_that_clears_is_a_busy_machine_rather_than_one_that_cannot_bind() {
+        let mut attempted = 0;
+        let decision = probe_loopback(
+            || {
+                attempted += 1;
+                if attempted < 3 {
+                    Err(refused())
+                } else {
+                    Ok(())
+                }
+            },
+            5,
+            Duration::from_millis(1),
+        );
+
+        // The old guard concluded "this test needs a loopback socket and could
+        // not bind one" from the first of these three and panicked, which is
+        // the defect: on the machine in ubugeeei-prod/uf#420 the socket was
+        // available and the suite was told it was not.
+        assert_eq!(decision, Loopback::Bound { attempt: 3 });
+        assert_eq!(attempted, 3, "it stops asking once one works");
+    }
+
+    #[test]
+    fn a_machine_that_never_binds_is_reported_as_one_and_says_how_it_decided() {
+        let mut attempted = 0;
+        let decision = probe_loopback(
+            || {
+                attempted += 1;
+                Err(refused())
+            },
+            4,
+            Duration::from_millis(1),
+        );
+
+        let Loopback::Refused {
+            attempts,
+            waited,
+            last,
+        } = decision
+        else {
+            panic!("every attempt was refused: {decision:?}");
+        };
+        assert_eq!((attempts, attempted), (4, 4));
+        // Three waits between four attempts, not four: nothing is waited for
+        // after the last one, because nothing follows it.
+        assert_eq!(waited, Duration::from_millis(1 + 2 + 4));
+        assert!(last.contains("Operation not permitted"), "{last}");
+    }
 }
 
 /// `crates/uf_cli/tests/fixtures/paper-builder`.

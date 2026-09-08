@@ -765,7 +765,7 @@ describe("useScrollLock", () => {
 describe("useKeyCombo", () => {
   // This document reports a non-Apple user agent, so `mod` is Ctrl here. The
   // point of the hook is that the caller never writes that test themselves.
-  const type = (init: { ... }) => fireEvent.keyDown(globalThis.document.body, init);
+  const type = (init: { ... }) => fireEvent.keyDown(bodyOf(), init);
 
   it("needs the modifier, and refuses the ones that were not asked for", () => {
     const opened = fn();
@@ -867,9 +867,9 @@ describe("useKeyHeld", () => {
     }
     render(<Probe />);
     expect(screen.getByText("up")).toBeInTheDocument();
-    fireEvent.keyDown(globalThis.document.body, { key: "Shift" });
+    fireEvent.keyDown(bodyOf(), { key: "Shift" });
     expect(screen.getByText("held")).toBeInTheDocument();
-    fireEvent.keyUp(globalThis.document.body, { key: "Shift" });
+    fireEvent.keyUp(bodyOf(), { key: "Shift" });
     expect(screen.getByText("up")).toBeInTheDocument();
   });
 
@@ -879,7 +879,7 @@ describe("useKeyHeld", () => {
       return <output>{space ? "held" : "up"}</output>;
     }
     render(<Probe />);
-    fireEvent.keyDown(globalThis.document.body, { key: " " });
+    fireEvent.keyDown(bodyOf(), { key: " " });
     expect(screen.getByText("held")).toBeInTheDocument();
     // The `keyup` goes to whatever the reader switched to, so without this the
     // canvas would still be panning when they come back.
@@ -1076,7 +1076,7 @@ describe("more timing hooks", () => {
     expect(screen.getByText("here")).toBeInTheDocument();
 
     advance(20);
-    fireEvent.pointerMove(globalThis.document.body);
+    fireEvent.pointerMove(bodyOf());
     advance(39);
     // Past the moment the *first* wait would have expired. A version that
     // started a new timer without clearing the old one would say "idle" here,
@@ -1089,7 +1089,7 @@ describe("more timing hooks", () => {
     advance(1);
     expect(screen.getByText("idle")).toBeInTheDocument();
 
-    fireEvent.pointerMove(globalThis.document.body);
+    fireEvent.pointerMove(bodyOf());
     expect(screen.getByText("here")).toBeInTheDocument();
   });
 
