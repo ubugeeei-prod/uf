@@ -39,9 +39,9 @@
 // `uf dev` serves this path and nothing else does: a built application has no
 // `/__uf/` anything, so a call in production posts to a path that answers 404
 // and the rejected promise is swallowed here. That is a fallback rather than a
-// design — the only caller is behind `import.meta.hot` in `../client.js`, so a
-// production bundle has no path to this module rather than merely no answer
-// from it.
+// design — both callers are behind `import.meta.hot` in `../client.js`, the
+// hydration report and the DevTools check, so a production bundle has no path
+// to this module rather than merely no answer from it.
 //
 // Nothing here opens a connection until it is called, importing it does nothing
 // at all, and what it sends goes to the page's own origin as a path rather than

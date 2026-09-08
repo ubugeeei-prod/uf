@@ -51,6 +51,54 @@ Editing a `.env` file restarts the server with the new values, and says which
 file changed. [Environment](/guide/env) says why that is a restart rather than
 an update.
 
+### Strict Mode, and React DevTools
+
+`uf dev` hydrates your application inside React's `<StrictMode>`. `uf build`
+does not, so nothing a visitor runs is doubled — this is a check that runs on
+your machine and nowhere else.
+
+What it buys is the two mistakes nothing else can see. A component whose render
+is not pure is rendered twice, so it disagrees with itself while you are looking
+at it rather than in the one production render that interleaved with something.
+And every effect that mounts after the first paint — a navigation, a branch that
+opened, a row that appeared — is set up, torn down and set up again, so an
+effect whose cleanup does not undo its setup leaks immediately instead of after
+an hour of use.
+
+One thing to know, because the sentence everybody has heard is not quite true
+here: React skips the mount/unmount/mount pass for the root that *hydrated*,
+since the DOM it would tear down is the markup your server just sent. The
+render is still doubled on that first load; the effect check starts with the
+next thing that mounts.
+
+If you would rather not:
+
+```js
+export default defineConfig({
+  app: { react: { strictMode: false } },
+});
+```
+
+There is no separate Strict Mode overlay to go and look at, and that is on
+purpose. What the doubled render usually produces on a page uf server-rendered is
+a hydration mismatch, which already goes to your terminal — *When hydration
+fails* below is what it prints. Anything else it produces is an ordinary React
+error, and arrives wherever your errors already do.
+
+React DevTools works here, and works on purpose rather than by accident: uf
+installs the `__REACT_DEVTOOLS_GLOBAL_HOOK__` React registers itself with before
+any module in the document runs, keeps one copy of `react-dom` so there is one
+renderer to show, and transforms every module in React's development
+configuration so the panel has props, hooks and source positions to show you.
+The extension's own hook is never replaced when it is there. None of it is in a
+build.
+
+And the page checks that it worked, because "it worked when I tried it" is how
+this breaks quietly. After hydration uf reads the hook back: if nothing
+installed it, or if two copies of `react-dom` each registered a renderer so the
+panel can only show one of the two trees, the reason is printed in your terminal
+with what to do about it. A page where DevTools is fine says nothing.
+
 ### What the browser can say back
 
 Two paths under `/__uf/` exist only while `uf dev` is running, and both of them
@@ -60,8 +108,8 @@ lead to your terminal:
   a page is judged on turn up beside the reload that caused them. See
   [Web vitals](/guide/vitals).
 - `/__uf/diagnostic` — where a diagnostic only the browser can produce is
-  posted. A hydration mismatch is the one that does it today, and *When
-  hydration fails* below is what it says.
+  posted. A hydration mismatch is the loudest one — *When hydration fails* below
+  is what it says — and a page React DevTools cannot attach to is the other.
 
 Both print with the severity, the page they came from and a code frame when
 there is a position to draw one around, which is the point of them: every other

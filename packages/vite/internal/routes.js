@@ -790,12 +790,28 @@ export default routes;
  * The current route's modules are loaded *before* hydration so the first
  * render is synchronous and matches the server's HTML; a lazy import during
  * hydration would suspend and React would fall back to a client render.
+ *
+ * # Strict Mode is a generated constant, not a runtime check
+ *
+ * `strictMode` is written into this module as a literal, so a production build
+ * gets `hydrate({ … })` with the argument absent and Rollup has nothing to
+ * decide. It would have been shorter to have `hydrate` read `import.meta.hot`
+ * — the way `client.js` gates the hydration reporter — and that would have been
+ * one signal answering two questions: `uf.config.js` can turn Strict Mode off
+ * (ubugeeei-prod/uf#516) and `import.meta.hot` cannot be told about it. A
+ * project that sets `app.react.strictMode: false` gets a dev server that
+ * hydrates the way its deployment does, which is the whole of the escape
+ * hatch.
+ *
+ * @param {string} appEntry the project's `app.js`, as an import specifier
+ * @param {{ strictMode?: boolean }} [options]
  */
-export function clientModuleSource(appEntry) {
+export function clientModuleSource(appEntry, options = {}) {
+  const strictMode = options.strictMode === true ? ", strictMode: true" : "";
   return `import { hydrate } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-hydrate({ App, routes, notFound, errors });
+hydrate({ App, routes, notFound, errors${strictMode} });
 `;
 }
 
