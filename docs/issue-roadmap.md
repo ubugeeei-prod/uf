@@ -15,8 +15,11 @@
 - [ ] Keep all core implementation in Rust native crates.
 - [x] Use `uf.config.js` as the single user-visible config surface.
 - [x] Prefer `.js` files with `// @flow` for user-authored Flow source.
-- [x] Default app execution to runtime-agnostic Capability JS Hosts: Node.js,
-      Deno, and Bun.
+- [ ] Default app execution to runtime-agnostic Capability JS Hosts: Node.js,
+      Deno, and Bun. Node and Bun run a uf project; Deno does not — it has no
+      Flow loader, and `uf test --host deno` refuses by name. `docs/hosts.md`
+      grades it **planned** and `uf_runtime::HOSTS` is the source of truth.
+      See #246.
 - [x] Start native `@uniflowed/test`, `@uniflowed/pm`, and `@uniflowed/rm` contracts.
 - [x] Start XDG-compliant uf runtime layout.
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
@@ -128,7 +131,8 @@
       config loader rather than reaching a manifest and doing nothing. See #277
       and `docs/app/guide/cache`.
 - [x] Default to Node.js through the Capability JS Host contract.
-- [x] Keep Node.js, Deno, and Bun as zero-config host targets.
+- [ ] Keep Node.js, Deno, and Bun as zero-config host targets. Two of the
+      three, for the reason above.
 - [ ] Align the deferred `uf` runtime with WinterTC.
 - [ ] Execute Flow through Hermes once the Vite/host-runtime path is stable.
 - [ ] Implement Vite-backed server entry generation and RSC streaming adapters.
