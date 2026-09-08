@@ -358,3 +358,29 @@ fn a_non_flow_file_is_not_parsed() {
         .is_empty()
     );
 }
+
+/// The caret lands on the hook even when the line holds an astral character.
+///
+/// The two rules read two trees, and the trees count columns differently: the
+/// Flow translator's `loc` counts code points, and `babel::finalize` recomputes
+/// them as UTF-16 code units. `react/no-derived-state-effect` moved to the
+/// lowered ESTree tree to avoid paying for the Babel conversion it never used
+/// (ubugeeei-prod/uf#668), so it reads code points now — and converting one as
+/// if it were the other puts the caret a column early on any line with an
+/// emoji in it, which is invisible until somebody writes one.
+///
+/// The comment before the hook is deliberate: `mask_inline_comments` replaces a
+/// comment byte for byte, so the masked line is the same length and the
+/// conversion has to read the *unmasked* source to see the character at all.
+#[test]
+fn an_astral_character_before_the_hook_does_not_move_the_caret() {
+    let diagnostics = derived(
+        "component Name(first: string, last: string) {\n  const [full, setFull] = useState(\"\");\n  /* \u{1f600} */ useEffect(() => {\n    setFull(first + \" \" + last);\n  }, [first, last]);\n  return <p>{full}</p>;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    // `  /* ` is five bytes, the emoji is four, ` */ ` is four: `useEffect`
+    // starts at byte fourteen, one-based. Counted as UTF-16 the emoji is two
+    // units rather than one and the answer comes out thirteen.
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (6, 14));
+}

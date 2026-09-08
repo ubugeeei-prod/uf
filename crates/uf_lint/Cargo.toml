@@ -22,6 +22,10 @@ thiserror.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+# For `examples/alloc_report.rs`: the counting allocator behind the figures in
+# ubugeeei-prod/uf#668, so the next person to touch the linter's hot path can
+# take them again rather than trust them.
+uf_profiler = { path = "../uf_profiler" }
 
 [[bench]]
 name = "lint"
