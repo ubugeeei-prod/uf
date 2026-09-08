@@ -3954,38 +3954,47 @@ fn compile_on_an_old_node_names_the_version_it_needs() {
 ///
 /// # What this test proves, and what it cannot
 ///
-/// It proves the file is an ELF executable for x86-64 — the magic number and
-/// the machine field out of the header — and that the runtime was cached
-/// inside the project rather than beside it. That is what
-/// ubugeeei-prod/uf#310's acceptance asks for, in as many words: "`file(1)` or
-/// the ELF/PE magic is enough; running it is not possible on the build machine
-/// and is not what this test is for."
+/// It proves the file is an executable for the platform that was asked for —
+/// the magic number and the architecture field out of its own header — and
+/// that the runtime was cached inside the project rather than beside it. That
+/// is what ubugeeei-prod/uf#310's acceptance asks for, in as many words:
+/// "`file(1)` or the ELF/PE magic is enough; running it is not possible on the
+/// build machine and is not what this test is for."
 ///
-/// It cannot prove the binary *works*. Nothing on an aarch64 Mac can execute
-/// an x86-64 Linux ELF, so what is checked is that uf produced the right kind
-/// of artefact for the right machine, not that the artefact serves the
+/// It cannot prove the binary *works*. Nothing here can execute a foreign
+/// platform's binary, so what is checked is that uf produced the right kind of
+/// artefact for the right machine, not that the artefact serves the
 /// application. The half that proves *that* is
 /// [`compile_writes_one_file_that_serves_the_site_from_an_empty_directory`],
 /// which runs for this machine's own platform.
 ///
+/// # Two things this is careful about
+///
 /// The project is left on the default configuration deliberately. `node` is
 /// the default host and Node cannot cross-compile, so this is also the test
 /// that the host walk *narrows* on `--target` rather than refusing: a default
-/// project on a machine with Bun installed gets a Linux binary, and the
+/// project on a machine with Bun installed gets the foreign binary, and the
 /// summary says which runtime is inside it. Pinning the host with
 /// `autoDetect: false` is the opposite case, and is
 /// [`a_pinned_node_host_refuses_a_target_it_cannot_build`].
+///
+/// And the target is chosen by [`a_foreign_target`] rather than written down,
+/// because "cross" is a relation and not a triple:
+/// `x86_64-unknown-linux-gnu` is a cross-compile from a Mac and is the *host*
+/// on the Linux runner CI uses, where nothing would be downloaded and the
+/// cache below would be a directory uf had no reason to create.
 #[test]
-fn cross_compiling_writes_a_linux_binary_from_here() {
+fn cross_compiling_writes_a_binary_for_another_machine() {
     if !fixture_ready() || !bun_ready() {
         return;
     }
+    let (triple, runtime_prefix, expected) = a_foreign_target();
     let project = Project::new(&minimal_app());
 
     let output = uf()
         .arg("--cwd")
         .arg(project.path())
-        .args(["build", "--compile", "--target", "x86_64-unknown-linux-gnu"])
+        .args(["build", "--compile", "--target", triple])
         .output()
         .unwrap();
     assert!(
@@ -3997,23 +4006,13 @@ fn cross_compiling_writes_a_linux_binary_from_here() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert_eq!(
         standalone_value(&stdout, "target"),
-        "x86_64-unknown-linux-gnu",
+        triple,
         "a build for another machine has to say which one:\n{stdout}"
     );
 
     let binary = compiled_binary(project.path());
     let bytes = fs::read(&binary).expect("`--compile --target` writes a binary");
-    assert_eq!(&bytes[..4], b"\x7fELF", "a Linux binary is an ELF file");
-    assert_eq!(bytes[4], 2, "64-bit");
-    assert_eq!(bytes[5], 1, "little-endian");
-    // `e_machine`, at offset 18: 0x3E is x86-64. This is the field that
-    // separates "uf built *a* Linux binary" from "uf built the Linux binary
-    // that was asked for" — without it the test would pass on an aarch64 ELF.
-    assert_eq!(
-        u16::from_le_bytes([bytes[18], bytes[19]]),
-        0x3e,
-        "the ELF header has to name x86-64"
-    );
+    expected(&bytes);
 
     // Inside the project, which is the whole of the cache decision: Bun's own
     // default is `~/.bun/install/cache`, and a build that writes outside the
@@ -4025,20 +4024,64 @@ fn cross_compiling_writes_a_linux_binary_from_here() {
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     assert!(
-        cached
-            .iter()
-            .any(|name| name.starts_with("bun-linux-x64-v")),
-        "the Linux runtime has to be in {}, and it holds {cached:?}",
+        cached.iter().any(|name| name.starts_with(runtime_prefix)),
+        "the {triple} runtime has to be in {}, and it holds {cached:?}",
         cache.display()
     );
 
     // The runtime that was fetched is a row of its own, because "this build
     // went to the network" is a fact about a build and not about an
-    // application. A second build of the same target must not report one.
+    // application. A build that found it cached must not report one.
     assert!(
-        stdout.contains("runtime downloaded") || stdout.contains("target"),
-        "a cross-compile has to say what it did:\n{stdout}"
+        stdout.contains("runtime downloaded"),
+        "the first build for a target fetches its runtime and has to say so:\n{stdout}"
     );
+}
+
+/// A triple that is not this machine, Bun's name for its runtime, and how to
+/// recognise the file.
+///
+/// Two entries rather than eight: what the test needs is *a* machine that is
+/// not this one, and reading the executable's own header is what separates
+/// "uf built a binary" from "uf built the binary that was asked for". The
+/// numbers are the platforms' own — `\x7fELF` with `e_machine` 0x3E for
+/// x86-64 Linux, and a little-endian 64-bit Mach-O with `cputype` 0x0100000C
+/// for arm64 macOS.
+///
+/// The runtime prefix is what Bun names its cached copy, and it is
+/// deliberately shorter for the macOS entry: Bun spells arm64 as `aarch64` in
+/// that filename, and asserting the whole of a name from another project's
+/// implementation buys less than knowing the right *platform* was fetched.
+fn a_foreign_target() -> (&'static str, &'static str, fn(&[u8])) {
+    if cfg!(target_os = "macos") {
+        (
+            "x86_64-unknown-linux-gnu",
+            "bun-linux-x64-v",
+            |bytes: &[u8]| {
+                assert_eq!(&bytes[..4], b"\x7fELF", "a Linux binary is an ELF file");
+                assert_eq!(bytes[4], 2, "64-bit");
+                assert_eq!(bytes[5], 1, "little-endian");
+                assert_eq!(
+                    u16::from_le_bytes([bytes[18], bytes[19]]),
+                    0x3e,
+                    "the ELF header has to name x86-64"
+                );
+            },
+        )
+    } else {
+        ("aarch64-apple-darwin", "bun-darwin-", |bytes: &[u8]| {
+            assert_eq!(
+                &bytes[..4],
+                &[0xcf, 0xfa, 0xed, 0xfe],
+                "a macOS binary is a little-endian 64-bit Mach-O"
+            );
+            assert_eq!(
+                u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+                0x0100_000c,
+                "the Mach-O header has to name arm64"
+            );
+        })
+    }
 }
 
 /// A project that pinned Node and asked for another machine is told why.
@@ -4046,14 +4089,25 @@ fn cross_compiling_writes_a_linux_binary_from_here() {
 /// The counterpart to the test above, and the reason `autoDetect` is the flag
 /// that decides between them: `autoDetect: false` is a project saying it does
 /// not want uf inferring a host, so the one host it named is the whole of the
-/// answer — and Node has no cross-compilation. The refusal names the triple,
-/// says what Node cannot do, and names the backend that can, before anything
-/// is bundled.
+/// answer. What it is told depends on which Node it has, and both sentences
+/// are asserted here rather than only the one this machine produces:
+///
+/// * a Node at or above the floor is a working backend that *cannot
+///   cross-compile*, and that is the sentence — the reason `--target` narrows
+///   the host walk;
+/// * a Node below the floor never becomes a backend at all, so the reason is
+///   the floor. CI runs Node 24 and is this case.
+///
+/// Both name the triple, and neither writes a bundle first — which is the part
+/// that is the same either way and the part ubugeeei-prod/uf#312 asks for.
 #[test]
 fn a_pinned_node_host_refuses_a_target_it_cannot_build() {
     if !fixture_ready() {
         return;
     }
+    let Some((_, numbers)) = node_version() else {
+        return;
+    };
     let project = Project::new(&minimal_app());
     project.write("uf.config.js", &compiles_on("node"));
 
@@ -4070,10 +4124,21 @@ fn a_pinned_node_host_refuses_a_target_it_cannot_build() {
     );
     assert!(!output.status.success(), "{said}");
     assert!(said.contains("x86_64-unknown-linux-gnu"), "{said}");
-    assert!(said.contains("no cross-compilation"), "{said}");
+    if numbers >= NODE_SEA_FLOOR {
+        assert!(said.contains("no cross-compilation"), "{said}");
+        assert!(
+            said.contains("Bun"),
+            "the refusal has to name the backend that can:\n{said}"
+        );
+    } else {
+        assert!(
+            said.contains("25.5.0"),
+            "a Node below the floor is refused for being below it:\n{said}"
+        );
+    }
     assert!(
-        said.contains("Bun"),
-        "the refusal has to name the backend that can:\n{said}"
+        said.contains("Cross-compiling is Bun's backend only"),
+        "either way the refusal has to say where cross-compiling lives:\n{said}"
     );
     assert!(
         !project.path().join(".uf/build/compile/server.js").exists(),
