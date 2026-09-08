@@ -1085,6 +1085,53 @@ describe("the mouse reaches what is under it", () => {
     expect(decodeInput("x\u001b[M !!y").map((event) => event.kind)).toEqual(["key", "key"]);
   });
 
+  it("waits for the rest of a report the operating system split in two", () => {
+    // ubugeeei-prod/uf#612. `ESC[<` cannot begin a key — the CSI parameter
+    // bytes are digits and semicolons — so a chunk ending there can only be a
+    // mouse report, and decoding what arrived turns a click into the
+    // characters of its own coordinates. `?1003h` is where this stops being
+    // theoretical: it sends one report per cell the pointer crosses, which is
+    // the traffic most likely to meet a pipe boundary.
+    const decoder = createInputDecoder();
+
+    expect(decoder.push("\u001b[<")).toEqual([]);
+    const events = decoder.push("0;12;4M");
+    expect(events.map((event) => event.kind)).toEqual(["mouse"]);
+    const [report] = events;
+    if (report == null || report.kind !== "mouse") {
+      throw new Error("the two halves did not make one report");
+    }
+    expect([report.type, report.x, report.y]).toEqual(["down", 11, 3]);
+    expect(decoder.flush()).toEqual([]);
+
+    // And the same for the report of a terminal that ignored `?1006h`, whose
+    // three payload bytes are arbitrary and were arbitrary keys.
+    const legacy = createInputDecoder();
+    expect(legacy.push("\u001b[M")).toEqual([]);
+    expect(legacy.push(" !!")).toEqual([]);
+    expect(legacy.flush()).toEqual([]);
+  });
+
+  it("gives the bytes back when a held report never finishes, and holds nothing for ever", () => {
+    // The bound on the hold, which is two things and neither is a timer.
+    //
+    // `flush` is the ordinary one: a driver whose stream ended says so, and
+    // the bytes are decoded as they stand rather than swallowed.
+    const decoder = createInputDecoder();
+    decoder.push("\u001b[<0;12");
+    expect(decoder.flush().map((key) => key.name)).toEqual(["[", "<", "0", ";", "1", "2"]);
+    expect(decoder.flush()).toEqual([]);
+
+    // The other is the length. A run that grows past what any of these
+    // sequences can be is not one of them however it began, so it is decoded
+    // without waiting — which is what keeps a terminal sending nonsense from
+    // wedging a driver that never calls `flush`.
+    const flooded = createInputDecoder();
+    expect(flooded.push(`\u001b[<${"0".repeat(40)}`).length > 0).toBe(true);
+    // And the decoder still works afterwards: nothing was left held.
+    expect(flooded.push("\u001b[<0;2;2M").map((event) => event.kind)).toEqual(["mouse"]);
+  });
+
   it("delivers a click to the box under it and then to that box's parents", () => {
     const trail: Array<string> = [];
     const record = (event: MouseEvent) => {
