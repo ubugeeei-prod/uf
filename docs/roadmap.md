@@ -145,7 +145,16 @@ in `uf`.
   fallbacks keeps its page module out of the client bundle, and the browser is
   not asked to hydrate it. Splitting a *module* — dropping a Server Component
   that sits above a boundary — is not, and is blocked on a Flight-shaped
-  payload the client can re-render a tree from.
+  payload the client can re-render a tree from. That payload is a second module
+  graph rather than a second dependency: React's Flight renderer loads only
+  under the `react-server` export condition, which resolves `react` to the
+  build with no `useState` in it, while the renderer that turns the payload
+  into HTML needs the ordinary one — so `@uniflowed/vite` grows an environment
+  before anything else can happen (`docs/architecture.md`). **The split can now
+  be read**:
+  `uf dev` reports what moved across the client bundle on each save and names
+  the shortest chain of imports that put it there, so `"use client"` costs what
+  it costs in the terminal rather than in a bundle somebody measures later.
 - Server action transform and request bridge. **Done for a module export**: a
   `"use server"` module is replaced in the client graph by one reference per
   callable export, the browser posts the keyed id to the page's own URL, and
@@ -153,9 +162,16 @@ in `uf`.
   `uf build`, and in all four deploy adapters, which serve it out of one
   `handler.js`. Arguments and results are plain JSON data under a closed
   grammar (`docs/security.md`), and Flow holds every action's signature against
-  it. **Not done**: an inline `"use server"` closure, which has no export name
-  to refer to; `<form action={fn}>` and the React 19 form hooks, which need
-  `FormData` across the same boundary; and `useActionState`.
+  it. **Done for a form**: `<form action={fn}>`, `useActionState` and
+  `useFormStatus` reach the same endpoint, because a reference is an ordinary
+  async function and the grammar carries one `FormData` per call beside the
+  values. **Not done**: an inline `"use server"` closure, which has no export
+  name to refer to; a file upload, which wants a multipart read this endpoint
+  deliberately does not have; and a form that submits before the page has
+  hydrated, which would need React's `$$FORM_ACTION` and therefore a native
+  form post — the content type the endpoint refuses as one of its three CSRF
+  guards. Without it React writes `action="javascript:throw …"`, so such a
+  submit throws in the page rather than posting anywhere.
 - StyleX transform as the default style engine.
 - React Compiler syntax-mode pass.
 - Vite-backed server entry generation, RSC streaming, and server action bridge

@@ -53,9 +53,9 @@ pub use directive::{
     ModuleEnvironment, module_environment, scan_directives,
 };
 pub use graph::{
-    ClientBoundary, ClientBoundaryProximity, EntryKind, ModuleId, ModuleReachability,
-    RscDiagnostic, RscGraph, RscGraphBuilder, RscModule, RscModuleInput, RscSeverity,
-    SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution, is_inside_project,
+    ClientBoundary, ClientBoundaryProximity, ClientBundleReason, EntryKind, ModuleId,
+    ModuleReachability, RscDiagnostic, RscGraph, RscGraphBuilder, RscModule, RscModuleInput,
+    RscSeverity, SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution, is_inside_project,
     is_server_only_specifier, normalize_module_path, resolve_specifier,
 };
 pub use manifest::{

@@ -648,6 +648,38 @@ boundary: uf's client hydrates by re-rendering the matched tree from the same
 modules the server used, so dropping one needs a Flight-shaped payload uf does
 not have. See ubugeeei-prod/uf#252.
 
+What that payload costs is worth writing down, because it is not a module and
+the shape of the answer decides where it can go. React's own Flight renderer —
+`react-server-dom-*/server` — refuses to load unless the `react-server` export
+condition is on, because it needs the *other* build of React, the one with no
+`useState` in it; and `react-dom/server`, which turns the payload into HTML,
+needs the ordinary one. Two builds of React in one module registry is not a
+thing Node or a bundler will do, so a Flight renderer is a second module graph
+rather than a second import: `node --conditions react-server` for a whole
+process, a worker thread started with those `execArgv`, or a bundler
+environment resolved with that condition — which is the shape `@uniflowed/vite`
+would have to grow, since the first two are Node-only and uf's edge, serverless
+and workerd adapters all serve the same `handler.js`. That is the size of
+ubugeeei-prod/uf#519, and it is why the answer is not a smaller version of
+itself: half a payload format in the tree is the worst state for the thing
+whose whole risk is deserialisation.
+
+Until that lands, which modules the browser gets is a decision a reader has to
+be able to see, and `"use client"` is a directive whose cost is invisible until
+somebody measures a bundle: it moves the module it is on and every module above
+it, and "every module above it" is a property of the whole graph rather than of
+the file being edited. So `uf dev` says so. The rescan that keeps the manifest
+current already knows the client bundle before and after each save, and it now
+reports what moved across it and why — `app/section.js imports
+app/counter/_components/Counter.js, which declares "use client"`, which is the
+shortest chain of imports from the module that moved to the boundary that moved
+it. The chain comes from `RscGraph::client_bundle_reason`, one walk of the same
+graph `requires_client_bundle` is read from, because an explanation that can
+disagree with the split is worse than none; `crates/uf_rsc` holds the two
+against each other over every module of every graph its tests build. This is
+the client/server third of ubugeeei-prod/uf#520 — the other two boundaries, and
+an inspector for the payload, wait on the payload.
+
 A call is a `POST` to the page's own URL carrying `uf-action: <id>`, so the
 middleware guarding that path runs above it and no path is reserved. Every host
 runs it between the guard and the route handlers — `uf dev`, `uf preview`,
@@ -656,6 +688,32 @@ runs it between the guard and the route handlers — `uf dev`, `uf preview`,
 JSON data, applied by `packages/router/internal/action-wire.js` on both sides
 and by Flow at build time; `docs/security.md` has the boundary and what is
 deliberately outside it.
+
+React's form APIs need nothing else, because a reference is an ordinary async
+function: `<form action={fn}>` hands it a `FormData`, `useActionState` hands it
+the previous state and then a `FormData`, and `useFormStatus` reads the submit
+in flight. One argument of a call may therefore be a form, written beside the
+values under its own key rather than as a tag inside one — the value grammar
+does not move, and the only constructor the decoder can call is fixed in the
+source. What that does not buy is a form that submits before the page has
+hydrated. React's progressive enhancement works through a `$$FORM_ACTION`
+property that turns the submit into a native form post, and a native form post
+is `multipart/form-data` — the content type the endpoint refuses, as one of the
+three things standing between it and a cross-site call. Supporting the
+pre-hydration submit would mean accepting that content type, so uf does not
+ship `$$FORM_ACTION` on a reference, and React writes the form it writes for
+any client action: `action="javascript:throw …"`, whose submit throws in the
+page rather than posting anywhere.
+
+The refusal is the reason for the choice and not what enforces it, which is
+worth separating because they fail differently. No request is made at all, so
+nothing is refused. And a native form post aimed at a page by hand would not be
+refused either: `createActionDispatcher` reads the `uf-action` header first and
+returns `null` when it is absent, before it looks at the method or the content
+type, so such a request is not an action call — it falls through to the route
+handlers, where a matching `POST` handler receives it and anything else is a
+`404`. The `415` guards a request that claims to be an action, which is the
+only kind that gets that far.
 
 One thing does still come back. A uf build links the stylesheets it finds in
 the *client* graph, so a route removed from that graph outright loses its rules
