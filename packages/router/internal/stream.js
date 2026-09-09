@@ -43,6 +43,8 @@ import * as React from "react";
 import * as ReactDOMServer from "react-dom/server";
 import * as ReactDOMStatic from "react-dom/static";
 
+import { type StreamRecord, inspected } from "./inspector.js";
+
 /**
  * Where a document is written, when the host has a Node stream.
  *
@@ -612,7 +614,36 @@ export type RenderOptions = {|
    * have no such hook and stream already.
    */
   readonly transformHead?: (html: string) => Promise<string>,
+  /**
+   * Told what left, in what order, and what each chunk built.
+   *
+   * For `uf dev`, like `transformHead` above, and absent everywhere else —
+   * which is what makes it free rather than cheap: with nothing supplied no
+   * recorder is constructed, `./inspector.js` is never entered, and the
+   * generator a host consumes is the same object it was. See that module for
+   * what is done with the record and why it is a development affordance rather
+   * than a metric.
+   *
+   * Called once per document, after the last chunk and also after a render that
+   * was abandoned partway. `prerenderDocument` never calls it: a build resolves
+   * everything before it writes a byte, so there is no order to report.
+   */
+  readonly onStream?: (record: StreamRecord) => void,
 |};
+
+/**
+ * `chunks`, recorded on the way out when `uf dev` asked for it.
+ *
+ * The wrapping goes here rather than around `assembled` in each of the callers
+ * so that what is recorded is unambiguous: these are the bytes the host is
+ * handed, head and all, and not React's own output on the way past.
+ */
+function outgoing(
+  chunks: AsyncGenerator<string, void, void>,
+  onStream?: (record: StreamRecord) => void,
+): AsyncGenerator<string, void, void> {
+  return onStream == null ? chunks : inspected(chunks, onStream, () => performance.now());
+}
 
 /**
  * Stream `node` as a document, resolving once the shell is ready.
@@ -632,7 +663,13 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
         onShellReady() {
           pipe(queueDestination(queue));
           resolve(
-            bodyOf(assembled(queue.chunks(), options.shell, options.transformHead), () => abort()),
+            bodyOf(
+              outgoing(
+                assembled(queue.chunks(), options.shell, options.transformHead),
+                options.onStream,
+              ),
+              () => abort(),
+            ),
           );
         },
         onShellError(error: mixed) {
@@ -693,9 +730,15 @@ export function renderWithReadableStream(
   const controller = new AbortController();
   return render(node, { onError: options.onError, signal: controller.signal }).then(
     (stream: ByteSource) =>
-      bodyOf(assembled(decoded(stream), options.shell, options.transformHead), () => {
-        controller.abort();
-      }),
+      bodyOf(
+        outgoing(
+          assembled(decoded(stream), options.shell, options.transformHead),
+          options.onStream,
+        ),
+        () => {
+          controller.abort();
+        },
+      ),
   );
 }
 
