@@ -21,6 +21,7 @@ import {
   startSchedules,
 } from "@uniflowed/server/schedule";
 import { nodeCapabilities } from "@uniflowed/server/node";
+import { SCHEDULED_HEADER, createWorkerScheduled } from "@uniflowed/server/edge";
 import { lambdaCapabilities } from "@uniflowed/server/lambda";
 
 const at = (iso: string) => Temporal.Instant.from(iso);
@@ -334,5 +335,71 @@ describe("a host starting schedules", () => {
     // Stopping is the half a test needs: an interval nobody cleared keeps a
     // worker alive past the file that armed it.
     stop();
+  });
+});
+
+describe("a schedule on a worker", () => {
+  // What Cloudflare hands `scheduled()`, and what uf hands it back.
+  const fired = (routes, cron, handle) => {
+    const seen = [];
+    const settled = [];
+    const scheduled = createWorkerScheduled({
+      routes,
+      handle: async (request) => {
+        seen.push(request);
+        return handle == null ? new Response("ok") : handle(request);
+      },
+      beginRequest: () => ({
+        context: { id: "test-id", route: null },
+        run: (body) => body(),
+        settle: async () => {},
+      }),
+    });
+    return { scheduled, seen, settled, ctx: { waitUntil: (p) => settled.push(p) } };
+  };
+
+  it("dispatches the route the expression names, as a GET", async () => {
+    const { scheduled, seen, ctx } = fired({ "*/15 * * * *": "/api/sweep" }, "*/15 * * * *");
+    await scheduled({ cron: "*/15 * * * *" }, {}, ctx);
+
+    expect(seen).toHaveLength(1);
+    // A schedule is a request the platform makes: the same path, through the
+    // same handler, so a route needs to know nothing about schedules.
+    expect(new URL(seen[0].url).pathname).toBe("/api/sweep");
+    expect(seen[0].method).toBe("GET");
+  });
+
+  it("names the expression that fired, on the request", async () => {
+    const { scheduled, seen, ctx } = fired({ "0 6 * * 1": "/api/digest" });
+    await scheduled({ cron: "0 6 * * 1" }, {}, ctx);
+    expect(seen[0].headers.get(SCHEDULED_HEADER)).toBe("0 6 * * 1");
+  });
+
+  // `wrangler.json` is a file a person can edit after uf writes it, so a cron
+  // added by hand is not a reason to fail an invocation — but it is a reason
+  // to say so, because the alternative is firing into silence.
+  it("drops a trigger no route claims, without throwing", async () => {
+    const { scheduled, seen, ctx } = fired({ "*/15 * * * *": "/api/sweep" });
+    await scheduled({ cron: "0 0 * * *" }, {}, ctx);
+    expect(seen).toHaveLength(0);
+  });
+
+  it("settles the request through waitUntil where there is one", async () => {
+    const { scheduled, settled, ctx } = fired({ "* * * * *": "/api/tick" });
+    await scheduled({ cron: "* * * * *" }, {}, ctx);
+    // `after()` work outlives the handler on a worker, which is what
+    // `waitUntil` is for — dropping the promise would lose the work.
+    expect(settled).toHaveLength(1);
+    await Promise.all(settled);
+  });
+
+  it("does not let a failing route reject the invocation", async () => {
+    const { scheduled, ctx } = fired({ "* * * * *": "/api/boom" }, undefined, () => {
+      throw new Error("the database is on fire");
+    });
+    // Logged and swallowed: there is no caller above a scheduled invocation to
+    // catch it, and a rejection here is a Worker error with no request behind
+    // it — less legible than the line uf writes.
+    await scheduled({ cron: "* * * * *" }, {}, ctx);
   });
 });

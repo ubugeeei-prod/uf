@@ -2554,6 +2554,21 @@ fn assert_worker_shape(deployed: &Path) {
     // And a miss falls through, so the 404 a visitor sees is the project's own.
     assert_eq!(wrangler["assets"]["not_found_handling"], "none");
 
+    // The two halves of a cron trigger, which have to arrive together. A
+    // `triggers.crons` beside a `worker.js` that exports no `scheduled()` is a
+    // Worker whose invocation fails — a deployment that looks configured for
+    // work that never runs — and uf shipped exactly that for one commit
+    // (ubugeeei-prod/uf#712, taken back by #717). Asserted in both directions
+    // so neither can arrive alone, whichever way a future change breaks it.
+    let worker = fs::read_to_string(deployed.join("worker.js")).unwrap();
+    let triggers = wrangler.get("triggers").is_some();
+    let scheduled = worker.contains("scheduled");
+    assert_eq!(
+        triggers, scheduled,
+        "a cron trigger and the handler that answers it must arrive together; \
+         wrangler has triggers: {triggers}, worker exports scheduled: {scheduled}\n{worker}"
+    );
+
     let mut imported = Vec::new();
     let mut files = vec![deployed.join("worker.js"), deployed.join("handler.js")];
     if let Ok(chunks) = fs::read_dir(deployed.join("chunks")) {

@@ -189,7 +189,7 @@ export function createWorkerFetch(
             // The application will answer instead, so this body has no reader.
             // Cancelled rather than abandoned: a stream nobody drains is a
             // stream the runtime keeps open until the request is torn down.
-            await asset.body?.cancel();
+            await asset.body?.cancel("uf: the application answers this instead");
           }
         }
         return await handle(request);
@@ -222,6 +222,112 @@ export function createWorkerFetch(
       // the opposite of what `after()` is for. Where there is no `ctx` — a
       // test, or a host that calls this directly — it is awaited, because
       // dropping the promise would lose both the work and its rejection.
+      if (ctx != null) {
+        ctx.waitUntil(lifecycle.settle());
+      } else {
+        await lifecycle.settle();
+      }
+    }
+  };
+}
+
+/**
+ * The origin a scheduled invocation carries.
+ *
+ * A cron event has no request and therefore no host, and a handler that reads
+ * `new URL(request.url).host` has to read *something*. A reserved-invalid name
+ * rather than the deployment's own: `.invalid` can never resolve, so a handler
+ * that echoes the origin into a link produces something obviously wrong rather
+ * than something that looks right and points at the wrong place.
+ */
+export const SCHEDULED_ORIGIN: string = "https://cron.invalid";
+
+/** The header naming the expression that fired, on a scheduled invocation. */
+export const SCHEDULED_HEADER: string = "uf-scheduled";
+
+/** What Cloudflare hands a `scheduled()` export. */
+export type ScheduledEvent = {
+  /** The expression that fired, exactly as `wrangler.json` spells it. */
+  readonly cron: string,
+  readonly scheduledTime?: number,
+  ...
+};
+
+/**
+ * Cloudflare's `scheduled()` export, over the same application `fetch` answers.
+ *
+ * The counterpart of [`createWorkerFetch`], and it makes the same promises in
+ * the same order: `beginRequest`, the whole of the work inside `run`, one line
+ * in the log, and `settle` handed to `ctx.waitUntil` where there is a `ctx`.
+ * A schedule that skipped any of those would be work the application could not
+ * see itself doing — no request context, so no `cookies()`, no `after()`, and
+ * no request id in the line it leaves behind.
+ *
+ * # A schedule is a request the platform makes
+ *
+ * There is no second dispatcher here. `routes` maps the expression Cloudflare
+ * fires to the route path that answers it, and this synthesises a `GET` to
+ * that path through the application's own handler — so a scheduled run and a
+ * `curl` of the same path are the same code, and a route handler needs to know
+ * nothing about schedules to be one.
+ *
+ * `GET` because a cron has no body to send. `uf build` refuses a module that
+ * declares a schedule and exports no `GET`, so a trigger that could not be
+ * answered is a build that did not happen rather than a 405 nobody reads.
+ *
+ * # A trigger with no route
+ *
+ * Logged and dropped, not thrown. `wrangler.json` is a file a person can edit
+ * after uf writes it, and a cron added there by hand is not a reason to fail an
+ * invocation — but it is a reason to say so, because the alternative is a
+ * schedule that fires into silence.
+ */
+export function createWorkerScheduled(options: {|
+  readonly handle: (request: Request) => Promise<Response>,
+  readonly beginRequest: (request: Request) => RequestLifecycle,
+  readonly routes: { readonly [cron: string]: string },
+|}): (event: ScheduledEvent, env: mixed, ctx?: ExecutionContext) => Promise<void> {
+  const { handle, beginRequest, routes } = options;
+
+  return async function scheduledFromWorker(
+    event: ScheduledEvent,
+    env: mixed,
+    ctx?: ExecutionContext,
+  ): Promise<void> {
+    const path = routes[event.cron];
+    if (path == null) {
+      processLogger().warn("no route for this schedule", { cron: event.cron });
+      return;
+    }
+
+    const request = new Request(`${SCHEDULED_ORIGIN}${path}`, {
+      method: "GET",
+      headers: { [SCHEDULED_HEADER]: event.cron },
+    });
+    const lifecycle = beginRequest(request);
+    const started = Temporal.Now.instant();
+    let status = 500;
+    try {
+      const response = await lifecycle.run(() => handle(request));
+      status = response.status;
+      // Discarded, with the reason on it. A body nobody drains is a stream
+      // the runtime keeps open until the isolate is torn down, and a schedule
+      // has no client to read one.
+      await response.body?.cancel("uf: a scheduled invocation has no reader");
+    } catch (error) {
+      // Logged and swallowed: there is no caller above a scheduled invocation
+      // to catch it, and a rejection here is a Worker error with no request
+      // behind it — less legible than the line below.
+      processLogger().error("schedule failed", { error, cron: event.cron, path });
+    } finally {
+      logRequest(processLogger(), {
+        requestId: lifecycle.context.id,
+        method: "GET",
+        path,
+        route: lifecycle.context.route,
+        status,
+        durationMs: elapsedMs(started),
+      });
       if (ctx != null) {
         ctx.waitUntil(lifecycle.settle());
       } else {
