@@ -14,6 +14,18 @@
 // *before* `hydrateRoot`, so the first client render is synchronous and
 // matches the server's markup exactly.
 //
+// # What "its loader data" means once the loader can defer
+//
+// It is a payload rather than a value: `internal/payload.js` writes the model
+// into `<script id="__uf_data">` with a `"$P<n>"` reference wherever the loader
+// left a promise, and each of those arrives later in a `<script data-uf-row>`
+// of its own. So two things happen before `hydrateRoot` rather than one — the
+// model is decoded, and `internal/payload-rows.js` starts watching for the
+// rows it referred to. Both have to be first: the decoded model is what the
+// first render is handed, and a row that landed while nothing was watching
+// would be a boundary that never resolves. A document with nothing deferred
+// has no references, so the reader is handed no ids and installs nothing.
+//
 // # A hydration that fails says what differed
 //
 // React reports a mismatch with one sentence and a list of the six things that
@@ -94,6 +106,8 @@ import {
   resolveMatch,
 } from "./internal/runtime.js";
 import { DATA_ID, ROOT_ID } from "./internal/document.js";
+import { decodePayload } from "./internal/payload.js";
+import { createPayloadReader, domObserver } from "./internal/payload-rows.js";
 
 /**
  * Hydrate the current document.
@@ -130,8 +144,23 @@ export async function hydrate(options: {|
   }
 
   const url = window.location.pathname + window.location.search;
+  // Row 0 of the payload, and the reader that will fill in the rows it refers
+  // to. Both before `hydrateRoot`, and in this order: `decodePayload` is what
+  // tells the reader which rows the page is waiting for, and `watch` is what
+  // makes it notice the ones the server has not written yet. A document with
+  // nothing deferred has no references, so the reader is handed no ids, and
+  // `watch` returns without installing anything — see `internal/payload.js`.
   const embedded = document.getElementById(DATA_ID);
-  const data = embedded != null ? JSON.parse(embedded.textContent ?? "null") : undefined;
+  const reader = createPayloadReader(document, domObserver(document));
+  const data =
+    embedded != null
+      ? decodePayload(
+          JSON.parse(embedded.textContent ?? "null"),
+          reader.resolve,
+          "the route's loader data",
+        )
+      : undefined;
+  reader.watch();
   const resolved = await resolveMatch(table, url, { data, skipLoader: embedded != null });
 
   const { App } = options;

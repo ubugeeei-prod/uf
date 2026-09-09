@@ -36,9 +36,23 @@ import { flushSync } from "react-dom";
 import { RenderProvider } from "@uniflowed/hooks/render";
 
 // The id of the script the loader data is embedded in. It moved out of the
-// head and into the tree with ubugeeei-prod/uf#373 — see [`loaderDataScript`]
+// head and into the tree with ubugeeei-prod/uf#373 — see [`payloadElements`]
 // — so the module that renders it is this one rather than `../server.js`.
 import { DATA_ID } from "./document.js";
+
+// The payload the loader's answer is written as, and the rows it defers. Row 0
+// is the element `DATA_ID` names and is byte-identical to what this file wrote
+// inline before the payload existed whenever nothing is deferred; a promise
+// anywhere in the data turns into a reference and a row of its own. See
+// `./payload.js` for the format and ubugeeei-prod/uf#519 for the half of it
+// that is still an element payload rather than a data one.
+import {
+  type PayloadRowMessage,
+  PayloadRowError,
+  encodePayload,
+  encodeRowValue,
+  payloadJson,
+} from "./payload.js";
 
 // The development-only half of [`RouteView`]: the marks that say which DOM
 // subtree each boundary owns, and the report that reads them. Every reference
@@ -2400,6 +2414,12 @@ export component RouteView() {
  * innermost `<Suspense>` when the route deferred its loader on the server, and
  * exactly there again on the client, where the data is already in hand and
  * nothing suspends at all.
+ *
+ * "The loader's answer" is now a payload rather than a value, so what
+ * [`payloadElements`] renders is that script plus one boundary per value the
+ * answer deferred. The same argument covers all of them: the browser's copy of
+ * this component renders the same rows in the same places, from the values it
+ * read out of those very elements.
  */
 component RenderedPage(data: mixed) {
   const { resolved } = useRouterState();
@@ -2407,7 +2427,7 @@ component RenderedPage(data: mixed) {
   return (
     <>
       <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />
-      {loaderDataScript(data)}
+      {payloadElements(data)}
     </>
   );
 }
@@ -2446,25 +2466,159 @@ component AwaitedPage(loader: Promise<mixed>) {
  *
  * `<` is escaped inside the JSON so a string holding `</script>` cannot end the
  * element early, and U+2028 and U+2029 because a JSON document is not
- * JavaScript source but is sometimes read as if it were.
+ * JavaScript source but is sometimes read as if it were — the escape moved to
+ * `./payload.js` when the model stopped being the only thing written that way.
  * `dangerouslySetInnerHTML` rather than a text child because React escapes a
  * text child and `&quot;` is not JSON any more. `security/no-dangerously-set-
  * inner-html` is about markup that came from somewhere and has to be sanitized
  * before a browser parses it as HTML; this is `JSON.stringify`'s output with
  * `<` escaped, in an element the browser never parses as HTML and never runs.
  * `docs/app/_uf.layout.js` carries the same suppression for the same reason.
+ *
+ * # And the rows the model deferred
+ *
+ * A promise anywhere in the loader's answer used to be `JSON.stringify`'d to
+ * `{}`. It is now a `"$P<n>"` reference in the element above and a `<script
+ * data-uf-row="n">` of its own, inside a `<Suspense fallback={null}>` — which
+ * is what makes React stream it at the moment the promise settles rather than
+ * holding the document for it. Each row is its own boundary, so two deferred
+ * values arrive in the order they resolved in and not in the order they were
+ * written. `./payload.js` is the format; `./payload-rows.js` is the browser
+ * reading them back.
+ *
+ * The boundaries sit after the page rather than before it, where the data
+ * element already was. A page that suspends with no `_uf.loading.js` above it
+ * holds the whole shell — that is React's rule and uf does not work around it
+ * — so the position buys nothing either way, and "the scripts are where the
+ * script was" is worth more than a rearrangement that is not.
+ *
+ * # Why the rows are inside an element
+ *
+ * Because a `<Suspense>` that is a direct child of the *render root* stops the
+ * shell being flushed at all. React's renderer can only write a segment once
+ * the segment is complete, and the root segment holds an unresolved boundary
+ * open: measured against React 19.2.8, a tree of `[<div>, <Suspense>]` writes
+ * its first byte when the boundary resolves, and the same tree with the
+ * boundary inside any host element writes it immediately. Every component
+ * between the root and here — `RenderProvider`, `RouterProvider`, `RouteView`,
+ * `RouteErrorBoundary` — renders no element of its own, so without this
+ * `<span>` the rows would be exactly that first shape and a payload would have
+ * streamed nothing.
+ *
+ * `hidden` because it holds no content a reader is meant to see: `<script
+ * type="application/json">` renders nothing either way, and the attribute is
+ * what says so to anything that inspects the document. One element for all the
+ * rows rather than one each — the boundaries inside it still resolve
+ * independently, since each is its own.
+ *
+ * The same rule catches a route whose `_uf.loading.js` sits above no layout:
+ * `RouteView` puts that boundary in the same position, and it does not stream
+ * either. That is a bug this file did not introduce and does not fix; it is
+ * written down in ubugeeei-prod/uf#519 rather than left to be rediscovered.
  */
-function loaderDataScript(data: mixed): React.Node {
+function payloadElements(data: mixed): React.Node {
   if (data === undefined) {
     return null;
   }
-  const json = JSON.stringify(data)
-    .replace(/</g, "\\u003c")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-  const html = { __html: json };
+  const { model, rows } = encodePayload(data, "the route's loader data");
+  // Before anything renders, so a promise that has already rejected is one
+  // somebody is listening to. `settledRow` is memoized, so the components
+  // below get these same promises rather than a second set.
+  for (const row of rows) {
+    settledRow(row.value);
+  }
+  const html = { __html: payloadJson(model) };
   // uf-lint-disable-next-line security/no-dangerously-set-inner-html
-  return <script id={DATA_ID} type="application/json" dangerouslySetInnerHTML={html} />;
+  const row0 = <script id={DATA_ID} type="application/json" dangerouslySetInnerHTML={html} />;
+  return (
+    <>
+      {row0}
+      {rows.length === 0 ? null : (
+        <span hidden>
+          {rows.map((row) => (
+            <Suspense key={row.id} fallback={null}>
+              <PayloadRow id={row.id} value={row.value} />
+            </Suspense>
+          ))}
+        </span>
+      )}
+    </>
+  );
+}
+
+/**
+ * One deferred value, written when it settles.
+ *
+ * Rendered on both sides, which is the thing to keep in mind about it. On the
+ * server `value` is the loader's own promise; in the browser it is the promise
+ * `./payload-rows.js` created for this row and resolved out of this very
+ * element. Both then write the element from the settled result through the
+ * same [`payloadJson`], so the bytes agree and hydration has nothing to
+ * report. `encodeRowValue` is what re-applies the reference escape to a value
+ * the browser has already had it removed from.
+ *
+ * It never rejects. `use` on a rejected promise throws, and a throw here would
+ * put the *row's* boundary into the error boundary above it — which is the
+ * page, for a value the page may not even be reading. The failure travels as a
+ * row instead, and the page's own `use` of the same promise is what reaches
+ * the page's boundary, exactly as it would have without a payload.
+ */
+component PayloadRow(id: number, value: Promise<mixed>) {
+  const message = use(settledRow(value));
+  const html = { __html: payloadJson(message) };
+  return (
+    // uf-lint-disable-next-line security/no-dangerously-set-inner-html
+    <script type="application/json" data-uf-row={String(id)} dangerouslySetInnerHTML={html} />
+  );
+}
+
+/**
+ * The message a row will carry, as a promise that always fulfils.
+ *
+ * Keyed by the promise rather than recomputed, because `use` wants the same
+ * promise every render and a render is repeated: React renders a component
+ * again after it suspends, and Strict Mode renders it twice more. A `WeakMap`
+ * so a route that has navigated away takes its rows with it.
+ */
+const settledRows: WeakMap<Promise<mixed>, Promise<PayloadRowMessage>> = new WeakMap();
+
+function settledRow(value: Promise<mixed>): Promise<PayloadRowMessage> {
+  const existing = settledRows.get(value);
+  if (existing != null) {
+    return existing;
+  }
+  const settled = value.then(
+    (resolved) => ({ value: encodeRowValue(resolved, "a deferred value") }),
+    (error) => ({ error: rowFailure(error) }),
+  );
+  settledRows.set(value, settled);
+  return settled;
+}
+
+/**
+ * What a row says when the value failed.
+ *
+ * A fixed sentence in a build, and the error's own words where
+ * `import.meta.hot` says a developer is reading them — the same gate
+ * [`BOUNDARY_MARKS`] uses, and the same argument: a message that came out of a
+ * loader can name a table, a query or a file path, and a browser is not where
+ * any of those belong.
+ *
+ * A `PayloadRowError` short-circuits both, and has to. That error is what the
+ * browser's reader rejects with, carrying the row's own text, so echoing it is
+ * what makes the element the browser renders equal the one the server sent
+ * whichever of the two builds was the development one.
+ */
+const ROW_FAILURE = "@uniflowed/router: a deferred value failed on the server.";
+
+function rowFailure(error: mixed): string {
+  if (error instanceof PayloadRowError) {
+    return error.wire;
+  }
+  if (!BOUNDARY_MARKS) {
+    return ROW_FAILURE;
+  }
+  return error instanceof Error ? `${ROW_FAILURE} ${error.message}` : ROW_FAILURE;
 }
 
 /**
