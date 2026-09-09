@@ -305,6 +305,11 @@ The last column is the half a median cannot show. Ten simultaneous requests for 
 page nobody has asked for yet are one render, because a request that arrives
 while an entry is being filled joins the fill rather than starting a second one.
 
+Those numbers are the memory store. A durable one adds a read of the provider on
+a key this process has not seen — and a read is what it replaces a *render* with,
+which is the trade the whole feature is: 0.16 ms becomes a file read or a network
+hop instead of 52 ms, on every process rather than on the one that rendered it.
+
 ## What is not here
 
 - **The data cache and the action cache.** `rendering.cache.data` and
