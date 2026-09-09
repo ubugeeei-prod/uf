@@ -197,14 +197,27 @@ pub fn parse(command: &str) -> Command {
         };
     }
 
+    // Whether a newline has gone past with a command already behind it. A
+    // leading blank line and a trailing one are nothing; a newline between two
+    // commands is the shell's job, and this is what tells them apart.
+    let mut ended_a_line = false;
+
     while let Some(character) = chars.next() {
+        if ended_a_line && !matches!(character, ' ' | '\t' | '\n' | '#') {
+            return Command::Shell(ShellSyntax::Newline);
+        }
         match character {
             ' ' | '\t' => {
                 if let Some(word) = current.take() {
                     words.push(word);
                 }
             }
-            '\n' => return Command::Shell(ShellSyntax::Newline),
+            '\n' => {
+                if let Some(word) = current.take() {
+                    words.push(word);
+                }
+                ended_a_line |= !words.is_empty();
+            }
             '\'' => {
                 let word = word!();
                 loop {
@@ -253,7 +266,18 @@ pub fn parse(command: &str) -> Command {
                 Some('\n') => {}
                 Some(escaped) => word!().text.push(escaped),
             },
-            '#' if current.is_none() => break,
+            // A comment runs to the end of its line rather than to the end of
+            // the string: `# what this is\ncargo build` is one command with a
+            // note above it, and reading it as nothing would refuse a task
+            // `sh` ran.
+            '#' if current.is_none() => {
+                for skipped in chars.by_ref() {
+                    if skipped == '\n' {
+                        ended_a_line |= !words.is_empty();
+                        break;
+                    }
+                }
+            }
             // A home directory at the start of a word, and — because `bash`
             // expands there too — after a plain `=`, which is what
             // `--prefix=~/opt` is.
@@ -439,6 +463,7 @@ mod tests {
     fn a_hash_that_starts_a_word_opens_a_comment() {
         assert_eq!(words("echo hi # and the rest is a note"), ["echo", "hi"]);
         assert_eq!(parse("# nothing but a comment"), Command::Nothing);
+        assert_eq!(parse("  # nor this  "), Command::Nothing);
     }
 
     #[test]
@@ -601,9 +626,22 @@ mod tests {
         assert_eq!(words("ls main.c~"), ["ls", "main.c~"]);
     }
 
+    /// A newline *between two commands* is the shell's. One with nothing on
+    /// the other side of it is not a second command.
     #[test]
-    fn a_newline_goes_to_the_shell() {
+    fn a_newline_goes_to_the_shell_only_when_it_separates_two_commands() {
         assert_eq!(shell("a\nb"), ShellSyntax::Newline);
+        assert_eq!(shell("cargo build\n\ncargo test"), ShellSyntax::Newline);
+
+        assert_eq!(words("cargo build\n"), ["cargo", "build"]);
+        assert_eq!(words("\ncargo build"), ["cargo", "build"]);
+        assert_eq!(
+            words("cargo build\n# a note under it\n"),
+            ["cargo", "build"]
+        );
+        // A comment runs to the end of *its line*, so the command below it is
+        // still the command.
+        assert_eq!(words("# what this is\ncargo build"), ["cargo", "build"]);
     }
 
     #[test]
