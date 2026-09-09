@@ -25,6 +25,7 @@ pub mod matches;
 pub mod strip;
 
 use serde_json::Value;
+use uf_profiler::profile_span;
 
 use crate::TransformError;
 
@@ -52,6 +53,7 @@ pub struct Lowered {
 /// [`TransformError::Internal`] when the tree is not the shape the parser
 /// promised.
 pub fn lower(program: &mut Value, source: &str) -> Result<Lowered, TransformError> {
+    profile_span!("lower::lower");
     let may_compile = components::lower(program)?;
     matches::lower(program)?;
     enums::lower(program, source)?;

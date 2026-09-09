@@ -87,6 +87,7 @@ use uf_config::UniflowedConfig;
 use uf_flow::ast::jsx;
 use uf_flow::ast_visitor::{self, AstVisitor};
 use uf_flow::{Loc, ast};
+use uf_profiler::profile_span;
 
 use crate::scan::FileScan;
 use crate::{Diagnostic, Severity, push_at, severity};
@@ -118,6 +119,7 @@ pub(crate) fn run_tree_rules(
     config: &UniflowedConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    profile_span!("run_tree_rules");
     let levels = Levels::for_config(config);
     if levels.all_off() {
         return;

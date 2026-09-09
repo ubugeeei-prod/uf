@@ -16,6 +16,7 @@ use flow_parser::loc::Loc;
 use flow_parser::offset_utils::{OffsetKind, OffsetTable};
 use flow_parser::parse_error::ParseError;
 use serde_json::Value;
+use uf_profiler::profile_span;
 
 use crate::TransformError;
 
@@ -36,6 +37,7 @@ pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 /// [`TransformError::SourceTooLarge`] over the ceiling, and
 /// [`TransformError::Syntax`] with the first error the parser reported.
 pub fn parse(source: &str) -> Result<Value, TransformError> {
+    profile_span!("estree::parse");
     if source.len() > MAX_SOURCE_BYTES {
         return Err(TransformError::SourceTooLarge {
             bytes: source.len(),

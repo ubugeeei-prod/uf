@@ -36,6 +36,7 @@
 use serde_json::Value;
 use uf_config::UniflowedConfig;
 use uf_infra::{FxHashMap, FxHashSet};
+use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
 
 use crate::scan::FileScan;
@@ -81,6 +82,7 @@ pub(crate) fn run_react_tree_rules(
     config: &UniflowedConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    profile_span!("run_react_tree_rules");
     let derived = severity(config, DERIVED_STATE);
     // A project that has turned the compiler off gets no report: without it,
     // a hand-written `useMemo` is the only memoization there is.
@@ -244,7 +246,13 @@ fn analyse(
     std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(uf_flow::PARSE_STACK_BYTES)
-            .spawn_scoped(scope, work)
+            .spawn_scoped(scope, || {
+                let found = work();
+                // Spans opened here are thread-local and die with the thread;
+                // this is the hand-over `scope::flush_thread_spans` documents.
+                uf_profiler::scope::flush_thread_spans();
+                found
+            })
             .ok()?
             .join()
             .ok()?

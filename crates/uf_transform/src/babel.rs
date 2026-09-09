@@ -15,6 +15,7 @@
 //! which it uses for positional queries.
 
 use serde_json::{Map, Value, json};
+use uf_profiler::profile_span;
 
 use crate::TransformError;
 use crate::lower::{Edit, bool_field, node_type, str_field, take, transform_post};
@@ -26,6 +27,7 @@ use crate::lower::{Edit, bool_field, node_type, str_field, take, transform_post}
 /// [`TransformError::Internal`] when a node is not the shape the parser
 /// produces — a `Property` whose method value is not a function, say.
 pub fn to_babel(mut program: Value, source: &str) -> Result<Value, TransformError> {
+    profile_span!("babel::to_babel");
     transform_post(&mut program, &mut |node| convert(node))?;
     let mut file = wrap_file(program);
     let lines = LineTable::new(source);
