@@ -14,7 +14,8 @@
 //! enum Sym of symbol { X, Y }            → const Sym = $$ufEnum({ X: Symbol("X"), Y: Symbol("Y") });
 //! ```
 
-use serde_json::{Value, json};
+use serde_json::Value;
+use uf_profiler::profile_span;
 
 use super::builders::{call, ident, string_literal, variable_declaration};
 use super::{Edit, bool_field, list_field, node_type, str_field, take, transform_post};
@@ -47,6 +48,7 @@ function $$ufEnumMirrored(names) {
 /// Lower every enum declaration in `program`, prepending the runtime when
 /// at least one was found.
 pub fn lower(program: &mut Value, _source: &str) -> Result<(), TransformError> {
+    profile_span!("lower::enums");
     let mut found = false;
     transform_post(program, &mut |node| {
         Ok(match node_type(node) {
@@ -106,7 +108,7 @@ fn enum_to_declaration(node: &mut Value) -> Value {
             .collect();
         call(
             ident("$$ufEnumMirrored"),
-            vec![json!({ "type": "ArrayExpression", "elements": names })],
+            vec![node! { "type": "ArrayExpression", "elements": names }],
         )
     } else {
         let properties: Vec<Value> = members
@@ -124,7 +126,7 @@ fn enum_to_declaration(node: &mut Value) -> Value {
             .collect();
         call(
             ident("$$ufEnum"),
-            vec![json!({ "type": "ObjectExpression", "properties": properties })],
+            vec![node! { "type": "ObjectExpression", "properties": properties }],
         )
     };
     let mut declaration = super::with_position_of(variable_declaration("const", id, init), node);

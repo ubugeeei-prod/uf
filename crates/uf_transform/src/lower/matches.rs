@@ -13,8 +13,9 @@
 //! `break`s out of. Falling off the end throws, unless a wildcard catches
 //! everything.
 
-use serde_json::{Value, json};
+use serde_json::Value;
 use uf_infra::FxHashSet;
+use uf_profiler::profile_span;
 
 use super::builders::{
     binary, block, call, conditional, conjunction, disjunction, ident, if_statement, iife, member,
@@ -26,6 +27,7 @@ use crate::TransformError;
 
 /// Lower every `match` in `program`.
 pub fn lower(program: &mut Value) -> Result<(), TransformError> {
+    profile_span!("lower::matches");
     let mut names = GenId::new(program);
     transform_post(program, &mut |node| {
         Ok(match node_type(node) {
@@ -54,6 +56,7 @@ struct GenId {
 
 impl GenId {
     fn new(program: &Value) -> Self {
+        profile_span!("matches::GenId::new");
         let mut used = FxHashSet::default();
         walk(program, &mut |node| {
             if node_type(node) == Some("Identifier")
@@ -560,7 +563,7 @@ fn statements_of_bindings(root: &Value, bindings: &[Binding], names: &mut GenId)
                     })
                     .collect();
                 properties.push(rest_element(id.clone()));
-                let destructuring = json!({ "type": "ObjectPattern", "properties": properties });
+                let destructuring = node! { "type": "ObjectPattern", "properties": properties };
                 variable_declaration(kind, destructuring, expression_of_key(root, key))
             }
         })
@@ -712,7 +715,7 @@ fn map_match_statement(node: &mut Value, names: &mut GenId) -> Result<Value, Tra
         statements.push(variable_declaration("const", generated, argument));
     }
     for analysis in analyses {
-        let break_node = json!({ "type": "BreakStatement", "label": label.clone() });
+        let break_node = node! { "type": "BreakStatement", "label": label.clone() };
         let mut body_statements = list_field(&analysis.body, "body").to_vec();
         body_statements.push(break_node);
         let guarded = if analysis.guard.is_null() {
@@ -733,7 +736,7 @@ fn map_match_statement(node: &mut Value, names: &mut GenId) -> Result<Value, Tra
         statements.push(fallthrough_error(root));
     }
 
-    Ok(json!({ "type": "LabeledStatement", "label": label, "body": block(statements) }))
+    Ok(node! { "type": "LabeledStatement", "label": label, "body": block(statements) })
 }
 
 #[cfg(test)]

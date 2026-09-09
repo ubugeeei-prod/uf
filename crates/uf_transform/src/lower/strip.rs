@@ -10,6 +10,7 @@
 //! effect the author asked for, so it stays.
 
 use serde_json::Value;
+use uf_profiler::profile_span;
 
 use super::{Edit, list_field, node_type, str_field, take, transform_post};
 use crate::TransformError;
@@ -52,6 +53,7 @@ const TYPE_FIELDS: [&str; 9] = [
 
 /// Erase every type in `program`.
 pub fn lower(program: &mut Value) -> Result<(), TransformError> {
+    profile_span!("lower::strip");
     transform_post(program, &mut |node| Ok(strip_node(node)))?;
     Ok(())
 }
