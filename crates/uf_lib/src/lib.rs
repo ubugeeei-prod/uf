@@ -14,7 +14,8 @@ pub use descriptor::{
     Stability, UiComponent, UiReadiness, UiRuntime, ValidationStep,
 };
 pub use registry::{
-    builtin_modules, hook_descriptors, module_by_specifier, std_module_descriptors, tui_contract,
+    CLIENT_MODULE_PACKAGE, CLIENT_MODULE_SUBPATHS, builtin_modules, hook_descriptors,
+    is_client_module, module_by_specifier, std_module_descriptors, tui_contract,
 };
 pub use ui::ui_components;
 
