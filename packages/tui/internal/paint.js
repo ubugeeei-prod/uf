@@ -164,10 +164,13 @@ export function paint(
   clip: Rect,
   hits: HitGrid | null = null,
 ): void {
-  // A scrolling ancestor decided this subtree is not on screen. Its geometry
-  // is deliberately not up to date, so walking into it would draw the last
-  // frame's positions on top of this one's.
-  if (node.hidden) {
+  // `hideInstance` — React's for a Suspense fallback and for `<Activity>` —
+  // sets `width: 0, height: 0, hidden: true`. The zero size is not enough on
+  // its own: `overflow` defaults to `"visible"`, so a child laid out inside a
+  // 0x0 box still draws over its edge, and the walk would also record hits for
+  // a subtree the reader cannot see. The flag is the thing that says the
+  // subtree is not here; read it before anything is drawn.
+  if (node.props.hidden === true) {
     return;
   }
   switch (node.type) {
@@ -231,8 +234,22 @@ function paintBox(
       })
     : clip;
 
-  for (const child of node.children) {
-    paint(child, frame, capabilities, childClip, hits);
+  if (node.style.overflow === "scroll") {
+    // The children a scrolling box laid out, and only those. The rest were
+    // never given a position this frame, so their geometry is from whichever
+    // frame last showed them and drawing it would put those rows back on the
+    // screen. Reading the range rather than a flag per child is also what
+    // keeps the walk proportional to the window: a box holding ten thousand
+    // rows is not visited ten thousand times to be told nine thousand nine
+    // hundred and seventy-six of them are elsewhere.
+    const end = node.scrollFirst + node.scrollCount;
+    for (let index = node.scrollFirst; index < end; index += 1) {
+      paint(node.children[index], frame, capabilities, childClip, hits);
+    }
+  } else {
+    for (const child of node.children) {
+      paint(child, frame, capabilities, childClip, hits);
+    }
   }
 
   if (node.style.overflow === "scroll" && node.props.scrollbar === true) {

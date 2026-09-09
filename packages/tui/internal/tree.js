@@ -34,7 +34,7 @@
 // treats them as the same thing, so this does too. The direct prop wins when
 // both are present, which is the rule a reader guesses.
 
-import type { LayoutStyle } from "../layout.js";
+import type { LayoutStyle, ScrollIndex } from "../layout.js";
 import type { Color, Style } from "../cells.js";
 import { Attributes, INHERIT, PLAIN, parseColor } from "../cells.js";
 import type { BorderStyle } from "../capability.js";
@@ -76,8 +76,9 @@ export type TuiNode = {
   y: number,
   width: number,
   height: number,
-  /** Whether a scrolling ancestor put this node outside its window. */
-  hidden: boolean,
+  /** Which of its children a scrolling box laid out, as a range. */
+  scrollFirst: number,
+  scrollCount: number,
   /** Rows of content this node holds, when it scrolls. */
   scrollHeight: number,
   /** The first row it shows, after clamping, when it scrolls. */
@@ -86,6 +87,15 @@ export type TuiNode = {
   scrollViewTop: number,
   scrollViewRows: number,
   scrollBarColumn: number,
+  /** The intrinsic size this node last reported, and what it was offered. */
+  measuredForWidth: number,
+  measuredForHeight: number,
+  measuredWidth: number,
+  measuredHeight: number,
+  /** The first child of a scrolling box that changed, or `-1`. See {@link invalidate}. */
+  scrollDirtyFrom: number,
+  /** A scrolling box's stack of child heights; see `layout.js`. */
+  scrollIndex: ScrollIndex | null,
 };
 
 /** Read a prop, preferring the direct spelling over the one inside `style`. */
@@ -289,12 +299,19 @@ export function createNode(type: TuiNodeType, props: TuiProps): TuiNode {
     y: 0,
     width: 0,
     height: 0,
-    hidden: false,
+    scrollFirst: 0,
+    scrollCount: 0,
     scrollHeight: 0,
     scrollOffset: 0,
     scrollViewTop: 0,
     scrollViewRows: 0,
     scrollBarColumn: 0,
+    measuredForWidth: -1,
+    measuredForHeight: -1,
+    measuredWidth: 0,
+    measuredHeight: 0,
+    scrollDirtyFrom: 0,
+    scrollIndex: null,
   };
   applyProps(node, props);
   return node;
@@ -305,6 +322,51 @@ export function applyProps(node: TuiNode, props: TuiProps): void {
   node.props = props;
   node.style = styleFromProps(props);
   node.borderWidth = node.type === "box" && borderOf(props) != null ? 1 : 0;
+  invalidate(node);
+}
+
+/**
+ * Say that something under `node` changed, so layout may not reuse what it
+ * measured last time.
+ *
+ * Layout keeps two answers between frames: what a node's intrinsic size came
+ * out as, and — for a scrolling box — where each of its children sits in the
+ * stack. Both are only wrong when the tree changed, and React is the only
+ * participant that knows when it did; a layout that worked it out for itself
+ * would have to compare this frame's tree with the last one's, which is the
+ * walk over every child that the stack exists to avoid.
+ *
+ * The walk goes to the root because an intrinsic size is a fact about a
+ * subtree: a character added to a `"chars"` node can widen the `<Text>` above
+ * it, which can lengthen the box above that. It is bounded by the depth of the
+ * tree, and a terminal's tree is as deep as what fits on a screen.
+ *
+ * `from` is the first child index of `node` that changed. Appending a line to
+ * a log leaves every line above it where it was, which is what makes appending
+ * cost one measurement rather than the log; above `node` nothing is known that
+ * precisely, so every scrolling ancestor is invalidated whole.
+ *
+ * `null` — the default, and what a change to the node's *own* props or text
+ * means — leaves the node's own stack alone, because a scrolling box's props
+ * cannot move its children except through the width, the viewport height and
+ * the gap it gives them, and all three are part of what the stack is keyed on.
+ * That exemption is not a nicety: `scrollTop` is a prop on that box, so
+ * without it every scroll would invalidate the very thing that makes scrolling
+ * cheap, and a hundred thousand rows would rebuild their stack on each notch.
+ */
+export function invalidate(node: TuiNode, from: number | null = null): void {
+  let current: TuiNode | null = node;
+  let first = from;
+  while (current != null) {
+    current.measuredForWidth = -1;
+    current.measuredForHeight = -1;
+    if (first != null) {
+      current.scrollDirtyFrom =
+        current.scrollDirtyFrom < 0 ? first : Math.min(current.scrollDirtyFrom, first);
+    }
+    first = 0;
+    current = current.parent;
+  }
 }
 
 /** The style a text node's runs start from when nothing above it said otherwise. */

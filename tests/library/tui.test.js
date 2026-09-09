@@ -47,6 +47,11 @@ import {
   useTerminalSize,
 } from "@uniflowed/tui";
 import type { Frame, MouseEvent } from "@uniflowed/tui";
+// The layout module directly, and not through the package root: what a
+// scrolling box costs is a number of calls into layout, and the only place a
+// call into layout can be counted is a tree whose leaves this file wrote.
+import { layout } from "@uniflowed/tui/layout";
+import type { LayoutNode, LayoutStyle } from "@uniflowed/tui/layout";
 
 import { HEIGHT, START, STEPS, WIDTH, lines } from "../../tools/bench/tui/workload.js";
 
@@ -532,6 +537,54 @@ describe("a window onto more than fits", () => {
     handle.stop();
   });
 
+  it("moves the window when a row above it grows", () => {
+    // Layout keeps what it measured, so the risk it takes is a row that
+    // changed and was not noticed. This one is *outside* the window — nothing
+    // about the frame would redraw it — and it still has to shift everything
+    // under it, because the offset counts rows and there is now one more.
+    component Grow() {
+      const [tall, setTall] = useState<boolean>(false);
+      useKeyboard(() => setTall(true));
+      return (
+        <ScrollBox height={2} width={6} scrollbar={false} scrollTop={2}>
+          <Text wrap="char">{tall ? "aaaaaaaaaaaa" : "a"}</Text>
+          <Text wrap="none">b</Text>
+          <Text wrap="none">c</Text>
+          <Text wrap="none">d</Text>
+        </ScrollBox>
+      );
+    }
+
+    const handle = testRender(<Grow />, { width: 6, height: 2 });
+    expect(rows(handle.frame())).toEqual(["c     ", "d     "]);
+
+    handle.press("x");
+    expect(rows(handle.frame())).toEqual(["b     ", "c     "]);
+    handle.stop();
+  });
+
+  it("moves it back when a row above it goes away", () => {
+    component Shrink() {
+      const [gone, setGone] = useState<boolean>(false);
+      useKeyboard(() => setGone(true));
+      return (
+        <ScrollBox height={2} width={6} scrollbar={false} scrollTop={0}>
+          {gone ? null : <Text wrap="none">a</Text>}
+          <Text wrap="none">b</Text>
+          <Text wrap="none">c</Text>
+          <Text wrap="none">d</Text>
+        </ScrollBox>
+      );
+    }
+
+    const handle = testRender(<Shrink />, { width: 6, height: 2 });
+    expect(rows(handle.frame())).toEqual(["a     ", "b     "]);
+
+    handle.press("x");
+    expect(rows(handle.frame())).toEqual(["b     ", "c     "]);
+    handle.stop();
+  });
+
   it("does not paint what the window does not reach", () => {
     // The other half of the same property, and the one a clipping renderer
     // would fail: a child outside the window is not merely invisible, it is
@@ -591,6 +644,192 @@ describe("a window onto more than fits", () => {
     );
     expect(rows(handle.frame())).toEqual(["two     ", "        "]);
     handle.stop();
+  });
+});
+
+describe("a window costs the window", () => {
+  // The claim `ScrollBox` exists for, counted rather than described. Every
+  // assertion below is a number of operations rather than a picture: a
+  // renderer that laid a hundred thousand rows out and clipped them would draw
+  // exactly the frames the section above asserts, and fail every one of these.
+  //
+  // These build `LayoutNode`s by hand instead of rendering. That is what
+  // `layout.js` is for — it imports neither the React binding nor the painter —
+  // and it is the only way to count measurements, because a measurement is a
+  // call layout makes into a leaf and nothing above layout can watch one
+  // happen.
+
+  /** How many times layout has asked a leaf how big it is. */
+  let measured = 0;
+
+  /** A leaf that reports `height` and says so. */
+  const leaf = (height: number) => () => {
+    measured += 1;
+    return { width: 6, height };
+  };
+
+  /**
+   * One node, with every field layout reads or writes.
+   *
+   * Written out rather than produced by the tree module, so that a field added
+   * to `LayoutNode` and not to layout's own bookkeeping fails here rather than
+   * being read as `undefined` somewhere further away. `y` starts at `-1`,
+   * which is not a position any layout produces, so {@link placed} can tell a
+   * child layout reached from one it skipped.
+   */
+  const node = (
+    style: LayoutStyle,
+    children: Array<LayoutNode>,
+    height: number | null = null,
+  ): LayoutNode => ({
+    style,
+    children,
+    borderWidth: 0,
+    measure: height == null ? null : leaf(height),
+    x: 0,
+    y: -1,
+    width: 0,
+    height: 0,
+    scrollFirst: 0,
+    scrollCount: 0,
+    scrollHeight: 0,
+    scrollOffset: 0,
+    scrollViewTop: 0,
+    scrollViewRows: 0,
+    scrollBarColumn: 0,
+    measuredForWidth: -1,
+    measuredForHeight: -1,
+    measuredWidth: 0,
+    measuredHeight: 0,
+    scrollDirtyFrom: 0,
+    scrollIndex: null,
+  });
+
+  /** A scrolling box of `count` one-row children, showing from `offset`. */
+  const scrolling = (count: number, offset: number): LayoutNode =>
+    node(
+      { overflow: "scroll", scrollTop: offset },
+      Array.from({ length: count }, () => node({}, [], 1)),
+    );
+
+  /** Move the window, which is the one thing about a scrolling box that is not a fact about its children. */
+  const scrollTo = (box: LayoutNode, offset: number) => {
+    box.style = { overflow: "scroll", scrollTop: offset };
+    for (const child of box.children) {
+      child.y = -1;
+    }
+  };
+
+  /** Which children layout gave a position to. */
+  const placed = (box: LayoutNode): Array<number> => {
+    const out = [];
+    for (let index = 0; index < box.children.length; index += 1) {
+      if (box.children[index].y !== -1) {
+        out.push(index);
+      }
+    }
+    return out;
+  };
+
+  it("lays out the window and not the content, at any size", () => {
+    // The property in one assertion: two boxes three orders of magnitude apart
+    // do the same work to show the same twenty-four rows.
+    const small = scrolling(30, 3);
+    const large = scrolling(100_000, 3);
+
+    layout(small, 0, 0, 20, 24);
+    layout(large, 0, 0, 20, 24);
+
+    expect(placed(small).length).toBe(24);
+    expect(placed(large)).toEqual(placed(small));
+    // And the large one still knows exactly how much content it has, which is
+    // what `Number.MAX_SAFE_INTEGER` gets clamped against.
+    expect(large.scrollHeight).toBe(100_000);
+    expect(large.scrollCount).toBe(24);
+  });
+
+  it("measures a row once and never again while it is unchanged", () => {
+    const box = scrolling(100_000, 0);
+
+    measured = 0;
+    layout(box, 0, 0, 20, 24);
+    // The first frame has to see the content, because the height of the
+    // content is what the offset is clamped against and nothing can know it
+    // without asking. This is the one pass that is proportional to the log,
+    // and it is the honest half of the claim.
+    expect(measured).toBe(100_000);
+
+    // Every frame after it is proportional to the window instead. Scrolling
+    // to the far end of a hundred thousand rows asks nothing of the ninety-nine
+    // thousand nine hundred and seventy-six that are not on the screen.
+    for (const offset of [1, 500, 50_000, 99_976]) {
+      measured = 0;
+      scrollTo(box, offset);
+      layout(box, 0, 0, 20, 24);
+      expect(measured).toBe(0);
+      expect(placed(box).length).toBe(24);
+    }
+    expect(placed(box)[0]).toBe(99_976);
+  });
+
+  it("costs one measurement to append a line to a hundred thousand", () => {
+    // A log grows at the end, which is the one mutation whose position is
+    // known without looking for it — `internal/tree.js` hands layout that
+    // index, and here the stack works out the same thing from the child count.
+    const box = scrolling(100_000, Number.MAX_SAFE_INTEGER);
+    layout(box, 0, 0, 20, 24);
+    expect(box.scrollOffset).toBe(99_976);
+
+    measured = 0;
+    box.children.push(node({}, [], 1));
+    layout(box, 0, 0, 20, 24);
+
+    expect(measured).toBe(1);
+    expect(box.scrollHeight).toBe(100_001);
+    // And it followed its tail, which is what asking for a row number no
+    // caller could know is for.
+    expect(box.scrollOffset).toBe(99_977);
+  });
+
+  it("finds the window without walking to it", () => {
+    // Rows that are not all the same height cannot be divided into, so the
+    // stack is searched. One row and three alternating puts row `2k` at `4k`
+    // and row `2k+1` at `4k+1`, which no arithmetic on the offset alone
+    // would find.
+    const children = Array.from({ length: 10_000 }, (_, index) =>
+      node({}, [], index % 2 === 0 ? 1 : 3),
+    );
+    const box = node({ overflow: "scroll", scrollTop: 5_000 }, children);
+    layout(box, 0, 0, 20, 4);
+
+    expect(box.scrollHeight).toBe(20_000);
+    expect(placed(box)).toEqual([2_500, 2_501]);
+  });
+
+  it("re-measures the row that changed, and moves the ones under it", () => {
+    // The half of a kept measurement that can go wrong. A cache nothing
+    // invalidated would leave this box the height it was and draw the rows
+    // below the changed one two lines too high.
+    const children = [node({}, [], 1), node({}, [], 1), node({}, [], 1)];
+    const box = node({ overflow: "scroll", scrollTop: 0 }, children);
+    layout(box, 0, 0, 20, 8);
+    expect(box.scrollHeight).toBe(3);
+
+    // Exactly what `invalidate` in `internal/tree.js` writes when React
+    // changes a node: the node's own measurement is forgotten, and the
+    // scrolling box is told from which child its stack is stale.
+    children[0].measure = leaf(3);
+    children[0].measuredForWidth = -1;
+    children[0].measuredForHeight = -1;
+    box.scrollDirtyFrom = 0;
+
+    measured = 0;
+    layout(box, 0, 0, 20, 8);
+    // One, not three: rebuilding the stack from the top re-reads three heights
+    // and re-measures only the row that stopped knowing its own.
+    expect(measured).toBe(1);
+    expect(box.scrollHeight).toBe(5);
+    expect(children[1].y).toBe(3);
   });
 });
 

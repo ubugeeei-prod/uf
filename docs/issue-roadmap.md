@@ -198,8 +198,12 @@
 - [x] Implement terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
       Flow React on React's own reconciler rather than a native binding;
       `packages/tui/index.js` argues that out. Scrolling and the mouse — hit
-      testing, hover, drag capture, drop and the wheel — are in. Selection, key
-      release and rich content are ubugeeei-prod/uf#314.
+      testing, hover, drag capture, drop and the wheel — are in, and a
+      `ScrollBox` now costs its window rather than its content: moving one over
+      a hundred thousand rows measures none of them and lays out, paints and
+      diffs the twenty-four on the screen, counted in
+      `tests/library/tui.test.js` and timed by `tools/bench/tui/window.js`.
+      Selection, key release and rich content are ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
