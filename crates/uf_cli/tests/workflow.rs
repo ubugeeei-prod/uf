@@ -161,6 +161,16 @@ fn install_runs_the_package_manager_that_drives_the_project() {
     );
     assert_eq!(plan["runtimeManager"]["engine"], "node");
     assert_eq!(plan["runtimeManager"]["acquisition"], "auto");
+    // And the hosts it records are hosts. `runtimeManager.hosts` is documented
+    // as the hosts that must be available, and every project uf installed used
+    // to be told it ran on `edge`, `serverless` and `container` — three rows
+    // `uf_runtime::HOSTS` grades planned with no Flow loader, so three
+    // runtimes that cannot import the project's first file. A claim uf writes
+    // into a file it hands the reader is the exact shape ubugeeei-prod/uf#246
+    // is named after.
+    let hosts = plan["runtimeManager"]["hosts"].as_array().unwrap();
+    let hosts: Vec<&str> = hosts.iter().map(|host| host.as_str().unwrap()).collect();
+    assert_eq!(hosts, vec!["node", "bun", "deno"], "{hosts:?}");
 }
 
 #[test]

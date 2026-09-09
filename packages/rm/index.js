@@ -7,7 +7,14 @@ import { nativeRuntimeRequired } from "@uniflowed/core/native";
 
 const MODULE = "@uniflowed/core/rm";
 
-export type RuntimeEngine = "uf" | "node" | "deno" | "bun" | "edge" | "serverless" | "container";
+// `engine` and `hosts` below are both read off `app.runtime.default` and
+// `app.runtime.compatibility`, so this union is that key's, and it named seven
+// runtimes of which four have no Flow loader in `uf_runtime::HOSTS`. The plan
+// this file types is what `uf install` writes to `.uf/install.json`, so the
+// declaration said a project's hosts could include runtimes no uf project can
+// be imported on — and it wrote exactly that until ubugeeei-prod/uf#246. See
+// docs/hosts.md.
+export type RuntimeEngine = "node" | "deno" | "bun";
 
 export type RuntimeHost = RuntimeEngine;
 export type RuntimeAcquisition = "auto";
