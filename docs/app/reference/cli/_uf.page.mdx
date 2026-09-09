@@ -680,9 +680,10 @@ this repository's own `uf.config.js`. A program written as a path
 in; a bare name (`cargo`) is looked up on `PATH`.
 
 A command that asks the shell to *do* something — `|`, `&&`, `;`, a
-redirection, `$VAR`, a backtick, an unquoted `*`, a leading `~`, a newline, or
-a first word that is a shell keyword or a built-in with no program behind it
-(`cd`, `exit`, `export`) — is handed to `sh -c`, exactly as before. On a
+redirection, `$VAR`, a backtick, an unquoted `*`, a leading `~`, a newline
+with a command on both sides of it, or a first word that is a shell keyword or
+a built-in with no program behind it (`cd`, `exit`, `export`) — is handed to
+`sh -c`, exactly as before. On a
 machine with no POSIX shell — Windows, unless one is installed — uf refuses
 that task by name and says which construct needed one, instead of failing to
 find a program nobody wrote. Two consequences worth knowing:
