@@ -585,6 +585,19 @@ pub(crate) enum Commands {
         /// code did.
         #[arg(short = 'u', long)]
         update_snapshots: bool,
+        /// Run the suite in a real browser instead of on a DOM shim.
+        ///
+        /// Every test file runs in a page — one page load per file — so a
+        /// component is measured by the layout engine that will lay it out.
+        /// `@uniflowed/react-testing`'s happy-dom computes no layout at all:
+        /// `getBoundingClientRect()` is zeroes there and `getComputedStyle`
+        /// hands back the declared value rather than the resolved one.
+        ///
+        /// uf drives a browser that is already installed and downloads none.
+        /// Set `UF_BROWSER` to choose which; with none installed the run is
+        /// refused rather than quietly falling back to the shim.
+        #[arg(long)]
+        browser: bool,
         /// Run at most N files at once; defaults to one per core.
         #[arg(short = 'j', long, value_name = "N")]
         threads: Option<usize>,
@@ -828,8 +841,10 @@ pub(crate) enum RoutesCommand {
     /// The path is a URL path in the spelling the directories already use —
     /// `/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what
     /// is typed is what appears in `RoutePath`. A spelling uf reserves without
-    /// serving (`@team`, `(.)photo`) is refused here with the same sentence
-    /// `uf build` and `uf lint` give, rather than written and reported later.
+    /// serving (`(.)photo`) is refused here with the same sentence `uf build`
+    /// and `uf lint` give, rather than written and reported later. A `@slot`
+    /// is refused too, for the opposite reason: uf serves parallel routes, and
+    /// a slot is not a URL — this command's argument is one.
     ///
     /// Nothing is overwritten: a route whose page exists is an error, and a
     /// run that stops has written none of its files.

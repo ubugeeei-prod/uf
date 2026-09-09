@@ -61,8 +61,8 @@ pub(super) fn watch(
     // Resolved once, with the environment the session started with: a watch
     // that reloaded `.env` mid-session would change what the suite means
     // between two runs of the same file.
-    let host =
-        super::test_host(root, &config, env, &files)?.with_axe(config.accessibility.axe.as_json());
+    let host = super::test_host(root, &config, env, &files, args.browser)?
+        .with_axe(config.accessibility.axe.as_json());
     // Deno's Flow loader is an ahead-of-time pass, and this function resolves
     // the host once on purpose (above). The two cannot both be true: an edit
     // after the pass has run is an edit to a module the compiled tree does not

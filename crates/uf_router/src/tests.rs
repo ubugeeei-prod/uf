@@ -697,47 +697,165 @@ fn a_layout_and_a_middleware_are_found_in_either_spelling() {
     }
 }
 
-/// A slot directory is refused rather than served as the URL segment `/@team`.
+/// A slot's page is not a URL.
 ///
-/// The whole of ubugeeei-prod/uf#267's first piece. `@team` was not a spelling
-/// this grammar had an opinion about, so it fell through to a literal: the
-/// route was discovered, `/@team` went into the generated `RoutePath`, and
-/// `route("/@team", …)` type checked. A project migrating from Next.js got
-/// output that looked like it worked.
+/// The whole of ubugeeei-prod/uf#267's first piece, arrived at from the other
+/// side. `@team` was not a spelling this grammar had an opinion about, so it
+/// fell through to a literal: the route was discovered, `/@team` went into the
+/// generated `RoutePath`, and `route("/@team", …)` type checked. Then it was a
+/// name both routers refused. It is a route now — and still not a path: the
+/// slot's page renders into the declaring segment's layout, at the URL that
+/// segment's own routes answer.
 #[test]
-fn a_parallel_route_slot_is_refused() {
+fn a_parallel_route_slot_contributes_no_url() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/dashboard/@team/members")).unwrap();
+    fs::create_dir_all(root.join("app/dashboard/members")).unwrap();
+    fs::write(root.join("app/dashboard/_uf.layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/members/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(
+        root.join("app/dashboard/@team/members/_uf.page.js"),
+        "// @flow\n",
+    )
+    .unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    // Two, not three and not four: the slot's page is what `/dashboard/members`
+    // puts in the `team` slot, so it is neither a path of its own nor a second
+    // page at a path that already has one.
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["/dashboard", "/dashboard/members"]
+    );
+    // And the generated union says the same thing: `RoutePath` is what a
+    // caller may pass to `route()`, and `/dashboard/@team/members` is not a
+    // path this project serves.
+    let generated = generate_router_flow(&routes);
+    assert!(!generated.contains("@team"), "{generated}");
+}
+
+/// A slot is a prop the declaring segment's own layout receives, so a segment
+/// with no layout of its own has nothing to render it into.
+///
+/// Refused rather than dropped: a slot that renders nowhere is a directory of
+/// pages nothing reaches, which is the failure this whole issue is about.
+#[test]
+fn a_slot_on_a_segment_with_no_layout_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/dashboard/@team")).unwrap();
+    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/_uf.page.js"), "// @flow\n").unwrap();
     fs::write(root.join("app/dashboard/@team/_uf.page.js"), "// @flow\n").unwrap();
 
     let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
 
     let message = error.to_string();
-    assert!(message.contains("app/dashboard/@team"), "{message}");
-    assert!(message.contains("parallel route"), "{message}");
-    // It has to say it is refused. "Not supported" reads as "ignored", and
-    // being quietly ignored is what this replaced.
-    assert!(message.contains("refused"), "{message}");
+    assert!(message.contains("@team"), "{message}");
+    // The layout above is not the answer: inheriting one would hand a prop to
+    // a layout that never declared it, on every route below.
+    assert!(message.contains("no layout of its own"), "{message}");
 }
 
-/// A slot with no page at all is still refused.
+/// A `_uf.default.js` outside a slot is a file the router never opens.
 ///
-/// The reason the check is a directory pass rather than a line in the page
-/// walk: `app/@team/` may hold a layout, a loading file and a `default.js` and
-/// no page, and it is still a directory somebody wrote expecting a parallel
-/// route. The page walk only ever sees `_uf.page.js`.
+/// uf has no `default` for `children` the way Next.js does: `children` is the
+/// page the URL matched, and a URL that matches no page is a 404.
 #[test]
-fn a_slot_holding_no_page_is_refused_too() {
+fn a_default_outside_a_slot_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-    fs::create_dir_all(root.join("app/@team")).unwrap();
-    fs::write(root.join("app/@team/_uf.layout.js"), "// @flow\n").unwrap();
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
     fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/_uf.default.js"), "// @flow\n").unwrap();
 
     let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
 
-    assert!(error.to_string().contains("@team"), "{error}");
+    let message = error.to_string();
+    assert!(message.contains("_uf.default.js"), "{message}");
+    assert!(message.contains("404"), "{message}");
+}
+
+/// A default beside a slot's own pages is what the file is for, so it is not
+/// refused — and neither is the slot around it.
+#[test]
+fn a_slot_with_a_default_and_a_layout_is_discovered() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/@team")).unwrap();
+    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/_uf.default.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/_uf.page.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].path, "/");
+}
+
+/// A slot arrives as a prop named after its directory, so it may not be named
+/// after a prop the layout already has.
+///
+/// `@children` is the one somebody actually writes: `children` is what Next.js
+/// calls its implicit slot, so it is the first name a person migrating reaches
+/// for. Resolving the collision by precedence either way would leave one of the
+/// two silently missing.
+#[test]
+fn a_slot_named_after_a_layout_prop_is_refused() {
+    for name in LAYOUT_PROP_NAMES {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        let slot = format!("app/@{name}");
+        fs::create_dir_all(root.join(&slot)).unwrap();
+        fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join(&slot).join("_uf.page.js"), "// @flow\n").unwrap();
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(name), "{name}: {message}");
+        assert!(message.contains("silently"), "{name}: {message}");
+    }
+}
+
+/// What a slot does not have yet, said where somebody writing the file reads
+/// it.
+///
+/// Per-slot boundaries are the part of parallel routes uf has not built, and
+/// these files would otherwise be opened by nobody — which is exactly the
+/// failure the issue is about, one level down.
+#[test]
+fn a_boundary_or_a_handler_inside_a_slot_is_refused() {
+    for (name, expected) in [
+        ("_uf.loading.js", "loading"),
+        ("_uf.error.js", "error"),
+        ("_uf.not-found.js", "not-found"),
+        ("_uf.template.js", "template"),
+        ("_uf.route.js", "@team"),
+        ("_uf.middleware.js", "@team"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::create_dir_all(root.join("app/@team")).unwrap();
+        fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/@team/_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/@team").join(name), "// @flow\n").unwrap();
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(expected), "{name}: {message}");
+    }
 }
 
 /// Every interception spelling Next.js defines, refused by the same rule.
@@ -781,11 +899,12 @@ fn a_route_group_is_still_discovered() {
     assert_eq!(routes[0].path, "/about");
 }
 
-/// A private directory is not a route, so a slot inside one is not refused.
+/// A private directory is not a route, so what is in one is neither refused
+/// nor scanned.
 ///
 /// Both routers skip a directory whose name starts with `.` or `_`, so
-/// `app/_drafts/@team/` was never going to be served — refusing it would be
-/// the linter inventing a rule about a place the router does not look.
+/// `app/_drafts/@team/` was never going to be served — refusing it, or reading
+/// a slot out of it, would be a rule about a place the router does not look.
 #[test]
 fn a_slot_inside_a_private_directory_is_left_alone() {
     let dir = tempfile::tempdir().unwrap();
@@ -802,20 +921,20 @@ fn a_slot_inside_a_private_directory_is_left_alone() {
 
 /// The generated types are the reason the refusal matters at all.
 ///
-/// `RoutePath` is a closed union built from what discovery found, so a slot
-/// that discovery accepted became a path a caller could pass to `route()` and
-/// Flow would agree with them. Refusing the directory is what keeps the union
-/// honest — there is no route, so there is no type for one.
+/// `RoutePath` is a closed union built from what discovery found, so a
+/// directory that discovery accepted became a path a caller could pass to
+/// `route()` and Flow would agree with them. Refusing the directory is what
+/// keeps the union honest — there is no route, so there is no type for one.
 #[test]
 fn a_refused_directory_never_reaches_the_generated_types() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
-    fs::create_dir_all(root.join("app/@team")).unwrap();
-    fs::write(root.join("app/@team/_uf.page.js"), "// @flow\n").unwrap();
+    fs::create_dir_all(root.join("app/feed/(.)photo")).unwrap();
+    fs::write(root.join("app/feed/(.)photo/_uf.page.js"), "// @flow\n").unwrap();
 
     let error = write_router_manifest(&root, &UniflowedConfig::default()).unwrap_err();
 
-    assert!(error.to_string().contains("@team"), "{error}");
+    assert!(error.to_string().contains("(.)photo"), "{error}");
     assert!(
         !root.join("router.js").exists(),
         "a manifest was written for a project the router refuses"

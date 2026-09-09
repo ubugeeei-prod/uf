@@ -16,10 +16,13 @@
 //! disagreeing is what ubugeeei-prod/uf#224, #291, #386 and #437 all are.
 //!
 //! It is also why this refuses more than a scaffold usually would. A path with
-//! `@team` or `(.)photo` in it, and a `[...rest]` with a segment after it, are
-//! rejected here rather than written and then reported by the next `uf build`:
-//! the point of one grammar is that the answer does not depend on which tool
-//! you ask.
+//! `(.)photo` in it, and a `[...rest]` with a segment after it, are rejected
+//! here rather than written and then reported by the next `uf build`: the point
+//! of one grammar is that the answer does not depend on which tool you ask.
+//!
+//! `@team` is refused for a different reason, and the difference is worth
+//! keeping: a slot is a route uf serves, but it is not a *URL*, and this
+//! command's argument is a URL. See [`ScaffoldError::SlotSegment`].
 //!
 //! [`discover_routes`]: crate::discover_routes
 
@@ -66,16 +69,34 @@ pub struct ScaffoldFile {
 /// Why a path is not one `uf routes add` can write.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ScaffoldError {
-    /// A directory spelled the way a parallel route or an intercepting route
-    /// is. The sentence is [`RouteSegment::unsupported_reason`]'s, so this and
-    /// `uf build` and `uf lint` all say the same thing about the same
-    /// spelling.
+    /// A directory spelled the way an intercepting route is. The sentence is
+    /// [`RouteSegment::unsupported_reason`]'s, so this and `uf build` and
+    /// `uf lint` all say the same thing about the same spelling.
     #[error("{segment}: {reason}")]
     UnsupportedSegment {
         /// The segment, as it was written.
         segment: String,
         /// What is wrong with it and what to do instead.
         reason: String,
+    },
+    /// A `@slot` in the path this command was given.
+    ///
+    /// Not a refusal of the feature — uf serves parallel routes — but of the
+    /// argument. `uf routes add` takes a URL and writes the page that answers
+    /// it, and a slot has no URL: it renders into the layout of the segment
+    /// that declares it, at that segment's own paths. So there is nothing here
+    /// for this command to do that a reader would recognise as "adding a
+    /// route", and writing the directory alone would leave a slot with no
+    /// layout to render into, which the next `uf build` refuses.
+    #[error(
+        "`{segment}` is a parallel-route slot, and `uf routes add` takes a URL — a slot has none. \
+         It renders into the layout of the segment that declares it, at that segment's own paths. \
+         Create the directory beside that layout and put the slot's pages in it; \
+         `uf routes add` writes the pages the URL names."
+    )]
+    SlotSegment {
+        /// The segment, as it was written.
+        segment: String,
     },
     /// A `[...param]` with another routing segment after it, which is a page
     /// no URL can reach — see [`crate::RouterError::NonTerminalCatchAll`].
@@ -130,6 +151,11 @@ fn route_directory(path: &str) -> Result<Utf8PathBuf, ScaffoldError> {
             return Err(ScaffoldError::UnsupportedSegment {
                 segment: segment.to_owned(),
                 reason,
+            });
+        }
+        if classified.slot().is_some() {
+            return Err(ScaffoldError::SlotSegment {
+                segment: segment.to_owned(),
             });
         }
         if matches!(
@@ -437,21 +463,37 @@ mod tests {
         // that the next `uf build` reports. The sentence is the one
         // `RouteSegment::unsupported_reason` gives, so a reader gets the same
         // answer whichever tool told them.
-        let error = directory("/@team").unwrap_err();
+        let error = directory("/feed/(.)photo").unwrap_err();
         let ScaffoldError::UnsupportedSegment { reason, .. } = &error else {
             panic!("expected an unsupported segment, got {error:?}");
         };
         assert_eq!(
             reason.as_str(),
-            classify_route_segment("@team")
-                .unsupported_reason("@team")
+            classify_route_segment("(.)photo")
+                .unsupported_reason("(.)photo")
                 .unwrap()
                 .as_str()
         );
-        assert!(matches!(
-            directory("/feed/(.)photo"),
-            Err(ScaffoldError::UnsupportedSegment { .. })
-        ));
+    }
+
+    /// A slot is refused by this command and not by the router, and the message
+    /// has to be about the command: uf serves parallel routes, and what it does
+    /// not have is a URL for one to be added at.
+    #[test]
+    fn a_slot_is_refused_because_this_command_takes_a_url() {
+        let error = directory("/dashboard/@team/members").unwrap_err();
+        let ScaffoldError::SlotSegment { segment } = &error else {
+            panic!("expected a slot segment, got {error:?}");
+        };
+        assert_eq!(segment, "@team");
+        let message = error.to_string();
+        assert!(message.contains("takes a URL"), "{message}");
+        // And not the sentence the router uses for what it refuses: there is
+        // no such sentence for a slot any more.
+        assert_eq!(
+            classify_route_segment("@team").unsupported_reason("@team"),
+            None
+        );
     }
 
     #[test]

@@ -15,6 +15,13 @@
 //
 // `_uf.template.js` is a layout that remounts on every navigation, for the
 // cases where a layout's persistence is the wrong default.
+//
+// A directory named `@team` is a parallel-route slot: it contributes no URL
+// segment, and the layout of the segment that holds it receives the slot as a
+// `team` prop beside `children`. The slot's pages are matched against the same
+// URL the page is, so one URL renders two subtrees at once, and
+// `_uf.default.js` is what a slot renders when the URL matched none of its
+// routes. See ubugeeei-prod/uf#267.
 
 import * as React from "react";
 
@@ -43,7 +50,10 @@ export type {
   RouteRecord,
   RouteTable,
   Router,
+  ResolvedSlot,
   SearchParams,
+  SlotRecord,
+  SlotRouteRecord,
   TemplateModule,
   TwitterCard,
 } from "./internal/runtime.js";
@@ -93,7 +103,20 @@ export type ErrorProps = {|
   readonly reset: () => void,
 |};
 
-/** Props a layout receives. */
+/**
+ * Props a layout receives.
+ *
+ * A layout on a segment that declares parallel-route slots receives one more
+ * prop per slot, named after the directory without its `@`, and this exact
+ * type does not describe those — the names are the project's. Declare them: a
+ * layout beside `@team` and `@analytics` is
+ *
+ *     component Dashboard(children: React.Node, team: React.Node, analytics: React.Node)
+ *
+ * and the router passes `null` for a slot the URL addressed by neither a route
+ * of its own nor a `_uf.default.js`, so `{team ?? <Empty />}` is a thing that
+ * can be written and relied on.
+ */
 export type LayoutProps<
   TParams extends { readonly [string]: string | $ReadOnlyArray<string> } = {},
 > = {|

@@ -1,0 +1,176 @@
+Subject: an SSA normal form costs one set, not one per node
+
+Issue: ubugeeei-prod/uf#678
+Upstream: not filed with facebook/flow yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+`uf check` allocated 2,130,342 times to type check one 123 KB module, and 89%
+of that was the single call into `flow_typing::type_inference::infer_ast`.
+Sampling the stack at allocation sites put a third of every allocation the
+whole command makes -- not of inference, of `uf check` -- in one function:
+`ssa_builder::val::Val::normalize`, with `Val::join` next at 13%.
+
+`normalize` turns a write state into the set of atomic writes that reach it,
+and it built a fresh `BTreeSet` at every node of the term:
+
+    WriteState::Uninitialized | WriteState::Loc(_) => {
+        let mut set = BTreeSet::new();
+        set.insert(t.dupe());
+        set
+    }
+    ...
+    WriteState::Phi(ts) => ts.iter().flat_map(|t| Self::normalize(t).into_iter()).collect(),
+
+A PHI is a tree of PHIs, so a term of n nodes built n sets -- a singleton at
+every leaf, a union at every branch -- and dropped all of them into the
+parent's, to produce a result with at most n elements in it. Every one of those
+sets is an allocation. `Val::merge`, which is what runs at each control flow
+join for each binding in scope, then built two more and a third for the union.
+
+This threads the destination down instead. `normalize_into(t, atoms)` adds a
+term's atoms to a set the caller owns; `normalize` is the wrapper that starts
+one. A set is still built in the one place a *subterm's* own normal form is
+needed rather than the traversal's -- a resolved REF, whose contents are
+rewritten to the joined form -- and `merge` normalizes both of its terms into
+one set, because a set holding the atoms of both is exactly the union it used
+to build two sets to take. `join` then walks a set rather than a
+`btree_set::Union`, so its `size_hint` is exact and the vector it fills is
+allocated once instead of doubling its way up to the width of the PHI.
+
+The result of every one of these is the same set it was, and the writes back
+into resolved REFs happen in the same order over the same terms, so no
+diagnostic moves. `cargo test -p uf_check` is the evidence: every test over the
+checker, the fixtures and the two patches above this one included, unchanged
+and green.
+
+Its own half is `crates/uf_check/tests/upstream_patch_allocations.rs`, which
+counts rather than compares diagnostics -- a patch that changes no answer
+cannot have a test that reads one.
+
+Measured with `cargo run --example alloc_report -p uf_check`, the harness
+ubugeeei-prod/uf#678 was filed with:
+
+    packages/router/internal/runtime.js, 123,056 bytes
+                        before        after
+    allocations      2,130,342    1,703,582   -20.0%
+    bytes           358.74 MiB   265.71 MiB   -25.9%
+
+    the same module twice (`--batch 2`), so the marginal per-module cost:
+    allocations      1,847,531    1,420,770   -23.1%
+
+It is a stopgap and belongs upstream: nothing here is uf-specific, and Flow's
+own checker pays the same cost on the same terms.
+
+diff --git a/rust_port/crates/flow_analysis/src/ssa_builder.rs b/rust_port/crates/flow_analysis/src/ssa_builder.rs
+index 7e1ecac09..274d34d7b 100644
+--- a/rust_port/crates/flow_analysis/src/ssa_builder.rs
++++ b/rust_port/crates/flow_analysis/src/ssa_builder.rs
+@@ -116,45 +116,69 @@ mod val {
+             let Some(first) = iter.next() else {
+                 return WriteState::Phi(Rc::from([]));
+             };
+-            if let Some(second) = iter.next() {
+-                let mut states = vec![first.dupe(), second.dupe()];
+-                states.extend(iter.duped());
+-                WriteState::Phi(Rc::from(states))
+-            } else {
+-                first.dupe()
+-            }
++            let Some(second) = iter.next() else {
++                return first.dupe();
++            };
++            // Sized from the iterator rather than grown from two. Every caller
++            // hands this the elements of a set, so the hint is exact and the
++            // vector is allocated once instead of doubling its way up to the
++            // width of the PHI.
++            let mut states = Vec::with_capacity(iter.size_hint().0 + 2);
++            states.push(first.dupe());
++            states.push(second.dupe());
++            states.extend(iter.duped());
++            WriteState::Phi(Rc::from(states))
+         }
+ 
+         fn normalize(t: &WriteState<L>) -> BTreeSet<WriteState<L>> {
++            let mut atoms = BTreeSet::new();
++            Self::normalize_into(t, &mut atoms);
++            atoms
++        }
++
++        /// The atoms of `t`, added to `atoms`.
++        ///
++        /// One set for the whole traversal rather than one per node. A PHI is a
++        /// tree of PHIs and the recursion used to build a fresh `BTreeSet` at
++        /// every node of it — a singleton at each leaf, a union at each
++        /// branch — and then drop all of them into the parent's. Every one of
++        /// those sets is an allocation, so a term of n nodes cost n of them to
++        /// produce a result of at most n elements. Threading the destination
++        /// down makes it one.
++        ///
++        /// The sets are still built in the one place a subterm's own normal
++        /// form is needed rather than the traversal's: a resolved REF, whose
++        /// contents are rewritten to the joined form below.
++        fn normalize_into(t: &WriteState<L>, atoms: &mut BTreeSet<WriteState<L>>) {
+             match t {
+                 WriteState::Uninitialized | WriteState::Loc(_) => {
+-                    let mut set = BTreeSet::new();
+-                    set.insert(t.dupe());
+-                    set
++                    atoms.insert(t.dupe());
+                 }
+                 WriteState::Ref(r) => {
+                     let borrowed = r.borrow();
+                     match &*borrowed {
+                         RefState::Unresolved(_) => {
+                             drop(borrowed);
+-                            let mut set = BTreeSet::new();
+-                            set.insert(t.dupe());
+-                            set
++                            atoms.insert(t.dupe());
+                         }
+                         RefState::Resolved(resolved) => {
+                             let resolved = resolved.dupe();
+                             drop(borrowed);
+-                            let vals = Self::normalize(&resolved);
++                            let mut vals = Self::normalize(&resolved);
+                             let joined = Self::join(&vals);
+                             *r.borrow_mut() = RefState::Resolved(joined);
+-                            vals
++                            // `append` rather than `extend`: it moves the nodes
++                            // this set already owns instead of inserting its
++                            // elements one at a time, and leaves `vals` empty.
++                            atoms.append(&mut vals);
+                         }
+                     }
+                 }
+-                WriteState::Phi(ts) => ts
+-                    .iter()
+-                    .flat_map(|t| Self::normalize(t).into_iter())
+-                    .collect(),
++                WriteState::Phi(ts) => {
++                    for t in ts.iter() {
++                        Self::normalize_into(t, atoms);
++                    }
++                }
+             }
+         }
+ 
+@@ -168,9 +192,16 @@ mod val {
+                 // (Atomic terms include Uninitialized, Loc _, and REF { contents = Unresolved _ }.)
+                 // Note that normal forms might change over time, as unresolved refs become resolved;
+                 // thus, we do not shortcut normalization of previously normalized terms.
+-                let vals1 = Self::normalize(&t1.write_state);
+-                let vals2 = Self::normalize(&t2.write_state);
+-                Self::mk_with_write_state(Self::join(vals1.union(&vals2)))
++                //
++                // The union is taken by normalizing both terms into the same
++                // set, in the order they would have been normalized in
++                // separately. A set holding the atoms of both is what the union
++                // of the two sets is, so this is one set where it was three —
++                // and what `join` then walks knows its own length.
++                let mut vals = BTreeSet::new();
++                Self::normalize_into(&t1.write_state, &mut vals);
++                Self::normalize_into(&t2.write_state, &mut vals);
++                Self::mk_with_write_state(Self::join(&vals))
+             }
+         }
+ 
