@@ -29,9 +29,9 @@ use crate::directive::{
     scan_directive_tokens,
 };
 use crate::scan::{
-    ClientApiUseList, ExportKind, ExportList, HookCallList, ImportKind, ImportList,
-    ImportSpecifier, ModuleExport, client_api_uses_from_tokens, exports_from_tokens,
-    hook_calls_from_tokens, imports_from_tokens, tokenize,
+    ClientApiUseList, ExportKind, ExportList, HookCallList, ImportBindingList, ImportKind,
+    ImportList, ImportSpecifier, ModuleExport, client_api_uses_from_tokens, exports_from_tokens,
+    hook_calls_from_tokens, imports_from_tokens, owner_spans, tokenize,
 };
 
 mod build;
@@ -102,13 +102,19 @@ fn is_client_only_hook_package(specifier: &str) -> bool {
 /// The package a called hook came from, when this crate can say.
 ///
 /// Attributed through the module's imports rather than through the binding the
-/// import introduced, because `ImportSpecifier` keeps the specifier and drops
-/// the names it bound. That makes this answer wrong in exactly one shape: a
+/// import introduced. That makes this answer wrong in exactly one shape: a
 /// module that imports `@uniflowed/hooks` *and* separately defines or imports
 /// its own `useMediaQuery`, and calls that one. It is the same imprecision the
 /// rest of this scanner already has — it matches identifiers against name
 /// lists — and it is narrower than the alternative of saying nothing, which is
 /// what this did before.
+///
+/// [`ImportSpecifier::bindings`] now carries what would narrow it: the
+/// `{ imported, local }` pairs say whether `useMediaQuery` is the name this
+/// module bound from that package or a different function that shares its
+/// spelling. Reading them here would change which calls are reported, so it
+/// belongs with the rest of the classification work rather than with the
+/// plumbing that made it possible — ubugeeei-prod/uf#388.
 ///
 /// [`None`] is the honest answer and stays reported as one: a hook from a
 /// package with no table, a hook the project wrote, a hook reached through a
@@ -276,6 +282,9 @@ impl RscModuleInput {
         let tokens = tokenize(source);
         let index = LineIndex::new(source);
         let directives = scan_directive_tokens(source, &tokens, &index);
+        // One span table for both use-site collectors, for the same reason
+        // there is one token vector for all five passes.
+        let owners = owner_spans(source, &tokens);
 
         Self {
             path: normalize_module_path(&path.into()),
@@ -283,8 +292,8 @@ impl RscModuleInput {
             imports: imports_from_tokens(source, &tokens, &index),
             exports: exports_from_tokens(source, &tokens, &index),
             function_actions: directives.function_directives,
-            client_api_uses: client_api_uses_from_tokens(source, &tokens, &index),
-            hook_calls: hook_calls_from_tokens(source, &tokens, &index),
+            client_api_uses: client_api_uses_from_tokens(source, &tokens, &index, &owners),
+            hook_calls: hook_calls_from_tokens(source, &tokens, &index, &owners),
             directive_issues: directives.issues,
         }
     }
@@ -295,6 +304,7 @@ impl RscModuleInput {
             specifier: specifier.into(),
             kind: ImportKind::Static,
             line: 1,
+            bindings: ImportBindingList::new(),
         });
         self
     }

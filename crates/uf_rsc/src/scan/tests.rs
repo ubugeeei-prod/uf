@@ -366,3 +366,330 @@ fn a_method_definition_is_not_a_client_api_use() {
     assert!(scan_client_api_uses("const o = { useEffect() {} };").is_empty());
     assert!(!scan_client_api_uses("function Page() { useState(1); }").is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Import bindings: which local name an import binds, and to which export.
+// ---------------------------------------------------------------------------
+
+fn bindings(source: &str) -> Vec<(ImportedName, String)> {
+    scan_imports(source)
+        .iter()
+        .flat_map(|import| import.bindings.clone())
+        .map(|binding| (binding.imported, binding.local.to_string()))
+        .collect()
+}
+
+fn named(imported: &str, local: &str) -> (ImportedName, String) {
+    (
+        ImportedName::Named(CompactString::from(imported)),
+        local.to_string(),
+    )
+}
+
+/// The case the pair exists for. Collapsing `{ imported, local }` into either
+/// half loses an aliased import: the local name `useS` is what the call site
+/// two lines down says, and `useState` is what a package's table is keyed on.
+#[test]
+fn an_aliased_import_keeps_both_names() {
+    let source = "import { useState as useS } from \"react\";\n";
+    assert_eq!(bindings(source), vec![named("useState", "useS")]);
+
+    let import = &scan_imports(source)[0];
+    assert_eq!(import.specifier, "react");
+    assert_eq!(
+        import.bindings[0].imported.as_export_name(),
+        Some("useState"),
+        "the aliased name must still resolve to the export it renames"
+    );
+}
+
+/// An unaliased import binds the same name twice, which is what makes a lookup
+/// by either half agree.
+#[test]
+fn an_unaliased_import_binds_the_name_it_names() {
+    assert_eq!(
+        bindings("import { useRoute } from \"@uniflowed/router\";\n"),
+        vec![named("useRoute", "useRoute")]
+    );
+}
+
+#[test]
+fn every_clause_shape_records_what_it_binds() {
+    assert_eq!(
+        bindings("import Counter from \"./Counter.js\";\n"),
+        vec![(ImportedName::Default, "Counter".to_string())]
+    );
+    assert_eq!(
+        bindings("import * as hooks from \"@uniflowed/hooks\";\n"),
+        vec![(ImportedName::Namespace, "hooks".to_string())]
+    );
+    assert_eq!(
+        bindings("import React, { useState, useRef as ref } from \"react\";\n"),
+        vec![
+            (ImportedName::Default, "React".to_string()),
+            named("useState", "useState"),
+            named("useRef", "ref"),
+        ]
+    );
+    assert_eq!(
+        bindings("import Counter, * as all from \"./Counter.js\";\n"),
+        vec![
+            (ImportedName::Default, "Counter".to_string()),
+            (ImportedName::Namespace, "all".to_string()),
+        ]
+    );
+    // `import x` and `import { default as x }` name the same export, so they
+    // are the same variant here.
+    assert_eq!(
+        bindings("import { default as Counter } from \"./Counter.js\";\n"),
+        vec![(ImportedName::Default, "Counter".to_string())]
+    );
+    // ES2022 arbitrary module namespace names are legal export names.
+    assert_eq!(
+        bindings("import { \"use-route\" as useRoute } from \"./m.js\";\n"),
+        vec![named("use-route", "useRoute")]
+    );
+}
+
+/// A re-export binds no module-scope name; `useCurrentRoute` is what this
+/// module exports the other module's `useRoute` as, which answers the same
+/// question from the other side.
+#[test]
+fn a_re_export_records_the_name_it_publishes() {
+    let source = "export { useRoute as useCurrentRoute } from \"./router.js\";\n";
+    assert_eq!(scan_imports(source)[0].kind, ImportKind::ReExport);
+    assert_eq!(bindings(source), vec![named("useRoute", "useCurrentRoute")]);
+}
+
+/// The forms that are edges and bind nothing a clause can name.
+#[test]
+fn a_form_with_no_clause_binds_nothing() {
+    for source in [
+        "import \"./side-effect.js\";\n",
+        "export * from \"./barrel.js\";\n",
+        "const lazy = import(\"./lazy.js\");\n",
+        "const legacy = require(\"./legacy.js\");\n",
+    ] {
+        assert!(
+            scan_imports(source)[0].bindings.is_empty(),
+            "clause-less form bound something: {source}"
+        );
+    }
+}
+
+/// Inline type specifiers are erased with the rest of the types, exactly as the
+/// statement-level `import type` is — and by the same test, so `{ type }` and
+/// `{ type as t }`, which import a value called `type`, survive.
+#[test]
+fn inline_type_specifiers_are_not_bindings() {
+    assert_eq!(
+        bindings("import { type Theme, typeof Store, useTheme } from \"./theme.js\";\n"),
+        vec![named("useTheme", "useTheme")]
+    );
+    assert_eq!(
+        bindings("import { type } from \"./m.js\";\n"),
+        vec![named("type", "type")]
+    );
+    assert_eq!(
+        bindings("import { type as t } from \"./m.js\";\n"),
+        vec![named("type", "t")]
+    );
+    assert_eq!(
+        bindings("import { type Theme as T } from \"./theme.js\";\n"),
+        vec![],
+        "an aliased type specifier is still a type specifier"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Owners: which body a use site is in.
+// ---------------------------------------------------------------------------
+
+fn use_owners(source: &str) -> Vec<(&'static str, Option<String>)> {
+    scan_client_api_uses(source)
+        .iter()
+        .map(|use_site| {
+            (
+                use_site.api,
+                use_site.owner.as_ref().map(ToString::to_string),
+            )
+        })
+        .collect()
+}
+
+/// The nesting case. A `localStorage` inside a callback inside `useTheme`
+/// belongs to `useTheme`: the callback has no name any importer can reach, and
+/// `useTheme` is the binding an export-graph fixpoint propagates along.
+#[test]
+fn a_use_inside_a_nested_closure_belongs_to_the_declaration_that_holds_it() {
+    let source = r#"
+export hook useTheme() {
+  const [theme, setTheme] = useState("system");
+  useEffect(() => {
+    const stored = localStorage.getItem("theme");
+    subscribe(() => setTheme(stored));
+  }, []);
+  return theme;
+}
+"#;
+    assert_eq!(
+        use_owners(source),
+        vec![
+            ("useState", Some("useTheme".to_string())),
+            ("useEffect", Some("useTheme".to_string())),
+            ("localStorage", Some("useTheme".to_string())),
+        ]
+    );
+}
+
+/// And a use no declaration holds gets nothing rather than the nearest name.
+/// A wrong owner propagates through a fixpoint; a missing one is the answer
+/// this crate already gives for everything it cannot decide.
+#[test]
+fn a_use_at_module_top_level_has_no_owner() {
+    let source = r#"
+const theme = localStorage.getItem("theme");
+export hook useTheme() {
+  return useState(theme);
+}
+if (window.matchMedia) { track(); }
+"#;
+    assert_eq!(
+        use_owners(source),
+        vec![
+            ("localStorage", None),
+            ("useState", Some("useTheme".to_string())),
+            ("window", None),
+        ]
+    );
+}
+
+/// Every declaration shape a hook is written in, including the one the issue
+/// was filed about: a Flow return type holding a function type used to make
+/// the walk mistake its `=>` for the head of an arrow function, so `useTheme`
+/// had no name at all.
+#[test]
+fn a_declaration_is_named_however_it_is_written() {
+    for (source, owner) in [
+        ("function Page() { useState(1); }", "Page"),
+        ("export function Page() { useState(1); }", "Page"),
+        ("export async function load() { useState(1); }", "load"),
+        ("hook useTheme() { useState(1); }", "useTheme"),
+        ("component Card() { useState(1); }", "Card"),
+        ("const useTheme = () => { useState(1); };", "useTheme"),
+        (
+            "export const useTheme = function () { useState(1); };",
+            "useTheme",
+        ),
+        ("export default function Page() { useState(1); }", "Page"),
+        ("export default function () { useState(1); }", "default"),
+        ("export default () => { useState(1); };", "default"),
+        (
+            "export hook useTheme(): Promise<number> { useState(1); }",
+            "useTheme",
+        ),
+        (
+            "export hook useTheme(): [string, (next: string) => void] { useState(1); }",
+            "useTheme",
+        ),
+    ] {
+        assert_eq!(
+            use_owners(source),
+            vec![("useState", Some(owner.to_string()))],
+            "wrong owner for: {source}"
+        );
+    }
+}
+
+/// Two declarations in one module are two disjoint bodies, and neither borrows
+/// the other's uses.
+#[test]
+fn each_declaration_owns_only_its_own_body() {
+    let source = r#"
+export hook useA() { useState(1); }
+export hook useB() { useEffect(noop); }
+"#;
+    assert_eq!(
+        use_owners(source),
+        vec![
+            ("useState", Some("useA".to_string())),
+            ("useEffect", Some("useB".to_string())),
+        ]
+    );
+}
+
+/// A method body is not a module-level declaration, and naming it would be
+/// worse than naming nothing: `read` is not a name an importer can reach, and
+/// it can collide with an export that has nothing to do with it.
+#[test]
+fn a_use_inside_a_method_has_no_module_level_owner() {
+    for source in [
+        "class Store { read() { return localStorage.getItem(\"k\"); } }",
+        "const store = { read() { return localStorage.getItem(\"k\"); } };",
+        "register({ onMount() { useEffect(noop); } });",
+    ] {
+        let owners: Vec<_> = scan_client_api_uses(source)
+            .iter()
+            .map(|use_site| use_site.owner.clone())
+            .collect();
+        assert_eq!(owners, vec![None], "method body claimed an owner: {source}");
+    }
+}
+
+/// The other half of the fixpoint's edge set. A wrapper is client-only when it
+/// reaches a client-only API *or* calls a hook that does, and the second clause
+/// needs the calling body as much as the first.
+#[test]
+fn a_hook_call_records_the_body_that_makes_it() {
+    let source = r#"
+export hook useTheme() {
+  const { pathname } = useRoute();
+  useMediaQuery(() => track());
+}
+useRoute();
+"#;
+    let owners: Vec<_> = scan_hook_calls(source)
+        .iter()
+        .map(|call| {
+            (
+                call.name.to_string(),
+                call.owner.as_ref().map(ToString::to_string),
+            )
+        })
+        .collect();
+    assert_eq!(
+        owners,
+        vec![
+            ("useRoute".to_string(), Some("useTheme".to_string())),
+            ("useMediaQuery".to_string(), Some("useTheme".to_string())),
+            ("useRoute".to_string(), None),
+        ]
+    );
+}
+
+/// An anonymous body at module level names nobody, so nothing inside it is
+/// attributed — the walk declines rather than reaching for the next name up.
+#[test]
+fn an_anonymous_module_level_body_owns_nothing() {
+    let owners: Vec<_> = scan_client_api_uses("(() => { useState(1); })();")
+        .iter()
+        .map(|use_site| use_site.owner.clone())
+        .collect();
+    assert_eq!(owners, vec![None]);
+}
+
+/// An unbalanced source is a syntax error somebody else reports; the walk still
+/// has to finish over it rather than loop or panic.
+#[test]
+fn an_unbalanced_source_still_scans() {
+    for source in [
+        "export hook useTheme() { useState(1);",
+        "}}} useState(1);",
+        "function f( { useState(1); }",
+        "import { useState as from \"react\";",
+    ] {
+        let _ = scan_client_api_uses(source);
+        let _ = scan_hook_calls(source);
+        let _ = scan_imports(source);
+    }
+}

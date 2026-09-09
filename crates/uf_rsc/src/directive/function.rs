@@ -2,14 +2,19 @@
 //!
 //! A directive at the top of a function body turns that one closure into a
 //! server action, so the pass has to decide which `{` opens a function body at
-//! all — the single place the scanner reasons about syntax rather than tokens
-//! — and then walk backwards to whatever names the function, falling back to a
-//! stable ordinal when nothing does.
+//! all, and then walk backwards to whatever names the function, falling back to
+//! a stable ordinal when nothing does.
+//!
+//! Both of those questions are asked elsewhere too — `scan::owner` needs the
+//! same two answers to say which body a `useState` call sits in — so they live
+//! in `crate::scan::owner` and this module reads them. There is one place that
+//! decides whether a `{` opens a function body, for the reason there is one
+//! lexer: a second opinion is a second set of edge cases to keep in step.
 
-use compact_str::CompactString;
 use uf_infra::LineIndex;
 
-use crate::scan::{Token, TokenKind, matching_open};
+use crate::scan::owner::{FunctionHead, function_head, function_name};
+use crate::scan::{Token, TokenKind};
 
 use super::{
     DirectiveIssue, DirectiveKind, DirectiveScan, FunctionDirective, FunctionOwner, line_column,
@@ -70,133 +75,22 @@ pub(crate) fn scan_function_directives(
     }
 }
 
-/// Where the head of a function whose body opens at `brace` sits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FunctionHead {
-    /// Token index of the `=>` of an arrow function.
-    Arrow(usize),
-    /// Token index of the `)` closing the parameter list.
-    Params(usize),
-}
-
-/// Decide whether the `{` at `brace` opens a function body.
-///
-/// This is the one place the lexer has to reason about syntax. The walk goes
-/// backwards from the brace, skipping a Flow return-type annotation, and stops
-/// at the first token that decides the question:
-///
-/// * `=>` — an arrow function body;
-/// * `)`  — a parameter list, unless the token before its `(` is a control-flow
-///   keyword, which is what separates `function f() {` from `if (c) {`;
-/// * anything else — a block, an object literal, or a class body.
-fn function_head(source: &str, tokens: &[Token], brace: usize) -> Option<FunctionHead> {
-    const MAX_TYPE_TOKENS: usize = 128;
-
-    let mut at = brace.checked_sub(1)?;
-    for _ in 0..MAX_TYPE_TOKENS {
-        let token = tokens.get(at)?;
-        match token.kind {
-            TokenKind::Arrow => return Some(FunctionHead::Arrow(at)),
-            TokenKind::Punct(b')') => {
-                let open = matching_open(tokens, at, b'(', b')')?;
-                let previous = open.checked_sub(1)?;
-                let head = tokens.get(previous)?;
-                if head.kind == TokenKind::Ident
-                    && matches!(
-                        head.text(source),
-                        "if" | "for" | "while" | "switch" | "catch" | "with"
-                    )
-                {
-                    return None;
-                }
-                return Some(FunctionHead::Params(at));
-            }
-            // Tokens a Flow return-type annotation is made of.
-            TokenKind::Ident
-            | TokenKind::String
-            | TokenKind::Number
-            | TokenKind::Punct(
-                b':' | b'<' | b'>' | b'|' | b'&' | b'?' | b'.' | b'[' | b']' | b'+',
-            ) => {
-                if token.kind == TokenKind::Ident
-                    && matches!(token.text(source), "else" | "try" | "do" | "finally")
-                {
-                    return None;
-                }
-                at = at.checked_sub(1)?;
-            }
-            _ => return None,
-        }
-    }
-    None
-}
-
 /// Best-effort name for the function whose head is at `head`.
+///
+/// An inline closure has no name to give, and numbering it is what makes an
+/// anonymous action addressable at all: the ordinal is its position among the
+/// module's other anonymous actions, which is stable as long as the module is.
 fn function_owner(
     source: &str,
     tokens: &[Token],
     head: FunctionHead,
     anonymous: &mut u32,
 ) -> FunctionOwner {
-    let params_start = match head {
-        FunctionHead::Arrow(arrow) => arrow
-            .checked_sub(1)
-            .map(|before| {
-                if tokens[before].is_punct(b')') {
-                    matching_open(tokens, before, b'(', b')').unwrap_or(before)
-                } else {
-                    before
-                }
-            })
-            .unwrap_or(arrow),
-        FunctionHead::Params(close) => matching_open(tokens, close, b'(', b')').unwrap_or(close),
-    };
-
-    if let Some(name) = binding_name(source, tokens, params_start) {
+    if let Some(name) = function_name(source, tokens, head) {
         return FunctionOwner::Named(name);
     }
 
     let ordinal = *anonymous;
     *anonymous = anonymous.saturating_add(1);
     FunctionOwner::Anonymous { ordinal }
-}
-
-/// Walk backwards from the parameter list to whatever names the function.
-fn binding_name(source: &str, tokens: &[Token], params_start: usize) -> Option<CompactString> {
-    const MAX_HEAD_TOKENS: usize = 16;
-
-    let mut at = params_start;
-    for _ in 0..MAX_HEAD_TOKENS {
-        let previous = at.checked_sub(1)?;
-        let token = tokens.get(previous)?;
-        match token.kind {
-            TokenKind::Ident => {
-                let text = token.text(source);
-                if matches!(text, "function" | "async" | "hook" | "component") {
-                    at = previous;
-                    continue;
-                }
-                return Some(CompactString::from(text));
-            }
-            TokenKind::Punct(b'*') => {
-                at = previous;
-                continue;
-            }
-            // Generic parameter list of a method or function.
-            TokenKind::Punct(b'>') => {
-                at = matching_open(tokens, previous, b'<', b'>')?;
-                continue;
-            }
-            TokenKind::Punct(b'=' | b':') => {
-                let name = tokens.get(previous.checked_sub(1)?)?;
-                return match name.kind {
-                    TokenKind::Ident => Some(CompactString::from(name.text(source))),
-                    TokenKind::String => Some(CompactString::from(name.quoted_content(source))),
-                    _ => None,
-                };
-            }
-            _ => return None,
-        }
-    }
-    None
 }
