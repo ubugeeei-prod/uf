@@ -1,0 +1,229 @@
+---
+title: "Rendering modes · uf"
+description: "Where a document comes from, and what the browser does once it has one."
+---
+
+<p className="eyebrow">The tools</p>
+
+# Rendering modes
+
+<div className="lede">
+Two questions, not one. Where does the document come from, and what happens
+when a visitor clicks a link? uf answers them with two settings, because the
+answers compose.
+</div>
+
+## The two axes
+
+`app.rendering.modes` says where a document comes from, and `uf build` picks
+between the strategies it allows **per route**: a route with no parameters is
+prerendered, a route with parameters is prerendered when its page exports
+`generateStaticParams`, and anything left over is rendered per request. The
+[config reference](/reference/config) has the table.
+
+One value in that list is not a per-route answer and cannot share it: `"csr"`
+is a single-page application, and it is [below](#csr-a-single-page-application).
+
+`app.rendering.navigation` says what happens next, and it is one answer for the
+whole application:
+
+| | `"client"` (the default) | `"document"` |
+| --- | --- | --- |
+| a link | the router resolves the next route in the page that is open | the browser fetches the next document |
+| `["ssg"]` | a prerendered site the client router takes over | a static site of documents |
+| `["ssr"]` | a server-rendered app the client router takes over | a server-rendered application in the older sense |
+
+Every cell is a deployment somebody wants, which is why this is a second key
+rather than a fifth value in the first one. A route is prerendered or it is
+not, and the answer does not change because of what the browser does with the
+result.
+
+## `navigation: "document"`
+
+```js
+// uf.config.js
+export default defineConfig({
+  app: {
+    rendering: {
+      modes: ["ssg"],
+      navigation: "document",
+    },
+  },
+  build: { staticBuild: true },
+});
+```
+
+What changes:
+
+- **A `Link` is an ordinary anchor.** No handler of uf's on it, nothing calling
+  `preventDefault`, no prefetch on hover or focus. The element the browser gets
+  is the one `<a href>` would have produced.
+- **`useRouter().push` and `.replace` hand the URL to the browser**, as
+  `location.assign` and `location.replace`. `refresh()` is a reload.
+- **No `popstate` listener is installed.** Nothing pushed a history entry, so
+  the back button asks the browser for the previous document — which is the one
+  it already has.
+
+What does not change:
+
+- **The page still hydrates.** A `"use client"` component is still a
+  `"use client"` component: a search box still filters, a theme toggle still
+  toggles. This mode is the client router minus the takeover, not the browser
+  minus JavaScript.
+- **Every route is still prerendered or rendered exactly as `modes` says.** The
+  documents in the output directory are the same documents.
+- **`uf dev` behaves the way the deployment does.** The mode is written into
+  the client entry with no `isProduction` beside it, because a development
+  server whose links resolve in the page and a deployment whose links fetch a
+  document are two applications, and the one on the screen is not the one being
+  shipped.
+
+`uf build` says so in its summary:
+
+```text
+  rendering    every route prerendered
+  navigation   a document request; this build ships no client router
+```
+
+and `uf explain build` names it on the bundle stage. `.uf/build/meta/uf-build-manifest.json`
+carries it as `rendering.navigation`, for a deploy step that needs to know
+whether the output directory is answered by the browser or by the documents
+alone.
+
+## What it does not buy you
+
+The honest limit, because it is the thing people expect and do not get.
+
+**It does not empty the bundle.** uf hydrates the whole document rather than
+per-island, so a route with a `"use client"` boundary anywhere in it still
+loads React and still loads that route's components. What document navigation
+removes is the navigation: the history listener, the prefetching, and resolving
+a route in the browser. A route that reaches **no** client boundary already
+ships no page at all — that is the server-component split, and it is on by
+default in both modes — so a content site written in server components was
+already close to zero JavaScript before this key existed, and this key is what
+stops the router taking its links over.
+
+**It is not a separate runtime.** `@uniflowed/router` is one package with one
+client entry, and the mode is a constant the entry passes to it. Making the
+navigation code *absent* from the bundle rather than unreachable would mean
+`RouterProvider` taking its navigator from the entry rather than from module
+state; that is a real change and it is not this one.
+
+**It is not faster on its own.** A document request is a round trip to the
+origin or the CDN. What it buys is a page that behaves the way the web does
+without uf being involved: the browser's scroll restoration, the browser's
+history, the browser's handling of a middle click, and one less thing that can
+be wrong.
+
+## `csr`: a single-page application
+
+The complement of document navigation, on the other axis. Where
+`navigation: "document"` keeps every document and takes the router away, `csr`
+keeps the router and takes every document away:
+
+```js
+// uf.config.js
+export default defineConfig({
+  app: {
+    rendering: {
+      modes: ["csr"],
+    },
+  },
+});
+```
+
+`uf build` then writes **one** document — an empty root, the stylesheets and
+the module script — and the client router resolves and renders every route from
+it. No route is prerendered, no server renders one, and no server bundle
+survives the build.
+
+`"csr"` cannot share the list. Every other value answers "where does *this
+route's* document come from", which is what makes the list a set the build
+picks from per route; this one answers it for the whole application with a
+document that belongs to no route, and once it is chosen there is no per-route
+decision left. `["csr", "ssg"]` is refused while the config is read, because its
+two honest readings — "prerender what you can and fall back to the shell" and
+"the shell, and never mind the rest" — are different applications. It is also
+not in the default list, which everything else is: a build that decided to be a
+single-page application because nothing forbade it would be the largest
+semantic change a default has ever made.
+
+### The two files, and the rule your host needs
+
+The build writes the shell twice:
+
+| File | What serves it |
+| --- | --- |
+| `index.html` | the host, for `/` |
+| `404.html` | the host, for every path it has no file for |
+
+The second is the one that matters. Under this plan `/orders` has no file, so a
+plain static host would 404 it — a `dist/` with a hole in it. Writing the shell
+as the error document covers the hosts that have one (GitHub Pages, Netlify,
+an S3 bucket with an error document), and the 404 status it comes with is the
+right status for a URL this application does not have — the not-found boundary
+is what the browser then renders into it. A host with a proper SPA rewrite
+serves `index.html` and never looks at `404.html`.
+
+`uf preview` applies that rewrite itself, so the preview is right about a
+deployment that is configured, rather than right about one nobody does.
+
+### A route that needs a server is refused
+
+Every other plan finds these by trying: a build that prerenders a page calls
+`cookies()` where there is no request, and the render fails with the route
+named. This plan renders nothing, so the same page would build, deploy, and
+fail in a browser.
+
+So `uf build` refuses it before the bundle, from the server-component analysis
+it has already run, naming the route:
+
+```text
+2 things this project needs a server, and `app.rendering.modes` is ["csr"], so
+this build writes one shell and every route is rendered in the browser
+  /orders (session.js) — it imports `@uniflowed/server`, which only runs on a
+    server — `cookies()`, `headers()` and `draftMode()` all read a request, and
+    there is none
+  /api — it is a route handler, and a handler answers a request rather than
+    rendering a page
+```
+
+Four things count: a `_uf.route.js`, a `_uf.middleware.js`, a callable server
+action, and any module the application reaches that imports a server-only
+package (`@uniflowed/server`, `@uniflowed/db`, `server-only`) or is named
+`*.server.js`. Dead code does not: a module nothing imports is not a reason to
+refuse a build.
+
+A module no page reaches — a layout, most often, because no page imports the
+layout it renders inside — is named by its file rather than by a route, because
+naming a route it does not belong to would be worse than naming none.
+
+### What it costs
+
+**The document says nothing.** No `<title>`, no description, no content. A
+crawler that runs no JavaScript sees an empty page for every URL, and a reader
+sees nothing until the bundle has loaded and the route has resolved. That is
+what a single-page application is, and it is why this is a declaration a project
+makes rather than something a build falls back to.
+
+**The loader runs in the browser.** There was no server render to run it in, so
+every route's data is fetched after the bundle has loaded — which is a round
+trip after a round trip.
+
+If either of those is unacceptable for some routes and not others, the answer
+is not this mode: it is `["ssg"]` or the default, which decide per route.
+
+## When to choose document navigation
+
+- The site is documents — a manual, a blog, a marketing site — and the client
+  router is buying an animation nobody asked for.
+- Something downstream needs a full document per URL: a caching layer that
+  keys on the URL, an analytics tag that runs on load, an embed that expects
+  a page load.
+- The application is being served behind something that rewrites documents.
+
+And when not to: an application with state that has to survive a navigation —
+a media player that keeps playing, a form half filled in, a list scrolled to
+where the visitor left it — is asking for the client router, which is why it is
+the default.

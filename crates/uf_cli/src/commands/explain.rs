@@ -848,14 +848,7 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             // and it is the finer point of red line 7: uf names the providers
             // it orchestrates, and a provider's internals stay the provider's.
             provider: builder_provider(resolved),
-            detail: match RenderingPlan::resolve(&resolved.config).emits_a_server() {
-                true => "client bundle, then the server bundle".to_string(),
-                // Said, because the difference is the whole of what
-                // `build.staticBuild` does and none of it is visible from the
-                // output directory. The bundle is still built — the prerender
-                // renders through it — and then removed.
-                false => "client bundle, then a server bundle the build removes".to_string(),
-            },
+            detail: bundle_detail(RenderingPlan::resolve(&resolved.config)),
         },
         prerender_stage(resolved),
         adapter_stage(resolved),
@@ -913,6 +906,32 @@ fn library_build_stages(resolved: &ResolvedConfig, plan: &LibraryPlan) -> Vec<St
 
 /// What the build renders now, and what it leaves to a server.
 ///
+/// The two bundles, and what the client one is an entry for.
+///
+/// The server half is the one `build.staticBuild` changes, and it is said out
+/// loud because the difference is the whole of what that setting does and none
+/// of it is visible from the output directory: the bundle is still built — the
+/// prerender renders through it — and then removed.
+///
+/// The client half is the one `app.rendering.navigation` changes, and it is
+/// said for the same reason. Two `dist/` directories built from one project
+/// with the two settings hold the same documents and the same chunks; what
+/// differs is whether the entry that runs in them takes navigation over, and
+/// red line 7 is that a reader should not have to open a chunk to find out.
+fn bundle_detail(plan: RenderingPlan) -> String {
+    let server = match plan.emits_a_server() {
+        true => "client bundle, then the server bundle",
+        false => "client bundle, then a server bundle the build removes",
+    };
+    match plan.ships_a_client_router() {
+        true => server.to_string(),
+        false => format!(
+            "{server}; the client entry hydrates and installs no router, because \
+             `app.rendering.navigation` is `document`"
+        ),
+    }
+}
+
 /// The answer to a question `uf explain build` could not answer until
 /// ubugeeei-prod/uf#336: `app.rendering.modes` and `build.staticBuild` select
 /// between three behaviours, and a reader looking at `dist/` cannot tell which
@@ -932,6 +951,11 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
         Prerender::Nothing => {
             "nothing: `app.rendering.modes` allows no `ssg`, so every route is rendered per \
              request"
+                .to_string()
+        }
+        Prerender::Shell => {
+            "one shell, which is no route's document: `app.rendering.modes` is [\"csr\"], so \
+             every route is resolved and rendered in the browser"
                 .to_string()
         }
     };

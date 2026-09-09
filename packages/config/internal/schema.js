@@ -359,12 +359,34 @@ export type UniflowedConfig = {
       readonly enabled?: boolean,
     },
     readonly rendering?: {
-      readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr">,
+      // `"csr"` is the one value that cannot share the list: it renders every
+      // route in the browser from one shell, where the others write a document
+      // per route, so there is no per-route choice left for the list to hold.
+      // `["csr"]` is a single-page application; see docs/app/guide/rendering.
+      readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr" | "csr">,
+      // What the browser does when a visitor follows a link, which is a
+      // different question from `modes` rather than a fifth value in it:
+      // `modes` says where a document comes from, per route, and this says
+      // what happens once the browser has one. `"document"` is a full document
+      // request — the client router is not installed and `Link` renders an
+      // ordinary anchor. See docs/app/guide/routing/navigation.
+      readonly navigation?: "client" | "document",
       readonly cache?: {
         readonly actions?: boolean,
         readonly data?: boolean,
         readonly fetch?: boolean,
         readonly route?: boolean,
+        // Where cache entries live, and the only thing here that is a *name*
+        // rather than a switch: `"memory"` (the default) is one process,
+        // `"filesystem"` is uf's built-in durable provider, and anything else
+        // is a module specifier exporting `createCacheProvider` — the same
+        // shape `builder.module` has, and for the same red line. Turning this
+        // on caches nothing new: a route still has to state a lifetime.
+        readonly store?: string,
+        // Where `"filesystem"` keeps them. Defaults to `.uf/cache/route` under
+        // the project. A deployment that has one writable directory — `/tmp` on
+        // a Lambda, a mounted volume in a container — names it here.
+        readonly storeDir?: string,
       },
     },
   },

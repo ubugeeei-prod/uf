@@ -28,7 +28,7 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, LibraryPlan, Prerender, RenderingPlan, load_config};
+use uf_config::{DeployAdapter, LibraryPlan, Navigation, Prerender, RenderingPlan, load_config};
 use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
@@ -52,6 +52,7 @@ use crate::ui::Ui;
 mod guards;
 mod library;
 mod site;
+mod spa;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
@@ -275,10 +276,43 @@ pub(crate) fn build(
     // which has a bundle to load and does not have it; that is refused in
     // `commands::serve`, where it is a fact rather than an opinion.
     let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
+    // Before the build rather than after it: a project whose scheduled work
+    // this target would never run should hear so in a second, not after a
+    // bundle. ubugeeei-prod/uf#531.
+    let declared_schedules = match adapter {
+        Some(adapter) => {
+            let found = deploy::schedules::discover_schedules(&root, &resolved.config)?;
+            deploy::schedules::refuse_unrunnable(adapter, &found)?;
+            found
+        }
+        None => Vec::new(),
+    };
     // The fourth thing that needs a process, and the only one `uf` can see
     // without evaluating a module. Checked here rather than in the builder for
     // exactly that reason — see `refuse_unanswerable_actions`.
     refuse_unanswerable_actions(plan, &rsc, adapter, standalone)?;
+    // And everything else that needs one, for the one plan whose builder will
+    // never find it. The other three prerender something, so a page that reads
+    // a request throws while it is being rendered and the build says so; a
+    // shell build renders no route at all, so the same page would build,
+    // deploy, and fail in a browser. See [`spa`].
+    //
+    // Not lifted by `--adapter` or `--compile`, unlike the actions above, and
+    // the difference is which declaration each is about. `staticBuild` is a
+    // claim about the *artefact*, so a build that also emits a server has
+    // honoured it; `modes: ["csr"]` is a claim about the **routes** — that
+    // every one of them is rendered in a browser — and that is still true
+    // inside a Worker or an executable, because neither of them writes the
+    // per-route documents the shell exists instead of.
+    if plan.prerender() == Prerender::Shell {
+        spa::refuse(
+            &resolved.root,
+            &routes,
+            &server_modules,
+            &rsc.graph,
+            &plan.because(),
+        )?;
+    }
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -381,6 +415,12 @@ pub(crate) fn build(
             "server": plan.emits_a_server(),
             "declaredBy": plan.source().key(),
             "perRequest": vite.per_request.clone().unwrap_or_default(),
+            // Beside the prerender because a deploy step asks the same
+            // question about it: whether what is in the output directory is
+            // answered by the browser or by the documents alone. `client`
+            // for every project that has not set it, so the field is a fact
+            // rather than a presence to test for.
+            "navigation": plan.navigation().as_str(),
         },
         "runtime": {
             "default": resolved.config.app.runtime.default,
@@ -391,6 +431,12 @@ pub(crate) fn build(
             "fetch": resolved.config.app.rendering.cache.fetch,
             "data": resolved.config.app.rendering.cache.data,
             "actions": resolved.config.app.rendering.cache.actions,
+            // Where the entries go, for a deploy step that has to provision it:
+            // `"filesystem"` needs a writable directory that outlives the
+            // process, and a module specifier needs whatever that module
+            // connects to. Absent means memory, which needs nothing.
+            "store": resolved.config.app.rendering.cache.store.as_deref(),
+            "storeDir": resolved.config.app.rendering.cache.store_dir.as_deref(),
         },
     });
     timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
@@ -474,7 +520,9 @@ pub(crate) fn build(
                 "writing the {} adapter's output",
                 adapter.as_str()
             ));
-            Some(timer.measure("adapter", || deploy::deploy(ui, adapter, link))?)
+            Some(timer.measure("adapter", || {
+                deploy::deploy(ui, adapter, link, &declared_schedules)
+            })?)
         }
         None => None,
     };
@@ -517,6 +565,18 @@ pub(crate) fn build(
         Prerender::Everything => "every route prerendered",
         Prerender::Possible => "prerendered where it can be, the rest per request",
         Prerender::Nothing => "nothing prerendered; every route per request",
+        Prerender::Shell => "one shell prerendered; every route rendered in the browser",
+    };
+    // And what it decided about the other axis. A row rather than a line only
+    // when it is not the default: `app.rendering.navigation` is `client` in
+    // every project that has not heard of it, and a summary row saying so on
+    // every build is a row nobody reads. A build that ships no client router
+    // has to say so — it is the difference between a link that resolves in the
+    // page and a link that fetches a document, and nothing in `dist/` shows
+    // which one happened.
+    let navigation = match plan.navigation() {
+        Navigation::Client => None,
+        Navigation::Document => Some("a document request; this build ships no client router"),
     };
     let per_request = vite.per_request.clone().unwrap_or_default();
     let per_request_count = per_request.len().to_string();
@@ -672,6 +732,9 @@ pub(crate) fn build(
             Tone::Number,
         ));
         summary_rows.push(KeyValue::new("rendering", rendering));
+        if let Some(navigation) = navigation {
+            summary_rows.push(KeyValue::new("navigation", navigation));
+        }
         renderer.key_values(out, 2, &summary_rows);
         renderer.blank(out);
 
@@ -905,6 +968,14 @@ fn refuse_an_application_artefact(
 /// a refusal in `uf` does. Without it the driver would have to reconstruct
 /// "which setting made this a static build" from a flag that no longer says,
 /// and the two halves of one rule would tell a reader to look in two places.
+///
+/// `app.rendering.navigation` is deliberately **not** a fourth. It is not a
+/// decision about this build — it is the same answer for `uf dev`, `uf build`
+/// and `uf preview`, and neither of the first two is handed a rendering plan
+/// at all — so a builder reads it out of `uf.config.js` the way it reads
+/// `app.react.strictMode`. Passing it here as well would make the client entry
+/// a function of two sources that agree until one of them is a flag somebody
+/// forgot to forward.
 fn build_arguments(out_dir: &str, plan: RenderingPlan) -> Vec<String> {
     let mut args = vec![
         String::from("--out-dir"),

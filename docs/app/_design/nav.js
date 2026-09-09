@@ -96,6 +96,18 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Files become routes; layouts nest; loaders run before the page.",
       },
       {
+        href: "/guide/server-components",
+        title: "Server Components",
+        blurb:
+          "The boundary a directive draws, the graph that resolves it, and a split at the route, not the module.",
+      },
+      {
+        href: "/guide/server-actions",
+        title: "Server actions",
+        blurb:
+          "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
+      },
+      {
         href: "/guide/styling",
         title: "Styling and content",
         blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
@@ -148,9 +160,15 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Vite runs both; uf decides what it is handed.",
       },
       {
+        href: "/guide/rendering",
+        title: "Rendering modes",
+        blurb: "Where a document comes from, and what the browser does once it has one.",
+      },
+      {
         href: "/guide/cache",
         title: "Caching",
-        blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
+        blurb:
+          "A route cache and a fetch cache, opt-in, in memory by default, durable when you say so.",
       },
       {
         href: "/guide/auth",

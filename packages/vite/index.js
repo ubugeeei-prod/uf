@@ -135,6 +135,20 @@ export default function uniflowed(options = {}) {
   // no `uf.config.js` will mention. It only ever reaches the *development*
   // client entry; see `flowPlugin`'s `load`. ubugeeei-prod/uf#516.
   const strictMode = app.react?.strictMode !== false;
+  // What the browser does with a link, read here for the reason Strict Mode is
+  // and honoured in every command rather than in the build alone: it is the
+  // one setting whose whole effect is what happens on a click, so a dev server
+  // that disagreed with the deployment would be the wrong application to look
+  // at. Anything but `"document"` is the client router, which is what every
+  // project that has not heard of the key has.
+  const navigation = app.rendering?.navigation === "document" ? "document" : "client";
+  // Whether this application starts by attaching to markup or by rendering
+  // into an empty root. `["csr"]` is the only list that means the second, and
+  // `uf` refuses that value beside any other while the config is read — so the
+  // question here is "is it in the list", not "is it the only thing in it",
+  // and a driver started by hand on a config `uf` never validated gets the same
+  // answer for the same reason a project would want.
+  const mount = (app.rendering?.modes ?? []).includes("csr") ? "render" : "hydrate";
 
   const accessibility = ufConfig.accessibility ?? {};
 
@@ -143,6 +157,8 @@ export default function uniflowed(options = {}) {
       routerRoot,
       appEntry,
       strictMode,
+      navigation,
+      mount,
       command: options.command,
       accessibility,
     }),
@@ -157,7 +173,15 @@ export default function uniflowed(options = {}) {
   ];
 }
 
-function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }) {
+function flowPlugin({
+  routerRoot,
+  appEntry,
+  strictMode,
+  navigation,
+  mount,
+  command,
+  accessibility,
+}) {
   let root = process.cwd();
   let isProduction = false;
   /**
@@ -356,8 +380,17 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }
       // Strict Mode belongs to the client entry and to development only: a
       // build passes `false`, so the generated module is the one that existed
       // before #516 and a visitor's browser renders once.
+      //
+      // `navigation` is in the same entry and has no `isProduction` beside it,
+      // deliberately: it is what a link does, and a dev server whose links
+      // behave differently from the deployment is the wrong thing to be
+      // looking at. See `clientModuleSource`.
       if (id === resolved(VIRTUAL.client)) {
-        return clientModuleSource(entryPath, { strictMode: strictMode && !isProduction });
+        return clientModuleSource(entryPath, {
+          strictMode: strictMode && !isProduction,
+          navigation,
+          mount,
+        });
       }
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
       // Only `virtual:uf/server` imports this, so it is only ever asked for in
@@ -686,6 +719,30 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }
                 return true;
               }
               if (notDocument != null) return false;
+
+              // A single-page project's deployment answers every navigation
+              // with the same empty shell, so this does too. Rendering the
+              // route here instead would have been the better-looking dev
+              // server and the wrong one: a page that only works because the
+              // server rendered it would work all through development and be
+              // blank the day it shipped. It is the same argument
+              // `app.rendering.navigation` makes about a link, one level up.
+              //
+              // The three steps above still ran — the guard, the action, the
+              // handler — and each of them is something `uf build` refuses in
+              // a `["csr"]` project by name. A dev server that skipped them
+              // would hide the very thing the build is going to stop.
+              if (mount === "render") {
+                response.statusCode = 200;
+                response.setHeader("content-type", "text/html; charset=utf-8");
+                const shell = entry.shellDocument({
+                  scripts: [devUrlFor(VIRTUAL.client)],
+                  styles: [],
+                  preloads: [],
+                });
+                response.end(await devServer.transformIndexHtml(url, shell));
+                return true;
+              }
 
               const result = await entry.render(
                 url,

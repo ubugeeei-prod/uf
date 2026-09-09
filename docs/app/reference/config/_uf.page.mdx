@@ -77,7 +77,10 @@ which is the fastest way to answer "what is it actually using".
 | `builtins.reactCompiler` | on | The official React Compiler |
 | `builtins.style` | — | The style engine |
 | `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
-| `rendering.cache.*` | all `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
+| `rendering.navigation` | `"client"` | What a link does: the client router takes it over, or the browser fetches a document — see below |
+| `rendering.cache.route`, `.fetch` | `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
+| `rendering.cache.store` | `"memory"` | Where entries live: one process, `"filesystem"`, or a module exporting `createCacheProvider` |
+| `rendering.cache.storeDir` | `.uf/cache/route` | Where `"filesystem"` keeps them |
 | `targets` | — | Runtime targets the build must satisfy |
 
 ### rendering.modes
@@ -97,10 +100,24 @@ a process.
 | contains `ssg` and `ssr` (the default) | Prerenders what it can; the rest are rendered by `uf start`, `uf preview` or a deploy adapter |
 | `["ssg"]` | Prerenders everything, and **fails**, naming the route, if anything can only be answered per request |
 | `["ssr"]` | Prerenders nothing. Every route is rendered per request |
+| `["csr"]` | Prerenders one shell that is no route's document, and the browser renders every route from it |
 
 `ppr` and `isr` are **Planned**. Naming one alongside an implemented mode is
 allowed and selects nothing; a list that names *only* planned modes is refused
 while the config is read, because there is no build behind it.
+
+`csr` is the one value that **cannot share the list**. The others answer "where
+does this route's document come from", which is what makes the list a set the
+build picks from per route; `csr` answers it for the whole application with a
+document that belongs to no route, so there is no per-route decision left to
+make. `["csr", "ssg"]` is refused while the config is read, and so is `csr`
+beside `build.staticBuild`, which prerenders every route where this prerenders
+none. It is also the one value **not in the default list**. A `csr` build
+refuses, by name and before the bundle, any route that needs a server — a route
+handler, a middleware, a callable server action, or a module the application
+reaches that imports `@uniflowed/server`, `@uniflowed/db` or `server-only`. The
+[guide](/guide/rendering) has the two files it writes and the rewrite rule a
+host needs.
 
 Three things can only be answered per request, and under `["ssg"]` each is an
 error naming the route: a page with parameters and no `generateStaticParams`, a
@@ -118,6 +135,33 @@ which is how a route with *no* parameters keeps out of the prerender —
 generate. `"auto"` is the default. Next.js's `"force-static"` and `"error"` are
 constraints uf does not check yet, and a page that names one is refused rather
 than quietly rendered as `"auto"`.
+
+### rendering.navigation
+
+A **different question** from `modes`, which is why it is a second key rather
+than a fifth value in that list: `modes` says where a document comes from and is
+decided per route, and this says what the browser does once it has one.
+
+| Value | What a link does |
+| --- | --- |
+| `"client"` (the default) | The router takes a plain left click over, resolves the next route and commits it into the page that is open |
+| `"document"` | Nothing of uf's: the browser follows the link, the way it follows one on a page with no JavaScript at all |
+
+Under `"document"` a `Link` renders the same anchor with no click handler and
+no prefetching, `useRouter().push` and `.replace` become `location.assign` and
+`location.replace`, `refresh()` is a reload, and no `popstate` listener is
+installed. The page still **hydrates**, so a `"use client"` component is still
+interactive — this is the client router minus the takeover, not the browser
+minus JavaScript. It composes with every value of `modes`: a static site of
+documents is `["ssg"]` with `"document"`, and a server-rendered application in
+the older sense is `["ssr"]` with it.
+
+The mode is written into the client entry as a constant with no `isProduction`
+beside it, so `uf dev` behaves the way the deployment does. `uf build` prints a
+`navigation` row when it is not the default, `uf explain build` names it on the
+bundle stage, and `.uf/build/meta/uf-build-manifest.json` carries it as
+`rendering.navigation`. The [guide](/guide/rendering) has what it buys and what
+it does not.
 
 ## dev
 

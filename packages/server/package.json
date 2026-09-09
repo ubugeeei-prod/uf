@@ -14,6 +14,7 @@
     ".": "./index.js",
     "./bun": "./bun.js",
     "./cache": "./cache.js",
+    "./cache/filesystem": "./cache-filesystem.js",
     "./edge": "./edge.js",
     "./events": "./events.js",
     "./fetch": "./fetch.js",
@@ -29,6 +30,7 @@
   },
   "files": [
     "bun.js",
+    "cache-filesystem.js",
     "cache.js",
     "edge.js",
     "events.js",

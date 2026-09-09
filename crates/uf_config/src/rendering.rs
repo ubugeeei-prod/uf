@@ -17,6 +17,14 @@
 //! only two questions the rest of the toolchain asks: **what gets prerendered**
 //! and **is there a server**.
 //!
+//! A third setting rides along without interacting with either:
+//! `app.rendering.navigation`, which says what the browser does once it has a
+//! document. It is carried here rather than read separately for the reason the
+//! other two are resolved together — the plan is what every caller already
+//! asks for, and a second reader of the same file is a second place for it to
+//! be wrong — but it decides nothing about the prerender, and
+//! [`RenderingPlan::resolve`] says so where it is copied in.
+//!
 //! # Why a plan and not two booleans
 //!
 //! Because the interesting case is the contradiction. `staticBuild: true` with
@@ -29,7 +37,7 @@
 
 use camino::Utf8Path;
 
-use crate::{ConfigError, RenderingMode, UniflowedConfig};
+use crate::{ConfigError, Navigation, RenderingMode, UniflowedConfig};
 
 /// How much of the route table `uf build` prerenders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +59,19 @@ pub enum Prerender {
     /// setting was accepted and silently meant [`Self::Possible`], which is
     /// the one behaviour the list could not select.
     Nothing,
+    /// No route, and one document that is not a route: the shell.
+    ///
+    /// `modes: ["csr"]`. The build writes a single document with an empty root
+    /// and the script tags, and the browser resolves and renders every route
+    /// from it — a single-page application.
+    ///
+    /// It is not [`Self::Nothing`] with a different name, and the difference is
+    /// what happens to a request the deployment cannot match. `Nothing` has a
+    /// server, so every URL is answered by rendering it; this has a file, so
+    /// every URL is answered by the *same* file and the answer is decided in
+    /// the browser. That is why a route that can only be answered by a server
+    /// is refused under this and not under that one.
+    Shell,
 }
 
 impl Prerender {
@@ -61,6 +82,7 @@ impl Prerender {
             Self::Everything => "everything",
             Self::Possible => "possible",
             Self::Nothing => "nothing",
+            Self::Shell => "shell",
         }
     }
 }
@@ -104,6 +126,7 @@ pub struct RenderingPlan {
     prerender: Prerender,
     server: bool,
     source: PlanSource,
+    navigation: Navigation,
 }
 
 impl RenderingPlan {
@@ -113,6 +136,32 @@ impl RenderingPlan {
         let modes = &config.app.rendering.modes;
         let per_request = modes.contains(&RenderingMode::Ssr);
         let prerendered = modes.contains(&RenderingMode::Ssg);
+        // Carried rather than resolved *with* the two settings above, because
+        // it does not interact with either: a document is prerendered or it is
+        // not, and what the browser does after it has one does not change the
+        // answer. It is in the plan because the plan is the one thing every
+        // caller already asks for, and a second `config.app.rendering.…` read
+        // at each of them is how two readers of one file come apart.
+        let navigation = config.app.rendering.navigation;
+
+        // `csr` before everything, including `staticBuild`, because it is the
+        // one value that is not a per-route answer: a project that named it has
+        // said the whole application is rendered in the browser, and `check`
+        // has already refused it beside anything that would disagree. Deciding
+        // it here rather than in the match below keeps the match about the two
+        // questions it has always been about.
+        if modes.iter().any(|mode| mode.is_exclusive()) {
+            return Self {
+                prerender: Prerender::Shell,
+                // No server, and this is the declaration rather than
+                // `staticBuild`'s: there is nothing for a server to render,
+                // because no route has a document and the one document has no
+                // route.
+                server: false,
+                source: PlanSource::Modes,
+                navigation,
+            };
+        }
 
         // `staticBuild` first, because it is the stronger claim: it is about
         // the artefact rather than about the routes, and a project that has
@@ -126,6 +175,7 @@ impl RenderingPlan {
                 prerender: Prerender::Everything,
                 server: false,
                 source: PlanSource::StaticBuild,
+                navigation,
             };
         }
         match (prerendered, per_request) {
@@ -137,6 +187,7 @@ impl RenderingPlan {
                 // message quoting a key that changed no decision sends the
                 // reader to a line that is not the problem.
                 source: PlanSource::Default,
+                navigation,
             },
             (true, false) => Self {
                 prerender: Prerender::Everything,
@@ -147,11 +198,13 @@ impl RenderingPlan {
                 // `uf start`. Every document it serves is one the build wrote.
                 server: true,
                 source: PlanSource::Modes,
+                navigation,
             },
             (false, true) => Self {
                 prerender: Prerender::Nothing,
                 server: true,
                 source: PlanSource::Modes,
+                navigation,
             },
             // Refused by `check`, which runs before any of this. Kept total
             // rather than `unreachable!()`: the fallback that cannot happen is
@@ -160,6 +213,7 @@ impl RenderingPlan {
                 prerender: Prerender::Possible,
                 server: true,
                 source: PlanSource::Default,
+                navigation,
             },
         }
     }
@@ -192,6 +246,24 @@ impl RenderingPlan {
         self.source
     }
 
+    /// What the browser does when a visitor follows a link.
+    ///
+    /// Carried by the plan rather than read from the config at each call site,
+    /// for the reason the other two are: one file, one reader.
+    #[must_use]
+    pub const fn navigation(self) -> Navigation {
+        self.navigation
+    }
+
+    /// Whether the client router takes navigation over.
+    ///
+    /// The predicate every caller actually wants, so that "is this an MPA" is
+    /// asked once here rather than spelled as a comparison in four places.
+    #[must_use]
+    pub const fn ships_a_client_router(self) -> bool {
+        matches!(self.navigation, Navigation::Client)
+    }
+
     /// The clause a refusal starts with: the setting, and what it asked for.
     ///
     /// One sentence rather than a formatted paragraph, so a caller in the CLI
@@ -207,6 +279,10 @@ impl RenderingPlan {
             PlanSource::Modes => match self.prerender {
                 Prerender::Nothing => String::from(
                     "`app.rendering.modes` does not allow `ssg`, so this build prerenders nothing",
+                ),
+                Prerender::Shell => String::from(
+                    "`app.rendering.modes` is `[\"csr\"]`, so this build writes one shell and \
+                     every route is rendered in the browser",
                 ),
                 _ => String::from(
                     "`app.rendering.modes` does not allow `ssr`, so every route has to be \
@@ -225,11 +301,13 @@ impl RenderingPlan {
 /// find out at the file it wrote rather than in the deployment where it was
 /// not honoured.
 ///
-/// Two refusals, and neither is "you named a mode uf has not written".
+/// Four refusals, and none of them is "you named a mode uf has not written".
 /// `modes` is an allowlist, so `["ssg", "isr"]` permits a strategy that never
 /// gets selected, which changes nothing and is worth no error. What is refused
-/// is a list that leaves the build with nothing it can do, and a `staticBuild`
-/// that the same file's `modes` forbids.
+/// is a list that leaves the build with nothing it can do, a `staticBuild` that
+/// the same file's `modes` forbids, and the two shapes `csr` cannot be in — it
+/// is the one value that is not a per-route answer, so it is the one value a
+/// list cannot hold *alongside* something else.
 pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), ConfigError> {
     let modes = &config.app.rendering.modes;
     if !modes.iter().any(|mode| mode.is_implemented()) {
@@ -241,6 +319,28 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
                 .collect::<Vec<_>>()
                 .join(", "),
         });
+    }
+    // Before the `staticBuild` check below, and the order is the message
+    // rather than the outcome. A `["csr"]` project with `staticBuild: true`
+    // fails either way; told by the `ssg` rule it would be advised to add
+    // `"ssg"` to the list, which is advice to build a different application.
+    if modes.iter().any(|mode| mode.is_exclusive()) {
+        if modes.len() > 1 {
+            return Err(ConfigError::CsrIsNotOneOfSeveral {
+                path: path.to_path_buf(),
+                modes: modes
+                    .iter()
+                    .map(|mode| mode.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            });
+        }
+        if config.build.static_build {
+            return Err(ConfigError::CsrWithStaticBuild {
+                path: path.to_path_buf(),
+            });
+        }
+        return Ok(());
     }
     if config.build.static_build && !modes.contains(&RenderingMode::Ssg) {
         return Err(ConfigError::StaticBuildWithoutSsg {
