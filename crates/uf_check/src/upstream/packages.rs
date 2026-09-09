@@ -481,6 +481,116 @@ mod tests {
         assert_eq!(exact(&packages, "dual"), "packages/dual/esm.js");
     }
 
+    /// A published uf library is entered through its Flow source.
+    ///
+    /// This is the manifest `uf create lib` writes, verbatim. Both halves are
+    /// shipped — the source it was written in and one plain-JavaScript build —
+    /// and `default` has to be the build, because that is what a resolver that
+    /// has never heard of Flow takes.
+    ///
+    /// uf is not that resolver. With `import` alone the `flow` key matched
+    /// nothing, `default` won, and the consumer was typed against
+    /// `dist/index.js`: the compiled output, every type erased. See
+    /// [`crate::resolution`].
+    #[test]
+    fn a_uf_library_resolves_to_its_flow_source_and_not_its_build() {
+        let packages = packages(&[Source::new(
+            "node_modules/some-lib/package.json",
+            r#"{
+              "name": "some-lib",
+              "type": "module",
+              "exports": {
+                ".": { "flow": "./index.js", "default": "./dist/index.js" }
+              }
+            }"#,
+        )]);
+
+        assert_eq!(
+            exact(&packages, "some-lib"),
+            "node_modules/some-lib/index.js"
+        );
+    }
+
+    /// The manifest's order decides, not this crate's.
+    ///
+    /// Both keys are answered, so a package that puts `import` first gets its
+    /// `import` target — which is what Node would do with the same manifest
+    /// and the same conditions. Answering a key is not ranking it.
+    #[test]
+    fn a_manifest_that_writes_import_first_still_gets_its_import_target() {
+        let packages = packages(&[Source::new(
+            "node_modules/other-lib/package.json",
+            r#"{
+              "name": "other-lib",
+              "exports": {
+                ".": { "import": "./esm.js", "flow": "./src/index.js" }
+              }
+            }"#,
+        )]);
+
+        assert_eq!(
+            exact(&packages, "other-lib"),
+            "node_modules/other-lib/esm.js"
+        );
+    }
+
+    /// No host condition is set, and this is what that costs.
+    ///
+    /// Every row here is a package resolving to something other than what the
+    /// project's own host would load. They are pinned rather than fixed
+    /// because fixing them is a decision about what `uf check` *is* — one
+    /// check of a portable graph, or one per host — which is
+    /// ubugeeei-prod/uf#735 and not a constant to edit. The point of the test
+    /// is that taking that decision has to be deliberate: whoever adds `node`,
+    /// `bun` or `deno` to the set breaks this and reads why.
+    ///
+    /// The runtime behaviour each row is measured against was checked on Node
+    /// 24 and Bun 1.3 against a real install, not read off the specification.
+    #[test]
+    fn a_host_specific_export_is_not_resolved_for_any_host() {
+        // Bun loads `./bun.js` here; Node loads `./index.js`. uf types
+        // `./index.js` — right for Node, wrong for Bun, and silent either way.
+        let bun_override = packages(&[Source::new(
+            "node_modules/p/package.json",
+            r#"{ "name": "p", "exports": { ".": { "bun": "./bun.js", "import": "./index.js" } } }"#,
+        )]);
+        assert_eq!(exact(&bun_override, "p"), "node_modules/p/index.js");
+
+        // Nothing portable to fall back to: every branch names a host, so the
+        // package resolves to nothing and goes untyped. Node and Bun both load
+        // it fine.
+        let hosts_only = packages(&[Source::new(
+            "node_modules/p/package.json",
+            r#"{ "name": "p", "exports": { ".": { "deno": "./d.js", "bun": "./b.js", "node": "./n.js" } } }"#,
+        )]);
+        assert!(hosts_only.resolve("app.js", "p").is_none());
+
+        // The same shape a dual browser/server package has had for a decade.
+        let node_or_browser = packages(&[Source::new(
+            "node_modules/p/package.json",
+            r#"{ "name": "p", "exports": { ".": { "node": "./n.js", "browser": "./b.js" } } }"#,
+        )]);
+        assert!(node_or_browser.resolve("app.js", "p").is_none());
+    }
+
+    /// `react-server` is not resolved, because there is no server graph to
+    /// resolve it for.
+    ///
+    /// uf's RSC build is one module graph today; `docs/architecture.md` says
+    /// why a Flight payload needs a second one and ubugeeei-prod/uf#519 is the
+    /// size of it. A checker that answered the condition before that graph
+    /// existed would type a module the build never produces — so this pins the
+    /// *client* branch, and it changes when #519 does.
+    #[test]
+    fn the_server_graph_condition_is_not_resolved() {
+        let packages = packages(&[Source::new(
+            "node_modules/p/package.json",
+            r#"{ "name": "p", "exports": { ".": { "react-server": "./server.js", "default": "./client.js" } } }"#,
+        )]);
+
+        assert_eq!(exact(&packages, "p"), "node_modules/p/client.js");
+    }
+
     #[test]
     fn a_wildcard_subpath_expands() {
         let packages = packages(&[Source::new(

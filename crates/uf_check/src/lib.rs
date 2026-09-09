@@ -38,6 +38,7 @@ mod error;
 mod flowconfig;
 mod limits;
 mod report;
+mod resolution;
 #[cfg(feature = "upstream-typecheck")]
 mod upstream;
 
@@ -50,6 +51,7 @@ pub use crate::error::CheckError;
 pub use crate::flowconfig::{LibPaths, lib_paths};
 pub use crate::limits::{CHECK_STACK_BYTES, CheckLimits};
 pub use crate::report::{BuiltinsTiming, CheckReport, ModuleClosure, Source, UnresolvedImport};
+pub use crate::resolution::{EXPORT_CONDITIONS, MAIN_FIELDS};
 
 /// Which type checker a build compiled in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

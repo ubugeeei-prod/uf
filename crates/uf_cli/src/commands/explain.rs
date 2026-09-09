@@ -1332,20 +1332,44 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     ]
 }
 
+/// What `uf check` runs, and — before any of it — which files it decides to
+/// run over.
+///
+/// The resolution stage is here because red line 7 says every stage has to be
+/// inspectable, and which `exports` conditions a dependency is resolved under
+/// decides *which file* of that dependency the project is type-checked
+/// against. It is not a preference: a package that ships both a Flow source
+/// and a compiled build names them with conditions, and answering the wrong
+/// one types the wrong file with no diagnostic anywhere to say so. That was
+/// worth a `const` nobody could see for exactly as long as it took someone to
+/// hit it. See `uf_check::EXPORT_CONDITIONS` and ubugeeei-prod/uf#735.
 fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
-        Stage {
-            name: "library definitions",
-            provider: "flow (upstream)".to_string(),
-            detail: "Flow's own, then `flow-typed` and whatever `.flowconfig`'s [libs] names"
-                .to_string(),
-        },
-        Stage {
-            name: "type checking",
-            provider: "flow (upstream)".to_string(),
-            detail: "uf does not type-check; Flow is the type system".to_string(),
-        },
-    ]
+    let mut stages = Vec::new();
+    // Only with the checker compiled in: without it there is no resolution to
+    // report, because there is no check.
+    #[cfg(feature = "upstream-typecheck")]
+    stages.push(Stage {
+        name: "module resolution",
+        provider: "flow (upstream)".to_string(),
+        detail: format!(
+            "`exports` conditions: {}; entered through {} with no `exports` map; \
+             no host condition is set (ubugeeei-prod/uf#735)",
+            uf_check::EXPORT_CONDITIONS.join(", "),
+            uf_check::MAIN_FIELDS.join(", "),
+        ),
+    });
+    stages.push(Stage {
+        name: "library definitions",
+        provider: "flow (upstream)".to_string(),
+        detail: "Flow's own, then `flow-typed` and whatever `.flowconfig`'s [libs] names"
+            .to_string(),
+    });
+    stages.push(Stage {
+        name: "type checking",
+        provider: "flow (upstream)".to_string(),
+        detail: "uf does not type-check; Flow is the type system".to_string(),
+    });
+    stages
 }
 
 #[cfg(test)]
@@ -1363,6 +1387,50 @@ mod tests {
         let root = Utf8Path::from_path(dir.path()).unwrap().to_path_buf();
         let resolved = load_config(&root).unwrap();
         (dir, resolved)
+    }
+
+    /// `uf explain check` names the conditions a dependency is resolved under.
+    ///
+    /// Red line 7, for the stage that runs before any type is inferred. Which
+    /// `exports` condition answers decides *which file* of a dependency the
+    /// project is held to — a package that ships both a Flow source and a
+    /// compiled build names them with conditions, and resolving the wrong one
+    /// types the wrong file with no diagnostic anywhere to say so.
+    ///
+    /// The conditions are spelled out here rather than read back from
+    /// `uf_check::EXPORT_CONDITIONS`, because this is about what a person is
+    /// told: a test that re-derived the answer from the same constant the code
+    /// prints would pass on an empty list.
+    #[cfg(feature = "upstream-typecheck")]
+    #[test]
+    fn check_names_the_conditions_a_dependency_resolves_under() {
+        let (_dir, resolved) = defaults();
+
+        let stages = check_stages(&resolved);
+        let resolution = stages
+            .iter()
+            .find(|stage| stage.name == "module resolution")
+            .expect("`uf explain check` says nothing about how a specifier is resolved");
+
+        assert!(
+            resolution
+                .detail
+                .contains("`exports` conditions: flow, import"),
+            "{}",
+            resolution.detail
+        );
+        assert!(
+            resolution.detail.contains("entered through main"),
+            "{}",
+            resolution.detail
+        );
+        // And that no host is among them, which is the part a reader would
+        // otherwise have to infer from a list they cannot see.
+        assert!(
+            resolution.detail.contains("no host condition is set"),
+            "{}",
+            resolution.detail
+        );
     }
 
     /// An adapter that is written names the files it writes.

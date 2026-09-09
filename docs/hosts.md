@@ -157,6 +157,32 @@ them. A test that wants more than that — the network, `/etc`, a variable nobod
 declared — asks for it in `uf.config.js`, which is what the permission model is
 for.
 
+## What a dependency's host conditions get you
+
+A dependency does not ship one file per subpath. It ships one per *condition* —
+`node` against `browser`, `bun` and `deno` against neither — and every row of
+the matrix above resolves those for itself: Node reads `node`, Bun reads `bun`
+*and* `node`, and each takes its own branch of a package that publishes several.
+
+`uf check` does not. It resolves under `flow` and `import` and **no host
+condition at all**, because one check produces one answer and the table above
+claims three hosts. That is argued in `crates/uf_check/src/resolution.rs` and
+`uf explain check` prints the list, so it is a decision you can see rather than
+one you have to find.
+
+What it costs is worth stating next to the matrix rather than only next to the
+code, because it is a portability claim like the others. A package written as
+`{ "bun": "./b.js", "import": "./i.js" }` is type-checked as `./i.js` — right on
+Node, wrong on Bun, and silent either way. A package that publishes *only* host
+branches resolves to nothing and its types become `any` with no diagnostic.
+Neither is Bun's fault or Deno's; both are what one graph costs. Which graph
+`uf check` should resolve is ubugeeei-prod/uf#735.
+
+The builders disagree with the checker and with each other, too:
+`uf test --host deno` resolves under `import, module, default`,
+`uf build --adapter edge` under the worker set, and `uf dev` under whatever Vite
+defaults to. That is ubugeeei-prod/uf#736.
+
 ## Edge and worker runtimes
 
 Cloudflare Workers, Vercel Edge, Deno Deploy: **there is no host at all**, and
