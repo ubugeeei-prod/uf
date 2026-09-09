@@ -158,12 +158,14 @@ fn ui_registry_keeps_the_roadmap_it_is_not_an_inventory_of() {
         );
     }
     // And the five presentational-looking components that are not
-    // presentational, which is ubugeeei-prod/uf#298's list.
-    for planned in ["Alert", "Avatar", "Breadcrumb", "Separator", "Skeleton"] {
+    // presentational, which is ubugeeei-prod/uf#298's list. They were the whole
+    // of the `Planned` half until they shipped, which is why the size assertion
+    // below counts everything that is not implemented rather than only them.
+    for shipped in ["Alert", "Avatar", "Breadcrumb", "Separator", "Skeleton"] {
         assert_eq!(
-            named(planned).readiness,
-            UiReadiness::Planned,
-            "{planned} has a decision in it and nobody has written it yet"
+            named(shipped).readiness,
+            UiReadiness::Implemented,
+            "{shipped} had a decision in it and #298 shipped it"
         );
     }
     // A second name for a component that exists is not an entry: a dropdown
@@ -176,11 +178,20 @@ fn ui_registry_keeps_the_roadmap_it_is_not_an_inventory_of() {
         );
     }
 
-    let planned = components
+    // Counted over everything that is not implemented rather than over the
+    // planned entries alone, because #298 shipped the last five planned ones
+    // and an assertion about that half alone would now be an assertion about
+    // zero. What it is really holding is unchanged: this table carries the
+    // decisions as well as the inventory, and an entry deleted rather than
+    // decided would take one of them out of the count.
+    let undelivered = components
         .iter()
-        .filter(|component| component.readiness == UiReadiness::Planned)
+        .filter(|component| component.readiness != UiReadiness::Implemented)
         .count();
-    assert!(planned > 3, "the roadmap has been emptied: {planned}");
+    assert!(
+        undelivered > 3,
+        "the roadmap has been emptied: {undelivered}"
+    );
 }
 
 #[test]
@@ -529,8 +540,8 @@ fn is_hook_name(name: &str) -> bool {
 ///
 /// * A namespace object — `export const Tabs = { Root: TabsRoot, … }` — whose
 ///   keys are the parts, in the order the module lists them.
-/// * A bare value: `Checkbox`, `Progress`, `Switch` and `Toggle` are one
-///   component each with nothing to compose, and the table spells that
+/// * A bare value: `Checkbox`, `Progress`, `Separator`, `Switch` and `Toggle`
+///   are one component each with nothing to compose, and the table spells that
 ///   `["Root"]` — the component itself is the part. It is not a special case
 ///   in the data; `Toggle`'s entry has said so in prose since it was written.
 ///
@@ -660,10 +671,10 @@ fn subpath_of(name: &str) -> String {
 ///
 /// `Command` is the case that decides the shape of this test. It is listed and
 /// *deliberately* not implemented — a command palette is a `Combobox` in a
-/// `Dialog`, and the entry says so — while `Alert` is listed and simply not
-/// written yet. Both are absent from `packages/ui` and only one of them is
-/// drift, so the check has to be able to tell them apart, and a comment is not
-/// something it can read.
+/// `Dialog`, and the entry says so — while `Alert` was listed and simply not
+/// written yet, until ubugeeei-prod/uf#298 wrote it. Both were absent from
+/// `packages/ui` and only one of them was drift, so the check has to be able to
+/// tell them apart, and a comment is not something it can read.
 ///
 /// # Three sources, not two
 ///

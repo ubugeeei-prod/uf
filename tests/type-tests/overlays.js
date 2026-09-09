@@ -1,7 +1,6 @@
 // @flow
 //
-// The unions the dialog-shaped components are made of, and the typos that must
-// not compile.
+// The unions these components are made of, and the typos that must not compile.
 //
 // The companion to `anchoring.js`, which does the same job for where an
 // anchored overlay opens, and read the same way: this file is *supposed* to
@@ -15,16 +14,19 @@
 // sheet rendered off the top of the page; a `role` that is not one of the two
 // that carry `aria-modal` is a modal announced as a `div`; a `kind` that is not
 // a kind is a one-time-code field that quietly accepts letters and shows a
-// letter keyboard on a phone. None of them fails at run time and none of them
-// is visible in a screenshot.
+// letter keyboard on a phone; an `orientation` that is not one is a rule that
+// tells a reader the page runs the other way. None of them fails at run time
+// and none of them is visible in a screenshot.
 
 import type { DialogRole } from "../../packages/ui/dialog.js";
 import type { Edge } from "../../packages/ui/sheet.js";
 import type { InputOtpKind } from "../../packages/ui/input-otp.js";
+import type { Orientation } from "../../packages/ui/separator.js";
 import type { SidebarSide } from "../../packages/ui/sidebar.js";
 import { CarouselRoot } from "../../packages/ui/carousel.js";
 import { DialogBody } from "../../packages/ui/dialog.js";
 import { InputOtpRoot } from "../../packages/ui/input-otp.js";
+import { Separator } from "../../packages/ui/separator.js";
 import { SheetBody, SheetRoot } from "../../packages/ui/sheet.js";
 import { SidebarBody, SidebarRoot } from "../../packages/ui/sidebar.js";
 
@@ -54,6 +56,12 @@ export const anEdgeIsNotASidebarSide: SidebarSide = "bottom";
 // A code is made of digits or of letters and digits, and of nothing else.
 // expect: incompatible with InputOtpKind
 export const misspelledKind: InputOtpKind = "numberic";
+
+// A rule runs one of two ways. The typo is the one mistake here whose symptom
+// is a sentence rather than a layout: `aria-orientation` is what a separator
+// tells a reader about the page it is dividing.
+// expect: incompatible with Orientation
+export const misspelledOrientation: Orientation = "verticle";
 
 // The parts refuse the same strings, which is where a consumer meets them.
 // expect: Cannot create SheetRoot element
@@ -85,11 +93,16 @@ export const carousel: mixed = <CarouselRoot label="Featured">slides</CarouselRo
 // expect: Cannot create SidebarBody element
 export const unnamed: mixed = <SidebarBody>Main</SidebarBody>;
 
+// expect: Cannot create Separator element
+export const rule: mixed = <Separator orientation="verticle" />;
+
 // What is *not* an error: the members themselves, and a call that uses them.
 export const edge: Edge = "bottom";
 export const side: SidebarSide = "right";
 export const role: DialogRole = "alertdialog";
 export const kind: InputOtpKind = "alphanumeric";
+export const orientation: Orientation = "vertical";
+export const divider: mixed = <Separator decorative orientation="vertical" />;
 export const fine: mixed = (
   <SheetRoot side="bottom">
     <SheetBody>Filters</SheetBody>

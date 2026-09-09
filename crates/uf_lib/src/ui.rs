@@ -63,9 +63,14 @@
 //!   left as an omission it reads as an oversight, and somebody adds the
 //!   `<Badge>`.
 //!
-//! Five of that twenty are in the first group and are `Planned` rather than
-//! declined — `Alert`, `Avatar`, `Breadcrumb`, `Separator` and `Skeleton` —
-//! each for one specific reason its entry gives.
+//! Five of that twenty are in the first group and ship — `Alert`, `Avatar`,
+//! `Breadcrumb`, `Separator` and `Skeleton` — each for one specific reason its
+//! entry gives, and each one or two elements. They were the whole of the
+//! `Planned` half, so nothing here is planned today: every entry is either a
+//! component a caller can import or a decision not to have one. That is a state
+//! this table is allowed to be in and not one it should be assumed to stay in —
+//! a new name arrives `Planned`, and the readiness is what keeps it from being
+//! read as an inventory in the meantime.
 
 use crate::descriptor::{FormContract, UiComponent, UiRuntime};
 
@@ -81,21 +86,22 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Item", "Header", "Trigger", "Content"],
             UiRuntime::Split,
         ),
-        // Planned, and it is the one of the presentational twenty whose shadcn
-        // shape is arguably wrong to copy. `role="alert"` is a live region: an
-        // element that is *already in the document* when the page loads
-        // announces on insertion or not at all, so a permanently rendered "your
-        // trial ends soon" box with that role is either an interruption on every
-        // load or silence. The component has to distinguish the static callout —
-        // a container with a heading and no live semantics — from the one that
-        // appears in response to something. `packages/ui/field.js` already makes
-        // this call correctly for `Field.Error`, which is the shape to follow.
+        // Implemented in `packages/ui/alert.js`, and the one of the
+        // presentational twenty whose usual shape is arguably wrong to copy.
+        // `role="alert"` is a live region: an element that is *already in the
+        // document* when the page loads announces on insertion or not at all,
+        // so a permanently rendered "your trial ends soon" box with that role is
+        // either an interruption on every load or silence. So the role is behind
+        // `live`, a static callout gets none, and there is no polite option
+        // because a polite region has to have been there first — which is
+        // `Toast`. `packages/ui/field.js` makes the same call for
+        // `Field.Error`. `Title` is a real heading whose level is the caller's,
+        // for the reason `Accordion.Header` gives.
         UiComponent::new(
             "Alert",
             &["Root", "Title", "Description"],
             UiRuntime::Server,
-        )
-        .planned(),
+        ),
         // Implemented in `packages/ui/alert-dialog.js`: `Dialog` with the three
         // decisions that module names taken the other way — `alertdialog`
         // rather than `dialog`, no dismissal from a press outside, and focus on
@@ -128,13 +134,18 @@ pub fn ui_components() -> Vec<UiComponent> {
         // is a line of documentation. Reopens if a layout uf ships ever needs a
         // ratio held in JavaScript, which no part of this package does.
         UiComponent::new("AspectRatio", &["Root"], UiRuntime::Server).declined(),
-        // Planned, and a component rather than a class list because it is a
-        // three-state machine: loading, loaded, failed, with the fallback held
-        // back briefly so it does not flash before a cached image paints. The
-        // second decision is the alt text — an avatar beside the person's name
-        // is decorative and takes `alt=""`, and a component that puts the name
-        // there by default makes every screen reader say it twice.
-        UiComponent::new("Avatar", &["Root", "Image", "Fallback"], UiRuntime::Split).planned(),
+        // Implemented in `packages/ui/avatar.js`, and a component rather than a
+        // class list because it is a three-state machine: loading, loaded,
+        // failed, with the fallback held back briefly so it does not flash
+        // before a cached image paints. The image is asked whether it has
+        // painted rather than only listened to, because a cached one can finish
+        // before React attaches `onLoad`; the question is asked in one direction
+        // only, since "complete with no pixels" is also what a DOM that does not
+        // fetch images says about a perfectly good source. The second decision
+        // is the alt text — an avatar beside the person's name is decorative and
+        // takes `alt=""`, and a component that puts the name there by default
+        // makes every screen reader say it twice.
+        UiComponent::new("Avatar", &["Root", "Image", "Fallback"], UiRuntime::Split),
         // Declined: a badge with no styles is a `<span>`. Nothing about it is a
         // decision — no role, no state, no key — so shipping one from a package
         // that ships no styles would be shipping an empty element. It has no
@@ -142,17 +153,18 @@ pub fn ui_components() -> Vec<UiComponent> {
         // than in this table: the thing to add is a `badgeStyles`, not a
         // `<Badge>`.
         UiComponent::new("Badge", &["Root"], UiRuntime::Server).declined(),
-        // Planned, and three decisions deep rather than presentational: a
-        // `<nav aria-label="Breadcrumb">` around an ordered list, exactly one
-        // `aria-current="page"` on the last item, and the "/" separators
+        // Implemented in `packages/ui/breadcrumb.js`, and three decisions deep
+        // rather than presentational: a `<nav aria-label="Breadcrumb">` around
+        // an ordered list, `aria-current="page"` carried by `Page` so the last
+        // crumb cannot be a link by accident, and the "/" separators
         // `aria-hidden` so the trail is not read as "Home slash Settings slash
-        // Billing". `Pagination` below is the same shape and already shipped.
+        // Billing". `Pagination` below is the same shape, and `List` states the
+        // same `renders*` constraint about what an `<ol>` may hold.
         UiComponent::new(
             "Breadcrumb",
             &["Root", "List", "Item", "Link", "Page", "Separator"],
             UiRuntime::Server,
-        )
-        .planned(),
+        ),
         // Declined, and the clearest case of the line this table draws: the
         // platform's `<button>` already has the role, the keyboard and the
         // focus, so what shadcn's `Button` adds is a class list. The answer is
@@ -577,15 +589,18 @@ pub fn ui_components() -> Vec<UiComponent> {
             ],
             UiRuntime::Client,
         ),
-        // Planned, and two lines with one real decision in them: a separator
-        // between groups of content is `role="separator"` with an
-        // `aria-orientation`, and a decorative rule is `aria-hidden` and
-        // announced to nobody. `packages/ui/menu.js` already ships the first
-        // kind and explains why; getting it backwards adds a line of noise to
-        // every reading of the page. Not `Resizable.Handle`, which is the APG
-        // window splitter — a separator that behaves like a slider — and says
-        // so in its own entry.
-        UiComponent::new("Separator", &["Root"], UiRuntime::Server).planned(),
+        // Implemented in `packages/ui/separator.js`, and two lines with one real
+        // decision in them: a separator between groups of content is
+        // `role="separator"` with an `aria-orientation`, and a decorative rule
+        // is `aria-hidden` and announced to nobody. The default is the semantic
+        // one, because a rule wrongly announced is noise a reader can skip and a
+        // boundary wrongly silent is information nobody finds out about. A
+        // `<div>` rather than an `<hr>`, which arrives with a border and a
+        // margin from the browser's own stylesheet and is horizontal by
+        // definition. `packages/ui/menu.js` ships the in-menu one; not
+        // `Resizable.Handle`, which is the APG window splitter — a separator
+        // that behaves like a slider — and says so in its own entry.
+        UiComponent::new("Separator", &["Root"], UiRuntime::Server),
         // Implemented in `packages/ui/sheet.js`, and deliberately small: a
         // sheet is a modal dialog attached to an edge, and every modal promise
         // is `dialog.js`'s. What it adds is the two things a class name cannot
@@ -623,12 +638,17 @@ pub fn ui_components() -> Vec<UiComponent> {
             &["Root", "Trigger", "Header", "Body", "Footer", "Item"],
             UiRuntime::Split,
         ),
-        // Planned, and the one that silently makes a page worse: a screen of
-        // skeletons is a screen of empty boxes, so the reader hears nothing and
-        // is told nothing is happening. The skeletons want `aria-hidden="true"`,
-        // the region they stand in for wants `aria-busy="true"`, and something
-        // has to say "Loading" out loud.
-        UiComponent::new("Skeleton", &["Root"], UiRuntime::Server).planned(),
+        // Implemented in `packages/ui/skeleton.js`, and the one that silently
+        // makes a page worse: a screen of skeletons is a screen of empty boxes,
+        // so the reader hears nothing and is told nothing is happening. `Box` is
+        // `aria-hidden="true"`, the `Root` region is `aria-busy="true"`, and a
+        // live region says "Loading" out loud. Two parts rather than the one
+        // this entry guessed at, because the region and the grey box are
+        // opposite halves of the same fix — and `Split` rather than `Server`,
+        // because the region is mounted empty and filled a commit later, which
+        // is the only way a screen that is busy on its first render is ever
+        // announced at all.
+        UiComponent::new("Skeleton", &["Root", "Box"], UiRuntime::Split),
         // Implemented in `packages/ui/slider.js`: the APG slider, with
         // `role="slider"` on the thumb rather than on the track — which is what
         // makes it reachable — and a second thumb for the range case, each with

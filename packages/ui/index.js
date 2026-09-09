@@ -76,14 +76,33 @@
 // are `Declined` with the preset functions that replace them named on each,
 // and `cargo test -p uf_lib` fails if a name there stops existing.
 //
-// Five of that twenty are not presentational and are missing rather than
-// declined — Alert, Avatar, Breadcrumb, Separator and Skeleton — each for one
-// specific reason, and the registry entry for each says which. The shortest is
-// Alert: `role="alert"` is a live region, an element already in the document
-// when the page loads announces on insertion or not at all, and a permanently
-// rendered "your trial ends soon" box carrying that role is either an
-// interruption on every page load or silence. `field.js` already makes that
-// call correctly for `Field.Error`.
+// Five of that twenty are on the other side of the line and now ship — Alert,
+// Avatar, Breadcrumb, Separator and Skeleton — each for one specific reason,
+// and each of them one or two elements:
+//
+// - **Alert** is the one whose usual shape is arguably wrong to copy.
+//   `role="alert"` is a live region, an element already in the document when
+//   the page loads announces on insertion or not at all, and a permanently
+//   rendered "your trial ends soon" box carrying that role is either an
+//   interruption on every page load or silence. So the role is behind `live`,
+//   and a static callout does not get one. `field.js` already makes that call
+//   correctly for `Field.Error`.
+// - **Avatar** is a three-state machine — loading, loaded, failed — with the
+//   fallback held back so a cached image does not flash somebody's initials,
+//   and with `alt=""` by default, because an avatar beside a name that puts
+//   the name in `alt` makes every screen reader say it twice.
+// - **Breadcrumb** is `Pagination`'s shape one door along: a named `<nav>`, one
+//   `aria-current="page"`, and separators hidden so the trail is not read as
+//   "Home slash Settings slash Billing".
+// - **Separator** is two lines with one decision in them, and it is the
+//   decision `Progress` is: `role="separator"` with an `aria-orientation` for a
+//   boundary a reader should be told about, `aria-hidden` for a rule that is
+//   only a rule.
+// - **Skeleton** is the one that silently makes a page worse. A screen of
+//   skeletons is a screen of empty boxes, so the boxes are `aria-hidden`, the
+//   region they stand in is `aria-busy`, and a live region that was empty for
+//   one commit says "Loading" — which is #289's rule met at the moment it bites
+//   hardest, because a skeleton screen is busy on its very first render.
 //
 // # What these components promise React
 //
@@ -184,6 +203,12 @@
 //   a dialog that is not modal, a tooltip describes its trigger and may never
 //   take focus, a hover card is neither and holds links — and because a flag
 //   selecting between them would be one flag every behaviour had to read.
+// - `alert.js`, `avatar.js`, `breadcrumb.js`, `separator.js` and `skeleton.js`
+//   — the five above that look like a class list and are not. One or two
+//   elements each, and one conditional each: whether a callout announces
+//   itself, which of three states an image is in, whether the last crumb is a
+//   link, whether a rule is in the accessibility tree, and whether anybody is
+//   told the page is loading.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
@@ -217,6 +242,7 @@ import {
   AccordionRoot,
   AccordionTrigger,
 } from "./accordion.js";
+import { AlertDescription, AlertRoot, AlertTitle } from "./alert.js";
 import {
   AlertDialogAction,
   AlertDialogBody,
@@ -229,6 +255,15 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./alert-dialog.js";
+import { AvatarFallback, AvatarImage, AvatarRoot } from "./avatar.js";
+import {
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbRoot,
+  BreadcrumbSeparator,
+} from "./breadcrumb.js";
 import {
   CarouselContent,
   CarouselItem,
@@ -336,6 +371,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./select.js";
+import { Separator } from "./separator.js";
 import {
   SheetBody,
   SheetClose,
@@ -355,6 +391,7 @@ import {
   SidebarRoot,
   SidebarTrigger,
 } from "./sidebar.js";
+import { SkeletonBox, SkeletonRoot } from "./skeleton.js";
 import { SliderRange, SliderRoot, SliderThumb, SliderTrack } from "./slider.js";
 import { Switch } from "./switch.js";
 import {
@@ -410,7 +447,7 @@ export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 export type { ToggleGroupType } from "./toggle-group.js";
 
-export { Checkbox, Progress, Switch, Toggle };
+export { Checkbox, Progress, Separator, Switch, Toggle };
 
 /**
  * Queueing a notification, from anywhere.
@@ -1241,4 +1278,101 @@ export const Pagination = {
   Item: PaginationItem,
   Previous: PaginationPrevious,
   Next: PaginationNext,
+};
+
+/**
+ * The trail above the page, read as places rather than as punctuation.
+ *
+ *   <Breadcrumb.Root>
+ *     <Breadcrumb.List>
+ *       <Breadcrumb.Item>
+ *         <Breadcrumb.Link href="/">Home</Breadcrumb.Link>
+ *       </Breadcrumb.Item>
+ *       <Breadcrumb.Separator>/</Breadcrumb.Separator>
+ *       <Breadcrumb.Item>
+ *         <Breadcrumb.Page>Billing</Breadcrumb.Page>
+ *       </Breadcrumb.Item>
+ *     </Breadcrumb.List>
+ *   </Breadcrumb.Root>
+ *
+ * `Pagination`'s shape one door along: a `<nav>` with a name, one
+ * `aria-current="page"`, and the separators out of the accessibility tree so
+ * the trail is not announced as "Home slash Settings slash Billing". The last
+ * crumb is a `Breadcrumb.Page` and not a link, because it is where the reader
+ * already is.
+ */
+export const Breadcrumb = {
+  Root: BreadcrumbRoot,
+  List: BreadcrumbList,
+  Item: BreadcrumbItem,
+  Link: BreadcrumbLink,
+  Page: BreadcrumbPage,
+  Separator: BreadcrumbSeparator,
+};
+
+/**
+ * A callout, and the `live` that decides whether anybody is interrupted by it.
+ *
+ *   <Alert.Root>
+ *     <Alert.Title>Your trial ends on Friday</Alert.Title>
+ *     <Alert.Description>Add a card to keep your projects.</Alert.Description>
+ *   </Alert.Root>
+ *
+ *   {error != null && (
+ *     <Alert.Root live>
+ *       <Alert.Title>Could not save</Alert.Title>
+ *       <Alert.Description>{error}</Alert.Description>
+ *     </Alert.Root>
+ *   )}
+ *
+ * The first has no role at all: it was there when the page loaded, so a live
+ * region would announce it on every load or never, and neither is what anybody
+ * wanted. The second appeared because something happened, which is what
+ * `role="alert"` is for. `alert.js`'s header says why there is no polite
+ * version of this and why `Toast` is that instead.
+ */
+export const Alert = {
+  Root: AlertRoot,
+  Title: AlertTitle,
+  Description: AlertDescription,
+};
+
+/**
+ * A picture of a person, and the two states it is not in yet.
+ *
+ *   <Avatar.Root>
+ *     <Avatar.Image src={person.photo} />
+ *     <Avatar.Fallback>{initials(person.name)}</Avatar.Fallback>
+ *   </Avatar.Root>
+ *
+ * The fallback is absent while the image is loading and present once it has
+ * failed, held back long enough that a cached image never flashes initials.
+ * `alt` defaults to `""`, because an avatar beside the name it belongs to is
+ * decorative and a component that helpfully puts the name there makes every
+ * screen reader say it twice; pass `alt` where the picture is the only thing
+ * identifying the person.
+ */
+export const Avatar = {
+  Root: AvatarRoot,
+  Image: AvatarImage,
+  Fallback: AvatarFallback,
+};
+
+/**
+ * The grey boxes, and the sentence that stops them being an empty page.
+ *
+ *   <Skeleton.Root busy={pending}>
+ *     {pending ? <Skeleton.Box /> : <Invoices rows={invoices} />}
+ *   </Skeleton.Root>
+ *
+ * The boxes are `aria-hidden`, the region is `aria-busy`, and a live region
+ * that was mounted empty for a commit says "Loading" — a skeleton screen is
+ * busy on its first render, so a region rendered with its message already in it
+ * announces nothing at all. Keep the root mounted across the load and toggle
+ * `busy`; unmounting it takes the region away before it can say the wait is
+ * over.
+ */
+export const Skeleton = {
+  Root: SkeletonRoot,
+  Box: SkeletonBox,
 };

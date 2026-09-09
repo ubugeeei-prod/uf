@@ -58,6 +58,11 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Carousel` | Slides that can be stopped, and that `Tab` cannot fall into | `carousel.js` |
 | `ScrollArea` | An overflow container a keyboard can actually scroll | `scroll-area.js` |
 | `InputOtp` | Six boxes drawn over one real `<input>`, so autofill still works | `input-otp.js` |
+| `Breadcrumb` | A named `<nav>` around an ordered list, one `aria-current="page"`, and separators nobody hears | `breadcrumb.js` |
+| `Alert` | A callout, and the live region it must not be until something happens | `alert.js` |
+| `Avatar` | Loading, loaded, failed — and the `alt` that is empty on purpose | `avatar.js` |
+| `Separator` | A rule a reader is told about, or one that is only a rule | `separator.js` |
+| `Skeleton` | Grey boxes nobody hears, in a region that says it is loading | `skeleton.js` |
 
 Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
 `<button>` in a tab list is a *type error* rather than a review comment;
@@ -65,7 +70,7 @@ Composition is type-checked. `Tabs.List` declares `renders* Tabs.Tab`, so a
 inside a menu and a listbox, which ARIA also requires and which nothing else
 checks.
 
-Twelve containers here state a constraint like that, and each of them is held
+Thirteen containers here state a constraint like that, and each of them is held
 to it. `tests/type-tests/composition.js` writes out the wrong child for every
 one — a `<button>` in a tab list, a `<div>` in a listbox, a `Select.Option` in
 a menu, a render function that returns something that is not a `Toast.Root` —
@@ -725,6 +730,170 @@ genuinely has no URL for a page is the case where this is the wrong component.
 such thing as a disabled link — an `<a>` with no `href` is out of the tab order
 and is not announced as a link, which is exactly what "there is no previous
 page" means.
+
+## The five that look like a class list and are not
+
+`Alert`, `Avatar`, `Breadcrumb`, `Separator` and `Skeleton` are one or two
+elements each. They are here rather than in `@uniflowed/stylex/preset` — where
+`Badge`, `Card` and `Button` went — because the line this package draws is not
+"styled versus headless" but **whether the thing has a decision in it**, and
+each of these is a decision that is invisible until somebody is listening to the
+page rather than looking at it.
+
+### Breadcrumb
+
+```js
+<Breadcrumb.Root>
+  <Breadcrumb.List>
+    <Breadcrumb.Item>
+      <Breadcrumb.Link href="/">Home</Breadcrumb.Link>
+    </Breadcrumb.Item>
+    <Breadcrumb.Separator>/</Breadcrumb.Separator>
+    <Breadcrumb.Item>
+      <Breadcrumb.Page>Billing</Breadcrumb.Page>
+    </Breadcrumb.Item>
+  </Breadcrumb.List>
+</Breadcrumb.Root>
+```
+
+`Pagination`'s shape one door along, and the same three things. A `<nav>` with a
+name, because a page has more than one and an unnamed one is announced as
+"navigation" — `Breadcrumb` is the name assistive technology's own documentation
+tells readers to look for, and `label` translates it. The separators are
+`aria-hidden`, so the trail is not read as "Home slash Settings slash Billing";
+they are `<li>` elements carrying `role="presentation"`, because an `<ol>` may
+hold nothing else and the count a reader is given has to be the number of places
+rather than the number of places plus the punctuation.
+
+And the last crumb is a `Breadcrumb.Page` rather than a link, because it is where
+the reader already is. The shape this is usually copied with gives it
+`role="link"` with `aria-disabled`, which announces "link, dimmed" — a control
+the reader cannot use, instead of the place they arrived at.
+
+### Alert
+
+```js
+<Alert.Root>
+  <Alert.Title>Your trial ends on Friday</Alert.Title>
+  <Alert.Description>Add a card to keep your projects.</Alert.Description>
+</Alert.Root>
+
+{error != null && (
+  <Alert.Root live>
+    <Alert.Title>Could not save</Alert.Title>
+    <Alert.Description>{error}</Alert.Description>
+  </Alert.Root>
+)}
+```
+
+The first has no role at all, and that is the component. `role="alert"` is a
+live region — it announces *changes* — so an element carrying one that was in
+the document when the page loaded announces on insertion or not at all. A
+permanently rendered "your trial ends soon" box with that role is therefore an
+interruption on every page load, on the engines that treat the initial render as
+an insertion, or silence on the ones that do not. Neither is what anybody wanted
+and neither shows up in a screenshot.
+
+The second appeared because something happened, which is what the role is for.
+`Field.Error` is the same call made for a form message.
+
+There is no polite version, deliberately. `role="status"` is polite, and a polite
+region has to have been in the document first, empty, before it will announce
+anything — which a component you render at the moment the thing happens never
+was. The polite, page-level shape is [`Toast`](#toast), which exists to have been
+watching already.
+
+`Alert.Title` is a real heading, because a heading is how a screen reader user
+reaches a region of a page without reading the page. `level` is yours for the
+reason `Accordion.Header`'s is; the default is `3` and anything outside the six
+HTML has is clamped, since `<h9>` is announced as nothing at all.
+
+### Avatar
+
+```js
+<Avatar.Root>
+  <Avatar.Image src={person.photo} />
+  <Avatar.Fallback>{initials(person.name)}</Avatar.Fallback>
+</Avatar.Root>
+```
+
+Three states, not two: loading, loaded and failed. The version with two renders
+the fallback whenever the image has not painted, which on a cached image is a
+flash of somebody's initials for one frame on every navigation, for ever. So the
+fallback is held back while the image is loading — `delay`, 300 ms by default,
+`0` to show it at once — and appears immediately for the two cases that are
+answers rather than waits: an image that failed, and an avatar with no
+`Avatar.Image` in it at all.
+
+The image is also *asked* whether it has painted, in an effect, and not only
+listened to: a cached image can finish before React attaches `onLoad`, and a
+component waiting for an event that already happened waits for ever. It is asked
+in one direction only. `complete` with pixels means loaded; `complete` without
+them is not read as a failure, because that is also what a DOM which does not
+fetch images says about a perfectly good `src`, and the `error` event is what
+reports a real one.
+
+`alt` defaults to `""`. An avatar almost always sits beside the name of the
+person it is a picture of, and a component that helpfully puts that name in `alt`
+makes every screen reader say it twice. Pass `alt` where the picture is the only
+thing identifying the person — a bare grid of faces, a comment with no byline.
+The fallback's content is announced, because this component cannot know whether
+"AL" is a decoration beside a name or the whole of the row; a decorative avatar
+wants `aria-hidden` on its fallback for the same reason its image wants `alt=""`.
+
+### Separator
+
+```js
+<Separator />
+<Separator orientation="vertical" />
+<Separator decorative />
+```
+
+A rule between two groups of content is `role="separator"` with an
+`aria-orientation`, and it is the only way a reader who is not looking at the
+page is told the subject changed. A decorative rule — the hairline under a
+heading, the line inside a card — is `aria-hidden` and announced to nobody.
+
+The default is the semantic one, because the two mistakes do not cost the same: a
+rule wrongly announced is noise a reader can hear and skip, and a boundary
+wrongly silent is information that is simply not there.
+
+Use an `<hr>` where an `<hr>` will do — it carries `role="separator"` already.
+This exists for what it cannot be: it arrives with a border and a margin from the
+browser's own stylesheet, which a package that ships no styles cannot ship, and
+it is horizontal by definition. `Menu.Separator` is the rule inside a menu, which
+the arrow keys have to skip; `Resizable.Handle` is a separator that behaves like
+a slider, and is a control.
+
+### Skeleton
+
+```js
+<Skeleton.Root busy={pending}>
+  {pending ? <Skeleton.Box /> : <Invoices rows={invoices} />}
+</Skeleton.Root>
+```
+
+A screen of skeletons tells a sighted reader that content is coming. To everybody
+else it is a screen of empty `<div>`s, and the honest summary of the page is that
+it has none — which is the conclusion somebody reaches just before they leave.
+
+Three attributes fix it and none of them is on the grey box's class name. The
+boxes are `aria-hidden="true"`, because a placeholder is a picture of content.
+The region is `aria-busy="true"`, which is what says a subtree is being filled in.
+And a live region says so out loud, because `aria-busy` is a property a reader
+may ask about rather than an announcement they are given.
+
+That last one is the hard part, and it is why this is a component. A skeleton
+screen is busy on its *first* render, so the obvious version — render
+`<div role="status">Loading…</div>` while `pending` — mounts the region with the
+sentence already inside it, which is the one arrangement a screen reader does not
+announce, and then unmounts the lot when the content arrives. It says nothing,
+ever. `Skeleton.Root` renders the region empty and fills it one commit later.
+
+Which is also the one thing it asks of you: **keep the root mounted across the
+load and toggle `busy`.** Unmount it when the content arrives and the region goes
+with it, so "loaded" is said to nobody and the reader is left holding the last
+thing they heard. `label` and `doneLabel` are the wording.
 
 ## Overlays that follow their trigger
 

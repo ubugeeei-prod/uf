@@ -40,7 +40,10 @@ import type { PlainDate } from "@uniflowed/core/temporal";
 import { Temporal } from "@uniflowed/core/temporal";
 import {
   Accordion,
+  Alert,
   AlertDialog,
+  Avatar,
+  Breadcrumb,
   Calendar,
   Carousel,
   Checkbox,
@@ -63,8 +66,10 @@ import {
   Resizable,
   ScrollArea,
   Select,
+  Separator,
   Sheet,
   Sidebar,
+  Skeleton,
   Slider,
   Switch,
   Table,
@@ -5998,6 +6003,401 @@ describe("Pagination", () => {
   });
 });
 
+describe("Breadcrumb", () => {
+  component Example() {
+    return (
+      <Breadcrumb.Root>
+        <Breadcrumb.List>
+          <Breadcrumb.Item>
+            <Breadcrumb.Link href="/">Home</Breadcrumb.Link>
+          </Breadcrumb.Item>
+          <Breadcrumb.Separator>/</Breadcrumb.Separator>
+          <Breadcrumb.Item>
+            <Breadcrumb.Link href="/settings">Settings</Breadcrumb.Link>
+          </Breadcrumb.Item>
+          <Breadcrumb.Separator>/</Breadcrumb.Separator>
+          <Breadcrumb.Item>
+            <Breadcrumb.Page>Billing</Breadcrumb.Page>
+          </Breadcrumb.Item>
+        </Breadcrumb.List>
+      </Breadcrumb.Root>
+    );
+  }
+
+  it("reads a breadcrumb as a trail and not as punctuation", () => {
+    render(<Example />);
+    // A page has more than one `nav`, and an unnamed one is announced as
+    // "navigation" with nothing to tell it from the site's menu. This is the
+    // name assistive technology's own documentation tells readers to look for.
+    const nav = screen.getByRole("navigation", { name: "Breadcrumb" });
+    // Three places and two slashes, and a reader is told about three things.
+    // The separators have to be `<li>` because an `<ol>` may hold nothing else,
+    // so without `role="presentation"` and `aria-hidden` on them the trail
+    // would be announced as a list of five, two of them punctuation.
+    expect(within(nav).getAllByRole("listitem").length).toBe(3);
+    // Exactly one place the reader is at, and it is the last one.
+    const current = nav.querySelectorAll('[aria-current="page"]');
+    expect(current.length).toBe(1);
+    expect(current[0].textContent).toBe("Billing");
+    // And nothing announced as a link is a slash: the two crumbs that go
+    // somewhere are the whole of what a reader can act on.
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Home", "Settings"]);
+  });
+
+  it("does not announce the page you are on as a link", () => {
+    render(<Example />);
+    // The shape this is usually copied with gives the current page
+    // `role="link"` with `aria-disabled`, which announces "link, dimmed" — a
+    // control the reader cannot use, rather than the place they arrived at.
+    expect(screen.queryByRole("link", { name: "Billing" })).toBe(null);
+  });
+
+  it("is a list, so a reader can skip the whole trail in one keystroke", () => {
+    render(<Example />);
+    expect(within(screen.getByRole("navigation")).getAllByRole("list").length).toBe(1);
+  });
+
+  it("takes another name, for a page that is not written in English", () => {
+    render(
+      <Breadcrumb.Root label="Fil d'Ariane">
+        <Breadcrumb.List>
+          <Breadcrumb.Item>
+            <Breadcrumb.Page>Facturation</Breadcrumb.Page>
+          </Breadcrumb.Item>
+        </Breadcrumb.List>
+      </Breadcrumb.Root>,
+    );
+    expect(screen.getByRole("navigation", { name: "Fil d'Ariane" })).toBeInTheDocument();
+  });
+});
+
+describe("Alert", () => {
+  component Example(failed: boolean) {
+    return (
+      <div>
+        <Alert.Root>
+          <Alert.Title>Your trial ends on Friday</Alert.Title>
+          <Alert.Description>Add a card to keep your projects.</Alert.Description>
+        </Alert.Root>
+        {failed ? (
+          <Alert.Root live>
+            <Alert.Title>Could not save</Alert.Title>
+            <Alert.Description>The server said no.</Alert.Description>
+          </Alert.Root>
+        ) : null}
+      </div>
+    );
+  }
+
+  it("does not announce a callout that was always there", () => {
+    const { rerender } = render(<Example failed={false} />);
+    // `role="alert"` is a live region, and a live region on an element that was
+    // in the document when the page loaded announces on insertion or not at
+    // all. A permanently rendered "your trial ends soon" box carrying one is
+    // therefore an interruption on every page load, or silence, and neither is
+    // what anybody wanted — so the static callout has no live semantics of any
+    // kind, not the assertive one and not the polite one.
+    expect(screen.queryByRole("alert")).toBe(null);
+    expect(screen.queryByRole("status")).toBe(null);
+    // And the one that appeared because something happened does, which is the
+    // whole distinction this component exists to make.
+    rerender(<Example failed={true} />);
+    expect(screen.getByRole("alert").textContent).toContain("Could not save");
+    // Still exactly one: the callout that was always there did not acquire a
+    // role by standing next to one that has it.
+    expect(screen.getAllByRole("alert").length).toBe(1);
+  });
+
+  it("puts the callout in the document outline", () => {
+    render(<Example failed={false} />);
+    // A heading rather than a bold `<div>`, because a heading is how a screen
+    // reader user reaches a region of a page without reading the page.
+    expect(
+      screen.getByRole("heading", { level: 3, name: "Your trial ends on Friday" }),
+    ).toBeInTheDocument();
+  });
+
+  it("takes the heading level from the caller", () => {
+    render(
+      <Alert.Root>
+        <Alert.Title level={2}>Your trial ends on Friday</Alert.Title>
+      </Alert.Root>,
+    );
+    // The level that keeps a document outline true depends on what the callout
+    // is inside, which is `Accordion.Header`'s argument for the same prop.
+    expect(screen.getByRole("heading", { level: 2 })).toBeInTheDocument();
+  });
+
+  it("never renders a heading nobody recognises", () => {
+    render(
+      <Alert.Root>
+        <Alert.Title level={9}>Your trial ends on Friday</Alert.Title>
+      </Alert.Root>,
+    );
+    // `<h9>` is not an element, and a tag nobody recognises is announced as
+    // nothing at all — which loses the heading rather than deepening it.
+    expect(screen.getByRole("heading", { level: 6 })).toBeInTheDocument();
+  });
+});
+
+describe("Avatar", () => {
+  component Example(src?: string | null = "/ada.png") {
+    return (
+      <Avatar.Root>
+        <Avatar.Image src={src} />
+        <Avatar.Fallback>AL</Avatar.Fallback>
+      </Avatar.Root>
+    );
+  }
+
+  /** The `<img>` this avatar is rendering, while it is still rendering one. */
+  function pictureIn(container: Element): Element {
+    const image = container.querySelector("img");
+    if (image == null) {
+      throw new Error("the avatar is rendering no image");
+    }
+    return image;
+  }
+
+  it("shows the fallback only when the image fails", () => {
+    const { container } = render(<Example />);
+    const image = pictureIn(container);
+    // Loading: the fallback is not there. The two-state version renders it
+    // whenever the image has not painted, which on a cached image is a flash of
+    // somebody's initials on every navigation, for ever.
+    expect(screen.queryByText("AL")).toBe(null);
+    // Failed: it is.
+    fireEvent.error(image);
+    expect(screen.getByText("AL")).toBeInTheDocument();
+    // And the element that failed has gone rather than staying to show the
+    // browser's broken-image glyph beside the fallback that replaced it — which
+    // a package shipping no styles cannot leave to a stylesheet, because
+    // `hidden` loses to any `display` the caller sets.
+    expect(container.querySelector("img")).toBe(null);
+  });
+
+  it("gives the image an empty alt unless the caller wrote one", () => {
+    const { container, rerender } = render(<Example />);
+    // An avatar sits beside the name of the person it is a picture of, and a
+    // component that helpfully puts that name in `alt` makes every screen
+    // reader say it twice. An empty `alt` is what takes the image out of the
+    // accessibility tree, which is what "decorative" means and what this is.
+    //
+    // Asserted as the attribute rather than through `getByRole("img", { name })`
+    // because this harness's accessible name does not read `alt` — the query
+    // would find nothing whichever answer the component gave, which is a test
+    // that cannot fail rather than one that passes.
+    expect(pictureIn(container)).toHaveAttribute("alt", "");
+    // And the caller whose picture is the only name there is says so and is
+    // believed.
+    rerender(
+      <Avatar.Root>
+        <Avatar.Image alt="Ada Lovelace" src="/ada.png" />
+      </Avatar.Root>,
+    );
+    expect(pictureIn(container)).toHaveAttribute("alt", "Ada Lovelace");
+  });
+
+  it("takes the fallback away again once the image arrives", () => {
+    const { container } = render(<Example />);
+    fireEvent.load(pictureIn(container));
+    expect(screen.queryByText("AL")).toBe(null);
+  });
+
+  it("shows the fallback at once when there is no image to wait for", () => {
+    render(
+      <Avatar.Root>
+        <Avatar.Fallback>AL</Avatar.Fallback>
+      </Avatar.Root>,
+    );
+    // Nothing is loading, so nothing is being waited for. A delay here would be
+    // a hole in the page for everybody who has never uploaded a photograph.
+    expect(screen.getByText("AL")).toBeInTheDocument();
+  });
+
+  it("gives up on an image that never arrives", () => {
+    uft.useFakeTimers();
+    render(<Example />);
+    expect(screen.queryByText("AL")).toBe(null);
+    act(() => {
+      uft.advanceTimersByTime(300);
+    });
+    // The delay is how long "still loading" is allowed to last before the
+    // fallback appears anyway: long enough that a cached image never flashes
+    // initials, short enough that a slow one does not leave a hole.
+    expect(screen.getByText("AL")).toBeInTheDocument();
+    uft.useRealTimers();
+  });
+
+  it("says which part was used outside a root", () => {
+    let message = "";
+    try {
+      render(<Avatar.Fallback>AL</Avatar.Fallback>);
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain("Avatar.Fallback must be rendered inside an Avatar.Root");
+  });
+});
+
+describe("Separator", () => {
+  it("keeps a decorative rule out of the accessibility tree", () => {
+    const { rerender } = render(<Separator decorative />);
+    // The hairline under a heading is a border that happens to be an element.
+    // Announced, it adds a "separator" to every reading of the page.
+    expect(screen.queryAllByRole("separator")).toEqual([]);
+    rerender(<Separator />);
+    // The rule between two groups of content is the opposite: it is the only
+    // way a reader who is not looking at the page is told the subject changed.
+    const rules = screen.getAllByRole("separator");
+    expect(rules.length).toBe(1);
+    expect(rules[0]).toHaveAttribute("aria-orientation", "horizontal");
+  });
+
+  it("says which way it runs", () => {
+    render(<Separator orientation="vertical" />);
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-orientation", "vertical");
+  });
+
+  it("is announced by default, because the silent mistake is the worse one", () => {
+    render(<Separator />);
+    // A rule wrongly announced is noise a reader can hear and skip past. A
+    // boundary wrongly silent is information that is simply not there, and
+    // nobody finds out — so the default is the mistake that can be corrected.
+    expect(screen.getByRole("separator")).toBeInTheDocument();
+  });
+});
+
+describe("Skeleton", () => {
+  component Example(busy: boolean) {
+    return (
+      <Skeleton.Root busy={busy}>
+        {busy ? <Skeleton.Box>Invoice</Skeleton.Box> : <p>Two invoices, both overdue.</p>}
+        {busy ? <Skeleton.Box /> : null}
+      </Skeleton.Root>
+    );
+  }
+
+  it("says the page is loading rather than showing empty boxes", () => {
+    const { container } = render(<Example busy={true} />);
+    // A screen of skeletons is a screen of empty `<div>`s to everybody who is
+    // not looking at it. Three attributes fix that and none of them is on the
+    // grey box's class name.
+    expect(container.querySelectorAll('[aria-hidden="true"]').length).toBe(2);
+    expect(container.querySelectorAll('[aria-busy="true"]').length).toBe(1);
+    // And something says so out loud, because `aria-busy` is a property a
+    // reader may ask about rather than an announcement they are given.
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+  });
+
+  it("is watching before it has anything to say", () => {
+    const { rerender } = render(<Example busy={false} />);
+    // ubugeeei-prod/uf#289's rule, met where it bites hardest. A live region
+    // that appears together with its text is not announced, so the region is in
+    // the document holding nothing…
+    const region = screen.getByRole("status");
+    expect(region.textContent).toBe("");
+    rerender(<Example busy={true} />);
+    // …and it is that same element that fills in, rather than a new one
+    // arriving with its sentence already inside it.
+    expect(screen.getByRole("status")).toBe(region);
+    expect(region.textContent).toBe("Loading…");
+  });
+
+  it("says the wait is over", () => {
+    const { rerender } = render(<Example busy={true} />);
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    rerender(<Example busy={false} />);
+    // The one thing this component asks of a caller: keep the root mounted
+    // across the load. Unmounted, the region goes with it, and the reader is
+    // left with the last thing they heard, which was "loading".
+    expect(screen.getByRole("status").textContent).toBe("Loaded");
+    expect(screen.getByText("Two invoices, both overdue.")).toBeInTheDocument();
+  });
+
+  it("does not tell a reader who never waited that it has loaded", () => {
+    render(<Example busy={false} />);
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("stops saying it is busy once it is not", () => {
+    const { container, rerender } = render(<Example busy={true} />);
+    rerender(<Example busy={false} />);
+    // `aria-busy="false"` and no `aria-busy` say the same thing, and the one
+    // that is not written cannot be written wrong.
+    expect(container.querySelector("[aria-busy]")).toBe(null);
+  });
+
+  it("takes the wording, for a page that is not written in English", () => {
+    render(
+      <Skeleton.Root busy={true} label="Chargement…">
+        <Skeleton.Box />
+      </Skeleton.Root>,
+    );
+    expect(screen.getByRole("status").textContent).toBe("Chargement…");
+  });
+});
+
+describe("the five that are one element, audited rather than asserted", () => {
+  // Every other case in this file states one promise at a time — a role, a key,
+  // an attribute — which is the right shape for a promise somebody made on
+  // purpose. An audit is the other half: it reads the tree that was actually
+  // rendered and finds the mistakes nobody thought to write a case for. An
+  // `<ol>` holding a `<div>`, an `aria-*` on an element that may not carry it,
+  // a live region announced twice.
+  //
+  // These five are where it is worth spending, because they are the components
+  // whose whole content is `aria-*` — `tests/library/axe.test.js` proves the
+  // matcher works and this is the matcher pointed at what it was built for.
+  //
+  // Inside a `<main>` with a heading because the rule set includes the
+  // page-level rules: a fragment audited on its own is reported for having no
+  // landmark, which is a fact about the fragment and not about the component.
+
+  it("gives an engine nothing to report", async () => {
+    const { container } = render(
+      <main>
+        <h1>Billing</h1>
+        <Breadcrumb.Root>
+          <Breadcrumb.List>
+            <Breadcrumb.Item>
+              <Breadcrumb.Link href="/">Home</Breadcrumb.Link>
+            </Breadcrumb.Item>
+            <Breadcrumb.Separator>/</Breadcrumb.Separator>
+            <Breadcrumb.Item>
+              <Breadcrumb.Page>Billing</Breadcrumb.Page>
+            </Breadcrumb.Item>
+          </Breadcrumb.List>
+        </Breadcrumb.Root>
+        <Alert.Root live>
+          {/*
+            `level={2}` because the callout is under the page's `<h1>`, and the
+            default of 3 would skip a level. That the audit says so is the
+            argument for the prop: a hard-coded heading level is an outline
+            nobody can navigate, and only the caller knows what it is inside.
+          */}
+          <Alert.Title level={2}>Could not save</Alert.Title>
+          <Alert.Description>The server said no.</Alert.Description>
+        </Alert.Root>
+        <Separator />
+        <Separator decorative orientation="vertical" />
+        <Avatar.Root>
+          <Avatar.Image src="/ada.png" />
+          <Avatar.Fallback>AL</Avatar.Fallback>
+        </Avatar.Root>
+        <Skeleton.Root busy={true}>
+          <Skeleton.Box>Invoice</Skeleton.Box>
+        </Skeleton.Root>
+      </main>,
+    );
+    await expect(container).toHaveNoAxeViolations();
+  });
+});
+
 describe("Switch and Checkbox", () => {
   it("announces a switch as a switch, not a checkbox", () => {
     render(<Switch aria-label="Notifications" />);
@@ -7812,7 +8212,7 @@ describe("a side and an alignment are unions, not strings", () => {
 describe("a wrong child is a type error and not a review comment", () => {
   // The strongest claim `packages/ui/index.js` makes, and the one nothing here
   // held: `Tabs.List` declares `renders* Tabs.Tab`, so a `<button>` in a tab
-  // list does not compile. Twelve containers in this package state a constraint
+  // list does not compile. Thirteen containers in this package state a constraint
   // like that — `Menu.Body`, `Combobox.List`, `Select.List`, `Toast.Region`,
   // `Pagination.Content` and the rest — and every one of them was an unverified
   // promise: they were checked by hand against a scratch file while `select.js`
@@ -7841,12 +8241,13 @@ describe("a wrong child is a type error and not a review comment", () => {
   });
 });
 
-describe("an edge, a role and an alphabet are unions too", () => {
-  // The same claim, for the dialog-shaped components and the three that replace
-  // something the browser already does. A sheet's `side`, a sidebar's — which
-  // has two members rather than four, because a sidebar is never along the top
-  // — a modal's `role`, and what a one-time code is made of: four unions whose
-  // misuse has no symptom at run time and none in a screenshot.
+describe("an edge, a role, an alphabet and an orientation are unions too", () => {
+  // The same claim, for the dialog-shaped components, the three that replace
+  // something the browser already does, and the rule between two of them. A
+  // sheet's `side`, a sidebar's — which has two members rather than four,
+  // because a sidebar is never along the top — a modal's `role`, what a
+  // one-time code is made of, and which way a `Separator` runs: five unions
+  // whose misuse has no symptom at run time and none in a screenshot.
   //
   // `tests/type-tests/overlays.js` is the misuse, written down.
 
