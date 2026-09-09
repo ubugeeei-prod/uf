@@ -46,6 +46,47 @@
 //! reported the same diagnostics as `uf check` through `flow focus-check`. The
 //! defect is Flow's typing rule rather than an unfaithful port, which is why
 //! the patch is a stopgap and the fix belongs in Meta's repository.
+//!
+//! # 0002: the elements before a tuple pattern's spread
+//!
+//! ubugeeei-prod/uf#300, and the half of it that answered wrongly rather than
+//! failing. `P extends [infer K, ...infer Rest] ? K : empty` bound `K` as
+//! `mixed` — printed as `unknown` — where `P extends [infer K] ? K : empty`
+//! bound the element. So a recursion over a tuple, which is what a path type
+//! or a "at most one `FormData`" constraint is made of, walked over a list of
+//! `unknown`s and answered `true` for every tuple. `packages/router/action.js`
+//! records that as the reason `ActionArguments` cannot hold a call to one
+//! form.
+//!
+//! A pattern with a spread in it is not built as a tuple type at all:
+//! `flow_js_utils::mk_tuple_type_with_env` turns it into an `EvalT` whose base
+//! is the *spread's* type and whose `SpreadTupleType` destructor carries the
+//! elements before it, where the same function's no-spread branch builds a
+//! real `TupleAT`. Subtyping a tuple against a `TupleAT` decomposes
+//! element-wise and hands each `infer` its element; against the destructor
+//! nothing decomposes, because evaluating it blocks on the unresolved spread
+//! variable — so `solve_conditional_type_targs`' speculative subtyping
+//! succeeds against nothing, `K` is pinned with no bounds at all, and
+//! `on_missing_bounds` falls back to the bound an unannotated `infer` is
+//! declared with.
+//!
+//! The *spread* variable was already solved, by that destructor's reverse in
+//! `implicit_instantiation::t_of_use_t` — it slices the tuple the output was
+//! handed with `ArrRestT`. The patch is one addition there: element `i` of
+//! that tuple flows into element `i` of the pattern, which is the flow the
+//! no-spread branch gets for free.
+//!
+//! Two limits it deliberately does not lift, so a test below does not claim
+//! them: arity is still unchecked, so `[X, Y, ...R]` still matches a
+//! one-element tuple rather than taking the false branch; and the other half
+//! of #300 — an array literal argument reaching a conditional as an array
+//! rather than as the tuple it was written as — stays in
+//! `crates/uf_check/tests/known_bugs.rs`, ignored, because a plain `Array<T>`
+//! has no elements to hand over and is left alone rather than guessed at.
+//!
+//! Measured against `flow` itself before it was written, the same way 0001
+//! was: `flow-bin@0.330.0` reports `unknown` for every leading `infer` below
+//! through `flow check`, in the same words as an unpatched `uf check`.
 
 #![cfg(feature = "upstream-typecheck")]
 
@@ -165,6 +206,112 @@ fn switch_over_a_generic_union_refines_the_payload_to_the_type_variable() {
             "      return null;\n",
             "  }\n",
             "}\n",
+        ),
+    );
+}
+
+/// The three type aliases ubugeeei-prod/uf#300 is about, as a preamble.
+///
+/// `ReadonlyArray` and `unknown` rather than `$ReadOnlyArray` and `mixed`:
+/// the deprecated spellings raise `deprecated-utility` of their own, which
+/// would be two diagnostics to read past in a file whose point is the one.
+const PATHS: &str = concat!(
+    "// @flow\n",
+    "type First<P> = P extends [infer K, ...infer Rest] ? K : empty;\n",
+    "type Only<P> = P extends [infer K] ? K : empty;\n",
+    "declare function only<P extends ReadonlyArray<unknown>>(path: P): Only<P>;\n",
+);
+
+/// 0002 — the element before a spread binds the type it was handed.
+///
+/// The reproduction ubugeeei-prod/uf#300 was filed with, as a *direct*
+/// application rather than through a call: `P` is the tuple by construction,
+/// so nothing about argument inference is in the way and what is left is the
+/// pattern. `First<["address", "city"]>` was `unknown` and is `"address"`.
+#[test]
+fn the_element_before_a_spread_binds_the_type_it_was_handed() {
+    assert_clean(
+        "first.js",
+        &format!(
+            "{PATHS}\
+             declare const head: First<[\"address\", \"city\"]>;\n\
+             export const address: \"address\" = head;\n"
+        ),
+    );
+}
+
+/// 0002 — the same pattern with no spread in it, which was never broken.
+///
+/// A "fix" that made a spread pattern bind its element by making every tuple
+/// pattern bind `unknown` would pass the test above. This is what stops that,
+/// the way `switch_over_a_generic_union_refines_the_payload_to_the_type_variable`
+/// does for 0001: `Only<P>` binds correctly today and has to keep doing so.
+#[test]
+fn a_tuple_pattern_with_no_spread_still_binds_its_element() {
+    assert_clean(
+        "only.js",
+        &format!("{PATHS}export const c: \"address\" = only([\"address\"]);\n"),
+    );
+}
+
+/// 0002 — two elements before the spread, in the order they were written.
+///
+/// The elements are read out of the `SpreadTupleType` destructor, which stores
+/// them the way `ResolveSpreadT` accumulates them — last one first. A patch
+/// that forgot that would pass the one-element test above and quietly hand
+/// `[infer X, infer Y, ...]` a swapped pair, which is a wrong answer of
+/// exactly the kind this issue is about. So more than one element is asserted,
+/// and by name rather than by shape.
+#[test]
+fn the_elements_before_a_spread_keep_the_order_they_were_written_in() {
+    assert_clean(
+        "order.js",
+        concat!(
+            "// @flow\n",
+            "type Head<P> = P extends [infer X, infer Y, ...infer R] ? X : empty;\n",
+            "type Next<P> = P extends [infer X, infer Y, ...infer R] ? Y : empty;\n",
+            "type Rest<P> = P extends [infer X, infer Y, ...infer R] ? R : empty;\n",
+            "declare const x: Head<[\"one\", \"two\", \"three\"]>;\n",
+            "declare const y: Next<[\"one\", \"two\", \"three\"]>;\n",
+            "declare const r: Rest<[\"one\", \"two\", \"three\"]>;\n",
+            "export const first: \"one\" = x;\n",
+            "export const second: \"two\" = y;\n",
+            "export const tail: [\"three\"] = r;\n",
+        ),
+    );
+}
+
+/// 0002 — the recursion the issue is really about, answering rather than
+/// falling through.
+///
+/// `NoForm` is the walk `packages/router/action.js` says it cannot write:
+/// at most one `FormData` in an argument list. It did not fail, it answered
+/// `true` for `[string, FormData]` — every tuple walked over a head of
+/// `unknown`, no head was ever a `FormData`, and the recursion ran out on the
+/// empty tuple. A constraint built on that would have reported every signature
+/// as fine, which is worse than not having one.
+///
+/// Both answers are asserted. A patch that made the walk answer `false` for
+/// everything would fix the reported case and break the other one.
+#[test]
+fn a_recursive_walk_over_a_tuple_answers_rather_than_falling_through() {
+    assert_clean(
+        "no_form.js",
+        concat!(
+            "// @flow\n",
+            "type NoForm<T> = T extends []\n",
+            "  ? true\n",
+            "  : T extends [infer H, ...infer R]\n",
+            "    ? (H extends FormData ? false : NoForm<R>)\n",
+            "    : true;\n",
+            "declare const two: NoForm<[string, FormData]>;\n",
+            "declare const one: NoForm<[FormData]>;\n",
+            "declare const none: NoForm<[string, number]>;\n",
+            "declare const empty: NoForm<[]>;\n",
+            "export const carriesAForm: false = two;\n",
+            "export const isAForm: false = one;\n",
+            "export const carriesNone: true = none;\n",
+            "export const nothingToCarry: true = empty;\n",
         ),
     );
 }
