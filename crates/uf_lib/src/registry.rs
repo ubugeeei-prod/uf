@@ -1055,3 +1055,92 @@ pub fn module_by_specifier(specifier: &str) -> Option<NativeModule> {
         .into_iter()
         .find(|module| module.specifier == specifier)
 }
+
+/// The package whose subpaths [`CLIENT_MODULE_SUBPATHS`] lists.
+pub const CLIENT_MODULE_PACKAGE: &str = "@uniflowed/ui";
+
+/// The exported subpaths of [`CLIENT_MODULE_PACKAGE`] that are client modules.
+///
+/// uf's RSC scan walks a project and skips `node_modules`, which is the right
+/// default — a dependency tree is enormous and almost none of it is in the
+/// application graph. The cost is that in a project that *installs*
+/// `@uniflowed/ui` rather than being this repository, uf's own components are
+/// invisible to the analysis that exists to find exactly them: every one of
+/// these carries `"use client"` and is a client bundle root, and the scan never
+/// opens the file to see it. See ubugeeei-prod/uf#718.
+///
+/// A list rather than a walk, and here rather than in `uf_rsc`, for the reason
+/// [`hook_descriptors`] is here: a fact about a package uf ships belongs beside
+/// the registry of packages uf ships, and a walk of an installed tree is the
+/// expense this exists to avoid. `the_client_module_list_names_exactly_the_ui_
+/// subpaths_that_are_client_modules` in `uf_rsc` holds the list to the files —
+/// with the parser that decides the question in production, not a second
+/// answer to it — which is the whole value of writing the names down.
+///
+/// Exported subpaths only, so this says what a project can *import*.
+/// `internal/form-value` and `internal/menu-tree` are client modules too and
+/// are deliberately absent: `package.json` does not export them, so no
+/// specifier reaches them and the ones that do are already here.
+///
+/// Not the whole package, which is the reason this is a list and not a rule.
+/// `alert`, `breadcrumb`, `pagination`, `progress` and `separator` are markup
+/// with no state and each says so in a section headed "No `use client`" — they
+/// are Server Components, and shipping them to the browser because they came
+/// out of the same package would be exactly the mistake RSC exists to stop.
+///
+/// uf's own package only. A third party needs a way to *declare* a client root
+/// — a manifest field, or the `react-server` export condition — which is the
+/// other half of #718 and waits on whether a manifest may name a specifier
+/// rather than a path.
+pub const CLIENT_MODULE_SUBPATHS: &[&str] = &[
+    "accordion",
+    "alert-dialog",
+    "avatar",
+    "calendar",
+    "carousel",
+    "checkbox",
+    "collapsible",
+    "combobox",
+    "context-menu",
+    "date-picker",
+    "dialog",
+    "drawer",
+    "field",
+    "hover-card",
+    "input-otp",
+    "menu",
+    "menubar",
+    "navigation-menu",
+    "popover",
+    "radio-group",
+    "resizable",
+    "scroll-area",
+    "select",
+    "sheet",
+    "sidebar",
+    "skeleton",
+    "slider",
+    "switch",
+    "table",
+    "tabs",
+    "toast",
+    "toggle",
+    "toggle-group",
+    "tooltip",
+];
+
+/// Whether a bare specifier resolves to a module uf knows carries `"use client"`.
+///
+/// Takes the specifier as written in the source — `@uniflowed/ui/dialog` — and
+/// answers for the package's exported subpaths only. The barrel,
+/// `@uniflowed/ui`, is a server module: it re-exports the client ones, which
+/// makes it a module that *imports* client modules rather than one that is
+/// one, and that distinction is the difference between a bundle root and an
+/// edge leading to one.
+#[must_use]
+pub fn is_client_module(specifier: &str) -> bool {
+    specifier
+        .strip_prefix(CLIENT_MODULE_PACKAGE)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .is_some_and(|subpath| CLIENT_MODULE_SUBPATHS.contains(&subpath))
+}
