@@ -118,7 +118,22 @@
           postPatch = ''
             rm -rf upstream/flow
             mkdir -p upstream/flow
-            cp -R ${flow}/rust_port upstream/flow/rust_port
+            # The same five subtrees `tools/upstream/sync.sh` sparse-checks out,
+            # and for the reason its comment gives: `flow_flowlib` `include_str!`s
+            # Flow's own library definitions from `lib/`, `prelude/` and `tslib/`,
+            # which sit *beside* `rust_port` rather than inside it, and
+            # `evals/flow-typed/environment` carries the globals that are in
+            # neither. Copying `rust_port` alone builds every crate that does not
+            # embed a libdef and stops at the one that does, with
+            # `couldn't read .../lib/core.js`.
+            #
+            # `the_flake_copies_what_the_sync_checks_out` in
+            # `tools/ci/nix-first-class.sh` holds this list equal to that one.
+            for subtree in rust_port lib prelude tslib evals; do
+              if [ -e ${flow}/$subtree ]; then
+                cp -R ${flow}/$subtree upstream/flow/$subtree
+              fi
+            done
             chmod -R u+w upstream/flow
 
             for patchFile in tools/upstream/patches/flow/[0-9][0-9][0-9][0-9]-*.patch; do
@@ -263,8 +278,13 @@
             ];
 
             shellHook = ''
-              echo "uniflowed dev shell: Rust $(rustc --version | cut -d' ' -f2), Node $(node --version), Bun $(bun --version)"
-              echo "next: tools/upstream/sync.sh && cargo build --release --bin uf"
+              # Both on stderr. A banner on stdout is not a greeting, it is
+              # corruption: `nix develop . --command rustc --version` returns the
+              # banner instead of the version, and so does every script that asks
+              # this shell a question. The Dev shell check in `nix.yml` is what
+              # noticed, by reading its own banner back as a compiler version.
+              echo "uniflowed dev shell: Rust $(rustc --version | cut -d' ' -f2), Node $(node --version), Bun $(bun --version)" >&2
+              echo "next: tools/upstream/sync.sh && cargo build --release --bin uf" >&2
             '';
           };
         });

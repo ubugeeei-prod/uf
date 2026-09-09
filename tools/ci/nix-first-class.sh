@@ -230,6 +230,56 @@ else
   fail "$install_doc is missing"
 fi
 
+# The flake copies what the sync checks out.
+#
+# `flow_flowlib` reaches *outside* `rust_port` with `include_str!` — Flow's own
+# library definitions live in `lib/`, `prelude/` and `tslib/`, and the globals
+# in `evals/flow-typed/environment` are in none of those. `sync.sh` names all
+# five in `sparse_subtrees` and says why; the flake's `postPatch` has to bring
+# the same ones or the build stops at the first crate that embeds a libdef,
+# with `couldn't read .../lib/core.js` after twenty minutes of compiling.
+#
+# Compared by top-level name: the sync sparse-checks out a path
+# (`evals/flow-typed/environment`), the flake copies the directory it is under.
+sync="tools/upstream/sync.sh"
+if [ -f "$sync" ]; then
+  sync_subtrees="$(
+    sed -n 's/^sparse_subtrees="\(.*\)"$/\1/p' "$sync" |
+      tr ' ' '\n' | sed 's|/.*||' | sort -u | tr '\n' ' '
+  )"
+  flake_subtrees="$(
+    sed -n 's/^ *for subtree in \(.*\); do$/\1/p' "$flake" |
+      tr ' ' '\n' | sed 's|/.*||' | sort -u | tr '\n' ' '
+  )"
+  if [ -z "$sync_subtrees" ]; then
+    fail "$sync no longer declares sparse_subtrees, so nothing can be compared to it"
+  elif [ -z "$flake_subtrees" ]; then
+    fail "$flake no longer copies a list of subtrees in postPatch"
+  elif [ "$sync_subtrees" = "$flake_subtrees" ]; then
+    pass "the flake copies the subtrees the sync checks out ($flake_subtrees)"
+  else
+    fail "$flake copies [$flake_subtrees] and $sync checks out [$sync_subtrees]"
+  fi
+else
+  fail "$sync is missing"
+fi
+
+# A dev shell answers questions; a banner on stdout is not an answer.
+#
+# `nix develop . --command rustc --version` returned "uniflowed dev shell: Rust
+# 1.99.0-nightly, ..." because the hook echoed to stdout, and the Dev shell job
+# read its own banner back as a compiler version and failed a correct flake.
+if grep -q 'shellHook' "$flake"; then
+  loud="$(
+    sed -n "/shellHook = /,/''/p" "$flake" | grep '^ *echo ' | grep -cv '>&2' || :
+  )"
+  if [ "${loud:-0}" -ne 0 ]; then
+    fail "$flake has $loud shellHook echo(es) on stdout; send the banner to stderr with >&2"
+  else
+    pass "the dev shell banner stays off stdout"
+  fi
+fi
+
 if [ "$errors" -ne 0 ]; then
   printf '\nnix-first-class: %s failed\n' "$errors" >&2
   exit 1
