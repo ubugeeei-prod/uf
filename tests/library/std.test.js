@@ -524,6 +524,33 @@ describe("context", () => {
     expect(ctx.value(theirs)).toBe(undefined);
   });
 
+  it("gives a value scope its parent's cancellation rather than one of its own", async () => {
+    // A value scope allocates no controller and registers no listener, because
+    // a listener on a long-lived parent with nobody to remove it is the leak
+    // that makes a per-request tree a staircase. What it costs instead is that
+    // `signal`, `err` and `done` have to be the parent's, exactly — and a
+    // second signal kept in step by hand is what this avoids having.
+    const TAG = key<string>("tag");
+    const [parent, cancel] = withCancel(background());
+    const tagged = withValue(parent, TAG, "v");
+
+    expect(tagged.signal()).toBe(parent.signal());
+    expect(tagged.err()).toBe(null);
+
+    let done = false;
+    const waiting = tagged.done().then(() => {
+      done = true;
+    });
+    cancel();
+    await waiting;
+
+    expect(done).toBe(true);
+    expect(tagged.err()).toBe(CANCELLED);
+    expect(tagged.signal().aborted).toBe(true);
+    // And the value survives the ending, because a reporter reads it after.
+    expect(tagged.value(TAG)).toBe("v");
+  });
+
   it("adopts a signal somebody else owns", () => {
     const controller = new AbortController();
     const ctx = fromSignal(controller.signal);

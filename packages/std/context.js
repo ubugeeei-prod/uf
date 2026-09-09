@@ -189,7 +189,7 @@ export function background(): Context {
  * explains what happened.
  */
 export function withCancel(parent: Context): Cancellable {
-  const scope = new Scope(parent, parent.deadline());
+  const scope = new Scope(parent, parent.deadline(), null, true);
   return [scope, (reason?: mixed) => scope.end(reason ?? CANCELLED)];
 }
 
@@ -219,7 +219,7 @@ export function withTimeout(parent: Context, ms: number): Cancellable {
 export function withDeadline(parent: Context, at: number): Cancellable {
   const above = parent.deadline();
   const effective = above == null ? at : Math.min(above, at);
-  const scope = new Scope(parent, effective);
+  const scope = new Scope(parent, effective, null, true);
   const remaining = effective - Date.now();
   if (remaining <= 0) {
     scope.end(DEADLINE_EXCEEDED);
@@ -237,13 +237,20 @@ export function withDeadline(parent: Context, at: number): Cancellable {
  * pair. Storing is not mutation — `parent` cannot see the new value — so a
  * middleware that adds a value does not change what its caller reads.
  *
+ * It is also the cheap one. A value scope allocates no `AbortController`, no
+ * promise and no listener; `signal`, `err` and `done` are its parent's. That
+ * matters because the alternative leaks: a listener on a long-lived parent, one
+ * per short-lived child, is a memory profile shaped like a staircase, and a
+ * scope with no `cancel` has nobody to remove it. Go's `valueCtx` is the same
+ * shape for the same reason.
+ *
  * Values are for things that belong to the *request* rather than to the
  * function: a trace id, an authenticated user, a deadline-aware logger. A
  * parameter is better for everything else, because a parameter is checked at
  * every call and a context value is checked where it is read.
  */
 export function withValue<T>(parent: Context, key: Key<T>, value: T): Context {
-  return new Scope(parent, parent.deadline(), { key, value });
+  return new Scope(parent, parent.deadline(), { key, value }, false);
 }
 
 /**
@@ -257,7 +264,7 @@ export function withValue<T>(parent: Context, key: Key<T>, value: T): Context {
  * signal's own `reason` as the error.
  */
 export function fromSignal(signal: AbortSignal): Context {
-  const scope = new Scope(ROOT, null);
+  const scope = new Scope(ROOT, null, null, true);
   if (signal.aborted) {
     scope.end(signal.reason ?? CANCELLED);
   } else {
@@ -275,8 +282,16 @@ export function fromSignal(signal: AbortSignal): Context {
  * the lookup walk and the cancellation walk from drifting apart.
  */
 class Scope implements Context {
-  #parent: Context | null;
-  #controller: AbortController = new AbortController();
+  #parent: Context;
+  /**
+   * This scope's own cancellation, or `null` when it has none.
+   *
+   * `null` is a value scope: it ends exactly when its parent does, so giving it
+   * a controller of its own would mean a second signal to keep in step with the
+   * first, plus a listener on the parent that nothing ever removes. Delegating
+   * is both cheaper and the only version with no leak.
+   */
+  #controller: AbortController | null;
   #deadline: number | null;
   /**
    * The one value this scope stores, if it stores one.
@@ -292,17 +307,25 @@ class Scope implements Context {
   #error: mixed = null;
   #timer: TimeoutID | null = null;
   #detach: (() => void) | null = null;
-  #done: Promise<void>;
+  #done: Promise<void> | null = null;
   #settle: () => void = () => {};
 
   constructor(
     parent: Context,
     deadline: number | null,
-    entry?: { readonly key: mixed, readonly value: mixed },
+    entry: { readonly key: mixed, readonly value: mixed } | null,
+    cancellable: boolean,
   ) {
     this.#parent = parent;
     this.#deadline = deadline;
-    this.#entry = entry ?? null;
+    this.#entry = entry;
+    if (!cancellable) {
+      // A value scope. Everything but `value` is the parent's answer, so there
+      // is nothing to allocate and nothing to listen for.
+      this.#controller = null;
+      return;
+    }
+    this.#controller = new AbortController();
     this.#done = new Promise((resolve) => {
       this.#settle = resolve;
     });
@@ -326,15 +349,17 @@ class Scope implements Context {
   }
 
   signal(): AbortSignal {
-    return this.#controller.signal;
+    const controller = this.#controller;
+    return controller == null ? this.#parent.signal() : controller.signal;
   }
 
   err(): mixed {
-    return this.#error;
+    return this.#controller == null ? this.#parent.err() : this.#error;
   }
 
   done(): Promise<void> {
-    return this.#done;
+    const done = this.#done;
+    return done == null ? this.#parent.done() : done;
   }
 
   deadline(): number | null {
@@ -375,12 +400,14 @@ class Scope implements Context {
    * End this scope, once.
    *
    * Idempotent, because three things race to call it — the caller's `cancel`,
-   * the deadline, and the parent — and the first ending is the true one. It
-   * releases the timer and the parent listener before aborting, so the
-   * listeners this scope's own children run in are the only work left.
+   * the deadline, and the parent — and the first ending is the true one. A
+   * no-op on a value scope, which has no ending of its own. It releases the
+   * timer and the parent listener before aborting, so the listeners this
+   * scope's own children run in are the only work left.
    */
   end(reason: mixed): void {
-    if (this.#error != null) {
+    const controller = this.#controller;
+    if (controller == null || this.#error != null) {
       return;
     }
     this.#error = reason;
@@ -392,7 +419,7 @@ class Scope implements Context {
       this.#detach();
       this.#detach = null;
     }
-    this.#controller.abort(reason);
+    controller.abort(reason);
     this.#settle();
   }
 }
