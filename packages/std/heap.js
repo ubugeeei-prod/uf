@@ -122,8 +122,13 @@ export class Heap<T> {
       return undefined;
     }
     const top = items[0];
-    const last = items.pop();
-    if (items.length > 0 && last !== undefined) {
+    // Read the last item before shortening the array rather than taking what
+    // `pop` hands back: on a `Heap<T | void>` the returned value is
+    // indistinguishable from "there was nothing there", and a heap whose
+    // elements may legitimately be `undefined` would leave a hole at the root.
+    const last = items[items.length - 1];
+    items.pop();
+    if (items.length > 0) {
       items[0] = last;
       this.#down(0);
     }
