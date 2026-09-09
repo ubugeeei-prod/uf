@@ -384,6 +384,15 @@ jobs:
       # first thing anybody sees from `curl … | sh`, and a line wider than the
       # window wraps without its indent.
       - run: ./target/release/uf run install:banner
+      # And what `uniflowed.dev` answers. The apex serves a landing page now
+      # and hands every other path to the documentation host exactly as it did
+      # when that was all it did — which is a promise about `/guide`,
+      # `/og.png` and `/sitemap.xml`, paths written down in issues and in
+      # other people's pages. Nothing else in this repository would notice
+      # them turning into 404s, because the failure is invisible from the
+      # machine of whoever changed the worker.
+      - run: ./target/release/uf run apex:routes
+      - run: ./target/release/uf run apex:routes:test
       - run: ./target/release/uf run scripts:parse
       - run: ./target/release/uf run scripts:parse:test
       # And that the flake is still one flake that reads one toolchain pin.
@@ -404,6 +413,16 @@ jobs:
       # and the failure surfaces as `uf: command not found` in a pipeline
       # belonging to somebody who cannot fix it.
       - run: ./target/release/uf run integrations
+      # And that the recipes inside those files still run. The step above
+      # checks the installation; this reads every `uf` command in the three
+      # integrations and in `/guide/ci` back against the binary this job
+      # downloaded, so a renamed command or a removed flag fails here rather
+      # than in somebody else's pipeline. It also holds the rule that costs the
+      # most to get wrong: a recipe must install the project before checking
+      # it, because `uf check` with no `node_modules` does not fail — it types
+      # every unresolved import as `any` and passes.
+      - run: ./target/release/uf run ci:recipes
+      - run: ./target/release/uf run ci:recipes:test
       # And that the set that goes to npm is closed under its own
       # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
       # release that sends one without the other publishes a package that

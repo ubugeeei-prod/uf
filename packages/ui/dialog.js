@@ -78,8 +78,13 @@ import {
 import { useScrollLock } from "@uniflowed/hooks/browser";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { focusable } from "./internal/focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 
@@ -155,29 +160,34 @@ export component DialogRoot(
   return <DialogContext.Provider value={state}>{children}</DialogContext.Provider>;
 }
 
-/** What opens the dialog, and what focus comes back to when it closes. */
-export component DialogTrigger(children: React.Node, ...rest: Rest) {
+/**
+ * What opens the dialog, and what focus comes back to when it closes.
+ *
+ * `render` for a trigger that is not a `<button>` — a card, a table row, an
+ * icon in somebody else's `<Pressable>`. The ref goes across with everything
+ * else, which is what keeps "focus comes back here" true of whatever the
+ * caller rendered.
+ */
+export component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Trigger");
-  const passed = withoutComposed(rest, ["onClick", "ref"]);
+  const props = withProps(withoutComposed(rest, ["onClick", "ref"]), {
+    // Only while it is open. An `aria-controls` naming an element that is not
+    // in the document is worse than no `aria-controls`: a reader is told
+    // there is somewhere to go and there is not.
+    "aria-controls": dialog.open ? `${dialog.base}-body` : undefined,
+    "aria-expanded": dialog.open ? "true" : "false",
+    "aria-haspopup": "dialog",
+    children,
+    onClick: composeHandlers(rest.onClick, () => dialog.setOpen(true)),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      dialog.triggerRef.current = element;
+    }),
+  });
 
-  return (
-    <button
-      {...passed}
-      // Only while it is open. An `aria-controls` naming an element that is not
-      // in the document is worse than no `aria-controls`: a reader is told
-      // there is somewhere to go and there is not.
-      aria-controls={dialog.open ? `${dialog.base}-body` : undefined}
-      aria-expanded={dialog.open ? "true" : "false"}
-      aria-haspopup="dialog"
-      onClick={composeHandlers(rest.onClick, () => dialog.setOpen(true))}
-      ref={composeRefs(rest.ref, (element) => {
-        dialog.triggerRef.current = element;
-      })}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -189,12 +199,16 @@ export component DialogTrigger(children: React.Node, ...rest: Rest) {
  * their own backdrop or omits one entirely must still get it. That lives on
  * `Dialog.Body`, which is the part that knows where "outside" is.
  */
-export component DialogOverlay(...rest: Rest) {
+export component DialogOverlay(render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Overlay");
   if (!dialog.open) {
     return null;
   }
-  return <div {...rest} aria-hidden="true" data-state="open" />;
+  const props = withProps(rest, { "aria-hidden": "true", "data-state": "open" });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /**
@@ -209,6 +223,7 @@ export component DialogBody(
   dismissOnOutsidePress?: boolean = true,
   initialFocus?: { current: HTMLElement | null },
   role?: DialogRole = "dialog",
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const dialog = useDialog("Dialog.Body");
@@ -295,72 +310,71 @@ export component DialogBody(
     return null;
   }
 
-  const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
-
-  return (
-    <div
-      // `passed` first. A caller `ref` used to replace `bodyRef`, which left it
-      // null, made the Tab branch below return early, and turned the focus trap
-      // off while the dialog still announced `aria-modal="true"`. A caller
-      // `onKeyDown` used to replace this one, and Escape stopped closing it.
-      {...passed}
-      // Only ids that are in the document: an `aria-labelledby` naming a
-      // missing element makes a screen reader announce nothing at all, so a
-      // dialog without a `Dialog.Title` falls through to whatever `aria-label`
-      // the caller passed instead.
-      aria-describedby={dialog.described ? `${dialog.base}-description` : undefined}
-      aria-labelledby={dialog.titled ? `${dialog.base}-title` : undefined}
-      aria-modal="true"
-      id={`${dialog.base}-body`}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          // The dialog behind this one must not also close. Two stacked
-          // dialogs nest in the DOM, so without this the event bubbled to the
-          // outer dialog's handler and one Escape closed both.
-          event.stopPropagation();
-          close();
-          return;
-        }
-        if (event.key !== "Tab") {
-          return;
-        }
-        const body = bodyRef.current;
-        if (body == null) {
-          return;
-        }
-        const stops = focusable(body);
-        // An outer dialog must not also run its trap on this key.
+  // The caller's props first. A caller `ref` used to replace `bodyRef`, which
+  // left it null, made the Tab branch below return early, and turned the focus
+  // trap off while the dialog still announced `aria-modal="true"`. A caller
+  // `onKeyDown` used to replace this one, and Escape stopped closing it.
+  const props = withProps(withoutComposed(rest, ["onKeyDown", "ref"]), {
+    // Only ids that are in the document: an `aria-labelledby` naming a
+    // missing element makes a screen reader announce nothing at all, so a
+    // dialog without a `Dialog.Title` falls through to whatever `aria-label`
+    // the caller passed instead.
+    "aria-describedby": dialog.described ? `${dialog.base}-description` : undefined,
+    "aria-labelledby": dialog.titled ? `${dialog.base}-title` : undefined,
+    "aria-modal": "true",
+    children,
+    id: `${dialog.base}-body`,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        // The dialog behind this one must not also close. Two stacked
+        // dialogs nest in the DOM, so without this the event bubbled to the
+        // outer dialog's handler and one Escape closed both.
         event.stopPropagation();
-        if (stops.length === 0) {
-          // Nothing to move to, so Tab must not leave either.
-          event.preventDefault();
-          return;
-        }
-        const first = stops[0];
-        const last = stops[stops.length - 1];
-        const active = body.ownerDocument?.activeElement;
-        // Wrap at the ends. This is the whole of "focus cannot leave"; every
-        // other Tab press is the browser's own business.
-        if (event.shiftKey && (active === first || active === body)) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && active === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      })}
-      ref={composeRefs(rest.ref, (element) => {
-        bodyRef.current = element;
-      })}
-      role={role}
-      // So the dialog can hold focus itself when it contains nothing focusable,
-      // and so the trap has somewhere to put focus that is still inside.
-      tabIndex={-1}
-    >
-      {children}
-    </div>
-  );
+        close();
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const body = bodyRef.current;
+      if (body == null) {
+        return;
+      }
+      const stops = focusable(body);
+      // An outer dialog must not also run its trap on this key.
+      event.stopPropagation();
+      if (stops.length === 0) {
+        // Nothing to move to, so Tab must not leave either.
+        event.preventDefault();
+        return;
+      }
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const active = body.ownerDocument?.activeElement;
+      // Wrap at the ends. This is the whole of "focus cannot leave"; every
+      // other Tab press is the browser's own business.
+      if (event.shiftKey && (active === first || active === body)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      bodyRef.current = element;
+    }),
+    role,
+    // So the dialog can hold focus itself when it contains nothing focusable,
+    // and so the trap has somewhere to put focus that is still inside.
+    tabIndex: -1,
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /**
@@ -370,7 +384,7 @@ export component DialogBody(
  * rendered — a conditional title that is absent used to leave the dialog
  * pointing at an id nothing had.
  */
-export component DialogTitle(children: React.Node, ...rest: Rest) {
+export component DialogTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Title");
   const register = dialog.registerTitle;
   useEffect(() => {
@@ -378,11 +392,15 @@ export component DialogTitle(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
-  return (
-    <h2 {...rest} id={`${dialog.base}-title`}>
-      {children}
-    </h2>
-  );
+  const props = withProps(rest, { children, id: `${dialog.base}-title` });
+  // `<h2>` is a default rather than a decision. Which heading level a dialog's
+  // name is depends on what is around it — ubugeeei-prod/uf#276 is the same
+  // observation about an accordion — and `render` is how a caller says so
+  // without losing the id `aria-labelledby` points at.
+  if (render != null) {
+    return render(props);
+  }
+  return <h2 {...props} />;
 }
 
 /**
@@ -392,7 +410,7 @@ export component DialogTitle(children: React.Node, ...rest: Rest) {
  * the one moment the reader has to decide whether they care — so this is where
  * "this cannot be undone" belongs, not in body text further down.
  */
-export component DialogDescription(children: React.Node, ...rest: Rest) {
+export component DialogDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Description");
   const register = dialog.registerDescription;
   useEffect(() => {
@@ -400,11 +418,11 @@ export component DialogDescription(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
-  return (
-    <p {...rest} id={`${dialog.base}-description`}>
-      {children}
-    </p>
-  );
+  const props = withProps(rest, { children, id: `${dialog.base}-description` });
+  if (render != null) {
+    return render(props);
+  }
+  return <p {...props} />;
 }
 
 /**
@@ -416,29 +434,35 @@ export component DialogDescription(children: React.Node, ...rest: Rest) {
  * styling layer has a name to attach to, and contributes no semantics because
  * it has none to contribute.
  */
-export component DialogHeader(children: React.Node, ...rest: Rest) {
-  return <div {...rest}>{children}</div>;
+export component DialogHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /** The bottom of the dialog, where the actions go. See `Dialog.Header`. */
-export component DialogFooter(children: React.Node, ...rest: Rest) {
-  return <div {...rest}>{children}</div>;
+export component DialogFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /** A button that closes the dialog. */
-export component DialogClose(children: React.Node, ...rest: Rest) {
+export component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Close");
-  const passed = withoutComposed(rest, ["onClick"]);
+  const props = withProps(withoutComposed(rest, ["onClick"]), {
+    children,
+    onClick: composeHandlers(rest.onClick, () => dialog.setOpen(false)),
+  });
 
-  return (
-    <button
-      {...passed}
-      onClick={composeHandlers(rest.onClick, () => dialog.setOpen(false))}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**

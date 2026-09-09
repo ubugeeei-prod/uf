@@ -465,6 +465,209 @@ fn the_registry_names_exactly_what_each_package_exports() {
     assert_eq!(exempt, ["@uniflowed/react", "@uniflowed/relay"]);
 }
 
+/// The std registry's shipping entries are exactly `packages/std`'s subpaths,
+/// and each one names exactly what its file exports.
+///
+/// The same check as [`the_registry_names_exactly_what_each_package_exports`],
+/// against the other table — and it had to be written because that one cannot
+/// see this drift. `uf_lib::builtin_modules()` carries `@uniflowed/std` and
+/// stops there; `uf_std::std_modules()` carries the subpaths, and until
+/// ubugeeei-prod/uf#710 it named forty-four of them, of which zero had a file
+/// and none of the six that `packages/std` actually ships was among them.
+/// `uf inspect --json` printed all forty-four under `stdModules`, so a reader
+/// — or an agent — was told this project had an `@uniflowed/std/sql` with a
+/// migration runner in it.
+///
+/// Four edges, so that no addition can be half-made:
+///
+/// 1. every [`StdStatus::Ships`] specifier is a subpath the manifest exports,
+/// 2. every subpath the manifest exports is a shipping specifier,
+/// 3. every shipping entry's export list is exactly its file's values, and
+/// 4. every `.js` file in the package is one of them.
+///
+/// The last one is not redundant with the first three. A file added without a
+/// manifest entry is unreachable from outside the workspace and resolves
+/// perfectly inside it, which is the shape of hole `@uniflowed/ui` lived in.
+#[test]
+fn the_std_registry_names_exactly_what_the_std_package_exports() {
+    let package = repository_root().join("packages").join("std");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(package.join("package.json")).expect("packages/std/package.json"),
+    )
+    .expect("packages/std/package.json parses");
+
+    // `./package.json` is a subpath every package publishes so that a consumer
+    // can read the manifest, and `.` is the declaration surface, which has its
+    // own status. Neither is a module this table is about.
+    let published: BTreeSet<String> = manifest["exports"]
+        .as_object()
+        .expect("packages/std declares exports")
+        .keys()
+        .filter(|key| key.as_str() != "." && key.as_str() != "./package.json")
+        .map(|key| format!("@uniflowed/std/{}", key.trim_start_matches("./")))
+        .collect();
+
+    let modules = std_module_descriptors();
+    let shipping: BTreeSet<String> = modules
+        .iter()
+        .filter(|module| module.status == StdStatus::Ships)
+        .map(|module| module.specifier.to_string())
+        .collect();
+
+    assert!(
+        !published.is_empty(),
+        "packages/std exports no subpath, so this is not checking anything"
+    );
+    assert_eq!(
+        shipping,
+        published,
+        "the std registry and packages/std disagree\n  \
+         the registry says ships and the manifest does not export: {:?}\n  \
+         the manifest exports and the registry does not call shipped: {:?}",
+        shipping.difference(&published).collect::<Vec<_>>(),
+        published.difference(&shipping).collect::<Vec<_>>()
+    );
+
+    let mut drifted = Vec::new();
+    let mut files = BTreeSet::new();
+    for module in modules.iter() {
+        if module.status != StdStatus::Ships {
+            continue;
+        }
+        let subpath = module
+            .specifier
+            .strip_prefix("@uniflowed/std/")
+            .expect("a shipping specifier is a subpath");
+        let file = package.join(format!("{subpath}.js"));
+        files.insert(file.clone());
+        let source = fs::read_to_string(&file)
+            .unwrap_or_else(|error| panic!("{} cannot be read: {error}", file.display()));
+        let exported = exported_values(&source)
+            .unwrap_or_else(|error| panic!("{} does not parse: {error}", file.display()))
+            // `export * from` is refused a few tests down for every shipped
+            // module, so a std module cannot be the one that hands on somebody
+            // else's surface.
+            .unwrap_or_else(|| panic!("{} re-exports a whole module", file.display()));
+
+        let mut listed: Vec<String> = module
+            .exports
+            .iter()
+            .map(|export| export.to_string())
+            .collect();
+        listed.sort();
+        listed.dedup();
+        if listed != exported {
+            let missing: Vec<&String> = exported.iter().filter(|n| !listed.contains(n)).collect();
+            let absent: Vec<&String> = listed.iter().filter(|n| !exported.contains(n)).collect();
+            drifted.push(format!(
+                "{}\n      exports but the registry does not name: {missing:?}\n      the registry names but does not export: {absent:?}",
+                module.specifier
+            ));
+        }
+    }
+    assert!(
+        drifted.is_empty(),
+        "the std registry disagrees with {} module(s):\n  - {}",
+        drifted.len(),
+        drifted.join("\n  - ")
+    );
+
+    // The fourth edge. `index.js` is the declaration surface and is named by
+    // `.`; everything else in the package has to be a module the table knows
+    // about.
+    let mut unaccounted = Vec::new();
+    for entry in fs::read_dir(&package).expect("packages/std is readable") {
+        let path = entry.expect("a readable directory entry").path();
+        if path.extension().is_some_and(|extension| extension == "js")
+            && path.file_name().is_some_and(|name| name != "index.js")
+            && !files.contains(&path)
+        {
+            unaccounted.push(path.display().to_string());
+        }
+    }
+    assert!(
+        unaccounted.is_empty(),
+        "packages/std has {} module(s) the std registry does not name: {}",
+        unaccounted.len(),
+        unaccounted.join(", ")
+    );
+}
+
+/// The string-literal members of one `export type Name = "a" | "b";`.
+///
+/// Scanned from the declaration's own span rather than from the file, which is
+/// the difference between reading a union and reading every quoted word in a
+/// module — including the ones in the comment above it. The Flow parser next
+/// door answers "what does this module export", which is a different question;
+/// walking a type annotation to answer this one would be a bigger change than
+/// the thing it checks, and the span is unambiguous: `=` to `;`.
+fn string_union(source: &str, name: &str) -> BTreeSet<String> {
+    let head = format!("export type {name} =");
+    let start = source
+        .find(&head)
+        .unwrap_or_else(|| panic!("packages/std/index.js declares {name}"))
+        + head.len();
+    let body = &source[start..];
+    let end = body
+        .find(';')
+        .unwrap_or_else(|| panic!("{name}'s declaration is terminated"));
+
+    let mut members = BTreeSet::new();
+    let mut rest = &body[..end];
+    while let Some(open) = rest.find('"') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find('"') else { break };
+        members.insert(after[..close].to_owned());
+        rest = &after[close + 1..];
+    }
+    members
+}
+
+/// `packages/std/index.js`'s unions name the registry's own statuses and
+/// categories.
+///
+/// `StdModule` is declared twice — once as a Rust struct that `uf inspect
+/// --json` serialises and once as the Flow type describing what `modules()`
+/// returns — and a union in one of them that the other does not have is a
+/// declaration that lies to the checker about a value it will be handed. The
+/// `status` field is new in ubugeeei-prod/uf#710, so this is the guard that
+/// comes with it rather than the care that would have to.
+///
+/// Compared against the names the registry actually *uses*, not against a list
+/// of variants written down a third time. An enum variant no entry carries is
+/// not a fact about the package, and a list written here to be complete is the
+/// second place with the same names in it that #710 is about.
+#[test]
+fn the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry() {
+    let source = fs::read_to_string(
+        repository_root()
+            .join("packages")
+            .join("std")
+            .join("index.js"),
+    )
+    .expect("packages/std/index.js");
+
+    let name_of = |value: serde_json::Value| {
+        value
+            .as_str()
+            .expect("a kebab-case name, not a struct")
+            .to_owned()
+    };
+    let mut statuses = BTreeSet::new();
+    let mut categories = BTreeSet::new();
+    for module in std_module_descriptors() {
+        statuses.insert(name_of(
+            serde_json::to_value(module.status).expect("a status serialises"),
+        ));
+        categories.insert(name_of(
+            serde_json::to_value(module.category).expect("a category serialises"),
+        ));
+    }
+
+    assert_eq!(string_union(&source, "StdStatus"), statuses);
+    assert_eq!(string_union(&source, "StdCategory"), categories);
+}
+
 /// `hook_descriptors()` names exactly the hooks `@uniflowed/hooks` exports.
 ///
 /// The companion to [`the_registry_names_exactly_what_each_package_exports`],

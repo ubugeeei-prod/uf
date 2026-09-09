@@ -30,17 +30,29 @@ archive whose members would land outside their own directory, unpacks it under
 times: an integration that fetched a tarball itself would be an integration that
 skipped the checksum.
 
-So each file here is the same four decisions in that system's own vocabulary:
+So each file here is the same six decisions in that system's own vocabulary:
 
 1. where to install (`UF_INSTALL_ROOT`, `UF_BIN_DIR`), chosen so that the
    system's own cache can carry it;
 2. how to get that directory onto `PATH` for the steps that follow;
 3. when the cache may be believed;
-4. what happens on a platform with no build.
+4. how hard to work at proving where the archive came from (`UF_VERIFY_ORIGIN`);
+5. what the project needs installed before a `uf` command means anything;
+6. what happens on a platform with no build.
 
-`tools/ci/integrations-agree.sh` checks the first of those against the installer
-itself: an integration may only set environment variables `install.sh` actually
-reads, so a renamed variable fails here rather than in somebody's pipeline.
+Two checks hold them to it, and they check different halves.
+
+`tools/ci/integrations-agree.sh` checks the *installation*: an integration may
+only set environment variables `install.sh` actually reads, so a renamed
+variable fails here rather than in somebody's pipeline.
+
+`tools/ci/recipes-are-runnable.sh` checks what the pipeline does next. It reads
+every `uf` command in these three files and in `/guide/ci` back against the
+binary — the subcommand exists, the flags exist, the result can be read by a
+machine — and holds the fifth decision above, which is the one that does not
+announce itself: `uf check` with no `node_modules` types every unresolved import
+as `any` and *passes*, so a recipe that forgets `uf install` reports a green
+pipeline over a program nothing checked.
 
 ## Pin the version
 
@@ -58,6 +70,12 @@ A restored cache is not believed on the strength of the key either. Each
 integration runs `uf --version` out of the restored directory first: a cache
 that lost a symlink, or one restored onto a different architecture under a key
 that did not distinguish it, looks like a hit and can run nothing.
+
+Every toolchain cache key names the version **and the architecture**, and
+`recipes-are-runnable.sh` checks that it does. uf publishes one archive per
+target, and a cache shared by a fleet with runners of both architectures in it
+will restore one target's binary onto the other and report a hit; the GitLab
+key did exactly that until it gained `CI_RUNNER_EXECUTABLE_ARCH`.
 
 ## Platforms
 

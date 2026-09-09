@@ -61,9 +61,12 @@
 //
 // * **A reference format.** React's Flight payload can carry a reference to a
 //   client module, a promise, or an element, and a decoder that reconstructs
-//   those is a decoder that constructs attacker-chosen objects. uf has no such
-//   payload (ubugeeei-prod/uf#252) and this grammar is not the place to grow
-//   one quietly.
+//   those is a decoder that constructs attacker-chosen objects. uf's payload
+//   (`./payload.js`) now carries one of the three — a reference to a *row of
+//   itself*, which names nothing to construct — and it is a document the
+//   server writes rather than a body somebody sends. This grammar is the one
+//   an untrusted sender is decoded under, so it still has none, and it is
+//   still not the place to grow one quietly (ubugeeei-prod/uf#252).
 // * **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays.** Each
 //   would need a tag in the payload saying which constructor to call, and a
 //   tag naming a constructor is the oracle every deserialisation CVE is made

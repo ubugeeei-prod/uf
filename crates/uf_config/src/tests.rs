@@ -606,6 +606,116 @@ fn refuses_a_cache_switch_uf_does_not_implement() {
     }
 }
 
+/// The runtimes a project may name are the ones that have a host.
+///
+/// Read off `uf_runtime::HOSTS` rather than listed here, which is the whole
+/// point: the table is where a host's Flow loader is recorded, and a name a
+/// project may write is a name uf can run. The two lists were independent, and
+/// this crate's was the longer one — `edge`, `serverless` and `container` were
+/// in the default `compatibility` while their rows had no loader at all.
+///
+/// See ubugeeei-prod/uf#246.
+#[test]
+fn the_runtimes_a_project_may_name_are_the_ones_with_a_host() {
+    let with_a_loader: Vec<uf_runtime::RuntimeHost> = uf_runtime::HOSTS
+        .iter()
+        .filter(|support| support.loads_flow())
+        .map(|support| support.host)
+        .collect();
+    let may_be_named: Vec<uf_runtime::RuntimeHost> = RuntimeEngine::ALL
+        .iter()
+        .filter(|engine| engine.is_a_host())
+        .map(|engine| engine.host())
+        .collect();
+
+    assert_eq!(may_be_named, with_a_loader);
+    // And the default is that list rather than a wish. This is what
+    // `.uf/install.json` records as the hosts that must be available and what
+    // `uf inspect --json` prints, so a name here is a claim uf publishes about
+    // every project it installs.
+    let compatibility: Vec<&str> = UniflowedConfig::default()
+        .app
+        .runtime
+        .compatibility
+        .iter()
+        .map(|engine| engine.as_str())
+        .collect();
+    assert_eq!(compatibility, vec!["node", "bun", "deno"]);
+}
+
+/// A runtime with no host is refused at the key that named it.
+///
+/// All seven names parsed and four of them named runtimes that cannot import a
+/// Flow module, so writing one changed nothing a command does and two things a
+/// reader sees: `uf explain` printed it as the JavaScript host, and
+/// `.uf/install.json` recorded it among the hosts that must be available. The
+/// message has to name the two keys that *do* something, because a person who
+/// wrote `edge` here meant one of them.
+#[test]
+fn refuses_a_runtime_it_has_no_host_for() {
+    for (key, body, issue) in [
+        ("app.runtime.default", "default: \"edge\"", "246"),
+        // A different row, so the issue in the message is the one the table
+        // records for *that* host rather than a constant written beside it.
+        (
+            "app.runtime.compatibility",
+            "compatibility: [\"node\", \"serverless\"]",
+            "391",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+        fs::write(
+            &path,
+            format!("export default defineConfig({{ app: {{ runtime: {{ {body} }} }} }});"),
+        )
+        .unwrap();
+
+        let error = load_config_file(&path).expect_err("a runtime with no host is refused");
+
+        assert!(
+            matches!(&error, ConfigError::RuntimeEngineWithoutHost { key: named, .. } if *named == key),
+            "{key}: {error:?}"
+        );
+        let message = error.to_string();
+        assert!(message.contains(key), "{message}");
+        assert!(message.contains("planned"), "{message}");
+        // The key that chooses a host, and the key that chooses a deployment
+        // target. Between them they are what the refused name was reaching for.
+        assert!(
+            message.contains("app.runtime.capabilityJsHost.default"),
+            "{message}"
+        );
+        assert!(message.contains("app.runtime.deploy.adapter"), "{message}");
+        assert!(message.contains(issue), "{message}");
+    }
+}
+
+/// And the three that do have a host still load.
+#[test]
+fn accepts_every_runtime_it_has_a_host_for() {
+    for engine in RuntimeEngine::ALL
+        .iter()
+        .filter(|engine| engine.is_a_host())
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+        fs::write(
+            &path,
+            format!(
+                "export default defineConfig({{ app: {{ runtime: {{ default: \"{}\" }} }} }});",
+                engine.as_str()
+            ),
+        )
+        .unwrap();
+
+        let config =
+            load_config_file(&path).unwrap_or_else(|error| panic!("{}: {error}", engine.as_str()));
+
+        assert_eq!(config.app.runtime.default, *engine);
+    }
+}
+
 /// `false` is the default and says the same thing with or without a cache.
 #[test]
 fn a_cache_switch_that_is_off_is_never_refused() {

@@ -1,13 +1,23 @@
+use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
+use uf_runtime::{HostSupport, RuntimeHost};
+
+use crate::{ConfigError, UniflowedConfig};
 
 /// App runtime and deployment defaults.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct RuntimeConfig {
-    /// Default JavaScript host.
+    /// The runtime this project is written for.
+    ///
+    /// Not the host a command starts — that is
+    /// [`CapabilityJsHostConfig::default`], which is the key `uf dev`,
+    /// `uf test` and `uf build` resolve through. This one is the project's own
+    /// statement of what it targets, and [`check`] holds it to the runtimes uf
+    /// has a host for.
     pub default: RuntimeEngine,
-    /// Compatible runtime/deployment targets.
+    /// The other runtimes this project states it runs on.
     pub compatibility: Vec<RuntimeEngine>,
     /// Capability JS Host configuration for Node.js, Deno, and Bun.
     pub capability_js_host: CapabilityJsHostConfig,
@@ -16,17 +26,29 @@ pub struct RuntimeConfig {
 }
 
 impl Default for RuntimeConfig {
+    /// The runtimes a uf project runs on, and no others.
+    ///
+    /// This listed six, and three of them — `edge`, `serverless`,
+    /// `container` — are rows `uf_runtime::HOSTS` grades **planned** with no
+    /// Flow loader at all. The list was written into `.uf/install.json` under
+    /// `runtimeManager.hosts`, which is documented as the hosts that must be
+    /// available, and printed by `uf inspect --json`: every project uf
+    /// installed recorded that it ran on three runtimes that cannot import a
+    /// line of its source. That is ubugeeei-prod/uf#246's own sentence — a
+    /// name in an enum is not compatibility — written by uf itself.
+    ///
+    /// So the default is what [`RuntimeEngine::is_a_host`] says is true, the
+    /// same way [`DeployAnywhereConfig::default`] is what
+    /// [`DeployAdapter::is_implemented`] says is true. A host that earns a
+    /// Flow loader joins this list by earning it.
     fn default() -> Self {
         Self {
             default: RuntimeEngine::Node,
-            compatibility: vec![
-                RuntimeEngine::Node,
-                RuntimeEngine::Deno,
-                RuntimeEngine::Bun,
-                RuntimeEngine::Edge,
-                RuntimeEngine::Serverless,
-                RuntimeEngine::Container,
-            ],
+            compatibility: RuntimeEngine::ALL
+                .iter()
+                .copied()
+                .filter(|engine| engine.is_a_host())
+                .collect(),
             capability_js_host: CapabilityJsHostConfig::default(),
             deploy: DeployAnywhereConfig::default(),
         }
@@ -52,6 +74,114 @@ pub enum RuntimeEngine {
     Serverless,
     /// Container runtime.
     Container,
+}
+
+impl RuntimeEngine {
+    /// Every engine, host or not, in the order `uf_runtime::HOSTS` lists them.
+    ///
+    /// The variants stay even though [`check`] refuses four of them, and that
+    /// is the point: a name uf accepted for a year is refused with a sentence
+    /// naming the key its writer meant, rather than with serde's "unknown
+    /// variant", which reads like a typo in a word that was correct.
+    pub const ALL: &'static [Self] = &[
+        Self::Node,
+        Self::Bun,
+        Self::Deno,
+        Self::Edge,
+        Self::Serverless,
+        Self::Container,
+        Self::Uf,
+    ];
+
+    /// The name a person writes in `uf.config.js`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Uf => "uf",
+            Self::Node => "node",
+            Self::Deno => "deno",
+            Self::Bun => "bun",
+            Self::Edge => "edge",
+            Self::Serverless => "serverless",
+            Self::Container => "container",
+        }
+    }
+
+    /// The row in `uf_runtime::HOSTS` this engine is a name for.
+    #[must_use]
+    pub const fn host(self) -> RuntimeHost {
+        match self {
+            Self::Uf => RuntimeHost::Uf,
+            Self::Node => RuntimeHost::Node,
+            Self::Deno => RuntimeHost::Deno,
+            Self::Bun => RuntimeHost::Bun,
+            Self::Edge => RuntimeHost::Edge,
+            Self::Serverless => RuntimeHost::Serverless,
+            Self::Container => RuntimeHost::Container,
+        }
+    }
+
+    /// Whether uf can run a project on it.
+    ///
+    /// Read off the table rather than written down twice: an engine is a host
+    /// when its row has a Flow loader, because a runtime that cannot import a
+    /// Flow module cannot import a uf project's first file. `uf_config`'s own
+    /// tests assert the two agree, so a host that gains a loader opens its
+    /// name here and one that loses it closes it.
+    #[must_use]
+    pub fn is_a_host(self) -> bool {
+        HostSupport::for_host(self.host()).loads_flow()
+    }
+}
+
+/// Refuse a runtime this project could not run on.
+///
+/// The keys are a statement about the project, and until now they were a
+/// statement nothing could be wrong: all seven names parsed, and four of them
+/// named runtimes with no host. Naming one changed nothing a command does —
+/// which host runs is [`CapabilityJsHostConfig::default`] — and it changed two
+/// things a reader sees: `uf explain` printed it as the JavaScript host, and
+/// `.uf/install.json` recorded it among the hosts that must be available.
+///
+/// Refused where it is written, for the reason `check_cache_switches` refuses
+/// an unimplemented cache: the request cannot be honoured, and the failure
+/// belongs at the place the request was made rather than in a manifest
+/// somebody reads later. See ubugeeei-prod/uf#246.
+pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), ConfigError> {
+    let runtime = &config.app.runtime;
+    for (key, engine) in std::iter::once(("app.runtime.default", runtime.default)).chain(
+        runtime
+            .compatibility
+            .iter()
+            .map(|engine| ("app.runtime.compatibility", *engine)),
+    ) {
+        if engine.is_a_host() {
+            continue;
+        }
+        let support = HostSupport::for_host(engine.host());
+        return Err(ConfigError::RuntimeEngineWithoutHost {
+            path: path.to_path_buf(),
+            key,
+            engine: engine.as_str(),
+            level: support.level.as_str(),
+            hosts: host_names(),
+            tracking: support.tracking_issue.map_or_else(
+                || String::from("docs/hosts.md"),
+                |issue| format!("docs/hosts.md and ubugeeei-prod/uf#{issue}"),
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// The engines a project may name, as the message lists them.
+fn host_names() -> String {
+    RuntimeEngine::ALL
+        .iter()
+        .filter(|engine| engine.is_a_host())
+        .map(|engine| format!("`{}`", engine.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Host-provided JavaScript engine selection.
@@ -92,6 +222,18 @@ pub enum CapabilityJsHost {
     Deno,
     /// Bun.
     Bun,
+}
+
+impl CapabilityJsHost {
+    /// The name a person writes, which is also the executable's name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Node => "node",
+            Self::Deno => "deno",
+            Self::Bun => "bun",
+        }
+    }
 }
 
 /// Deploy-anywhere adapter selection.

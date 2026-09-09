@@ -18,11 +18,45 @@ export type StdCategory =
   | "platform"
   | "cloud";
 
+/**
+ * What a `@uniflowed/std` specifier is today.
+ *
+ * `"ships"` is the six subpaths of ubugeeei-prod/uf#711 — `errors`, `sync`,
+ * `context`, `bytes`, `heap`, `hex` — each of which is real code behind its own
+ * export path. `"declared"` is this module: functions that raise
+ * `NativeRuntimeRequiredError`. `"planned"` means nobody has written it, and
+ * nothing more; `"declined"` is a decision that the platform or another
+ * `@uniflowed/*` already answers it, or that no runtime-agnostic module can.
+ *
+ * The four names are `uf_std::StdStatus`'s, and
+ * `the_flow_declaration_names_the_same_statuses_and_categories_as_the_registry`
+ * holds this union to that enum rather than to care.
+ */
+export type StdStatus = "ships" | "declared" | "planned" | "declined";
+
 export type StdModule = {
   readonly specifier: string,
   readonly category: StdCategory,
-  readonly wintertcAligned: true,
-  readonly nativeBinding: true,
+  readonly status: StdStatus,
+  /**
+   * Whether the module was *read* and found to use only web primitives.
+   *
+   * A reading rather than an intention, so only a `"ships"` module carries one:
+   * there is nothing to read for the others. It was `true` on every entry
+   * before #710, including `@uniflowed/std/net`, whose stated surface was
+   * `TcpListener` and `UdpSocket`.
+   */
+  readonly wintertcAligned: boolean,
+  /**
+   * Whether the implementation crosses into Rust.
+   *
+   * `false` everywhere, and that is a fact about the toolchain rather than a
+   * default: there is no N-API crate and no `wasm-bindgen` in it, so there is
+   * no boundary for a std module to cross. #710 measured what one would buy and
+   * found `bytes.equal` on sixteen bytes *faster* in JavaScript than Node's own
+   * C++ `Buffer#equals`.
+   */
+  readonly nativeBinding: boolean,
   readonly exports: $ReadOnlyArray<string>,
 };
 

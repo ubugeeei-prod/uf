@@ -71,15 +71,18 @@
 // only changed cells, keyboard input with OpenTUI's key names and propagation
 // rules, bracketed paste, declarative focus, mouse input — press, release,
 // hover, drag with capture, drop and wheel, routed by a hit grid the painter
-// records — a scrolling window onto content taller than it, terminal
-// capability and *size* detection that agrees with the CLI's, and an in-memory
-// renderer that runs the same code the terminal one does.
+// records — text selection by drag, one per renderer, read back with
+// `getSelectedText()`, a scrolling window onto content taller than it,
+// terminal capability and *size* detection that agrees with the CLI's, and an
+// in-memory renderer that runs the same code the terminal one does.
 //
-// Not here: text selection, key *release* (which needs the Kitty keyboard
-// protocol), images, the rich content components, and everything under
-// OpenTUI's "application APIs". They are ubugeeei-prod/uf#314, and they are
-// absent rather than present as functions that throw — because a stub is what
-// this package used to be.
+// Not here: key *release* (which needs the Kitty keyboard protocol), the
+// repeated-press gestures that widen a selection to a word or a line, images,
+// the rich content components, and everything under OpenTUI's "application
+// APIs" — including the clipboard, which is why `getSelectedText()` hands a
+// string back rather than putting it somewhere. They are
+// ubugeeei-prod/uf#314, and they are absent rather than present as functions
+// that throw — because a stub is what this package used to be.
 //
 // Also not here, and worth saying because ubugeeei-prod/uf#247 asked for it:
 // uf's own CLI does not draw through this. It cannot — `crates/uf_term` is
@@ -110,6 +113,7 @@
 // - `diff.js` — two frames, as the bytes that turn one into the other.
 // - `keys.js` — terminal bytes, as key events, and a paste as one of them.
 // - `mouse.js` — the other half of that stream: what the pointer did.
+// - `selection.js` — what a drag over the frame selected, as two cells.
 // - `capability.js` — what this terminal can render and how big it is, by the
 //   CLI's own rules.
 // - `terminal.js` — a real terminal, and the in-memory one tests use.
@@ -166,6 +170,14 @@ export { createInputDecoder, decodeInput, decodeKeys } from "./keys.js";
 
 export type { MouseEvent, MouseEventType, Scroll, ScrollDirection } from "./mouse.js";
 export { MouseButton } from "./mouse.js";
+
+export type { Selection, SelectionPoint } from "./selection.js";
+// `selectionContains` and not `selectionBetween`: the first answers a question
+// a caller has about a selection the renderer handed them, and the second
+// builds one, which is the renderer's job — there is no way to hand a
+// selection *back*, and an export that produced a value nothing accepts would
+// be a promise that there is.
+export { selectionContains } from "./selection.js";
 
 export type { Renderer, Root } from "./internal/host.js";
 

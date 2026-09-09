@@ -17,10 +17,13 @@
 //
 // Dropping a single Server Component from the client bundle is what Next.js
 // does, and it works there because the browser is handed a Flight payload
-// describing the tree the server rendered. uf has no such payload yet:
-// `packages/router/client.js` hydrates by re-rendering the matched tree from
-// the same modules the server rendered it from, so a module missing from the
-// client bundle is a module React cannot hydrate. What *can* be dropped is a
+// describing the tree the server rendered. uf's payload
+// (`packages/router/internal/payload.js`) carries the route's *data* and not
+// its tree — that half needs a second React module graph, see
+// ubugeeei-prod/uf#519 — so `packages/router/client.js` still hydrates by
+// re-rendering the matched tree from the same modules the server rendered it
+// from, and a module missing from the client bundle is a module React cannot
+// hydrate. What *can* be dropped is a
 // route the browser never renders at all — one where no client boundary is
 // reachable from the page, its layouts, its loading fallbacks or the
 // boundaries that cover it. Nothing under it is ever re-rendered in the

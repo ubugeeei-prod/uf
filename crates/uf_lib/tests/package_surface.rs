@@ -29,7 +29,7 @@ use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
-use uf_lib::builtin_modules;
+use uf_lib::{StdStatus, builtin_modules, std_module_descriptors};
 use walkdir::WalkDir;
 
 /// Directory holding an implementation detail that is deliberately kept out of
@@ -1365,6 +1365,17 @@ fn top_level_statement_tokens_catch_a_second_statement_on_one_line() {
 ///
 /// Resolution here is Node's: a bare `@scope/name` needs a manifest declaring
 /// that name, and `@scope/name/sub` needs `sub` in that manifest's `exports`.
+///
+/// # Why the std table is walked here too
+///
+/// Because for a long time it was not, and that was the hole. This test read
+/// `builtin_modules()` only, which names `@uniflowed/std` and no subpath of it,
+/// so `uf_std::std_modules()` could advertise `@uniflowed/std/vfs`,
+/// `@uniflowed/std/http` and forty-two more with nothing whatever behind them
+/// and every check in the repository stayed green — see ubugeeei-prod/uf#710.
+/// Only the entries that claim a file are walked: a [`uf_std::StdStatus`] of
+/// `Planned` or `Declined` is a name uf does *not* advertise as importable, and
+/// requiring it to resolve would be requiring the roadmap to be written.
 #[test]
 fn every_advertised_module_resolves_to_a_package() {
     let manifests: BTreeMap<String, Value> = shipped_manifests()
@@ -1379,9 +1390,20 @@ fn every_advertised_module_resolves_to_a_package() {
         })
         .collect();
 
+    let advertised = builtin_modules()
+        .into_iter()
+        .map(|module| module.specifier.to_string())
+        .chain(
+            std_module_descriptors()
+                .into_iter()
+                .filter(|module| matches!(module.status, StdStatus::Ships | StdStatus::Declared))
+                .map(|module| module.specifier.to_string()),
+        )
+        .collect::<BTreeSet<_>>();
+
     let mut unresolvable = Vec::new();
-    for module in builtin_modules() {
-        let specifier = module.specifier.as_str();
+    for specifier in &advertised {
+        let specifier = specifier.as_str();
         let (package, subpath) = match specifier.strip_prefix('@').and_then(|rest| {
             let (scope, rest) = rest.split_once('/')?;
             Some(match rest.split_once('/') {
@@ -1405,11 +1427,143 @@ fn every_advertised_module_resolves_to_a_package() {
         }
     }
 
+    // The std subpaths are six of these, and naming the number is how a
+    // regression that quietly stops walking them shows up as a failure rather
+    // than as a shorter green run.
+    assert!(
+        advertised.len() > 40,
+        "the walk found almost nothing, so it is not checking anything: {}",
+        advertised.len()
+    );
+    assert!(
+        advertised.contains("@uniflowed/std/hex"),
+        "the std table is not being walked"
+    );
     assert!(
         unresolvable.is_empty(),
         "{} advertised modules do not resolve:\n{}",
         unresolvable.len(),
         unresolvable.join("\n")
+    );
+}
+
+/// A `@uniflowed/std` module that ships is one that runs, and the root is not.
+///
+/// `tools/ci/publishable.sh` draws the line for a whole package: a directory
+/// whose modules call `nativeRuntimeRequired` is a declaration, and publishing
+/// one squats a name that cannot run. `@uniflowed/std` is the package that
+/// broke the rule by being both — `index.js` is seventy-odd functions that
+/// throw, and six subpaths beside it are code — so the line has to be drawn per
+/// subpath, and this is where.
+///
+/// Both directions. A [`StdStatus::Ships`] module that calls the helper is a
+/// module the table says runs and does not; a [`StdStatus::Declared`] one that
+/// stops calling it has become an implementation nobody re-labelled, and it
+/// would go on being reported as a declaration by `uf inspect` and skipped by
+/// `publishable.sh`.
+#[test]
+fn a_shipping_std_module_is_the_one_that_runs() {
+    for module in std_module_descriptors() {
+        let subpath = module
+            .specifier
+            .strip_prefix("@uniflowed/std/")
+            .map_or_else(|| "index".to_owned(), str::to_owned);
+        let file = Utf8PathBuf::from(format!("std/{subpath}.js"));
+        let raises = match module.status {
+            StdStatus::Ships | StdStatus::Declared => {
+                code_only(&read(&file)).contains("nativeRuntimeRequired(")
+            }
+            // Nothing to read: the file does not exist, which is what the
+            // status says.
+            StdStatus::Planned | StdStatus::Declined => continue,
+        };
+
+        match module.status {
+            StdStatus::Ships => assert!(
+                !raises,
+                "{} is in the table as shipping and {file} raises nativeRuntimeRequired",
+                module.specifier
+            ),
+            StdStatus::Declared => assert!(
+                raises,
+                "{} is in the table as a declaration surface and {file} no longer \
+                 raises nativeRuntimeRequired — it is an implementation now, and \
+                 the registry, tools/ci/publishable.sh and the release manifests \
+                 all read that flag",
+                module.specifier
+            ),
+            StdStatus::Planned | StdStatus::Declined => unreachable!(),
+        }
+    }
+}
+
+/// Nothing that claims WinterTC alignment reaches for a host.
+///
+/// The flag used to be set by the constructor for all forty-five entries, which
+/// made it a claim about `@uniflowed/std/net` — `TcpListener`, `UdpSocket` — as
+/// loudly as about the six modules somebody wrote. It now means "this file was
+/// read and it imports no host", and this is the reading:
+/// `docs/app/reference/std` says of the six that "nothing here imports `node:`
+/// anything, touches `Buffer`, or reads `process`", and that claim is the
+/// difference between a module that runs on Deno and the edge and one that has
+/// only ever been run on Node.
+///
+/// `code_only` first, so that `bytes.js`'s note about Go's `bytes.Buffer` and
+/// `hex.js`'s benchmark against Node's native `Buffer` stay what they are:
+/// prose about the decision, which is exactly what should be written down.
+#[test]
+fn a_std_module_that_claims_wintertc_alignment_names_no_host() {
+    /// Globals only a host has. `Buffer` and `process` are Node's; the rest of
+    /// what these modules use — `Uint8Array`, `TextEncoder`, `AbortController`,
+    /// `Promise`, `setTimeout` — is on all four runtimes.
+    const HOST_GLOBALS: &[&str] = &["Buffer", "process", "require", "__dirname", "__filename"];
+
+    let mut checked = 0usize;
+    let mut leaks = Vec::new();
+    for module in std_module_descriptors() {
+        if !module.wintertc_aligned {
+            continue;
+        }
+        let subpath = module
+            .specifier
+            .strip_prefix("@uniflowed/std/")
+            .expect("only a subpath can claim to have been read");
+        let file = Utf8PathBuf::from(format!("std/{subpath}.js"));
+        let source = read(&file);
+        checked += 1;
+
+        for specifier in module_specifiers(&source) {
+            if specifier.starts_with("node:") {
+                leaks.push(format!("{} imports {specifier}", module.specifier));
+            }
+        }
+        let code = code_only(&source);
+        for global in HOST_GLOBALS {
+            for (index, _) in code.match_indices(global) {
+                let before = code[..index].chars().next_back();
+                let after = code[index + global.len()..].chars().next();
+                let bounded = !before.is_some_and(|c| is_identifier_part(c) || c == '.')
+                    && !after.is_some_and(is_identifier_part);
+                if bounded {
+                    leaks.push(format!("{} reads {global}", module.specifier));
+                }
+            }
+        }
+    }
+
+    // Not a number: which modules these are is pinned by
+    // `the_std_registry_names_exactly_what_the_std_package_exports` against
+    // `packages/std/package.json`, and writing the count down here as well is
+    // the second place with the same fact in it that #710 is about.
+    assert!(
+        checked > 0,
+        "no std module claims to have been read, so this is not checking anything"
+    );
+    assert!(
+        leaks.is_empty(),
+        "{} module(s) claim WinterTC alignment and name a host:\n{}",
+        leaks.len(),
+        leaks.join("\n")
     );
 }
 

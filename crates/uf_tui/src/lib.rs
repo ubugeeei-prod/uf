@@ -61,11 +61,11 @@ impl Default for TuiFrameworkContract {
             standard: TuiStandard::OpenTui,
             renderer: TuiRenderer::CellDiff,
             layout: TuiLayoutEngine::FlexboxCells,
-            input: TuiInputModel::KeyboardMouseFocus,
+            input: TuiInputModel::KeyboardMouseSelectionFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
-            // Nine, not twenty-three. Every one of these is exercised by
+            // Ten, not twenty-three. Every one of these is exercised by
             // `tests/library/tui.test.js` against a rendered frame; the other
-            // fourteen variants of `TuiFeature` name parts of OpenTUI that uf
+            // thirteen variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
             features: smallvec::smallvec![
@@ -73,6 +73,7 @@ impl Default for TuiFrameworkContract {
                 TuiFeature::CellDiff,
                 TuiFeature::Keyboard,
                 TuiFeature::Mouse,
+                TuiFeature::Selection,
                 TuiFeature::Focus,
                 TuiFeature::RichText,
                 TuiFeature::Scrollback,
@@ -151,18 +152,21 @@ pub enum TuiLayoutEngine {
 #[serde(rename_all = "kebab-case")]
 pub enum TuiInputModel {
     /// Keyboard events to one declaratively focused node; mouse events to
-    /// whatever is under the pointer, bubbling to its parents.
+    /// whatever is under the pointer, bubbling to its parents; and a drag over
+    /// selectable text, which selects it.
     ///
-    /// It said `keyboard-focus` until the mouse landed, and the two halves are
-    /// named separately because they are routed differently and a reader has
-    /// to know which: focus is a prop the application sets, and a hit target
-    /// is a fact about the frame that the renderer works out.
+    /// It said `keyboard-focus` until the mouse landed and `keyboard-mouse-focus`
+    /// until selection did, and the parts are named separately because they are
+    /// routed differently and a reader has to know which. Focus is a prop the
+    /// application sets. A hit target is a fact about the frame that the
+    /// renderer works out. A selection is two *cells* of that frame rather than
+    /// a node at all, which is why it is a third name and not a detail of the
+    /// second.
     ///
-    /// Text selection is OpenTUI's third input source and is still not
-    /// implemented; it is ubugeeei-prod/uf#314. So is key *release*, which
-    /// needs the Kitty keyboard protocol — `KeyEvent.eventType` is always
-    /// `"press"`.
-    KeyboardMouseFocus,
+    /// Key *release* is still not implemented — it needs the Kitty keyboard
+    /// protocol, and `KeyEvent.eventType` is always `"press"`. That is
+    /// ubugeeei-prod/uf#314.
+    KeyboardMouseSelectionFocus,
 }
 
 /// How the framework reaches an application's code.
@@ -199,7 +203,23 @@ pub enum TuiFeature {
     Mouse,
     /// Focus management.
     Focus,
-    /// Text and item selection.
+    /// Text selection.
+    ///
+    /// A left press on selectable text and a drag from it: the cells between
+    /// the two are highlighted, `getSelectedText()` reads them back, and
+    /// `event.preventDefault()` on the press is how a box that means its own
+    /// thing by a drag keeps out of it. One selection per renderer, which is
+    /// OpenTUI's rule and a terminal's.
+    ///
+    /// Three things a reader might expect from the word are not behind it. A
+    /// selection is two *cells*, not a range inside the text, so what it
+    /// covers after a commit is whatever the frame now holds there — the same
+    /// answer a terminal's own selection gives, and stated because the DOM's
+    /// is different. OpenTUI's repeated-press gestures, which widen a
+    /// selection to the word or the logical line under the pointer, are not
+    /// implemented; there is no `behavior` to report because there is only one.
+    /// And *item* selection — `Select`, `TabSelect` — is a component rather
+    /// than this, and is still ubugeeei-prod/uf#314.
     Selection,
     /// A window onto content taller than it, and a bar saying where.
     ///

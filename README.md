@@ -91,7 +91,7 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
   `install.ps1` resolves and says so rather than failing obscurely, and WSL2
   works.
 - **Packages.** Seventeen `@uniflowed/*` packages are on npm — the closure a new
-  project needs, plus the test runner. Eleven more are implemented and still
+  project needs, plus the test runner. Thirteen more are implemented and still
   workspace-only ([#210](https://github.com/ubugeeei-prod/uf/issues/210)); they
   wait in `tools/release/pending-packages.txt`. Every release so far is a
   prerelease and `latest` still points where the first publish left it, so name
@@ -384,7 +384,11 @@ argument is worth nothing to you and most of the other rows are a downgrade.
 
 The Flow packages ship as `@uniflowed/*` modules — the router, the server, typed
 HTTP and query caching, effects, state, validation, forms, headless UI
-primitives, StyleX styling, the test runner and the rest. They are plain Flow
+primitives, StyleX styling, the test runner and the rest. "The server" there
+means a **BFF** — route handlers, server actions and rendering, the backend
+*for this frontend*. It is deliberately not an application backend, and
+[architecture red lines](docs/red-lines.md) says why that is a boundary rather
+than a gap. They are plain Flow
 with no native bindings, so what runs in the browser is what you can read, and
 `uf_lib` in this repository is the registry they are all declared in.
 

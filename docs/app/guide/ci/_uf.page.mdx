@@ -1,6 +1,6 @@
 ---
 title: "uf in CI · uf"
-description: "GitHub Actions, GitLab and CircleCI: one step each, and why they all pin."
+description: "GitHub Actions, GitLab and CircleCI: one step each, why they all pin, and the install a check is worthless without."
 ---
 
 <p className="eyebrow">The tools</p>
@@ -41,13 +41,18 @@ jobs:
       - uses: ubugeeei-prod/uf/integrations/github-actions@uf@0.0.0-alpha.10
         with:
           version: 0.0.0-alpha.10
-      - run: uf install
+      - run: uf install --frozen-lockfile
+      - run: uf fmt --check
       - run: uf check
       - run: uf test
 ```
 
-Inputs: `version`, `cache`, `setup-url`, `repository`. Outputs: `version`,
-`bin-dir`, `cache-hit`.
+Inputs: `version`, `cache`, `setup-url`, `repository`, `verify-origin`, `token`.
+Outputs: `version`, `bin-dir`, `cache-hit`.
+
+The action installs the *toolchain*. `uf install` is a separate line because it
+is a separate thing — see [Install before you check](#install-before-you-check),
+which is the one mistake in this page that does not announce itself.
 
 On a Windows runner it **fails** rather than skipping. uf publishes macOS and
 Linux binaries only, and a matrix leg that quietly does nothing still reports
@@ -66,20 +71,23 @@ variables:
 check:
   extends: .uf
   script:
-    - uf install
+    - uf install --frozen-lockfile
     - uf check
 ```
 
-The template also ships `uf:check`, `uf:test` and `uf:build` as ready-made jobs,
-so a project with nothing unusual about it writes no `script` at all. They are
-ordinary jobs: extend, override or delete them.
+The template also ships `uf:check`, `uf:fmt`, `uf:test` and `uf:build` as
+ready-made jobs, so a project with nothing unusual about it writes no `script`
+at all. They are ordinary jobs: extend, override or delete them.
 
-Two details are GitLab's rather than uf's. The toolchain installs into
+Three details are GitLab's rather than uf's. The toolchain installs into
 `$CI_PROJECT_DIR/.uf-toolchain`, because GitLab's cache only carries paths
 inside the project directory — install it in `$HOME` and every job of every
-pipeline downloads the release again. And the default image is Debian rather
-than Alpine: uf ships a `*-unknown-linux-gnu` binary, and a glibc binary does
-not start on musl.
+pipeline downloads the release again. The default image is glibc rather than
+Alpine, because uf ships a `*-unknown-linux-gnu` binary and a glibc binary does
+not start on musl. And it is `node:24-bookworm-slim` rather than a bare Debian,
+because `uf install` drives the project's own package manager and `uf test` and
+`uf build` run on a JavaScript host: `uf` itself needs nothing, and three of the
+four things a pipeline asks it to do need Node on the image.
 
 ## CircleCI
 
@@ -98,8 +106,65 @@ workflows:
 ```
 
 `uf/install` is the command on its own, for a job that does more than run one
-`uf` line. `uf/default` is a glibc executor with `curl` and `tar`, which is
-everything the installer needs.
+`uf` line — and a job that assembles its own steps runs `uf install` itself, the
+way the one above does. `uf/default` is a glibc executor with `curl`, `tar`,
+Node and npm: the first two are what the installer needs, the last two are what
+everything after it needs.
+
+`uf/run` runs `uf install --frozen-lockfile` before the command it was given.
+`install-dependencies: false` turns that off, for a job whose command reads no
+dependencies at all.
+
+## Install before you check
+
+The three files above install the toolchain. The toolchain is not the project,
+and the line that installs it is not optional:
+
+```yaml
+- run: uf install --frozen-lockfile
+```
+
+Leave it out and `uf test` and `uf build` fail, which is fine — a job that
+cannot run says so. `uf check` is the one to worry about, because it does not
+fail. It **passes**.
+
+`uf check` resolves an import to a file in the batch it is checking or to a
+package under `node_modules`, and a specifier that answers to neither is typed
+`any`. On a checkout with no dependencies installed, every `import type { … }
+from "@uniflowed/react"` is `any`, every annotation written against one is
+neither right nor wrong, and the job goes green having checked the parts of the
+program nobody was worried about. Against a fresh scaffold that looks like this:
+
+```console
+$ uf check                       # no node_modules
+✓ no problems
+
+  types checked  8
+  unchanged      8 of 8
+
+  › these imports are typed as any; uf resolved no module for them
+    - @uniflowed/config
+    - @uniflowed/react
+    - @uniflowed/router
+    - @uniflowed/test
+```
+
+A green tick with a footer nobody reads is the same failure the GitHub action
+refuses a Windows runner over: a job that quietly does nothing still reports the
+pipeline green.
+
+`uf fmt --check` is the quiet version of the same thing. The Flow half needs
+nothing, but JSON, CSS and TypeScript go to a formatter uf runs rather than
+links in, and it is looked for in `node_modules/.bin`. With none there those
+files are reported skipped — and deliberately do not reach the exit code, so a
+`uf fmt --check` job passes over files nothing formatted.
+
+`--frozen-lockfile` is what a pipeline wants rather than a plain install: it
+installs exactly what the lockfile pins and fails when the lockfile has drifted
+from the manifests, instead of resolving the drift away and testing something no
+reviewer approved. It is `npm ci`, `pnpm install --frozen-lockfile`, `yarn
+install --immutable` or `bun install --frozen-lockfile`, whichever manager the
+project brought.
 
 ## Pin the version
 
@@ -128,6 +193,93 @@ it. The GitHub action passes the workflow's own token through and is fine;
 GitLab and CircleCI hand you no GitHub token, so pin the version there. A
 pinned version builds the download URL directly and never reaches the API.
 
+## Reading the result from a job
+
+A pipeline reads two things: the exit code, and whatever the step wrote. Both
+are meant to be read by a program.
+
+The exit codes are uf's whole surface for "did this work", and there are three
+of them — `0`, `1` for a problem the command found, `2` for a command uf could
+not run at all. [The CLI reference](/reference/cli#exit-codes) has the table and
+the two cases that are `1` today and should be `2`.
+
+Nothing needs a terminal. uf draws no progress and no colour when stdout is not
+one, `--json` suppresses every human render there is, and a `uf` with no
+arguments prints the help and exits `2` rather than opening the menu it opens
+for a person. `TERM=dumb`, a closed stdin and a `CI` environment variable each
+say the same thing to it.
+
+For the report itself:
+
+| Command | Machine-readable form |
+| --- | --- |
+| `uf check` | `--json` |
+| `uf lint` | `--json` |
+| `uf test` | `--json`, and `--reporter junit --reporter-outfile <file>` |
+| `uf inspect`, `uf explain`, `uf doc` | `--json` |
+| `uf install` | the exit code, and the tree it wrote |
+| `uf build` | the exit code, and the build manifest under the output directory |
+| `uf fmt --check` | the exit code, and a list of files on stdout |
+
+`uf fmt --check` is the gap and is named as one: the other reports have a
+document and it has prose. A job that only needs the answer is fine — the exit
+code is `1` when a file needs formatting — and one that needs the list has to
+read the list.
+
+`uf check --json` carries the thing this page has been about, so a pipeline can
+fail on it rather than trust that somebody ran `uf install`:
+
+```bash
+uf check --json > check.json
+jq -e '.typeCheck.untypedModules | length == 0' check.json ||
+  { echo "uf resolved no module for some imports; are dependencies installed?"; exit 1; }
+```
+
+`typeCheck.untypedModules` is every specifier uf answered with `any`. It is
+empty on a project whose dependencies are installed and whose imports all
+resolve, and it is the difference between a check that found nothing and a check
+that saw nothing.
+
+## What to cache, and what the key has to say
+
+Two different things are worth carrying between runs, and they answer to
+different keys. One key for both is worse than one cache: it either re-downloads
+the release on every dependency bump or serves last week's dependencies after
+one.
+
+| What | Where | The key must include |
+| --- | --- | --- |
+| The toolchain | wherever `UF_INSTALL_ROOT` puts it | the uf version **and** the architecture |
+| The dependencies | `node_modules`, or the manager's store | the lockfile |
+| uf's own answers | `.uf/cache` | the uf version |
+
+The **architecture** is the one that gets left out, and it was left out of the
+GitLab template until recently. uf publishes one archive per target; a cache
+shared by a fleet with both amd64 and arm64 runners in it will restore one
+target's binary onto the other and report a hit. The GitHub action keys on
+`runner.os` and `runner.arch`, CircleCI on `{{ arch }}`, and GitLab on
+`CI_RUNNER_EXECUTABLE_ARCH`, which is the closest thing GitLab predefines.
+
+The **lockfile** is what `node_modules` answers to, and nothing else is. GitLab's
+`key: files:` hashes it and falls back to a shared key when there is none;
+GitHub's `actions/setup-node` has `cache: npm` for exactly this and is a better
+place for it than the uf action, which installs a toolchain and has no opinion
+about your package manager. pnpm is the exception in all three: its
+`node_modules` is a tree of symlinks into a store outside the project, so cache
+the store — with `store-dir` moved inside the workspace where the CI system
+requires that — rather than the links.
+
+`.uf/cache` holds transform and type-check answers, and each entry is already
+keyed by content — including the binary that produced it, so a stale entry is
+ignored rather than believed. It is safe to carry and safe to lose, which makes
+it the one of the three that is only ever an optimisation. Key it on the uf
+version anyway: entries a different uf wrote will never be read, and a cache
+that only grows is a cache that eventually costs more to restore than to miss.
+
+None of this is believed on the strength of a key. Every integration here runs
+`uf --version` out of a restored toolchain before trusting it, because a cache
+that lost a symlink is a hit that can run nothing.
+
 ## What is actually being run
 
 All three fetch and run
@@ -141,6 +293,8 @@ through the environment:
 | `UF_INSTALL_ROOT` | Where `runtimes/uf@<version>` is unpacked |
 | `UF_BIN_DIR` | Where `uf`, `ufr` and `ufx` are linked |
 | `UF_REPO` | The GitHub repository releases are downloaded from |
+| `UF_VERIFY_ORIGIN` | `auto`, `require` or `off`; see below |
+| `UF_CHECKSUM_BASE` | A second host serving `<version>/<asset>.sha256` |
 
 It resolves the version, downloads `uf-<target>.tar.gz`, **verifies its sha256
 against the checksum published beside it**, refuses an archive whose members
@@ -151,6 +305,44 @@ forget the checksum.
 
 If a pipeline must not depend on `setup.uniflowed.dev`, point `setup-url` (or
 `UF_CI_SETUP_URL` on GitLab) at a mirror, or at the raw file on a pinned tag.
+
+### Proving where the archive came from
+
+The sha256 above proves transit and nothing else: the checksum is published on
+the same host as the archive, so it says the bytes arrived intact, not who made
+them. Two things can say that, and a pipeline is the place to ask for one —
+because a pipeline can install a tool that a laptop usually has not.
+
+* **The signature.** Each release is signed with keyless Sigstore, and the
+  installer checks the bundle against the identity that signed it: the
+  repository and the release workflow inside it. It needs `cosign` on `PATH`,
+  which is a step before the setup one.
+* **A second opinion.** `UF_CHECKSUM_BASE` points at a mirror of the checksums
+  on a host that does not serve the archive. Weaker — it proves two operators
+  agree about the bytes rather than who built them — and an attacker has to hold
+  both hosts rather than one. The installer says so and ignores the setting when
+  the mirror turns out to be the same host.
+
+`verify-origin` (or `UF_VERIFY_ORIGIN`) decides what happens when neither is
+available. `auto`, the default, uses whatever evidence there is, refuses when a
+check *fails*, and says plainly when there was nothing to check. `require` turns
+"nothing to check" into a refusal as well, which is what uf's own release smoke
+test runs with:
+
+```yaml
+- run: |
+    curl -sSL "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64" \
+      -o /usr/local/bin/cosign && chmod +x /usr/local/bin/cosign
+- uses: ubugeeei-prod/uf/integrations/github-actions@uf@0.0.0-alpha.10
+  with:
+    version: 0.0.0-alpha.10
+    verify-origin: require
+```
+
+`off` is for an air-gapped mirror whose operator established the origin some
+other way. A value that is none of the three stops the installer before it
+downloads anything, because a typo in a security switch must not read as
+turning it off.
 
 ## Behind a proxy, or with no network at all
 
@@ -164,7 +356,21 @@ Flow submodule, and takes minutes rather than seconds.
 ## What is not here
 
 There is no Jenkins, Buildkite, Woodpecker or Drone file, and no Docker image
-that ships uf preinstalled. All of them are the same four lines — install,
-`PATH`, cache, run — and none of them is written here yet. `curl -fsSL
-https://setup.uniflowed.dev | sh` followed by adding `~/.local/bin` to `PATH`
-is the whole of what any of them would do.
+that ships uf preinstalled. All of them are the same five lines — install,
+`PATH`, cache, `uf install`, run — and none of them is written here yet.
+`curl -fsSL https://setup.uniflowed.dev | sh` followed by adding
+`~/.local/bin` to `PATH` is the whole of the first two, and everything on this
+page from [Install before you check](#install-before-you-check) onwards applies
+to a system with no file here exactly as it applies to the three that have one:
+they are properties of uf, not of the runner.
+
+There is also no `--json` on `uf fmt --check`, which is the one thing on this
+page a pipeline has to read as prose. It is a gap rather than a decision, and it
+is named in `tools/ci/recipes-are-runnable.sh` so that it stays one somebody
+chose to leave rather than one nobody noticed.
+
+What there *is*, for a system with no file here, is the same list of rules and a
+check that holds the three files to them. If you write a Jenkins or Buildkite
+recipe for uf, the four things to get right are on this page: pin the version,
+put the architecture in the cache key, run `uf install` before anything reads
+`node_modules`, and read the result out of `--json` rather than out of the log.

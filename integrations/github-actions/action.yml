@@ -2,6 +2,11 @@ name: Set up uf
 description: >-
   Install the uf toolchain and put uf, ufr and ufx on PATH, so a workflow can
   run uf check, uf test and uf build without building anything from source.
+  This installs the toolchain and not the project: run `uf install
+  --frozen-lockfile` in the job before checking, formatting, testing or
+  building. `uf check` with no node_modules does not fail, it passes — every
+  import that resolves to nothing is typed `any`, so the job goes green having
+  checked a program it could not see.
 author: ubugeeei
 
 branding:
@@ -38,6 +43,23 @@ inputs:
       useful for a fork or a rehearsal of the release process.
     required: false
     default: ubugeeei-prod/uf
+  verify-origin:
+    description: >-
+      How hard to work at proving where the archive came from: `auto` (the
+      default) uses whatever evidence is available and refuses when a check
+      fails, `require` refuses unless one actually passed, `off` skips it.
+
+      The installer always checks the archive's sha256 against the checksum
+      published beside it, and that proves transit and nothing else — it came
+      from the host that served the archive. `require` is the one worth setting
+      in a pipeline, because a pipeline can arrange what a laptop usually
+      cannot: install cosign in a step before this one, and the Sigstore
+      signature uf publishes with each release is checked against the identity
+      of the workflow that signed it. Without cosign on PATH, `require` needs
+      `UF_CHECKSUM_BASE` — a mirror of the checksums on a host that does not
+      serve the archive — and fails when it has neither, which is the point.
+    required: false
+    default: auto
   token:
     description: >-
       A GitHub token, used only to ask the API which release is newest — and
@@ -111,6 +133,7 @@ runs:
         UF_REPO: ${{ inputs.repository }}
         UF_INSTALL_ROOT: ${{ steps.paths.outputs.root }}
         UF_BIN_DIR: ${{ steps.paths.outputs.bin-dir }}
+        UF_VERIFY_ORIGIN: ${{ inputs.verify-origin }}
         SETUP_URL: ${{ inputs.setup-url }}
         CACHED: ${{ steps.restore.outputs.cache-hit }}
         GITHUB_TOKEN: ${{ inputs.token }}

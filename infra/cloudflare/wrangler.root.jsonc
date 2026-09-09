@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/wrangler@4.128.0/config-schema.json",
+  "name": "uf-root",
+  "main": "workers/root.js",
+  "compatibility_date": "2026-09-02",
+  "workers_dev": false,
+  "preview_urls": false,
+  // The repository's `brand/` directory, served under `/brand/` by the worker.
+  // Not a copy: `tools/docs/build.sh` stages the same files into the docs
+  // site's public directory, and a third copy here would be a third thing to
+  // keep in step. The worker strips the `/brand` prefix before it asks.
+  //
+  // `run_worker_first` is `true` because the worker decides every path — the
+  // asset router would otherwise answer `/README.md` and `/og.html` out of this
+  // directory under names nothing links to, ahead of the redirect that is
+  // supposed to answer them.
+  "assets": {
+    "directory": "../../brand",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  }
+}

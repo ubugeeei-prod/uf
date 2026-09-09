@@ -2,8 +2,12 @@
 //! not ship.
 //!
 //! A libdef is not a source file the project owns in `uf_project`'s sense:
-//! `uf fmt` does not rewrite it, `uf lint` does not report on it, and a
-//! diagnostic never points inside it. It is *declaration* — the
+//! `uf lint` does not report on it and a diagnostic never points inside it —
+//! [`declared_paths`] is what makes that true, and #699 is what it was not
+//! true of. `uf fmt` *does* rewrite one, and deliberately: a libdef is Flow
+//! source in a repository uf formats, and reformatting it invents no opinion
+//! about the project, where a lint rule about avoiding `any` does. It is
+//! *declaration* — the
 //! `declare module` block that says what `@xyflow/react` exports, the
 //! `declare type` that says what a project-wide global is — and it belongs to
 //! the type environment rather than to the batch. So it is read here, beside
@@ -48,6 +52,34 @@ use walkdir::WalkDir;
 /// project whose libdefs went missing reports one error per declared type and
 /// no explanation.
 const MAX_LIBDEF_FILES: usize = 2_000;
+
+/// Every library definition the project's configuration names, as paths
+/// relative to the project root.
+///
+/// The set [`super::super::lint::run_lint`] takes a file *out* of the lint with.
+/// This module's first line says a libdef is not a source file the project
+/// owns — `uf lint` does not report on it, and a diagnostic never points
+/// inside it — and until this existed that was true of the type check and
+/// false of the lint: the scan collects `flow-typed/` like any other
+/// directory, so `declare type FoldingRangeProvider = any` in a hand-written
+/// libdef was reported as `flow/unclear-type` and failed the build. An `any`
+/// is what a libdef for an untyped package is *made of*; a lint rule about
+/// avoiding it has nothing to say there. See ubugeeei-prod/uf#699.
+///
+/// Shares [`files_under`] with [`load`] rather than restating the rule, so the
+/// files uf declines to lint are exactly the files it merges.
+pub(crate) fn declared_paths(root: &Utf8Path, paths: &LibPaths) -> FxHashSet<String> {
+    let mut declared = FxHashSet::default();
+    for entry in paths.paths() {
+        for path in files_under(root, entry) {
+            if declared.len() == MAX_LIBDEF_FILES {
+                return declared;
+            }
+            declared.insert(path.into_string());
+        }
+    }
+    declared
+}
 
 /// Every library definition the project's configuration names, in merge order.
 pub(super) fn load(root: &Utf8Path, paths: &LibPaths) -> Vec<SourceFile> {

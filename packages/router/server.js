@@ -46,6 +46,8 @@ import {
   resolveMatch,
 } from "./internal/runtime.js";
 
+import { type StreamDiagnostic, streamReporter } from "./internal/inspector.js";
+
 /** Asset URLs to reference from the document. */
 export type RenderAssets = {|
   readonly scripts: $ReadOnlyArray<string>,
@@ -153,6 +155,25 @@ export type RenderOptions = {|
    * test rather than a surprise.
    */
   readonly transformHead?: (html: string) => Promise<string>,
+  /**
+   * Told, in words, when a document streamed differently than it did last time.
+   *
+   * For `uf dev` and nothing else, like `transformHead` above. It answers the
+   * half of ubugeeei-prod/uf#520 that is about the wire — what arrived, in what
+   * order, and which part of the tree each chunk built — for the stream uf has
+   * today, which is a document whose Suspense boundaries resolve independently.
+   * `internal/inspector.js` is what it is and what it deliberately is not.
+   *
+   * A host that passes nothing here records nothing: no recorder is
+   * constructed, and the chunks a production stream yields are untouched.
+   *
+   * It is handed a message and its detail lines rather than the record they
+   * came from, because the caller is `@uniflowed/vite` — plain JavaScript, run
+   * by Vite before any Flow transform exists, which is why `DEVTOOLS_HOOK` and
+   * `DIAGNOSTIC_ENDPOINT` are spelled twice rather than imported. The
+   * vocabulary of the report belongs on this side of that line.
+   */
+  readonly onStream?: (diagnostic: StreamDiagnostic) => void,
 |};
 
 /** The two ids the server writes and the client reads. */
@@ -304,6 +325,11 @@ export function createRenderer(options: {|
     }
     let resolved: ResolvedRoute = resolution.route;
     const report = settings?.onError ?? (() => {});
+    // Built once and shared by both renders below, so a page that threw its
+    // shell away and rendered its error boundary instead reports the stream the
+    // browser was actually sent rather than the one that was abandoned.
+    const send = settings?.onStream;
+    const onStream = send == null ? undefined : streamReporter(url, send);
 
     // React reports an exception to `onError` *and*, if it was in the shell, to
     // `onShellError` — so forwarding both would tell the host about one failure
@@ -327,6 +353,7 @@ export function createRenderer(options: {|
         shell: shellFor(assets),
         onError,
         transformHead: settings?.transformHead,
+        onStream,
       });
       streaming = true;
       // Recovered before the shell was ready: a `<Suspense>` boundary whose
@@ -358,6 +385,7 @@ export function createRenderer(options: {|
         shell: shellFor(assets),
         onError,
         transformHead: settings?.transformHead,
+        onStream,
       });
     }
 

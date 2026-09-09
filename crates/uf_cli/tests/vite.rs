@@ -2560,6 +2560,14 @@ fn assert_worker_shape(deployed: &Path) {
     // work that never runs — and uf shipped exactly that for one commit
     // (ubugeeei-prod/uf#712, taken back by #717). Asserted in both directions
     // so neither can arrive alone, whichever way a future change breaks it.
+    //
+    // `served-app` declares no schedule, so what this compares here is
+    // `false == false`: the two halves are both absent and both have to be.
+    // The case where they are both present is
+    // `a_declared_schedule_reaches_both_halves_of_the_artefact`, which builds a
+    // project that has one — and `schedules::assert_wired` is the same rule
+    // inside `uf build` itself, for every project this repository has no
+    // fixture for.
     let worker = fs::read_to_string(deployed.join("worker.js")).unwrap();
     let triggers = wrangler.get("triggers").is_some();
     let scheduled = worker.contains("scheduled");
@@ -2828,6 +2836,168 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
                 "a path the build wrote a file for is answered with the file:\n{prerendered}"
             );
         }
+    }
+}
+
+/// A project that declares a schedule, which no fixture in this repository did.
+///
+/// `served-app` deliberately does not grow one: it is the project every
+/// adapter's artefact is built from, and `--adapter serverless` refuses a
+/// declared schedule outright (ubugeeei-prod/uf#531), so adding one there
+/// would take that target out of the comparison every other assertion rests
+/// on. This is the smallest project that has one instead.
+fn scheduled_app() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "uf.config.js",
+            "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\n\
+             export default defineConfig({\n  \
+             app: { router: { entry: \"app.js\", root: \"app\" } },\n  \
+             build: { entries: [\"app.js\"], outDir: \"dist\" },\n});\n",
+        ),
+        (
+            "app.js",
+            "// @flow\nimport { routerView } from \"@uniflowed/router\";\n\n\
+             export default routerView(\"./app\");\n",
+        ),
+        (
+            "app/_uf.layout.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
+             export component Layout(children: React.Node) {\n  return (\n    \
+             <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n",
+        ),
+        (
+            "app/_uf.page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
+             export default component Home() {\n  return <h1>scheduled</h1>;\n}\n",
+        ),
+        // The declaration itself, and the `GET` a trigger calls. A string
+        // rather than a call, because `uf build` reads this without running
+        // the project.
+        (
+            "app/api/sweep/_uf.route.js",
+            "// @flow\n\nexport const schedule: string = \"*/15 * * * *\";\n\n\
+             export function GET(): Response {\n  \
+             return Response.json({ swept: true });\n}\n",
+        ),
+    ]
+}
+
+/// A declared schedule reaches both halves of every artefact that runs one.
+///
+/// The end-to-end half of `schedules::assert_wired`, and the reason that check
+/// exists at all: `assert_worker_shape` below has compared `triggers` against
+/// `scheduled` since ubugeeei-prod/uf#717, and had never once compared them in
+/// the direction that broke. No fixture declared a schedule, so every artefact
+/// this file has ever built carried neither half and the comparison was
+/// `false == false`. A change that emitted one half alone — which is exactly
+/// what #712 shipped — would have gone green.
+///
+/// So this builds a project that declares one, and asks the three shapes:
+///
+/// * `edge` — Cloudflare is told to fire an expression, `worker.js` exports
+///   the `scheduled()` it calls, and the routes map sends that expression at
+///   the route that declared it.
+/// * `node` — the process is its own scheduler, so what has to be true is that
+///   `server.js` wires the run *and hands the list to `serve`*; an entry that
+///   built the array and dropped the argument is #712 with no configuration
+///   file to make it visible.
+/// * `serverless` — refused, by name, before anything is linked. uf writes no
+///   configuration file for a zip, so there is nowhere to say when to call it.
+///
+/// Two builds and one refusal. The refusal costs nothing — it happens before
+/// the bundle — and the two builds are of the smallest project that can carry
+/// a route handler at all.
+#[test]
+fn a_declared_schedule_reaches_both_halves_of_the_artefact() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&scheduled_app());
+    let root = project.path();
+
+    // Cloudflare's half: a trigger, an export, and a route for the expression.
+    let built = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["build", "--adapter", "edge"])
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "`uf build --adapter edge` failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let deployed = root.join(".uf/deploy/edge");
+    let wrangler: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(deployed.join("wrangler.json")).unwrap()).unwrap();
+    assert_eq!(
+        wrangler["triggers"]["crons"][0], "*/15 * * * *",
+        "{wrangler}"
+    );
+    let worker = fs::read_to_string(deployed.join("worker.js")).unwrap();
+    assert!(
+        worker.contains("scheduled:"),
+        "a trigger with nothing to call is the bug #712 shipped:\n{worker}"
+    );
+    assert!(
+        worker.contains("\"*/15 * * * *\": \"/api/sweep\""),
+        "Cloudflare fires the expression, so it has to reach a route:\n{worker}"
+    );
+
+    // The process targets' half, on `node`, which `bun` and `container` share:
+    // the run is wired *and* the list is handed to the server.
+    let built = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["build", "--adapter", "node"])
+        .output()
+        .unwrap();
+    assert!(
+        built.status.success(),
+        "`uf build --adapter node` failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&built.stdout),
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let server = fs::read_to_string(root.join(".uf/deploy/node/server.js")).unwrap();
+    for expected in ["routeSchedule(", "\"/api/sweep\"", "\"*/15 * * * *\""] {
+        assert!(server.contains(expected), "missing {expected}:\n{server}");
+    }
+    // The list reaches the server, asked without depending on how the linker
+    // laid the call out. `schedules` is the property `serve` reads, so it
+    // survives; what would not survive is a line, and an earlier version of
+    // this assertion looked for one and went red the moment the linker put
+    // `serve({` on its own. An entry that assembles the array and never
+    // passes it mentions the name once, where the array is declared — so the
+    // question is whether it is mentioned again *after* the last schedule
+    // went into it.
+    let built_at = server
+        .rfind("routeSchedule(")
+        .unwrap_or_else(|| panic!("no `routeSchedule(` in:\n{server}"));
+    assert!(
+        server[built_at..].contains("schedules"),
+        "an entry that assembles the list and never passes it runs nothing:\n{server}"
+    );
+
+    // And the target that would run none says so before it links anything.
+    let refused = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["build", "--adapter", "serverless"])
+        .output()
+        .unwrap();
+    assert!(
+        !refused.status.success(),
+        "a schedule nothing runs is refused"
+    );
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&refused.stdout),
+        String::from_utf8_lossy(&refused.stderr)
+    );
+    for expected in ["serverless", "/api/sweep", "*/15 * * * *", "_uf.route.js"] {
+        assert!(said.contains(expected), "missing {expected} in:\n{said}");
     }
 }
 

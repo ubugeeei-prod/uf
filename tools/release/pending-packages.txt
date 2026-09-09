@@ -24,6 +24,18 @@
 # waiting room.
 #
 # See ubugeeei-prod/uf#210.
+#
+# One name is here by decision rather than because the check found it.
+# `tools/ci/publishable.sh` asks whether a package calls
+# `nativeRuntimeRequired` *anywhere* and excuses it if it does, and
+# `@uniflowed/std` does: its root `index.js` is a declaration surface whose
+# every function raises. Six subpaths beside it — `errors`, `sync`, `context`,
+# `bytes`, `heap` and `hex` — are real Flow that runs, so the rule's answer is
+# wrong for it in the direction that hides work: `npm install @uniflowed/std`
+# answers ETARGET for a package with an implementation in it. That is
+# ubugeeei-prod/uf#710's second housekeeping question, and this line is the
+# answer. `crates/uf_std`'s registry carries the same distinction per subpath,
+# and `uf inspect` reports it.
 
 brand
 cell
@@ -33,6 +45,7 @@ i18n
 immer
 mock
 state
+std
 story
 testing
 tui

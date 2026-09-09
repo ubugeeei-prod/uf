@@ -203,7 +203,13 @@
       a hundred thousand rows measures none of them and lays out, paints and
       diffs the twenty-four on the screen, counted in
       `tests/library/tui.test.js` and timed by `tools/bench/tui/window.js`.
-      Selection, key release and rich content are ubugeeei-prod/uf#314.
+      Text selection is in with the mouse it belongs to: a drag over
+      `selectable` text highlights the cells between the two ends,
+      `getSelectedText()` reads them back out of the frame, and
+      `preventDefault()` on the press is how a box that means its own thing by
+      a drag keeps out of it. Key release, the clipboard that would carry the
+      selected text somewhere, the repeated-press gestures that widen one to a
+      word or a line, and rich content are ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.

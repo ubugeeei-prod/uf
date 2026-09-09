@@ -199,7 +199,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/ci",
         title: "uf in CI",
-        blurb: "GitHub Actions, GitLab and CircleCI: one step each, and why they all pin.",
+        blurb:
+          "GitHub Actions, GitLab and CircleCI: one step each, why they all pin, and the install a check is worthless without.",
       },
     ],
   },

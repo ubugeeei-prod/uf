@@ -108,8 +108,13 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import { useAnchor } from "./internal/anchor.js";
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import {
   directionOf,
   indexOfActive,
@@ -211,45 +216,43 @@ export component MenuSub(
 }
 
 /** The button that opens the menu. */
-export component MenuTrigger(children: React.Node, ...rest: Rest) {
+export component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("Menu.Trigger");
-  const passed = withoutComposed(rest, ["onClick", "onKeyDown", "ref"]);
   useTriggerRegistration(menu);
+  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown", "ref"]), {
+    // Named only while the menu is in the document, so a reader is never told
+    // to go somewhere that is not there.
+    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
+    "aria-expanded": menu.open ? "true" : "false",
+    "aria-haspopup": "menu",
+    children,
+    id: `${menu.base}-trigger`,
+    onClick: composeHandlers(rest.onClick, () => menu.setOpen(!menu.open)),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      // `ArrowUp` opening onto the *last* item is the behaviour that makes a
+      // long menu usable: the last entry is usually the destructive one, and
+      // reaching it should not mean arrowing past everything else.
+      const end = match (event.key) {
+        "ArrowDown" => "first",
+        "ArrowUp" => "last",
+        _ => null,
+      };
+      if (end == null) {
+        return;
+      }
+      event.preventDefault();
+      menu.pendingFocus.current = end;
+      menu.setOpen(true);
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      menu.triggerRef.current = element;
+    }),
+  });
 
-  return (
-    <button
-      {...passed}
-      // Named only while the menu is in the document, so a reader is never told
-      // to go somewhere that is not there.
-      aria-controls={menu.open ? `${menu.base}-body` : undefined}
-      aria-expanded={menu.open ? "true" : "false"}
-      aria-haspopup="menu"
-      id={`${menu.base}-trigger`}
-      onClick={composeHandlers(rest.onClick, () => menu.setOpen(!menu.open))}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        // `ArrowUp` opening onto the *last* item is the behaviour that makes a
-        // long menu usable: the last entry is usually the destructive one, and
-        // reaching it should not mean arrowing past everything else.
-        const end = match (event.key) {
-          "ArrowDown" => "first",
-          "ArrowUp" => "last",
-          _ => null,
-        };
-        if (end == null) {
-          return;
-        }
-        event.preventDefault();
-        menu.pendingFocus.current = end;
-        menu.setOpen(true);
-      })}
-      ref={composeRefs(rest.ref, (element) => {
-        menu.triggerRef.current = element;
-      })}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -275,6 +278,7 @@ export component MenuBody(
   collisionPadding?: number = 0,
   side?: LogicalSide,
   sideOffset?: number = 0,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const menu = useMenu("Menu.Body");
@@ -377,87 +381,85 @@ export component MenuBody(
     return null;
   }
 
-  const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
+  const props = withProps(withoutComposed(rest, ["onKeyDown", "ref"]), {
+    "aria-labelledby": menu.triggered ? `${menu.base}-trigger` : undefined,
+    "aria-orientation": "vertical",
+    children,
+    "data-align": anchored.align,
+    "data-side": anchored.side,
+    id: `${menu.base}-body`,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const body: $FlowFixMe = event.currentTarget;
+      const items = itemsOf(body, ITEM_SELECTOR, MENU_SELECTOR);
+      const at = indexOfActive(items, body.ownerDocument?.activeElement);
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        // This menu, not the one behind it and not the dialog around it.
+        // A submenu is a DOM descendant of its parent menu, so without this
+        // one Escape closed the whole tree at once.
+        event.stopPropagation();
+        menu.setOpen(false);
+        return;
+      }
+
+      if (event.key === "Tab") {
+        // Not prevented: the browser should carry on to the next control,
+        // which is what makes Tab a way *past* a menu rather than a way
+        // through its thirty items.
+        event.stopPropagation();
+        closeAll();
+        return;
+      }
+
+      // Asked once, here, and used for both questions below: which key
+      // closes this submenu, and — for a menu a caller has laid out
+      // horizontally one day — which way the arrows run.
+      const direction = directionOf(body);
+
+      if (!isRoot && event.key === submenuKeys(direction).close) {
+        event.preventDefault();
+        event.stopPropagation();
+        menu.setOpen(false);
+        return;
+      }
+
+      const movement = movementFor(event.key, "vertical", direction);
+      if (movement != null) {
+        // Before moving, or the arrow also scrolls the page under the item
+        // that just took focus.
+        event.preventDefault();
+        event.stopPropagation();
+        const next = moveTo(items, at, movement, true);
+        if (next != null) {
+          next.focus();
+          setActiveId(next.id);
+        }
+        return;
+      }
+
+      if (isTypeaheadKey(event)) {
+        const next = typeahead(items, at, event.key);
+        if (next != null) {
+          event.preventDefault();
+          event.stopPropagation();
+          next.focus();
+          setActiveId(next.id);
+        }
+      }
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      bodyRef.current = element;
+    }),
+    role: "menu",
+    // So the menu can hold focus itself when it is empty, and so a press on
+    // its padding does not send focus to `<body>`.
+    tabIndex: -1,
+  });
 
   return (
     <MenuListContext.Provider value={list}>
-      <div
-        {...passed}
-        aria-labelledby={menu.triggered ? `${menu.base}-trigger` : undefined}
-        aria-orientation="vertical"
-        data-align={anchored.align}
-        data-side={anchored.side}
-        id={`${menu.base}-body`}
-        onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-          const body: $FlowFixMe = event.currentTarget;
-          const items = itemsOf(body, ITEM_SELECTOR, MENU_SELECTOR);
-          const at = indexOfActive(items, body.ownerDocument?.activeElement);
-
-          if (event.key === "Escape") {
-            event.preventDefault();
-            // This menu, not the one behind it and not the dialog around it.
-            // A submenu is a DOM descendant of its parent menu, so without this
-            // one Escape closed the whole tree at once.
-            event.stopPropagation();
-            menu.setOpen(false);
-            return;
-          }
-
-          if (event.key === "Tab") {
-            // Not prevented: the browser should carry on to the next control,
-            // which is what makes Tab a way *past* a menu rather than a way
-            // through its thirty items.
-            event.stopPropagation();
-            closeAll();
-            return;
-          }
-
-          // Asked once, here, and used for both questions below: which key
-          // closes this submenu, and — for a menu a caller has laid out
-          // horizontally one day — which way the arrows run.
-          const direction = directionOf(body);
-
-          if (!isRoot && event.key === submenuKeys(direction).close) {
-            event.preventDefault();
-            event.stopPropagation();
-            menu.setOpen(false);
-            return;
-          }
-
-          const movement = movementFor(event.key, "vertical", direction);
-          if (movement != null) {
-            // Before moving, or the arrow also scrolls the page under the item
-            // that just took focus.
-            event.preventDefault();
-            event.stopPropagation();
-            const next = moveTo(items, at, movement, true);
-            if (next != null) {
-              next.focus();
-              setActiveId(next.id);
-            }
-            return;
-          }
-
-          if (isTypeaheadKey(event)) {
-            const next = typeahead(items, at, event.key);
-            if (next != null) {
-              event.preventDefault();
-              event.stopPropagation();
-              next.focus();
-              setActiveId(next.id);
-            }
-          }
-        })}
-        ref={composeRefs(rest.ref, (element) => {
-          bodyRef.current = element;
-        })}
-        role="menu"
-        // So the menu can hold focus itself when it is empty, and so a press on
-        // its padding does not send focus to `<body>`.
-        tabIndex={-1}
-      >
-        {children}
-      </div>
+      {render == null ? <div {...props} /> : render(props)}
     </MenuListContext.Provider>
   );
 }
@@ -516,34 +518,46 @@ hook useMenuItem(
  * that the command exists and is unavailable, where a native `disabled` leaves
  * a silent gap they cannot ask about. The arrow keys and typeahead step over it
  * either way.
+ *
+ * `render` is what makes a menu of links possible, and a menu of links is the
+ * most ordinary menu there is:
+ *
+ *     <Menu.Item render={(props) => <a href="/settings" {...props} />}>
+ *       Settings
+ *     </Menu.Item>
+ *
+ * The `<a>` keeps everything a link is for — the middle click, the context
+ * menu, "open in new tab", the status bar showing where it goes — and the item
+ * keeps the id, the roving tab stop, the role and the press that closes the
+ * tree. That combination is what shadcn's copy step is usually reached for, and
+ * what this package offers instead of it.
  */
 export component MenuItem(
   children: React.Node,
   disabled?: boolean = false,
   closeOnSelect?: boolean = true,
   onSelect?: (event: MenuSelect) => mixed,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const item = useMenuItem("Menu.Item", disabled, closeOnSelect, onSelect, undefined);
-  const passed = withoutComposed(rest, ["onClick", "onFocus"]);
+  const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
+    "aria-disabled": disabled ? "true" : undefined,
+    children,
+    id: item.id,
+    onClick: composeHandlers(rest.onClick, item.onClick),
+    // The roving tab stop follows real focus rather than leading it, so a
+    // pointer that moves focus and a key that moves focus agree without the
+    // two of them having to be kept in step by hand.
+    onFocus: composeHandlers(rest.onFocus, item.onFocus),
+    role: "menuitem",
+    tabIndex: item.tabIndex,
+  });
 
-  return (
-    <button
-      {...passed}
-      aria-disabled={disabled ? "true" : undefined}
-      id={item.id}
-      onClick={composeHandlers(rest.onClick, item.onClick)}
-      // The roving tab stop follows real focus rather than leading it, so a
-      // pointer that moves focus and a key that moves focus agree without the
-      // two of them having to be kept in step by hand.
-      onFocus={composeHandlers(rest.onFocus, item.onFocus)}
-      role="menuitem"
-      tabIndex={item.tabIndex}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -570,28 +584,27 @@ export component MenuCheckboxItem(
   // header for why this default is the opposite of `Menu.Item`'s.
   closeOnSelect?: boolean = false,
   onSelect?: (event: MenuSelect) => mixed,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   const toggle = useCallback(() => setOn(!on), [on, setOn]);
   const item = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
-  const passed = withoutComposed(rest, ["onClick", "onFocus"]);
+  const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
+    "aria-checked": on ? "true" : "false",
+    "aria-disabled": disabled ? "true" : undefined,
+    children,
+    id: item.id,
+    onClick: composeHandlers(rest.onClick, item.onClick),
+    onFocus: composeHandlers(rest.onFocus, item.onFocus),
+    role: "menuitemcheckbox",
+    tabIndex: item.tabIndex,
+  });
 
-  return (
-    <button
-      {...passed}
-      aria-checked={on ? "true" : "false"}
-      aria-disabled={disabled ? "true" : undefined}
-      id={item.id}
-      onClick={composeHandlers(rest.onClick, item.onClick)}
-      onFocus={composeHandlers(rest.onFocus, item.onFocus)}
-      role="menuitemcheckbox"
-      tabIndex={item.tabIndex}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -613,6 +626,7 @@ export component MenuRadioGroup(
   defaultValue?: string | null = null,
   value?: string | null,
   onValueChange?: (value: string) => void,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const base = useId();
@@ -633,12 +647,16 @@ export component MenuRadioGroup(
     [selected, select],
   );
 
+  const props = withProps(rest, {
+    "aria-labelledby": labelled ? group.labelId : undefined,
+    children,
+    role: "group",
+  });
+
   return (
     <MenuGroupContext.Provider value={group}>
       <MenuRadioContext.Provider value={radio}>
-        <div {...rest} aria-labelledby={labelled ? group.labelId : undefined} role="group">
-          {children}
-        </div>
+        {render == null ? <div {...props} /> : render(props)}
       </MenuRadioContext.Provider>
     </MenuGroupContext.Provider>
   );
@@ -657,6 +675,7 @@ export component MenuRadioItem(
   disabled?: boolean = false,
   closeOnSelect?: boolean = false,
   onSelect?: (event: MenuSelect) => mixed,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const group = useContext(MenuRadioContext);
@@ -666,23 +685,21 @@ export component MenuRadioItem(
   const choose = group.choose;
   const pick = useCallback(() => choose(value), [choose, value]);
   const item = useMenuItem("Menu.RadioItem", disabled, closeOnSelect, onSelect, pick);
-  const passed = withoutComposed(rest, ["onClick", "onFocus"]);
+  const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
+    "aria-checked": group.value === value ? "true" : "false",
+    "aria-disabled": disabled ? "true" : undefined,
+    children,
+    id: item.id,
+    onClick: composeHandlers(rest.onClick, item.onClick),
+    onFocus: composeHandlers(rest.onFocus, item.onFocus),
+    role: "menuitemradio",
+    tabIndex: item.tabIndex,
+  });
 
-  return (
-    <button
-      {...passed}
-      aria-checked={group.value === value ? "true" : "false"}
-      aria-disabled={disabled ? "true" : undefined}
-      id={item.id}
-      onClick={composeHandlers(rest.onClick, item.onClick)}
-      onFocus={composeHandlers(rest.onFocus, item.onFocus)}
-      role="menuitemradio"
-      tabIndex={item.tabIndex}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -692,10 +709,9 @@ export component MenuRadioItem(
  * is why it reads the list context of the menu around it and the menu context
  * of the one below it.
  */
-export component MenuSubTrigger(children: React.Node, ...rest: Rest) {
+export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("Menu.SubTrigger");
   const list = useContext(MenuListContext);
-  const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown", "ref"]);
   const setActiveId = list?.setActiveId;
   useTriggerRegistration(menu);
   // The submenu's own trigger id, not a fresh one: the submenu names itself
@@ -707,36 +723,36 @@ export component MenuSubTrigger(children: React.Node, ...rest: Rest) {
     menu.setOpen(true);
   };
 
-  return (
-    <button
-      {...passed}
-      aria-controls={menu.open ? `${menu.base}-body` : undefined}
-      aria-expanded={menu.open ? "true" : "false"}
-      aria-haspopup="menu"
-      id={id}
-      onClick={composeHandlers(rest.onClick, open)}
-      onFocus={composeHandlers(rest.onFocus, () => setActiveId?.(id))}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        const trigger: $FlowFixMe = event.currentTarget;
-        if (event.key !== submenuKeys(directionOf(trigger)).open) {
-          return;
-        }
-        event.preventDefault();
-        // The parent menu's own `ArrowRight` does nothing, but a menu three
-        // levels deep would otherwise see this key at every level.
-        event.stopPropagation();
-        open();
-      })}
-      ref={composeRefs(rest.ref, (element) => {
-        menu.triggerRef.current = element;
-      })}
-      role="menuitem"
-      tabIndex={list?.activeId === id ? 0 : -1}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  const props = withProps(withoutComposed(rest, ["onClick", "onFocus", "onKeyDown", "ref"]), {
+    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
+    "aria-expanded": menu.open ? "true" : "false",
+    "aria-haspopup": "menu",
+    children,
+    id,
+    onClick: composeHandlers(rest.onClick, open),
+    onFocus: composeHandlers(rest.onFocus, () => setActiveId?.(id)),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const trigger: $FlowFixMe = event.currentTarget;
+      if (event.key !== submenuKeys(directionOf(trigger)).open) {
+        return;
+      }
+      event.preventDefault();
+      // The parent menu's own `ArrowRight` does nothing, but a menu three
+      // levels deep would otherwise see this key at every level.
+      event.stopPropagation();
+      open();
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      menu.triggerRef.current = element;
+    }),
+    role: "menuitem",
+    tabIndex: list?.activeId === id ? 0 : -1,
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -746,8 +762,12 @@ export component MenuSubTrigger(children: React.Node, ...rest: Rest) {
  * moving through the menu is told the group changed. It is not focusable and
  * the arrow keys pass straight over it.
  */
-export component MenuSeparator(...rest: Rest) {
-  return <div {...rest} aria-orientation="horizontal" role="separator" />;
+export component MenuSeparator(render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { "aria-orientation": "horizontal", role: "separator" });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /**
@@ -758,17 +778,20 @@ export component MenuSeparator(...rest: Rest) {
  * that is not in the document makes a screen reader announce *nothing*, which
  * is worse than an unnamed group.
  */
-export component MenuGroup(children: React.Node, ...rest: Rest) {
+export component MenuGroup(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const base = useId();
   const [labelled, setLabelled] = useState(false);
 
   const group = useMemo(() => ({ labelId: `${base}-label`, registerLabel: setLabelled }), [base]);
+  const props = withProps(rest, {
+    "aria-labelledby": labelled ? group.labelId : undefined,
+    children,
+    role: "group",
+  });
 
   return (
     <MenuGroupContext.Provider value={group}>
-      <div {...rest} aria-labelledby={labelled ? group.labelId : undefined} role="group">
-        {children}
-      </div>
+      {render == null ? <div {...props} /> : render(props)}
     </MenuGroupContext.Provider>
   );
 }
@@ -780,7 +803,7 @@ export component MenuGroup(children: React.Node, ...rest: Rest) {
  * as ordinary content would have a reader hear the heading once as the group's
  * name and again as a stray line of text between the items.
  */
-export component MenuLabel(children: React.Node, ...rest: Rest) {
+export component MenuLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const group = useContext(MenuGroupContext);
   const register = group?.registerLabel;
 
@@ -792,9 +815,9 @@ export component MenuLabel(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
-  return (
-    <div {...rest} id={group?.labelId} role="presentation">
-      {children}
-    </div>
-  );
+  const props = withProps(rest, { children, id: group?.labelId, role: "presentation" });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }

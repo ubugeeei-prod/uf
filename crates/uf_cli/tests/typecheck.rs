@@ -321,3 +321,90 @@ fn imports_that_uf_cannot_type_yet_are_named_rather_than_hidden() {
         "{untyped:?}"
     );
 }
+
+/// A hand-written library definition is full of `any`, and that is what one is
+/// *for*: the point of `declare module "editor-pkg"` is to describe a package
+/// that ships no types, and every member uf cannot transcribe is an `any` on
+/// purpose. `flow/unclear-type` fired on each of them, because the scan
+/// collects `flow-typed/` like any other directory and the libdef was handed
+/// to the linter as well as to the type environment.
+///
+/// So `files checked` counted a file `flow check` would never lint, and a
+/// project whose types were right failed its build over the shape its
+/// declarations have to have. ubugeeei-prod/uf#699.
+#[test]
+fn a_library_definition_is_merged_rather_than_linted() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(root.join(".flowconfig"), "[libs]\nflow-typed\n").unwrap();
+    let libs = root.join("flow-typed");
+    fs::create_dir_all(&libs).unwrap();
+    fs::write(
+        libs.join("editor.js"),
+        "// @flow\ndeclare module \"editor-pkg\" {\n  declare export namespace languages {\n    declare type FoldingRangeProvider = any;\n  }\n}\n",
+    )
+    .unwrap();
+    let src = root.join("src");
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        src.join("probe.js"),
+        "// @flow\nimport * as Editor from \"editor-pkg\";\n\nexport const provider: Editor.languages.FoldingRangeProvider = null;\n",
+    )
+    .unwrap();
+
+    let value = check_json(root);
+
+    let rules: Vec<&str> = value["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|diagnostic| diagnostic["rule"].as_str().unwrap())
+        .collect();
+    assert!(rules.is_empty(), "the libdef was linted: {rules:?}");
+    // The other half of the same fact, and the one a reader sees: a libdef is
+    // not among the files the run says it checked. Without it the assertion
+    // above could pass because the rule stopped firing rather than because the
+    // file stopped being linted.
+    assert_eq!(value["filesChecked"], serde_json::json!(1), "{value}");
+    // And it is still *merged*, which is the difference between not linting a
+    // libdef and not reading one: the annotation resolves, so nothing about
+    // `Editor.languages.FoldingRangeProvider` is reported.
+    let types: Vec<&str> = value["typeCheck"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap_or("<none>"))
+        .collect();
+    assert!(types.is_empty(), "{types:?}");
+    assert_eq!(
+        value["typeCheck"]["libdefs"],
+        serde_json::json!(1),
+        "{value}"
+    );
+}
+
+/// Naming one says what it is, rather than "no file matched" about a file the
+/// reader is looking at.
+#[test]
+fn asking_to_lint_a_library_definition_says_that_is_what_it_is() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::write(root.join(".flowconfig"), "[libs]\nflow-typed\n").unwrap();
+    let libs = root.join("flow-typed");
+    fs::create_dir_all(&libs).unwrap();
+    fs::write(libs.join("globals.js"), "declare type Kind = string;\n").unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["check", "flow-typed/globals.js"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("flow-typed/globals.js is a library definition"),
+        "{stderr}"
+    );
+}

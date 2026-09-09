@@ -763,11 +763,45 @@ fn env_stage(resolved: &ResolvedConfig, default_mode: &str) -> Stage {
     }
 }
 
+/// The host this project's commands start.
+///
+/// It reads `capabilityJsHost.default`, which is the key `commands::vite`'s
+/// `resolve_host` actually resolves through. It used to read
+/// `app.runtime.default`, which resolves nothing: that key names the runtime a
+/// project is *written for*, it accepted `edge`, `serverless`, `container` and
+/// `uf` until ubugeeei-prod/uf#246, and a project that wrote one of those was
+/// told by this very stage that Vite runs on it. `uf explain` describing a run
+/// that cannot happen is worse than not describing it.
+///
+/// Named rather than resolved, for the reason [`permissions_stage`] gives:
+/// `uf explain` prints a plan and must not fail because the machine it is run
+/// on has no host installed. So the detail says how the name becomes a
+/// process, which is the half a reader cannot see from the key alone.
 fn host_stage(resolved: &ResolvedConfig) -> Stage {
+    let hosts = &resolved.config.app.runtime.capability_js_host;
+    let fallbacks = hosts
+        .hosts
+        .iter()
+        .copied()
+        .filter(|host| *host != hosts.default)
+        .map(uf_config::CapabilityJsHost::as_str)
+        .collect::<Vec<_>>();
+    let detail = if hosts.auto_detect && !fallbacks.is_empty() {
+        format!(
+            "runs Vite and any JavaScript plugin; `app.runtime.capabilityJsHost.default`, \
+             falling back to {} when it is not on PATH",
+            fallbacks.join(" then ")
+        )
+    } else {
+        String::from(
+            "runs Vite and any JavaScript plugin; `app.runtime.capabilityJsHost.default`, \
+             with no fallback — a machine without it is told so rather than run on another host",
+        )
+    };
     Stage {
         name: "JavaScript host",
-        provider: format!("{:?}", resolved.config.app.runtime.default).to_lowercase(),
-        detail: "runs Vite and any JavaScript plugin".to_string(),
+        provider: hosts.default.as_str().to_string(),
+        detail,
     }
 }
 

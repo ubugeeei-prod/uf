@@ -306,6 +306,61 @@ export default component Post(data: {| +post: Post |}) {
 rather than returned, so the type of the data does not have to admit "or a
 redirect".
 
+### Deferring part of the answer
+
+A loader may leave a promise in what it returns. The page is rendered with the
+promise still pending, and the value arrives in the same response, later:
+
+```js
+export async function loader({ params }: LoaderArgs) {
+  return {
+    post: await readPost(params.slug),      // waited for
+    comments: readComments(params.slug),    // not waited for
+  };
+}
+
+export default component Post(data: {| +post: Post, +comments: Promise<Array<Comment>> |}) {
+  return (
+    <article>
+      <h1>{data.post.title}</h1>
+      <Suspense fallback={<p>Loading comments…</p>}>
+        <Comments comments={data.comments} />
+      </Suspense>
+    </article>
+  );
+}
+
+component Comments(comments: Promise<Array<Comment>>) {
+  return <ul>{use(comments).map((one) => <li key={one.id}>{one.body}</li>)}</ul>;
+}
+```
+
+The document the server writes carries the post, the heading and the fallback
+immediately; when `readComments` settles, the comments' markup **and** the data
+behind them are appended to the same response, and the browser resolves that
+boundary without a second request. Each deferred value is its own boundary, so
+three of them arrive in the order they resolved rather than in the order they
+were written.
+
+This is uf's payload format, and `<Suspense>` is the whole of the API: there is
+no `defer()` to call and no `<Await>` to render, because a promise in the data
+already says everything either of them would have.
+
+Three things are worth knowing about it:
+
+- **What a promise resolves to is data.** The same values a loader could always
+  return — JSON's — and not a promise of its own. A deferred value that is
+  itself deferred is refused, because the payload numbers its rows once.
+- **A rejected promise reaches the boundary that was reading it.** The browser
+  is told the value failed and not why; the reason stays on the server, where
+  it is logged, and reaches the error boundary above whatever used the value.
+- **The response is already a 200.** The same rule as a deferred loader: bytes
+  that have gone cannot be unsent, so a `notFound()` thrown from inside one of
+  these arrives at the error boundary rather than at the 404 page.
+
+`uf build` waits for every one of them: a file on disk has nothing to stream to,
+so a prerendered page contains the finished comments.
+
 ## Metadata
 
 A page or layout may export a `metadata` object, or a `generateMetadata`

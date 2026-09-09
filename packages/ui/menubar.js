@@ -66,8 +66,13 @@ import {
   useState,
 } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import type { RovingSet } from "./internal/roving-focus.js";
 import {
   directionOf,
@@ -123,7 +128,7 @@ hook useMenubar(part: string): MenubarState {
  * a page with an application menubar and a formatting toolbar has two, and
  * "menu bar" twice tells a reader nothing about which is which.
  */
-export component MenubarRoot(children: renders* MenubarMenu, ...rest: Rest) {
+export component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp, ...rest: Rest) {
   const barRef = useRef<HTMLElement | null>(null);
   const [open, setOpenValue] = useState<string | null>(null);
   const [active, setActive] = useState<string | null>(null);
@@ -142,57 +147,55 @@ export component MenubarRoot(children: renders* MenubarMenu, ...rest: Rest) {
     () => ({ open, setOpen, active, setActive, firstId }),
     [open, setOpen, active, firstId],
   );
-  const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
+  const props = withProps(withoutComposed(rest, ["onKeyDown", "ref"]), {
+    "aria-orientation": "horizontal",
+    children,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const bar: $FlowFixMe = event.currentTarget;
+      const movement = movementFor(event.key, "horizontal", directionOf(bar));
+      if (movement == null) {
+        return;
+      }
+      const triggers = itemsOf(bar, TRIGGERS.item, TRIGGERS.owner);
+      // With a menu open, focus is on one of *its* items rather than on a
+      // trigger, so "where am I in the bar" is the expanded trigger. This
+      // is the whole of walking File → Edit → View without pressing Escape.
+      const focused = indexOfActive(triggers, bar.ownerDocument?.activeElement);
+      const at =
+        focused >= 0
+          ? focused
+          : triggers.findIndex((each) => each.getAttribute("aria-expanded") === "true");
+      const next = moveTo(triggers, at, movement, TRIGGERS.wrap, TRIGGERS.skipDisabled);
+      if (next == null) {
+        return;
+      }
+      // Claimed before focus moves, or the browser scrolls the page under
+      // the trigger that has just taken it; `moveOnKey` says the same.
+      event.preventDefault();
+      event.stopPropagation();
+      const value = next.getAttribute("data-uf-menubar-value");
+      if (open != null && value != null) {
+        // Swap which menu is showing. Focus lands on the new menu's first
+        // item through `Menu.Body`'s own opening effect, so nothing here
+        // moves it: focusing the trigger as well would be two focus moves
+        // in one commit and the reader would see the second.
+        setOpen(value);
+        return;
+      }
+      next.focus();
+      if (value != null) {
+        setActive(value);
+      }
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      barRef.current = element;
+    }),
+    role: "menubar",
+  });
 
   return (
     <MenubarContext.Provider value={state}>
-      <div
-        {...passed}
-        aria-orientation="horizontal"
-        onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-          const bar: $FlowFixMe = event.currentTarget;
-          const movement = movementFor(event.key, "horizontal", directionOf(bar));
-          if (movement == null) {
-            return;
-          }
-          const triggers = itemsOf(bar, TRIGGERS.item, TRIGGERS.owner);
-          // With a menu open, focus is on one of *its* items rather than on a
-          // trigger, so "where am I in the bar" is the expanded trigger. This
-          // is the whole of walking File → Edit → View without pressing Escape.
-          const focused = indexOfActive(triggers, bar.ownerDocument?.activeElement);
-          const at =
-            focused >= 0
-              ? focused
-              : triggers.findIndex((each) => each.getAttribute("aria-expanded") === "true");
-          const next = moveTo(triggers, at, movement, TRIGGERS.wrap, TRIGGERS.skipDisabled);
-          if (next == null) {
-            return;
-          }
-          // Claimed before focus moves, or the browser scrolls the page under
-          // the trigger that has just taken it; `moveOnKey` says the same.
-          event.preventDefault();
-          event.stopPropagation();
-          const value = next.getAttribute("data-uf-menubar-value");
-          if (open != null && value != null) {
-            // Swap which menu is showing. Focus lands on the new menu's first
-            // item through `Menu.Body`'s own opening effect, so nothing here
-            // moves it: focusing the trigger as well would be two focus moves
-            // in one commit and the reader would see the second.
-            setOpen(value);
-            return;
-          }
-          next.focus();
-          if (value != null) {
-            setActive(value);
-          }
-        })}
-        ref={composeRefs(rest.ref, (element) => {
-          barRef.current = element;
-        })}
-        role="menubar"
-      >
-        {children}
-      </div>
+      {render == null ? <div {...props} /> : render(props)}
     </MenubarContext.Provider>
   );
 }
@@ -232,54 +235,53 @@ export component MenubarMenu(children: React.Node, value: string) {
  * menubar — a reader is told "File, menu item, has popup, 1 of 3" — and it is
  * what makes the bar's arrow keys agree with what they were told is in it.
  */
-export component MenubarTrigger(children: React.Node, ...rest: Rest) {
+export component MenubarTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const bar = useMenubar("Menubar.Trigger");
   const menu = useMenu("Menubar.Trigger");
   const value = useContext(MenubarMenuContext);
   if (value == null) {
     throw new Error("Menubar.Trigger must be rendered inside a Menubar.Menu");
   }
-  const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown", "ref"]);
   const id = `${menu.base}-trigger`;
   // The bar's single tab stop. Before anything has been focused or opened it
   // belongs to the first trigger, which is a fact about the document rather
   // than about this component — `useFirstItem` reads it in the bar.
   const stop = bar.active == null ? bar.firstId === id : bar.active === value;
 
-  return (
-    <button
-      {...passed}
-      aria-controls={menu.open ? `${menu.base}-body` : undefined}
-      aria-expanded={menu.open ? "true" : "false"}
-      aria-haspopup="menu"
-      // How the bar's keyboard turns a trigger element back into the menu it
-      // opens; the module header says why this is an attribute and the rest of
-      // the bar's arithmetic is not.
-      data-uf-menubar-value={value}
-      id={id}
-      onClick={composeHandlers(rest.onClick, () => bar.setOpen(menu.open ? null : value))}
-      onFocus={composeHandlers(rest.onFocus, () => bar.setActive(value))}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        const end = match (event.key) {
-          "ArrowDown" => "first",
-          "ArrowUp" => "last",
-          _ => null,
-        };
-        if (end == null) {
-          return;
-        }
-        event.preventDefault();
-        menu.pendingFocus.current = end;
-        bar.setOpen(value);
-      })}
-      ref={composeRefs(rest.ref, (element) => {
-        menu.triggerRef.current = element;
-      })}
-      role="menuitem"
-      tabIndex={stop ? 0 : -1}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  const props = withProps(withoutComposed(rest, ["onClick", "onFocus", "onKeyDown", "ref"]), {
+    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
+    "aria-expanded": menu.open ? "true" : "false",
+    "aria-haspopup": "menu",
+    children,
+    // How the bar's keyboard turns a trigger element back into the menu it
+    // opens; the module header says why this is an attribute and the rest of
+    // the bar's arithmetic is not.
+    "data-uf-menubar-value": value,
+    id,
+    onClick: composeHandlers(rest.onClick, () => bar.setOpen(menu.open ? null : value)),
+    onFocus: composeHandlers(rest.onFocus, () => bar.setActive(value)),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const end = match (event.key) {
+        "ArrowDown" => "first",
+        "ArrowUp" => "last",
+        _ => null,
+      };
+      if (end == null) {
+        return;
+      }
+      event.preventDefault();
+      menu.pendingFocus.current = end;
+      bar.setOpen(value);
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      menu.triggerRef.current = element;
+    }),
+    role: "menuitem",
+    tabIndex: stop ? 0 : -1,
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }

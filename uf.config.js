@@ -606,6 +606,40 @@ export default defineConfig({
       // prints. Two files, and nothing else.
       inputs: ["infra/cloudflare/setup-assets/install.sh", "tools/ci/install-banner-fits.sh"],
     },
+    // And what `uniflowed.dev` answers. The apex used to be nine lines with one
+    // behaviour — every path 308'd to the documentation host — and now it is a
+    // landing page, a `robots.txt`, the `brand/` directory, and that same
+    // redirect for everything else. The redirect is the part worth pinning: it
+    // is a promise about `uniflowed.dev/guide`, `/og.png` and `/sitemap.xml`,
+    // which are written down in issues and in other people's pages and which
+    // nobody here can enumerate. A landing page that turned them into 404s
+    // would look perfect to whoever added it.
+    //
+    // Same shape as `docs:csp`, and the same argument for it: it imports the
+    // worker and calls its `fetch` rather than reading its source, because
+    // reading the source would be asserting the text of a file and calling it
+    // a server. Unlike `docs:csp` it needs no built site — the only assets it
+    // serves are in `brand/`, which is checked in — so it belongs here with the
+    // repository checks rather than under `docs:verify`.
+    "apex:routes": {
+      command: "tools/ci/apex-routes.sh",
+      // The worker, the directory its `ASSETS` binding answers from, and the
+      // check itself.
+      inputs: ["infra/cloudflare/workers/root.js", "brand/**", "tools/ci/apex-routes.sh"],
+    },
+    // And that the check still catches each way the apex can go wrong. Every
+    // case it covers is one change away from correct — a redirect that drops
+    // the query string is otherwise perfect — which is exactly the kind of
+    // defect a check has to be shown to catch rather than assumed to.
+    "apex:routes:test": {
+      command: "tools/ci/test-apex-routes.sh",
+      inputs: [
+        "infra/cloudflare/workers/root.js",
+        "brand/**",
+        "tools/ci/apex-routes.sh",
+        "tools/ci/test-apex-routes.sh",
+      ],
+    },
     "scripts:parse": {
       command: "tools/ci/scripts-parse.sh",
       // `git ls-files '*.sh'` minus `upstream/`, which is every tracked shell
@@ -632,6 +666,37 @@ export default defineConfig({
         "infra/cloudflare/setup-assets/install.sh",
         "tools/ci/integrations-agree.sh",
       ],
+    },
+    // And that the recipes inside those files still run. `integrations` above
+    // checks the installation — that `uf` reaches `PATH`; this checks what the
+    // pipeline does next, by reading every `uf` command in the three
+    // integrations and in `/guide/ci` back against the binary. A shipped recipe
+    // is a copy of the CLI's surface that ages on its own, and it also has to
+    // install the project before checking it: `uf check` with no `node_modules`
+    // does not fail, it passes, because every import that resolves to nothing
+    // is typed `any`.
+    //
+    // No `dependsOn: ["build"]`, unlike the other tasks that run
+    // `./target/release/uf`. This one runs in `Metadata`, which downloads the
+    // binary `Toolchain` built rather than building one, and has no Rust cache
+    // to build with — a dependency on `build` would spend a release build there
+    // to reproduce the artefact already in the directory. The script says how
+    // to point `UF_BIN` at a binary when there is none.
+    "ci:recipes": {
+      command: "UF_BIN=./target/release/uf tools/ci/recipes-are-runnable.sh",
+      // The recipes, the guide whose blocks people copy, and the script. Not
+      // `crates/**`: this asks the *binary* what commands it has, and the
+      // binary's own freshness is `Toolchain`'s question rather than this
+      // task's.
+      inputs: [
+        "integrations/**",
+        "docs/app/guide/ci/_uf.page.mdx",
+        "tools/ci/recipes-are-runnable.sh",
+      ],
+    },
+    "ci:recipes:test": {
+      command: "UF_BIN=./target/release/uf tools/ci/test-recipes-are-runnable.sh",
+      inputs: ["tools/ci/recipes-are-runnable.sh", "tools/ci/test-recipes-are-runnable.sh"],
     },
     lockfile: {
       command: "tools/ci/lockfile-in-sync.sh",
@@ -794,9 +859,13 @@ export default defineConfig({
         "lockfile:test",
         "upstream:patches:test",
         "install:banner",
+        "apex:routes",
+        "apex:routes:test",
         "scripts:parse",
         "scripts:parse:test",
         "integrations",
+        "ci:recipes",
+        "ci:recipes:test",
         "release:closure",
         "publishable",
         "publishable:test",

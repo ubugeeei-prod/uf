@@ -68,8 +68,8 @@
 
 import * as React from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /**
@@ -203,7 +203,14 @@ function submitImplicitly(control: HTMLElement): void {
   form.requestSubmit(submitter);
 }
 
-/** A checkbox, which may also be mixed. */
+/**
+ * A checkbox, which may also be mixed.
+ *
+ * `render` is the escape hatch, and the implicit submission above is the reason
+ * it hands over `onKeyDown` rather than attaching it: whatever element a caller
+ * renders is the one `Enter` arrives on, and it is that element's `form` the
+ * key walks up to.
+ */
 export component Checkbox(
   checked?: boolean,
   defaultChecked?: boolean = false,
@@ -211,6 +218,7 @@ export component Checkbox(
   onCheckedChange?: (checked: boolean) => void,
   disabled?: boolean = false,
   children?: React.Node,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
@@ -218,41 +226,39 @@ export component Checkbox(
   // underneath it": a half-selected "select all" that clears itself on the
   // first click is the behaviour every table in every application gets wrong.
   const next = indeterminate ? true : !on;
-  const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
+  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {
+    "aria-checked": indeterminate ? "mixed" : on ? "true" : "false",
+    children,
+    disabled,
+    onClick: composeHandlers(rest.onClick, () => {
+      if (!disabled) {
+        setOn(next);
+      }
+    }),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      if (disabled) {
+        return;
+      }
+      if (event.key === " ") {
+        // Stops `Space` scrolling the page, and stops the browser's own click
+        // arriving afterwards and toggling this a second time.
+        event.preventDefault();
+        setOn(next);
+        return;
+      }
+      if (event.key === "Enter") {
+        // Claimed, and *not* to make the key inert: the default action here
+        // is a click on this button, and a click on this button toggles. See
+        // the module header for the whole of it.
+        event.preventDefault();
+        submitImplicitly(event.currentTarget as $FlowFixMe);
+      }
+    }),
+    role: "checkbox",
+  });
 
-  return (
-    <button
-      {...passed}
-      aria-checked={indeterminate ? "mixed" : on ? "true" : "false"}
-      disabled={disabled}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (!disabled) {
-          setOn(next);
-        }
-      })}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        if (disabled) {
-          return;
-        }
-        if (event.key === " ") {
-          // Stops `Space` scrolling the page, and stops the browser's own click
-          // arriving afterwards and toggling this a second time.
-          event.preventDefault();
-          setOn(next);
-          return;
-        }
-        if (event.key === "Enter") {
-          // Claimed, and *not* to make the key inert: the default action here
-          // is a click on this button, and a click on this button toggles. See
-          // the module header for the whole of it.
-          event.preventDefault();
-          submitImplicitly(event.currentTarget as $FlowFixMe);
-        }
-      })}
-      role="checkbox"
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }

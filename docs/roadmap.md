@@ -157,6 +157,13 @@ in `uf`.
   `uf dev` reports what moved across the client bundle on each save and names
   the shortest chain of imports that put it there, so `"use client"` costs what
   it costs in the terminal rather than in a bundle somebody measures later.
+  **And the payload's framing is done**: a document carries numbered rows
+  rather than one finished value, so a loader may leave a promise in what it
+  returns and the value arrives in the same response, in the order it resolved
+  — see "Deferring part of the answer" in the routing guide. It carries one
+  reference kind, `$P<n>`, which names a row of the payload itself; the two the
+  element half needs, a client module and an element, are the ones that need
+  the second graph.
 - Server action transform and request bridge. **Done for a module export**: a
   `"use server"` module is replaced in the client graph by one reference per
   callable export, the browser posts the keyed id to the page's own URL, and

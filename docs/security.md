@@ -120,9 +120,13 @@ Four things are outside it deliberately, each because admitting it would mean
 admitting a tag in the payload that says which constructor to call:
 
 - **A reference format.** React's Flight payload carries references to client
-  modules, promises and elements. uf has no such payload
-  ([#252](https://github.com/ubugeeei-prod/uf/issues/252)), and this grammar is
-  not the place to grow one quietly.
+  modules, promises and elements. uf's own payload
+  (`packages/router/internal/payload.js`) carries exactly one of the three and
+  it travels the other way — `"$P<n>"`, in a document the server writes, naming
+  a row of that same payload rather than anything to construct. This grammar is
+  the one an untrusted *sender* is decoded under, and it has none: an action's
+  arguments arrive from the network, so a tag there is a tag somebody else
+  chose.
 - **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays.** An action
   that wants a date takes an ISO string and parses it, where the parse is the
   application's and is checked.

@@ -251,6 +251,20 @@ impl<'a> Printer<'a> {
             .filter(|node| is_call(node))
             .collect();
 
+        // Whether the chain's last call is handed a function. That is the one
+        // reason a flat chain is allowed to contain a break, and the branch
+        // below turns on it.
+        let last_call_takes_a_function = groups
+            .last()
+            .and_then(|group| group.last())
+            .map(|index| printed_nodes[*index].node)
+            .is_some_and(|last| {
+                is_call(last)
+                    && call_arguments_of(last)
+                        .iter()
+                        .any(|argument| is_function_or_arrow(argument))
+            });
+
         let last_group_will_break_and_other_calls_are_function_arguments = {
             let last_node = groups
                 .last()
@@ -286,6 +300,32 @@ impl<'a> Printer<'a> {
             || last_group_will_break_and_other_calls_are_function_arguments
         {
             self.group(expanded)
+        } else if will_break(one_line) && !last_call_takes_a_function {
+            // The flat form already contains a forced break, and it did not
+            // come from a callback body. Offering it to `conditional_group` is
+            // what made this printer disagree with itself: a conditional group
+            // measures a candidate only as far as its first line break, so
+            // `at.until(later).total({` measures as fitting however long the
+            // rest is, and the chain stays on one line — while the *same chain*
+            // with the same object written flat does not fit, and expands. Both
+            // spellings are the same program, and one of them is this printer's
+            // own previous output, because an object keeps the line break its
+            // author wrote after `{`.
+            //
+            // `packages/core/temporal.test.js` in ubugeeei-prod/uf#729 is where
+            // it surfaced, and it needs three things at once to show: an object
+            // argument, an outer chain, and enough indentation that the flat
+            // form does not fit.
+            //
+            // The exception is the whole of why this is not simply
+            // `will_break(one_line)`. A chain whose last call takes a function
+            // is *supposed* to stay flat and let the body break —
+            // `permissions.query({ name }).then((result) => { … })` is one line
+            // plus a body, not a three-line chain — and refusing the flat form
+            // there reformats correct code for the worse. That callback breaks
+            // because it is a callback, not because of anything the previous
+            // pass wrote.
+            self.concat([&BREAK_PARENT, self.group(expanded)])
         } else {
             let leading = if will_break(one_line) || has_empty_line_after_head {
                 &BREAK_PARENT
