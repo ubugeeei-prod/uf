@@ -918,11 +918,16 @@ happens:
     /api/sweep — `*/15 * * * *`, in app/api/sweep/_uf.route.js
 ```
 
-`node`, `bun` and `container` keep a process and `@uniflowed/server/schedule`
-ticks in one, but the entry `uf build` generates for them does not pass the
-declaration to `serve` yet — so on those targets, pass your schedules to
-`serve` yourself as above. `serverless` has no configuration file uf writes at
-all. [#531](https://github.com/ubugeeei-prod/uf/issues/531) tracks the rest.
+`node`, `bun` and `container` run it too, and differently: they keep a process,
+so the `server.js` uf writes hands the declaration to `serve` and
+`@uniflowed/server/schedule` ticks it there. Which means the same declaration
+is a Cloudflare trigger on one target and a `setInterval` on another, and the
+route it runs cannot tell.
+
+`serverless` is the one that refuses, and for a reason rather than for want of
+attention: uf writes no configuration file for it — the artefact is a zip — so
+there is nowhere to say *when* to call the function.
+[#531](https://github.com/ubugeeei-prod/uf/issues/531) has that half.
 
 What each field *contains* is checked when the deployment starts rather than
 at build time: the meaning of a field lives in one place, and a second matcher

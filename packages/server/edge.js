@@ -50,6 +50,7 @@ import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
+import { runScheduled } from "./schedule.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -231,19 +232,9 @@ export function createWorkerFetch(
   };
 }
 
-/**
- * The origin a scheduled invocation carries.
- *
- * A cron event has no request and therefore no host, and a handler that reads
- * `new URL(request.url).host` has to read *something*. A reserved-invalid name
- * rather than the deployment's own: `.invalid` can never resolve, so a handler
- * that echoes the origin into a link produces something obviously wrong rather
- * than something that looks right and points at the wrong place.
- */
-export const SCHEDULED_ORIGIN: string = "https://cron.invalid";
-
-/** The header naming the expression that fired, on a scheduled invocation. */
-export const SCHEDULED_HEADER: string = "uf-scheduled";
+// Both belong to `./schedule.js`, where the run they describe lives, and are
+// re-exported here because a Worker is where most readers meet them.
+export { SCHEDULED_HEADER, SCHEDULED_ORIGIN } from "./schedule.js";
 
 /** What Cloudflare hands a `scheduled()` export. */
 export type ScheduledEvent = {
@@ -300,39 +291,18 @@ export function createWorkerScheduled(options: {|
       return;
     }
 
-    const request = new Request(`${SCHEDULED_ORIGIN}${path}`, {
-      method: "GET",
-      headers: { [SCHEDULED_HEADER]: event.cron },
-    });
-    const lifecycle = beginRequest(request);
-    const started = Temporal.Now.instant();
-    let status = 500;
-    try {
-      const response = await lifecycle.run(() => handle(request));
-      status = response.status;
-      // Discarded, with the reason on it. A body nobody drains is a stream
-      // the runtime keeps open until the isolate is torn down, and a schedule
-      // has no client to read one.
-      await response.body?.cancel("uf: a scheduled invocation has no reader");
-    } catch (error) {
-      // Logged and swallowed: there is no caller above a scheduled invocation
-      // to catch it, and a rejection here is a Worker error with no request
-      // behind it — less legible than the line below.
-      processLogger().error("schedule failed", { error, cron: event.cron, path });
-    } finally {
-      logRequest(processLogger(), {
-        requestId: lifecycle.context.id,
-        method: "GET",
-        path,
-        route: lifecycle.context.route,
-        status,
-        durationMs: elapsedMs(started),
-      });
-      if (ctx != null) {
-        ctx.waitUntil(lifecycle.settle());
-      } else {
-        await lifecycle.settle();
-      }
+    // `./schedule.js`'s, not this module's: "a schedule is a request" has to
+    // mean the same thing on every host, or `cookies()` inside one means
+    // something different depending on where the deployment went.
+    const lifecycle = await runScheduled({ handle, beginRequest, path, cron: event.cron });
+    // The one thing that is this host's: a worker keeps the isolate alive for
+    // deferred work through `ctx.waitUntil`, and awaits only where there is no
+    // `ctx` — a test, or a host calling this directly — because dropping the
+    // promise would lose both the work and its rejection.
+    if (ctx != null) {
+      ctx.waitUntil(lifecycle.settle());
+    } else {
+      await lifecycle.settle();
     }
   };
 }
