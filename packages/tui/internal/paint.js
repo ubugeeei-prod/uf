@@ -37,9 +37,18 @@
 import type { BorderStyle, Capabilities } from "../capability.js";
 import { borderGlyphs } from "../capability.js";
 import type { Frame, Rect, Style } from "../cells.js";
-import { INHERIT, PLAIN, fillRect, intersect, parseColor, writeGrapheme } from "../cells.js";
+import {
+  Attributes,
+  INHERIT,
+  PLAIN,
+  fillRect,
+  intersect,
+  parseColor,
+  writeGrapheme,
+} from "../cells.js";
+import type { Selection } from "../selection.js";
 import type { HitGrid } from "./hits.js";
-import { recordHit } from "./hits.js";
+import { recordHit, recordText } from "./hits.js";
 import type { TuiNode } from "./tree.js";
 import { ROOT_TEXT_STYLE, borderOf, textRuns, textStyleFromProps } from "./tree.js";
 import type { Grapheme } from "../widths.js";
@@ -156,6 +165,14 @@ export function wrapModeOf(node: TuiNode): WrapMode {
  * has no mouse. It is filled here rather than by a second walk because the
  * question it answers — which node was allowed to draw this cell — is the
  * question `clip` is already the answer to; see `hits.js`.
+ *
+ * `selectable` descends the same way `clip` does, and for the same reason it
+ * is a parameter rather than something read back off a node: whether a cell
+ * may be selected is a fact about the whole chain above it, and walking up
+ * from each `<Text>` to find out would ask the same question of the same
+ * ancestors once per leaf. It starts `true`, which is OpenTUI's default for
+ * text, and a `selectable={false}` anywhere on the way down turns it off for
+ * everything under that node.
  */
 export function paint(
   node: TuiNode,
@@ -163,6 +180,7 @@ export function paint(
   capabilities: Capabilities,
   clip: Rect,
   hits: HitGrid | null = null,
+  selectable: boolean = true,
 ): void {
   // `hideInstance` — React's for a Suspense fallback and for `<Activity>` —
   // sets `width: 0, height: 0, hidden: true`. The zero size is not enough on
@@ -173,17 +191,18 @@ export function paint(
   if (node.props.hidden === true) {
     return;
   }
+  const inherited = selectableOf(node, selectable);
   switch (node.type) {
     case "root":
       for (const child of node.children) {
-        paint(child, frame, capabilities, clip, hits);
+        paint(child, frame, capabilities, clip, hits, inherited);
       }
       return;
     case "box":
-      paintBox(node, frame, capabilities, clip, hits);
+      paintBox(node, frame, capabilities, clip, hits, inherited);
       return;
     case "text":
-      paintText(node, frame, clip);
+      paintText(node, frame, clip, hits, inherited);
       return;
     default:
       // A `"chars"` node is only ever reached through its `"text"` parent,
@@ -194,12 +213,27 @@ export function paint(
   }
 }
 
+/**
+ * Whether text under `node` may be selected.
+ *
+ * A boolean prop wins over what was inherited; anything else — including the
+ * prop being absent — leaves the answer where its ancestors put it. Only the
+ * direct prop is read, and not `style.selectable`: `style` is where OpenTUI
+ * puts the things that *paint* a node, and whether a reader may copy a line
+ * out of it is not one of them.
+ */
+function selectableOf(node: TuiNode, inherited: boolean): boolean {
+  const own = node.props.selectable;
+  return typeof own === "boolean" ? own : inherited;
+}
+
 function paintBox(
   node: TuiNode,
   frame: Frame,
   capabilities: Capabilities,
   clip: Rect,
   hits: HitGrid | null,
+  selectable: boolean,
 ): void {
   const area = { x: node.x, y: node.y, width: node.width, height: node.height };
   // Before the children, so that a child overwrites its parent — a click on a
@@ -244,18 +278,18 @@ function paintBox(
     // hundred and seventy-six of them are elsewhere.
     const end = node.scrollFirst + node.scrollCount;
     for (let index = node.scrollFirst; index < end; index += 1) {
-      paint(node.children[index], frame, capabilities, childClip, hits);
+      paint(node.children[index], frame, capabilities, childClip, hits, selectable);
     }
   } else {
     for (const child of node.children) {
-      paint(child, frame, capabilities, childClip, hits);
+      paint(child, frame, capabilities, childClip, hits, selectable);
     }
   }
 
   if (node.style.overflow === "scroll" && node.props.scrollbar === true) {
     // `childClip` rather than `clip`: the bar belongs to this box and must be
     // cut by the same rectangle its rows are.
-    paintScrollbar(node, frame, capabilities, childClip, style);
+    paintScrollbar(node, frame, capabilities, childClip, style, hits);
   }
 }
 
@@ -280,6 +314,7 @@ function paintScrollbar(
   capabilities: Capabilities,
   clip: Rect,
   style: Style,
+  hits: HitGrid | null,
 ): void {
   const top = node.scrollViewTop;
   const viewport = node.scrollViewRows;
@@ -305,6 +340,12 @@ function paintScrollbar(
   for (let row = 0; row < viewport; row += 1) {
     const glyph = row >= start && row < start + thumb ? thumbGlyph : trackGlyph;
     writeGrapheme(frame, column, top + row, glyph, 1, trackStyle, clip);
+    // The bar is drawn after the children, so a line with `wrap="none"` that
+    // ran into this column has already claimed it. It is not that line any
+    // more, and a selection dragged over the bar must not copy one.
+    if (hits != null) {
+      recordText(hits, null, column, top + row, 1, clip);
+    }
   }
 }
 
@@ -399,10 +440,21 @@ function paintTitle(
   }
 }
 
-function paintText(node: TuiNode, frame: Frame, clip: Rect): void {
+function paintText(
+  node: TuiNode,
+  frame: Frame,
+  clip: Rect,
+  hits: HitGrid | null,
+  selectable: boolean,
+): void {
   const own = textStyleFromProps(node.props, ROOT_TEXT_STYLE);
   const runs = textRuns(node, own);
   const lines = wrapRuns(runs, node.width, wrapModeOf(node));
+  // The outermost `<Text>` of a nest is the one recorded, because it is the
+  // one that paints: `textRuns` has already flattened its children into runs,
+  // so a `<Text bold>` inside it never reaches the frame under its own name.
+  // That is the right owner anyway — `selectionBg` is inherited like every
+  // other text style, and a nested run has no separate existence to select.
   for (let index = 0; index < lines.length && index < node.height; index += 1) {
     let column = node.x;
     for (const cluster of lines[index].clusters) {
@@ -415,9 +467,180 @@ function paintText(node: TuiNode, frame: Frame, clip: Rect): void {
         cluster.style,
         clip,
       );
+      if (hits != null && selectable) {
+        recordText(hits, node, column, node.y + index, cluster.width, clip);
+      }
       column += cluster.width;
     }
   }
+}
+
+/**
+ * One row of a selection: the cells of it a reader would read across.
+ *
+ * `from` is after `to` for a row the selection covers but that holds no
+ * selectable text — a gap between two paragraphs, the padding of a box, the
+ * blank half of a half-filled screen. Those rows are still rows of the
+ * selection, which is why they are reported rather than dropped: the text
+ * copied out of a selection has a line for each of them, the same way dragging
+ * across a blank line in a terminal gives you the blank line.
+ */
+type SelectedRow = {
+  readonly y: number,
+  readonly from: number,
+  readonly to: number,
+};
+
+/**
+ * Which cells of each row a selection covers.
+ *
+ * A row's span runs from its first selectable cell to its last, and *includes
+ * whatever is between them*, selectable or not. That is the one rule this
+ * module applies twice — once to draw the highlight and once to read the text
+ * back out — and it exists because of what the alternative does to a layout.
+ * Two `<Text>`s in a row with a gap between them are `left` and `right` on the
+ * screen; taking only the cells they own would copy `leftright`, and drawing
+ * the highlight only over them would leave a hole in the middle of a selection
+ * a reader dragged straight through. Cells before the first and after the last
+ * are not part of it: trailing blanks are the shape of the box, not something
+ * anyone selected.
+ *
+ * Spans are snapped outwards onto whole graphemes. A selection that begins on
+ * the right-hand cell of a two-column character would otherwise style half of
+ * it, and the two halves would then differ in a comparison the diff makes per
+ * cell — which is a repaint of a character nobody selected.
+ */
+function selectedRows(frame: Frame, grid: HitGrid, selection: Selection): Array<SelectedRow> {
+  const rows: Array<SelectedRow> = [];
+  const top = Math.max(0, selection.start.y);
+  const bottom = Math.min(frame.height - 1, selection.end.y);
+  for (let y = top; y <= bottom; y += 1) {
+    const base = y * frame.width;
+    const last = frame.width - 1;
+    const left = y === selection.start.y ? Math.max(0, selection.start.x) : 0;
+    const right = y === selection.end.y ? Math.min(last, selection.end.x) : last;
+    let from = -1;
+    let to = -2;
+    for (let x = left; x <= right; x += 1) {
+      if (grid.text[base + x] != null) {
+        if (from < 0) {
+          from = x;
+        }
+        to = x;
+      }
+    }
+    if (from >= 0) {
+      while (from > 0 && frame.chars[base + from] === "") {
+        from -= 1;
+      }
+      while (to + 1 < frame.width && frame.chars[base + to + 1] === "") {
+        to += 1;
+      }
+    }
+    rows.push({ y, from, to });
+  }
+  return rows;
+}
+
+/**
+ * Show a selection in a frame that has already been painted.
+ *
+ * A pass over the selected rows rather than something the walk above knows
+ * about, and that is the whole reason it is cheap and the reason it is
+ * correct. A selection is two cells of the *frame*; the tree does not have it
+ * and could not apply it without every node asking whether each of its cells
+ * is selected. Here the answer is already on the screen.
+ *
+ * The default is inverse video, toggled rather than set. A terminal with no
+ * colour at all still has it — this is `SGR 7`, not a palette entry — and
+ * toggling is what makes a selection dragged over something already inverse,
+ * such as the cell an `Input` draws its cursor in, show as a hole in the
+ * highlight instead of vanishing into it. A `selectionBg` or `selectionFg` on
+ * the text, or on anything above it, replaces that with the colours it names
+ * and leaves the attributes alone: an application that has said how a
+ * selection looks has said it.
+ */
+export function paintSelection(frame: Frame, grid: HitGrid, selection: Selection): void {
+  for (const row of selectedRows(frame, grid, selection)) {
+    if (row.from > row.to) {
+      // A row of the selection with no selectable text on it. It is a line in
+      // what gets copied and nothing at all in what gets drawn.
+      continue;
+    }
+    const base = row.y * frame.width;
+    let owner = grid.text[base + row.from];
+    let style = selectionStyleOf(owner);
+    for (let x = row.from; x <= row.to; x += 1) {
+      const at = grid.text[base + x];
+      if (at != null && at !== owner) {
+        owner = at;
+        style = selectionStyleOf(owner);
+      }
+      const index = base + x;
+      if (style.fg === INHERIT && style.bg === INHERIT) {
+        frame.attributes[index] ^= Attributes.INVERSE;
+        continue;
+      }
+      if (style.fg !== INHERIT) {
+        frame.fg[index] = style.fg;
+      }
+      if (style.bg !== INHERIT) {
+        frame.bg[index] = style.bg;
+      }
+    }
+  }
+}
+
+/**
+ * The colours a node's selection is drawn in, or `INHERIT` for both.
+ *
+ * `selectionFg` and `selectionBg` inherit the way `fg` and `bg` do, and
+ * independently of each other, so one prop on a panel covers everything inside
+ * it. They are resolved by walking *up* from the node that owns the cell,
+ * rather than threaded down the paint the way `selectable` is, because the two
+ * are asked about at different times: `selectable` decides whether a cell is
+ * recorded at all and so is needed for every cell of every frame, while these
+ * are needed only for the handful of cells a selection covers — and only when
+ * there is one. A walk bounded by the depth of a terminal's tree, taken once
+ * per run of one owner, is cheaper than a lookup nothing usually reads.
+ */
+function selectionStyleOf(node: TuiNode | null): { fg: number, bg: number } {
+  let fg = INHERIT;
+  let bg = INHERIT;
+  let current = node;
+  while (current != null && (fg === INHERIT || bg === INHERIT)) {
+    if (fg === INHERIT) {
+      fg = parseColor(readColor(current.props, ["selectionFg"]));
+    }
+    if (bg === INHERIT) {
+      bg = parseColor(readColor(current.props, ["selectionBg"]));
+    }
+    current = current.parent;
+  }
+  return { fg, bg };
+}
+
+/**
+ * The text a selection covers, as a reader would copy it.
+ *
+ * Read out of the frame rather than out of the tree, which is what makes it
+ * agree with the highlight down to the cell: a wide grapheme contributes its
+ * cluster once and its continuation cell contributes the empty string, a line
+ * that was wrapped comes back wrapped, and a row that was clipped comes back
+ * clipped. Rows are joined top to bottom with `\n`, which is OpenTUI's
+ * documented order and the only thing a clipboard can do with two rows.
+ */
+export function selectionText(frame: Frame, grid: HitGrid, selection: Selection): string {
+  const lines: Array<string> = [];
+  for (const row of selectedRows(frame, grid, selection)) {
+    const base = row.y * frame.width;
+    let line = "";
+    for (let x = row.from; x <= row.to; x += 1) {
+      line += frame.chars[base + x];
+    }
+    lines.push(line);
+  }
+  return lines.join("\n");
 }
 
 function readColor(

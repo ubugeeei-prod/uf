@@ -68,9 +68,11 @@ import type { KeyEvent } from "../keys.js";
 import { layout } from "../layout.js";
 import type { MouseEvent } from "../mouse.js";
 import { MouseButton, derive } from "../mouse.js";
+import type { Selection, SelectionPoint } from "../selection.js";
+import { selectionBetween } from "../selection.js";
 import type { HitGrid } from "./hits.js";
-import { createHitGrid, hitAt } from "./hits.js";
-import { measureText, paint, wrapModeOf } from "./paint.js";
+import { createHitGrid, hitAt, textAt } from "./hits.js";
+import { measureText, paint, paintSelection, selectionText, wrapModeOf } from "./paint.js";
 import type { TuiNode, TuiProps } from "./tree.js";
 import { applyProps, createNode, invalidate } from "./tree.js";
 
@@ -128,16 +130,53 @@ export type Renderer = {
   dragSource: TuiNode | null,
   /** Whether that press has actually moved yet: a click is not a drag. */
   dragging: boolean,
+  /**
+   * The reader's selection, or `null`.
+   *
+   * One per renderer, which is OpenTUI's rule and a terminal's: a frame has
+   * one way of showing that a cell is selected, so a second selection would
+   * have nowhere to be.
+   */
+  selection: Selection | null,
+  /**
+   * Where the press that is building a selection landed, while it still is.
+   *
+   * Separate from `selection.anchor` because a press that has not moved yet
+   * has an anchor and no selection: a click is not a selection of one cell,
+   * it is a click. It is also separate from `dragSource`, which is a node —
+   * this is a cell, because that is what a selection is made of.
+   */
+  selectionAnchor: SelectionPoint | null,
+  /** What OpenTUI calls a selection, and the four things a caller does with one. */
+  getSelection(): Selection | null,
+  hasSelection(): boolean,
+  clearSelection(): void,
+  getSelectedText(): string,
 };
 
-/** A renderer that draws into a `width` by `height` rectangle. */
+/**
+ * A renderer that draws into a `width` by `height` rectangle.
+ *
+ * The four selection functions are closures over the object rather than
+ * methods with a `this`, for the reason `mouseEvent` builds its events the
+ * same way: a caller reaches them through `useRenderer()` and may hold one in
+ * a variable, and a `this` would make `const copy = renderer.getSelectedText`
+ * a different function from the one it was read off.
+ *
+ * `hasSelection` is a call and not a field, which is the one place this
+ * deliberately spells an OpenTUI name differently. OpenTUI reads
+ * `renderer.hasSelection`; a plain boolean field here would be a second copy
+ * of `selection != null` that something has to remember to keep true, and a
+ * getter is what `flow/unsafe-getters-setters` warns about — a property whose
+ * read runs code.
+ */
 export function createRenderer(
   width: number,
   height: number,
   capabilities: Capabilities,
   mouseEnabled: boolean = false,
 ): Renderer {
-  return {
+  const renderer: Renderer = {
     root: createNode("root", {}),
     capabilities,
     width,
@@ -152,7 +191,49 @@ export function createRenderer(
     hovered: null,
     dragSource: null,
     dragging: false,
+    selection: null,
+    selectionAnchor: null,
+    getSelection() {
+      return renderer.selection;
+    },
+    hasSelection() {
+      return renderer.selection != null;
+    },
+    clearSelection() {
+      renderer.selection = null;
+      renderer.selectionAnchor = null;
+    },
+    getSelectedText() {
+      return selectedText(renderer);
+    },
   };
+  return renderer;
+}
+
+/**
+ * The text of this renderer's selection, or `""` when there is none.
+ *
+ * It draws a frame to answer, and that is not a shortcut around some cheaper
+ * path — it is the only correct one. The selection is two cells, and what is
+ * *in* a cell is a fact about a painted frame; the last one drawn is thrown
+ * away by every commit, because a commit is exactly the thing that can have
+ * moved the text. Laying out and painting a terminal is microseconds, and the
+ * caller of this is a reader who has just pressed a key to copy something.
+ *
+ * It lives beside the renderer rather than on `Selection` for the same reason.
+ * A selection is two points and knows nothing about a frame; a value that
+ * could answer this would have to hold the renderer that draws them, and then
+ * an application could keep one across a commit and read it back as if it
+ * were still true.
+ */
+function selectedText(renderer: Renderer): string {
+  const selection = renderer.selection;
+  if (selection == null) {
+    return "";
+  }
+  const frame = renderFrame(renderer);
+  const grid = renderer.hits;
+  return grid == null ? "" : selectionText(frame, grid, selection);
 }
 
 /** The context every hook in this package reads to find its renderer. */
@@ -182,6 +263,15 @@ export function renderFrame(renderer: Renderer): Frame {
   paint(root, frame, renderer.capabilities, full, hits);
   if (hits != null) {
     renderer.hits = hits;
+    // After the walk, because a selection is not something a node has: it is
+    // two cells of the frame the walk just produced, and the cells between
+    // them are only known once everything that could have painted over them
+    // has. Doing it here rather than in the painter is also what keeps a
+    // re-render honest — the highlight is recomputed from the current picture,
+    // so text that moved under a selection is shown selected where it is now.
+    if (renderer.selection != null) {
+      paintSelection(frame, hits, renderer.selection);
+    }
   }
   return frame;
 }
@@ -353,6 +443,24 @@ function bubble(
 }
 
 /**
+ * Take the selection out to where the pointer has reached.
+ *
+ * Only while a press armed one, which is what makes a drag that began on a
+ * border or on a slider's handle a drag and not a selection. The focus is
+ * wherever the pointer is now, selectable or not: a reader dragging down a
+ * paragraph passes over the blank end of every short line, and a selection
+ * that stopped at the last character it recognised would jump backwards under
+ * their hand.
+ */
+function extendSelection(renderer: Renderer, event: MouseEvent): void {
+  const anchor = renderer.selectionAnchor;
+  if (anchor == null) {
+    return;
+  }
+  renderer.selection = selectionBetween(anchor, { x: event.x, y: event.y });
+}
+
+/**
  * Deliver one mouse report.
  *
  * The node under the pointer comes from the hit grid the last paint recorded,
@@ -378,6 +486,13 @@ function bubble(
  *   `up` there too unless that is the source again — one release is one `up`
  *   per node.
  *
+ * A fourth thing happens that OpenTUI also specifies, and it is the renderer's
+ * *default* rather than something delivered: a left press clears the selection
+ * and, when it landed on selectable text, arms a new one that the drag then
+ * extends. It runs after the handlers, so that `event.preventDefault()` on the
+ * `down` can suppress it — a box that means its own thing by a drag keeps the
+ * reader's selection instead of wiping it on the way past.
+ *
  * A renderer with `mouseEnabled` false has no grid and drops the report. That
  * is not a silent failure to guard against: nothing turns mouse reporting on
  * in the terminal either, so a report can only arrive from a caller who
@@ -396,6 +511,10 @@ export function dispatchMouse(renderer: Renderer, event: MouseEvent): void {
   }
 
   const hit = hitAt(grid, event.x, event.y);
+  // Read before anything is delivered, because a handler can commit — a click
+  // that opens a menu — and a commit drops the grid this came out of. What is
+  // selectable under a press is a fact about the frame the reader pressed on.
+  const overText = textAt(grid, event.x, event.y) != null;
   if (hit !== renderer.hovered) {
     const left = renderer.hovered;
     renderer.hovered = hit;
@@ -415,6 +534,15 @@ export function dispatchMouse(renderer: Renderer, event: MouseEvent): void {
     if (hit != null) {
       bubble(hit, event, hit, null);
     }
+    if (event.button === MouseButton.LEFT && !event.defaultPrevented) {
+      // A press ends the selection the reader had, whether or not it starts
+      // one: that is what clicking somewhere else means, and it is why a
+      // click that never moves leaves nothing selected. The new anchor is
+      // only armed over selectable text, so a drag from a border or from the
+      // gap between two panels moves nothing but the pointer.
+      renderer.selection = null;
+      renderer.selectionAnchor = overText ? { x: event.x, y: event.y } : null;
+    }
     return;
   }
 
@@ -423,11 +551,13 @@ export function dispatchMouse(renderer: Renderer, event: MouseEvent): void {
     if (source != null && attached(renderer, source)) {
       renderer.dragging = true;
       bubble(source, event, hit, source);
+      extendSelection(renderer, event);
       return;
     }
     if (hit != null) {
       bubble(hit, event, hit, null);
     }
+    extendSelection(renderer, event);
     return;
   }
 
@@ -436,6 +566,10 @@ export function dispatchMouse(renderer: Renderer, event: MouseEvent): void {
     const dragged = renderer.dragging;
     renderer.dragSource = null;
     renderer.dragging = false;
+    // The gesture is over; the selection it made is not. Dropping the anchor
+    // rather than the selection is the difference between "the reader has
+    // stopped dragging" and "the reader has stopped selecting".
+    renderer.selectionAnchor = null;
     if (source != null && dragged && attached(renderer, source)) {
       // Each of these is its own event object: they are four separate
       // deliveries, and one handler calling `stopPropagation()` must not
@@ -771,6 +905,12 @@ export function resize(renderer: Renderer, width: number, height: number): void 
   // the wrong row.
   renderer.hits = null;
   renderer.hovered = null;
+  // And a selection is two cells of a frame that has been reflowed by
+  // something this renderer did not perform. It survives a re-render, where
+  // the cells still mean what they meant; it cannot survive a resize, where
+  // they do not.
+  renderer.selection = null;
+  renderer.selectionAnchor = null;
   withPriority(DiscreteEventPriority, () => {
     for (const listener of Array.from(renderer.sizeListeners)) {
       listener();

@@ -123,6 +123,26 @@ export type TextStyleProps = {
   readonly blink?: boolean,
   readonly inverse?: boolean,
   readonly strikethrough?: boolean,
+  /**
+   * Whether a reader may select this text with the mouse.
+   *
+   * `true` unless something says otherwise, which is OpenTUI's default for
+   * text and a terminal's for everything. It is inherited the way a colour
+   * is, so `selectable={false}` on a `Box` covers everything inside it — which
+   * is how a status bar or a decorative frame stays out of a copy without
+   * every `Text` in it repeating the prop.
+   */
+  readonly selectable?: boolean,
+  /**
+   * How a selection over this text looks.
+   *
+   * Both default to unset, and unset means inverse video: `SGR 7` exists on
+   * terminals with no colour at all, and it is what the terminal's own
+   * selection would have looked like. Naming either colour replaces that
+   * rather than adding to it.
+   */
+  readonly selectionFg?: ColorValue,
+  readonly selectionBg?: ColorValue,
 };
 
 /**
@@ -144,6 +164,12 @@ export type TextStyleProps = {
  * with handlers on it and `mouse: false` is not an error and is not silently
  * broken either — it is an application that has not turned the device on, and
  * `testRender` turns it on by default so that a test does not have to.
+ *
+ * `event.preventDefault()` in an `onMouseDown` keeps the press from clearing
+ * the reader's selection and from starting a new one. That is the renderer's
+ * only default, so it is the only thing that method does; a box that means
+ * something else by a drag — a slider, a splitter, a canvas — is what it is
+ * for.
  */
 export type MouseProps = {
   /** Every mouse event, after the handler for its own type. */
