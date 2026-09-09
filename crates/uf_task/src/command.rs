@@ -509,6 +509,16 @@ mod tests {
         assert_eq!(words(r"echo a\$b"), ["echo", "a$b"]);
     }
 
+    /// A backslash before a newline joins the two lines, which is how a long
+    /// command is written down without a shell being involved.
+    #[test]
+    fn a_backslash_before_a_newline_joins_the_lines() {
+        assert_eq!(
+            words("cargo clippy --workspace \\\n  -- -D warnings"),
+            ["cargo", "clippy", "--workspace", "--", "-D", "warnings"]
+        );
+    }
+
     /// `sh` reads a trailing backslash as a continuation onto a line that
     /// never arrives, and drops it rather than failing.
     #[test]
