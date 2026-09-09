@@ -40,6 +40,21 @@ import { RenderProvider } from "@uniflowed/hooks/render";
 // — so the module that renders it is this one rather than `../server.js`.
 import { DATA_ID } from "./document.js";
 
+// The development-only half of [`RouteView`]: the marks that say which DOM
+// subtree each boundary owns, and the report that reads them. Every reference
+// to it is inside a `BOUNDARY_MARKS` branch, which is why a static import is
+// safe here where `../client.js` needs a dynamic one — a component cannot be
+// awaited in the middle of a render, and `false` folds the references away
+// before the bundler is asked to keep the module. See [`BOUNDARY_MARKS`].
+import {
+  BoundaryReporter,
+  ROOT_ERROR_ID,
+  ROUTE_ERROR_ID,
+  insideBoundary,
+  routeBoundaries,
+  suspenseId,
+} from "./boundaries.js";
+
 /** One parameter a route path captures. */
 export type RouteParamSpec = {| readonly name: string, readonly catchAll: boolean |};
 
@@ -2120,6 +2135,25 @@ export hook useLoaderData(): mixed {
 }
 
 /**
+ * Whether this bundle marks the boundaries it renders.
+ *
+ * `import.meta.hot` is the same gate `../client.js` uses for the hydration
+ * report and the DevTools check, chosen there for the reason it is chosen here:
+ * Vite defines it while serving and replaces it with `undefined` in a build, so
+ * every branch below is statically dead in a production bundle and the module
+ * behind it — `@uniflowed/router` is `sideEffects: false` — is dropped rather
+ * than shipped unused. Node leaves it undefined, so a host that imports this
+ * file without a bundler gets the production path, and so does the test suite.
+ *
+ * It is a module constant rather than a per-render question because the branch
+ * has to be foldable, and it may answer differently in the browser and on the
+ * server without costing anything: a mark renders nothing until it has mounted,
+ * so neither the server's markup nor the tree React hydrates against it can
+ * contain one. See `./boundaries.js`, which has the argument.
+ */
+const BOUNDARY_MARKS: boolean = import.meta.hot != null;
+
+/**
  * Renders the matched page inside its layouts, innermost last, with the
  * document metadata as hoistable head elements.
  *
@@ -2168,11 +2202,33 @@ export hook useLoaderData(): mixed {
  * with opposite answers to one question, so they are one line apart here, and
  * the whole of the difference is the `key` — see [`insideTemplates`], which is
  * that line's other half.
+ *
+ * # Where the boundary marks go
+ *
+ * Inside each boundary and around nothing else, under `uf dev` only. A
+ * `<Suspense>` and a class boundary each render no element of their own, so the
+ * run of nodes one owns is indistinguishable on the page from the layout's own
+ * nodes beside it — the marks are what distinguish it, and this loop is the
+ * only place that knows which boundary is which. `./boundaries.js` has the
+ * mechanism and the argument; every reference to it here is inside a
+ * [`BOUNDARY_MARKS`] branch, so a build has none of it. See
+ * ubugeeei-prod/uf#520.
  */
 export component RouteView() {
   const { resolved } = useRouterState();
   const { module, above } = resolved.errorBoundary;
   const loader = resolved.deferred;
+  // The route's boundaries, named once and read by both the marks below and the
+  // report that watches them. `installedTable` rather than [`routeTable`],
+  // which throws: a test may render this view without an entry having installed
+  // a table, and an error boundary named by its depth alone is worth less than
+  // one named by its file rather than wrong.
+  const marks = BOUNDARY_MARKS
+    ? routeBoundaries(
+        resolved,
+        nearestBoundary(installedTable?.errors ?? [], resolved.pathname)?.file,
+      )
+    : null;
   // The innermost element, so the `use` inside `AwaitedPage` suspends below
   // every boundary the loop below adds — which is what makes the layouts and
   // the fallback the shell rather than something waiting behind the loader.
@@ -2190,7 +2246,11 @@ export component RouteView() {
         continue;
       }
       const Fallback = loadingComponent(boundary.module);
-      element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
+      element = (
+        <Suspense fallback={<Fallback />}>
+          {BOUNDARY_MARKS ? insideBoundary(marks?.get(suspenseId(index)), element) : element}
+        </Suspense>
+      );
     }
     // Placed on `above` alone, and not on there being a module: a `null` one is
     // the framework's own error page, and where it renders is exactly the
@@ -2207,7 +2267,7 @@ export component RouteView() {
     if (depth === above && resolved.error == null) {
       element = (
         <RouteErrorBoundary module={module} resetKey={resolved.pathname}>
-          {element}
+          {BOUNDARY_MARKS ? insideBoundary(marks?.get(ROUTE_ERROR_ID), element) : element}
         </RouteErrorBoundary>
       );
     }
@@ -2221,8 +2281,13 @@ export component RouteView() {
     <>
       <Head metadata={resolved.metadata} />
       <RouteErrorBoundary module={null} resetKey={resolved.pathname}>
-        {element}
+        {BOUNDARY_MARKS ? insideBoundary(marks?.get(ROOT_ERROR_ID), element) : element}
       </RouteErrorBoundary>
+      {/* After the tree rather than before it, so its effect runs once every
+          mark below has had its own — which is the commit the marks are in. */}
+      {BOUNDARY_MARKS && marks != null ? (
+        <BoundaryReporter path={resolved.path} boundaries={marks} />
+      ) : null}
     </>
   );
 }

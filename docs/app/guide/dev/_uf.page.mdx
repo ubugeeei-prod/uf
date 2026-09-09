@@ -109,13 +109,66 @@ lead to your terminal:
   [Web vitals](/guide/vitals).
 - `/__uf/diagnostic` — where a diagnostic only the browser can produce is
   posted. A hydration mismatch is the loudest one — *When hydration fails* below
-  is what it says — and a page React DevTools cannot attach to is the other.
+  is what it says — a page React DevTools cannot attach to is the second, and
+  *Where each boundary begins and ends* below is the third.
 
 Both print with the severity, the page they came from and a code frame when
 there is a position to draw one around, which is the point of them: every other
 uf diagnostic arrives in the terminal you already have open, and one that lives
 only in a browser window has to be noticed by somebody who knows to look.
 Nothing on either path leaves the machine, and a built application has neither.
+
+### Where each boundary begins and ends
+
+A `_uf.loading.js` and a `_uf.error.js` are decisions about *part of the page*,
+and the part is the one thing you cannot see. A `<Suspense>` renders no element
+of its own and neither does an error boundary, so what one of them owns is a run
+of nodes among the layout's own — a `<nav>` before it, a `<footer>` after it —
+with nothing on the page to tell them apart. Reading the directory tells you a
+boundary exists; it does not tell you which rectangle goes away when it fires.
+
+So under `uf dev` the router marks what it renders. Every boundary's children
+sit between a pair of `<template data-uf-boundary>` elements, which are
+`display: none`, carry no content, and are ordinary siblings of the nodes
+between them:
+
+```html
+<div id="uf-root">
+  <nav class="masthead">…</nav>
+  <template data-uf-boundary="suspense:0" data-uf-boundary-edge="open"></template>
+  <article class="post">…</article>
+  <template data-uf-boundary="suspense:0" data-uf-boundary-edge="close"></template>
+  <footer class="colophon">…</footer>
+</div>
+```
+
+That is enough to answer the question in the inspector you already have —
+`document.querySelectorAll("[data-uf-boundary]")`, or one CSS rule of your own
+to outline them — and it is enough for uf to answer it in words. When the same
+route's boundaries *change*, which is the moment you added the file, your
+terminal says where it landed:
+
+```text
+› 3 boundaries render /docs/:slug
+    error (uf's own error page), outside every layout — owns div#uf-root
+    error (app/docs/_uf.error.js), inside 1 layout — owns article.doc, aside.toc
+    suspense, inside 2 layouts — showing its fallback
+```
+
+It is quiet otherwise: a boundary map printed on every reload is a banner
+nobody reads. For the page in front of you right now, `__ufBoundaries()` in the
+console prints the same report and returns it.
+
+The marks are added after the page has hydrated, never before, so the markup the
+server sent and the tree React checks it against contain none of them — this
+cannot cause a mismatch. And none of it is in a build: the whole thing is behind
+`import.meta.hot`, which is `undefined` in a bundle, so a visitor downloads no
+part of it.
+
+The third boundary — client versus server — is answered in the same terminal and
+from the other end: when a save moves a module across the client bundle, `uf
+dev` names the module and the chain of imports that put it there. That one comes
+out of the analysis rather than out of the page, so it needs no mark.
 
 To reach the dev server from another device, `--host` binds a routable address —
 but only if `dev.allowedHosts` in your config is non-empty. That is deliberate:
