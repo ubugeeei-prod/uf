@@ -571,7 +571,9 @@ fn the_host_table_points_at_this_file() {
     assert_eq!(support.level, SupportLevel::Experimental);
     assert!(support.loads_flow());
     assert!(
-        support.missing.is_some_and(|missing| missing.contains("hook")),
+        support
+            .missing
+            .is_some_and(|missing| missing.contains("hook")),
         "an experimental row has to name the limitation: {:?}",
         support.missing
     );

@@ -1185,7 +1185,10 @@ mod tests {
             "{:?}",
             command.leading_args
         );
-        assert_eq!(command.leading_args.first().map(String::as_str), Some("run"));
+        assert_eq!(
+            command.leading_args.first().map(String::as_str),
+            Some("run")
+        );
         assert_eq!(
             command.leading_args.last().map(String::as_str),
             Some("--allow-read=/p")

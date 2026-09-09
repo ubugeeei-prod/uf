@@ -23,8 +23,8 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let temporary = tempfile::tempdir().expect("a temp directory");
-        let base = Utf8PathBuf::from_path_buf(temporary.path().to_path_buf())
-            .expect("a UTF-8 temp path");
+        let base =
+            Utf8PathBuf::from_path_buf(temporary.path().to_path_buf()).expect("a UTF-8 temp path");
         let fixture = Self {
             root: base.join("project"),
             scope: base.join("node_modules/@uniflowed"),
@@ -119,10 +119,7 @@ fn a_project_module_is_compiled_and_no_longer_flow() {
 #[test]
 fn the_map_names_every_uniflowed_export() {
     let fixture = Fixture::new();
-    let sources = vec![fixture.source(
-        "src/a.test.js",
-        "// @flow\nimport \"@uniflowed/test\";\n",
-    )];
+    let sources = vec![fixture.source("src/a.test.js", "// @flow\nimport \"@uniflowed/test\";\n")];
 
     let loader = fixture.build(&sources);
     let map = fixture.map(&loader);

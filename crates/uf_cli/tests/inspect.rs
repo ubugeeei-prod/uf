@@ -129,7 +129,10 @@ fn inspect_reports_zero_config_defaults() {
     );
     assert_eq!(deno["trackingIssue"], 246);
     assert!(
-        deno["missing"].as_str().unwrap_or_default().contains("hook"),
+        deno["missing"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("hook"),
         "{deno}"
     );
     let node = hosts

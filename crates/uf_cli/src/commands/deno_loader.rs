@@ -170,10 +170,7 @@ pub(crate) fn build(
 
     let packages = reachable_packages(scope, sources);
     for (name, real) in &packages {
-        let into = directory
-            .join(PACKAGES)
-            .join(SCOPE)
-            .join(name.as_str());
+        let into = directory.join(PACKAGES).join(SCOPE).join(name.as_str());
         mirror_package(
             &project,
             real,
@@ -189,10 +186,7 @@ pub(crate) fn build(
     write(&map, &document)?;
 
     Ok(DenoLoader {
-        worker: directory
-            .join(PACKAGES)
-            .join(SCOPE)
-            .join("test/worker.js"),
+        worker: directory.join(PACKAGES).join(SCOPE).join("test/worker.js"),
         import_map: map,
         directory,
         compiled,
@@ -238,7 +232,11 @@ fn stamp() -> String {
         .and_then(|path| {
             let data = fs::metadata(&path)?;
             let modified = data.modified()?;
-            Ok(format!("{}\u{0}{}\u{0}{modified:?}", path.display(), data.len()))
+            Ok(format!(
+                "{}\u{0}{}\u{0}{modified:?}",
+                path.display(),
+                data.len()
+            ))
         })
         .unwrap_or_else(|_| String::from("unknown"));
     format!("{FRAMING}\u{0}{identity}\n")
@@ -362,10 +360,7 @@ fn write(path: &Utf8Path, contents: &str) -> Result<()> {
 ///
 /// `@uniflowed/test` is always a seed: it is the worker, so it is in every run
 /// whether the project mentions it or not.
-fn reachable_packages(
-    scope: &Utf8Path,
-    sources: &[ProjectFile],
-) -> BTreeMap<String, Utf8PathBuf> {
+fn reachable_packages(scope: &Utf8Path, sources: &[ProjectFile]) -> BTreeMap<String, Utf8PathBuf> {
     let mut queue: Vec<String> = vec![String::from("test")];
     for file in sources {
         collect_scope_names(&file.source, &mut queue);
@@ -417,7 +412,9 @@ fn scope_dependencies(directory: &Utf8Path) -> Vec<String> {
     let Some(manifest) = manifest(directory) else {
         return Vec::new();
     };
-    let Some(dependencies) = manifest.get("dependencies").and_then(|value| value.as_object())
+    let Some(dependencies) = manifest
+        .get("dependencies")
+        .and_then(|value| value.as_object())
     else {
         return Vec::new();
     };
@@ -442,10 +439,7 @@ fn import_map(
     let mut imports: BTreeMap<String, String> = BTreeMap::new();
 
     for (name, real) in packages {
-        let into = directory
-            .join(PACKAGES)
-            .join(SCOPE)
-            .join(name.as_str());
+        let into = directory.join(PACKAGES).join(SCOPE).join(name.as_str());
         imports.insert(format!("{SCOPE}/{name}/"), directory_url(&into));
         for (subpath, target) in exports(real) {
             let key = if subpath == "." {
@@ -544,8 +538,23 @@ fn file_url(path: &Utf8Path) -> String {
         if character.is_ascii_alphanumeric()
             || matches!(
                 character,
-                '-' | '.' | '_' | '~' | '/' | '!' | '$' | '&' | '\'' | '(' | ')' | '*' | '+' | ','
-                    | ';' | '=' | ':' | '@'
+                '-' | '.'
+                    | '_'
+                    | '~'
+                    | '/'
+                    | '!'
+                    | '$'
+                    | '&'
+                    | '\''
+                    | '('
+                    | ')'
+                    | '*'
+                    | '+'
+                    | ','
+                    | ';'
+                    | '='
+                    | ':'
+                    | '@'
             )
         {
             out.push(character);
