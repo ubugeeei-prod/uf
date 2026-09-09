@@ -1,0 +1,148 @@
+Subject: the elements before a tuple pattern's spread bind what they were handed
+
+Issue: ubugeeei-prod/uf#300
+Upstream: not filed with facebook/flow yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+The leading `infer` of a conditional type's tuple pattern came out as `mixed`
+-- printed as `unknown` -- as soon as the pattern had a spread in it, and the
+same pattern with no spread came out right:
+
+    type First<P> = P extends [infer K, ...infer Rest] ? K : empty;
+    type Only<P> = P extends [infer K] ? K : empty;
+    declare const head: First<["address", "city"]>;
+    declare const one: Only<["address"]>;
+    // First: unknown.  Only: "address".
+
+That does not fail, it answers wrongly, which is what makes it worth a patch:
+the recursion it blocks -- `T extends [infer H, ...infer R] ? ... : NoForm<R>`
+-- returns `true` for `[string, FormData]`, so anything built on it is silently
+inverted rather than rejected. `packages/router/action.js` says why
+`ActionArguments` cannot hold a call to at most one form because of it.
+
+A pattern with a spread in it is not built as a tuple type at all.
+`flow_js_utils::mk_tuple_type_with_env` turns it into an `EvalT` whose base is
+the *spread's* type and whose `SpreadTupleType` destructor carries the elements
+before it; the no-spread branch of the same function builds a real `TupleAT`.
+Subtyping a tuple against a `TupleAT` decomposes element-wise and each `infer`
+gets its element as a lower bound. Against the destructor nothing decomposes:
+evaluating it blocks on the unresolved spread variable, so the speculative
+subtyping in `implicit_instantiation::solve_conditional_type_targs` succeeds
+against nothing and the leading `infer` is pinned with no bounds at all --
+`on_missing_bounds` then falls back to the tparam's declared bound, and an
+`infer` with no annotation is declared `mixed`.
+
+The *spread* variable is already solved, by the reverse of that destructor in
+`t_of_use_t`: it takes the tuple the destructor's output was handed and slices
+it with `ArrRestT` from the number of elements before the spread. That reverse
+is where the elements before the spread were missing, and this patch is that
+one addition -- element `i` of the tuple the output was handed flows into
+element `i` of the pattern, which is the flow the no-spread branch gets for
+free. A lower bound only, the direction the `TupleAT` decomposition takes for a
+pattern that only reads its elements, and only when the tuple has elements to
+give: a plain `Array<T>` is left alone rather than guessed at, so the half of
+#300 that is about an array literal reaching a conditional as an array is
+deliberately untouched by this and stays filed.
+
+Two limits it does not lift, both measured, both the same shape as before the
+patch rather than made worse by it:
+
+  * arity is still not checked, so `[X, Y, ...R]` still matches a one-element
+    tuple. It used to bind `X` as `unknown` there and now binds it as that
+    element; neither is the `empty` branch it should have taken. That is the
+    destructor never resolving, not the elements never binding.
+  * a spread that is not last -- `[...infer R, infer L]` -- is refused by the
+    reverse before this code, and still is.
+
+Measured against `flow` itself before it was written: `flow-bin@0.330.0`, the
+release this submodule commit is pinned to, reports the same diagnostics as an
+unpatched `uf check` through `flow check` -- `unknown` for the leading `infer`
+in every case above, and the same words. The port is faithful here and Flow's
+typing rule is what is wrong, which is why this is a stopgap -- delete it when
+`facebook/flow` takes the fix and the submodule is bumped past it.
+
+diff --git a/rust_port/crates/flow_typing_flow_js/src/implicit_instantiation.rs b/rust_port/crates/flow_typing_flow_js/src/implicit_instantiation.rs
+index 43beb9f2f..fe5bd3d44 100644
+--- a/rust_port/crates/flow_typing_flow_js/src/implicit_instantiation.rs
++++ b/rust_port/crates/flow_typing_flow_js/src/implicit_instantiation.rs
+@@ -72,6 +72,7 @@ use flow_typing_type::type_::ReactKitTData;
+ use flow_typing_type::type_::ReposUseTData;
+ use flow_typing_type::type_::ResolveSpreadTData;
+ use flow_typing_type::type_::ResolveUnionTData;
++use flow_typing_type::type_::ResolvedArgData;
+ use flow_typing_type::type_::ResolvedParam;
+ use flow_typing_type::type_::SpreadResolve;
+ use flow_typing_type::type_::Targ;
+@@ -553,14 +554,72 @@ fn t_of_use_t<'cx>(
+                             | ResolvedParam::ResolvedAnySpreadArg(..) => true,
+                         }
+                     }
++                    /// The element types of `t`, when `t` is a tuple that has them.
++                    ///
++                    /// A tuple type carries its elements, and so does an array
++                    /// literal, through its tuple view. An `Array<T>` that is not
++                    /// one carries none, and is left alone rather than guessed at.
++                    fn tuple_element_types(t: &Type) -> Option<Vec<Type>> {
++                        let elements = match t.deref() {
++                            TypeInner::DefT(_, def_t) => match def_t.deref() {
++                                DefTInner::ArrT(arr_t) => match arr_t.as_ref() {
++                                    ArrType::TupleAT(box TupleATData { elements, .. }) => {
++                                        elements.clone()
++                                    }
++                                    ArrType::ArrayAT(box ArrayATData {
++                                        tuple_view: Some(view),
++                                        ..
++                                    }) => view.elements.clone(),
++                                    _ => return None,
++                                },
++                                _ => return None,
++                            },
++                            _ => return None,
++                        };
++                        Some(elements.iter().map(|element| element.t.dupe()).collect())
++                    }
+                     // Reverse if the spread is the last item in the tuple, there are
+                     // no other spreads, and the tuple type is not inexact.
+                     match (unresolved.is_empty(), resolved_rev.iter().any(is_spread)) {
+                         (true, false) if !inexact => {
+                             let n = resolved_rev.len() as i32;
++                            // The elements *before* the spread, in tuple order.
++                            // `resolved` is the accumulator `ResolveSpreadT` builds
++                            // with `push_front`, so it is stored last element first.
++                            let before_spread: Vec<Type> = {
++                                let mut ts: Vec<Type> = resolved_rev
++                                    .iter()
++                                    .filter_map(|rp| match rp {
++                                        ResolvedParam::ResolvedArg(box ResolvedArgData(
++                                            element,
++                                            _,
++                                        )) => Some(element.t.dupe()),
++                                        _ => None,
++                                    })
++                                    .collect();
++                                ts.reverse();
++                                ts
++                            };
+                             let result = merge_lower_or_upper_bounds(cx, env, seen, &tout_t)?;
+                             let reason_spread = reason_spread.dupe();
+                             bind_use_t_result(result, &|t: Type| {
++                                // Those elements are part of the pattern too, and
++                                // the reverse below says nothing about them: for
++                                // `[infer K, ...infer Rest]` it solves `Rest` out of
++                                // `ArrRestT` and leaves `K` with no bounds at all, so
++                                // `K` is pinned to the `mixed` an unannotated `infer`
++                                // is declared with. `t` is the tuple this
++                                // destructor's output was handed, so element `i` of
++                                // it is what element `i` of the pattern was handed --
++                                // which is the flow a pattern with no spread in it
++                                // gets for free, by being built as a real `TupleAT`.
++                                if let Some(elements) = tuple_element_types(&t) {
++                                    for (element, pattern) in
++                                        elements.iter().zip(before_spread.iter())
++                                    {
++                                        FlowJs::flow_t_with_env(cx, env, element, pattern)?;
++                                    }
++                                }
+                                 let arr_rest_result = flow_typing_tvar::mk_where(
+                                     cx,
+                                     reason_spread.dupe(),
