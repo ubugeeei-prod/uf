@@ -14,6 +14,10 @@
 // would have been refused. They are in `tests/type-tests/std-inference.js`, and
 // the last `describe` runs them.
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "@uniflowed/test";
 
 import {
@@ -51,6 +55,9 @@ import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/h
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
 
 import { everyMisuseIsReported } from "./type-tests.js";
+
+/** This checkout, for the last `describe`, which reads three files of it. */
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** Bytes from a list of numbers, which is what every fixture below wants. */
 const b = (...values: Array<number>): Uint8Array => new Uint8Array(values);
@@ -882,5 +889,63 @@ describe("the types", () => {
       alongside: ["packages/std"],
       atLeast: 20,
     });
+  });
+});
+
+describe("what ships is one list in three places", () => {
+  // `crates/uf_std/src/registry.rs` is the table, `package.json#exports` is
+  // what a program can import, and `docs/app/reference/std` is what a reader is
+  // told. Three copies of one fact, and until ubugeeei-prod/uf#710 nothing
+  // compared any two of them: the registry named forty-four subpaths, none of
+  // which existed, and none of the six that do.
+  //
+  // The Rust side of the check is in `crates/uf_lib` — it parses each module
+  // with uf's own Flow parser and holds the export lists name for name, which
+  // is more than a scan of the text can do. What is left over is the pair only
+  // this suite can see: the documentation table, which no cargo test reads.
+  //
+  // A scan of the source, like `tui.test.js`'s Unicode tables next door. The
+  // discomfort of three copies is made mechanical rather than moral: edit one
+  // and this fails.
+
+  const ships = (): Array<string> => {
+    const source = fs.readFileSync(path.join(REPO, "crates/uf_std/src/registry.rs"), "utf8");
+    const found = [];
+    for (const match of source.matchAll(/StdModule::ships\(\s*"([^"]+)"/g)) {
+      found.push(match[1]);
+    }
+    return found.sort();
+  };
+
+  it("is the same six in the registry and the package manifest", () => {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(REPO, "packages/std/package.json"), "utf8"),
+    );
+    // `.` is the declaration surface and `./package.json` is the manifest
+    // itself; neither is one of these modules.
+    const subpaths = Object.keys(manifest.exports)
+      .filter((key) => key !== "." && key !== "./package.json")
+      .map((key) => `@uniflowed/std/${key.slice("./".length)}`)
+      .sort();
+
+    expect(subpaths.length).toBeGreaterThan(0);
+    expect(ships()).toEqual(subpaths);
+  });
+
+  it("is the same six the reference page's table names", () => {
+    const page = fs.readFileSync(path.join(REPO, "docs/app/reference/std/_uf.page.mdx"), "utf8");
+    const start = page.indexOf("## What ships today");
+    expect(start).toBeGreaterThan(-1);
+    // To the next heading: the page names these specifiers again further down,
+    // in the example and in the prose, and a scan of the whole file would pass
+    // on a table that had lost a row.
+    const end = page.indexOf("\n## ", start + 1);
+    const table = page.slice(start, end === -1 ? page.length : end);
+
+    const documented = [];
+    for (const match of table.matchAll(/`(@uniflowed\/std\/[a-z-]+)`/g)) {
+      if (!documented.includes(match[1])) documented.push(match[1]);
+    }
+    expect(documented.sort()).toEqual(ships());
   });
 });

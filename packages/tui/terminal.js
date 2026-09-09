@@ -51,6 +51,7 @@ import {
 } from "./internal/host.js";
 import type { InputEvent } from "./keys.js";
 import { createInputDecoder } from "./keys.js";
+import type { Selection } from "./selection.js";
 
 /** Enter the alternate screen buffer, so the shell's scrollback survives. */
 const ENTER_ALTERNATE = "\u001b[?1049h";
@@ -101,6 +102,18 @@ export type Handle = {
   frame(): Frame,
   /** That frame as text, which is what a snapshot asserts on. */
   text(): string,
+  /**
+   * What the reader has selected with the mouse, or `""`.
+   *
+   * The same answer `useRenderer().getSelectedText()` gives a component, from
+   * outside the tree — which is where the caller wiring it to a clipboard
+   * usually is, since a program that wants to copy on Ctrl+C has a signal
+   * handler and not a component. `selection()` is the gesture behind it, for
+   * an application that wants to say something about how far it reaches.
+   */
+  selectedText(): string,
+  /** The reader's selection, or `null` when there is none. */
+  selection(): Selection | null,
 };
 
 /** What `testRender` gives back: a `Handle`, plus the terminal's side. */
@@ -166,6 +179,13 @@ export type RenderOptions = {
    * that ignores the mouse anyway needs a modifier key the reader has to know
    * about. An application that handles the mouse is trading that away on
    * purpose; one that does not should not trade it away by default.
+   *
+   * What it trades it away *for* is this renderer's own selection, which
+   * arrives with the mouse and not separately: a drag over selectable text
+   * highlights it and `getSelectedText()` reads it back. That is a smaller
+   * promise than the terminal's, because the text it can offer is the text on
+   * the screen — but it is the same gesture, so a reader does not have to be
+   * told that this window is the one where dragging does nothing.
    */
   readonly mouse?: boolean,
 };
@@ -253,6 +273,12 @@ export function testRender(
     },
     text() {
       return frameText(renderFrame(renderer));
+    },
+    selectedText() {
+      return renderer.getSelectedText();
+    },
+    selection() {
+      return renderer.getSelection();
     },
     stop() {
       root.unmount();
@@ -420,6 +446,12 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
     },
     text() {
       return frameText(renderFrame(renderer));
+    },
+    selectedText() {
+      return renderer.getSelectedText();
+    },
+    selection() {
+      return renderer.getSelection();
     },
   };
 }

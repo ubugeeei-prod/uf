@@ -376,16 +376,13 @@ pub enum RuntimeUseStep {
     ActivateVersion,
 }
 
-fn runtime_engine_to_host(engine: RuntimeEngine) -> RuntimeHost {
-    match engine {
-        RuntimeEngine::Uf => RuntimeHost::Uf,
-        RuntimeEngine::Node => RuntimeHost::Node,
-        RuntimeEngine::Bun => RuntimeHost::Bun,
-        RuntimeEngine::Deno => RuntimeHost::Deno,
-        RuntimeEngine::Edge => RuntimeHost::Edge,
-        RuntimeEngine::Serverless => RuntimeHost::Serverless,
-        RuntimeEngine::Container => RuntimeHost::Container,
-    }
+/// The host a configured engine names.
+///
+/// One arm each, once, in `uf_config`: this mapping used to be written out
+/// here as well, and a second copy of "which row is this name" is how a name
+/// and its row drift apart.
+const fn runtime_engine_to_host(engine: RuntimeEngine) -> RuntimeHost {
+    engine.host()
 }
 
 /// Runtime acquisition strategy.

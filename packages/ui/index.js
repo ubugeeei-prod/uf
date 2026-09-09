@@ -32,6 +32,91 @@
 // A library written in TypeScript can document those constraints; it cannot
 // state them.
 //
+// # There is no copy step, and `render` is what replaces it
+//
+// shadcn's product is not a component. It is `npx shadcn add dialog`, which
+// writes the source into your repository so that you own it and change it —
+// and around that sit `init`, `view`, `search`, `build`, `migrate`, `eject`, an
+// MCP server, a `components.json` and a registry format anybody can publish to.
+// uf answers the headline question the other way. The roadmap says "typed
+// imports, preset styles, and **no copy step**", and that answer takes
+// something away, so it is argued here rather than assumed.
+// ubugeeei-prod/uf#303 is where it was argued; this is the decision.
+//
+// **Why not.** A copy is a fork with no upstream, and four things follow. A
+// focus trap fixed here reaches everyone who upgrades and reaches nobody who
+// copied. The composition constraints above are checked *across the boundary*:
+// `Tabs.List` declaring `renders* Tabs.Tab` means something while the library
+// is imported and means nothing once the source has been pasted into an
+// application, because then it is the application's own component and Flow has
+// nothing left to hold it to. `sideEffects: false` and one subpath per
+// primitive already give a bundler everything a copy would. And the
+// accessibility work stays in one place with one suite over it, rather than in
+// every consumer's repository at the version they took it at.
+//
+// **What a caller gets instead of owning the source.** The reason people copy
+// is to change the markup, so that has to be answered or this is a worse
+// library for the same use. The answer is `render`, which every part that
+// renders an element of its own is growing:
+//
+//     <Menu.Item render={(props) => <a href="/settings" {...props} />}>
+//       Settings
+//     </Menu.Item>
+//
+// The part computes every attribute, every id, every composed handler and every
+// ref exactly as it would have, and hands them to the caller to put on their
+// own element; `children` is among them, so a caller who spreads and
+// self-closes still gets what was written between the tags. What it does *not*
+// hand over is anything true of the element rather than of the part —
+// `type="button"` stays on the `<button>` branch.
+//
+// It is deliberately not Radix's `asChild`. Cloning a child hides which props
+// arrived and in what order; a function is handed the object, so a caller can
+// read it, order it themselves, and drop one on purpose. And the part is still
+// the part: `Menu.Body`'s `renders*` still rejects a `<div>` where a
+// `Menu.Item` belongs, because a `Menu.Item` rendered as an `<a>` is a
+// `Menu.Item`. That is the half a copied source cannot keep, and it is what
+// makes "no copy step" a trade rather than a loss.
+//
+// **Where it is, today.** `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Menu`,
+// `ContextMenu`, `Menubar`, `Tabs`, `Switch` and `Checkbox` are complete —
+// every part of each either takes `render` or renders no element to hand over —
+// along with `Field.Control`, `Tooltip.Trigger`, `HoverCard.Trigger` and
+// `Sidebar.Item`, which had it first. The rest do not have it yet, and that is
+// the remainder of #303. A documented escape hatch that is not there is worse
+// than an undocumented one that is, so the state of every part is a table in
+// `tests/library/ui.test.js` rather than a claim in this paragraph: it names
+// all of them, in three lists, and four tests hold each list to the files. A
+// part added to this barrel is in none of them and the suite says so.
+//
+// **Are the `internal/` modules ever public?** No, and the consequence is
+// worth stating rather than leaving as an omission. `merge-props.js`,
+// `roving-focus.js`, `controlled-state.js` and the rest each explain in their
+// own header why exporting them would publish a weaker promise than the
+// components make — a consumer who could reach `merge-props.js` could build a
+// part that spreads `rest` last, which is the failure it exists to prevent. So
+// there is no third-party primitive that participates the way these do, and no
+// registry of them: the uf-shaped equivalent of publishing a component is a
+// pull request against this package, where its keyboard map gets the same suite
+// as everything else. That is a real cost of the decision and the right side of
+// it for a library whose value is that the hard parts are correct. What a third
+// party *can* build on is the escape hatch itself, which is the whole public
+// surface it needs: a component of theirs given to `render` receives the props
+// this package would have used, and their own composition sits inside a part
+// that is still checked.
+//
+// **What the CLI adds: nothing new.** There is no `uf add`, no
+// `components.json` and no registry, and none is planned. The one affordance
+// `shadcn view` has that is worth having is "tell me what this component is
+// made of", and `uf inspect --json` already answers it: every component, its
+// parts and its readiness, out of `crates/uf_lib/src/ui.rs`, which
+// `cargo test -p uf_lib` holds to this barrel in both directions. A
+// `uf explain Dialog` that also printed the keyboard map and the ARIA is the
+// one thing #303 leaves open; it is a nicer front end for a table that already
+// exists, not a copy step, and this decision does not depend on it.
+// `uf.config.js` is the one configuration surface by design, so a UI option, if
+// there is ever one to make, belongs there rather than in a second file.
+//
 // # Styling is a default, not a dependency
 //
 // Nothing here imports StyleX, and nothing here has a StyleX-shaped type. A
@@ -447,6 +532,15 @@ export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 export type { ToggleGroupType } from "./toggle-group.js";
 
+/**
+ * The five that are one component rather than a namespace of parts.
+ *
+ * `Switch` and `Checkbox` take `render`, so the control a design system already
+ * has — a `<div>` with a knob drawn in it, somebody's `<Pressable>` — keeps the
+ * role, the state, the keys and the implicit form submission while being their
+ * element. `Progress`, `Separator` and `Toggle` do not have it yet; see the
+ * module header and the table in `tests/library/ui.test.js`.
+ */
 export { Checkbox, Progress, Separator, Switch, Toggle };
 
 /**
@@ -508,6 +602,11 @@ export const Field = {
  *     <Tabs.Panel value="one">…</Tabs.Panel>
  *     <Tabs.Panel value="two">…</Tabs.Panel>
  *   </Tabs.Root>
+ *
+ * Every part takes `render`, so a tab that is also a route — `<Tabs.Tab
+ * render={(props) => <a href="#billing" {...props} />}>` — is still a tab, with
+ * the roving tab stop and the `aria-controls` a tab has. `Tabs.List`'s
+ * `renders* Tabs.Tab` is unaffected, because it is the *part* it constrains.
  */
 export const Tabs = {
   Root: TabsRoot,
@@ -640,6 +739,12 @@ export const ToggleGroup = {
  *       </Dialog.Footer>
  *     </Dialog.Body>
  *   </Dialog.Root>
+ *
+ * Every part takes `render`. `Dialog.Title` is an `<h2>` by default and the
+ * level is a fact about the page around it rather than about the dialog, so
+ * `render={(props) => <h3 {...props} />}` is how a caller says which — without
+ * losing the id `aria-labelledby` points at. `AlertDialog`, `Sheet` and
+ * `Drawer` are made of these parts and pass `render` straight through.
  */
 export const Dialog = {
   Root: DialogRoot,
@@ -865,6 +970,17 @@ export const InputOtp = {
  *       </Menu.Sub>
  *     </Menu.Body>
  *   </Menu.Root>
+ *
+ * Every part takes `render`, which is what makes a menu of links possible — and
+ * a menu of links is the most ordinary menu there is:
+ *
+ *   <Menu.Item render={(props) => <a href="/settings" {...props} />}>
+ *     Settings
+ *   </Menu.Item>
+ *
+ * The `<a>` keeps the middle click, the context menu and the status bar; the
+ * item keeps the role, the id, the roving tab stop and the press that closes
+ * the tree. See the module header for why that is the answer to "no copy step".
  */
 export const Menu = {
   Root: MenuRoot,

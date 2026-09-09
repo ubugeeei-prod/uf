@@ -50,8 +50,8 @@ import {
   useState,
 } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
 import { moveOnKey } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
 import type { Orientation } from "./internal/roving-focus.js";
@@ -94,6 +94,7 @@ export component TabsRoot(
   onValueChange?: (value: string) => void,
   activationMode?: ActivationMode = "automatic",
   orientation?: Orientation = "horizontal",
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const base = useId();
@@ -125,9 +126,11 @@ export component TabsRoot(
     [base, selected, select, orientation, activationMode, mounted, registerPanel],
   );
 
+  const props = withProps(rest, { children });
+
   return (
     <TabsContext.Provider value={state}>
-      <div {...rest}>{children}</div>
+      {render == null ? <div {...props} /> : render(props)}
     </TabsContext.Provider>
   );
 }
@@ -142,38 +145,37 @@ export component TabsRoot(
  * tabs push themselves into as they mount answers with mount order, which stops
  * being document order the first time a tab is conditional.
  */
-export component TabsList(children: renders* TabsTab, ...rest: Rest) {
+export component TabsList(children: renders* TabsTab, render?: RenderProp, ...rest: Rest) {
   const tabs = useTabs("Tabs.List");
-  const passed = withoutComposed(rest, ["onKeyDown"]);
+  const props = withProps(withoutComposed(rest, ["onKeyDown"]), {
+    // A screen reader announces the axis, and it is also what tells a reader
+    // which arrow keys to try.
+    "aria-orientation": tabs.orientation,
+    children,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const list: $FlowFixMe = event.currentTarget;
+      // The list the key arrived on carries the answer to both halves of
+      // this: which items there are, and which way the page reads — so a tab
+      // set inside somebody else's `dir="rtl"` walks the right way without
+      // the caller having had to know it needed to say so.
+      const next = moveOnKey(event, list, {
+        item: '[role="tab"]',
+        owner: '[role="tablist"]',
+        orientation: tabs.orientation,
+        wrap: true,
+        skipDisabled: true,
+      });
+      if (next != null && tabs.activation === "automatic") {
+        tabs.select(next.getAttribute("data-value") ?? "");
+      }
+    }),
+    role: "tablist",
+  });
 
-  return (
-    <div
-      {...passed}
-      // A screen reader announces the axis, and it is also what tells a reader
-      // which arrow keys to try.
-      aria-orientation={tabs.orientation}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        const list: $FlowFixMe = event.currentTarget;
-        // The list the key arrived on carries the answer to both halves of
-        // this: which items there are, and which way the page reads — so a tab
-        // set inside somebody else's `dir="rtl"` walks the right way without
-        // the caller having had to know it needed to say so.
-        const next = moveOnKey(event, list, {
-          item: '[role="tab"]',
-          owner: '[role="tablist"]',
-          orientation: tabs.orientation,
-          wrap: true,
-          skipDisabled: true,
-        });
-        if (next != null && tabs.activation === "automatic") {
-          tabs.select(next.getAttribute("data-value") ?? "");
-        }
-      })}
-      role="tablist"
-    >
-      {children}
-    </div>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /**
@@ -188,54 +190,55 @@ export component TabsTab(
   value: string,
   children: React.Node,
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const tabs = useTabs("Tabs.Tab");
   const active = tabs.selected === value;
-  const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
+  // The caller's props first, and everything this component owns after them. A
+  // caller `onClick` used to replace the selection handler, so clicking a tab
+  // did nothing at all. `render` is handed this same object in this same
+  // order, which is why a tab rendered as somebody else's element is not a
+  // weaker tab.
+  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {
+    "aria-disabled": disabled ? "true" : undefined,
+    // Only when the panel is actually mounted. Panels are rendered on demand,
+    // and a tab pointing `aria-controls` at an id that is not in the document
+    // tells a reader there is somewhere to go and then has nowhere to send
+    // them.
+    "aria-controls": tabs.mounted.includes(value) ? `${tabs.base}-panel-${value}` : undefined,
+    "aria-selected": active ? "true" : "false",
+    children,
+    // Read by the list's key handler, which finds tabs in the document rather
+    // than in a registry and so needs each one to carry its own value.
+    "data-value": value,
+    id: `${tabs.base}-tab-${value}`,
+    onClick: composeHandlers(rest.onClick, () => {
+      if (!disabled) {
+        tabs.select(value);
+      }
+    }),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      // Manual activation's other half: the arrows moved focus here without
+      // selecting, and this is how the reader says they meant it.
+      if (event.key !== "Enter" && event.key !== " ") {
+        return;
+      }
+      event.preventDefault();
+      if (!disabled) {
+        tabs.select(value);
+      }
+    }),
+    role: "tab",
+    // The roving tabindex: Tab reaches the selected tab and nothing else in
+    // the list, so it moves past the whole set in one press.
+    tabIndex: active ? 0 : -1,
+  });
 
-  return (
-    <button
-      // `passed` first, and everything this component owns after it. A caller
-      // `onClick` used to replace the selection handler, so clicking a tab did
-      // nothing at all.
-      {...passed}
-      aria-disabled={disabled ? "true" : undefined}
-      // Only when the panel is actually mounted. Panels are rendered on demand,
-      // and a tab pointing `aria-controls` at an id that is not in the document
-      // tells a reader there is somewhere to go and then has nowhere to send
-      // them.
-      aria-controls={tabs.mounted.includes(value) ? `${tabs.base}-panel-${value}` : undefined}
-      aria-selected={active ? "true" : "false"}
-      // Read by the list's key handler, which finds tabs in the document rather
-      // than in a registry and so needs each one to carry its own value.
-      data-value={value}
-      id={`${tabs.base}-tab-${value}`}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (!disabled) {
-          tabs.select(value);
-        }
-      })}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        // Manual activation's other half: the arrows moved focus here without
-        // selecting, and this is how the reader says they meant it.
-        if (event.key !== "Enter" && event.key !== " ") {
-          return;
-        }
-        event.preventDefault();
-        if (!disabled) {
-          tabs.select(value);
-        }
-      })}
-      role="tab"
-      // The roving tabindex: Tab reaches the selected tab and nothing else in
-      // the list, so it moves past the whole set in one press.
-      tabIndex={active ? 0 : -1}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -246,7 +249,12 @@ export component TabsTab(
  * subscription rather than "the selected value equals mine", because a caller
  * may render a subset of panels, or none at all until data arrives.
  */
-export component TabsPanel(value: string, children: React.Node, ...rest: Rest) {
+export component TabsPanel(
+  value: string,
+  children: React.Node,
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const tabs = useTabs("Tabs.Panel");
   const register = tabs.registerPanel;
   const selected = tabs.selected === value;
@@ -263,18 +271,19 @@ export component TabsPanel(value: string, children: React.Node, ...rest: Rest) {
     return null;
   }
 
-  return (
-    <div
-      {...rest}
-      aria-labelledby={`${tabs.base}-tab-${value}`}
-      id={`${tabs.base}-panel-${value}`}
-      role="tabpanel"
-      // The panel itself is focusable so that Tab out of the tab list lands on
-      // the content the tab describes, which is where the reader expects to go
-      // and where a panel of plain prose has nothing else to offer.
-      tabIndex={0}
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(rest, {
+    "aria-labelledby": `${tabs.base}-tab-${value}`,
+    children,
+    id: `${tabs.base}-panel-${value}`,
+    role: "tabpanel",
+    // The panel itself is focusable so that Tab out of the tab list lands on
+    // the content the tab describes, which is where the reader expects to go
+    // and where a panel of plain prose has nothing else to offer.
+    tabIndex: 0,
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }

@@ -1,6 +1,7 @@
 {
   "name": "@uniflowed/jsx-runtime",
   "version": "0.0.0-alpha.18",
+  "private": true,
   "description": "Flow declarations for @uniflowed/jsx-runtime, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",

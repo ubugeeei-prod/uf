@@ -620,8 +620,20 @@ fn detect_color(choice: ColorChoice, tty: Tty, env: &TerminalEnv) -> ColorLevel 
     env.declared_level().max(ColorLevel::Ansi16)
 }
 
+/// Which glyph set a terminal can draw — which is not what it may colour.
+///
+/// **`NO_COLOR` is not consulted here**, and that is the decision
+/// ubugeeei-prod/uf#393 asked for rather than an omission. The convention at
+/// no-color.org is about ANSI colour and says nothing about characters, and uf
+/// already has the right signal for "cannot render Unicode": the locale. A
+/// UTF-8 terminal whose owner asked for no colour can still draw `├─`, and
+/// giving it `+- ` instead is worse output for no reason.
+///
+/// `packages/tui/capability.js` decides it the same way, and
+/// `tests/library/tui.test.js` compares the two rules so they cannot drift
+/// apart again — which is what let them disagree in the first place.
 fn detect_glyphs(env: &TerminalEnv) -> GlyphSet {
-    if env.is_dumb() || env.no_color_requested() || !env.utf8_locale() {
+    if env.is_dumb() || !env.utf8_locale() {
         GlyphSet::Ascii
     } else {
         GlyphSet::Unicode

@@ -170,6 +170,44 @@ from the other end: when a save moves a module across the client bundle, `uf
 dev` names the module and the chain of imports that put it there. That one comes
 out of the analysis rather than out of the page, so it needs no mark.
 
+### What actually streamed
+
+A `_uf.loading.js` is a promise about *time*: the shell goes out now and this
+part of the page follows when it is ready. Whether it kept that promise is the
+one thing a browser makes hard to see — the fallback may have flashed past in
+40 ms, or never rendered at all because the page resolved first, and the
+finished document looks identical either way.
+
+So `uf dev` says what left. When a route streams, your terminal names each
+boundary that arrived after the shell, how long after, how big it was, and which
+part of the tree it built:
+
+```text
+› /docs/:slug streamed 2 boundaries after its shell, the last 812 ms in
+    the shell went out in 4.1 kB, with 2 fallbacks in it
+    +119 ms  B:0 replaced p.skeleton with article.post (chunk 2 of 5, 1.4 kB)
+    +812 ms  B:1 replaced div.toc-loading with nav.toc (chunk 4 of 5, 900 B)
+```
+
+`p.skeleton` is what your `_uf.loading.js` rendered and `article.post` is what
+replaced it, both read off the wire rather than out of the route table. `B:0` is
+React's own name for the boundary, printed rather than translated: React numbers
+boundaries as it meets them, uf numbers a route's fallbacks, and a `<Suspense>` a
+component wrote itself is in the first list and not the second — so the two
+cannot honestly be joined.
+
+Like the boundary map, it is quiet: it speaks the first time a route streams and
+whenever the *shape* of that stream changes — a fallback added, a boundary that
+stopped streaming — and says nothing when only the milliseconds moved, which
+would be every reload. A page with nothing suspended in it says nothing at all,
+because there is no order to report about a document that arrived whole.
+
+This is the half of the picture that comes off the wire. uf has no Flight payload
+yet — the browser re-renders the matched tree from the same modules the server
+used, which is why the client/server split is route-level (see
+[Server Components](/guide/server-components)) — and when there is one, this is
+where it will be reported.
+
 To reach the dev server from another device, `--host` binds a routable address —
 but only if `dev.allowedHosts` in your config is non-empty. That is deliberate:
 a dev server on `0.0.0.0` with no host allow-list is how a local project ends up

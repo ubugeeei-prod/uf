@@ -55,7 +55,7 @@ import * as React from "@uniflowed/react";
 import { createContext, useContext, useId, useMemo } from "@uniflowed/react";
 import { useMediaQuery } from "@uniflowed/hooks/browser";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeHandlers, forwarded, withProps, withoutComposed } from "./internal/merge-props.js";
 import { SheetBody, SheetOverlay, SheetRoot, SheetTrigger } from "./sheet.js";
 import { TooltipBody, TooltipRoot, TooltipTrigger } from "./tooltip.js";
@@ -263,25 +263,25 @@ export component SidebarFooter(children: React.Node, ...rest: Rest) {
 export component SidebarItem(
   children: React.Node,
   label: string,
-  render?: (props: Rest) => React.Node,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const sidebar = useSidebar("Sidebar.Item");
   const passed = withoutComposed(rest, ["ref"]);
   const mine: Rest = {
     "aria-label": sidebar.collapsed ? label : undefined,
+    children,
     "data-collapsed": sidebar.collapsed ? "true" : undefined,
   };
 
   const entry = (extra: Rest) => {
-    const props = withProps(withProps(passed, mine), extra);
-    return render == null ? (
-      <button {...props} type="button">
-        {children}
-      </button>
-    ) : (
-      render(props)
-    );
+    // `mine` on top, and the order is load-bearing now that a part's props
+    // carry its children: the collapsed branch hands this the props
+    // `Tooltip.Trigger` built, and those name `children` as `undefined`
+    // because that tooltip trigger has none of its own. Applied last, a named
+    // `undefined` would blank the entry.
+    const props = withProps(withProps(passed, extra), mine);
+    return render == null ? <button {...props} type="button" /> : render(props);
   };
 
   if (!sidebar.collapsed) {

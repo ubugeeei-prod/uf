@@ -44,6 +44,7 @@ import {
   render,
   testRender,
   useKeyboard,
+  useRenderer,
   useTerminalSize,
 } from "@uniflowed/tui";
 import type { Frame, MouseEvent } from "@uniflowed/tui";
@@ -1599,6 +1600,349 @@ describe("the mouse reaches what is under it", () => {
   });
 });
 
+describe("a drag selects what it crossed", () => {
+  // The gesture, as the three reports a terminal sends for it. A press, a
+  // motion with the left button held — bit 32 is motion and the low bits are
+  // the button — and a release, which is the same parameters with a lowercase
+  // final byte. Terminals count from one; these take cells and convert, so a
+  // test says where on the screen it meant.
+  const press = (x: number, y: number) => `\u001b[<0;${x + 1};${y + 1}M`;
+  const moveTo = (x: number, y: number) => `\u001b[<32;${x + 1};${y + 1}M`;
+  const release = (x: number, y: number) => `\u001b[<0;${x + 1};${y + 1}m`;
+
+  /** One escape byte, which a chunk ending on is the Escape key. */
+  const ESCAPE = "\u001b";
+
+  /** Drag from one cell to another, as the three reports in one chunk. */
+  const dragBetween = (from: [number, number], to: [number, number]) =>
+    press(from[0], from[1]) + moveTo(to[0], to[1]) + release(to[0], to[1]);
+
+  /** Whether a cell is drawn inverse, which is what an unstyled selection is. */
+  const inverted = (frame: Frame, x: number, y: number) =>
+    (cell(frame, x, y).attributes & Attributes.INVERSE) !== 0;
+
+  it("reads back the cells the pointer crossed, and draws them inverse", () => {
+    const handle = testRender(<Text>hello world</Text>, { width: 12, height: 1 });
+
+    handle.press(dragBetween([0, 0], [4, 0]));
+
+    expect(handle.selectedText()).toBe("hello");
+    const frame = handle.frame();
+    expect([0, 1, 2, 3, 4].map((x) => inverted(frame, x, 0))).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
+    // Both ends are inside the selection, so the cell after the focus is not.
+    expect(inverted(frame, 5, 0)).toBe(false);
+    handle.stop();
+  });
+
+  it("is a click and not a selection when the pointer never moved", () => {
+    const handle = testRender(<Text>hello</Text>, { width: 8, height: 1 });
+
+    handle.press(dragBetween([0, 0], [3, 0]));
+    expect(handle.selectedText()).toBe("hell");
+
+    // And the next press puts it back: clicking somewhere else is how a reader
+    // says they are done with a selection, in every terminal they have used. A
+    // press that selected the one cell under it would make that impossible.
+    handle.press(press(1, 0) + release(1, 0));
+    expect(handle.selection()).toBe(null);
+    expect(handle.selectedText()).toBe("");
+    expect(inverted(handle.frame(), 0, 0)).toBe(false);
+    handle.stop();
+  });
+
+  it("runs in reading order however the drag went", () => {
+    const handle = testRender(<Text>hello</Text>, { width: 8, height: 1 });
+
+    handle.press(dragBetween([4, 0], [1, 0]));
+
+    // The gesture is kept as it happened — a drag leftwards has its anchor on
+    // the right — and the *order* is the one text is read in.
+    expect(handle.selection()?.anchor).toEqual({ x: 4, y: 0 });
+    expect(handle.selection()?.focus).toEqual({ x: 1, y: 0 });
+    expect(handle.selection()?.start).toEqual({ x: 1, y: 0 });
+    expect(handle.selectedText()).toBe("ello");
+    handle.stop();
+  });
+
+  it("takes whole rows between the two ends rather than a rectangle", () => {
+    const handle = testRender(
+      <Box width={6}>
+        <Text>one</Text>
+        <Text>two</Text>
+      </Box>,
+      { width: 6, height: 2 },
+    );
+
+    handle.press(dragBetween([1, 0], [1, 1]));
+
+    // A rectangle standing on column 1 would be "n" and "w". What a reader
+    // dragging down a page means is the end of the first line and the start of
+    // the second.
+    expect(handle.selectedText()).toBe("ne\ntw");
+    handle.stop();
+  });
+
+  it("keeps the gap between two boxes on a row, and drops the blanks outside them", () => {
+    const handle = testRender(
+      <Box flexDirection="row" justifyContent="space-between" width={12}>
+        <Text>ab</Text>
+        <Text>cd</Text>
+      </Box>,
+      { width: 12, height: 1 },
+    );
+
+    handle.press(dragBetween([0, 0], [11, 0]));
+
+    // A row's selection runs from its first selectable cell to its last and
+    // includes whatever is between them, because that is what the reader
+    // dragged across. Taking only the cells the two `Text`s own would copy
+    // `abcd` and lose the layout; taking the whole row would add trailing
+    // blanks that are the shape of the box rather than anything selected.
+    expect(handle.selectedText()).toBe("ab        cd");
+    handle.stop();
+  });
+
+  it("leaves out a subtree that said it may not be selected", () => {
+    const handle = testRender(
+      <Box>
+        <Text>copy me</Text>
+        <Box selectable={false}>
+          <Text>not me</Text>
+        </Box>
+      </Box>,
+      { width: 8, height: 2 },
+    );
+
+    handle.press(dragBetween([0, 0], [7, 1]));
+
+    // `selectable` is inherited like a colour, so the inner `Text` never had to
+    // repeat it. The second row is still a row of the selection and still
+    // contributes a line — it contributes an empty one.
+    expect(handle.selectedText()).toBe("copy me\n");
+    expect(inverted(handle.frame(), 0, 1)).toBe(false);
+    handle.stop();
+  });
+
+  it("draws the colours the text named instead of inverting it", () => {
+    // One colour on the panel and one on the text, because they inherit the
+    // way `fg` and `bg` do and independently of each other — a panel that says
+    // how a selection looks says it for everything inside.
+    const handle = testRender(
+      <Box selectionBg="blue">
+        <Text selectionFg="white">hi</Text>
+      </Box>,
+      { width: 4, height: 1 },
+    );
+
+    handle.press(dragBetween([0, 0], [1, 0]));
+
+    const first = cell(handle.frame(), 0, 0);
+    expect([first.fg, first.bg]).toEqual([parseColor("white"), parseColor("blue")]);
+    // An application that has said how a selection looks has said it: the
+    // inverse default is replaced rather than added to.
+    expect(first.attributes).toBe(0);
+    handle.stop();
+  });
+
+  it("keeps a two-column grapheme whole when the drag lands on its second cell", () => {
+    const handle = testRender(<Text>界a</Text>, { width: 4, height: 1 });
+
+    // Column 1 is the continuation cell of `界`. Styling it alone would leave
+    // the two halves of one character disagreeing, which the diff compares per
+    // cell and would then repaint.
+    handle.press(dragBetween([1, 0], [1, 0]));
+
+    expect(handle.selectedText()).toBe("界");
+    expect([inverted(handle.frame(), 0, 0), inverted(handle.frame(), 1, 0)]).toEqual([true, true]);
+    expect(inverted(handle.frame(), 2, 0)).toBe(false);
+    handle.stop();
+  });
+
+  it("copies what is inside a border and not the border itself", () => {
+    const handle = testRender(
+      <Box border={true} width={9} height={3}>
+        <Text>ok</Text>
+      </Box>,
+      { width: 9, height: 3 },
+    );
+
+    handle.press(dragBetween([1, 1], [8, 1]));
+
+    // A box claims every cell of its rectangle for the *mouse* and claims none
+    // of them for selection: a border is not text. Dragging off the end of the
+    // line and onto the frame around it therefore copies the line.
+    expect(handle.selectedText()).toBe("ok");
+    expect(inverted(handle.frame(), 8, 1)).toBe(false);
+    handle.stop();
+  });
+
+  it("does not copy the scrollbar a line ran into", () => {
+    const wide = (count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        React.createElement(Text, { key: String(index), wrap: "none" }, "abcdefghij"),
+      );
+    const handle = testRender(
+      <ScrollBox height={4} width={8} scrollTop={0}>
+        {wide(5)}
+      </ScrollBox>,
+      { width: 8, height: 4 },
+    );
+    // Padding is not a clip anywhere in this renderer, so an unwrapped line
+    // reaches the column the bar reserved, and the bar — drawn after the
+    // children — wins.
+    expect(frameRow(handle.frame(), 0)).toBe("abcdefg█");
+
+    handle.press(dragBetween([0, 0], [7, 0]));
+
+    expect(handle.selectedText()).toBe("abcdefg");
+    handle.stop();
+  });
+
+  it("selects nothing when the press did not land on text", () => {
+    const handle = testRender(
+      <Box paddingTop={1}>
+        <Text>hello</Text>
+      </Box>,
+      { width: 8, height: 2 },
+    );
+
+    handle.press(dragBetween([0, 0], [4, 1]));
+
+    // The press was on the box's padding. A drag from there is a drag, and a
+    // box that means something by one — a splitter, a canvas — has its
+    // handlers called with no highlight left behind them.
+    expect(handle.selection()).toBe(null);
+    expect(handle.selectedText()).toBe("");
+    handle.stop();
+  });
+
+  it("lets a handler keep the reader's selection with preventDefault", () => {
+    const handle = testRender(
+      <Box>
+        <Text>hello</Text>
+        <Box id="grip" onMouseDown={(event: MouseEvent) => event.preventDefault()}>
+          <Text>grip</Text>
+        </Box>
+      </Box>,
+      { width: 8, height: 2 },
+    );
+
+    handle.press(dragBetween([0, 0], [4, 0]));
+    expect(handle.selectedText()).toBe("hello");
+
+    // The renderer's one default: a press clears the selection and may start
+    // another. A box that means its own thing by a drag suppresses both, and
+    // the reader keeps what they had.
+    handle.press(dragBetween([0, 1], [3, 1]));
+    expect(handle.selectedText()).toBe("hello");
+    handle.stop();
+  });
+
+  it("shows the selection where the text moved to when the tree re-renders", () => {
+    component Row() {
+      const [n, setN] = useState<number>(0);
+      useKeyboard((key) => {
+        if (key.name === "down") {
+          setN((value) => value + 1);
+        }
+      });
+      return <Text>{`row ${n}`}</Text>;
+    }
+    const handle = testRender(<Row />, { width: 8, height: 1 });
+
+    handle.press(dragBetween([0, 0], [4, 0]));
+    expect(handle.selectedText()).toBe("row 0");
+
+    // Two cells of the screen, and not a range inside a string: what they hold
+    // after a commit is what is selected, the same way a terminal's own
+    // selection stays where the reader left it while the program writes.
+    handle.press("\u001b[B");
+    expect(handle.selectedText()).toBe("row 1");
+    expect(inverted(handle.frame(), 4, 0)).toBe(true);
+    handle.stop();
+  });
+
+  it("forgets the selection when the terminal is resized", () => {
+    const handle = testRender(<Text>hello</Text>, { width: 8, height: 1 });
+
+    handle.press(dragBetween([0, 0], [4, 0]));
+    expect(handle.selection()).not.toBe(null);
+
+    // A resize reflows the screen in a way this renderer did not perform and
+    // cannot predict, so the two cells no longer name what they named. That is
+    // the one thing a selection does not survive.
+    handle.resize(20, 3);
+    expect(handle.selection()).toBe(null);
+    expect(handle.selectedText()).toBe("");
+    handle.stop();
+  });
+
+  it("hands a component the selection through useRenderer", () => {
+    // What an application does with a selection, written the way one would be:
+    // a key yanks the text, and another puts the highlight away. Nothing here
+    // reaches past the package's public surface, and nothing writes to an
+    // outer variable during a render to observe it.
+    component Copier() {
+      const renderer = useRenderer();
+      const [copied, setCopied] = useState<string>("");
+      useKeyboard((key) => {
+        if (key.name === "y") {
+          setCopied(renderer.hasSelection() ? renderer.getSelectedText() : "-");
+        }
+        if (key.name === "escape") {
+          renderer.clearSelection();
+        }
+      });
+      return (
+        <Box>
+          <Text>hello</Text>
+          <Text>{copied}</Text>
+        </Box>
+      );
+    }
+    const handle = testRender(<Copier />, { width: 8, height: 2 });
+
+    handle.press(dragBetween([1, 0], [3, 0]));
+    handle.press("y");
+    expect(frameRow(handle.frame(), 1)).toBe("ell     ");
+
+    handle.press(ESCAPE);
+    expect(inverted(handle.frame(), 1, 0)).toBe(false);
+    handle.press("y");
+    expect(frameRow(handle.frame(), 1)).toBe("-       ");
+    handle.stop();
+  });
+
+  it("selects nothing at all when the application did not ask for the mouse", () => {
+    const handle = testRender(<Text>hello</Text>, { width: 8, height: 1, mouse: false });
+
+    handle.press(dragBetween([0, 0], [4, 0]));
+
+    expect(handle.selection()).toBe(null);
+    expect(handle.selectedText()).toBe("");
+    expect(inverted(handle.frame(), 0, 0)).toBe(false);
+    handle.stop();
+  });
+
+  it("costs the cells it highlighted and no others", () => {
+    const handle = testRender(<Text>hello world</Text>, { width: 12, height: 1 });
+    expect(handle.update().cells).toBe(12);
+
+    handle.press(dragBetween([0, 0], [4, 0]));
+
+    // The highlight is a change to five cells, so it is five cells on the wire.
+    // A selection is not a reason to reprint the screen.
+    expect(handle.update().cells).toBe(5);
+    handle.stop();
+  });
+});
+
 describe("what the terminal can take", () => {
   const env = (overrides: { [string]: string }) => ({ ...overrides });
 
@@ -1750,9 +2094,11 @@ describe("the capability precedence matches the CLI's", () => {
   // expression it was bound to. Swap two checks on either side and the two
   // lists stop matching.
   //
-  // Colour only. The two files also disagree about glyphs — `NO_COLOR`
-  // downgrades them in the CLI and not in the library — which is
-  // ubugeeei-prod/uf#393, filed rather than quietly asserted either way here.
+  // Colour and glyphs, in two tests. The two files used to disagree about
+  // glyphs — `NO_COLOR` downgraded them in the CLI and not in the library,
+  // both on purpose — which was ubugeeei-prod/uf#393. They agree now, and the
+  // second test is what stops them drifting apart again: nothing compared them
+  // before, which is how two deliberate opposite decisions survived.
 
   const rust = (): string =>
     fs.readFileSync(path.join(REPO, "crates/uf_term/src/capability.rs"), "utf8");
@@ -1967,6 +2313,60 @@ describe("the capability precedence matches the CLI's", () => {
     expect(rustHelpers(rust()).declared_rows).toEqual(["LINES"]);
     expect(jsHelpers(js()).declaredColumns).toEqual(["COLUMNS"]);
     expect(jsHelpers(js()).declaredRows).toEqual(["LINES"]);
+  });
+
+  /**
+   * The glyph rule, which is a different question from the colour one.
+   *
+   * "Can this terminal draw `├─`" is not "may I colour it", and
+   * ubugeeei-prod/uf#393 was the two files answering the first one
+   * differently: the CLI folded `NO_COLOR` into it and the library did not.
+   * The convention at no-color.org is about ANSI colour and says nothing about
+   * characters, and uf already has the right signal for "cannot render
+   * Unicode" — the locale — so the CLI followed the library.
+   *
+   * Compared down to the **environment variables**, through the same helper
+   * resolution the colour test uses, rather than to the names each side gives
+   * them. A first draft of this compared `dumb` to `dumb` and would have
+   * passed if `const dumb = env.NO_COLOR != null` were written tomorrow: the
+   * rule would have changed and the guard would not have noticed, which is the
+   * whole thing it exists to stop.
+   */
+  it("decides glyphs from the same environment variables on both sides", () => {
+    const rustSource = rust();
+    const jsSource = js();
+
+    // `env.is_dumb()` and `env.utf8_locale()` reduced to the variables their
+    // `TerminalEnv` fields are filled from.
+    const helpers = rustHelpers(rustSource);
+    const rustGlyphs = [];
+    for (const call of body(rustSource, "fn detect_glyphs(").matchAll(/env\.(\w+)\(\)/g)) {
+      rustGlyphs.push(...(helpers[call[1]] ?? [`?${call[1]}`]));
+    }
+
+    // And the JavaScript the same way: `glyphs:`'s expression, with each
+    // helper reduced to what it reads and `dumb` to the variable it was bound
+    // from.
+    const functions = jsHelpers(jsSource);
+    const dumbFrom = (jsSource.match(/const dumb = env\.([A-Z_]+)/) ?? [])[1];
+    expect(dumbFrom).toBeDefined();
+    const glyphLine = (jsSource.match(/^\s*glyphs: (.+),\s*$/m) ?? [])[1] ?? "";
+    const jsGlyphs = [];
+    for (const token of glyphLine.matchAll(/\b([A-Za-z]\w*)\b/g)) {
+      const name = token[1];
+      if (name === "dumb") jsGlyphs.push(dumbFrom);
+      else if (functions[name] != null) jsGlyphs.push(...functions[name]);
+    }
+
+    // Both reach the same variables in the same order, and `NO_COLOR` is on
+    // neither list — which is the decision #393 asked for, asserted where it
+    // cannot be quietly undone on one side.
+    expect(runs(rustGlyphs)).toEqual(runs(jsGlyphs));
+    expect(runs(rustGlyphs)).not.toContain("NO_COLOR");
+    // Spelled out, so a failure says which rule moved rather than only that
+    // something did. `TERM` decides dumb; the locale is read from three, in
+    // their own precedence order.
+    expect(runs(rustGlyphs)).toEqual(["TERM", "LC_ALL", "LC_CTYPE", "LANG"]);
   });
 });
 

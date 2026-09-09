@@ -168,19 +168,108 @@ The last two are not micro-optimisations. They are the difference between
 linear and quadratic, which is the difference between a service that is fine in
 staging and one that falls over in production.
 
-## What is not here yet
+## Go's standard library, mapped
 
-Named because the list is the plan, not because the omissions are accidents.
-The next tranche is `io` reader and writer interfaces, `encoding/csv`,
-`encoding/base32`, `container/list`, `hash/crc32` and `hash/fnv`,
-`path/filepath`, and `time` durations and tickers. `sync.RWMutex` is deliberately
-absent: readers and writers cannot run at the same time in one runtime, so it
-would buy a fairness policy and nothing else, and it should arrive with the
-workload that needs one.
+Every part of it lands in one of three places, and the point of writing the
+whole map down is that the second bucket is the only one that is work. Most of
+Go's standard library is either already in JavaScript or cannot be in a
+runtime-agnostic module at all, and a survey that only listed the gaps would
+read like a to-do list nobody would ever finish.
 
-Much of Go's standard library is not missing at all and will not be
-reimplemented here — `strings`, `math`, `encoding/json`, `time`'s formatting,
-`regexp`, `sort` (`Array.prototype.sort` has been stable since ES2019) and
-`net/url` all have platform answers that are better than a port would be. And
-some of it cannot exist on a runtime-agnostic module at all: `os/exec`,
-`net`'s raw sockets, `syscall`, `runtime`, and anything that needs a thread.
+### Already in JavaScript — do not reimplement
+
+A port of these would be slower, less correct, and a second name for something
+that already has one.
+
+| Go | The JavaScript answer |
+| --- | --- |
+| `strings` | `String.prototype`, `Intl.Segmenter` for grapheme-aware work |
+| `strconv` | `Number`, `parseInt`/`parseFloat`, `toString(radix)` |
+| `math`, `math/rand` | `Math`, `crypto.getRandomValues` |
+| `math/bits` | `Math.clz32`, the bitwise operators, `BigInt.asUintN` |
+| `sort`, `slices` | `Array.prototype.sort` — **stable since ES2019** — `toSorted`, `at`, `findLast` |
+| `maps` | `Map`, `Object.groupBy`, `Object.entries` |
+| `encoding/json` | `JSON` |
+| `encoding/base64` | `atob`/`btoa`, and `Uint8Array.prototype.toBase64` as it lands |
+| `regexp` | `RegExp`. A different engine: Go is RE2 and cannot backtrack, JavaScript can, so a port would change the complexity class and not just the syntax |
+| `net/url` | `URL`, `URLSearchParams`, `URLPattern` |
+| `time`, for the clock, formatting and parsing | `Date`, `Intl.DateTimeFormat`, Temporal, and `@uniflowed/temporal` |
+| `unicode`, `unicode/utf8` | String iteration, `TextEncoder`/`TextDecoder`, `Intl.Segmenter` |
+| `fmt` | Template literals |
+| `crypto/sha*`, `crypto/hmac`, `crypto/aes`, `crypto/rand` | WebCrypto, which `crates/uf_check/libdefs/web-crypto.js` already types |
+| `compress/gzip`, `compress/flate` | `CompressionStream`/`DecompressionStream`, on all four runtimes |
+| `cmp` | The comparison operators |
+| `log` | `console` |
+| `flag` | `@uniflowed/cli` |
+| `testing` | `@uniflowed/test` |
+| `net/http`, client and server | `fetch`, `Request`/`Response`, `@uniflowed/server` |
+| `database/sql` | `@uniflowed/orm` |
+| `embed` | Import attributes and the bundler's asset graph |
+
+`errors` and `context` belong here *partly*, and that is exactly why they were
+first: `Error.cause` and `AbortSignal` are the platform's answers, and neither
+has a reader for a chain or a tree of scopes. The two modules that shipped build
+on them rather than replacing them.
+
+### Missing, and worth having
+
+The six at the top of this page are the first tranche. The next one, roughly in
+order of value:
+
+| Go | What it would be |
+| --- | --- |
+| `io` | `Reader`/`Writer` over `Uint8Array`, `copy`, `readAll`, `limitReader`, and adapters to and from Web Streams. Held back for a concrete reason: `ReadableStream` is not polymorphic in the Flow libdefs uf's checker uses, so `ReadableStream<Uint8Array>` is refused, and fixing that libdef is the first half of the item |
+| `bufio` | A buffered reader, and `Scanner` with line, word and custom split functions |
+| `encoding/csv` | RFC 4180, reading and writing. Every hand-rolled `split(",")` is wrong on quoted fields |
+| `encoding/binary` | `getUint16`/`putUint32`/… over a cursor, and **varint**, which `DataView` does not have |
+| `hash/crc32`, `hash/fnv`, `hash/adler32` | WebCrypto has none of them. The strongest native candidate on this list, because CRC32 has a hardware instruction — so measure it before writing the JavaScript |
+| `slices.BinarySearch`, `sort.Search` | Binary search with a comparator: four lines that are wrong in half the places they are written |
+| `encoding/base32` | `atob` covers base64 and nothing covers base32, which is what TOTP secrets are in |
+| `container/list` | A doubly linked list, for LRU caches and anything that splices from the middle |
+| `time` durations and tickers | A `Duration` with the arithmetic, `Ticker`, `Timer`, `AfterFunc`, and the leak-free cancellation `context` already had to solve once |
+| `path/filepath` | `join`, `clean`, `rel`, `ext`, `base`, `dir`, and a real glob matcher |
+| `archive/zip`, `archive/tar` | Reading, at least. The compression half is `DecompressionStream`; the container format is not |
+| `net/textproto` | MIME header parsing and `multipart/form-data` beyond what `FormData` gives |
+
+`sync.RWMutex` is deliberately absent rather than pending: readers and writers
+cannot run at the same time in one runtime, so it would buy a fairness policy
+and nothing else, and it should arrive with the workload that needs one.
+
+### Not this package's to write
+
+Each of these fails the same test — a module in `@uniflowed/std` has to work on
+Node, Bun, Deno and the edge runtimes, or say exactly where it does not.
+
+| Go | Why not |
+| --- | --- |
+| `syscall`, `runtime`, `unsafe`, `reflect`, `plugin`, `go/*` | No supported host exposes any of it, and three of them describe a compiler that is not this one |
+| `net`, for raw TCP, UDP and DNS | Every runtime has its own incompatible sockets and workerd has none. This belongs behind a host capability, the way the file system does, not in a portable module |
+| `os`, `os/exec`, `os/signal`, `os/user` | The same. A `@uniflowed/std/fs` is a capability seam, not a std module |
+| `crypto/tls`, `crypto/x509` | The host owns the TLS stack |
+| `image/*`, `html/template`, `text/template` | The ecosystem has answers and they move faster than uf releases. Owning a template engine is [red line 5](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md) with extra steps |
+| `sync/atomic` | `Atomics` needs a `SharedArrayBuffer`; without one there is nothing to be atomic about on a single-threaded runtime |
+| `math/big` | `BigInt` covers the integers. `big.Float` and `big.Rat` are real gaps, and are a library rather than a standard library |
+| `expvar`, `runtime/pprof` | uf has `crates/uf_profiler` and `uf inspect` |
+
+## Where the map lives, so it cannot drift
+
+Not here. This page is the readable half; the checked half is
+`crates/uf_std/src/registry.rs`, where every `@uniflowed/std/*` specifier
+carries a status — `ships`, `declared`, `planned` or `declined` — and
+`uf inspect --json` emits it under `stdModules`.
+
+That field exists because the table did not have one, and a table without one
+is read as an inventory however it was written. It named forty-five specifiers,
+forty-four of which had no file, every one of them constructed by a function
+that hardcoded `nativeBinding: true` and `wintertcAligned: true` — so it could
+not describe a shipped pure-JavaScript module without lying about it, and it
+described `@uniflowed/std/net` as WinterTC-aligned while `TcpListener` was in
+its export list. Four tests now hold the statuses to `packages/std`: the
+shipping specifiers are exactly the manifest's subpaths, each one's export list
+is exactly what the parser finds in its file, a shipping module never raises
+`NativeRuntimeRequiredError` and the root always does, and nothing claiming
+WinterTC alignment imports `node:` anything or reads `Buffer` or `process`.
+
+`uf inspect` prints the ships count and the rest as a roadmap beside it, for
+the same reason `@uniflowed/ui` does. A count with a wish in it is worse than
+no count.

@@ -684,8 +684,10 @@ fn untyped_module_list(report: &CheckReport) -> Vec<String> {
 
 #[cfg(feature = "upstream-typecheck")]
 mod dependencies;
+// `pub(crate)` rather than private: `uf lint` asks it which files are library
+// definitions, in order not to report on them.
 #[cfg(feature = "upstream-typecheck")]
-mod libdefs;
+pub(crate) mod libdefs;
 
 #[cfg(test)]
 mod tests;

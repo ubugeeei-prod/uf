@@ -1,7 +1,18 @@
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
+
 use compact_str::CompactString;
 use uf_runtime::RuntimeStandard;
 
 use super::*;
+
+/// This checkout, found by a file rather than by counting `..`.
+fn repository_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .expect("the crate is inside the repository")
+}
 
 #[test]
 fn std_registry_covers_requested_modules() {
@@ -40,8 +51,160 @@ fn std_registry_covers_requested_modules() {
     assert!(specifiers.contains(&"@uniflowed/std/zip"));
     assert!(specifiers.contains(&"@uniflowed/std/import-meta"));
     assert!(specifiers.contains(&"@uniflowed/std/defer"));
-    assert!(modules.iter().all(|module| module.wintertc_aligned));
+    // The six of ubugeeei-prod/uf#711, named here as well as held to
+    // `packages/std` by `crates/uf_lib`: this list is what a reader checks
+    // first, and a shipped module missing from it is the drift #710 is about.
+    for shipped in [
+        "@uniflowed/std/errors",
+        "@uniflowed/std/sync",
+        "@uniflowed/std/context",
+        "@uniflowed/std/bytes",
+        "@uniflowed/std/heap",
+        "@uniflowed/std/hex",
+    ] {
+        let module = modules
+            .iter()
+            .find(|module| module.specifier == shipped)
+            .unwrap_or_else(|| panic!("the registry names {shipped}"));
+        assert_eq!(module.status, StdStatus::Ships, "{shipped}");
+    }
     assert_eq!(std_runtime_standard(), RuntimeStandard::WinterTc);
+}
+
+/// One entry per specifier, and every one of them under this package.
+///
+/// The table is grouped by [`StdStatus`] rather than sorted, so a duplicate is
+/// a hundred lines away from its twin and reads as a different entry. Two rows
+/// for one specifier would let `uf inspect` count it twice and let a status
+/// change land on the copy nobody reads.
+#[test]
+fn every_std_specifier_appears_once_and_is_under_the_package() {
+    let modules = std_modules();
+    let mut seen = BTreeSet::new();
+
+    for module in modules.iter() {
+        assert!(
+            module.specifier == "@uniflowed/std" || module.specifier.starts_with("@uniflowed/std/"),
+            "{} is not a @uniflowed/std specifier",
+            module.specifier
+        );
+        assert!(
+            seen.insert(module.specifier.clone()),
+            "{} is in the registry twice",
+            module.specifier
+        );
+    }
+    assert_eq!(seen.len(), modules.len());
+}
+
+/// Only a module that ships claims to have been read.
+///
+/// `wintertcAligned` was `true` on every entry because one constructor set it,
+/// which made it a claim about `@uniflowed/std/net` — whose stated surface is
+/// `TcpListener` and `UdpSocket` — as loudly as about the six modules somebody
+/// wrote. The flag now means "this file was read and imports no host", and
+/// `a_std_module_that_claims_wintertc_alignment_names_no_host` in
+/// `crates/uf_lib` does the reading. This is the half of it that needs no
+/// checkout: a module with no file cannot have been read.
+#[test]
+fn only_a_shipping_std_module_claims_wintertc_alignment() {
+    for module in std_modules() {
+        assert_eq!(
+            module.wintertc_aligned,
+            module.status == StdStatus::Ships,
+            "{} claims wintertcAligned={} at status {:?}",
+            module.specifier,
+            module.wintertc_aligned,
+            module.status
+        );
+    }
+}
+
+/// The root is the only declaration surface, and it names its exports
+/// elsewhere.
+///
+/// `uf_lib::builtin_modules()` carries `@uniflowed/std`'s forty-odd names and
+/// `the_registry_names_exactly_what_each_package_exports` holds that list to
+/// the file. Repeating it here would be a second place with the same names in
+/// it, which is exactly how this table came to say `["modules", "wintertc",
+/// "native"]` about a module that exports forty-two things, one of which is
+/// not `native`.
+#[test]
+fn the_root_declaration_surface_names_no_exports_here() {
+    let modules = std_modules();
+    let declared: Vec<&StdModule> = modules
+        .iter()
+        .filter(|module| module.status == StdStatus::Declared)
+        .collect();
+
+    assert_eq!(declared.len(), 1);
+    assert_eq!(declared[0].specifier, "@uniflowed/std");
+    assert!(declared[0].exports.is_empty());
+}
+
+/// Nothing claims a native binding while there is no binding to cross.
+///
+/// `nativeBinding` was `true` on all forty-five entries and had never been
+/// looked at: the workspace has no N-API crate and no `wasm-bindgen`, so
+/// "native" for a `@uniflowed/std` module is not a build flag, it is a layer
+/// that does not exist. ubugeeei-prod/uf#710 measured what one would buy and
+/// found `bytes.equal` on sixteen bytes *faster* in JavaScript than Node's own
+/// C++ `Buffer#equals`, because comparing sixteen bytes costs less than
+/// crossing into C++ to do it.
+///
+/// So the flag is held to the workspace rather than to intent. This fails the
+/// day somebody sets it without adding the layer — and the day the layer
+/// arrives it stops applying, which is when the argument for the first native
+/// module has to be made in the open, with the boundary cost in it and a host
+/// matrix beside it. N-API runs on Node and Bun and not on Deno or the edge,
+/// which is red line 6.
+#[test]
+fn no_std_module_claims_a_binding_this_workspace_does_not_have() {
+    let root = repository_root();
+    let mut manifests = vec![root.join("Cargo.toml")];
+    for entry in std::fs::read_dir(root.join("crates")).expect("crates/ is readable") {
+        let path = entry.expect("a readable directory entry").path();
+        let manifest = path.join("Cargo.toml");
+        if manifest.is_file() {
+            manifests.push(manifest);
+        }
+    }
+    assert!(
+        manifests.len() > 10,
+        "the walk found almost nothing, so it is not checking anything: {}",
+        manifests.len()
+    );
+
+    let bindings: Vec<String> = manifests
+        .iter()
+        .filter(|manifest| {
+            let text = std::fs::read_to_string(manifest).unwrap_or_default();
+            text.lines().any(|line| {
+                let name = line.split('=').next().unwrap_or_default().trim();
+                name == "napi" || name == "napi-build" || name == "wasm-bindgen"
+            })
+        })
+        .map(|manifest| manifest.display().to_string())
+        .collect();
+
+    if bindings.is_empty() {
+        for module in std_modules() {
+            assert!(
+                !module.native_binding,
+                "{} claims a native binding, and this workspace has none to cross",
+                module.specifier
+            );
+        }
+    } else {
+        // Not a failure: it is the day the argument becomes possible. What is
+        // not allowed is the flag going true quietly beside it.
+        panic!(
+            "this workspace now has a binding crate ({}), so ubugeeei-prod/uf#710's \
+             native question can be reopened — with a measurement and a host matrix. \
+             Update this test when it is.",
+            bindings.join(", ")
+        );
+    }
 }
 
 #[test]

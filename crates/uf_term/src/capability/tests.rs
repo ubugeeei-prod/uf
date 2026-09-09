@@ -210,14 +210,41 @@ fn an_unset_locale_keeps_unicode_glyphs() {
     assert!(Capabilities::detect(ColorChoice::Auto, Tty::Piped, &env()).is_unicode());
 }
 
+/// `NO_COLOR` takes the colour and leaves the characters.
+///
+/// It asserted the opposite until ubugeeei-prod/uf#393: uf and
+/// `@uniflowed/tui` made opposite decisions here, both deliberately, and a
+/// project whose CLI and whose TUI library disagree in the same shell is the
+/// failure #316 names. The convention at no-color.org is about ANSI colour and
+/// says nothing about characters, so this follows the JavaScript rather than
+/// the other way round — and a UTF-8 terminal keeps its box-drawing.
 #[test]
-fn no_color_also_downgrades_glyphs() {
+fn no_color_takes_the_colour_and_leaves_the_glyphs() {
     let caps = Capabilities::detect(
         ColorChoice::Auto,
         Tty::Interactive,
         &env().with_no_color("1"),
     );
-    assert_eq!(caps.glyphs(), GlyphSet::Ascii);
+    assert_eq!(caps.color(), ColorLevel::Never);
+    assert_eq!(caps.glyphs(), GlyphSet::Unicode);
+}
+
+/// And what does still take the glyphs down, so the rule is not merely looser.
+#[test]
+fn a_dumb_terminal_or_a_non_utf8_locale_downgrades_glyphs() {
+    let dumb = Capabilities::detect(
+        ColorChoice::Auto,
+        Tty::Interactive,
+        &env().with_term("dumb"),
+    );
+    assert_eq!(dumb.glyphs(), GlyphSet::Ascii);
+
+    let latin1 = Capabilities::detect(
+        ColorChoice::Auto,
+        Tty::Interactive,
+        &env().with_locale("en_US.ISO-8859-1"),
+    );
+    assert_eq!(latin1.glyphs(), GlyphSet::Ascii);
 }
 
 #[test]

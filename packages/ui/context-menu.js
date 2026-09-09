@@ -58,8 +58,13 @@ import { useCallback, useContext, useMemo, useRef, useState } from "@uniflowed/r
 import { useLongPress } from "@uniflowed/hooks/dom";
 
 import type { Rect } from "./internal/anchor.js";
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { MenuAnchorContext, MenuContext, MenuLevel, useMenu } from "./internal/menu-tree.js";
 
 /**
@@ -126,7 +131,7 @@ hook usePoint(part: string): PointState {
  * region of the page. The module header says why it is in the tab order and
  * when a caller should take it out again.
  */
-export component ContextMenuTrigger(children: React.Node, ...rest: Rest) {
+export component ContextMenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("ContextMenu.Trigger");
   const { openAt } = usePoint("ContextMenu.Trigger");
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -149,19 +154,19 @@ export component ContextMenuTrigger(children: React.Node, ...rest: Rest) {
     menu.setOpen(true);
   });
 
-  return (
-    <div
-      // Above the spread, alone, because it is the one attribute here a caller
-      // is invited to overrule: the module header promises `tabIndex={-1}` to a
-      // caller whose trigger already contains something focusable, and a prop
-      // written *after* `{...passed}` wins over the caller's silently — which
-      // is a documented escape hatch that does nothing. Everything below the
-      // spread is this component's own and stays there.
-      tabIndex={0}
-      {...passed}
-      aria-haspopup="menu"
-      id={`${menu.base}-trigger`}
-      onContextMenu={composeHandlers(rest.onContextMenu, (event) => {
+  const props = withProps(
+    // The `tabIndex` goes *underneath* the caller's props, alone, because it is
+    // the one attribute here a caller is invited to overrule: the module header
+    // promises `tabIndex={-1}` to a caller whose trigger already contains
+    // something focusable, and a value that won over the caller's would be a
+    // documented escape hatch that does nothing. Everything in the second
+    // argument is this component's own and stays on top.
+    withProps({ tabIndex: 0 }, passed),
+    {
+      "aria-haspopup": "menu",
+      children,
+      id: `${menu.base}-trigger`,
+      onContextMenu: composeHandlers(rest.onContextMenu, (event: PartEvent) => {
         const press: $FlowFixMe = event;
         // The browser's own menu would otherwise cover this one, and the reader
         // would be looking at the platform's Back/Reload rather than at the
@@ -170,8 +175,8 @@ export component ContextMenuTrigger(children: React.Node, ...rest: Rest) {
         openAt(pointAt(press.clientX ?? 0, press.clientY ?? 0));
         menu.pendingFocus.current = "first";
         menu.setOpen(true);
-      })}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
+      }),
+      onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
         // Both spellings. `ContextMenu` is the dedicated key on a PC keyboard;
         // `Shift+F10` is the one every platform has, and is what a laptop
         // without that key leaves a reader with.
@@ -182,17 +187,20 @@ export component ContextMenuTrigger(children: React.Node, ...rest: Rest) {
         }
         event.preventDefault();
         openHere();
-      })}
-      ref={composeRefs(rest.ref, (element) => {
+      }),
+      ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
         triggerRef.current = element;
         // What focus goes back to when the menu closes. It is deliberately not
         // registered as the menu's *name*; see the module header.
         menu.triggerRef.current = element;
-      })}
-    >
-      {children}
-    </div>
+      }),
+    },
   );
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 export type { MenuSelect } from "./menu.js";

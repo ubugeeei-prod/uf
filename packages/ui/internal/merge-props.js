@@ -20,6 +20,16 @@
 // a caller legitimately wants *both* — event handlers and refs — they are
 // composed rather than one replacing the other.
 //
+// # The other half of the rule: which element the props land on
+//
+// Everything above decides what goes onto the element. `RenderProp` is what
+// decides *which element*, and it is here rather than in a module of its own
+// because it is the same policy read from the other end: a part computes one
+// props object, and either puts it on the element it would have chosen or hands
+// it to the caller to put on theirs. Two ways of composing a caller's props
+// would be two chances to get the order wrong; one shape, stated once, is what
+// keeps a part that renders somebody else's element from being a weaker part.
+//
 // # Why this is `internal/` and not a subpath
 //
 // It is not a "props utils" module and there is nothing else in it. It is the
@@ -27,6 +37,8 @@
 // primitive cannot quietly apply a different one. Exporting it would invite a
 // consumer to build a part that spreads `rest` last, which is the failure this
 // exists to prevent — so it stays unreachable from outside the package.
+
+import type { Node } from "@uniflowed/react";
 
 /**
  * Props on their way onto an element: what a caller hands a part, and what
@@ -76,6 +88,78 @@
 export type Rest = { readonly key?: empty, readonly [string]: mixed };
 
 /**
+ * The escape hatch: a caller's element in place of the part's own.
+ *
+ * `@uniflowed/ui` has no copy step — `packages/ui/index.js`'s header argues
+ * that at length — and the thing a copy step is *for* is changing the markup. A
+ * part that always renders a `<button>` cannot be the link a menu of links
+ * needs; a heading fixed at `<h2>` is wrong inside an accordion. This is what
+ * replaces owning the source: the part still computes every attribute, every
+ * composed handler and every id, and hands them to the caller to put on
+ * whatever element they wanted.
+ *
+ * One name and one signature everywhere, which is the point. `asChild` clones a
+ * child and hopes its props survive; this hands the props over explicitly, so a
+ * caller can see what they are getting, decide the order themselves, and drop
+ * one deliberately. The part is still the part — `Menu.Body`'s `renders*` still
+ * rejects a `<div>` where a `Menu.Item` belongs, because the escape hatch
+ * changes the element the item renders and not what the item *is*. That
+ * constraint is exactly what a copied source loses.
+ *
+ * # What is in the props, and what is not
+ *
+ * Everything the part would have put on its own element, in the order
+ * `withProps` fixes: the caller's `rest` underneath, the part's own semantics on
+ * top, handlers and refs composed rather than replaced. `children` is in there
+ * too, so `render={(props) => <a href={to} {...props} />}` renders what was
+ * written between the tags — a part whose children were silently dropped
+ * because the caller spread the props and forgot them is the kind of quiet
+ * wrongness this package exists to not have. JSX children win over a spread, so
+ * `<a {...props}>Other</a>` still says what it says.
+ *
+ * What is *not* in there is anything true of the element rather than of the
+ * part: `type="button"` is the only one in practice, and it stays on the
+ * `<button>` branch. Handing it to a caller rendering an `<a>` would put an
+ * attribute the HTML has no meaning for on their link.
+ */
+export type RenderProp = (props: Rest) => Node;
+
+/**
+ * What a part's own handler reads of the event it is handed.
+ *
+ * Inexact, and named rather than inferred, for the same reason `menu.js`'s
+ * `MenuSelect` is: what arrives is React's synthetic event, uf does not merge
+ * Flow's `jsx.js` environment so `lib/react.js` models no such thing, and these
+ * are the members the handlers in this package actually read.
+ *
+ * It exists because of `RenderProp`. A handler written inside a JSX attribute
+ * gets its parameter's type from the attribute, which for an intrinsic is
+ * `any`; the escape hatch has to build the props *before* there is an element
+ * to put them on, so the same handler in an object literal has an indexer's
+ * `mixed` for context and Flow asks for an annotation. This is that annotation,
+ * written once rather than at every handler in the package.
+ *
+ * One shape for keys and for presses, which is the one thing it is not honest
+ * about: `key` and the modifiers belong to a keyboard event and a click has no
+ * `key`. It is a parameter annotation for handlers this package writes rather
+ * than a description of an event, nothing widens `mixed` into it, and the day
+ * `$JSXIntrinsics` is real — the day `Rest` becomes `React.PropsOf`, which its
+ * own comment is waiting for — is the day this is React's event types instead.
+ */
+export type PartEvent = {
+  readonly defaultPrevented: boolean,
+  readonly key: string,
+  readonly altKey: boolean,
+  readonly ctrlKey: boolean,
+  readonly metaKey: boolean,
+  readonly shiftKey: boolean,
+  readonly currentTarget: mixed,
+  readonly preventDefault: () => mixed,
+  readonly stopPropagation: () => mixed,
+  ...
+};
+
+/**
  * A caller's props on their way to another *part of this package*, rather than
  * onto an intrinsic element.
  *
@@ -116,7 +200,7 @@ export function forwarded(rest: Rest): $FlowFixMe {
  * `defaultPrevented` is the caller's way of saying "I handled this", which is
  * the same contract the DOM uses.
  */
-export function composeHandlers<TEvent extends { readonly defaultPrevented?: boolean }>(
+export function composeHandlers<TEvent extends { readonly defaultPrevented?: boolean, ... }>(
   theirs: mixed,
   ours: (event: TEvent) => mixed,
 ): (event: TEvent) => mixed {

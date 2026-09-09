@@ -53,11 +53,12 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { usePrefersReducedMotion } from "@uniflowed/hooks/browser";
 
 import type { Edge } from "./sheet.js";
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
   forwarded,
+  withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
 import {
@@ -172,13 +173,17 @@ export component DrawerRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-export component DrawerTrigger(children: React.Node, ...rest: Rest) {
-  return <SheetTrigger {...forwarded(rest)}>{children}</SheetTrigger>;
+export component DrawerTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <SheetTrigger {...forwarded(rest)} render={render}>
+      {children}
+    </SheetTrigger>
+  );
 }
 
 /** The backdrop. It carries the edge, the same as a sheet's. */
-export component DrawerOverlay(...rest: Rest) {
-  return <SheetOverlay {...forwarded(rest)} />;
+export component DrawerOverlay(render?: RenderProp, ...rest: Rest) {
+  return <SheetOverlay {...forwarded(rest)} render={render} />;
 }
 
 /**
@@ -189,7 +194,7 @@ export component DrawerOverlay(...rest: Rest) {
  * no drag to provide an alternative to — and a drawer with a handle and no
  * `Drawer.Close` has a gesture that is the only way out.
  */
-export component DrawerBody(children: React.Node, ...rest: Rest) {
+export component DrawerBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const drawer = useDrawer("Drawer.Body");
   const { bodyRef, snapIndex, snapPoints } = drawer;
   const reducedMotion = usePrefersReducedMotion();
@@ -215,6 +220,7 @@ export component DrawerBody(children: React.Node, ...rest: Rest) {
       ref={composeRefs(rest.ref, (element: HTMLElement | null) => {
         bodyRef.current = element;
       })}
+      render={render}
     >
       {children}
       <RequireCloseForTheDrag />
@@ -254,23 +260,39 @@ component RequireCloseForTheDrag() {
 }
 
 /** The top of the drawer, where the handle usually goes. */
-export component DrawerHeader(children: React.Node, ...rest: Rest) {
-  return <SheetHeader {...forwarded(rest)}>{children}</SheetHeader>;
+export component DrawerHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <SheetHeader {...forwarded(rest)} render={render}>
+      {children}
+    </SheetHeader>
+  );
 }
 
 /** The bottom of the drawer, where the actions go. */
-export component DrawerFooter(children: React.Node, ...rest: Rest) {
-  return <SheetFooter {...forwarded(rest)}>{children}</SheetFooter>;
+export component DrawerFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <SheetFooter {...forwarded(rest)} render={render}>
+      {children}
+    </SheetFooter>
+  );
 }
 
 /** The drawer's accessible name. */
-export component DrawerTitle(children: React.Node, ...rest: Rest) {
-  return <SheetTitle {...forwarded(rest)}>{children}</SheetTitle>;
+export component DrawerTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <SheetTitle {...forwarded(rest)} render={render}>
+      {children}
+    </SheetTitle>
+  );
 }
 
 /** What the drawer is for, announced after its name. */
-export component DrawerDescription(children: React.Node, ...rest: Rest) {
-  return <SheetDescription {...forwarded(rest)}>{children}</SheetDescription>;
+export component DrawerDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <SheetDescription {...forwarded(rest)} render={render}>
+      {children}
+    </SheetDescription>
+  );
 }
 
 /**
@@ -279,7 +301,7 @@ export component DrawerDescription(children: React.Node, ...rest: Rest) {
  *
  * It registers itself so `Drawer.Body` can tell whether the gesture has one.
  */
-export component DrawerClose(children: React.Node, ...rest: Rest) {
+export component DrawerClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const drawer = useDrawer("Drawer.Close");
   const closes = drawer.closes;
 
@@ -290,7 +312,11 @@ export component DrawerClose(children: React.Node, ...rest: Rest) {
     };
   }, [closes]);
 
-  return <SheetClose {...forwarded(rest)}>{children}</SheetClose>;
+  return (
+    <SheetClose {...forwarded(rest)} render={render}>
+      {children}
+    </SheetClose>
+  );
 }
 
 /**
@@ -305,7 +331,11 @@ export component DrawerClose(children: React.Node, ...rest: Rest) {
  * `label` because a slider with no accessible name is announced as "slider",
  * which is the same failure `Resizable.Handle` names.
  */
-export component DrawerHandle(label?: string = "Resize the drawer", ...rest: Rest) {
+export component DrawerHandle(
+  label?: string = "Resize the drawer",
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const drawer = useDrawer("Drawer.Handle");
   const { bodyRef, close, handles, setSnapIndex, side, snapIndex, snapPoints } = drawer;
   const passed = withoutComposed(rest, [
@@ -360,78 +390,80 @@ export component DrawerHandle(label?: string = "Resize the drawer", ...rest: Res
     return side === "top" || side === "left" ? from - now : now - from;
   };
 
-  return (
-    <div
-      {...passed}
-      aria-label={label}
-      // The axis the drag runs along, which is the axis the snap points are
-      // measured on: a bottom sheet grows upwards, so its slider is vertical.
-      aria-orientation={vertical ? "vertical" : "horizontal"}
-      aria-valuemax={last}
-      aria-valuemin={0}
-      aria-valuenow={snapIndex}
-      // The number a reader can act on. `aria-valuenow` is an index into a list
-      // nobody outside this component has seen, and "2" says nothing.
-      aria-valuetext={`${String(Math.round((snapPoints[snapIndex] ?? 1) * 100))}%`}
-      data-dragging={dragging ? "true" : undefined}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
-        if (event.key === "Home" || event.key === "End") {
-          event.preventDefault();
-          setSnapIndex(event.key === "Home" ? 0 : last);
-          return;
-        }
-        const towardsOpen = OPENS_WITH[side];
-        const towardsClosed = CLOSES_WITH[side];
-        if (event.key === towardsOpen) {
-          event.preventDefault();
-          step(true);
-          return;
-        }
-        if (event.key === towardsClosed) {
-          event.preventDefault();
-          step(false);
-        }
-      })}
-      onPointerDown={composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
-        dragFrom.current = vertical ? event.clientY : event.clientX;
-        setDragging(true);
-        // So the drag survives the pointer leaving the handle, which it does
-        // immediately: the handle moves with the drawer.
-        event.currentTarget?.setPointerCapture?.(event.pointerId);
-      })}
-      onPointerMove={composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
-        const body = bodyRef.current;
-        if (dragFrom.current == null || body == null) {
-          return;
-        }
-        // Only away from the edge: dragging a drawer *past* fully open would
-        // otherwise lift it off the edge it is attached to.
-        body.style.setProperty("--uf-drawer-drag", `${String(Math.max(0, travelled(event)))}px`);
-      })}
-      onPointerUp={composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
-        const body = bodyRef.current;
-        const moved = travelled(event);
-        dragFrom.current = null;
-        setDragging(false);
-        body?.style.setProperty("--uf-drawer-drag", "0px");
-        if (body == null) {
-          return;
-        }
-        const box = body.getBoundingClientRect();
-        const size = vertical ? box.height : box.width;
-        // A zero-sized box — a document that computes no layout — must not turn
-        // every release into a dismissal.
-        if (size <= 0 || Math.abs(moved) < size * DRAG_THRESHOLD) {
-          return;
-        }
-        step(moved < 0);
-      })}
-      role="slider"
-      // A drag handle that is not in the tab sequence is the WCAG 2.1.1
-      // failure this part exists to avoid.
-      tabIndex={0}
-    />
-  );
+  const props = withProps(passed, {
+    "aria-label": label,
+    // The axis the drag runs along, which is the axis the snap points are
+    // measured on: a bottom sheet grows upwards, so its slider is vertical.
+    "aria-orientation": vertical ? "vertical" : "horizontal",
+    "aria-valuemax": last,
+    "aria-valuemin": 0,
+    "aria-valuenow": snapIndex,
+    // The number a reader can act on. `aria-valuenow` is an index into a list
+    // nobody outside this component has seen, and "2" says nothing.
+    "aria-valuetext": `${String(Math.round((snapPoints[snapIndex] ?? 1) * 100))}%`,
+    "data-dragging": dragging ? "true" : undefined,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        setSnapIndex(event.key === "Home" ? 0 : last);
+        return;
+      }
+      const towardsOpen = OPENS_WITH[side];
+      const towardsClosed = CLOSES_WITH[side];
+      if (event.key === towardsOpen) {
+        event.preventDefault();
+        step(true);
+        return;
+      }
+      if (event.key === towardsClosed) {
+        event.preventDefault();
+        step(false);
+      }
+    }),
+    onPointerDown: composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
+      dragFrom.current = vertical ? event.clientY : event.clientX;
+      setDragging(true);
+      // So the drag survives the pointer leaving the handle, which it does
+      // immediately: the handle moves with the drawer.
+      event.currentTarget?.setPointerCapture?.(event.pointerId);
+    }),
+    onPointerMove: composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
+      const body = bodyRef.current;
+      if (dragFrom.current == null || body == null) {
+        return;
+      }
+      // Only away from the edge: dragging a drawer *past* fully open would
+      // otherwise lift it off the edge it is attached to.
+      body.style.setProperty("--uf-drawer-drag", `${String(Math.max(0, travelled(event)))}px`);
+    }),
+    onPointerUp: composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
+      const body = bodyRef.current;
+      const moved = travelled(event);
+      dragFrom.current = null;
+      setDragging(false);
+      body?.style.setProperty("--uf-drawer-drag", "0px");
+      if (body == null) {
+        return;
+      }
+      const box = body.getBoundingClientRect();
+      const size = vertical ? box.height : box.width;
+      // A zero-sized box — a document that computes no layout — must not turn
+      // every release into a dismissal.
+      if (size <= 0 || Math.abs(moved) < size * DRAG_THRESHOLD) {
+        return;
+      }
+      step(moved < 0);
+    }),
+    role: "slider",
+    // A drag handle that is not in the tab sequence is the WCAG 2.1.1
+    // failure this part exists to avoid.
+    tabIndex: 0,
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /**

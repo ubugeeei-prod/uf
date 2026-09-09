@@ -56,7 +56,9 @@ which is the fastest way to answer "what is it actually using".
 | `router.entry` | `"app.js"` | The module exporting `routerView()` |
 | `router.root` | `"app"` | The directory scanned for routes |
 | `router.enabled` | `true` | Turning it off makes the project a library, and makes `uf build` [build one](#buildlib) |
-| `runtime.default` | `"node"` | The JavaScript host to prefer |
+| `runtime.default` | `"node"` | The runtime this project is written for. `node`, `deno` and `bun`; naming a runtime uf has no host for is an error that says which key was meant ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
+| `runtime.compatibility` | `["node", "bun", "deno"]` | The other runtimes it states it runs on, from the same three. Written into `.uf/install.json` as the hosts that must be available |
+| `runtime.capabilityJsHost.default` | `"node"` | **The host a command actually starts.** `uf dev`, `uf test` and `uf build` resolve through this key, not through `runtime.default` |
 | `runtime.capabilityJsHost.hosts` | `["node", "deno", "bun"]` | Hosts uf may use |
 | `runtime.capabilityJsHost.autoDetect` | `true` | Pick a host by what is installed |
 | `runtime.deploy.adapter` | none | The deploy target `uf build` writes an artefact for; `--adapter` overrides it |
