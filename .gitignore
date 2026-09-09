@@ -23,6 +23,11 @@ coverage/
 node_modules/
 .uf/
 /.wrangler/
+# `wrangler dev` writes its state beside the config it was given, and
+# `infra/cloudflare/wrangler.root.jsonc` is one anybody can run locally — the
+# apex worker needs no account to serve. The anchored entry above does not
+# reach it.
+infra/cloudflare/.wrangler/
 /.direnv/
 .terraform/
 *.tfplan
