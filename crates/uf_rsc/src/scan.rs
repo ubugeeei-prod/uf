@@ -19,14 +19,19 @@ mod client_api;
 mod exports;
 mod imports;
 pub mod lexer;
+pub(crate) mod owner;
 
 pub(crate) use client_api::{client_api_uses_from_tokens, hook_calls_from_tokens};
 pub(crate) use exports::exports_from_tokens;
 pub(crate) use imports::imports_from_tokens;
 pub use lexer::{Token, TokenKind, matching_close, matching_open, starts_statement, tokenize};
+pub(crate) use owner::owner_spans;
 
 /// Inline list of import specifiers belonging to one module.
 pub type ImportList = InlineVec<ImportSpecifier, 8>;
+
+/// Inline list of the bindings one import clause introduces.
+pub type ImportBindingList = InlineVec<ImportBinding, 4>;
 
 /// Inline list of exported bindings belonging to one module.
 pub type ExportList = InlineVec<ModuleExport, 8>;
@@ -95,6 +100,60 @@ pub enum ImportKind {
     Require,
 }
 
+/// What an import specifier names in the module it points at.
+///
+/// Three shapes rather than one string, because `*` is not a name a module can
+/// export and `default` is: `import { default as x }` and `import x` bind the
+/// same export and are the same variant here, while a namespace import binds
+/// the module itself and has no exported name behind it at all.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ImportedName {
+    /// The default export: `import x from "m"`, `import { default as x } from "m"`.
+    Default,
+    /// The module itself: `import * as x from "m"`.
+    Namespace,
+    /// A named export: `import { imported as local } from "m"`.
+    Named(CompactString),
+}
+
+impl ImportedName {
+    /// The exported name behind the binding, when there is one.
+    ///
+    /// [`None`] for a namespace import, which binds no single export — a
+    /// caller asking "which export of `@uniflowed/hooks` is this" has to get
+    /// nothing rather than a name it can compare against a table.
+    pub fn as_export_name(&self) -> Option<&str> {
+        match self {
+            Self::Default => Some("default"),
+            Self::Namespace => None,
+            Self::Named(name) => Some(name.as_str()),
+        }
+    }
+}
+
+/// One `{ imported, local }` pair of an import clause.
+///
+/// The pair rather than either half alone. Collapsing them loses the aliased
+/// import — `import { useState as useS } from "react"` binds `useS` in this
+/// module and names `useState` in React's — so a scanner that keeps only the
+/// local name cannot look a hook up in a package's table, and one that keeps
+/// only the imported name cannot connect a call site to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportBinding {
+    /// The name in the module the specifier points at.
+    pub imported: ImportedName,
+    /// The name this module binds it under.
+    ///
+    /// A module-scope binding for every [`ImportKind`] but
+    /// [`ImportKind::ReExport`], where `export { a as b } from "m"` introduces
+    /// no local binding at all and `b` is the name this module *exports* it
+    /// as. Both answer the same question — which name here is that name there
+    /// — so both are recorded, and the kind says which reading applies.
+    pub local: CompactString,
+}
+
 /// One import specifier as written in the source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -105,6 +164,15 @@ pub struct ImportSpecifier {
     pub kind: ImportKind,
     /// 1-based line the specifier appeared on.
     pub line: u32,
+    /// The names the clause binds, in source order.
+    ///
+    /// Empty when the form binds nothing the scanner can name: a bare
+    /// `import "m"`, an `export * from "m"`, a dynamic `import("m")` or a
+    /// `require("m")` — the last two because what they bind is decided by the
+    /// expression around them and not by a clause. Flow's inline type
+    /// specifiers are dropped with the rest of the types: `import { type T, a }`
+    /// binds only `a` at runtime.
+    pub bindings: ImportBindingList,
 }
 
 /// Shape of an exported binding, as far as a lexer can tell.
@@ -158,6 +226,13 @@ pub struct HookCall {
     pub line: u32,
     /// 1-based column of the call.
     pub column: u32,
+    /// The module-level declaration whose body the call sits in.
+    ///
+    /// Same rule and same caveats as [`ClientApiUse::owner`]. It is the second
+    /// half of the fixpoint's edge set: a wrapper is client-only when it
+    /// reaches a client-only API *or* calls a hook that does, and without an
+    /// owner here the second clause has no left-hand side.
+    pub owner: Option<CompactString>,
 }
 
 /// One use of a client-only API inside a module.
@@ -170,6 +245,18 @@ pub struct ClientApiUse {
     pub line: u32,
     /// 1-based column of the use.
     pub column: u32,
+    /// The module-level declaration whose body the use sits in.
+    ///
+    /// A line and a column say where a `useState` is; this says whose it is,
+    /// which is what turns "this module reaches a client-only API" into "this
+    /// *export* does" — the edge an export-graph fixpoint propagates along.
+    /// See ubugeeei-prod/uf#388.
+    ///
+    /// [`None`] for a use no module-level body contains: module top-level
+    /// code, a method of a class or an object literal, and an anonymous body.
+    /// Not a fallback to the nearest enclosing name — an owner that might be
+    /// wrong is worse than none, because the fixpoint would propagate it.
+    pub owner: Option<CompactString>,
 }
 
 /// Collect the import specifiers of a module.
@@ -190,14 +277,16 @@ pub fn scan_exports(source: &str) -> ExportList {
 pub fn scan_client_api_uses(source: &str) -> ClientApiUseList {
     let tokens = tokenize(source);
     let index = LineIndex::new(source);
-    client_api_uses_from_tokens(source, &tokens, &index)
+    let owners = owner_spans(source, &tokens);
+    client_api_uses_from_tokens(source, &tokens, &index, &owners)
 }
 
 /// Collect calls to hooks that [`CLIENT_ONLY_APIS`] does not name.
 pub fn scan_hook_calls(source: &str) -> HookCallList {
     let tokens = tokenize(source);
     let index = LineIndex::new(source);
-    hook_calls_from_tokens(source, &tokens, &index)
+    let owners = owner_spans(source, &tokens);
+    hook_calls_from_tokens(source, &tokens, &index, &owners)
 }
 
 /// Clamp a `usize` position into the `u32` used by diagnostics.

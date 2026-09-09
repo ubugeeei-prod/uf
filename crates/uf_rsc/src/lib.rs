@@ -68,10 +68,10 @@ pub use project::{
     analyze_project,
 };
 pub use scan::{
-    CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ExportKind, HookCall, ImportKind,
-    ImportSpecifier, MAX_SOURCE_BYTES, ModuleExport, Token, TokenKind, matching_close,
-    matching_open, scan_client_api_uses, scan_exports, scan_hook_calls, scan_imports,
-    starts_statement, tokenize,
+    CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ExportKind, HookCall, ImportBinding,
+    ImportKind, ImportSpecifier, ImportedName, MAX_SOURCE_BYTES, ModuleExport, Token, TokenKind,
+    matching_close, matching_open, scan_client_api_uses, scan_exports, scan_hook_calls,
+    scan_imports, starts_statement, tokenize,
 };
 pub use types::{
     SERVER_ACTION_TYPES_FILE_NAME, SERVER_ACTION_TYPES_HEADER, ServerActionType,
