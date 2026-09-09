@@ -119,7 +119,10 @@ fn a_component_is_measured_by_a_real_layout_engine() {
     // wants from a mode they asked for because they stopped trusting one.
     let report: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|error| panic!("`--json` is one document: {error}\n{stdout}"));
-    assert_eq!(report["passed"], 1, "one case, measured in a browser\n{stdout}");
+    assert_eq!(
+        report["passed"], 1,
+        "one case, measured in a browser\n{stdout}"
+    );
     assert_eq!(report["failed"], 0, "{stdout}");
     assert_eq!(report["files"], 1, "{stdout}");
 }
