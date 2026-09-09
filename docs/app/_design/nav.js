@@ -230,6 +230,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb:
           "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops.",
       },
+      {
+        href: "/reference/std",
+        title: "Standard library",
+        blurb:
+          "The Go standard library modules JavaScript does not have, and the measurements behind why they are JavaScript.",
+      },
     ],
   },
 ];

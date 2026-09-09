@@ -1,0 +1,182 @@
+---
+title: "Standard library · uf"
+description: "The Go standard library modules JavaScript does not have, and the measurements behind why they are JavaScript."
+---
+
+<p className="eyebrow">Reference</p>
+
+# @uniflowed/std
+
+<div className="lede">
+Go's standard library is the benchmark: a language whose batteries are actually
+included. `@uniflowed/std` is the parts of it JavaScript does not have, written
+in Flow, one export path per module so a program pays only for what it imports.
+</div>
+
+```js
+// @flow
+import { as, is, wrap } from "@uniflowed/std/errors";
+import { Group } from "@uniflowed/std/sync";
+import { withTimeout, background } from "@uniflowed/std/context";
+
+const [ctx, cancel] = withTimeout(background(), 5_000);
+try {
+  const group = new Group({ limit: 8 });
+  for (const id of ids) group.go((signal) => fetchRow(id, signal));
+  return await group.wait();
+} catch (failure) {
+  if (is(failure, ctx.err())) return cached;
+  throw wrap("loading the dashboard", failure);
+} finally {
+  cancel();
+}
+```
+
+## What ships today
+
+Six modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
+brings in a hex codec and nothing else.
+
+| Import | Go's name | What it is |
+| --- | --- | --- |
+| `@uniflowed/std/errors` | `errors` | `wrap`, `is`, `as`, `join`, `unwrap`, `chain` over `Error.cause` |
+| `@uniflowed/std/sync` | `sync`, `errgroup` | `WaitGroup`, `Mutex`, `Semaphore`, `once`, `Group` |
+| `@uniflowed/std/context` | `context` | Cancellation, deadlines and typed values over `AbortSignal` |
+| `@uniflowed/std/bytes` | `bytes` | Searching, splitting and joining `Uint8Array`, plus `Builder` |
+| `@uniflowed/std/heap` | `container/heap` | A binary heap with a comparator |
+| `@uniflowed/std/hex` | `encoding/hex` | `encode`, `decode`, `isValid`, `dump` |
+
+The root `@uniflowed/std` is unchanged: it is a declaration surface whose
+functions raise `NativeRuntimeRequiredError`, and it is not what these six are.
+Everything above runs.
+
+## The types are the point
+
+Every generic here infers at the call site, with no annotation and no `any`
+underneath, and that claim is tested rather than asserted:
+`tests/type-tests/std-inference.js` is a file of deliberate misuses, and
+`uf check` has to report every one of them and nothing else.
+
+```js
+const queue = new Heap((a, b) => a.due - b.due);   // Heap<Job>, from the comparator
+const next = queue.pop();                          // Job | void
+
+const TRACE = key<string>("trace-id");
+withValue(ctx, TRACE, 7);                          // refused: 7 is not a string
+traced.value(TRACE);                               // string | void
+
+as(failure, HttpError)?.status;                    // number, from the class alone
+```
+
+## Cancellation: why not just `AbortSignal`
+
+Every context *has* one — `ctx.signal()` is what goes to `fetch` — so this
+composes with the platform rather than competing with it. What it adds is the
+three things `AbortSignal` does not have: a tree, so cancelling a request
+cancels everything it started; deadlines that only ever shorten, so a library
+cannot buy itself more time than its caller allowed; and typed request-scoped
+values.
+
+`AbortSignal.any` and `AbortSignal.timeout` cover parts of the first two, and
+they are the newest things on the interface — Node, Deno, Bun and workerd gained
+them at different times. Nothing here uses either.
+
+**One thing it asks of you that Go does not.** A deadline is a `setTimeout`, and
+on Node a pending timer keeps the process alive. There is no runtime-agnostic
+`unref` — Deno and browsers have none — so the `cancel` that `withTimeout` hands
+back has to be called, in a `finally`, on the happy path too.
+
+## Where it runs
+
+Everything here is pure Flow over the web platform: `Uint8Array`,
+`TextEncoder`/`TextDecoder`, `AbortController`, `Promise`, `setTimeout`. No
+`node:` import, no native binding, no `Buffer`.
+
+| Host | `errors` | `sync` | `context` | `bytes` | `heap` | `hex` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Node.js | yes | yes | yes | yes | yes | yes |
+| Bun | yes | yes | yes | yes | yes | yes |
+| Deno | yes | yes | yes | yes | yes | yes |
+| Edge / workers | yes | yes | yes | yes | yes | yes |
+
+That table is a claim about what the code uses, not a matrix of green test runs:
+uf's own suite runs on Node, and [Hosts](/guide/hosts) is the honest account of
+which runtimes have a test that starts them. `AggregateError`, which
+`errors.join` returns, is the newest thing any of these touches; it has been in
+every one of those runtimes since 2020.
+
+## Why this is JavaScript and not Rust
+
+uf is a native toolchain, so "should this be native" is a fair question for
+every module. It was measured rather than guessed, and the answer for these six
+is no.
+
+The comparison is against Node's own C++ implementations of the same
+operations — `Buffer#toString("hex")`, `Buffer#equals`, `Buffer#indexOf` —
+reached across the same kind of JavaScript-to-native boundary a binding would
+use. That makes it a measurement of what native buys, not an estimate of it.
+Node 24 on an M-series laptop, nanoseconds per call:
+
+| Operation | Size | This, in JS | Node, native | Native is |
+| --- | --- | --- | --- | --- |
+| `hex.encode` | 16 B | 83 ns | 40 ns | 2.1x faster |
+| `hex.encode` | 1 MiB | 1.69 ms | 0.26 ms | 6.5x faster |
+| `hex.decode` | 16 B | 80 ns | 72 ns | 1.1x faster |
+| `hex.decode` | 1 MiB | 4.54 ms | 0.66 ms | 6.8x faster |
+| `bytes.equal` | 16 B | 14 ns | 25 ns | **1.8x slower** |
+| `bytes.equal` | 64 B | 59 ns | 30 ns | 2.0x faster |
+| `bytes.equal` | 1 MiB | 0.89 ms | 0.02 ms | 42x faster |
+| `bytes.indexOf` | 1 KiB | 324 ns | 69 ns | 4.7x faster |
+| `bytes.indexOf` | 1 MiB | 332 µs | 21 µs | 16x faster |
+
+Three things follow from that table, and only the third is about speed.
+
+**The boundary is not free, and below a few dozen bytes it is the whole bill.**
+`bytes.equal` on sixteen bytes is *faster* in JavaScript than the native call
+that does the same thing, because comparing sixteen bytes takes less time than
+crossing into C++ to do it. Most calls to most of these functions are small: a
+32-byte digest, a four-byte delimiter, a header value.
+
+**There is no binding to cross anyway.** There is no N-API and no WebAssembly
+crate anywhere in this repository. "Native" for a `@uniflowed/std` module is not
+a build flag; it is a layer that does not exist yet, and the first module to
+need one should be the module that pays for it.
+
+**A native module would not be runtime-agnostic.** An N-API addon runs on Node
+and Bun and not on Deno or the edge, which is [red line
+6](https://github.com/ubugeeei-prod/uf/blob/main/docs/red-lines.md). A
+WebAssembly module runs everywhere and copies its arguments across the
+boundary — which, for a function whose argument *is* a byte buffer, is the cost
+the native implementation was supposed to save.
+
+So the effort went where it was measurable instead. Each of these is one
+implementation of the same function against another, both in JavaScript:
+
+| Change | Effect |
+| --- | --- |
+| `hex.encode` writing ASCII bytes and decoding once, above 128 B | 43 MB/s → 620 MB/s |
+| `hex.encode` appending to a string, below 128 B | 520 ns → 150 ns on a 32 B digest |
+| `bytes.indexOf` scanning for the first byte natively | 8–10x over the naive double loop |
+| `bytes.Builder` over re-allocating per chunk | 11x at 100 chunks, 825x at 10,000 |
+| `heap` over sorting on every insert | 161x at 1,000 items, 507x at 10,000 |
+
+The last two are not micro-optimisations. They are the difference between
+linear and quadratic, which is the difference between a service that is fine in
+staging and one that falls over in production.
+
+## What is not here yet
+
+Named because the list is the plan, not because the omissions are accidents.
+The next tranche is `io` reader and writer interfaces, `encoding/csv`,
+`encoding/base32`, `container/list`, `hash/crc32` and `hash/fnv`,
+`path/filepath`, and `time` durations and tickers. `sync.RWMutex` is deliberately
+absent: readers and writers cannot run at the same time in one runtime, so it
+would buy a fairness policy and nothing else, and it should arrive with the
+workload that needs one.
+
+Much of Go's standard library is not missing at all and will not be
+reimplemented here — `strings`, `math`, `encoding/json`, `time`'s formatting,
+`regexp`, `sort` (`Array.prototype.sort` has been stable since ES2019) and
+`net/url` all have platform answers that are better than a port would be. And
+some of it cannot exist on a runtime-agnostic module at all: `os/exec`,
+`net`'s raw sockets, `syscall`, `runtime`, and anything that needs a thread.
