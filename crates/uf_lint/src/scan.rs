@@ -14,6 +14,7 @@ mod search;
 mod tests;
 
 use uf_infra::LineIndex;
+use uf_profiler::profile_span;
 
 use crate::SourceFile;
 use line::{Carry, scan_line};
@@ -126,6 +127,7 @@ impl<'a> FileScan<'a> {
     /// Masking preserves every byte offset, so a diagnostic measured against it
     /// lands in the same place in the real file.
     pub fn new(file: &'a SourceFile, source: &'a str) -> Self {
+        profile_span!("FileScan::new");
         let index = LineIndex::new(source);
 
         let mut lines = Vec::with_capacity(index.line_count());

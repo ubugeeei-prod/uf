@@ -26,6 +26,13 @@ serde_json.workspace = true
 thiserror.workspace = true
 uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
+# `profile_span!` in the hot path, and the counting allocator behind the
+# figures in ubugeeei-prod/uf#668. A dependency rather than a dev-dependency
+# because the spans are compiled into the library itself: with the gate shut
+# each one is a relaxed atomic load and a `bool`, which is the price of a
+# profiler that is already there when the question arrives rather than one
+# that has to be added first. See `uf_profiler`'s own header.
+uf_profiler = { path = "../uf_profiler" }
 
 [dev-dependencies]
 criterion.workspace = true
@@ -36,11 +43,6 @@ similar-asserts.workspace = true
 # ask it what it read. This crate is where that test lives because it is the
 # only one that can see every entry point.
 uf_check = { path = "../uf_check" }
-
-# For `examples/alloc_report.rs`: the counting allocator that produced the
-# figures in ubugeeei-prod/uf#668, so the next person to touch this pipeline can
-# reproduce them rather than take them on trust.
-uf_profiler = { path = "../uf_profiler" }
 
 [[bench]]
 name = "transform"

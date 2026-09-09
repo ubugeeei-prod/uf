@@ -3,6 +3,7 @@
 
 use uf_config::UniflowedConfig;
 use uf_flow::FlowParser;
+use uf_profiler::profile_span;
 
 use crate::scan::FileScan;
 use crate::{Diagnostic, LintError, push, severity};
@@ -12,6 +13,7 @@ pub(crate) fn run_flow_syntax(
     config: &UniflowedConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), LintError> {
+    profile_span!("run_flow_syntax");
     let Some(severity) = severity(config, "flow/syntax") else {
         return Ok(());
     };

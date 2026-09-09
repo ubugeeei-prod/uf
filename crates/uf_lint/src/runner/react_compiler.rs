@@ -8,6 +8,7 @@
 //! for `uf lint` and `uf build` to disagree about a component.
 
 use uf_config::UniflowedConfig;
+use uf_profiler::profile_span;
 use uf_react_compiler::ReactCompilerRule;
 
 use crate::scan::FileScan;
@@ -23,6 +24,7 @@ pub(crate) fn run_react_compiler_rules(
     config: &UniflowedConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    profile_span!("run_react_compiler_rules");
     if ReactCompilerRule::ALL
         .iter()
         .all(|rule| severity(config, rule.id()).is_none())
