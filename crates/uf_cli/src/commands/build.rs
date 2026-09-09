@@ -275,6 +275,17 @@ pub(crate) fn build(
     // which has a bundle to load and does not have it; that is refused in
     // `commands::serve`, where it is a fact rather than an opinion.
     let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
+    // Before the build rather than after it: a project whose scheduled work
+    // this target would never run should hear so in a second, not after a
+    // bundle. ubugeeei-prod/uf#531.
+    let declared_schedules = match adapter {
+        Some(adapter) => {
+            let found = deploy::schedules::discover_schedules(&root, &resolved.config)?;
+            deploy::schedules::refuse_unrunnable(adapter, &found)?;
+            found
+        }
+        None => Vec::new(),
+    };
     // The fourth thing that needs a process, and the only one `uf` can see
     // without evaluating a module. Checked here rather than in the builder for
     // exactly that reason — see `refuse_unanswerable_actions`.
@@ -397,6 +408,12 @@ pub(crate) fn build(
             "fetch": resolved.config.app.rendering.cache.fetch,
             "data": resolved.config.app.rendering.cache.data,
             "actions": resolved.config.app.rendering.cache.actions,
+            // Where the entries go, for a deploy step that has to provision it:
+            // `"filesystem"` needs a writable directory that outlives the
+            // process, and a module specifier needs whatever that module
+            // connects to. Absent means memory, which needs nothing.
+            "store": resolved.config.app.rendering.cache.store.as_deref(),
+            "storeDir": resolved.config.app.rendering.cache.store_dir.as_deref(),
         },
     });
     timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
@@ -480,7 +497,9 @@ pub(crate) fn build(
                 "writing the {} adapter's output",
                 adapter.as_str()
             ));
-            Some(timer.measure("adapter", || deploy::deploy(ui, adapter, link))?)
+            Some(timer.measure("adapter", || {
+                deploy::deploy(ui, adapter, link, &declared_schedules)
+            })?)
         }
         None => None,
     };

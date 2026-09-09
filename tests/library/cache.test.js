@@ -28,6 +28,11 @@
 // manifest — `refuses_a_cache_switch_uf_does_not_implement` is that assertion,
 // and it belongs there because it is a fact about loading a config file.
 
+import fs from "node:fs";
+import os from "node:os";
+import nodePath from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { describe, expect, it } from "@uniflowed/test";
 
 import {
@@ -36,10 +41,13 @@ import {
   cacheTag,
   createCacheStore,
   createCachedFetch,
+  decodeCacheValue,
+  encodeCacheValue,
   noStore,
   revalidatePath,
   revalidateTag,
 } from "@uniflowed/server/cache";
+import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";
 import { cookies, draftMode, headers } from "@uniflowed/server";
 import { createDispatcher } from "@uniflowed/router/handler";
 import { createFetchHandler } from "@uniflowed/server/fetch";
@@ -49,7 +57,7 @@ import { beginRequest } from "@uniflowed/server/host";
 // `uf preview` and `uf start` build their handler with, and it is the only
 // place `rendering.cache` becomes a store for those two commands, so it is
 // reached by path here for the same reason it is there.
-import { createApplicationHandler } from "../../packages/vite/internal/serve.js";
+import { createApplicationHandler, providerSpecifier } from "../../packages/vite/internal/serve.js";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
@@ -176,6 +184,92 @@ function servingWith(options: mixed, cacheOptions?: {| route?: boolean, fetch?: 
     cache: { store, route: cacheOptions?.route ?? true, fetch: cacheOptions?.fetch ?? false },
   });
   return { app, handle, store, time };
+}
+
+/**
+ * A durable provider that is a `Map`, so a test can be about the seam.
+ *
+ * Almost every assertion below is about what the *store* does with a provider —
+ * when it reads one, what it writes, what it invalidates — and none of that is
+ * a fact about a disk. A `Map` shared between two stores is two processes with
+ * one cache between them, which is the arrangement the whole feature is for,
+ * expressed in a way a test can drive without a filesystem.
+ *
+ * `reads` and `writes` are counted because "the second store did not render"
+ * and "the second store read the shared entry" are two different claims and
+ * only the second one is what a durable cache promises.
+ */
+function fakeProvider(): $FlowFixMe {
+  const entries: Map<string, mixed> = new Map();
+  const provider: $FlowFixMe = {
+    name: "fake",
+    entries,
+    reads: 0,
+    writes: 0,
+    failures: 0,
+    /** Set to a message to make every read and write throw. */
+    broken: null,
+    async read(key: string) {
+      provider.reads += 1;
+      if (provider.broken != null) throw new Error(provider.broken);
+      return entries.get(key) ?? null;
+    },
+    async write(key: string, entry: mixed) {
+      provider.writes += 1;
+      if (provider.broken != null) throw new Error(provider.broken);
+      entries.set(key, entry);
+    },
+    async remove(key: string) {
+      entries.delete(key);
+    },
+    async invalidateTag(tag: string) {
+      return drop(entries, (entry) => entry.tags.includes(tag));
+    },
+    async invalidatePath(path: string) {
+      return drop(entries, (entry) => entry.path === path);
+    },
+    async clear() {
+      entries.clear();
+    },
+  };
+  return provider;
+}
+
+/** Take every entry `matches` describes out of `entries`, counting them. */
+function drop(entries: Map<string, $FlowFixMe>, matches: ($FlowFixMe) => boolean): number {
+  let dropped = 0;
+  for (const [key, entry] of Array.from(entries.entries())) {
+    if (matches(entry)) {
+      entries.delete(key);
+      dropped += 1;
+    }
+  }
+  return dropped;
+}
+
+/**
+ * A directory that goes away with the test.
+ *
+ * `mkdtemp` rather than a fixed path under the repository, because two of these
+ * tests run at once in different workers and a shared directory would make one
+ * of them read the other's entries — which is the very thing being tested, from
+ * the wrong direction.
+ */
+function tempDirectory(): string {
+  return fs.mkdtempSync(nodePath.join(os.tmpdir(), "uf-cache-"));
+}
+
+/** A store over `provider`, with an injectable clock and a stated build. */
+function durableStore(provider: mixed, options?: {| now?: () => number, build?: string |}) {
+  return createCacheStore({
+    now: options?.now,
+    provider: (provider: $FlowFixMe),
+    build: options?.build ?? "build-one",
+    // Collected rather than printed: several of these tests make a provider
+    // fail on purpose, and a suite that prints a stack per deliberate failure
+    // teaches its reader to skip the output.
+    onError: () => {},
+  });
 }
 
 describe("the key", () => {
@@ -1033,5 +1127,635 @@ describe("what rendering.cache reaches", () => {
     await serve(handle, app, "/posts");
 
     expect(app.renders.length).toBe(2);
+  });
+});
+
+// The rest of this file is the half of the contract that only exists once an
+// entry can outlive the process that filled it. `packages/server/cache.js`'s
+// header used to end by naming what it did not have — "a durable store behind
+// `resolve`, which is an adapter's to provide" — and these are the promises
+// that sentence turned into.
+//
+// Almost all of it is driven through a `Map` behind the provider seam rather
+// than through a disk, on purpose: what is being checked is what the *store*
+// does with a provider, and one `Map` shared by two stores is two processes
+// sharing one cache with nothing else in the way. The filesystem provider gets
+// its own tests, further down, because it is one implementation of the seam and
+// not the seam.
+
+describe("a durable store", () => {
+  it("is not one unless a host asked for it", async () => {
+    const store = createCacheStore({ now: clock().now });
+
+    await store.resolve({ key: ["a"], lifetime: { revalidate: 60 } }, async () => "one");
+    await store.settled();
+
+    // Persistence is a second opt-in on top of the first. A project that turned
+    // the route cache on and said nothing else has exactly the store it had
+    // before any of this existed.
+    expect(store.stats().persisted).toBe(0);
+    expect(store.stats().restored).toBe(0);
+  });
+
+  it("refuses a provider with no build to key its entries by", () => {
+    // The one place the store refuses rather than degrading. A host passed a
+    // provider on purpose, in one line of wiring; falling back to memory would
+    // turn a typo into a deployment that is not what it says it is, and
+    // generating an identity per process would be worse — four servers writing
+    // four copies into one store and reading none of them.
+    expect(() => createCacheStore({ provider: fakeProvider() })).toThrow(/build/);
+    expect(() => createCacheStore({ provider: fakeProvider(), build: "" })).toThrow(/build/);
+  });
+
+  it("refuses a provider that cannot answer the whole seam", () => {
+    const provider: $FlowFixMe = fakeProvider();
+    delete provider.invalidateTag;
+
+    // Checked where it is wired rather than at the first call, because the
+    // symptom otherwise is a cache that answers every request perfectly and
+    // silently stops invalidating.
+    expect(() => createCacheStore({ provider, build: "b" })).toThrow(/invalidateTag/);
+    expect(() => createCacheStore({ provider: { name: "half", read() {} }, build: "b" })).toThrow(
+      /read|write/,
+    );
+  });
+
+  it("keeps an entry across a restart", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const before = durableStore(provider, { now: time.now });
+
+    await before.resolve({ key: ["route", "/posts"], lifetime: { revalidate: 60 } }, async () => ({
+      title: "one",
+    }));
+    await before.settled();
+
+    // A second store over the same provider and nothing else: a process that
+    // restarted, or the fourth server behind the load balancer.
+    const after = durableStore(provider, { now: time.now });
+    let rendered = 0;
+    const result = await after.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 60 } },
+      async () => {
+        rendered += 1;
+        return { title: "two" };
+      },
+    );
+
+    expect(result.outcome).toBe("hit");
+    expect(result.value).toEqual({ title: "one" });
+    expect(rendered).toBe(0);
+    expect(after.stats().restored).toBe(1);
+  });
+
+  it("keys entries by the build, so a deploy does not read the last one's", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const old = durableStore(provider, { now: time.now, build: "build-one" });
+    await old.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 600 } },
+      async () => "old",
+    );
+    await old.settled();
+
+    const deployed = durableStore(provider, { now: time.now, build: "build-two" });
+    const result = await deployed.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 600 } },
+      async () => "new",
+    );
+    await deployed.settled();
+
+    // The whole of `internal/cache-key.js`'s argument, as one assertion: the
+    // entry is still in the store and under a different name, so a deploy is a
+    // cold cache rather than the previous build's documents answering the new
+    // build's URLs.
+    expect(result.value).toBe("new");
+    expect(deployed.stats().restored).toBe(0);
+    expect(provider.entries.size).toBe(2);
+  });
+
+  it("stores nothing durably that it would not store in memory", async () => {
+    const provider = fakeProvider();
+    const store = durableStore(provider, { now: clock().now });
+
+    await store.resolve({ key: ["a"] }, async () => "no lifetime");
+    await store.resolve({ key: ["b"], lifetime: { revalidate: 60 } }, async () => {
+      noStore("this one asked not to be");
+      return "denied";
+    });
+    await store.settled();
+
+    // "No entry is stored without a stated lifetime" is a rule about the cache,
+    // not about where the cache keeps things, so it holds on both sides of the
+    // seam and there is no configuration that opens a hole in it.
+    expect(provider.entries.size).toBe(0);
+    expect(store.stats().persisted).toBe(0);
+  });
+
+  it("brings a document's bytes back as bytes", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const before = durableStore(provider, { now: time.now });
+    const body = new TextEncoder().encode("<!doctype html><p>hello</p>");
+
+    await before.resolve({ key: ["route", "/"], lifetime: { revalidate: 60 } }, async () => ({
+      status: 200,
+      headers: { "x-thing": "1" },
+      body,
+    }));
+    await before.settled();
+
+    const after = durableStore(provider, { now: time.now });
+    const result = await after.resolve(
+      { key: ["route", "/"], lifetime: { revalidate: 60 } },
+      async () => ({ status: 500, headers: {}, body: new Uint8Array() }),
+    );
+
+    // A rendered document is a `Uint8Array`, and plain JSON turns one into an
+    // object of numeric keys with no error anywhere. That is why the encoding
+    // is uf's and not each provider's.
+    expect(result.value.body instanceof Uint8Array).toBe(true);
+    expect(new TextDecoder().decode(result.value.body)).toBe("<!doctype html><p>hello</p>");
+    expect(result.value.headers).toEqual({ "x-thing": "1" });
+  });
+
+  it("refuses a value it cannot bring back unchanged, and keeps it in memory", async () => {
+    const provider = fakeProvider();
+    const failures = [];
+    const store = createCacheStore({
+      now: clock().now,
+      provider: (provider: $FlowFixMe),
+      build: "b",
+      onError: (error) => {
+        failures.push(error);
+      },
+    });
+
+    const first = await store.resolve({ key: ["a"], lifetime: { revalidate: 60 } }, async () => ({
+      at: new Date(0),
+    }));
+    await store.settled();
+    const second = await store.resolve({ key: ["a"], lifetime: { revalidate: 60 } }, async () => ({
+      at: new Date(1),
+    }));
+
+    // A `Date` goes out through `toJSON` and comes back a string, which is a
+    // different answer wearing the same name. Refused rather than stored — and
+    // refused is not failed: the request got its value and the entry is in
+    // memory exactly as it always was.
+    expect(provider.entries.size).toBe(0);
+    expect(failures.length).toBe(1);
+    expect(String(failures[0])).toMatch(/Date/);
+    expect(second.outcome).toBe("hit");
+    expect(second.value).toBe(first.value);
+  });
+
+  it("answers from the render when the provider is broken, and says so", async () => {
+    const provider = fakeProvider();
+    provider.broken = "the disk is gone";
+    const failures = [];
+    const store = createCacheStore({
+      now: clock().now,
+      provider: (provider: $FlowFixMe),
+      build: "b",
+      onError: (error) => {
+        failures.push(error);
+      },
+    });
+
+    const result = await store.resolve(
+      { key: ["a"], lifetime: { revalidate: 60 } },
+      async () => "rendered",
+    );
+    await store.settled();
+
+    // Slower, never wrong: a store that cannot reach its provider costs a
+    // render and reports both halves of why, and nothing a request can see
+    // changed.
+    expect(result.value).toBe("rendered");
+    expect(result.outcome).toBe("miss");
+    expect(failures.length).toBe(2);
+  });
+
+  it("serves a durable entry inside its window and refreshes behind it", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const before = durableStore(provider, { now: time.now });
+    await before.resolve(
+      { key: ["a"], lifetime: { revalidate: 60, expire: 600 } },
+      async () => "old",
+    );
+    await before.settled();
+
+    time.advance(120);
+    const after = durableStore(provider, { now: time.now });
+    let rendered = 0;
+    const result = await after.resolve(
+      { key: ["a"], lifetime: { revalidate: 60, expire: 600 } },
+      async () => {
+        rendered += 1;
+        return "new";
+      },
+    );
+    await settled();
+    await after.settled();
+
+    // Staleness is decided from the entry's own timestamps whichever store
+    // wrote them, so a process that has just started reads an entry another
+    // process filled two minutes ago as exactly two minutes old.
+    expect(result.outcome).toBe("stale");
+    expect(result.value).toBe("old");
+    expect(rendered).toBe(1);
+    expect(after.peek(["a"])?.value).toBe("new");
+  });
+
+  it("cannot serve a durable entry past expire", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const before = durableStore(provider, { now: time.now });
+    await before.resolve({ key: ["a"], lifetime: { revalidate: 60 } }, async () => "old");
+    await before.settled();
+
+    time.advance(61);
+    const after = durableStore(provider, { now: time.now });
+    const result = await after.resolve(
+      { key: ["a"], lifetime: { revalidate: 60 } },
+      async () => "new",
+    );
+    await after.settled();
+
+    expect(result.value).toBe("new");
+    expect(after.stats().restored).toBe(0);
+    // Dropped on the read that found it, which is the rule memory has, pointed
+    // at the provider — then rewritten by the fill, so there is one entry and
+    // it is this one.
+    expect(provider.entries.size).toBe(1);
+  });
+
+  it("goes to the provider once for two callers who both missed memory", async () => {
+    const provider = fakeProvider();
+    const store = durableStore(provider, { now: clock().now });
+    let rendered = 0;
+    const produce = async () => {
+      rendered += 1;
+      return "one";
+    };
+
+    const [first, second] = await Promise.all([
+      store.resolve({ key: ["a"], lifetime: { revalidate: 60 } }, produce),
+      store.resolve({ key: ["a"], lifetime: { revalidate: 60 } }, produce),
+    ]);
+
+    // The answer that made the durable read asynchronous: the key is claimed
+    // before the first `await`, so a second caller joins rather than making its
+    // own trip to the disk and then its own render.
+    expect(rendered).toBe(1);
+    expect(provider.reads).toBe(1);
+    expect(first.outcome).toBe("miss");
+    expect(second.outcome).toBe("coalesced");
+  });
+
+  it("round-trips what an entry may hold, and nothing it may not", () => {
+    const value = { list: [1, "two", null, true], nested: { bytes: new Uint8Array([1, 2, 3]) } };
+    const back: $FlowFixMe = decodeCacheValue(encodeCacheValue(value));
+
+    expect(back.list).toEqual([1, "two", null, true]);
+    expect(Array.from(back.nested.bytes)).toEqual([1, 2, 3]);
+    // An ordinary object entitled to a field called `$uf`. Escaped rather than
+    // rejected, because a JSON API is allowed to use that name.
+    expect(decodeCacheValue(encodeCacheValue({ $uf: "mine" }))).toEqual({ $uf: "mine" });
+    expect(decodeCacheValue(encodeCacheValue(undefined))).toBe(undefined);
+    expect(() => encodeCacheValue({ go: () => {} })).toThrow(/function/);
+    expect(() => encodeCacheValue(new Map())).toThrow(/Map/);
+  });
+});
+
+describe("invalidating a durable store", () => {
+  it("takes the entry out of the store every process fills from", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const one = durableStore(provider, { now: time.now });
+    const two = durableStore(provider, { now: time.now });
+
+    await one.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 600 }, tags: ["posts"] },
+      async () => "old",
+    );
+    await one.settled();
+
+    // The mutation happens in the process that did not fill the entry, which is
+    // the case that could not work at all before a shared store existed.
+    two.revalidateTag("posts");
+    await two.settled();
+
+    // A third process, which never held a copy: what it reads is what the
+    // shared store holds, and the shared store no longer holds the entry.
+    const three = durableStore(provider, { now: time.now });
+    let rendered = 0;
+    const result = await three.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 600 }, tags: ["posts"] },
+      async () => {
+        rendered += 1;
+        return "new";
+      },
+    );
+
+    expect(provider.entries.size).toBe(1);
+    expect(result.value).toBe("new");
+    expect(rendered).toBe(1);
+    expect(three.stats().restored).toBe(0);
+  });
+
+  it("reaches the shared store by path too", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const one = durableStore(provider, { now: time.now });
+    const two = durableStore(provider, { now: time.now });
+
+    await one.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 600 }, path: "/posts" },
+      async () => "old",
+    );
+    await one.settled();
+
+    // Nothing in this process's memory carries the path, so the count is zero
+    // and the invalidation is entirely the shared half.
+    expect(two.revalidatePath("/posts")).toBe(0);
+    await two.settled();
+
+    expect(provider.entries.size).toBe(0);
+  });
+
+  it("answers with what went here, having taken out what is shared", async () => {
+    const provider = fakeProvider();
+    const time = clock();
+    const one = durableStore(provider, { now: time.now });
+    const two = durableStore(provider, { now: time.now });
+
+    for (const key of [["a"], ["b"], ["c"]]) {
+      await one.resolve({ key, lifetime: { revalidate: 600 }, tags: ["posts"] }, async () => "v");
+    }
+    await one.settled();
+    // Two of the three are read into the second process as well, so the two
+    // stores hold different amounts of the same shared set.
+    await two.resolve(
+      { key: ["a"], lifetime: { revalidate: 600 }, tags: ["posts"] },
+      async () => "v",
+    );
+    await two.resolve(
+      { key: ["b"], lifetime: { revalidate: 600 }, tags: ["posts"] },
+      async () => "v",
+    );
+
+    const dropped = two.revalidateTag("posts");
+    await two.settled();
+
+    // The number is this process's memory, synchronously, because a mutation
+    // handler should not wait on a disk to learn an integer it is going to put
+    // in a log. The invalidation is the larger, shared thing beside it.
+    expect(dropped).toBe(2);
+    expect(provider.entries.size).toBe(0);
+  });
+});
+
+describe("the route cache, on a disk", () => {
+  it("answers a restarted process from what the last one rendered", async () => {
+    const directory = tempDirectory();
+    const build = "build-one";
+    const first = appWith({
+      render: () => {
+        cacheLife({ revalidate: 60 });
+      },
+    });
+    const before = createApplicationHandler({
+      entry: first,
+      assets,
+      root: directory,
+      build,
+      cache: { route: true, store: "filesystem", storeDir: directory },
+    });
+    const cold = await serve(before, first, "/posts");
+
+    // A different handler over a different store and the same directory: the
+    // process restarted, or this is the second of four behind a load balancer.
+    const second = appWith({
+      render: () => {
+        cacheLife({ revalidate: 60 });
+      },
+    });
+    const after = createApplicationHandler({
+      entry: second,
+      assets,
+      root: directory,
+      build,
+      cache: { route: true, store: "filesystem", storeDir: directory },
+    });
+    const warm = await serve(after, second, "/posts");
+
+    expect(cold.headers.get("x-uf-cache")).toBe("MISS");
+    expect(warm.headers.get("x-uf-cache")).toBe("HIT");
+    expect(second.renders.length).toBe(0);
+    // Byte for byte the document the first process produced, which is what
+    // `Uint8Array` support in the encoding exists to make true.
+    expect(await warm.text()).toBe("<!doctype html><p>/posts</p><b>1</b>");
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("does not answer the next build from the last build's documents", async () => {
+    const directory = tempDirectory();
+    const render = () => {
+      cacheLife({ revalidate: 600 });
+    };
+    const first = appWith({ render });
+    await serve(
+      createApplicationHandler({
+        entry: first,
+        assets,
+        root: directory,
+        build: "build-one",
+        cache: { route: true, store: "filesystem", storeDir: directory },
+      }),
+      first,
+      "/posts",
+    );
+
+    const second = appWith({ render });
+    const deployed = await serve(
+      createApplicationHandler({
+        entry: second,
+        assets,
+        root: directory,
+        build: "build-two",
+        cache: { route: true, store: "filesystem", storeDir: directory },
+      }),
+      second,
+      "/posts",
+    );
+
+    expect(deployed.headers.get("x-uf-cache")).toBe("MISS");
+    expect(second.renders.length).toBe(1);
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("keeps two searches apart on disk as it does in memory", async () => {
+    const directory = tempDirectory();
+    const provider = createFilesystemCache({ directory });
+    const store = createCacheStore({ provider, build: "b", now: clock().now });
+
+    await store.resolve(
+      { key: ["route", "/posts", "?page=1"], lifetime: { revalidate: 60 } },
+      async () => "one",
+    );
+    await store.resolve(
+      { key: ["route", "/posts", "?page=2"], lifetime: { revalidate: 60 } },
+      async () => "two",
+    );
+    await store.settled();
+
+    const restarted = createCacheStore({ provider, build: "b", now: clock().now });
+    const page2 = await restarted.resolve(
+      { key: ["route", "/posts", "?page=2"], lifetime: { revalidate: 60 } },
+      async () => "rendered again",
+    );
+
+    expect(page2.value).toBe("two");
+    expect(provider.name).toBe("filesystem");
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("takes a tag out of the directory, not only out of this process", async () => {
+    const directory = tempDirectory();
+    const provider = createFilesystemCache({ directory });
+    const one = createCacheStore({ provider, build: "b", now: clock().now, onError: () => {} });
+    const two = createCacheStore({ provider, build: "b", now: clock().now, onError: () => {} });
+
+    await one.resolve(
+      { key: ["route", "/posts"], lifetime: { revalidate: 600 }, tags: ["posts"], path: "/posts" },
+      async () => "old",
+    );
+    await one.settled();
+    expect(fs.readdirSync(directory).filter((name) => name.endsWith(".json")).length).toBe(1);
+
+    two.revalidateTag("posts");
+    await two.settled();
+
+    // Both halves of the entry, gone from the directory the other three
+    // processes fill from.
+    expect(fs.readdirSync(directory)).toEqual([]);
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("bounds the directory rather than growing forever", async () => {
+    const directory = tempDirectory();
+    const provider = createFilesystemCache({ directory, maxEntries: 2 });
+    const store = createCacheStore({ provider, build: "b", now: clock().now, onError: () => {} });
+
+    for (const key of ["a", "b", "c", "d"]) {
+      await store.resolve({ key: [key], lifetime: { revalidate: 600 } }, async () => key);
+      await store.settled();
+    }
+
+    // Nothing in a content-addressed cache ever removes an entry, so a
+    // directory only grows unless something bounds it — the lesson
+    // ubugeeei-prod/uf#218 records about the transform cache, applied here.
+    const records = fs.readdirSync(directory).filter((name) => name.endsWith(".json"));
+    const bodies = fs.readdirSync(directory).filter((name) => name.endsWith(".bin"));
+    expect(records.length).toBe(2);
+    expect(bodies.length).toBe(2);
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+});
+
+describe("what rendering.cache.store reaches", () => {
+  it("refuses a durable store with no build identity to key it by", async () => {
+    const directory = tempDirectory();
+    const app = appWith({});
+    const handle = createApplicationHandler({
+      entry: app,
+      assets,
+      root: directory,
+      cache: { route: true, store: "filesystem" },
+    });
+
+    // A host saying so rather than degrading quietly, which is what the
+    // deployment rules require of a target that cannot provide a durable store.
+    await expect(serve(handle, app, "/posts")).rejects.toThrow(/build identity/);
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("takes a module specifier, so a provider need not be one uf ships", async () => {
+    const directory = tempDirectory();
+    const module = nodePath.join(directory, "provider.mjs");
+    // A provider written by a project, in twenty lines, against the type
+    // `@uniflowed/server/cache` exports. Named in `uf.config.js` and imported
+    // by name — which is red line 3's "a name it can write", and is how a Redis
+    // or a KV namespace goes behind this seam without uf shipping either.
+    fs.writeFileSync(
+      module,
+      `const entries = new Map();
+export function createCacheProvider() {
+  return {
+    name: "in-a-module",
+    async read(key) { return entries.get(key) ?? null; },
+    async write(key, entry) { entries.set(key, entry); },
+    async remove(key) { entries.delete(key); },
+    async invalidateTag() { return 0; },
+    async invalidatePath() { return 0; },
+    async clear() { entries.clear(); },
+  };
+}
+`,
+    );
+
+    const app = appWith({
+      render: () => {
+        cacheLife({ revalidate: 60 });
+      },
+    });
+    const handle = createApplicationHandler({
+      entry: app,
+      assets,
+      root: directory,
+      build: "build-one",
+      // Relative to the *project*, which is what somebody writing this in
+      // `uf.config.js` means and is not what `import()` from inside
+      // `@uniflowed/vite` would do on its own.
+      cache: { route: true, store: "./provider.mjs" },
+    });
+
+    await serve(handle, app, "/posts");
+    const second = await serve(handle, app, "/posts");
+
+    expect(second.headers.get("x-uf-cache")).toBe("HIT");
+    expect(app.renders.length).toBe(1);
+    expect(providerSpecifier(directory, "./provider.mjs")).toBe(pathToFileURL(module).href);
+    // A package name is Node's to resolve and is left exactly as written.
+    expect(providerSpecifier(directory, "@acme/uf-cache-redis")).toBe("@acme/uf-cache-redis");
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("keeps memory as the default, so nothing persists unasked", async () => {
+    const app = appWith({
+      render: () => {
+        cacheLife({ revalidate: 60 });
+      },
+    });
+    const directory = tempDirectory();
+    const handle = createApplicationHandler({
+      entry: app,
+      assets,
+      root: directory,
+      build: "build-one",
+      cache: { route: true },
+    });
+
+    await serve(handle, app, "/posts");
+    await serve(handle, app, "/posts");
+
+    // The store still works — one render for two requests — and left nothing
+    // anywhere. Persistence is opted into by name and by nothing else.
+    expect(app.renders.length).toBe(1);
+    expect(fs.readdirSync(directory)).toEqual([]);
+    fs.rmSync(directory, { recursive: true, force: true });
   });
 });

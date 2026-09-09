@@ -43,14 +43,29 @@
 // outlive the process that wrote them — the entry on disk is read by the next
 // build, which may be a different build.
 //
-// This one cannot outlive the process, so the identity of the code that
-// produced an entry is fixed for the whole life of the store and there is
+// An **in-memory** entry cannot outlive the process, so the identity of the
+// code that produced it is fixed for the whole life of the store and there is
 // nothing to put in the key. That is not a shortcut around their lesson; it is
-// the same lesson pointing the other way, and it is the reason the store is in
-// memory and stays there until something durable exists to hold it. The day an
-// adapter offers a store that survives a restart, this key gains a generation
-// — the build id — before that store is written to, because on that day the
-// entry outlives the build and every word of those two headers applies.
+// the same lesson pointing the other way.
+//
+// That day has arrived, and this is the other half of it. A durable store
+// exists — `./cache-provider.js` is the seam and `../cache-filesystem.js` is
+// one implementation — so an entry now outlives the build, every word of those
+// two headers applies, and the key gains a generation before that store is
+// written to: [`hashDurableCacheKey`]. Deploy a fix to a loader, and the URL it
+// renders is a *different key* under the new build rather than the same key
+// holding the old build's answer. Nothing sweeps the previous generation on the
+// way past — the provider's own bound does that — because an entry that cannot
+// be named cannot be served, and taking it out is housekeeping rather than
+// correctness.
+//
+// The rule the transform cache states about a process that cannot name its
+// compiler — "reads nothing and writes nothing… slower, never wrong" — applies
+// here as a refusal instead of a shrug, and `./cache-store.js` is where it is
+// enforced: a store handed a provider and no build identity throws where it is
+// constructed. A host wires a durable cache once, on purpose; discovering
+// halfway through a deployment that it has been serving the previous build's
+// documents is not a thing to leave to a runtime fallback.
 
 /** A cache key, as a caller writes it: `["route", "GET", "/posts"]`. */
 export type CacheKey = $ReadOnlyArray<string>;
@@ -76,4 +91,29 @@ export function hashCacheKey(key: CacheKey): string {
     }
   }
   return JSON.stringify(key);
+}
+
+/**
+ * The same key, under the build that produced the entry.
+ *
+ * The generation goes in as an ordinary first member rather than as a prefix
+ * joined on afterwards, which is the same argument [`hashCacheKey`] makes about
+ * separators one paragraph up: `JSON.stringify` over an array of strings is
+ * unambiguous, so `["b1", "route", "GET", "/a"]` and `["b1route", "GET", "/a"]`
+ * are two names and cannot become one. A build id concatenated with a `:` would
+ * make them one the first time a build id ended in a colon.
+ *
+ * `build` is checked like every other member, and emptiness is checked as well:
+ * `""` is a string, and a store that keyed every generation under it would be
+ * the un-generationed key wearing a generation's clothes.
+ */
+export function hashDurableCacheKey(build: string, key: CacheKey): string {
+  if (typeof build !== "string" || build === "") {
+    throw new TypeError(
+      "@uniflowed/server: a durable cache key needs the identity of the build that filled " +
+        `the entry, and it is ${JSON.stringify(build)}. Without one, a deploy serves the ` +
+        "previous build's documents under the new build's URLs.",
+    );
+  }
+  return hashCacheKey([build, ...key]);
 }
