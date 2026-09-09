@@ -23,6 +23,7 @@
     "./node": "./node.js",
     "./oauth": "./oauth.js",
     "./queue": "./queue.js",
+    "./schedule": "./schedule.js",
     "./socket": "./socket.js",
     "./standalone": "./standalone.js"
   },
@@ -39,6 +40,7 @@
     "node.js",
     "oauth.js",
     "queue.js",
+    "schedule.js",
     "socket.js",
     "standalone.js",
     "internal/*.js"
