@@ -11,15 +11,20 @@
 #     check:
 #       extends: .uf
 #       script:
+#         - uf install --frozen-lockfile
 #         - uf check
 #
 # Pin the `include` to a tag. A `remote:` include is fetched at pipeline
 # creation, so one on a branch changes what a pipeline runs without anything in
 # the project changing.
 #
-# The ready-made jobs at the bottom — `uf:check`, `uf:test`, `uf:build` — are
-# there so that a project with nothing unusual about it writes no script at all.
-# They are ordinary jobs: override, extend or delete them.
+# The ready-made jobs at the bottom — `uf:check`, `uf:fmt`, `uf:test`,
+# `uf:build` — are there so that a project with nothing unusual about it writes
+# no script at all. They are ordinary jobs: override, extend or delete them.
+#
+# `uf install` is in every one of them and in the example above, and the note
+# over the jobs says why it is not optional: `.uf` installs the toolchain, and
+# a `uf check` with no `node_modules` passes without having checked anything.
 #
 # ## Why the toolchain is installed inside the project directory
 #
@@ -51,6 +56,19 @@ variables:
   # setting the installer ignored. `tools/ci/integrations-agree.sh` holds the
   # line.
   UF_CI_SETUP_URL: "https://setup.uniflowed.dev"
+  # How hard the installer works at proving where the archive came from.
+  # `auto` uses whatever evidence is available and refuses when a check fails;
+  # `require` refuses unless one actually passed; `off` skips it.
+  #
+  # The sha256 the installer always checks proves transit and nothing else — the
+  # checksum comes from the host that served the archive. `require` is worth
+  # setting in a pipeline, because a pipeline can arrange what a laptop usually
+  # cannot: `apt-get install -y cosign` in `before_script`, and the Sigstore
+  # signature uf publishes with each release is checked against the identity of
+  # the workflow that signed it. With no cosign it needs `UF_CHECKSUM_BASE` — a
+  # mirror of the checksums on a host that does not serve the archive — and
+  # fails when it has neither, which is what asking for it means.
+  UF_VERIFY_ORIGIN: "auto"
   # Kept under the project directory so `cache:` can carry it. See above.
   UF_INSTALL_ROOT: "${CI_PROJECT_DIR}/.uf-toolchain"
   UF_BIN_DIR: "${CI_PROJECT_DIR}/.uf-toolchain/bin"
@@ -61,22 +79,72 @@ variables:
 # PATH` below reaches every line a job writes. A job that replaces
 # `before_script` replaces this too, and has to install the toolchain itself.
 #
-# `image` is Debian rather than Alpine on purpose: uf ships a
+# `image` is glibc rather than Alpine on purpose: uf ships a
 # `*-unknown-linux-gnu` binary, and Alpine is musl, where a glibc binary does
-# not start. Override `image` with any glibc distribution.
+# not start.
+#
+# It carries Node and npm on purpose too, and that is the newer half of the
+# reason. `uf` is one static binary and needs nothing to lint, format or type
+# check — but `uf install` drives the project's own package manager, and
+# `uf test` and `uf build` run on a Capability JS Host. On `debian:stable-slim`,
+# which is what this said until now, all three of those failed on a missing
+# `npm`, and `uf:check` ran with no `node_modules` at all: see the note over
+# the ready-made jobs for why that is worse than failing. Override `image` with
+# any glibc distribution that has a JavaScript runtime and a package manager on
+# `PATH`; `tools/ci/recipes-are-runnable.sh` in the uf repository holds the line
+# on the images this file itself may name.
 .uf:
-  image: debian:stable-slim
+  image: node:24-bookworm-slim
   cache:
+    # The toolchain, on the version *and the architecture*.
+    #
     # On the version, so a pipeline that pins one is never handed another.
     # `latest` is in the key too, and the `before_script` below deliberately
     # ignores what it restores: a cache keyed on the word `latest` answers with
     # whatever release was newest the first time the pipeline ran, and goes on
     # answering with it after a newer one ships. So on `latest` this cache is
     # inert, and a pipeline that wants it to do anything should pin a version.
-    key: "uf-${UF_VERSION}"
-    paths:
-      - .uf-toolchain/
-    policy: pull-push
+    #
+    # And on the architecture, which this key did not name until now. The
+    # archive under `.uf-toolchain/` is `uf-<target>.tar.gz` for one target, and
+    # a GitLab cache is shared by every runner attached to a project — a fleet
+    # with both amd64 and arm64 runners in it, which is the ordinary shape of a
+    # self-hosted fleet, restored one architecture's binary onto the other and
+    # got `Exec format error` from a cache that had "hit". The GitHub action and
+    # the CircleCI orb both had the architecture in their keys; this one did
+    # not. `CI_RUNNER_EXECUTABLE_ARCH` is the closest thing GitLab predefines —
+    # it describes the runner executable rather than the job's container, which
+    # is the same answer on every runner that is not cross-architecture with
+    # itself.
+    - key: "uf-${UF_VERSION}-${CI_RUNNER_EXECUTABLE_ARCH}"
+      paths:
+        - .uf-toolchain/
+      policy: pull-push
+    # The project's dependencies, on the lockfile. A different key from the one
+    # above, because they answer to different things: the toolchain changes when
+    # `UF_VERSION` does and the tree under `node_modules/` changes when the
+    # lockfile does, and one key for both would either re-download the release
+    # on every dependency bump or serve last week's tree after one.
+    #
+    # `key:files:` hashes the files it names and falls back to `default` when
+    # none of them is there, so a project that has not committed a lockfile
+    # gets a shared cache rather than a broken pipeline. `prefix` carries the
+    # architecture for the reason above: `node_modules` holds native addons.
+    #
+    # pnpm is the exception, and it is pnpm's own design rather than an
+    # oversight here: its `node_modules` is a tree of symlinks into a
+    # content-addressed store outside the project, and a cache that carries the
+    # links without the store restores a directory of dangling symlinks. A pnpm
+    # project should set `store-dir` inside `$CI_PROJECT_DIR` and cache that
+    # instead.
+    - key:
+        files:
+          - package-lock.json
+          - yarn.lock
+        prefix: "uf-deps-${CI_RUNNER_EXECUTABLE_ARCH}"
+      paths:
+        - node_modules/
+      policy: pull-push
   before_script:
     - |
       set -eu
@@ -104,23 +172,74 @@ variables:
 # Delete what a project does not want. `uf check` is both halves — the linter
 # and Flow's own inference — so a pipeline that runs it does not also need a
 # separate lint job.
+#
+# ## Every one of them installs the project's dependencies first
+#
+# `.uf` above installs the *toolchain*. That is `uf` itself, and it is not the
+# project: until `uf install` has run there is no `node_modules`, and three of
+# these four commands answer a different question without one.
+#
+# `uf check` is the one that matters, because it does not fail — it passes.
+# `uf check` resolves an import to a file in its batch or to a package under
+# `node_modules`, and a specifier that answers to neither is typed `any`. So on
+# a checkout with no dependencies installed every `import type { … } from
+# "@uniflowed/react"` is `any`, every annotation written against it is neither
+# right nor wrong, and the job goes green having checked the parts of the
+# program that were never in doubt. Run against a fresh scaffold that is what
+# it looks like:
+#
+#     $ uf check                 # no node_modules
+#     ✓ no problems
+#       › these imports are typed as any; uf resolved no module for them
+#         - @uniflowed/react …
+#
+# A green tick with a footer nobody reads is the same failure the GitHub action
+# refuses Windows over: a job that quietly does nothing still reports the
+# pipeline green.
+#
+# `uf fmt --check` is the quieter version of it. The Flow half needs nothing,
+# but JSON, CSS and TypeScript go to a formatter uf runs rather than links in,
+# and it is looked for in `node_modules/.bin` — with none there those files are
+# reported skipped and do not reach the exit code, so the job passes over files
+# nothing formatted. `uf test` and `uf build` do not have this problem: they
+# need a JavaScript host and they fail outright without one.
+#
+# `--frozen-lockfile` is what a pipeline wants rather than a plain install:
+# it installs exactly what the lockfile pins and fails when the lockfile has
+# drifted from the manifests, instead of resolving the drift away and building
+# something no reviewer approved. It is `npm ci`, `pnpm install
+# --frozen-lockfile`, `yarn install --immutable` and `bun install
+# --frozen-lockfile`, whichever manager the project brought.
 
 uf:check:
   extends: .uf
   stage: test
   script:
+    - uf install --frozen-lockfile
     - uf check
+
+# Formatting is not part of `uf check`: the checker answers whether the program
+# is right and this answers whether it is written the way the project writes
+# things. Both belong in a pipeline, and this is the cheaper of the two.
+uf:fmt:
+  extends: .uf
+  stage: test
+  script:
+    - uf install --frozen-lockfile
+    - uf fmt --check
 
 uf:test:
   extends: .uf
   stage: test
   script:
+    - uf install --frozen-lockfile
     - uf test
 
 uf:build:
   extends: .uf
   stage: build
   script:
+    - uf install --frozen-lockfile
     - uf build
   artifacts:
     paths:

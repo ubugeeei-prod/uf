@@ -393,6 +393,16 @@ jobs:
       # and the failure surfaces as `uf: command not found` in a pipeline
       # belonging to somebody who cannot fix it.
       - run: ./target/release/uf run integrations
+      # And that the recipes inside those files still run. The step above
+      # checks the installation; this reads every `uf` command in the three
+      # integrations and in `/guide/ci` back against the binary this job
+      # downloaded, so a renamed command or a removed flag fails here rather
+      # than in somebody else's pipeline. It also holds the rule that costs the
+      # most to get wrong: a recipe must install the project before checking
+      # it, because `uf check` with no `node_modules` does not fail — it types
+      # every unresolved import as `any` and passes.
+      - run: ./target/release/uf run ci:recipes
+      - run: ./target/release/uf run ci:recipes:test
       # And that the set that goes to npm is closed under its own
       # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
       # release that sends one without the other publishes a package that
