@@ -111,6 +111,17 @@ pub struct HostCommand {
     /// not know it is being measured; see [`crate::coverage`] for why that is
     /// the property worth having.
     pub coverage_dir: Option<Utf8PathBuf>,
+    /// The import map that is Deno's Flow loader, when one has been built.
+    ///
+    /// Node and Bun are handed a *module* that transforms on import; Deno has
+    /// nowhere to install one, so what it is handed instead is a tree of
+    /// already-compiled modules and a map pointing the project's specifiers at
+    /// them. `uf`'s `commands::deno_loader` writes both.
+    ///
+    /// `None` is a Deno that has not been given one, and
+    /// [`HostCommand::loads_flow`] answers `false` for it — which is the same
+    /// answer, and the same refusal, that host had before the pass existed.
+    pub deno_import_map: Option<Utf8PathBuf>,
 }
 
 impl HostCommand {
@@ -136,6 +147,7 @@ impl HostCommand {
             update_snapshots: false,
             axe: None,
             coverage_dir: None,
+            deno_import_map: None,
         }
     }
 
@@ -164,20 +176,45 @@ impl HostCommand {
                 register.to_string(),
             ],
             HostKind::Bun => vec![String::from("--preload"), bun_preload.to_string()],
-            // Deno has no loader hook in `@uniflowed/host` yet, so it can run
-            // plain JavaScript tests and nothing else. Saying so is better
-            // than a syntax error from a file the host could not transform.
+            // Deno's loader is not a module, so there is nothing for this to
+            // register: the subcommand, and then whatever
+            // [`HostCommand::with_deno_import_map`] and
+            // [`HostCommand::with_permissions`] add.
             //
-            // `-A` is all-access, and it is here because Deno's *default* is
-            // the opposite of every other host's: no flag means no filesystem,
-            // no network and no environment, so a worker started without one
-            // could not read the file it was told to run. What `-A` buys is
-            // parity with what Node and Bun give a process for free — it is
-            // not an extra grant, it is the same grant spelled out — and
-            // `with_permissions` replaces it the moment a project declares a
-            // permission set, which is the only way to end up with less.
-            HostKind::Deno => vec![String::from("run"), String::from("-A")],
+            // What is deliberately *not* here is `-A`. It used to be, on the
+            // reasoning that Deno's default — no filesystem, no network, no
+            // environment — is the opposite of every other host's, so an
+            // all-access flag was parity rather than a grant. The reasoning
+            // holds and the conclusion does not: `-A` is a grant nothing later
+            // on the command line takes back, so every run on the one host
+            // that can enforce the whole of `uf.config.js`'s permission model
+            // started by turning it off. A Deno host that begins there can
+            // only ever narrow by remembering to, and forgetting is silent.
+            //
+            // So the baseline is the toolchain's own access instead —
+            // `uf_runtime::permissions::host_arguments` with an empty declared
+            // set, which is the project root, its packages and nothing else.
+            // `uf explain test` prints it. See ubugeeei-prod/uf#246.
+            HostKind::Deno => vec![String::from("run")],
         };
+        self
+    }
+
+    /// Hand Deno the import map that is its Flow loader.
+    ///
+    /// The map is written by `uf`'s ahead-of-time pass before the host starts,
+    /// and it is what makes [`HostCommand::loads_flow`] true for this host: a
+    /// Deno without one runs plain JavaScript and meets the first Flow
+    /// annotation as a syntax error, which is what `uf test` refuses rather
+    /// than allows.
+    ///
+    /// Placed immediately after `run`, before any permission flag, because
+    /// Deno reads its own flags in either order and a reader does not: the
+    /// loader belongs beside the subcommand that needs it.
+    #[must_use]
+    pub fn with_deno_import_map(mut self, map: &Utf8Path) -> Self {
+        self.leading_args.push(format!("--import-map={map}"));
+        self.deno_import_map = Some(map.to_path_buf());
         self
     }
 
@@ -190,23 +227,29 @@ impl HostCommand {
     /// Deno *after* the `run` subcommand, which is why they are appended rather
     /// than prepended.
     ///
-    /// Deno's `-A` is removed rather than added to. A declared set that left it
-    /// in place would be a set nothing enforced: `-A` grants everything and
-    /// nothing later on the command line takes any of it back, so the run would
-    /// look sandboxed in `uf explain` and be wide open in fact. That is the
-    /// exact failure `uf_runtime::permissions` refuses on Bun, and it would be
-    /// worse here for being invisible.
+    /// On Deno this is called for every run, not only for a project that
+    /// declared a set. Deno has no "no permission model" to fall back to — its
+    /// default grants nothing at all — so the choice there is between the
+    /// toolchain's own access and `-A`, and the second is not a choice uf
+    /// makes any more. See [`HostCommand::with_flow_loader`].
     #[must_use]
     pub fn with_permissions(mut self, arguments: Vec<String>) -> Self {
-        self.leading_args.retain(|argument| argument != "-A");
         self.leading_args.extend(arguments);
         self
     }
 
     /// Whether this host transforms Flow on import.
+    ///
+    /// Deno's answer depends on the *command* rather than only on the host:
+    /// its modules are compiled ahead of time, so what makes Flow loadable
+    /// there is the import map this command was given and not something
+    /// installed in the runtime.
     #[must_use]
     pub const fn loads_flow(&self) -> bool {
-        matches!(self.kind, HostKind::Node | HostKind::Bun)
+        match self.kind {
+            HostKind::Node | HostKind::Bun => true,
+            HostKind::Deno => self.deno_import_map.is_some(),
+        }
     }
 
     /// Point the worker's transform at a specific `uf` binary.
@@ -1080,8 +1123,10 @@ mod tests {
         assert!(command.loads_flow());
     }
 
+    /// Deno with no import map is the host ubugeeei-prod/uf#246 found: it
+    /// starts, and it cannot read a line of Flow.
     #[test]
-    fn deno_can_run_but_cannot_load_flow() {
+    fn deno_without_an_import_map_cannot_load_flow() {
         let command = HostCommand::new(
             HostKind::Deno,
             Utf8PathBuf::from("/usr/bin/deno"),
@@ -1090,19 +1135,41 @@ mod tests {
         )
         .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"));
 
-        assert_eq!(command.leading_args, ["run", "-A"]);
+        assert_eq!(command.leading_args, ["run"]);
         assert!(!command.loads_flow());
     }
 
-    /// A declared permission set takes Deno's all-access grant away.
-    ///
-    /// The order matters as much as the contents: `run` stays first because it
-    /// is the subcommand, and `-A` has to be gone rather than merely followed —
-    /// Deno reads every flag it is given, so an `-A` left in front of
-    /// `--allow-read=/p` grants everything and the narrower flag changes
-    /// nothing at all.
+    /// And with one it is a host that loads Flow, which is what the
+    /// ahead-of-time pass buys.
     #[test]
-    fn a_declared_permission_set_replaces_denos_all_access_flag() {
+    fn an_import_map_is_what_makes_deno_load_flow() {
+        let command = HostCommand::new(
+            HostKind::Deno,
+            Utf8PathBuf::from("/usr/bin/deno"),
+            Utf8PathBuf::from("/p/.uf/deno/packages/@uniflowed/test/worker.js"),
+            Utf8PathBuf::from("/p"),
+        )
+        .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"))
+        .with_deno_import_map(Utf8Path::new("/p/.uf/deno/import-map.json"));
+
+        assert_eq!(
+            command.leading_args,
+            ["run", "--import-map=/p/.uf/deno/import-map.json"]
+        );
+        assert!(command.loads_flow());
+    }
+
+    /// No `-A`, on any path through the builder.
+    ///
+    /// The flag is the one ubugeeei-prod/uf#246 says a Deno host is worth not
+    /// building from: it grants everything and nothing later on the command
+    /// line takes any of it back, so a run that starts there is sandboxed only
+    /// while somebody remembers to narrow it. What a Deno run gets instead is
+    /// the toolchain's own access, computed the same way a declared set is —
+    /// which is why this asserts the *absence* rather than a particular
+    /// replacement.
+    #[test]
+    fn a_deno_run_never_starts_from_all_access() {
         let command = HostCommand::new(
             HostKind::Deno,
             Utf8PathBuf::from("/usr/bin/deno"),
@@ -1110,9 +1177,22 @@ mod tests {
             Utf8PathBuf::from("/p"),
         )
         .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"))
+        .with_deno_import_map(Utf8Path::new("/p/map.json"))
         .with_permissions(vec![String::from("--allow-read=/p")]);
 
-        assert_eq!(command.leading_args, ["run", "--allow-read=/p"]);
+        assert!(
+            !command.leading_args.iter().any(|argument| argument == "-A"),
+            "{:?}",
+            command.leading_args
+        );
+        assert_eq!(
+            command.leading_args.first().map(String::as_str),
+            Some("run")
+        );
+        assert_eq!(
+            command.leading_args.last().map(String::as_str),
+            Some("--allow-read=/p")
+        );
     }
 
     #[test]

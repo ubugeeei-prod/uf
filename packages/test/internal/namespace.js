@@ -50,8 +50,11 @@ const stubbedGlobals: Map<string, { readonly owned: boolean, readonly value: mix
 /**
  * Read the process environment, whichever host this is.
  *
- * Node, Deno and Bun all expose `process.env`; Deno also has `Deno.env`, and
- * reaching for `process` first keeps one code path across the three.
+ * Node and Bun expose `process` as a global; **Deno does not**, and has the
+ * same object under `node:process`. `../worker.js` installs it on the global
+ * before anything here runs, which is what keeps this one code path across the
+ * three — and is why the `null` branch below is still reachable, for a host
+ * that is neither.
  */
 function environment(): { [string]: string } | null {
   const host = globalThis as $FlowFixMe;

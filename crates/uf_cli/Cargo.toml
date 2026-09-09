@@ -27,6 +27,7 @@ upstream-typecheck = ["dep:uf_check", "uf_check/upstream-typecheck"]
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
 camino.workspace = true
 clap.workspace = true
 uf_assets = { path = "../uf_assets" }

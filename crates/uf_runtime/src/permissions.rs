@@ -168,6 +168,20 @@ pub struct ToolchainAccess {
     pub write: Vec<String>,
     /// Programs uf starts on the project's behalf — the `uf` binary itself.
     pub run: Vec<String>,
+    /// Variables uf itself put in the worker's environment, and their names.
+    ///
+    /// This list is empty on every host but Deno, and that is not an oversight
+    /// in the others: Node has no environment dimension to grant and Bun has no
+    /// permission model at all, so on both of them the worker reads what it was
+    /// given because nothing was ever taken away. Deno denies by default, so
+    /// the variables *uf set on the process itself* — `UF_BINARY`,
+    /// `UF_PROJECT_ROOT`, the project's own `.env` values a test is entitled to
+    /// read — have to be named or the worker cannot read what uf just handed
+    /// it.
+    ///
+    /// Names, never values. A grant is a name on every host that has one, and a
+    /// value in this list would end up on a command line.
+    pub env: Vec<String>,
     /// Whether uf's Flow loader runs on a thread of the host's.
     ///
     /// Node's `register()` installs module hooks on a loader thread rather than
@@ -350,14 +364,18 @@ fn deno_arguments(
     const NONE: &[String] = &[];
     let mut arguments = Vec::new();
     for permission in Permission::ALL.iter().copied() {
-        // uf's own grants exist for three of the five. It never needs the
-        // network or the environment on the project's behalf, and a category it
-        // does not need is one it must not quietly open.
+        // uf's own grants exist for four of the five. It never opens the
+        // network on the project's behalf, and a category it does not need is
+        // one it must not quietly open. The environment is on the list because
+        // uf *sets* variables on the worker — the project's `.env`, the run's
+        // own `UF_*` — and on a host that denies by default, handing a process
+        // a variable it may not read is handing it nothing.
         let toolchain_entries: &[String] = match permission {
             Permission::Read => &toolchain.read,
             Permission::Write => &toolchain.write,
             Permission::Run => &toolchain.run,
-            Permission::Net | Permission::Env => NONE,
+            Permission::Env => &toolchain.env,
+            Permission::Net => NONE,
         };
         let entries: Vec<&String> = toolchain_entries
             .iter()
@@ -408,6 +426,7 @@ pub fn explain(
                 toolchain.write.len()
             }
             (RuntimeHost::Deno, Permission::Run) => toolchain.run.len(),
+            (RuntimeHost::Deno, Permission::Env) => toolchain.env.len(),
             _ => 0,
         };
         let enforced = match host {

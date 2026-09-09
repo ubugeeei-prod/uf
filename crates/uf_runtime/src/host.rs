@@ -119,17 +119,20 @@ pub const HOSTS: &[HostSupport] = &[
     },
     HostSupport {
         host: RuntimeHost::Deno,
-        level: SupportLevel::Planned,
-        flow_loader: None,
+        level: SupportLevel::Experimental,
+        // Not a module, which is the whole of what is different about this
+        // host: Deno has no hook to install one in, so what teaches it Flow is
+        // a pass that has already run. See `uf_cli`'s `commands::deno_loader`.
+        flow_loader: Some("uf's ahead-of-time transform and import map"),
         // The only host that enforces the whole set, which is the reason the
         // model has the shape it has.
         enforces: Permission::ALL,
         verified_by: Some("crates/uf_cli/tests/deno_host.rs"),
         missing: Some(
-            "a Flow loader. Deno has no module hook to install one in, so this is an \
-             ahead-of-time transform and an import map rather than a `register.js` — a current \
-             Deno resolves `@uniflowed/test` from `node_modules` and then cannot parse it, \
-             because the package is Flow",
+            "a module hook. uf compiles the project ahead of time and hands Deno an import map, \
+             which covers every module uf can enumerate — so a module reached by a path computed \
+             at run time is still met as Flow, `uf test --watch` is refused rather than run \
+             against the tree the first pass wrote, and there is no coverage",
         ),
         tracking_issue: Some(246),
     },

@@ -165,6 +165,9 @@ mod permissions {
             read: vec![String::from("/project")],
             write: vec![String::from("/project/.uf")],
             run: vec![String::from("/usr/local/bin/uf")],
+            // The variables uf sets on the worker itself. Named on the host
+            // that denies by default, and inert on the two that do not.
+            env: vec![String::from("UF_BINARY")],
             loader_thread: true,
         }
     }
@@ -274,7 +277,10 @@ mod permissions {
                 String::from("--allow-read=/project,/home/me/fixtures"),
                 String::from("--allow-write=/project/.uf,/tmp/out"),
                 String::from("--allow-net=registry.npmjs.org"),
-                String::from("--allow-env=CI"),
+                // uf's own variable first, then the project's, the way every
+                // other category is ordered: what the toolchain needs to start
+                // the run, then what the project asked for.
+                String::from("--allow-env=UF_BINARY,CI"),
                 String::from("--allow-run=/usr/local/bin/uf,git"),
             ]
         );
@@ -284,6 +290,13 @@ mod permissions {
     ///
     /// Writing `--allow-net=` would be the opposite of what it looks like: an
     /// empty value is how Deno spells *every* host.
+    ///
+    /// `net` is the one category with nothing on either side here: uf never
+    /// opens a socket on a project's behalf, so an undeclared `net` is a
+    /// category with no flag at all. The environment is not that case any more
+    /// — uf sets variables on the worker itself and has to name them — which is
+    /// why this asserts about the two separately rather than about "the
+    /// categories uf does not need".
     #[test]
     fn deno_writes_no_flag_for_a_permission_with_no_entries() {
         let arguments =
@@ -293,10 +306,13 @@ mod permissions {
                 .iter()
                 .any(|argument| argument.starts_with("--allow-net"))
         );
-        assert!(
-            !arguments
+        assert_eq!(
+            arguments
                 .iter()
-                .any(|argument| argument.starts_with("--allow-env"))
+                .find(|argument| argument.starts_with("--allow-env"))
+                .map(String::as_str),
+            Some("--allow-env=UF_BINARY"),
+            "uf's own variables are named; nothing else is"
         );
     }
 
