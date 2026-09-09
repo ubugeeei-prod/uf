@@ -277,9 +277,11 @@ export function fromSignal(signal: AbortSignal): Context {
  * One node of the context tree.
  *
  * Every context except the root is one of these, whether it was made by
- * `withCancel`, `withDeadline` or `withValue` — the three differ in what they
- * arm and what they store, not in what they are, and one class is what keeps
- * the lookup walk and the cancellation walk from drifting apart.
+ * `withCancel`, `withDeadline`, `withValue` or `fromSignal`. They differ in
+ * whether they carry a cancellation of their own and in what they store, and
+ * one class rather than four is what keeps the lookup walk and the cancellation
+ * walk from drifting apart — `value` has to see through every kind of scope
+ * above it, and a second class is a kind the walk can forget about.
  */
 class Scope implements Context {
   #parent: Context;
