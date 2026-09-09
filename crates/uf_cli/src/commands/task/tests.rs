@@ -1,4 +1,10 @@
-//! Which file in `node_modules/.bin` `uf exec` hands to `Command`.
+//! What `uf exec` and `uf run` hand to `Command`, and on which platform's
+//! rules.
+//!
+//! Two questions, one arrangement. `uf exec` picks a file out of
+//! `node_modules/.bin`; `uf run` turns a task's command string into a program,
+//! or into the shell that has to run it instead. Both answers differ between
+//! Windows and everywhere else, and neither is asked with a `#[cfg]`.
 //!
 //! # What these prove, and what they cannot
 //!
@@ -199,4 +205,122 @@ fn a_project_without_node_modules_resolves_nothing() {
     for platform in PLATFORMS {
         assert_eq!(installed_binary_in(&root, "tool", platform), None);
     }
+}
+
+// --- `uf run`: the program a task names, and the shell it does not need ---
+
+/// `sh` where it is part of the platform, a real lookup where it is not.
+///
+/// On Unix the answer is the bare name, so the spawn is byte for byte the one
+/// `uf run` has always done. On Windows it is a search, and the `None` it can
+/// return is what turns "os error 2" into a sentence about the task.
+#[test]
+fn a_posix_shell_is_looked_for_only_where_it_may_be_missing() {
+    let installed = tempfile::tempdir().expect("a temporary directory");
+    fs::write(installed.path().join("sh.exe"), "").expect("a shell");
+    let path = std::ffi::OsString::from(installed.path().as_os_str());
+    let empty = tempfile::tempdir().expect("a temporary directory");
+
+    assert_eq!(
+        posix_shell(ShellLookup::OnThePath, None),
+        Some(Utf8PathBuf::from("sh")),
+        "a platform that has a shell does not have to go looking for one"
+    );
+    assert_eq!(
+        posix_shell(ShellLookup::Searched, Some(&path)),
+        Some(Utf8PathBuf::from_path_buf(installed.path().join("sh.exe")).expect("utf-8"))
+    );
+    assert_eq!(
+        posix_shell(
+            ShellLookup::Searched,
+            Some(&std::ffi::OsString::from(empty.path().as_os_str()))
+        ),
+        None
+    );
+    assert_eq!(posix_shell(ShellLookup::Searched, None), None);
+}
+
+/// A machine with no `sh` is told which construct needed one.
+///
+/// Which is the whole of the Windows half of ubugeeei-prod/uf#272: `uf run`
+/// used to spawn `sh` there too, and the failure was `CreateProcess` not
+/// finding a program nobody had written down.
+#[test]
+fn a_command_that_needs_a_missing_shell_names_the_construct() {
+    let refused = TaskSpawner::shell(
+        "uf lint && uf test",
+        uf_task::ShellSyntax::Operator("&&"),
+        None,
+    )
+    .expect_err("no shell, so no command");
+    let said = refused.to_string();
+
+    assert!(said.contains("the shell operator `&&`"), "{said}");
+    assert!(said.contains("uf lint && uf test"), "{said}");
+    // The runner puts `task "check" could not be started:` in front of this,
+    // so the task is named once rather than twice.
+    assert!(said.starts_with("it needs a shell"), "{said}");
+}
+
+/// And where there is one, it gets `-c` and the whole string, as before.
+#[test]
+fn a_command_that_needs_a_shell_is_handed_all_of_it() {
+    let process = TaskSpawner::shell(
+        "echo a; echo b",
+        uf_task::ShellSyntax::Operator(";"),
+        Some(Utf8Path::new("sh")),
+    )
+    .expect("a shell was found");
+
+    assert_eq!(process.get_program(), "sh");
+    assert_eq!(
+        process.get_args().collect::<Vec<_>>(),
+        ["-c", "echo a; echo b"]
+    );
+}
+
+/// A program written as a path is resolved against the task's directory
+/// before it is spawned.
+///
+/// std calls a relative program beside `current_dir` "platform specific and
+/// unstable": Unix resolves it against the child's directory and Windows
+/// against the parent's. `tools/upstream/sync.sh` is how most of this
+/// repository's tasks are written, and it has to mean one file on both.
+#[test]
+fn a_program_written_as_a_path_is_resolved_before_it_is_spawned() {
+    let uf_task::Command::Direct(direct) = uf_task::parse("tools/upstream/sync.sh --integrations")
+    else {
+        panic!("a program and one argument");
+    };
+
+    let process = TaskSpawner::started(&direct, Utf8Path::new("/project"));
+    assert_eq!(process.get_program(), "/project/tools/upstream/sync.sh");
+    assert_eq!(process.get_args().collect::<Vec<_>>(), ["--integrations"]);
+}
+
+/// A bare name is left to the platform's own lookup, as a shell would leave
+/// it.
+#[test]
+fn a_program_written_as_a_name_is_left_to_the_path() {
+    let uf_task::Command::Direct(direct) =
+        uf_task::parse("cargo clippy --workspace -- -D warnings")
+    else {
+        panic!("a program and its arguments");
+    };
+
+    let process = TaskSpawner::started(&direct, Utf8Path::new("/project"));
+    assert_eq!(process.get_program(), "cargo");
+    assert_eq!(
+        process.get_args().collect::<Vec<_>>(),
+        ["clippy", "--workspace", "--", "-D", "warnings"]
+    );
+}
+
+#[test]
+fn a_program_is_a_path_when_it_carries_either_separator() {
+    assert!(is_path("./target/release/uf"));
+    assert!(is_path("tools/ci/publishable.sh"));
+    assert!(is_path(r"tools\ci\publishable.cmd"));
+    assert!(!is_path("cargo"));
+    assert!(!is_path("uf"));
 }

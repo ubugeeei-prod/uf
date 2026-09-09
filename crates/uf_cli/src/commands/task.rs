@@ -221,6 +221,13 @@ fn dependency_cycle(cycle: &[compact_str::CompactString]) -> String {
 /// The two engines live here rather than in `uf_task` because which of them
 /// runs a task is `uf run`'s question: a task that names a command is uf's,
 /// and a task that names none is Vite Task's.
+///
+/// So is the third question, which is what "a task that names a command is
+/// uf's" means. It used to mean `sh -c`, which is not a thing every machine
+/// has: `uf run` did not work on Windows at all, for any task, however simple.
+/// [`uf_task::parse`] reads the command instead, and a command that is a
+/// program and its arguments — every one in this repository — uf starts
+/// itself. See [`TaskSpawner::started`] and [`TaskSpawner::shell`].
 struct TaskSpawner<'a> {
     resolved: &'a ResolvedConfig,
     env: &'a ProjectEnv,
@@ -249,17 +256,54 @@ impl uf_task::Spawn for TaskSpawner<'_> {
             return Ok(self.vite_task(name));
         }
 
-        let mut process = ProcessCommand::new("sh");
-        process.arg("-c").arg(command);
-
         let details = task.details();
-        let overrides: Vec<(&str, &str)> = details.map_or_else(Vec::new, |details| {
-            details
-                .env
-                .iter()
-                .map(|(key, value)| (key.as_str(), value.as_str()))
-                .collect()
-        });
+        // The directory the task runs in, which is also what a program written
+        // as a relative path is relative to.
+        let directory = match details.and_then(|details| details.cwd.as_ref()) {
+            Some(cwd) => self.resolved.root.join(cwd.as_str()),
+            None => self.resolved.root.clone(),
+        };
+
+        let parsed = uf_task::parse(command);
+        let (mut process, inline) = match &parsed {
+            uf_task::Command::Direct(direct) => {
+                (Self::started(direct, &directory), &direct.assignments[..])
+            }
+            uf_task::Command::Shell(syntax) => {
+                let found = posix_shell(ShellLookup::HOST, std::env::var_os("PATH").as_deref());
+                (Self::shell(command, *syntax, found.as_deref())?, &[][..])
+            }
+            // These read as the second half of the runner's own "task {name}
+            // could not be started:", which is why neither names the task
+            // again.
+            uf_task::Command::Nothing => {
+                return Err(std::io::Error::other(
+                    "its `command` is a comment, or is empty\n\n  \
+                     A task that runs nothing is a task whose check nobody would notice \
+                     going missing.",
+                ));
+            }
+            uf_task::Command::Malformed(why) => {
+                return Err(std::io::Error::other(format!(
+                    "its command cannot be read — {why}\n\n    {command}"
+                )));
+            }
+        };
+
+        let overrides: Vec<(&str, &str)> = details
+            .map(|details| details.env.iter())
+            .into_iter()
+            .flatten()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            // `A=1 prog` after `env: { A: 2 }` is the shell's own precedence:
+            // what is written on the command line is the more specific of the
+            // two, and `apply_over` lets the later entry win.
+            .chain(
+                inline
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str())),
+            )
+            .collect();
 
         // Under the task's own `env`, which is the more specific of the two: a
         // task that names a variable means it, and a `.env` file is the
@@ -273,16 +317,125 @@ impl uf_task::Spawn for TaskSpawner<'_> {
         // task inside a nested `uf build` — the exact override the task was
         // written to make.
         self.env.apply_over(&mut process, &overrides);
-
-        match details.and_then(|details| details.cwd.as_ref()) {
-            Some(cwd) => process.current_dir(self.resolved.root.join(cwd.as_str())),
-            None => process.current_dir(&self.resolved.root),
-        };
+        process.current_dir(&directory);
         Ok(process)
     }
 }
 
+/// Whether a direct command's program is a path rather than a name to look up.
+///
+/// Both separators on both platforms, deliberately. `/` is a separator on
+/// Windows as well as everywhere else, and a program written with a `\` is a
+/// Windows path in a config no Unix machine can run either way — so resolving
+/// it against the task's directory fails by naming a file that is not there,
+/// which is a better answer than a `PATH` lookup for a name with a backslash
+/// in it.
+fn is_path(program: &str) -> bool {
+    program.contains('/') || program.contains('\\')
+}
+
+/// Where a POSIX shell comes from on this platform.
+///
+/// The same arrangement as [`BinPlatform`], for the same reason: a value
+/// rather than a `#[cfg]`, so both answers are exercised by the tests on a
+/// machine that has only one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShellLookup {
+    /// `sh` is part of the platform. `Command` finds it, as `uf run` always
+    /// has, and uf has nothing useful to add by looking first.
+    OnThePath,
+    /// `sh` is a program that may or may not be installed, so uf looks — not
+    /// to find it faster, but so that its *absence* can be reported as the
+    /// thing it is rather than as "os error 2" against a program the reader
+    /// never wrote.
+    Searched,
+}
+
+impl ShellLookup {
+    /// The rules uf is actually running under.
+    const HOST: Self = if cfg!(windows) {
+        Self::Searched
+    } else {
+        Self::OnThePath
+    };
+}
+
+/// What a searched-for POSIX shell may be called, in the order to try.
+const SHELL_NAMES: [&str; 2] = ["sh.exe", "sh"];
+
+/// A POSIX shell from `path`, or [`None`] when this machine has none.
+///
+/// `path` is the raw `PATH`, passed in rather than read here so that a test
+/// can hand it a directory it built.
+fn posix_shell(lookup: ShellLookup, path: Option<&std::ffi::OsStr>) -> Option<Utf8PathBuf> {
+    match lookup {
+        // Bare, so the spawn is byte for byte the one `uf run` has always
+        // done on a machine that has a shell.
+        ShellLookup::OnThePath => Some(Utf8PathBuf::from("sh")),
+        ShellLookup::Searched => std::env::split_paths(path?)
+            .filter_map(|directory| Utf8PathBuf::from_path_buf(directory).ok())
+            .flat_map(|directory| SHELL_NAMES.map(|name| directory.join(name)))
+            .find(|candidate| candidate.is_file()),
+    }
+}
+
 impl TaskSpawner<'_> {
+    /// A command uf starts itself: no shell, on any platform.
+    ///
+    /// The program is resolved against the task's directory when it is written
+    /// as a path, rather than left to [`ProcessCommand`]. std documents that
+    /// pairing a relative program with `current_dir` is "platform specific and
+    /// unstable" — Unix resolves it against the child's directory and Windows
+    /// against the parent's — and `tools/upstream/sync.sh`, which is how most
+    /// of this repository's tasks are written, has to mean one file.
+    fn started(direct: &uf_task::Direct, directory: &Utf8Path) -> ProcessCommand {
+        let program = if is_path(&direct.program) {
+            Cow::Owned(directory.join(&direct.program))
+        } else {
+            Cow::Borrowed(Utf8Path::new(direct.program.as_str()))
+        };
+        let mut process = ProcessCommand::new(program.as_std_path());
+        process.args(&direct.args);
+        process
+    }
+
+    /// A command uf does not run itself, handed to a POSIX shell.
+    ///
+    /// One shell language on every platform, and that is the decision this
+    /// makes. Every task command ever written for `uf run` was written for
+    /// `sh`, because `sh -c` is what `uf run` was; `cmd.exe` reads `;`, `$VAR`
+    /// and quotes differently, so handing it the same string would not be a
+    /// Windows port of this behaviour but a second, silent meaning for it.
+    /// uf looks for a POSIX shell and, when there is none, says which
+    /// construct made one necessary.
+    ///
+    /// # Errors
+    ///
+    /// When this machine has no POSIX shell — `found` is [`None`]. The message
+    /// is the second half of the runner's "task {name} could not be started:",
+    /// so it does not name the task again.
+    fn shell(
+        command: &str,
+        syntax: uf_task::ShellSyntax,
+        found: Option<&Utf8Path>,
+    ) -> std::io::Result<ProcessCommand> {
+        let Some(shell) = found else {
+            return Err(std::io::Error::other(format!(
+                "it needs a shell, and this machine has none\n\n  \
+                 its command uses {syntax}, which uf does not run itself:\n\n    \
+                 {command}\n\n  \
+                 uf starts a task's command directly when it is a program and its \
+                 arguments,\n  which needs no shell anywhere. Anything else is `sh -c`, \
+                 and there is no `sh`\n  on PATH here — Git for Windows ships one. The \
+                 other way out is to write the\n  task as something uf can start: a \
+                 script, or two tasks joined by `dependsOn`."
+            )));
+        };
+        let mut process = ProcessCommand::new(shell.as_std_path());
+        process.arg("-c").arg(command);
+        Ok(process)
+    }
+
     fn vite_task(&self, name: &str) -> ProcessCommand {
         let runner = std::env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
         let mut process = ProcessCommand::new(runner);

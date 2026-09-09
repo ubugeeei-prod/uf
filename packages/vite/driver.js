@@ -1076,9 +1076,9 @@ async function compile() {
  */
 const ADAPTERS = {
   node: {
-    entries: (document, cache, build) => ({
+    entries: (document, cache, build, schedules) => ({
       handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build),
-      server: nodeEntrySource("./handler.js"),
+      server: nodeEntrySource("./handler.js", schedules),
     }),
   },
   // The same two files as `node`, with `@uniflowed/server/bun` in place of
@@ -1096,9 +1096,9 @@ const ADAPTERS = {
   // nobody here. `edge` pays that price because it must: there is no
   // `node:stream` in a Worker.
   bun: {
-    entries: (document, cache, build) => ({
+    entries: (document, cache, build, schedules) => ({
       handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build),
-      server: bunEntrySource("./handler.js"),
+      server: bunEntrySource("./handler.js", schedules),
     }),
   },
   // The same two files. What `--adapter container` adds is a `Dockerfile` and
@@ -1106,15 +1106,15 @@ const ADAPTERS = {
   // output rather than anything the bundler produces — see `uf_cli`'s
   // `commands::deploy`.
   container: {
-    entries: (document, cache, build) => ({
+    entries: (document, cache, build, schedules) => ({
       handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build),
-      server: nodeEntrySource("./handler.js"),
+      server: nodeEntrySource("./handler.js", schedules),
     }),
   },
   edge: {
-    entries: (document, cache, build) => ({
+    entries: (document, cache, build, schedules) => ({
       handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build),
-      worker: workerEntrySource("./handler.js"),
+      worker: workerEntrySource("./handler.js", schedules),
     }),
     // `workerd` first, so React resolves to the build that has
     // `renderToReadableStream` and no `node:stream`. `browser` and `module`
@@ -1222,6 +1222,12 @@ async function deploy() {
   if (adapter == null || workArgument == null || outputArgument == null) {
     throw new Error("uf: `driver.js deploy` needs --adapter, --work and --output");
   }
+  // What the project declared, read by `uf`'s own walk of the route handlers
+  // and handed over rather than found again here — one reading of a module,
+  // and the same list `wrangler.json`'s `triggers.crons` is written from.
+  // Absent on an older `uf` spawning a newer driver, which is a build with no
+  // schedules rather than an error. See ubugeeei-prod/uf#531.
+  const schedules = JSON.parse(argument("--schedules") ?? "[]");
   // The Rust side has already refused every adapter it has no implementation
   // for, by name and with the issue that tracks it. This is the second half of
   // that fact rather than a duplicate of it: the driver may be spawned by a
@@ -1262,7 +1268,7 @@ async function deploy() {
         "docs/app/guide/cache.",
     );
   }
-  const entries = shape.entries(document, cacheConfig, buildId);
+  const entries = shape.entries(document, cacheConfig, buildId, schedules);
   const input = {};
   for (const name of Object.keys(entries)) {
     writeFileSync(path.join(work, `${name}.js`), entries[name]);
@@ -1476,6 +1482,38 @@ function durableStoreSource(root, cache, build) {
 }
 
 /**
+ * The lines a process entry needs to run what the project declared.
+ *
+ * Shared by `nodeEntrySource` and `bunEntrySource` because the two differ in
+ * which module they take `serve` from and in nothing else — and a schedule
+ * that behaved differently between them would be the drift the whole seam
+ * exists to prevent. Empty strings when a project declared none, so the entry
+ * a default project gets is the file it has always been.
+ */
+function scheduleLines(module, schedules) {
+  const declared = schedules ?? [];
+  if (declared.length === 0) {
+    return { imports: "", declarations: "", option: "" };
+  }
+  const built = declared
+    .map(
+      (schedule) =>
+        `  routeSchedule({ handle: fetch, beginRequest, path: ${JSON.stringify(
+          schedule.path,
+        )}, cron: ${JSON.stringify(schedule.cron)} }),`,
+    )
+    .join("\n");
+  return {
+    imports: `import { routeSchedule } from ${JSON.stringify(module)};\n`,
+    // A schedule runs the route by asking the application for it, so a
+    // scheduled run and a request for the same path are one code path. See
+    // ubugeeei-prod/uf#531.
+    declarations: `\nconst schedules = [\n${built}\n];\n`,
+    option: ", schedules",
+  };
+}
+
+/**
  * The source of `server.js`: the Node socket around that handler.
  *
  * Everything host-specific about serving a build is in
@@ -1484,13 +1522,14 @@ function durableStoreSource(root, cache, build) {
  * request answered by `uf start` go through one implementation, not two that
  * agree today.
  */
-function nodeEntrySource(handlerSpecifier) {
+function nodeEntrySource(handlerSpecifier, schedules) {
+  const cron = scheduleLines("@uniflowed/server/schedule", schedules);
   return `// Generated by \`uf build --adapter node\`. Not checked in, not edited.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "@uniflowed/server/node";
-
+${cron.imports}
 // \`beginRequest\` comes from the handler beside this file rather than from
 // \`@uniflowed/server/node\` above, because the request has to be established in
 // the storage the *application* reads, which is the copy bundled into
@@ -1503,12 +1542,12 @@ import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
 // assets when it was started from inside itself would be a deployment with a
 // trap in it.
 const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
-
+${cron.declarations}
 // Not \`await serve(...)\` at the top level. uf parses that now
 // (ubugeeei-prod/uf#204) and this entry is a module, so it would work; \`.catch\`
 // is the better spelling regardless — a server that cannot take its port should
 // say so and exit non-zero, rather than die as an unhandled rejection.
-serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
+serve({ handle: fetch, staticDir, beginRequest${cron.option} }).catch((error) => {
   process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
   process.exit(1);
 });
@@ -1523,13 +1562,14 @@ serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
  * purpose, so that the two adapters are one contract and a project moving
  * between them changes a flag and nothing else.
  */
-function bunEntrySource(handlerSpecifier) {
+function bunEntrySource(handlerSpecifier, schedules) {
+  const cron = scheduleLines("@uniflowed/server/schedule", schedules);
   return `// Generated by \`uf build --adapter bun\`. Not checked in, not edited.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { serve } from "@uniflowed/server/bun";
-
+${cron.imports}
 // \`beginRequest\` comes from the handler beside this file rather than from
 // \`@uniflowed/server/bun\` above, because the request has to be established in
 // the storage the *application* reads, which is the copy bundled into
@@ -1542,8 +1582,8 @@ import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
 // assets when it was started from inside itself would be a deployment with a
 // trap in it.
 const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
-
-serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
+${cron.declarations}
+serve({ handle: fetch, staticDir, beginRequest${cron.option} }).catch((error) => {
   process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
   process.exit(1);
 });
@@ -1562,13 +1602,39 @@ serve({ handle: fetch, staticDir, beginRequest }).catch((error) => {
  * `nodeEntrySource` gives: the request has to be established in the storage the
  * *application* reads. See ubugeeei-prod/uf#389.
  */
-function workerEntrySource(handlerSpecifier) {
-  return `// Generated by \`uf build --adapter edge\`. Not checked in, not edited.
+function workerEntrySource(handlerSpecifier, schedules) {
+  const declared = schedules ?? [];
+  // Nothing at all when the project declared none, so a `worker.js` without
+  // schedules is the file it has always been — and `wrangler.json` carries no
+  // `triggers` for it either, so there is nothing to call the export that
+  // would not be there.
+  if (declared.length === 0) {
+    return `// Generated by \`uf build --adapter edge\`. Not checked in, not edited.
 import { createWorkerFetch } from "@uniflowed/server/edge";
 
 import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
 
 export default { fetch: createWorkerFetch({ handle, beginRequest }) };
+`;
+  }
+
+  // The expression Cloudflare fires, mapped to the route that answers it.
+  // `event.cron` arrives spelled exactly as `wrangler.json` spells it, and
+  // `uf` writes both from one list, so the two cannot disagree.
+  const routes = Object.fromEntries(declared.map((schedule) => [schedule.cron, schedule.path]));
+  return `// Generated by \`uf build --adapter edge\`. Not checked in, not edited.
+import { createWorkerFetch, createWorkerScheduled } from "@uniflowed/server/edge";
+
+import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
+
+// \`triggers.crons\` in the wrangler.json beside this file names these same
+// expressions. See ubugeeei-prod/uf#531.
+const routes = ${JSON.stringify(routes, null, 2)};
+
+export default {
+  fetch: createWorkerFetch({ handle, beginRequest }),
+  scheduled: createWorkerScheduled({ handle, beginRequest, routes }),
+};
 `;
 }
 

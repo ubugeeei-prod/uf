@@ -446,9 +446,19 @@ export function createHandler(
         // route handler, and for a path under it that matches neither — but an
         // embedded asset and a prerendered document are answered before it, which
         // is exactly what `uf preview` does, because Vite's file middleware runs
-        // before anything mounted behind it. The three front doors have to give
-        // one answer; that a prerendered page under a guard ships unguarded is
-        // true of all of them and is ubugeeei-prod/uf#342.
+        // before anything mounted behind it. The front doors have to give one
+        // answer, and `tests/library/deploy.test.js` is where they are asked
+        // the same questions and compared — this one included, since
+        // ubugeeei-prod/uf#391.
+        //
+        // That a prerendered page under a guard ships unguarded is true of all
+        // of them, and is no longer an open question about what to do: since
+        // ubugeeei-prod/uf#342 `uf build` names every route it wrote a document
+        // for that a middleware guards (`crates/uf_cli/src/commands/build/
+        // guards.rs`), `--adapter static` refuses such a project outright, and
+        // `build.staticBuild` makes it an error rather than a warning. What is
+        // left here is the fact itself, which is inherent to prerendering: the
+        // document is bytes, and bytes do not run a guard.
         const guarded = await app.runMiddleware(asRequest);
         if (guarded != null) {
           await sendUnlessHead(response, method, guarded);

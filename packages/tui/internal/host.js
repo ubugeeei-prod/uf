@@ -72,7 +72,7 @@ import type { HitGrid } from "./hits.js";
 import { createHitGrid, hitAt } from "./hits.js";
 import { measureText, paint, wrapModeOf } from "./paint.js";
 import type { TuiNode, TuiProps } from "./tree.js";
-import { applyProps, createNode } from "./tree.js";
+import { applyProps, createNode, invalidate } from "./tree.js";
 
 /** A global key handler, as `useKeyboard` registers one. */
 export type KeyHandler = (key: KeyEvent) => void;
@@ -520,6 +520,7 @@ const hostConfig = {
   },
   appendInitialChild: (parent: TuiNode, child: TuiNode): void => {
     child.parent = parent;
+    invalidate(parent, parent.children.length);
     parent.children.push(child);
   },
   finalizeInitialChildren: (): boolean => false,
@@ -528,19 +529,28 @@ const hostConfig = {
   // them into one string and lose the styles the nested ones carry.
   shouldSetTextContent: (): boolean => false,
   clearContainer: (renderer: Renderer): void => {
+    invalidate(renderer.root, 0);
     renderer.root.children = [];
   },
 
+  // An append is the one mutation whose position is known without looking for
+  // it, and it is the one a log makes: every child above the new one is where
+  // it was, so a scrolling parent has to re-measure exactly the child that
+  // arrived. Every other mutation moves a child that could be anywhere, so it
+  // invalidates the stack whole.
   appendChild: (parent: TuiNode, child: TuiNode): void => {
     child.parent = parent;
+    invalidate(parent, parent.children.length);
     parent.children.push(child);
   },
   appendChildToContainer: (renderer: Renderer, child: TuiNode): void => {
     child.parent = renderer.root;
+    invalidate(renderer.root, renderer.root.children.length);
     renderer.root.children.push(child);
   },
   insertBefore: (parent: TuiNode, child: TuiNode, before: TuiNode): void => {
     child.parent = parent;
+    invalidate(parent, 0);
     remove(parent.children, child);
     const at = parent.children.indexOf(before);
     parent.children.splice(at < 0 ? parent.children.length : at, 0, child);
@@ -549,10 +559,12 @@ const hostConfig = {
     hostConfig.insertBefore(renderer.root, child, before);
   },
   removeChild: (parent: TuiNode, child: TuiNode): void => {
+    invalidate(parent, 0);
     remove(parent.children, child);
     child.parent = null;
   },
   removeChildFromContainer: (renderer: Renderer, child: TuiNode): void => {
+    invalidate(renderer.root, 0);
     remove(renderer.root.children, child);
     child.parent = null;
   },
@@ -561,6 +573,7 @@ const hostConfig = {
   },
   commitTextUpdate: (node: TuiNode, _previous: string, next: string): void => {
     node.text = next;
+    invalidate(node);
   },
   resetTextContent: noop,
   commitMount: noop,
@@ -575,9 +588,11 @@ const hostConfig = {
   },
   hideTextInstance: (node: TuiNode): void => {
     node.text = "";
+    invalidate(node);
   },
   unhideTextInstance: (node: TuiNode, text: string): void => {
     node.text = text;
+    invalidate(node);
   },
   detachDeletedInstance: noop,
 

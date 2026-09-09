@@ -3,8 +3,11 @@
 //! something that is then actually read.
 //!
 //! Everything here except [`the_test_runner_sees_the_environment`] runs without
-//! Node: `uf run` is `sh -c`, so a task that prints a variable is the cheapest
-//! honest proof that a value reached a process uf started. The build and the
+//! Node: a task that prints a variable is the cheapest honest proof that a
+//! value reached a process uf started. Each of them writes `$GREETING` and its
+//! siblings, so each is a command `uf run` hands to `sh` rather than starting
+//! itself — which is what makes the assertion about uf's environment and not
+//! about uf's word splitting. The build and the
 //! dev server are in `tests/vite.rs`, where the fixtures that need a bundler
 //! live — including the one that matters most, that a value without the client
 //! prefix is absent from `dist/`.

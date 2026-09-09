@@ -14,7 +14,8 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19",

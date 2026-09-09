@@ -29,6 +29,7 @@
     "./union": "./union.js"
   },
   "files": [
-    "*.js"
+    "*.js",
+    "!*.test.js"
   ]
 }

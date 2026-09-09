@@ -16,10 +16,11 @@
 - [x] Use `uf.config.js` as the single user-visible config surface.
 - [x] Prefer `.js` files with `// @flow` for user-authored Flow source.
 - [ ] Default app execution to runtime-agnostic Capability JS Hosts: Node.js,
-      Deno, and Bun. Node and Bun run a uf project; Deno does not — it has no
-      Flow loader, and `uf test --host deno` refuses by name. `docs/hosts.md`
-      grades it **planned** and `uf_runtime::HOSTS` is the source of truth.
-      See #246.
+      Deno, and Bun. All three run a uf project; Deno gets there without a
+      module hook, through an ahead-of-time transform and an import map, which
+      leaves a gap a person can meet — a module uf could not enumerate is still
+      Flow, and a watch loop is refused. `docs/hosts.md` grades it
+      **experimental** and `uf_runtime::HOSTS` is the source of truth. See #246.
 - [x] Start native `@uniflowed/test`, `@uniflowed/pm`, and `@uniflowed/rm` contracts.
 - [x] Start XDG-compliant uf runtime layout.
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
@@ -197,8 +198,12 @@
 - [x] Implement terminal rendering, layout, input, and snapshots for `@uniflowed/tui`.
       Flow React on React's own reconciler rather than a native binding;
       `packages/tui/index.js` argues that out. Scrolling and the mouse — hit
-      testing, hover, drag capture, drop and the wheel — are in. Selection, key
-      release and rich content are ubugeeei-prod/uf#314.
+      testing, hover, drag capture, drop and the wheel — are in, and a
+      `ScrollBox` now costs its window rather than its content: moving one over
+      a hundred thousand rows measures none of them and lays out, paints and
+      diffs the twenty-four on the screen, counted in
+      `tests/library/tui.test.js` and timed by `tools/bench/tui/window.js`.
+      Selection, key release and rich content are ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.

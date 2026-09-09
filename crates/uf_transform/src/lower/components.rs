@@ -17,16 +17,18 @@
 //! function useX(v) { … }
 //! ```
 
-use serde_json::{Value, json};
+use serde_json::Value;
+use uf_profiler::profile_span;
 
 use super::builders::{property, rest_element};
-use super::{Edit, bool_field, list_field, node_type, refuse, str_field, take, transform_post};
+use super::{Edit, bool_field, node_type, refuse, str_field, take, transform_post};
 use crate::TransformError;
 
 /// Lower every component and hook declaration in `program`.
 ///
 /// Returns whether any was found.
 pub fn lower(program: &mut Value) -> Result<bool, TransformError> {
+    profile_span!("lower::components");
     let mut found = false;
     transform_post(program, &mut |node| {
         Ok(match node_type(node) {
@@ -45,8 +47,9 @@ pub fn lower(program: &mut Value) -> Result<bool, TransformError> {
 }
 
 fn component_to_function(node: &mut Value) -> Result<Value, TransformError> {
+    profile_span!("components::to_function");
     let params = component_parameters(node)?;
-    let mut function = json!({
+    let mut function = node! {
         "type": "FunctionDeclaration",
         "id": take(node, "id"),
         "params": params,
@@ -54,13 +57,14 @@ fn component_to_function(node: &mut Value) -> Result<Value, TransformError> {
         "async": bool_field(node, "async"),
         "generator": false,
         "__componentDeclaration": true,
-    });
+    };
     copy_position(&mut function, node);
     Ok(function)
 }
 
 fn hook_to_function(node: &mut Value) -> Value {
-    let mut function = json!({
+    profile_span!("components::hook_to_function");
+    let mut function = node! {
         "type": "FunctionDeclaration",
         "id": take(node, "id"),
         "params": take(node, "params"),
@@ -68,7 +72,7 @@ fn hook_to_function(node: &mut Value) -> Value {
         "async": bool_field(node, "async"),
         "generator": false,
         "__hookDeclaration": true,
-    });
+    };
     copy_position(&mut function, node);
     function
 }
@@ -89,8 +93,17 @@ fn copy_position(target: &mut Value, source: &Value) {
 /// parameters stay no parameters; a lone `...props: Props` becomes the single
 /// parameter `props`; anything else becomes one destructuring pattern.
 fn component_parameters(node: &mut Value) -> Result<Vec<Value>, TransformError> {
-    let params = take(node, "params");
-    let params = params.as_array().cloned().unwrap_or_default();
+    profile_span!("components::parameters");
+    // Taken, not borrowed and cloned. `take` has already moved the list out of
+    // the node, so the parameters here are this function's own — and every one
+    // of them is either moved into the pattern below or dropped. Cloning them
+    // first copied each parameter's `typeAnnotation` subtree in full, only for
+    // `strip_pattern` to remove it a few lines later: 5,374 allocations per
+    // `component` declaration, which was 13% of what `uf lint` spent on
+    // `packages/router/internal/runtime.js`. See ubugeeei-prod/uf#668.
+    let Value::Array(params) = take(node, "params") else {
+        return Ok(Vec::new());
+    };
     if params.is_empty() {
         return Ok(Vec::new());
     }
@@ -99,44 +112,50 @@ fn component_parameters(node: &mut Value) -> Result<Vec<Value>, TransformError> 
         && node_type(&params[0]) == Some("RestElement")
         && node_type(&params[0]["argument"]) == Some("Identifier")
     {
-        return Ok(vec![strip_pattern(params[0]["argument"].clone())]);
+        let mut only = params;
+        return Ok(vec![strip_pattern(take(&mut only[0], "argument"))]);
     }
 
     let mut properties = Vec::with_capacity(params.len());
-    for param in &params {
-        match node_type(param) {
-            Some("RestElement") => match node_type(&param["argument"]) {
-                Some("Identifier") => {
-                    properties.push(rest_element(strip_pattern(param["argument"].clone())));
-                }
-                Some("ObjectPattern") => {
-                    for property in list_field(&param["argument"], "properties") {
-                        properties.push(strip_pattern(property.clone()));
+    for mut param in params {
+        match node_type(&param) {
+            Some("RestElement") => {
+                let mut argument = take(&mut param, "argument");
+                match node_type(&argument) {
+                    Some("Identifier") => {
+                        properties.push(rest_element(strip_pattern(argument)));
+                    }
+                    Some("ObjectPattern") => {
+                        if let Value::Array(entries) = take(&mut argument, "properties") {
+                            for entry in entries {
+                                properties.push(strip_pattern(entry));
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(refuse(
+                            &param,
+                            format!(
+                                "unhandled {} encountered in component rest parameter",
+                                other.unwrap_or("node")
+                            ),
+                        ));
                     }
                 }
-                other => {
-                    return Err(refuse(
-                        param,
-                        format!(
-                            "unhandled {} encountered in component rest parameter",
-                            other.unwrap_or("node")
-                        ),
-                    ));
-                }
-            },
+            }
             Some("ComponentParameter") => {
-                let name = param["name"].clone();
-                let value = strip_pattern(param["local"].clone());
+                let name = take(&mut param, "name");
+                let value = strip_pattern(take(&mut param, "local"));
                 let shorthand = node_type(&name) == Some("Identifier")
-                    && bool_field(param, "shorthand")
+                    && bool_field(&param, "shorthand")
                     && matches!(node_type(&value), Some("Identifier" | "AssignmentPattern"));
                 let mut entry = property(name, value, false, shorthand);
-                copy_position(&mut entry, param);
+                copy_position(&mut entry, &param);
                 properties.push(entry);
             }
             other => {
                 return Err(refuse(
-                    param,
+                    &param,
                     format!(
                         "unknown component parameter type {:?}",
                         other.unwrap_or("node")
@@ -146,14 +165,32 @@ fn component_parameters(node: &mut Value) -> Result<Vec<Value>, TransformError> 
         }
     }
 
-    let first = properties.first().cloned().unwrap_or(Value::Null);
-    let last = properties.last().cloned().unwrap_or(Value::Null);
-    let mut pattern = json!({ "type": "ObjectPattern", "properties": properties });
-    if let (Some(start), Some(end)) = (first.get("range"), last.get("range")) {
-        pattern["range"] = json!([start[0], end[1]]);
+    // Read out of the first and last property rather than cloning them whole:
+    // all that is wanted is four numbers, and a property carries the whole
+    // subtree the parameter had.
+    let range = match (
+        properties.first().and_then(|first| first.get("range")),
+        properties.last().and_then(|last| last.get("range")),
+    ) {
+        (Some(first), Some(last)) => Some(Value::Array(vec![first[0].clone(), last[1].clone()])),
+        _ => None,
+    };
+    let loc = match (
+        properties.first().and_then(|first| first.get("loc")),
+        properties.last().and_then(|last| last.get("loc")),
+    ) {
+        (Some(first), Some(last)) => {
+            Some(node! { "start": first["start"].clone(), "end": last["end"].clone() })
+        }
+        _ => None,
+    };
+
+    let mut pattern = node! { "type": "ObjectPattern", "properties": properties };
+    if let Some(range) = range {
+        pattern["range"] = range;
     }
-    if let (Some(start), Some(end)) = (first.get("loc"), last.get("loc")) {
-        pattern["loc"] = json!({ "start": start["start"], "end": end["end"] });
+    if let Some(loc) = loc {
+        pattern["loc"] = loc;
     }
     Ok(vec![pattern])
 }

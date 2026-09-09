@@ -17,7 +17,7 @@ itself `implemented` without naming the test that starts the runtime.
 | --- | --- | --- | --- | --- |
 | Node.js | **implemented** | `@uniflowed/host/register` | `read`, `write` | `crates/uf_cli/tests/testing.rs`, `crates/uf_cli/tests/permissions.rs`, and the whole library suite |
 | Bun | **implemented** | `@uniflowed/host/bun-preload` | none | `crates/uf_cli/tests/bun_host.rs` |
-| Deno | planned | — | all five | `crates/uf_cli/tests/deno_host.rs` |
+| Deno | **experimental** | uf's ahead-of-time transform and import map | all five | `crates/uf_cli/tests/deno_host.rs` |
 | Edge / workers | planned | — | none expressible | — |
 | Serverless | planned | — | none expressible | — |
 | Container | planned | — | none expressible | — |
@@ -31,8 +31,9 @@ on the strength of a README sentence, and when a test was finally written
 ways at once — it could not load a single ordinary CommonJS dependency, and it
 never exited. That is what an unchecked row is worth.
 
-Deno's row has a test and is still *planned*, which is the distinction the
-column exists for: the test establishes where Deno stops, not that it works.
+Deno's row is *experimental* rather than implemented, which is the distinction
+the middle grade exists for: a uf project runs there, and the way it is made to
+run has a gap a person can meet. See [Deno](#deno) for what the gap is.
 
 ## The browser, which is a different question
 
@@ -100,40 +101,93 @@ than reporting a run of zeroes.
 
 ## Deno
 
-**A uf project does not run on Deno today.** What is missing is the Flow loader,
-and it is not a small piece of work, because Deno's module system has no hook to
-install one in. Node has `register()` and Bun has `Bun.plugin`; Deno has
-neither, so the transform has to happen *before* the runtime sees the module —
-an ahead-of-time pass writing transformed output, plus an import map pointing
-the original specifiers at it. Which is nearly the whole of the work: a current
-Deno already finds `@uniflowed/*` in `node_modules` on its own, and then stops
-at the first line of Flow it reads.
+A uf project runs on Deno, and it gets there by a different road from the other
+two. Node has `register()` and Bun has `Bun.plugin`; **Deno has no module hook
+at all**, so nothing can be installed in it that transforms a module as the
+runtime asks for it. The transform has to have already happened.
 
-`crates/uf_cli/tests/deno_host.rs` starts a real Deno and records exactly where
-the road stops:
+So `uf test` on Deno runs an **ahead-of-time pass** before the host starts. It
+compiles every Flow module the run can reach — the project's own source as
+`uf`'s scan reports it, and the `@uniflowed/*` packages that source reaches —
+into `.uf/deno/`, mirroring the layout it came from, and writes an **import
+map** beside it that points the original specifiers at the compiled copies.
+`crates/uf_cli/src/commands/deno_loader.rs` is that pass.
+
+One artefact answers both halves of the problem. A map that has to name
+`@uniflowed/test`'s new location is a map that has named `@uniflowed/test` — so
+the same file that fixes the Flow syntax fixes the bare specifier, and neither
+needed a mechanism of its own.
+
+Three kinds of entry are in the map, and the third is the one worth knowing
+about:
+
+* one per `@uniflowed/*` export, plus a trailing-slash key per package;
+* the project root as a prefix, `file:///<root>/` → `file:///<root>/.uf/deno/`,
+  which is what redirects the worker's own `import(pathToFileURL(file))`. A
+  prefix rather than one key per file, because the worker appends
+  `?uf-run=<generation>` to bust its module cache and an exact key would not
+  match a URL carrying a query;
+* **the output directory mapped to itself.** `.uf/deno` is *under* the project
+  root, so the entry above would redirect an already-redirected module a second
+  time, into `.uf/deno/.uf/deno/…`. An import map resolves the longest matching
+  prefix and has no way to spell an exception, so an identity entry for the
+  longer path is the exception.
+
+### What is experimental about it
+
+A hook is asked about every module; a pass compiles what it can enumerate.
+That difference is the whole of this row's grade:
+
+* **a module reached some other way is still Flow.** A path computed at run
+  time, a file a test writes and then imports — the pass never saw it, and Deno
+  meets it as a syntax error.
+* **`uf test --watch` is refused.** The pass runs once, before the host starts,
+  so a watch session would keep re-running the modules the first pass wrote. A
+  loop that answers about the code as it was an hour ago is worse than one that
+  will not start.
+* **no coverage.** `NODE_V8_COVERAGE` is Node's switch and Deno has no
+  equivalent, exactly as on Bun.
+
+Tracked by ubugeeei-prod/uf#246.
+
+### What a real Deno is started to check
+
+`crates/uf_cli/tests/deno_host.rs` runs the binary rather than reasoning about
+it, and records both sides of each obstacle:
 
 | What | Deno |
 | --- | --- |
-| `node:` built-ins — `child_process`, `fs`, `path`, `readline` | work, so the transform client is not the obstacle |
-| `import "@uniflowed/test"` | **fails**. Deno 1.31 resolves no bare specifier from `node_modules` at all; a current Deno 1.x resolves it, reaches `packages/test/index.js` and cannot parse it, because the package is Flow |
-| a global `process` | **absent** as of Deno 1.46; `node:process` has the same object, and `packages/test/worker.js` uses the global on five lines |
-| Flow syntax with no loader | `SyntaxError`, against the line you wrote |
+| `node:` built-ins — `child_process`, `fs`, `path`, `readline` | work, so the transform client was never the obstacle |
+| `import "@uniflowed/test"` with no map | **fails**. Deno 1.31 resolves no bare specifier from `node_modules` at all; a current Deno 1.x resolves it, reaches `packages/test/index.js` and cannot parse it, because the package is Flow |
+| the same import, through the generated map | resolves and loads |
+| Flow syntax with no pass | `SyntaxError`, against the line you wrote |
+| the same file, compiled by the pass | runs |
+| a global `process` | **absent** as of Deno 1.46; `node:process` has the same object, which is why `@uniflowed/test`'s worker imports it rather than reading the global |
 
-The second row is the useful one, and it is why the test asserts the
-*disjunction* rather than either half: the resolution problem has already gone
-on a current Deno, and what is left is the Flow loader alone. The `process` row
-is still a fact about a version, so its test gates itself on the major version
-and says so when it steps aside — asserting a version's behaviour on a version
-nobody ran the test against would be the unchecked claim this page exists to
-end.
+The `process` row is a fact about a *version*, so its test gates itself on the
+major version and says so when it steps aside — asserting a version's behaviour
+on a version nobody ran the test against would be the unchecked claim this page
+exists to end.
 
-So `uf test` on Deno refuses to start a worker and says which of those it is
-waiting for, rather than letting a syntax error in somebody's own test file be
-the answer. Tracked by ubugeeei-prod/uf#246.
+### Permissions, and why there is no `-A`
 
-What Deno *does* do today is the reason it is worth finishing:
-**it is the only host that enforces the whole permission set**, and the model in
-`uf.config.js` was designed against its five categories.
+Deno **is the only host that enforces the whole permission set**, and the model
+in `uf.config.js` was designed against its five categories.
+
+It is also the only host whose default is deny, which means uf cannot hand it
+"no permission model" the way it hands that to Node and Bun. There are only two
+things to pass: the toolchain's own access, or `-A`. `uf test` passed `-A`
+unconditionally for a long time, and `-A` is a grant nothing later on the
+command line takes back — so every run on the one host that could enforce the
+model began by turning it off, and narrowing was something a project had to
+remember to ask for.
+
+So a Deno run gets the toolchain's access whether or not the project declared
+anything: the project root, the directory its packages resolve from, `.uf`, and
+the environment variables uf itself set on the worker. `uf explain test` prints
+them. A test that wants more than that — the network, `/etc`, a variable nobody
+declared — asks for it in `uf.config.js`, which is what the permission model is
+for.
 
 ## Edge and worker runtimes
 

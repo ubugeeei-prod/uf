@@ -290,7 +290,9 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "execution",
             provider: "uf".to_string(),
             detail: format!(
-                "a task with a `command` runs here; package scripts are {}",
+                "a task with a `command` runs here — started by uf when the command is a \
+                 program and its arguments, through `sh -c` when it uses shell syntax; \
+                 package scripts are {}",
                 if resolved.config.task_runner.allow_package_scripts {
                     "allowed"
                 } else {
@@ -1202,11 +1204,18 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 
 /// Which host enforces the project's permission set, and how much of it.
 ///
-/// Absent unless there is a set to describe. `uf explain` is a plan of what
-/// will happen, and a stage reading "none declared" on every project that has
-/// not opted in would be a line nobody learns anything from — while a project
-/// that *has* opted in is asking precisely this question, and the answer is
-/// different on each host.
+/// Absent unless there is a set to describe, **or the host is Deno**.
+/// `uf explain` is a plan of what will happen, and a stage reading "none
+/// declared" on every project that has not opted in would be a line nobody
+/// learns anything from — while a project that *has* opted in is asking
+/// precisely this question, and the answer is different on each host.
+///
+/// Deno is the exception because there "not opted in" is not a state its
+/// runtime has. Its default grants nothing, so `uf test` hands it the
+/// toolchain's own access whether or not a project asked — a real sandbox,
+/// narrower than what the same project gets on Node or Bun, and one the
+/// project did not write down anywhere. That is exactly the run whose limits
+/// somebody needs to be able to read.
 ///
 /// It names the host from `capabilityJsHost.default` rather than resolving one
 /// on PATH: `uf explain` describes a plan and must not fail because the machine
@@ -1219,8 +1228,22 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 /// whose additions are invisible is one nobody can check. See
 /// `commands::test::toolchain_access`.
 fn permissions_stage(resolved: &ResolvedConfig) -> Option<Stage> {
-    let permissions = resolved.config.permissions.as_ref()?;
     let kind = resolved.config.app.runtime.capability_js_host.default;
+    // Absent unless there is a set to describe — **or the host is Deno**, where
+    // there is no such thing as "no permission set". Deno's default grants
+    // nothing at all, so `uf test` has to hand it *something*, and what it
+    // hands an undeclared project is the toolchain's own access: the project
+    // root, the directory its packages resolve from, `.uf`, and the variables
+    // uf set on the worker. That is a real sandbox nobody asked for, narrower
+    // than the one Node and Bun give the same project, and a run whose limits
+    // are invisible is the thing this stage exists to end — in the narrowing
+    // direction as much as in the widening one. See ubugeeei-prod/uf#246.
+    let nothing_declared = uf_config::Permissions::default();
+    let permissions = resolved
+        .config
+        .permissions
+        .as_ref()
+        .or_else(|| (kind == uf_config::CapabilityJsHost::Deno).then_some(&nothing_declared))?;
     let host = match kind {
         uf_config::CapabilityJsHost::Node => uf_runtime::RuntimeHost::Node,
         uf_config::CapabilityJsHost::Bun => uf_runtime::RuntimeHost::Bun,

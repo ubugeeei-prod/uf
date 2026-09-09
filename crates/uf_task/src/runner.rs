@@ -605,10 +605,14 @@ impl Executor<'_> {
         let mut child: Child = match command.spawn() {
             Ok(child) => child,
             Err(error) => {
+                // Naming the program, because uf starts a task's command
+                // itself now: a shell that could not find `cargo` said so,
+                // and "No such file or directory" on its own does not.
                 return Executed {
                     status: Status::Failed(format!(
-                        "task {:?} could not be started: {error}",
-                        task.name
+                        "task {:?} could not start `{}`: {error}",
+                        task.name,
+                        command.get_program().to_string_lossy()
                     )),
                     captured: Captured::None,
                 };

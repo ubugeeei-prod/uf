@@ -50,6 +50,7 @@ import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
+import { runScheduled } from "./schedule.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
 
@@ -189,7 +190,7 @@ export function createWorkerFetch(
             // The application will answer instead, so this body has no reader.
             // Cancelled rather than abandoned: a stream nobody drains is a
             // stream the runtime keeps open until the request is torn down.
-            await asset.body?.cancel();
+            await asset.body?.cancel("uf: the application answers this instead");
           }
         }
         return await handle(request);
@@ -227,6 +228,81 @@ export function createWorkerFetch(
       } else {
         await lifecycle.settle();
       }
+    }
+  };
+}
+
+// Both belong to `./schedule.js`, where the run they describe lives, and are
+// re-exported here because a Worker is where most readers meet them.
+export { SCHEDULED_HEADER, SCHEDULED_ORIGIN } from "./schedule.js";
+
+/** What Cloudflare hands a `scheduled()` export. */
+export type ScheduledEvent = {
+  /** The expression that fired, exactly as `wrangler.json` spells it. */
+  readonly cron: string,
+  readonly scheduledTime?: number,
+  ...
+};
+
+/**
+ * Cloudflare's `scheduled()` export, over the same application `fetch` answers.
+ *
+ * The counterpart of [`createWorkerFetch`], and it makes the same promises in
+ * the same order: `beginRequest`, the whole of the work inside `run`, one line
+ * in the log, and `settle` handed to `ctx.waitUntil` where there is a `ctx`.
+ * A schedule that skipped any of those would be work the application could not
+ * see itself doing — no request context, so no `cookies()`, no `after()`, and
+ * no request id in the line it leaves behind.
+ *
+ * # A schedule is a request the platform makes
+ *
+ * There is no second dispatcher here. `routes` maps the expression Cloudflare
+ * fires to the route path that answers it, and this synthesises a `GET` to
+ * that path through the application's own handler — so a scheduled run and a
+ * `curl` of the same path are the same code, and a route handler needs to know
+ * nothing about schedules to be one.
+ *
+ * `GET` because a cron has no body to send. `uf build` refuses a module that
+ * declares a schedule and exports no `GET`, so a trigger that could not be
+ * answered is a build that did not happen rather than a 405 nobody reads.
+ *
+ * # A trigger with no route
+ *
+ * Logged and dropped, not thrown. `wrangler.json` is a file a person can edit
+ * after uf writes it, and a cron added there by hand is not a reason to fail an
+ * invocation — but it is a reason to say so, because the alternative is a
+ * schedule that fires into silence.
+ */
+export function createWorkerScheduled(options: {|
+  readonly handle: (request: Request) => Promise<Response>,
+  readonly beginRequest: (request: Request) => RequestLifecycle,
+  readonly routes: { readonly [cron: string]: string },
+|}): (event: ScheduledEvent, env: mixed, ctx?: ExecutionContext) => Promise<void> {
+  const { handle, beginRequest, routes } = options;
+
+  return async function scheduledFromWorker(
+    event: ScheduledEvent,
+    env: mixed,
+    ctx?: ExecutionContext,
+  ): Promise<void> {
+    const path = routes[event.cron];
+    if (path == null) {
+      processLogger().warn("no route for this schedule", { cron: event.cron });
+      return;
+    }
+
+    // `./schedule.js`'s, not this module's: "a schedule is a request" has to
+    // mean the same thing on every host, or `cookies()` inside one means
+    // something different depending on where the deployment went.
+    const lifecycle = await runScheduled({ handle, beginRequest, path, cron: event.cron });
+    // The one thing that is this host's: a worker keeps the isolate alive for
+    // deferred work through `ctx.waitUntil`, and awaits only where there is no
+    // `ctx` — a test, or a host calling this directly — because dropping the
+    // promise would lose both the work and its rejection.
+    if (ctx != null) {
+      ctx.waitUntil(lifecycle.settle());
+    } else {
+      await lifecycle.settle();
     }
   };
 }

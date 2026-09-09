@@ -32,6 +32,7 @@ use uf_test::{
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
+use crate::commands::deno_loader;
 use crate::commands::vite::{find_program, resolve_host};
 
 use crate::support::{
@@ -227,7 +228,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         );
     }
 
-    let mut host = test_host(&root, &resolved.config, &env, args.browser)?
+    let mut host = test_host(&root, &resolved.config, &env, &files, args.browser)?
         .with_snapshot_updates(args.update_snapshots)
         .with_axe(resolved.config.accessibility.axe.as_json());
 
@@ -351,14 +352,24 @@ fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport
 /// project that has not installed its dependencies is told that rather than
 /// being handed a module-not-found from inside a worker.
 ///
+/// `sources` is the project as `uf_project` scanned it, and only Deno reads it:
+/// that host has no module hook, so its Flow loader is an ahead-of-time pass
+/// over exactly those files (see [`crate::commands::deno_loader`]) rather than
+/// something installed in the runtime. Passing the scan rather than repeating
+/// it keeps the set of files uf compiles equal to the set it reports on.
+///
 /// `browser` swaps the host rather than adding a flag to one: the process uf
 /// starts is a different module, the thing that runs the test body is a page,
 /// and everything above this function is unchanged. See [`HostKind::Browser`]
-/// and [`uf_test::browser`] for what that costs and what it depends on.
+/// and [`uf_test::browser`] for what that costs and what it depends on. It is
+/// the one kind `sources` says nothing about — a page is served its modules
+/// through the same `uf transform` the Node loader calls, one request at a
+/// time, so there is no ahead-of-time pass to give a file list to.
 pub(crate) fn test_host(
     root: &Utf8Path,
     config: &uf_config::UniflowedConfig,
     env: &ProjectEnv,
+    sources: &[ProjectFile],
     browser: bool,
 ) -> Result<HostCommand> {
     let host = resolve_host(config)?;
@@ -367,13 +378,14 @@ pub(crate) fn test_host(
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
     // loads.
     let loader = uniflowed_package(root, "host", "register.js")?;
+    let scope = loader.parent().map(Utf8Path::to_path_buf);
     let worker_module = if browser {
         "test/browser-worker.js"
     } else {
         "test/worker.js"
     };
-    let worker = loader
-        .parent()
+    let worker = scope
+        .as_ref()
         .map(|scope| scope.join(worker_module))
         .filter(|worker| worker.is_file())
         .ok_or_else(|| {
@@ -409,14 +421,50 @@ pub(crate) fn test_host(
     } else {
         host.program
     };
-    let mut command = HostCommand::new(kind, program, worker, root.to_path_buf())
-        .with_flow_loader(
-            Utf8Path::new("@uniflowed/host/register"),
-            &loader.join("bun-preload.js"),
-        )
-        // Every worker gets the project's `.env` values, so a test reads
-        // `process.env.DATABASE_URL` and finds what `uf dev` would have found.
-        .with_env(env.exported());
+    // Read once: it is the values the workers get *and* the names the
+    // permission set has to grant, and the two must be the same list or a test
+    // would be handed a variable it may not read.
+    let exported = env.exported();
+    // Deno's Flow loader is a directory rather than a module, and the worker it
+    // runs is the compiled copy inside it. Built before the command, because
+    // the worker's path is part of the command.
+    //
+    // `Browser` is not Deno-with-a-page: the project's Capability JS Host stops
+    // deciding anything the moment `--browser` is passed, the driver is Node,
+    // and the page is served each module through `uf transform` as it asks for
+    // it. There is nothing to compile ahead of time, so a Deno project run with
+    // `--browser` gets no pass — which is also why the pass's three gaps are
+    // not this mode's.
+    let deno = match kind {
+        HostKind::Deno => Some(deno_loader::build(
+            root,
+            config,
+            scope.as_deref().unwrap_or(root),
+            sources,
+            // `uf test` sets `UF_IN_SOURCE_TESTS` on every worker it starts, so
+            // the ahead-of-time pass has to compile `import.meta.uf.test` to
+            // uf's test API the way a hook reading that variable would. A pass
+            // that got this wrong would silently drop every in-source test.
+            true,
+        )?),
+        HostKind::Node | HostKind::Bun | HostKind::Browser => None,
+    };
+    let mut command = HostCommand::new(
+        kind,
+        program,
+        deno.as_ref().map_or(worker, |deno| deno.worker.clone()),
+        root.to_path_buf(),
+    )
+    .with_flow_loader(
+        Utf8Path::new("@uniflowed/host/register"),
+        &loader.join("bun-preload.js"),
+    )
+    // Every worker gets the project's `.env` values, so a test reads
+    // `process.env.DATABASE_URL` and finds what `uf dev` would have found.
+    .with_env(exported.clone());
+    if let Some(deno) = deno.as_ref() {
+        command = command.with_deno_import_map(&deno.import_map);
+    }
     // The worker transforms through the binary that started it, never a
     // different `uf` that happens to be on PATH.
     let uf_binary = uf_binary()?;
@@ -424,30 +472,52 @@ pub(crate) fn test_host(
     // After the binary is known, because the permission set has to grant the
     // transform service the right to exist: a worker that may not start `uf
     // transform` cannot load a line of Flow.
-    if let Some(permissions) = config.permissions.as_ref() {
-        if browser {
-            // Refused rather than translated, for the reason Bun's set is
-            // refused: a set that four hosts enforce and one silently ignores
-            // is worse than no set at all. Every category a project can declare
-            // describes a *process* — which files it may read, which programs
-            // it may start — and the process a browser run sandboxes would be
-            // the driver, not the page the tests are in. Putting `--allow-read`
-            // on the driver would produce a run that reads as sandboxed in `uf
-            // explain` and a renderer with the whole machine's network.
-            bail!(
-                "`uf test --browser` cannot enforce this project's `permissions`: they describe \
-                 what a process may reach, and the process the tests run in is a browser uf \
-                 started rather than a host uf configured. A set uf cannot enforce stops the run \
-                 rather than being partly applied — run the suite without `--browser`, where \
-                 Node and Deno enforce it."
-            );
-        }
+    if browser && config.permissions.is_some() {
+        // Refused rather than translated, for the reason Bun's set is refused:
+        // a set that the other hosts enforce and one silently ignores is worse
+        // than no set at all. Every category a project can declare describes a
+        // *process* — which files it may read, which programs it may start —
+        // and the process a browser run sandboxes would be the driver, not the
+        // page the tests are in. Putting `--allow-read` on the driver would
+        // produce a run that reads as sandboxed in `uf explain` and a renderer
+        // with the whole machine's network.
+        //
+        // Only a *declared* set refuses. The undeclared-Deno default above is a
+        // statement about Deno's own toolchain rather than about the project,
+        // and `--browser` is not on Deno: the driver is Node, so there is no
+        // default to inherit and nothing for this to be silent about.
+        bail!(
+            "`uf test --browser` cannot enforce this project's `permissions`: they describe \
+             what a process may reach, and the process the tests run in is a browser uf \
+             started rather than a host uf configured. A set uf cannot enforce stops the run \
+             rather than being partly applied — run the suite without `--browser`, where \
+             Node and Deno enforce it."
+        );
+    }
+    // On Deno the set goes on whether or not the project declared one, and that
+    // is the one place `uf test` cannot give a host what it gives the others.
+    // Node and Bun run a process that may reach anything until a project says
+    // otherwise; Deno's default is the opposite, so "no permission set" cannot
+    // be passed through — the choice is between the toolchain's own access and
+    // `-A`, and ubugeeei-prod/uf#246 is about what `-A` costs. So an undeclared
+    // Deno run gets the project root, its packages and nothing else, and
+    // `uf explain test` prints exactly that.
+    let nothing_declared = Permissions::default();
+    let declared = config
+        .permissions
+        .as_ref()
+        .or_else(|| (kind == HostKind::Deno).then_some(&nothing_declared));
+    if let Some(permissions) = declared {
         command = command.with_permissions(worker_permissions(
             kind,
             root,
             &loader,
             Some(uf_binary.as_path()),
             permissions,
+            &exported
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect::<Vec<_>>(),
         )?);
     }
     if browser {
@@ -462,8 +532,16 @@ pub(crate) fn test_host(
         command = command.with_browser(found.program);
     }
     if !command.loads_flow() {
-        // The reason comes from `uf_runtime::HOSTS` rather than from a sentence
-        // written here, so that the message a person meets and the table
+        // No host reaches this today: Node registers hooks, Bun preloads a
+        // plugin, Deno was handed a compiled tree above, and a browser run's
+        // driver serves the page every module through `uf transform`. It stays
+        // because the question it asks belongs to `uf_runtime::HOSTS` rather
+        // than to this function — a fifth `HostKind` whose row has no
+        // `flow_loader` must be refused here rather than allowed to meet a
+        // syntax error in somebody's own test file.
+        //
+        // The reason comes from the table rather than from a sentence written
+        // here, so that the message a person meets and the table
         // `docs/hosts.md` is generated from cannot drift apart. The two used to
         // be separate sentences and the enum's said nothing at all.
         let support = uf_runtime::HostSupport::for_host(runtime_host(kind));
@@ -625,6 +703,10 @@ pub(crate) fn toolchain_access(
         read: vec![root.to_string()],
         write: vec![root.join(".uf").to_string()],
         run: Vec::new(),
+        env: WORKER_ENVIRONMENT
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect(),
         // Node's `register()` puts the module hooks on a loader thread, which
         // its permission model calls a worker; every host command uf starts
         // loads Flow that way.
@@ -673,14 +755,48 @@ pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
     }
 }
 
+/// The variables uf itself puts in a worker's environment, by name.
+///
+/// A grant list rather than documentation: on Deno, a variable uf set and did
+/// not name is a variable the worker cannot read, which is a `PermissionDenied`
+/// from inside `@uniflowed/host` rather than from anything a project wrote.
+/// `PATH` is here because `packages/host/transform.js` searches it to identify
+/// the `uf` it will run.
+///
+/// The project's own `.env` names are added beside these per run; they are not
+/// constant and are not uf's.
+pub(crate) const WORKER_ENVIRONMENT: [&str; 6] = [
+    "PATH",
+    "UF_AXE",
+    "UF_BINARY",
+    "UF_IN_SOURCE_TESTS",
+    "UF_PROJECT_ROOT",
+    "UF_UPDATE_SNAPSHOTS",
+];
+
 fn worker_permissions(
     kind: HostKind,
     root: &Utf8Path,
     loader: &Utf8Path,
     uf_binary: Option<&Utf8Path>,
     permissions: &Permissions,
+    env: &[String],
 ) -> Result<Vec<String>> {
-    let toolchain = toolchain_access(root, Some(loader), uf_binary);
+    let mut toolchain = toolchain_access(root, Some(loader), uf_binary);
+    // A test reads configuration through `process.env`, and uf is the process
+    // that put it there. Naming the variables uf set is not widening the
+    // project's set: it is the same disclosure the read and write lists make,
+    // for the category Deno is the only host to have.
+    toolchain.env.extend(env.iter().cloned());
+    if kind == HostKind::Deno {
+        // Nothing to start. Node and Bun transform each module as they load it,
+        // through a `uf transform` child; Deno's modules were compiled before
+        // it started, so the one grant uf cannot scope on Node is one it does
+        // not need at all here. Taking it away is small and it is the whole
+        // argument for this host: the run that can express the most is the run
+        // that should be asking for the least.
+        toolchain.run.clear();
+    }
     // The error is the feature: a set this host cannot enforce stops the run
     // and names the host that can, rather than being partly applied.
     uf_runtime::permissions::host_arguments(runtime_host(kind), permissions, &toolchain)

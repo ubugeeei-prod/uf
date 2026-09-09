@@ -208,6 +208,17 @@ pub enum TuiFeature {
     /// other mouse event — but the offset is still a prop, so scrolling
     /// remains something the application does rather than something the
     /// component does to itself.
+    ///
+    /// What this word does promise, and what ubugeeei-prod/uf#314 asked to be
+    /// proved rather than asserted, is that the *window* is what a scrolling
+    /// box costs. Moving one over a hundred thousand rows measures nothing,
+    /// lays out the rows on the screen, and walks into no others; a renderer
+    /// that laid all hundred thousand out and clipped them would draw the
+    /// same frames and is not this. It is counted rather than claimed —
+    /// `tests/library/tui.test.js` counts the calls layout makes into its
+    /// leaves — and the one pass still proportional to the content is the
+    /// first frame, which has to ask every row its height once because the
+    /// height of the content is what the offset gets clamped against.
     Scrollback,
     /// Key binding and command routing.
     Keymap,

@@ -222,12 +222,59 @@ does not, a list moves a selection and lets the box follow *that*. A component
 that owned the offset would also have to own "how far is a page", which is the
 viewport's height, which nothing knows until layout has run.
 
-**What it costs.** Every child is measured, because the total height is what the
-offset is clamped against. Only the children that intersect the window are laid
-out, walked into, or painted — so ten thousand rows in a twenty-four row terminal
-is one measure per row and a screenful of everything else. `tests/library/tui.test.js`
-renders exactly that and asserts the first frame costs the terminal's 1,920 cells
-rather than the log's, and that changing one visible row afterwards costs one.
+### What a window costs
+
+The window, and not the content. Moving the offset over a hundred thousand rows
+measures none of them, lays out and paints the twenty-four that are on the
+screen, and never visits the rest; appending a line to that log measures the
+line. The one pass that does grow with the content is the **first** frame, and
+it has to: the height of the content is what `Number.MAX_SAFE_INTEGER` is
+clamped against, so every row is asked its height once. After that the answer is
+kept until something under that row changes.
+
+That is counted rather than claimed. `tests/library/tui.test.js` builds the
+layout tree by hand so that it can count the calls layout makes into its leaves,
+and asserts a hundred thousand measurements on the first frame and **zero** on
+every scroll after it — a renderer that laid all hundred thousand rows out and
+clipped them would draw the same frames and fail that. Beside it, the same suite
+renders ten thousand rows through the real renderer and asserts that the first
+frame costs the terminal's 1,920 cells rather than the log's, and that changing
+one visible row afterwards costs one.
+
+The clock agrees, which is `tools/bench/tui/window.js` — `uf run
+bench:tui:window`. Layout, paint and diff, at 80×24; each cell is the median of
+twenty keystrokes, and the range is across three whole runs on the machine in
+the provenance note above, while it was shared with other work:
+
+| rows | first frame | one row scrolled | one line appended |
+| --- | --- | --- | --- |
+| 30 | 0.33 ms | 0.16 – 0.29 ms | 0.17 – 0.32 ms |
+| 1,000 | 5.8 ms | 0.20 – 0.28 ms | 0.16 – 0.41 ms |
+| 10,000 | 65 ms | 0.21 – 0.25 ms | 0.23 – 0.28 ms |
+| 100,000 | 602 ms | 0.21 – 0.31 ms | 0.26 – 0.33 ms |
+
+Read the last two columns as one number: at every size a frame lands in the same
+fifth of a millisecond, and the thirty-row band and the hundred-thousand-row band
+overlap. Three thousand times the content, and the frame cannot tell.
+
+Before this was windowed the same scroll cost 0.23 ms, 3.64 ms, 59.64 ms and
+491.25 ms — a straight line through the origin, which is what a `ScrollBox` that
+measures every child on every frame looks like from the outside. The first-frame
+column is still that line, deliberately, and it is the noisy one: it allocates a
+row's worth of everything per row, so it is the step a garbage collection lands
+in, and across the three runs the hundred-thousand-row mount ranged from 602 ms
+to 1.3 s. It is reported as the fastest of three for the reason the start-up
+table below gives.
+
+The benchmark prints a second table that is **not** this component's, and it is
+there because reading only the first one would be reading half of it. React
+reconciling the tree costs about 0.2 ms at thirty rows and a few hundred at a
+hundred thousand, because a hundred thousand `<Text>` children are a hundred
+thousand fibers no matter who is scrolling them. That is the application's
+decision and not something a `ScrollBox` can undo — it cannot render children
+the caller did not create. An application with a log that long should hold its
+rows as elements it does not rebuild, which is what the benchmark does and what
+makes the first table the renderer's rather than `Array.from`'s.
 
 The wheel arrives as `onMouseScroll` and moves nothing on its own, which is
 the same rule one paragraph up: how far a notch goes is a question about the

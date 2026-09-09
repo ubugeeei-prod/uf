@@ -796,10 +796,11 @@ JavaScript execution is delegated to a Capability JS Host.
 The zero-config host set is Node.js, Deno, and Bun — as *targets*. What each of
 them does today is a different question and is answered in one place,
 [`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
-test that starts the binary, Deno has neither and is waiting on an ahead-of-time
-transform and an import map, and the edge runtimes have no host at all. Reading
-the host set as a support matrix is how "uf runs on Deno" came to be written
-down; the matrix is the matrix.
+test that starts the binary; Deno has no module hook to install one in, so uf
+compiles the project ahead of time and hands it an import map, which runs a
+suite and leaves a named gap; and the edge runtimes have no host at all.
+Reading the host set as a support matrix is how "uf runs on Deno" came to be
+written down; the matrix is the matrix.
 
 `uf.config.js` names the default host and the accepted host set once, and
 `@uniflowed/rm` detects and applies that host instead of installing a bespoke
@@ -935,8 +936,9 @@ V8 block range whose first mapped position exists.
 Every count is keyed by a position in the author's source, never by a generated
 offset or a script id, which is what makes merging several workers' documents
 addition. Reports are LCOV, Cobertura and a terminal table; thresholds live in
-`uf.config.js` and fail the run. It is Node-only: Bun implements no
-`NODE_V8_COVERAGE` and Deno has no Flow loader.
+`uf.config.js` and fail the run. It is Node-only: neither Bun nor Deno
+implements `NODE_V8_COVERAGE`, and a run of zeroes would be worse than saying
+so.
 
 ### Measured
 

@@ -42,6 +42,9 @@ use uf_router::{ServerModuleKind, discover_server_modules};
 /// The export a route handler declares its schedule with.
 const EXPORT: &str = "schedule";
 
+/// The method a scheduled invocation uses, and so the export it needs.
+const HANDLER: &str = "GET";
+
 /// One schedule, as the build reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DeclaredSchedule {
@@ -114,6 +117,7 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
         .and_then(Value::as_array)
         .unwrap_or(&empty);
     let literals = top_level_literals(body);
+    let mut found: Option<String> = None;
 
     for statement in body {
         if statement.get("type").and_then(Value::as_str) != Some("ExportNamedDeclaration") {
@@ -127,8 +131,8 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
             .get("declaration")
             .filter(|declaration| !declaration.is_null());
         if let Some(declaration) = declaration {
-            if let Some(found) = declared_here(declaration, file)? {
-                return Ok(Some(found));
+            if let Some(cron) = declared_here(declaration, file)? {
+                found = Some(cron);
             }
             continue;
         }
@@ -157,10 +161,63 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
             let Some(cron) = literals.get(local) else {
                 bail!("{}", unreadable(file));
             };
-            return Ok(Some(five_fields(cron, file)?));
+            found = Some(five_fields(cron, file)?);
         }
     }
-    Ok(None)
+
+    // The method question, asked of the same tree rather than a second parse,
+    // and only of a module that declared something: every other route handler
+    // in the project is free to export whatever it answers.
+    if found.is_some() && !exports_get(body) {
+        bail!(
+            "{file} declares a `{EXPORT}` and exports no `{HANDLER}`.\n  \
+             A scheduled invocation is a `{HANDLER}` to the route's own path — a cron has \
+             no body to send — so this trigger would fire into a 405 nobody reads."
+        );
+    }
+    Ok(found)
+}
+
+/// Whether the module exports a `GET`, in any of the three spellings.
+///
+/// A scheduled invocation is a `GET` to the route's own path — there is no
+/// body a cron could send — so a module that declares a schedule and exports
+/// no `GET` is a trigger that would fire into a 405 nobody reads. Checked
+/// here, where the schedule is read, so it is a build that did not happen
+/// rather than a deployment that answers nothing.
+fn exports_get(body: &[Value]) -> bool {
+    for statement in body {
+        if statement.get("type").and_then(Value::as_str) != Some("ExportNamedDeclaration") {
+            continue;
+        }
+        let declaration = statement
+            .get("declaration")
+            .filter(|declaration| !declaration.is_null());
+        if let Some(declaration) = declaration {
+            // `export function GET() {}` and `export const GET = …`.
+            if name_of(declaration.get("id")) == Some(HANDLER) {
+                return true;
+            }
+            for declarator in declaration
+                .get("declarations")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                if name_of(declarator.get("id")) == Some(HANDLER) {
+                    return true;
+                }
+            }
+            continue;
+        }
+        // `export { GET }`, and `export { handler as GET }`.
+        for specifier in specifiers(statement) {
+            if name_of(specifier.get("exported")) == Some(HANDLER) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// The expression on an exported `const schedule = "…"`, if that is what this
@@ -259,26 +316,27 @@ fn unreadable(file: &Utf8Path) -> String {
 
 /// Whether `adapter` would actually run what a project declared.
 ///
-/// **None of them yet**, and that is the honest answer rather than a
-/// placeholder. Each target is one piece of wiring away and none of the pieces
-/// is written:
+/// Every target that has somewhere to run one:
 ///
-/// * `node`, `bun` and `container` keep a process and
-///   `@uniflowed/server/schedule` ticks in one — but the entry `uf build`
-///   generates for them does not pass the declaration to `serve`.
-/// * `edge` has Cloudflare's own scheduler and a `wrangler.json` uf already
-///   writes, so `triggers.crons` is a two-line emission — but the `worker.js`
-///   uf generates exports `{ fetch }` and no `scheduled()`, and a Worker with
-///   a cron trigger and no scheduled handler fails the invocation. Emitting
-///   the trigger without the handler is the "deployment whose scheduled work
-///   never runs" this file exists to refuse, wearing a configuration file that
-///   looks right. It was emitted for one commit; this is that taken back.
-/// * `serverless` has no configuration file uf writes at all.
+/// * `edge` — `uf build` writes `triggers.crons` into its `wrangler.json` and
+///   a `scheduled()` into its `worker.js`, so Cloudflare's own scheduler has
+///   both something to fire and something to call. One without the other was
+///   the bug in #712.
+/// * `node`, `bun`, `container` — these keep a process, and the `server.js` uf
+///   writes now hands the declaration to `serve`, which ticks it through
+///   `@uniflowed/server/schedule`.
 ///
-/// So every declaration is refused, and `refuse_unrunnable` says which wiring
-/// is missing. See ubugeeei-prod/uf#531.
-pub(crate) const fn runs_schedules(_adapter: DeployAdapter) -> bool {
-    false
+/// `serverless` is the one left, and it is left for a reason rather than for
+/// want of attention: uf writes no configuration file for it at all — the
+/// artefact is a zip — so there is nowhere to say "call this every fifteen
+/// minutes". `static` runs nothing by definition.
+///
+/// See ubugeeei-prod/uf#531.
+pub(crate) const fn runs_schedules(adapter: DeployAdapter) -> bool {
+    matches!(
+        adapter,
+        DeployAdapter::Edge | DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Container
+    )
 }
 
 /// Refuse a build whose schedules this target would not run.
@@ -308,11 +366,10 @@ pub(crate) fn refuse_unrunnable(
     bail!(
         "the `{}` adapter would not run the {} schedule(s) this project declares, so this \
          build would produce a deployment whose scheduled work never happens:{named}\n  \
-         No adapter runs a declared schedule yet: the targets that keep a process are not \
-         handed it by the entry uf generates, and the Worker uf writes exports no \
-         `scheduled()` for Cloudflare's cron to call. Pass your schedules to `serve` \
-         yourself with `@uniflowed/server/schedule`, which does run them \
-         (ubugeeei-prod/uf#531).",
+         `node`, `bun`, `container` and `edge` all run one: the first three tick it in \
+         the process they keep, and `edge` hands it to Cloudflare's own scheduler. \
+         `serverless` has no configuration file uf writes, so there is nowhere to say \
+         when to call it (ubugeeei-prod/uf#531).",
         adapter.as_str(),
         schedules.len()
     );

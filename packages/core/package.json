@@ -22,7 +22,8 @@
     "index.js",
     "internal/*.js",
     "random.js",
-    "temporal.js"
+    "temporal.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/config": "0.0.0-alpha.18",

@@ -15,7 +15,8 @@
   },
   "files": [
     "index.js",
-    "internal"
+    "internal",
+    "!*.test.js"
   ],
   "dependencies": {}
 }

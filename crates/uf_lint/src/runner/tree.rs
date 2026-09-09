@@ -113,19 +113,23 @@ const INVALID_NESTING: &str = "markup/no-invalid-nesting";
 /// `vite/hot-needs-optional-chaining`.
 const HOT_OPTIONAL_CHAINING: &str = "vite/hot-needs-optional-chaining";
 
-/// Report the rules that need the module's tree.
-pub(crate) fn run_tree_rules(
-    scan: &FileScan<'_>,
-    config: &UniflowedConfig,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    profile_span!("run_tree_rules");
+/// What this runner wants out of a parse, or [`None`] when it wants none.
+///
+/// Split from the walk so that one parse can serve every runner that needs
+/// the module's tree — see [`super::module_tree`], which owns that parse.
+pub(super) struct TreeWork {
+    levels: Levels,
+    wants_hot: bool,
+}
+
+/// Whether these rules want this module read at all.
+pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<TreeWork> {
     let levels = Levels::for_config(config);
     if levels.all_off() {
-        return;
+        return None;
     }
     if !super::flow_syntax::is_flow_syntax_target(&scan.file.path) {
-        return;
+        return None;
     }
 
     let source = &scan.file.source;
@@ -136,26 +140,51 @@ pub(crate) fn run_tree_rules(
     let wants_jsx = levels.any_jsx() && (source.contains("</") || source.contains("/>"));
     let wants_hot = levels.hot_optional_chaining.is_some() && source.contains("import.meta");
     if !wants_jsx && !wants_hot {
-        return;
+        return None;
     }
+    Some(TreeWork { levels, wants_hot })
+}
 
-    // The same ceilings `uf_flow::parse` applies before it parses, asked here
-    // so that a module over one of them costs a scan rather than a parse. It
-    // has already been reported by `flow/syntax`.
-    let depths = uf_flow::depths(source);
-    if source.len() > uf_flow::MAX_PARSE_BYTES
-        || depths.brackets > uf_flow::MAX_NESTING_DEPTH
-        || depths.chain > uf_flow::MAX_CHAIN_DEPTH
-    {
-        return;
-    }
-
-    let Some(found) = analyse(source, &levels, wants_hot) else {
-        return;
+/// Walk a tree somebody else parsed.
+///
+/// # Call this on the thread that built `parsed`
+///
+/// The walk recurses once per level of the tree, so it needs the stack
+/// `uf_flow::PARSE_STACK_BYTES` names for the same reason the parse does.
+/// [`super::module_tree`] is the caller, and it is on one.
+pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
+    profile_span!("run_tree_rules");
+    let levels = &work.levels;
+    let mut tree = Tree {
+        hot: work.wants_hot,
+        alt_text: levels.alt_text.is_some(),
+        aria_props: levels.aria_props.is_some(),
+        heading_order: levels.heading_order.is_some(),
+        label_control: levels.label_control.is_some(),
+        static_interactions: levels.static_interactions.is_some(),
+        invalid_nesting: levels.invalid_nesting.is_some(),
+        ancestors: Vec::new(),
+        heading: None,
+        found: Vec::new(),
     };
+    // Nothing in the walk fails, so the `Result` the visitor's signature
+    // carries has no error to report; it exists for visitors that stop
+    // early, and this one never does.
+    let _ = tree.program(&parsed.program);
+    let mut found = tree.found;
+    found.sort_by_key(|finding| (finding.line, finding.column, finding.rule));
+    found
+}
 
+/// Turn what the walk found into diagnostics.
+pub(super) fn report(
+    scan: &FileScan<'_>,
+    work: &TreeWork,
+    found: Vec<Finding>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     for finding in found {
-        let Some(severity) = levels.of(finding.rule) else {
+        let Some(severity) = work.levels.of(finding.rule) else {
             continue;
         };
         let Some(index) = usize::try_from(finding.line)
@@ -239,61 +268,13 @@ impl Levels {
 }
 
 /// One finding, positioned the way the port positions nodes.
-struct Finding {
+pub(super) struct Finding {
     rule: &'static str,
     /// 1-based line.
     line: i32,
     /// 0-based byte column within that line.
     column: i32,
     message: String,
-}
-
-/// Parse the module and walk it, or [`None`] when there is no tree to walk.
-///
-/// [`None`] covers a module over a parser ceiling and a module with syntax
-/// errors alike. `flow/syntax` reports the second, and a recovered tree is the
-/// parser's guess at what the author meant — reporting an `<img>` the parser
-/// invented while recovering would be reporting a file that does not exist.
-fn analyse(source: &str, levels: &Levels, wants_hot: bool) -> Option<Vec<Finding>> {
-    let work = || {
-        let parsed = uf_flow::parse(source).ok()?;
-        if !parsed.is_ok() {
-            return None;
-        }
-        let mut tree = Tree {
-            hot: wants_hot,
-            alt_text: levels.alt_text.is_some(),
-            aria_props: levels.aria_props.is_some(),
-            heading_order: levels.heading_order.is_some(),
-            label_control: levels.label_control.is_some(),
-            static_interactions: levels.static_interactions.is_some(),
-            invalid_nesting: levels.invalid_nesting.is_some(),
-            ancestors: Vec::new(),
-            heading: None,
-            found: Vec::new(),
-        };
-        // Nothing in the walk fails, so the `Result` the visitor's signature
-        // carries has no error to report; it exists for visitors that stop
-        // early, and this one never does.
-        let _ = tree.program(&parsed.program);
-        let mut found = tree.found;
-        found.sort_by_key(|finding| (finding.line, finding.column, finding.rule));
-        Some(found)
-    };
-
-    // The port's frames are large and the walk below recurses once per level
-    // of the tree, so both go on a thread with the stack `uf_flow` documents
-    // for its own ceilings. `Parsed` takes a deep tree to its own thread to
-    // free it, so nothing is carried back onto a small stack.
-    std::thread::scope(|scope| {
-        std::thread::Builder::new()
-            .name("uf-lint-tree".into())
-            .stack_size(uf_flow::PARSE_STACK_BYTES)
-            .spawn_scoped(scope, work)
-            .ok()?
-            .join()
-            .ok()?
-    })
 }
 
 /// What stands between a JSX element and the elements above it.

@@ -55,7 +55,8 @@ import type { SchedulerBackend } from "./internal/capabilities.js";
 import type { Cron } from "./internal/cron.js";
 import { cronMatches, parseCron } from "./internal/cron.js";
 import type { Logger } from "./internal/log.js";
-import { processLogger } from "./log.js";
+import type { RequestLifecycle } from "./internal/context.js";
+import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 /** A named schedule: when it runs, and what runs. */
 export type Schedule = {|
@@ -208,4 +209,110 @@ export function startSchedules(
   }
   log.info("schedules started", { count: schedules.length });
   return createScheduler({ schedules, log }).start();
+}
+
+/**
+ * The origin a scheduled invocation carries.
+ *
+ * A schedule has no request behind it and therefore no host, and a handler
+ * that reads `new URL(request.url).host` has to read *something*. A
+ * reserved-invalid name rather than the deployment's own: `.invalid` can never
+ * resolve, so a handler that echoes the origin into a link produces something
+ * obviously wrong rather than something that looks right and points at the
+ * wrong place.
+ */
+export const SCHEDULED_ORIGIN: string = "https://cron.invalid";
+
+/** The header naming the expression that fired, on a scheduled invocation. */
+export const SCHEDULED_HEADER: string = "uf-scheduled";
+
+/**
+ * Run one route the way a schedule runs it: a request the platform made.
+ *
+ * **The one implementation of "a schedule is a request"**, used by every host
+ * that has one. `./edge.js`'s `createWorkerScheduled` calls it for Cloudflare's
+ * cron, and the entry `uf build --adapter node` writes calls it through
+ * `defineSchedule`. Two copies of this would be two answers to "does a
+ * scheduled run have a request context", and the answer has to be yes on every
+ * target or `cookies()` means something different depending on where the
+ * deployment went.
+ *
+ * `GET` because a cron has no body to send, through the application's own
+ * handler so that a scheduled run and a `curl` of the same path are the same
+ * code, and inside the lifecycle so the run has a context, an id, and an
+ * `after()` that settles.
+ *
+ * A route that throws is logged and swallowed. There is no caller above a
+ * scheduled run to catch it, and on a host that ticks, a rejection would take
+ * down the timer for every other schedule with it.
+ */
+export function runScheduled(options: {|
+  readonly handle: (request: Request) => Promise<Response>,
+  readonly beginRequest: (request: Request) => RequestLifecycle,
+  readonly path: string,
+  readonly cron: string,
+  readonly log?: Logger,
+|}): Promise<RequestLifecycle> {
+  const { handle, beginRequest, path, cron } = options;
+  const log = options.log ?? processLogger();
+  const request = new Request(`${SCHEDULED_ORIGIN}${path}`, {
+    method: "GET",
+    headers: { [SCHEDULED_HEADER]: cron },
+  });
+  const lifecycle = beginRequest(request);
+  const started = Temporal.Now.instant();
+
+  return (async () => {
+    let status = 500;
+    try {
+      const response = await lifecycle.run(() => handle(request));
+      status = response.status;
+      // Discarded, with the reason on it. A body nobody drains is a stream the
+      // runtime keeps open until it is torn down, and a schedule has no client
+      // to read one.
+      await response.body?.cancel("uf: a scheduled invocation has no reader");
+    } catch (error) {
+      log.error("schedule failed", { error, cron, path });
+    } finally {
+      logRequest(log, {
+        requestId: lifecycle.context.id,
+        method: "GET",
+        path,
+        route: lifecycle.context.route,
+        status,
+        durationMs: elapsedMs(started),
+      });
+    }
+    // Handed back rather than settled here: who settles differs by host — a
+    // worker gives it to `ctx.waitUntil`, a process awaits it — and that is
+    // the one thing about a scheduled run that is not the same everywhere.
+    return lifecycle;
+  })();
+}
+
+/**
+ * A schedule that runs one of this application's own routes.
+ *
+ * What the entry `uf build --adapter node` writes calls, once per declared
+ * schedule. The name is the route's path, because that is what a platform's
+ * scheduler would call it on a target that had one — so the same declaration
+ * reads the same in a log wherever it ran.
+ */
+export function routeSchedule(options: {|
+  readonly handle: (request: Request) => Promise<Response>,
+  readonly beginRequest: (request: Request) => RequestLifecycle,
+  readonly path: string,
+  readonly cron: string,
+|}): Schedule {
+  return defineSchedule({
+    name: options.path,
+    cron: options.cron,
+    run: async () => {
+      const lifecycle = await runScheduled(options);
+      // Awaited here: a process that keeps ticking is one that can wait for
+      // `after()` to finish, and dropping the promise would lose both the work
+      // and its rejection.
+      await lifecycle.settle();
+    },
+  });
 }

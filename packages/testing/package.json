@@ -14,7 +14,8 @@
     ".": "./index.js"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/react-testing": "0.0.0-alpha.18",

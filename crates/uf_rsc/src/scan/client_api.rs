@@ -13,11 +13,18 @@
 //! silent in the other: `useRoute` is built on `useContext`, and a call to
 //! `useRoute` looks like a call to nothing at all. [`hook_calls_from_tokens`]
 //! is the second half of that sentence, said out loud.
+//!
+//! Both collectors record, beside the line and the column, the module-level
+//! declaration the use sits in — `super::owner` has the rule and what it
+//! declines to answer. That is what makes "this module reaches `useState`" into
+//! "`useTheme` does", which is the difference between a fact about a file and
+//! an edge an export graph can propagate along.
 
 use compact_str::CompactString;
 use uf_infra::LineIndex;
 
 use super::lexer::{Token, TokenKind, matching_close};
+use super::owner::{OwnerSpan, owner_at};
 use super::{
     CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ClientApiUseList, HookCall, HookCallList,
     clamp_u32,
@@ -27,6 +34,7 @@ pub(crate) fn client_api_uses_from_tokens(
     source: &str,
     tokens: &[Token],
     index: &LineIndex,
+    owners: &[OwnerSpan],
 ) -> ClientApiUseList {
     let mut uses = ClientApiUseList::new();
     for (position, token) in tokens.iter().enumerate() {
@@ -64,11 +72,12 @@ pub(crate) fn client_api_uses_from_tokens(
         });
 
         if let Some(api) = matched {
-            let position = index.line_col(token.start);
+            let at = index.line_col(token.start);
             uses.push(ClientApiUse {
                 api,
-                line: clamp_u32(position.line),
-                column: clamp_u32(position.column),
+                line: clamp_u32(at.line),
+                column: clamp_u32(at.column),
+                owner: owner_at(owners, position),
             });
         }
     }
@@ -175,6 +184,7 @@ pub(crate) fn hook_calls_from_tokens(
     source: &str,
     tokens: &[Token],
     index: &LineIndex,
+    owners: &[OwnerSpan],
 ) -> HookCallList {
     let mut calls = HookCallList::new();
     for (position, token) in tokens.iter().enumerate() {
@@ -210,6 +220,7 @@ pub(crate) fn hook_calls_from_tokens(
             name: CompactString::new(text),
             line: clamp_u32(at.line),
             column: clamp_u32(at.column),
+            owner: owner_at(owners, position),
         });
     }
     calls

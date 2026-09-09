@@ -63,7 +63,10 @@ before it.
 The specific shape of "alpha", so you can decide before you spend an afternoon:
 
 - **Runtimes.** Node.js and Bun load Flow, and a test starts each of them.
-  Deno loads none and the edge runtimes have no host at all
+  Deno runs a uf project too, by a different road — it has no module hook, so
+  uf compiles ahead of time and hands it an import map — which is why it is
+  graded *experimental*: a module uf could not enumerate is still Flow to Deno.
+  The edge runtimes have no host at all
   ([#246](https://github.com/ubugeeei-prod/uf/issues/246)). The per-host
   matrix — what works, what does not, and what each gap is waiting for — is
   [`docs/hosts.md`](./docs/hosts.md).

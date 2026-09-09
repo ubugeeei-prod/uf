@@ -358,10 +358,10 @@ the sixth runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
-| `node` | `handler.js`, `server.js`, `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
+| `node` | `handler.js`, `server.js` (ticking any declared schedule), `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
 | `bun` | the same file names, with `Bun.serve` and `Bun.file` behind them | `cd .uf/deploy/bun && bun server.js` |
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
-| `edge` | `handler.js`, `worker.js`, `wrangler.json`, `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
+| `edge` | `handler.js`, `worker.js`, `wrangler.json` (with `triggers.crons` and a `scheduled()` for any declared schedule), `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
 | `static` | your build, file for file, and nothing else | upload it to any static host |
 
@@ -666,10 +666,36 @@ writing.
 ### uf run SCRIPT [ARGS...]
 
 Runs a task from `uf.config.js`, and everything its `dependsOn` reaches,
-forwarding everything after the script name. The task's shell has the project's
-`.env` values in it, as every command uf runs does; `--mode MODE`, before the
-script name, chooses which files those came from. An option `uf run` also has
-is reached past `--`.
+forwarding everything after the script name. The task has the project's `.env`
+values in it, as every command uf runs does; `--mode MODE`, before the script
+name, chooses which files those came from. An option `uf run` also has is
+reached past `--`.
+
+**uf starts the command itself when it can.** A command that is a program and
+its arguments — with the quoting, escaping and word splitting a POSIX shell
+would apply, plus any `NAME=value` written in front of the program — is
+started directly, with no shell on any platform. That covers every task in
+this repository's own `uf.config.js`. A program written as a path
+(`tools/ci/publishable.sh`) is resolved against the directory the task runs
+in; a bare name (`cargo`) is looked up on `PATH`.
+
+A command that asks the shell to *do* something — `|`, `&&`, `;`, a
+redirection, `$VAR`, a backtick, an unquoted `*`, a leading `~`, a newline
+with a command on both sides of it, or a first word that is a shell keyword or
+a built-in with no program behind it (`cd`, `exit`, `export`) — is handed to
+`sh -c`, exactly as before. On a
+machine with no POSIX shell — Windows, unless one is installed — uf refuses
+that task by name and says which construct needed one, instead of failing to
+find a program nobody wrote. Two consequences worth knowing:
+
+* uf runs **programs, not built-ins**. `echo` in a direct command is the
+  `echo` on `PATH`, which does not interpret `\n` where a shell's built-in
+  does. `printf` means the same thing either way.
+* a script a task names **needs its `#!` line**. A shell runs a file it cannot
+  execute with itself; starting a program directly has no such fallback.
+* a task written as a program and its arguments is the portable one. Anything
+  else is a POSIX shell script, and uf will not reinterpret it under
+  `cmd.exe`'s rules.
 
 Dependencies with no path between them run **at once** — four at a time, or
 one per core when the machine has fewer, and `-j N` / `--concurrency N` says
@@ -683,8 +709,8 @@ A task that declares [`inputs`](/reference/config#tasks-and-plugins) is
 files all hash the same is answered from `.uf/cache/task` — output and all,
 so a replayed run reads like the run it is replaying. **A task that declares
 no `inputs` runs every time.** That is the default and it is not a soft one:
-uf cannot see what `sh -c` opens, and a cache that guessed would fail by
-reporting a check as passed without looking.
+uf knows what a task *starts* and not what it opens once it is running, and a
+cache that guessed would fail by reporting a check as passed without looking.
 
 `--force` runs everything whatever the cache holds, and still records what it
 finds. `--why` prints, for every task, the reason it ran or was replayed —

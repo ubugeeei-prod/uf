@@ -223,6 +223,18 @@ pub(crate) fn deploy(
     fs::create_dir_all(directory.as_std_path())
         .with_context(|| format!("failed to create {directory}"))?;
 
+    // What the project declared, for the entry that has to answer it. A JSON
+    // argument rather than a file: the driver is spawned with these three
+    // already, and a fourth temporary file to write, find and delete is more
+    // moving parts than one string. See ubugeeei-prod/uf#531.
+    let declared = serde_json::to_string(
+        &schedules
+            .iter()
+            .map(|schedule| json!({ "cron": schedule.cron, "path": schedule.path }))
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_else(|_| "[]".to_owned());
+
     let mut driver = Driver::spawn(
         host,
         builder,
@@ -241,6 +253,8 @@ pub(crate) fn deploy(
             work.to_string(),
             String::from("--output"),
             directory.to_string(),
+            String::from("--schedules"),
+            declared,
         ],
         env,
         // The same analysis `uf build`'s own Vite run had. `handler.js` is
@@ -489,7 +503,7 @@ const WORKERS_COMPATIBILITY_DATE: &str = "2024-09-23";
 ///   can fall through, and the 404 a visitor sees is the project's own
 ///   `_uf.not-found` rather than Cloudflare's.
 fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -> String {
-    let config = json!({
+    let mut config = json!({
         "name": worker_name(root),
         "main": "./worker.js",
         "compatibility_date": WORKERS_COMPATIBILITY_DATE,
@@ -502,14 +516,22 @@ fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -
             "not_found_handling": "none",
         },
     });
-    // No `triggers.crons`, deliberately, and this is the second thought rather
-    // than the first: it was emitted for one commit. A Cloudflare Worker with a
-    // cron trigger and no exported `scheduled()` fails the invocation, and the
-    // `worker.js` uf generates exports `{ fetch }` and nothing else — so the
-    // configuration would have looked right and the work would never have run,
-    // which is the failure ubugeeei-prod/uf#531 exists to refuse. The trigger
-    // goes back in beside the handler, not before it.
-    let _ = schedules;
+    // Cloudflare's own scheduler, told what to fire — and the `worker.js`
+    // written beside this now exports a `scheduled()` for it to call, which is
+    // the half #712 emitted this without. One without the other is a
+    // deployment that looks configured for work that never runs; the two are
+    // written from this one list so they cannot name different expressions.
+    // Only when there is something to write: an empty `crons` is a key Wrangler
+    // has to interpret, and "no schedules" is better said by silence.
+    // ubugeeei-prod/uf#531.
+    if !schedules.is_empty() {
+        config["triggers"] = json!({
+            "crons": schedules
+                .iter()
+                .map(|schedule| schedule.cron.clone())
+                .collect::<Vec<_>>(),
+        });
+    }
     format!(
         "{}\n",
         serde_json::to_string_pretty(&config).unwrap_or_default()
@@ -793,26 +815,39 @@ mod tests {
         assert!(config.get("triggers").is_none(), "{written}");
     }
 
-    /// No cron trigger without a handler for it.
+    /// A declared schedule reaches Cloudflare's own scheduler.
     ///
-    /// This asserted the opposite for one commit. A Cloudflare Worker with a
-    /// cron trigger and no exported `scheduled()` fails the invocation, and
-    /// the `worker.js` uf generates exports `{ fetch }` — so the trigger made
-    /// `wrangler.json` look configured for work that could never run, which is
-    /// exactly what ubugeeei-prod/uf#531 refuses. It goes back beside the
-    /// handler.
+    /// And the `worker.js` written beside this exports a `scheduled()` for it
+    /// to call — which is the half #712 emitted this without, and the reason
+    /// the two are written from one list rather than assembled separately.
     #[test]
-    fn a_declared_schedule_is_not_written_as_a_trigger_yet() {
-        let declared = vec![schedules::DeclaredSchedule {
-            path: "/api/sweep".into(),
-            file: Utf8PathBuf::from("app/api/sweep/_uf.route.js"),
-            cron: "*/15 * * * *".to_owned(),
-        }];
+    fn a_declared_schedule_becomes_a_cloudflare_trigger() {
+        let declared = vec![
+            schedules::DeclaredSchedule {
+                path: "/api/sweep".into(),
+                file: Utf8PathBuf::from("app/api/sweep/_uf.route.js"),
+                cron: "*/15 * * * *".to_owned(),
+            },
+            schedules::DeclaredSchedule {
+                path: "/api/digest".into(),
+                file: Utf8PathBuf::from("app/api/digest/_uf.route.js"),
+                cron: "0 6 * * 1".to_owned(),
+            },
+        ];
         let written = wrangler_config(Utf8Path::new("/src/served-app"), &declared);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
-        assert!(config.get("triggers").is_none(), "{written}");
-        // And the rest of the file is what it was.
+        assert_eq!(config["triggers"]["crons"][0], "*/15 * * * *");
+        assert_eq!(config["triggers"]["crons"][1], "0 6 * * 1");
         assert_eq!(config["main"], "./worker.js");
+    }
+
+    /// Silence rather than an empty list: `crons: []` is a key Wrangler has to
+    /// interpret, and a project with no schedules said nothing.
+    #[test]
+    fn no_schedules_writes_no_triggers_key() {
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[]);
+        let config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert!(config.get("triggers").is_none(), "{written}");
     }
 
     /// The refusal #531 asks for by name, on every target that would not run it.
@@ -824,10 +859,25 @@ mod tests {
             cron: "*/15 * * * *".to_owned(),
         }];
 
-        // Every one of them, `edge` included: each is one piece of wiring away
-        // and none of the pieces is written. Saying so beats the silence, and
-        // beats a `wrangler.json` that looks configured.
-        for adapter in DeployAdapter::ALL.iter().copied() {
+        // Every target with somewhere to run one. `edge` hands it to
+        // Cloudflare's scheduler; the other three tick it in the process they
+        // keep, through the `serve` call uf generates.
+        for adapter in [
+            DeployAdapter::Edge,
+            DeployAdapter::Node,
+            DeployAdapter::Bun,
+            DeployAdapter::Container,
+        ] {
+            assert!(
+                schedules::refuse_unrunnable(adapter, &declared).is_ok(),
+                "{} runs schedules",
+                adapter.as_str()
+            );
+        }
+
+        // And the two that do not, each for its own reason: `serverless` has
+        // no configuration file uf writes, and `static` runs nothing at all.
+        for adapter in [DeployAdapter::Serverless, DeployAdapter::Static] {
             let message = schedules::refuse_unrunnable(adapter, &declared)
                 .expect_err("a schedule nothing would run is refused")
                 .to_string();
