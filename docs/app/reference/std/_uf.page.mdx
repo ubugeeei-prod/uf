@@ -92,18 +92,22 @@ Everything here is pure Flow over the web platform: `Uint8Array`,
 `TextEncoder`/`TextDecoder`, `AbortController`, `Promise`, `setTimeout`. No
 `node:` import, no native binding, no `Buffer`.
 
-| Host | `errors` | `sync` | `context` | `bytes` | `heap` | `hex` |
-| --- | --- | --- | --- | --- | --- | --- |
-| Node.js | yes | yes | yes | yes | yes | yes |
-| Bun | yes | yes | yes | yes | yes | yes |
-| Deno | yes | yes | yes | yes | yes | yes |
-| Edge / workers | yes | yes | yes | yes | yes | yes |
+| Host | Status | How that was established |
+| --- | --- | --- |
+| Node.js | **runs** | The suite: 61 assertions over all six modules, in `tests/library/std.test.js` |
+| Bun 1.3.13 | **runs** | Eighteen smoke assertions over all six, by hand, through `@uniflowed/host/bun-preload` |
+| Deno | expected | Not run. Inference from the API surface, below |
+| Edge / workers | expected | Not run. Same |
 
-That table is a claim about what the code uses, not a matrix of green test runs:
-uf's own suite runs on Node, and [Hosts](/guide/hosts) is the honest account of
-which runtimes have a test that starts them. `AggregateError`, which
-`errors.join` returns, is the newest thing any of these touches; it has been in
-every one of those runtimes since 2020.
+The bottom two rows say "expected" rather than "yes" on purpose, and the
+distinction is the one
+[`docs/hosts.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/hosts.md)
+exists to make: a row nothing has started the runtime for is a claim, not a
+result. What the claim rests on is that nothing here imports `node:` anything,
+touches `Buffer`, or reads `process`, and that `AggregateError` — the newest
+platform feature any of it needs, returned by `errors.join` — has been in all
+four runtimes since 2020. That is a good reason to expect it to work and it is
+not a test.
 
 ## Why this is JavaScript and not Rust
 
