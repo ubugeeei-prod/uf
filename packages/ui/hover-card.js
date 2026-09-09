@@ -45,7 +45,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { HoverIntent } from "./internal/hover-intent.js";
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeRefs, withProps, withoutComposed } from "./internal/merge-props.js";
 import {
   DEFAULT_CLOSE_DELAY,
@@ -127,11 +127,7 @@ export component HoverCardRoot(
  * reachable by keyboard, and `useFocusableTrigger` refuses anything else —
  * a hover card on a `<span>` is one a keyboard reader can never see.
  */
-export component HoverCardTrigger(
-  children?: React.Node,
-  render?: (props: Rest) => React.Node,
-  ...rest: Rest
-) {
+export component HoverCardTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const card = useHoverCard("HoverCard.Trigger");
   const { closeDelay, dismissed, intent, openDelay, triggerRef } = card;
   useFocusableTrigger(triggerRef, "HoverCard.Trigger");
@@ -187,15 +183,12 @@ export component HoverCardTrigger(
     triggerRef.current = element;
   });
 
-  if (render != null) {
-    return render(withProps(withoutComposed(rest, ["ref"]), { ref: attach }));
-  }
+  const props = withProps(withoutComposed(rest, ["ref"]), { children, ref: attach });
 
-  return (
-    <button {...withoutComposed(rest, ["ref"])} ref={attach} type="button">
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**

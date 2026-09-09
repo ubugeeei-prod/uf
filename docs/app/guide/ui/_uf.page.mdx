@@ -39,6 +39,32 @@ One part renders no element and so forwards nothing: `Field.Control` takes a
 nowhere; it belongs on whatever `render` returns, beside the four attributes
 that function is handed.
 
+## Changing the element a part renders
+
+`render` is not only `Field.Control`'s. It is how you say "this one has to be an
+`<a>`", and it is what replaces the copy step a library that writes its source
+into your repository is reached for:
+
+```js
+<Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>
+```
+
+The part computes every attribute, every id, every composed handler and every
+ref exactly as it would have, and hands them over for you to put on your own
+element; the children are in there too, so spreading and self-closing still
+renders what you wrote between the tags. The part is still the part — a
+`Menu.Item` rendered as an `<a>` is what `Menu.Body`'s `renders*` constraint
+accepts, and that constraint is the thing a copied source cannot keep.
+
+`Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`,
+`Tabs`, `Switch` and `Checkbox` take it on every part that renders an element,
+along with `Field.Control`, `Tooltip.Trigger`, `HoverCard.Trigger` and
+`Sidebar.Item`. The rest of the package does not have it yet; the table in
+`tests/library/ui.test.js` names every part and which of the three states it is
+in, and the suite fails if that table stops matching the files.
+[#303](https://github.com/ubugeeei-prod/uf/issues/303) is the argument, and
+`packages/ui/index.js`'s header is where the decision is recorded.
+
 Import from the package root, where each family is a namespace:
 
 ```js

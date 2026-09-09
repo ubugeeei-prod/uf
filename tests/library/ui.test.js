@@ -16,6 +16,7 @@
 // promises too, and it is not a promise any amount of rendering can check.
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 import * as React from "@uniflowed/react";
@@ -8138,6 +8139,584 @@ describe("caller props never disable the component", () => {
 // Both blocks below run the checker; `./type-tests.js` holds what it takes to
 // run it — the checkout, the binary `uf test` named, and the marker harness
 // the three fixture blocks share with five other suites.
+
+describe("the escape hatch: which part hands its element to the caller", () => {
+  // ubugeeei-prod/uf#303. This package has no copy step, and the thing a copy
+  // step is *for* is changing the markup — so `render` is what has to answer
+  // "I need this to be an `<a>`", and the answer is only worth writing down
+  // where it exists. It existed on `Field.Control` alone when #303 was filed,
+  // which is why the issue calls a documented escape hatch that is not there
+  // worse than an undocumented one that is.
+  //
+  // The table below is the whole surface, part by part, in one of three states.
+  // It is a list held to the files, the way `hook_descriptors()` is held to
+  // `@uniflowed/hooks` in `crates/uf_lib/src/tests.rs` — and the shape matters
+  // more than the contents: a part added to `packages/ui/index.js` is in none
+  // of the three lists, so the first test below fails and whoever added it has
+  // to say which state it is in. That is the guard. Nothing else in this
+  // repository would have noticed.
+  //
+  //   * **`RENDER`** — takes `render?: RenderProp` and hands over the props it
+  //     would have put on its own element. Checked: the source declares the
+  //     prop and calls it.
+  //   * **`NO_ELEMENT`** — renders no element of its own. Two kinds live here,
+  //     and the difference is worth knowing: a context-only part like
+  //     `Dialog.Root` has nothing to hand over at all, while `Sheet.Title`-shaped
+  //     parts render *another part of this package* and the escape hatch is that
+  //     part's to offer. Every delegating part whose delegate has `render` today
+  //     forwards it, and is in `RENDER` rather than here; the ones left here
+  //     delegate to something that has not got one yet. Checked: no intrinsic
+  //     element anywhere in the body, so neither kind can be hiding a fixed
+  //     `<button>`.
+  //   * **`FIXED`** — still renders an element the caller cannot change. This
+  //     is the remainder of #303 and it is a closed list that only shrinks:
+  //     the third test fails if a part named here has grown a `render`, so
+  //     landing the hatch on one means moving its name, in the same change.
+  //
+  // What the escape hatch does *not* cost is the constraint: `Menu.Body`'s
+  // `renders*` still rejects a `<div>` where a `Menu.Item` belongs, because a
+  // `Menu.Item` rendered as an `<a>` is still a `Menu.Item`. That is the half a
+  // copied source cannot keep, and it is why "no copy step" is a trade rather
+  // than a loss.
+
+  /** Parts that take `render` and hand their props to the caller. */
+  const RENDER: $ReadOnlyArray<string> = [
+    "AlertDialog.Action",
+    "AlertDialog.Body",
+    "AlertDialog.Cancel",
+    "AlertDialog.Description",
+    "AlertDialog.Footer",
+    "AlertDialog.Header",
+    "AlertDialog.Overlay",
+    "AlertDialog.Title",
+    "AlertDialog.Trigger",
+    "Checkbox",
+    "ContextMenu.Body",
+    "ContextMenu.CheckboxItem",
+    "ContextMenu.Group",
+    "ContextMenu.Item",
+    "ContextMenu.Label",
+    "ContextMenu.RadioGroup",
+    "ContextMenu.RadioItem",
+    "ContextMenu.Separator",
+    "ContextMenu.SubTrigger",
+    "ContextMenu.Trigger",
+    "Dialog.Body",
+    "Dialog.Close",
+    "Dialog.Description",
+    "Dialog.Footer",
+    "Dialog.Header",
+    "Dialog.Overlay",
+    "Dialog.Title",
+    "Dialog.Trigger",
+    "Drawer.Body",
+    "Drawer.Close",
+    "Drawer.Description",
+    "Drawer.Footer",
+    "Drawer.Handle",
+    "Drawer.Header",
+    "Drawer.Overlay",
+    "Drawer.Title",
+    "Drawer.Trigger",
+    "Field.Control",
+    "HoverCard.Trigger",
+    "Menu.Body",
+    "Menu.CheckboxItem",
+    "Menu.Group",
+    "Menu.Item",
+    "Menu.Label",
+    "Menu.RadioGroup",
+    "Menu.RadioItem",
+    "Menu.Separator",
+    "Menu.SubTrigger",
+    "Menu.Trigger",
+    "Menubar.Body",
+    "Menubar.CheckboxItem",
+    "Menubar.Group",
+    "Menubar.Item",
+    "Menubar.Label",
+    "Menubar.RadioGroup",
+    "Menubar.RadioItem",
+    "Menubar.Root",
+    "Menubar.Separator",
+    "Menubar.SubTrigger",
+    "Menubar.Trigger",
+    "Sheet.Body",
+    "Sheet.Close",
+    "Sheet.Description",
+    "Sheet.Footer",
+    "Sheet.Header",
+    "Sheet.Overlay",
+    "Sheet.Title",
+    "Sheet.Trigger",
+    "Sidebar.Item",
+    "Switch",
+    "Tabs.List",
+    "Tabs.Panel",
+    "Tabs.Root",
+    "Tabs.Tab",
+    "Tooltip.Trigger",
+  ];
+
+  /** Parts with no element of their own: a context, or another part of this package. */
+  const NO_ELEMENT: $ReadOnlyArray<string> = [
+    "Accordion.Header",
+    "Alert.Title",
+    "AlertDialog.Root",
+    "Calendar.Next",
+    "Calendar.Previous",
+    "Carousel.Next",
+    "Carousel.Previous",
+    "Collapsible.Root",
+    "ContextMenu.Root",
+    "ContextMenu.Sub",
+    "DatePicker.Calendar",
+    "DatePicker.Trigger",
+    "Dialog.Root",
+    "Drawer.Root",
+    "HoverCard.Root",
+    "Menu.Root",
+    "Menu.Sub",
+    "Menubar.Menu",
+    "Menubar.Sub",
+    "Pagination.Item",
+    "Pagination.Next",
+    "Pagination.Previous",
+    "Popover.Root",
+    "Sheet.Root",
+    "Sidebar.Root",
+    "Table.RowSelect",
+    "Table.SelectAll",
+    "Tooltip.Provider",
+    "Tooltip.Root",
+  ];
+
+  /** Parts whose element a caller still cannot change. #303's remainder; it only shrinks. */
+  const FIXED: $ReadOnlyArray<string> = [
+    "Accordion.Content",
+    "Accordion.Item",
+    "Accordion.Root",
+    "Accordion.Trigger",
+    "Alert.Description",
+    "Alert.Root",
+    "Avatar.Fallback",
+    "Avatar.Image",
+    "Avatar.Root",
+    "Breadcrumb.Item",
+    "Breadcrumb.Link",
+    "Breadcrumb.List",
+    "Breadcrumb.Page",
+    "Breadcrumb.Root",
+    "Breadcrumb.Separator",
+    "Calendar.Day",
+    "Calendar.Month",
+    "Calendar.Root",
+    "Carousel.Content",
+    "Carousel.Item",
+    "Carousel.Pause",
+    "Carousel.Root",
+    "Collapsible.Content",
+    "Collapsible.Trigger",
+    "Combobox.Empty",
+    "Combobox.Group",
+    "Combobox.GroupLabel",
+    "Combobox.Input",
+    "Combobox.Label",
+    "Combobox.List",
+    "Combobox.Option",
+    "Combobox.Root",
+    "Combobox.Status",
+    "DatePicker.Input",
+    "DatePicker.Root",
+    "Field.Description",
+    "Field.Error",
+    "Field.Label",
+    "Field.Root",
+    "HoverCard.Body",
+    "InputOtp.Group",
+    "InputOtp.Root",
+    "InputOtp.Separator",
+    "InputOtp.Slot",
+    "NavigationMenu.Body",
+    "NavigationMenu.Item",
+    "NavigationMenu.Link",
+    "NavigationMenu.List",
+    "NavigationMenu.Root",
+    "NavigationMenu.Trigger",
+    "Pagination.Content",
+    "Pagination.Root",
+    "Popover.Body",
+    "Popover.Trigger",
+    "Progress",
+    "RadioGroup.Indicator",
+    "RadioGroup.Item",
+    "RadioGroup.Root",
+    "Resizable.Handle",
+    "Resizable.Panel",
+    "Resizable.PanelGroup",
+    "ScrollArea.Root",
+    "ScrollArea.Scrollbar",
+    "ScrollArea.Viewport",
+    "Select.Group",
+    "Select.GroupLabel",
+    "Select.Label",
+    "Select.List",
+    "Select.Option",
+    "Select.Root",
+    "Select.Separator",
+    "Select.Trigger",
+    "Select.Value",
+    "Separator",
+    "Sidebar.Body",
+    "Sidebar.Footer",
+    "Sidebar.Header",
+    "Sidebar.Trigger",
+    "Skeleton.Box",
+    "Skeleton.Root",
+    "Slider.Range",
+    "Slider.Root",
+    "Slider.Thumb",
+    "Slider.Track",
+    "Table.Body",
+    "Table.Caption",
+    "Table.Cell",
+    "Table.Head",
+    "Table.Header",
+    "Table.Root",
+    "Table.Row",
+    "Table.RowHeader",
+    "Toast.Action",
+    "Toast.Close",
+    "Toast.Description",
+    "Toast.Region",
+    "Toast.Root",
+    "Toast.Title",
+    "Toggle",
+    "ToggleGroup.Item",
+    "ToggleGroup.Root",
+    "Tooltip.Body",
+  ];
+
+  /** The parts `packages/ui/index.js` names, and the component behind each. */
+  function partsOfTheBarrel(): Map<string, string> {
+    const source = fs.readFileSync(path.join(repository, "packages", "ui", "index.js"), "utf8");
+    const parts = new Map<string, string>();
+    for (const namespace of source.matchAll(/^export const (\w+) = \{\n([\s\S]*?)^\};$/gm)) {
+      for (const part of namespace[2].matchAll(/^ {2}(\w+): (\w+),$/gm)) {
+        parts.set(`${namespace[1]}.${part[1]}`, part[2]);
+      }
+    }
+    // The five that are one component rather than a namespace of parts. They
+    // are exported by name and `the five that are one element` above is the
+    // suite that covers them.
+    for (const alone of ["Checkbox", "Progress", "Separator", "Switch", "Toggle"]) {
+      parts.set(alone, alone);
+    }
+    return parts;
+  }
+
+  /** Every `export component`'s source text, by component name. */
+  function componentSources(): Map<string, string> {
+    const directory = path.join(repository, "packages", "ui");
+    const sources = new Map<string, string>();
+    for (const file of fs.readdirSync(directory)) {
+      if (!file.endsWith(".js") || file === "index.js") {
+        continue;
+      }
+      const lines = fs.readFileSync(path.join(directory, file), "utf8").split("\n");
+      for (let at = 0; at < lines.length; at += 1) {
+        const declared = /^export component (\w+)\(/.exec(lines[at]);
+        if (declared == null) {
+          continue;
+        }
+        // To the closing brace in column one, which is where this package's
+        // formatter puts the end of a top-level declaration.
+        let end = at;
+        while (end < lines.length && lines[end] !== "}") {
+          end += 1;
+        }
+        sources.set(declared[1], lines.slice(at, end + 1).join("\n"));
+      }
+    }
+    return sources;
+  }
+
+  /** The source of the component behind a part, or a failure naming it. */
+  function sourceOf(part: string): string {
+    const component = partsOfTheBarrel().get(part);
+    if (component == null) {
+      throw new Error(`${part} is in the table and is not exported by packages/ui/index.js`);
+    }
+    const source = componentSources().get(component);
+    if (source == null) {
+      throw new Error(`${part} names ${component}, and no module declares that component`);
+    }
+    return source;
+  }
+
+  it("names every part the package exports, and nothing else", () => {
+    const tabled = [...RENDER, ...NO_ELEMENT, ...FIXED];
+    const duplicated = tabled.filter((part, at) => tabled.indexOf(part) !== at);
+    expect(duplicated).toEqual([]);
+
+    const exported = [...partsOfTheBarrel().keys()];
+    const untabled = exported.filter((part) => !tabled.includes(part));
+    const invented = tabled.filter((part) => !exported.includes(part));
+    expect({ untabled, invented }).toEqual({ untabled: [], invented: [] });
+
+    // A floor as well as an equality, so a barrel that stopped parsing into
+    // anything cannot make two empty lists agree. `crates/uf_lib/src/tests.rs`
+    // guards its hook table the same way and for the same reason.
+    expect(exported.length).toBeGreaterThan(150);
+  });
+
+  it("gives every part it calls an escape hatch a real one", () => {
+    const missing = RENDER.filter((part) => {
+      const source = sourceOf(part);
+      return !/\brender\??: RenderProp[,)]/.test(source) || !source.includes("render(");
+    });
+    // `render={render}` is how a part that delegates to another part passes it
+    // on, and that spelling contains `render(` nowhere — so those are named by
+    // the forwarding form instead.
+    const unforwarded = missing.filter((part) => !sourceOf(part).includes("render={render}"));
+    expect(unforwarded).toEqual([]);
+  });
+
+  it("keeps the fixed list shrinking rather than growing", () => {
+    const hatched = FIXED.filter((part) => /\brender\??: RenderProp[,)]/.test(sourceOf(part)));
+    // A part that has grown the escape hatch belongs in `RENDER`. Moving it is
+    // the point: the two lists are what #303's remainder is counted from, and
+    // a stale one is a remainder nobody can trust.
+    expect(hatched).toEqual([]);
+  });
+
+  it("keeps the parts that render nothing rendering nothing", () => {
+    const withElements = NO_ELEMENT.filter((part) => {
+      const source = sourceOf(part);
+      const body = source.slice(source.indexOf(") {"));
+      return /<[a-z][a-zA-Z0-9]*[\s/>]/.test(body);
+    });
+    expect(withElements).toEqual([]);
+  });
+});
+
+describe("the escape hatch, exercised", () => {
+  // The other half of the guard above: that the props a part hands over are the
+  // props it would have used, so the element a caller renders is not a weaker
+  // one. Every case here fails without the `render` prop the part now takes —
+  // the part renders its own element and the assertion about the caller's is
+  // about something that is not there.
+
+  it("renders a menu item as a link, and it is still a menu item", async () => {
+    const onSelect = fn();
+    render(
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item onSelect={onSelect} render={(props) => <a href="/settings" {...props} />}>
+            Settings
+          </Menu.Item>
+        </Menu.Body>
+      </Menu.Root>,
+    );
+
+    // The role is the part's and the element is the caller's, which is the
+    // whole claim: a menu of links is announced as a menu of menu items and
+    // still has the middle click, the context menu and the status bar.
+    const item = screen.getByRole("menuitem", { name: "Settings" });
+    expect(item.tagName).toBe("A");
+    expect(item.getAttribute("href")).toBe("/settings");
+    // The children were written between the tags and the caller spread the
+    // props onto a self-closing element; they arrived anyway.
+    expect(item.textContent).toBe("Settings");
+
+    await userEvent.click(item);
+    expect(onSelect).toHaveBeenCalled();
+    // And choosing it still closes the tree, which is the behaviour the item
+    // owns rather than the element.
+    expect(screen.queryByRole("menu")).toBe(null);
+  });
+
+  it("keeps the roving tab stop on a menu item the caller rendered", async () => {
+    render(
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item render={(props) => <a href="/one" {...props} />}>One</Menu.Item>
+          <Menu.Item>Two</Menu.Item>
+        </Menu.Body>
+      </Menu.Root>,
+    );
+    const [first, second] = screen.getAllByRole("menuitem");
+    expect(first.tagName).toBe("A");
+    expect(first).toHaveFocus();
+    expect(first.getAttribute("tabindex")).toBe("0");
+    expect(second.getAttribute("tabindex")).toBe("-1");
+
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(second).toHaveFocus();
+  });
+
+  it("renders a dialog title as the heading the page around it needs", () => {
+    render(
+      <Dialog.Root defaultOpen>
+        <Dialog.Body>
+          <Dialog.Title render={(props) => <h3 {...props} />}>Rename project</Dialog.Title>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    const heading = screen.getByRole("heading", { level: 3, name: "Rename project" });
+    // The dialog still names itself after it, which is the reason the id has to
+    // survive the change of element. ubugeeei-prod/uf#276 is the same
+    // observation about an accordion's header.
+    expect(screen.getByRole("dialog").getAttribute("aria-labelledby")).toBe(heading.id);
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("gives a dialog trigger's ref to whatever the caller rendered", async () => {
+    render(
+      <Dialog.Root>
+        <Dialog.Trigger render={(props) => <span {...props} tabIndex={0} />}>Open</Dialog.Trigger>
+        <Dialog.Body>
+          <Dialog.Title>Title</Dialog.Title>
+          <Dialog.Close>Done</Dialog.Close>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    const trigger = screen.getByText("Open");
+    expect(trigger.tagName).toBe("SPAN");
+    expect(trigger.getAttribute("aria-haspopup")).toBe("dialog");
+
+    await userEvent.click(trigger);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    // Focus goes back to the caller's element, which only works because the
+    // composed ref went across with the rest of the props.
+    expect(trigger).toHaveFocus();
+  });
+
+  it("renders a tab as a link without losing the roving tab stop", async () => {
+    render(
+      <Tabs.Root defaultValue="one">
+        <Tabs.List>
+          <Tabs.Tab render={(props) => <a href="#one" {...props} />} value="one">
+            One
+          </Tabs.Tab>
+          <Tabs.Tab value="two">Two</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="one">first</Tabs.Panel>
+        <Tabs.Panel value="two">second</Tabs.Panel>
+      </Tabs.Root>,
+    );
+    const first = screen.getByRole("tab", { name: "One" });
+    expect(first.tagName).toBe("A");
+    expect(first.getAttribute("aria-selected")).toBe("true");
+    expect(first.getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("tab", { name: "Two" }).getAttribute("tabindex")).toBe("-1");
+
+    await userEvent.click(screen.getByRole("tab", { name: "Two" }));
+    expect(screen.getByRole("tabpanel").textContent).toBe("second");
+  });
+
+  it("keeps a switch a switch when the caller renders a div", async () => {
+    const changed = fn();
+    render(
+      <Switch onCheckedChange={changed} render={(props) => <div {...props} tabIndex={0} />}>
+        Notifications
+      </Switch>,
+    );
+    const control = screen.getByRole("switch", { name: "Notifications" });
+    expect(control.tagName).toBe("DIV");
+    expect(control.getAttribute("aria-checked")).toBe("false");
+
+    control.focus();
+    await userEvent.keyboard(" ");
+    expect(control.getAttribute("aria-checked")).toBe("true");
+    expect(changed).toHaveBeenCalledWith(true);
+  });
+
+  it("keeps a checkbox's mixed state when the caller renders a span", () => {
+    render(
+      <Checkbox indeterminate render={(props) => <span {...props} tabIndex={0} />}>
+        Select all
+      </Checkbox>,
+    );
+    const control = screen.getByRole("checkbox", { name: "Select all" });
+    expect(control.tagName).toBe("SPAN");
+    expect(control.getAttribute("aria-checked")).toBe("mixed");
+  });
+
+  it("puts the part's own semantics on top of the caller's props", async () => {
+    const theirs = fn();
+    render(
+      <Menu.Root defaultOpen>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item onClick={theirs} render={(props) => <a href="/open" role="link" {...props} />}>
+            Open
+          </Menu.Item>
+        </Menu.Body>
+      </Menu.Root>,
+    );
+    // The caller wrote `role="link"` *before* the spread, so the part's
+    // `role="menuitem"` is what survives — the same rule
+    // `internal/merge-props.js` states for a caller's props on a part's own
+    // element, applied where the element is the caller's.
+    const item = screen.getByRole("menuitem", { name: "Open" });
+    expect(item.tagName).toBe("A");
+    expect(item.getAttribute("role")).toBe("menuitem");
+
+    // And the caller's handler still runs beside the part's rather than
+    // instead of it.
+    await userEvent.click(item);
+    expect(theirs.mock.calls.length).toBe(1);
+  });
+
+  it("carries the hatch through a sheet to the dialog underneath it", async () => {
+    render(
+      <Sheet.Root defaultOpen>
+        <Sheet.Body>
+          <Sheet.Title render={(props) => <h4 {...props} />}>Filters</Sheet.Title>
+          <Sheet.Close render={(props) => <a href="#close" {...props} />}>Done</Sheet.Close>
+        </Sheet.Body>
+      </Sheet.Root>,
+    );
+    const heading = screen.getByRole("heading", { level: 4, name: "Filters" });
+    expect(screen.getByRole("dialog").getAttribute("aria-labelledby")).toBe(heading.id);
+
+    const close = screen.getByRole("link", { name: "Done" });
+    expect(close.tagName).toBe("A");
+    await userEvent.click(close);
+    // A sheet part forwards `render` to the dialog part it is made of, so the
+    // close still closes.
+    expect(screen.queryByRole("dialog")).toBe(null);
+  });
+
+  it("renders a menubar trigger through the hatch and keeps the bar's keys", async () => {
+    render(
+      <Menubar.Root aria-label="Application">
+        <Menubar.Menu value="file">
+          <Menubar.Trigger render={(props) => <a href="#file" {...props} />}>File</Menubar.Trigger>
+          <Menubar.Body>
+            <Menubar.Item>New</Menubar.Item>
+          </Menubar.Body>
+        </Menubar.Menu>
+        <Menubar.Menu value="edit">
+          <Menubar.Trigger>Edit</Menubar.Trigger>
+          <Menubar.Body>
+            <Menubar.Item>Undo</Menubar.Item>
+          </Menubar.Body>
+        </Menubar.Menu>
+      </Menubar.Root>,
+    );
+    const file = screen.getByRole("menuitem", { name: "File" });
+    expect(file.tagName).toBe("A");
+
+    file.focus();
+    fireEvent.keyDown(screen.getByRole("menubar"), { key: "ArrowRight" });
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveFocus();
+  });
+});
 
 describe("the props a part spreads onto its element", () => {
   // A type is a promise the same way a role is, and this is the only test here
