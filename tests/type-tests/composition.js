@@ -16,7 +16,7 @@
 // `uf check` was pointed at, and a scratch file is not a test: every `renders*`
 // in the package was a promise a refactor could have removed with nothing going
 // red. This file is the half of ubugeeei-prod/uf#358 that is not a test
-// function, and it covers all twelve of them rather than the six the issue
+// function, and it covers all thirteen of them rather than the six the issue
 // listed, because a constraint left out here is a constraint still in the state
 // the issue is about.
 //
@@ -75,6 +75,13 @@ import {
   ComboboxList,
   ComboboxOption,
 } from "../../packages/ui/combobox.js";
+import {
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "../../packages/ui/breadcrumb.js";
 import {
   MenuBody,
   MenuCheckboxItem,
@@ -298,6 +305,33 @@ export const divInAPagination: mixed = (
       <div>1</div>
     }
   </PaginationContent>
+);
+
+// --- Breadcrumb.List ---------------------------------------------------------
+//
+// The same constraint as `Pagination.Content` and for the same reason: an
+// `<ol>` may hold nothing but `<li>`, and the separators between the crumbs are
+// `<li>`s too — hidden ones — because there is nowhere else for them to be.
+
+export const breadcrumb: mixed = (
+  <BreadcrumbList>
+    <BreadcrumbItem>
+      <BreadcrumbLink href="/">Home</BreadcrumbLink>
+    </BreadcrumbItem>
+    <BreadcrumbSeparator>/</BreadcrumbSeparator>
+    <BreadcrumbItem>
+      <BreadcrumbPage>Billing</BreadcrumbPage>
+    </BreadcrumbItem>
+  </BreadcrumbList>
+);
+
+export const divInABreadcrumb: mixed = (
+  <BreadcrumbList>
+    {
+      // expect: does not render union type
+      <div>Home</div>
+    }
+  </BreadcrumbList>
 );
 
 // --- ToggleGroup.Root --------------------------------------------------------
