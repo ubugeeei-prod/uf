@@ -183,7 +183,7 @@ pub(crate) fn build(
 
     let map = directory.join(IMPORT_MAP);
     let document = import_map(root, &directory, &packages);
-    write(&map, &document)?;
+    write(&map, document.as_bytes())?;
 
     Ok(DenoLoader {
         worker: directory.join(PACKAGES).join(SCOPE).join("test/worker.js"),
@@ -214,7 +214,7 @@ fn refresh_stamp(directory: &Utf8Path) -> Result<()> {
         fs::remove_dir_all(directory)
             .with_context(|| format!("could not clear the Deno loader's output at {directory}"))?;
     }
-    write(&path, &want)
+    write(&path, want.as_bytes())
 }
 
 /// This framing, and the build of `uf` that is about to compile.
@@ -264,7 +264,8 @@ fn mirror(
             .with_context(|| format!("could not create {parent} for the Deno loader"))?;
     }
     if !is_flow_module(from.as_str()) {
-        fs::copy(from, to).with_context(|| format!("could not copy {from} to {to}"))?;
+        let bytes = fs::read(from).with_context(|| format!("could not read {from} to copy it"))?;
+        write(to, &bytes)?;
         *copied += 1;
         return Ok(());
     }
@@ -276,7 +277,7 @@ fn mirror(
     // open.
     let code = compile_for_a_loader(project, from.as_str(), &source, in_source_tests)
         .map_err(|error| anyhow::anyhow!("{from}: {error}"))?;
-    write(to, &code)?;
+    write(to, code.as_bytes())?;
     *compiled += 1;
     Ok(())
 }
@@ -340,12 +341,30 @@ fn current(from: &Utf8Path, to: &Utf8Path) -> bool {
     }
 }
 
-fn write(path: &Utf8Path, contents: &str) -> Result<()> {
+/// Write one file, through a temporary and a rename.
+///
+/// Atomic because [`current`] keys on modification time: a write interrupted
+/// half way — a `^C`, a full disk — leaves a truncated file carrying a *fresh*
+/// timestamp, which every later run would then read as up to date. The symptom
+/// would be Deno failing to parse a module uf believes it compiled, and no
+/// amount of re-running would fix it. `packages/host/write-atomically.js` is
+/// the same argument for the same reason one directory over.
+///
+/// The temporary is a sibling, so the rename stays on one filesystem, and
+/// carries the process id, so two `uf` processes over one project cannot
+/// truncate each other's half-written file.
+fn write(path: &Utf8Path, contents: &[u8]) -> Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("could not create {parent} for the Deno loader"))?;
     }
-    fs::write(path, contents).with_context(|| format!("could not write {path}"))
+    let temporary = path.with_file_name(format!(
+        "{}.uf-partial-{}",
+        path.file_name().unwrap_or("out"),
+        std::process::id()
+    ));
+    fs::write(&temporary, contents).with_context(|| format!("could not write {temporary}"))?;
+    fs::rename(&temporary, path).with_context(|| format!("could not write {path}"))
 }
 
 /// The `@uniflowed/*` packages this run can reach, by name, at their real path.
