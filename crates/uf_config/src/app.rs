@@ -611,8 +611,10 @@ impl Default for ReactConfig {
 pub struct RenderingConfig {
     /// The rendering strategies this project will deploy, in no order.
     ///
-    /// The default is all four, which is "decide per route and deploy a
-    /// server" — the behaviour every uf project had before anything read this.
+    /// The default is the four that decide per route, which together mean
+    /// "decide per route and deploy a server" — the behaviour every uf project
+    /// had before anything read this. [`RenderingMode::Csr`] is deliberately
+    /// not among them and says why on itself.
     pub modes: Vec<RenderingMode>,
     /// What happens when a visitor follows a link.
     ///
@@ -698,13 +700,17 @@ impl Navigation {
 
 /// One rendering strategy a project may allow.
 ///
-/// Two of the four are implemented, and the enum keeps all four because the
-/// list is an allowlist: naming a strategy uf cannot do yet permits something
-/// that never happens, which costs nothing, where *removing* the name would
-/// make today's `uf.config.js` files fail to parse. What is refused is a list
-/// that allows **only** unimplemented strategies — see
+/// Three of the five are implemented, and the enum keeps the other two because
+/// the list is an allowlist: naming a strategy uf cannot do yet permits
+/// something that never happens, which costs nothing, where *removing* the name
+/// would make today's `uf.config.js` files fail to parse. What is refused is a
+/// list that allows **only** unimplemented strategies — see
 /// [`crate::ConfigError::NoImplementedRenderingMode`] — because that is a
 /// project asking for a build uf cannot produce at all.
+///
+/// [`Csr`](Self::Csr) is the value that does not behave like the others, and
+/// its own documentation says why: it is not a per-route answer, so it is the
+/// one value that cannot share a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RenderingMode {
@@ -719,6 +725,32 @@ pub enum RenderingMode {
     /// selected. `rendering.cache` and ubugeeei-prod/uf#277 are the half of it
     /// that exists.
     Isr,
+    /// Rendered in the browser, from one shell prerendered at build time.
+    /// **Implemented.**
+    ///
+    /// A single-page application. The build writes one document — an empty root
+    /// and the script and stylesheet tags — and the client router resolves and
+    /// renders every route from there. No route gets a document of its own, and
+    /// no server renders one.
+    ///
+    /// # Why it cannot share a list
+    ///
+    /// Every other value answers "where does *this route's* document come
+    /// from", which is what makes a list of them a set the build picks from per
+    /// route. This one answers "where does every route come from" with a single
+    /// document that belongs to no route, and once it is chosen there is no
+    /// per-route decision left. `["csr", "ssg"]` is therefore a project asking
+    /// for a build that both writes a document per route and does not, and its
+    /// two honest readings — "prerender what you can and fall back to the
+    /// shell" and "the shell, and never mind the rest of the list" — are
+    /// different applications. So it is refused rather than resolved by
+    /// precedence; see [`crate::ConfigError::CsrIsNotOneOfSeveral`].
+    ///
+    /// It is also **not in the default list**, which every other value is. The
+    /// default means "decide per route and deploy a server", and a build that
+    /// quietly decided to be a single-page application because nothing forbade
+    /// it would be the largest semantic change a default has ever made.
+    Csr,
 }
 
 impl RenderingMode {
@@ -730,6 +762,7 @@ impl RenderingMode {
             Self::Ssr => "ssr",
             Self::Ssg => "ssg",
             Self::Isr => "isr",
+            Self::Csr => "csr",
         }
     }
 
@@ -740,7 +773,18 @@ impl RenderingMode {
     /// nothing else is refused, and this is the predicate that decides it.
     #[must_use]
     pub const fn is_implemented(self) -> bool {
-        matches!(self, Self::Ssr | Self::Ssg)
+        matches!(self, Self::Ssr | Self::Ssg | Self::Csr)
+    }
+
+    /// Whether this value is the whole application's answer rather than one
+    /// route's.
+    ///
+    /// One value, and a predicate rather than a comparison, because the
+    /// refusal, the plan and the message that explains them all have to agree
+    /// about which value it is.
+    #[must_use]
+    pub const fn is_exclusive(self) -> bool {
+        matches!(self, Self::Csr)
     }
 }
 

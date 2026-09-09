@@ -979,8 +979,8 @@ entirely — see [The other build: a library](#the-other-build-a-library).
 The third pass has three answers per route, not two, and which ones a project
 allows is `app.rendering.modes` and `build.staticBuild`. `uf` resolves those
 two together into a *rendering plan* (`uf_config`'s `RenderingPlan`) and hands
-the builder one word — `everything`, `possible` or `nothing` — because they
-only mean something read together and three commands read them.
+the builder one word — `everything`, `possible`, `nothing` or `shell` — because
+they only mean something read together and three commands read them.
 
 | Route | Answer |
 | --- | --- |
@@ -996,6 +996,18 @@ error** naming it and both ways out, because there is no process to render it
 and a `dist/` with a hole in it is a 404 nobody sees until the deploy. Under
 `nothing` no document is written at all, which is what `["ssr"]` has always
 claimed to mean and, until it was read, did not.
+
+`shell` — `rendering.modes: ["csr"]` — is the plan that is not per-route at
+all: no route is rendered, and the build writes one document that belongs to no
+route (an empty root, the stylesheets, the module script) to both `index.html`
+and `404.html`, so a static host answers `/` from the first and every other URL
+from the second. The client entry then `render`s rather than hydrating, because
+no markup was written for it to attach to. Every row of the table above that
+says "per request" is a **build error** under this plan too, and so is any
+module the application reaches that imports a server-only package: nothing here
+renders, so nothing here would have discovered them, and the failure would have
+been a browser's rather than a build's. `uf preview` applies the SPA rewrite
+(`--spa-fallback`) so that the preview matches a host that is configured.
 
 `build.staticBuild` additionally removes `.uf/build/server/` once the last
 document is written: the bundle is a build intermediate — the prerender renders
@@ -1125,7 +1137,7 @@ Optional; a builder that transforms nothing needs neither.
 | `dev` | `--root --mode [--host --port --strict-port]` | Serves the project, rendering every navigation |
 | `build` | `--root --mode --out-dir --prerender --because [--static-build]` | Writes the client bundle, the server bundle and the prerendered documents |
 | `library` | `--root --mode --out-dir --entry… --format… [--external…]` | Writes one module per entry per format, for a project that is a library |
-| `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build]` | Serves the build through the builder's own preview server |
+| `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build --spa-fallback]` | Serves the build through the builder's own preview server |
 | `start` | `--root --out-dir [--host --port]` | Serves the build with no bundler in the process |
 | `compile` | `--root --mode --out-dir --assets --bundle` | Links the application into one module, for `uf build --compile` |
 | `deploy` | `--root --mode --out-dir --adapter --work --output` | Links the application into a directory to copy |
@@ -1135,7 +1147,12 @@ Optional; a builder that transforms nothing needs neither.
 `env.active`; the `.env` files it selected have already been read, by uf, into
 the driver's environment. `--prerender` is the rendering plan above and
 `--because` is the sentence to quote when refusing, so a refusal in the builder
-names the same config key a refusal in uf does. `UF_BINARY` names the `uf` that
+names the same config key a refusal in uf does. `--spa-fallback` reaches
+`preview` only, and is asked for by name rather than inferred from
+`--static-build`: a `build.staticBuild` project has a document per route and
+wants a 404 for a URL it does not have, and a `["csr"]` project has one document
+and wants it served for every URL, so the flag they share cannot tell them
+apart. `UF_BINARY` names the `uf` that
 started it, and `UF_RSC_MANIFEST` the server-component analysis.
 
 **What the driver says**, one JSON object per line, `{"event": "...", ...}`:

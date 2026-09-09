@@ -818,16 +818,33 @@ export default routes;
  * `navigation: "client"`, so the module a default project gets is byte for
  * byte the one it got before this option existed.
  *
+ * # And whether it hydrates at all
+ *
+ * `mount` is the third generated constant and the one that changes which
+ * function is imported. A `["csr"]` build wrote one shell with an empty root,
+ * so there is no markup to attach to and `render` is what starts the
+ * application; every other build has markup, and `hydrate` attaches to it.
+ *
+ * One import or the other, rather than one import and a branch, because they
+ * are two different React entry points: a bundle that mounts by hydrating has
+ * no reason to carry `createRoot`, and a bundle that renders has none to carry
+ * `hydrateRoot`. Which one is in the module decides which one is in the build.
+ *
  * @param {string} appEntry the project's `app.js`, as an import specifier
- * @param {{ strictMode?: boolean, navigation?: "client" | "document" }} [options]
+ * @param {{
+ *   strictMode?: boolean,
+ *   navigation?: "client" | "document",
+ *   mount?: "hydrate" | "render",
+ * }} [options]
  */
 export function clientModuleSource(appEntry, options = {}) {
   const strictMode = options.strictMode === true ? ", strictMode: true" : "";
   const navigation = options.navigation === "document" ? ', navigation: "document"' : "";
-  return `import { hydrate } from "@uniflowed/router/client";
+  const mount = options.mount === "render" ? "render" : "hydrate";
+  return `import { ${mount} } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-hydrate({ App, routes, notFound, errors${strictMode}${navigation} });
+${mount}({ App, routes, notFound, errors${strictMode}${navigation} });
 `;
 }
 
@@ -862,6 +879,12 @@ hydrate({ App, routes, notFound, errors${strictMode}${navigation} });
  * a host is one or the other: a server streams, a build writes files. See the
  * header of `packages/router/server.js` for why React needs both told apart.
  *
+ * `shellDocument` is the third and is neither: it renders no route, because a
+ * `["csr"]` build has none to render at build time. It is re-exported straight
+ * from the router rather than closed over the table, which says the true thing
+ * about it — the shell is a function of the assets alone, and the route table
+ * has nothing to do with a document that is no route's.
+ *
  * `beginRequest` is the fourth, and it is re-exported rather than imported by
  * the host for a reason that is easy to get wrong: `@uniflowed/server` keeps
  * the request in an `AsyncLocalStorage` held by *its module*, and a bundled
@@ -893,6 +916,7 @@ export { beginRequest } from "@uniflowed/router/server";
 const renderer = createRenderer({ App, routes, notFound, errors });
 export const render = renderer.render;
 export const prerender = renderer.prerender;
+export { shellDocument } from "@uniflowed/router/server";
 export const dispatch = createDispatcher({ handlers });
 export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });

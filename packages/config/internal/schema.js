@@ -359,7 +359,11 @@ export type UniflowedConfig = {
       readonly enabled?: boolean,
     },
     readonly rendering?: {
-      readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr">,
+      // `"csr"` is the one value that cannot share the list: it renders every
+      // route in the browser from one shell, where the others write a document
+      // per route, so there is no per-route choice left for the list to hold.
+      // `["csr"]` is a single-page application; see docs/app/guide/rendering.
+      readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr" | "csr">,
       // What the browser does when a visitor follows a link, which is a
       // different question from `modes` rather than a fifth value in it:
       // `modes` says where a document comes from, per route, and this says
