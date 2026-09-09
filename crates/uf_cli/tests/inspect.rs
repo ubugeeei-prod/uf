@@ -117,14 +117,19 @@ fn inspect_reports_zero_config_defaults() {
         .iter()
         .find(|host| host["host"] == "deno")
         .expect("every host has a row");
-    assert_eq!(deno["level"], "planned");
-    assert_eq!(deno["flowLoader"], serde_json::Value::Null);
-    assert_eq!(deno["trackingIssue"], 246);
+    assert_eq!(deno["level"], "experimental");
+    // Not a module, unlike Node's and Bun's: Deno has no hook, so what teaches
+    // it Flow is a pass that has already run.
     assert!(
-        deno["missing"]
+        deno["flowLoader"]
             .as_str()
             .unwrap_or_default()
-            .contains("Flow loader"),
+            .contains("ahead-of-time"),
+        "{deno}"
+    );
+    assert_eq!(deno["trackingIssue"], 246);
+    assert!(
+        deno["missing"].as_str().unwrap_or_default().contains("hook"),
         "{deno}"
     );
     let node = hosts

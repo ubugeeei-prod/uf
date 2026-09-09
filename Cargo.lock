@@ -3595,6 +3595,7 @@ version = "0.0.0-alpha.18"
 dependencies = [
  "anyhow",
  "assert_cmd",
+ "base64",
  "camino",
  "clap",
  "compact_str",

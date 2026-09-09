@@ -49,6 +49,7 @@
 
 import * as output from "./internal/output.js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import process from "node:process";
 import { writeChangedSnapshots } from "./internal/snapshot.js";
 import { createInterface } from "node:readline";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -56,6 +57,27 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { installInSourceTests } from "./in-source.js";
 import { restoreSharedState } from "./internal/isolation.js";
 import { run } from "./internal/run.js";
+
+// `process` is imported rather than read off the global, and then put *on*
+// the global, because one host in three does not have it there.
+//
+// Deno exposes the whole object as `node:process` and nothing as
+// `globalThis.process` — `crates/uf_cli/tests/deno_host.rs` starts a real one
+// and asserts both halves. Every module this worker reaches that wants the
+// process reaches for the global: `internal/output.js` replaces
+// `process.stdout.write` so a test's printing cannot land in the middle of the
+// protocol, `internal/namespace.js` reads `process.env` for `stubEnv`, and
+// `internal/axe.js` reads `UF_AXE` from it. Threading an import through all
+// three would put a `node:` specifier into modules a browser build resolves,
+// for a difference no other host has.
+//
+// So the entry point installs it, once, before anything below runs. `??=`
+// rather than `=`: on Node and Bun the global is already the real object and
+// this must not replace it with a second view of the same thing.
+//
+// It is a shim of the host, in the one file that is a process entry point, and
+// it stops here — nothing else in `@uniflowed/test` may do this.
+globalThis.process ??= process;
 
 /** What `uf` sends for one file. */
 type Request = {|

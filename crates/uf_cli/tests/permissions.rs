@@ -15,9 +15,11 @@
 //! transform had quietly failed would deny the read too, and would prove
 //! nothing about the permission model.
 //!
-//! Node is the host here because it is the one that both loads Flow and has a
-//! permission model. Bun has no model at all and Deno has no Flow loader; those
-//! two are `tests/bun_host.rs` and `tests/deno_host.rs`.
+//! Node is the host here because it is the reference one: it loads Flow through
+//! a module hook and enforces the two permissions it has. Bun has no permission
+//! model at all, and Deno — which enforces all five, and is therefore where
+//! this file's subject is checked most thoroughly — loads Flow by a road of its
+//! own. Those two are `tests/bun_host.rs` and `tests/deno_host.rs`.
 
 mod support;
 

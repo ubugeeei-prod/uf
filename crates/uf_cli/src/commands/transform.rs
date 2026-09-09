@@ -112,13 +112,13 @@ struct Reply {
 
 /// What the project's config says about every transform.
 #[derive(Debug, Clone)]
-struct ProjectTransform {
+pub(crate) struct ProjectTransform {
     react_compiler: ReactCompilerMode,
     jsx_import_source: String,
 }
 
 impl ProjectTransform {
-    fn from_config(config: &uf_config::UniflowedConfig) -> Self {
+    pub(crate) fn from_config(config: &uf_config::UniflowedConfig) -> Self {
         let compiler = &config.app.builtins.react_compiler;
         Self {
             react_compiler: if compiler.enabled {
@@ -284,6 +284,56 @@ fn handle(request: &Request, project: &ProjectTransform) -> Reply {
             }
         }
     }
+}
+
+/// One module compiled the way a *loader* frames it, for a host that has to be
+/// handed the answer as a file rather than asked for it as the module loads.
+///
+/// Deno has no module hook, so its Flow loader is an ahead-of-time pass that
+/// writes the transformed module to disk (see
+/// [`crate::commands::deno_loader`]). That pass must produce the same bytes the
+/// Node hook produces, or the same source would mean two things depending on
+/// which host ran it — which is the property this service exists to provide and
+/// would be the first thing a second implementation gave away. So it comes
+/// through here, with `handle` above, rather than through a transform call of
+/// its own.
+///
+/// The options are `packages/host/internal/node-hooks.js`'s: development
+/// output, a source map, and `in_source_tests` from the run. So is the framing
+/// — the map appended as a base64 `sourceMappingURL` comment — which is the one
+/// part still written twice, in that file and in this function, because the
+/// Node hook does it in JavaScript after the reply arrives.
+///
+/// # Errors
+///
+/// The transform's own error, unchanged, so a caller can report the position it
+/// carries.
+pub(crate) fn compile_for_a_loader(
+    project: &ProjectTransform,
+    id: &str,
+    code: &str,
+    in_source_tests: bool,
+) -> Result<String, TransformError> {
+    let options = project.options(
+        id,
+        &RequestOptions {
+            development: true,
+            refresh: false,
+            source_map: true,
+            in_source_tests,
+        },
+    );
+    let transformed = transform(code, &options)?;
+    let styled = compile_styles(&transformed.code);
+    let Some(map) = transformed.map else {
+        return Ok(styled.code);
+    };
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(map.as_bytes());
+    Ok(format!(
+        "{}\n//# sourceMappingURL=data:application/json;base64,{encoded}\n",
+        styled.code
+    ))
 }
 
 #[cfg(test)]

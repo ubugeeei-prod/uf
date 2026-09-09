@@ -16,10 +16,11 @@
 - [x] Use `uf.config.js` as the single user-visible config surface.
 - [x] Prefer `.js` files with `// @flow` for user-authored Flow source.
 - [ ] Default app execution to runtime-agnostic Capability JS Hosts: Node.js,
-      Deno, and Bun. Node and Bun run a uf project; Deno does not — it has no
-      Flow loader, and `uf test --host deno` refuses by name. `docs/hosts.md`
-      grades it **planned** and `uf_runtime::HOSTS` is the source of truth.
-      See #246.
+      Deno, and Bun. All three run a uf project; Deno gets there without a
+      module hook, through an ahead-of-time transform and an import map, which
+      leaves a gap a person can meet — a module uf could not enumerate is still
+      Flow, and a watch loop is refused. `docs/hosts.md` grades it
+      **experimental** and `uf_runtime::HOSTS` is the source of truth. See #246.
 - [x] Start native `@uniflowed/test`, `@uniflowed/pm`, and `@uniflowed/rm` contracts.
 - [x] Start XDG-compliant uf runtime layout.
 - [x] Add `uf use uf@0.1.0` runtime-switch command surface.
