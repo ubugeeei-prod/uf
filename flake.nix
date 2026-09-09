@@ -144,7 +144,28 @@
 
           cargoLock.lockFile = ./Cargo.lock;
           cargoBuildFlags = [ "--package" "uf_cli" "--bins" ];
-          cargoCheckFlags = [ "--package" "uf_cli" ];
+
+          # This derivation produces a binary; it does not run the suite.
+          #
+          # A Nix build is hermetic and the suite is not: `crates/uf_cli/tests`
+          # drives real hosts. `tests/assets.rs` needs `node` on PATH and an
+          # installed `node_modules/@uniflowed/vite/driver.js`, and — by
+          # deliberate design, so a missing fixture cannot make a test pass
+          # quietly — it *fails* rather than skipping when they are absent:
+          #
+          #     the JavaScript host is not available, so this test would prove
+          #     nothing: `node` is not on PATH; …/driver.js does not exist
+          #
+          # Twelve tests, all that message. Making the sandbox satisfy them
+          # means an npm install inside a build with no network, which is a
+          # much larger thing than this flake is for, and it would duplicate
+          # what `ci.yml` already does on a machine that has all of it.
+          #
+          # `nix flake check` still evaluates every output, and the `Test` and
+          # `Library` jobs still run the suite. What this build asserts is the
+          # thing only it can: that the package compiles from a pinned,
+          # patched, offline checkout.
+          doCheck = false;
           nativeBuildInputs = [ pkgs.pkg-config ];
           buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
             pkgs.libiconv

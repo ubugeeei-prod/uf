@@ -46,6 +46,14 @@ scratch() {
     "$root/docs/app/guide/install"
   cp "$script" "$root/tools/ci/nix-first-class.sh"
 
+  # A correct repository copies the subtrees its sync checks out, and greets
+  # the reader on stderr. Both are facts about *this* pair of files, so the
+  # fixture carries a miniature of each.
+  cat > "$root/tools/upstream/sync.sh" <<'SYNC'
+#!/bin/sh
+sparse_subtrees="rust_port lib prelude tslib evals/flow-typed/environment"
+SYNC
+
   cat > "$root/flake.nix" <<'FLAKE'
 {
   description = "scratch";
@@ -71,6 +79,14 @@ scratch() {
       devShells = { };
       checks = { };
       formatter = { };
+      devShellHook = ''
+        for subtree in rust_port lib prelude tslib evals; do
+          cp -R $subtree .
+        done
+        shellHook = '\'''
+          echo "scratch dev shell" >&2
+        '\'';
+      '';
     };
 }
 FLAKE
@@ -206,5 +222,32 @@ if run "$root"; then
   fail "accepted an install page that documents no Nix install path"
 fi
 pass "rejects an install page with no Nix section"
+
+# 9. A flake that copies only `rust_port`. This is the build that compiles for
+#    twenty minutes and then cannot read `lib/core.js`, because `flow_flowlib`
+#    embeds Flow's own definitions from directories beside `rust_port` rather
+#    than inside it.
+root="$(scratch partial-subtrees)"
+sed 's|for subtree in rust_port lib prelude tslib evals; do|for subtree in rust_port; do|' \
+  "$root/flake.nix" > "$root/flake.nix.new"
+mv "$root/flake.nix.new" "$root/flake.nix"
+( cd "$root" && git add -A && git -c user.email=t@e -c user.name=t commit -qm partial ) >/dev/null 2>&1
+if run "$root"; then
+  fail "accepted a flake that copies fewer subtrees than the sync checks out"
+fi
+pass "rejects a flake that drops a subtree the sync checks out"
+
+# 10. A dev shell that greets the reader on stdout. `nix develop . --command
+#     rustc --version` then returns the greeting, and so does every other
+#     question anyone asks that shell.
+root="$(scratch loud-shell)"
+sed 's|echo "scratch dev shell" >&2|echo "scratch dev shell"|' \
+  "$root/flake.nix" > "$root/flake.nix.new"
+mv "$root/flake.nix.new" "$root/flake.nix"
+( cd "$root" && git add -A && git -c user.email=t@e -c user.name=t commit -qm loud ) >/dev/null 2>&1
+if run "$root"; then
+  fail "accepted a shellHook that writes its banner to stdout"
+fi
+pass "rejects a dev shell banner on stdout"
 
 echo "test-nix-first-class: ok"
