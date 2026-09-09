@@ -96,6 +96,34 @@ for (const name of directories) {
   );
 }
 
+// The third rule, and the one a reader hits from outside rather than inside.
+// A declaration module that is in neither list is never published — but nothing
+// on it *says* so. It carries a version, it is bumped by every release, its
+// description and source are on GitHub, and the only thing that ever refuses is
+// `npm install`, with `ETARGET` and no explanation. `private: true` is npm's own
+// way of saying "this is not for the registry", and saying it here means the
+// answer is in the package rather than in this script.
+//
+// Only for a package in neither list. Two directories look like declarations to
+// `isDeclaration` and are published on purpose: `core` *defines*
+// `nativeRuntimeRequired`, and `stylex`'s exports are compile-time — `uf
+// transform` replaces the call, so reaching the body means uf was bypassed and
+// throwing is the right answer. Marking either private would stop a release
+// that is correct today, which is why membership of a list wins over the scan.
+for (const name of directories) {
+  if (!isDeclaration(name)) continue;
+  if (published.includes(name) || pending.includes(name)) continue;
+  const manifest = JSON.parse(fs.readFileSync(`packages/${name}/package.json`, "utf8"));
+  if (manifest.private === true) continue;
+  problems.push(
+    `packages/${name} is a declaration module in neither release list, so it is ` +
+      'never published — but its manifest does not say so. Add `"private": true` ' +
+      "to packages/" +
+      name +
+      "/package.json, so `npm install` is not the only thing that refuses.",
+  );
+}
+
 for (const name of pending) {
   if (published.includes(name)) {
     problems.push(`${name} is in both lists; it is published, so take it out of the pending one.`);
