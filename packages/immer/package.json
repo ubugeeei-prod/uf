@@ -21,6 +21,7 @@
     "draft.js",
     "freeze.js",
     "index.js",
-    "patches.js"
+    "patches.js",
+    "!*.test.js"
   ]
 }

@@ -28,7 +28,8 @@
     "driver.js",
     "index.js",
     "internal",
-    "merge.js"
+    "merge.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@mdx-js/rollup": "^3.1.1",

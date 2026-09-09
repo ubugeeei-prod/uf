@@ -25,7 +25,8 @@
     "./structural": "./structural.js"
   },
   "files": [
-    "*.js"
+    "*.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.18",

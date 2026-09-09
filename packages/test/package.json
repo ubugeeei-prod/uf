@@ -20,7 +20,8 @@
     "in-source.js",
     "index.js",
     "internal",
-    "worker.js"
+    "worker.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/host": "0.0.0-alpha.18"

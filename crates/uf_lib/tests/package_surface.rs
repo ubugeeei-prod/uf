@@ -8,6 +8,7 @@
 //! - no module runs anything when it is imported,
 //! - every module opens with the `// @flow` pragma,
 //! - every `exports` subpath resolves and every shipped module is reachable,
+//! - no test file is published, by the allowlist or through `exports`,
 //! - every shipped `package.json` declares `"sideEffects": false`,
 //! - the Rust registry in `uf_lib` and the shipped subpaths agree,
 //! - every `@uniflowed/*` a package imports is declared in its manifest.
@@ -829,6 +830,87 @@ fn shipped_packages_never_publish_flow_declaration_files() {
             assert!(
                 !entry.contains(".flow"),
                 "{relative} publishes {entry}; the product has no `.flow` files"
+            );
+        }
+    }
+}
+
+/// A published package must not ship a test file.
+///
+/// This is a rule about the *allowlist*, not about the files that happen to be
+/// on disk today, and it has to be: there are no test files under `packages/`
+/// yet, so a test that only walked the tree would pass while every manifest
+/// was wide open. What is checked is whether a test file placed beside the
+/// module it tests — which is where this repository wants them, and where
+/// `crates/*/src/tests.rs` already puts the Rust half — would reach npm.
+///
+/// Twenty-two of the forty-nine manifests would have published one. Ten
+/// allowlist `*.js`, which matches `alert.test.js` as readily as `alert.js`;
+/// the other twelve name `internal` as a bare directory, and a directory entry
+/// takes everything under it. Neither is visible by reading the entry.
+///
+/// The negation must be the **last** entry, and that is the whole reason this
+/// is enforced rather than written down. npm applies `files` in order, so
+///
+/// ```json
+/// "files": ["!*.test.js", "*.js", "internal"]
+/// ```
+///
+/// publishes every test file — the negation subtracts from nothing, because
+/// nothing has been added yet — while the same three entries in the other
+/// order do not. Both read as if they exclude tests. `npm pack --dry-run` is
+/// the only way to tell them apart, and nobody runs it on a manifest they did
+/// not think they had changed: sorting the array alphabetically is enough to
+/// move the negation to the front and start publishing tests silently.
+#[test]
+fn a_shipped_package_never_publishes_a_test_file() {
+    /// The entry that subtracts test files from whatever precedes it.
+    ///
+    /// No `/`, so npm reads it the way `.gitignore` does — matching at any
+    /// depth, which is what closes the bare-`internal` hole as well as the
+    /// top-level `*.js` one.
+    const NEGATION: &str = "!*.test.js";
+
+    for relative in shipped_manifests() {
+        let manifest = manifest(&relative);
+        let files = manifest
+            .get("files")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("{relative} must list published files"));
+
+        let entries = files
+            .iter()
+            .map(|entry| entry.as_str().unwrap_or_default())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            entries.last(),
+            Some(&NEGATION),
+            "{relative} must end its `files` with {NEGATION:?} so a test file \
+             beside the module it tests is not published; found {entries:?}"
+        );
+    }
+}
+
+/// And that no test file is reachable through an `exports` subpath either.
+///
+/// The allowlist is what npm packs, but `exports` is what a consumer can
+/// `import`. A package that named a test file as a subpath would be asking for
+/// it back even with the allowlist closed, so the two halves are checked
+/// separately — this one is cheap and it is the half a reviewer would assume
+/// was covered by the other.
+#[test]
+fn no_exports_subpath_names_a_test_file() {
+    for relative in shipped_manifests() {
+        let manifest = manifest(&relative);
+        let exports = manifest
+            .get("exports")
+            .unwrap_or_else(|| panic!("{relative} must declare exports"));
+
+        for (subpath, target) in exports_targets(exports) {
+            assert!(
+                !target.ends_with(".test.js"),
+                "{relative} exports {subpath} as {target}, which is a test file"
             );
         }
     }

@@ -19,7 +19,8 @@
     "./story": "./story.js"
   },
   "files": [
-    "*.js"
+    "*.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/mock": "0.0.0-alpha.18",

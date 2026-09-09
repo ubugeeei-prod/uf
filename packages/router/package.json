@@ -26,7 +26,8 @@
     "index.js",
     "internal",
     "middleware.js",
-    "server.js"
+    "server.js",
+    "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19",

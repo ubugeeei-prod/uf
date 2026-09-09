@@ -18,7 +18,8 @@
     "./tokens.stylex.js": "./tokens.stylex.js"
   },
   "files": [
-    "*.js"
+    "*.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.18"
