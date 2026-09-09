@@ -15,15 +15,20 @@ display:
 executors:
   default:
     description: >
-      A glibc Linux image with curl and tar, which is everything the installer
-      needs. Alpine is deliberately not offered: uf ships a
-      `*-unknown-linux-gnu` binary and a glibc binary does not start on musl.
+      A glibc Linux image with curl, tar, Node and npm. Alpine is deliberately
+      not offered: uf ships a `*-unknown-linux-gnu` binary and a glibc binary
+      does not start on musl. Node is here because the installer is not the
+      only thing a job runs — `uf install` drives the project's own package
+      manager and `uf test` and `uf build` run on a Capability JS Host, and on
+      `cimg/base`, which is what this said until now, all three failed on a
+      missing `npm`. Pass your own executor to `uf/run` if the project needs
+      more than Node; it needs at least Node.
     parameters:
       tag:
         type: string
-        default: "24.04"
+        default: "22.11"
     docker:
-      - image: cimg/base:<< parameters.tag >>
+      - image: cimg/node:<< parameters.tag >>
 
 # --- Commands --------------------------------------------------------------
 
@@ -73,6 +78,23 @@ commands:
           useful for a fork or a rehearsal of the release process.
         type: string
         default: ubugeeei-prod/uf
+      verify-origin:
+        description: >
+          How hard the installer works at proving where the archive came from:
+          `auto` (the default) uses whatever evidence is available and refuses
+          when a check fails, `require` refuses unless one actually passed,
+          `off` skips it.
+
+          The sha256 the installer always checks proves transit and nothing
+          else — the checksum comes from the host that served the archive.
+          `require` is worth setting in a pipeline, because a pipeline can
+          arrange what a laptop usually cannot: install cosign in a step before
+          this one, and the Sigstore signature uf publishes with each release is
+          checked against the identity of the workflow that signed it. With no
+          cosign it needs `UF_CHECKSUM_BASE`, a mirror of the checksums on a
+          host that does not serve the archive, and fails when it has neither.
+        type: string
+        default: auto
     steps:
       # PATH first, and in its own step, because CircleCI reads $BASH_ENV at
       # the start of every *later* step and not during the one that wrote it.
@@ -100,6 +122,7 @@ commands:
           environment:
             UF_VERSION: << parameters.version >>
             UF_REPO: << parameters.repository >>
+            UF_VERIFY_ORIGIN: << parameters.verify-origin >>
           command: |
             set -eu
             install_dir="<< parameters.install-dir >>"
@@ -141,7 +164,8 @@ commands:
 jobs:
   run:
     description: >
-      Check out the repository, install uf, and run one uf command.
+      Check out the repository, install uf, install the project's dependencies,
+      and run one uf command.
     parameters:
       command:
         description: The uf command to run, for example `uf check`.
@@ -153,6 +177,27 @@ jobs:
       cache:
         type: boolean
         default: true
+      verify-origin:
+        description: Passed to `install`; see the command's own parameter.
+        type: string
+        default: auto
+      install-dependencies:
+        description: >
+          Run `uf install --frozen-lockfile` before the command. Leave it on.
+          The `install` command above installs the *toolchain*, which is not the
+          project: `uf check` resolves an import to a file in its batch or to a
+          package under `node_modules`, and a specifier that answers to neither
+          is typed `any`. With no dependencies installed a `uf check` job goes
+          green having typed the program against nothing — it does not fail, it
+          passes, which is the worse of the two. `uf fmt --check` is the quiet
+          version of the same thing: the formatter it runs over JSON, CSS and
+          TypeScript lives in `node_modules/.bin`, and with none there those
+          files are skipped without reaching the exit code.
+
+          Turn it off only for a job whose command reads no dependencies at all
+          — `uf lint`, say — or for one that installs them itself.
+        type: boolean
+        default: true
       executor:
         type: executor
         default: default
@@ -162,6 +207,16 @@ jobs:
       - install:
           version: << parameters.version >>
           cache: << parameters.cache >>
+          verify-origin: << parameters.verify-origin >>
+      # `--frozen-lockfile` rather than a plain install: it installs exactly
+      # what the lockfile pins and fails when the lockfile has drifted from the
+      # manifests, rather than resolving the drift away and testing something no
+      # reviewer approved. It is `npm ci` under whichever manager the project
+      # brought.
+      - when:
+          condition: << parameters.install-dependencies >>
+          steps:
+            - run: uf install --frozen-lockfile
       - run:
           name: << parameters.command >>
           command: << parameters.command >>
@@ -192,6 +247,10 @@ examples:
   install-in-your-own-job:
     description: >
       Use the command directly when a job does more than run one uf command.
+      `uf/install` installs the toolchain and nothing else, so a job that
+      assembles its own steps runs `uf install` itself — `uf build` has no
+      project to build without it, and `uf check` would type one against `any`
+      and pass.
     usage:
       version: 2.1
       orbs:
@@ -203,6 +262,7 @@ examples:
             - checkout
             - uf/install:
                 version: 0.0.0-alpha.10
+            - run: uf install --frozen-lockfile
             - run: uf build
             - store_artifacts:
                 path: dist

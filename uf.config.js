@@ -633,6 +633,37 @@ export default defineConfig({
         "tools/ci/integrations-agree.sh",
       ],
     },
+    // And that the recipes inside those files still run. `integrations` above
+    // checks the installation — that `uf` reaches `PATH`; this checks what the
+    // pipeline does next, by reading every `uf` command in the three
+    // integrations and in `/guide/ci` back against the binary. A shipped recipe
+    // is a copy of the CLI's surface that ages on its own, and it also has to
+    // install the project before checking it: `uf check` with no `node_modules`
+    // does not fail, it passes, because every import that resolves to nothing
+    // is typed `any`.
+    //
+    // No `dependsOn: ["build"]`, unlike the other tasks that run
+    // `./target/release/uf`. This one runs in `Metadata`, which downloads the
+    // binary `Toolchain` built rather than building one, and has no Rust cache
+    // to build with — a dependency on `build` would spend a release build there
+    // to reproduce the artefact already in the directory. The script says how
+    // to point `UF_BIN` at a binary when there is none.
+    "ci:recipes": {
+      command: "UF_BIN=./target/release/uf tools/ci/recipes-are-runnable.sh",
+      // The recipes, the guide whose blocks people copy, and the script. Not
+      // `crates/**`: this asks the *binary* what commands it has, and the
+      // binary's own freshness is `Toolchain`'s question rather than this
+      // task's.
+      inputs: [
+        "integrations/**",
+        "docs/app/guide/ci/_uf.page.mdx",
+        "tools/ci/recipes-are-runnable.sh",
+      ],
+    },
+    "ci:recipes:test": {
+      command: "UF_BIN=./target/release/uf tools/ci/test-recipes-are-runnable.sh",
+      inputs: ["tools/ci/recipes-are-runnable.sh", "tools/ci/test-recipes-are-runnable.sh"],
+    },
     lockfile: {
       command: "tools/ci/lockfile-in-sync.sh",
       // The lock, the root manifest, and every workspace manifest the root's
@@ -755,6 +786,8 @@ export default defineConfig({
         "scripts:parse",
         "scripts:parse:test",
         "integrations",
+        "ci:recipes",
+        "ci:recipes:test",
         "release:closure",
         "publishable",
         "publishable:test",
