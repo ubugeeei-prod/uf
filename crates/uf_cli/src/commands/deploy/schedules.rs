@@ -36,6 +36,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde_json::Value;
 use uf_config::{DeployAdapter, UniflowedConfig};
+use uf_infra::FxHashMap;
 use uf_router::{ServerModuleKind, discover_server_modules};
 
 /// The export a route handler declares its schedule with.
@@ -93,6 +94,13 @@ pub(crate) fn discover_schedules(
 }
 
 /// The expression a module exports, or [`None`] when it exports none.
+///
+/// Both spellings reach the same answer, because a reader who wrote the second
+/// one meant the first: `export const schedule = "…"` and
+/// `const schedule = "…"; export { schedule }` are one declaration to
+/// everything else that reads this module, and a build that saw only the first
+/// would miss a schedule silently — which is the failure this whole file
+/// exists to refuse.
 fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
     // Through the same parser the build transforms with, rather than a second
     // reading of the file: `uf lint` and `uf build` already disagree with
@@ -100,63 +108,154 @@ fn read_schedule(source: &str, file: &Utf8Path) -> Result<Option<String>> {
     // opinion.
     let (program, _) = uf_transform::lowered_ast(source)
         .with_context(|| format!("parsing {file} to read its `{EXPORT}` export"))?;
-
-    for statement in program
+    let empty = Vec::new();
+    let body = program
         .get("body")
         .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
+        .unwrap_or(&empty);
+    let literals = top_level_literals(body);
+
+    for statement in body {
         if statement.get("type").and_then(Value::as_str) != Some("ExportNamedDeclaration") {
             continue;
         }
-        let Some(declaration) = statement.get("declaration") else {
-            continue;
-        };
-        if declaration.get("type").and_then(Value::as_str) != Some("VariableDeclaration") {
+
+        // `null` and not absent: a specifier export carries the key with
+        // nothing in it, and treating that as a declaration is how the
+        // specifiers below never got looked at.
+        let declaration = statement
+            .get("declaration")
+            .filter(|declaration| !declaration.is_null());
+        if let Some(declaration) = declaration {
+            if let Some(found) = declared_here(declaration, file)? {
+                return Ok(Some(found));
+            }
             continue;
         }
-        for declarator in declaration
-            .get("declarations")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            let name = declarator
-                .get("id")
-                .and_then(|id| id.get("name"))
-                .and_then(Value::as_str);
-            if name != Some(EXPORT) {
+
+        for specifier in specifiers(statement) {
+            if name_of(specifier.get("exported")) != Some(EXPORT) {
                 continue;
             }
-            let init = declarator.get("init");
-            let literal = init
-                .filter(|init| init.get("type").and_then(Value::as_str) == Some("Literal"))
-                .and_then(|init| init.get("value"))
-                .and_then(Value::as_str);
-            let Some(cron) = literal else {
+            // `export { schedule } from "./elsewhere.js"`: the value is in
+            // another module, and following imports to find it is a different
+            // and much larger question than reading this file. Refused rather
+            // than skipped, for the same reason a computed one is.
+            if statement
+                .get("source")
+                .is_some_and(|source| !source.is_null())
+            {
                 bail!(
-                    "{file} exports `{EXPORT}` as something this build cannot read.\n  \
-                     It has to be a string written in the file — `export const {EXPORT} = \
-                     \"*/15 * * * *\"` — because uf writes a platform's cron configuration \
-                     without running the project, and an expression it would have to \
-                     evaluate is one it cannot write down."
-                );
-            };
-            if cron.split_whitespace().count() != 5 {
-                bail!(
-                    "{file} exports `{EXPORT} = {cron:?}`, which is not five fields.\n  \
-                     A cron expression is `minute hour day-of-month month day-of-week`."
+                    "{file} re-exports `{EXPORT}` from another module, and this build reads \
+                     only the file that declares it.\n  Write the expression in this file — \
+                     `export const {EXPORT} = \"*/15 * * * *\"`."
                 );
             }
-            return Ok(Some(cron.to_owned()));
+            let Some(local) = name_of(specifier.get("local")) else {
+                continue;
+            };
+            let Some(cron) = literals.get(local) else {
+                bail!("{}", unreadable(file));
+            };
+            return Ok(Some(five_fields(cron, file)?));
         }
     }
     Ok(None)
 }
 
-#[cfg(test)]
-mod tests;
+/// The expression on an exported `const schedule = "…"`, if that is what this
+/// declaration is.
+fn declared_here(declaration: &Value, file: &Utf8Path) -> Result<Option<String>> {
+    if declaration.get("type").and_then(Value::as_str) != Some("VariableDeclaration") {
+        return Ok(None);
+    }
+    for declarator in declaration
+        .get("declarations")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if name_of(declarator.get("id")) != Some(EXPORT) {
+            continue;
+        }
+        let Some(cron) = literal_string(declarator.get("init")) else {
+            bail!("{}", unreadable(file));
+        };
+        return Ok(Some(five_fields(cron, file)?));
+    }
+    Ok(None)
+}
+
+/// Every top-level `const`/`let`/`var` bound to a string literal.
+///
+/// Collected so `export { schedule }` can be answered without a second walk,
+/// and only the literal ones: a binding this cannot read is the same refusal
+/// whether it was exported directly or by name.
+fn top_level_literals(body: &[Value]) -> FxHashMap<&str, &str> {
+    let mut literals = FxHashMap::default();
+    for statement in body {
+        if statement.get("type").and_then(Value::as_str) != Some("VariableDeclaration") {
+            continue;
+        }
+        for declarator in statement
+            .get("declarations")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            if let (Some(name), Some(value)) = (
+                name_of(declarator.get("id")),
+                literal_string(declarator.get("init")),
+            ) {
+                literals.insert(name, value);
+            }
+        }
+    }
+    literals
+}
+
+fn specifiers(statement: &Value) -> impl Iterator<Item = &Value> {
+    statement
+        .get("specifiers")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+}
+
+fn name_of(node: Option<&Value>) -> Option<&str> {
+    node?.get("name")?.as_str()
+}
+
+/// The string a node is, when it is a string literal and nothing else.
+fn literal_string(node: Option<&Value>) -> Option<&str> {
+    let node = node?;
+    if node.get("type")?.as_str()? != "Literal" {
+        return None;
+    }
+    node.get("value")?.as_str()
+}
+
+/// The expression, or a refusal naming the field count.
+fn five_fields(cron: &str, file: &Utf8Path) -> Result<String> {
+    if cron.split_whitespace().count() != 5 {
+        bail!(
+            "{file} exports `{EXPORT} = {cron:?}`, which is not five fields.\n  \
+             A cron expression is `minute hour day-of-month month day-of-week`."
+        );
+    }
+    Ok(cron.to_owned())
+}
+
+/// What to say about a `schedule` this build cannot read.
+fn unreadable(file: &Utf8Path) -> String {
+    format!(
+        "{file} exports `{EXPORT}` as something this build cannot read.\n  \
+         It has to be a string written in the file — `export const {EXPORT} = \
+         \"*/15 * * * *\"` — because uf writes a platform's cron configuration without \
+         running the project, and an expression it would have to evaluate is one it cannot \
+         write down."
+    )
+}
 
 /// Whether `adapter` would actually run what a project declared.
 ///
@@ -208,3 +307,6 @@ pub(crate) fn refuse_unrunnable(
         schedules.len()
     );
 }
+
+#[cfg(test)]
+mod tests;

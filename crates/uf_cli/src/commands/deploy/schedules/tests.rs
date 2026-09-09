@@ -171,3 +171,60 @@ fn a_computed_expression_in_a_real_project_fails_the_walk() {
         .to_string();
     assert!(message.contains("cannot read"), "{message}");
 }
+
+/// `export { schedule }` is the same declaration to everything else that reads
+/// this module, so a build that saw only `export const` would miss a schedule
+/// silently — the one failure this file exists to refuse.
+#[test]
+fn a_specifier_export_is_read_the_same_way_a_declaration_is() {
+    assert_eq!(
+        read("const schedule = \"*/15 * * * *\";\nexport { schedule };\n").expect("parses"),
+        Some("*/15 * * * *".to_owned())
+    );
+}
+
+#[test]
+fn a_renamed_specifier_export_is_read_under_the_name_it_takes() {
+    assert_eq!(
+        read("const every = \"0 6 * * 1\";\nexport { every as schedule };\n").expect("parses"),
+        Some("0 6 * * 1".to_owned())
+    );
+    // And the local name is not what is looked for.
+    assert_eq!(
+        read("const schedule = \"0 6 * * 1\";\nexport { schedule as other };\n").expect("parses"),
+        None
+    );
+}
+
+#[test]
+fn a_specifier_export_of_something_unreadable_is_refused() {
+    let message = read("const schedule = everyMinutes(15);\nexport { schedule };\n")
+        .expect_err("a computed binding is refused however it is exported")
+        .to_string();
+    assert!(message.contains("cannot read"), "{message}");
+}
+
+/// The value is in another module, and following imports to find it is a much
+/// larger question than reading this file. Refused rather than skipped.
+#[test]
+fn a_re_export_is_refused_rather_than_missed() {
+    let message = read("export { schedule } from \"./elsewhere.js\";\n")
+        .expect_err("a re-exported schedule is refused")
+        .to_string();
+    assert!(message.contains("re-exports"), "{message}");
+    assert!(
+        message.contains("elsewhere") || message.contains("another module"),
+        "{message}"
+    );
+}
+
+#[test]
+fn a_specifier_export_is_found_in_a_real_project_too() {
+    let dir = project(&[(
+        "app/api/sweep/_uf.route.js",
+        "const schedule = \"*/15 * * * *\";\nexport { schedule };\nexport function GET() {}\n",
+    )]);
+    let found = discovered(&dir);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].cron, "*/15 * * * *");
+}
