@@ -500,6 +500,75 @@ fn reads_the_two_cache_switches_that_are_implemented() {
     assert!(config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.data);
     assert!(!config.app.rendering.cache.actions);
+    // Nothing persists unasked. A project that turned the route cache on and
+    // said nothing else has the store it has always had: memory, one process.
+    assert_eq!(config.app.rendering.cache.store, None);
+    assert_eq!(config.app.rendering.cache.store_dir, None);
+}
+
+/// Where entries live is a name, and it survives the parse as one.
+///
+/// `store` is deliberately not an enumeration — `docs/red-lines.md`'s third
+/// line says a provider a project can replace has to be a name it can write —
+/// so this crate reads whatever string is there and validates none of it. The
+/// resolution is the host's, at the point it constructs the store, because that
+/// is the only place a module specifier means anything.
+#[test]
+fn reads_where_a_project_wants_its_cache_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        r#"
+            export default defineConfig({
+              app: {
+                rendering: {
+                  cache: { route: true, store: "filesystem", storeDir: "/var/cache/uf" },
+                },
+              },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let config = load_config_file(&path).unwrap();
+
+    assert_eq!(
+        config.app.rendering.cache.store.as_deref(),
+        Some("filesystem")
+    );
+    assert_eq!(
+        config.app.rendering.cache.store_dir.as_deref(),
+        Some("/var/cache/uf")
+    );
+}
+
+/// A provider uf has never heard of is carried through, not refused.
+///
+/// The whole point of the key being a name: `"./cache/redis.js"` is a module
+/// this project wrote, and a config loader that only accepted words uf shipped
+/// would make every new provider need a release of uf — which is the failure
+/// `docs/red-lines.md` is about.
+#[test]
+fn carries_a_cache_provider_uf_does_not_ship() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = Utf8PathBuf::from_path_buf(dir.path().join("uf.config.js")).unwrap();
+    fs::write(
+        &path,
+        r#"
+            export default defineConfig({
+              app: { rendering: { cache: { route: true, store: "./cache/redis.js" } } },
+            });
+        "#,
+    )
+    .unwrap();
+
+    let config = load_config_file(&path).unwrap();
+
+    assert_eq!(
+        config.app.rendering.cache.store.as_deref(),
+        Some("./cache/redis.js")
+    );
 }
 
 /// A cache uf does not have is refused where it is asked for.

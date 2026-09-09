@@ -872,9 +872,53 @@ than one that always means the same minute.
 
 A target that keeps no process is **refused** an in-process schedule where the
 host is wired, because nothing would be running at the minute it names. Those
-targets need their platform's own scheduler pointed at the deployment, and
-emitting that configuration per platform is
-[#531](https://github.com/ubugeeei-prod/uf/issues/531).
+targets need their platform's own scheduler pointed at the deployment.
+
+### Declaring one in a route handler
+
+A route handler can say when it should run without being asked, so that
+`uf build` can tell a platform's own scheduler about it:
+
+```js
+// app/api/sweep/_uf.route.js
+// @flow
+export const schedule = "*/15 * * * *";
+
+export function GET(): Response {
+  return Response.json({ swept: true });
+}
+```
+
+A **string written in the file**, not a call. `uf build` writes a platform's
+cron configuration without running a line of your project, so an expression it
+would have to evaluate is one it cannot write down — and a computed one is
+refused by name rather than skipped, because a schedule the build could not
+read is a schedule the deployment would not run.
+
+`uf build --adapter edge` puts it in `wrangler.json`:
+
+```json
+"triggers": { "crons": ["*/15 * * * *"] }
+```
+
+Every other adapter **refuses the build**, and says which route, which
+expression and which file:
+
+```
+error: the `node` adapter would not run the 1 schedule(s) this project
+declares, so this build would produce a deployment whose scheduled work never
+happens:
+    /api/sweep — `*/15 * * * *`, in app/api/sweep/_uf.route.js
+```
+
+`node`, `bun` and `container` keep a process and *could* run one — the entry
+`uf build` generates for them does not pass the declaration to `serve` yet, so
+until it does, pass your schedules to `serve` yourself as above.
+[#531](https://github.com/ubugeeei-prod/uf/issues/531) tracks the rest.
+
+What each field *contains* is checked when the deployment starts rather than
+at build time: the meaning of a field lives in one place, and a second matcher
+in the build would be two implementations of one rule.
 
 ### What each target can do
 

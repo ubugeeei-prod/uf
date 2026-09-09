@@ -788,7 +788,7 @@ impl RenderingMode {
     }
 }
 
-/// Which of uf's caches a project has turned on.
+/// Which of uf's caches a project has turned on, and where they keep things.
 ///
 /// Four switches, and for a long time all four of them were read once, copied
 /// into `dist/uf-build-manifest.json` and read by nothing — so setting any of
@@ -813,6 +813,29 @@ impl RenderingMode {
 /// All four still default to `false`. `docs/roadmap.md` says "opt-in-only cache
 /// controls" and that has not changed; what has changed is that opting in now
 /// does something.
+///
+/// # And a fifth key, which is a name rather than a switch
+///
+/// [`CacheConfig::store`] says *where* entries live, and it is what turns the
+/// route cache into incremental static regeneration. Absent — the default —
+/// means the memory of one process, which is what the cache has always been:
+/// four servers behind a load balancer hold four of them, a restart empties
+/// one, and an invalidation in one does not reach the other three. A store that
+/// outlives the process fixes all three at once, and the time-based
+/// revalidation and on-demand invalidation that make it ISR were already there.
+///
+/// It is a *name* and not an enumeration on purpose. `docs/red-lines.md`'s
+/// third line says every built-in provider must be replaceable and that "a
+/// provider a project can replace has to be a name it can write, and an enum
+/// with one variant cannot become one without a release of uf" — so
+/// `"filesystem"` is uf's built-in and anything else is a module specifier
+/// exporting `createCacheProvider`, exactly as `builder.module` names a builder.
+/// A project with a Redis or a KV namespace puts it behind the seam without a
+/// release of uf and without uf naming either.
+///
+/// Persistence is a second opt-in on top of the first and never a way around
+/// it: a route with no stated lifetime is still not cached, wherever the cache
+/// keeps things.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -825,4 +848,18 @@ pub struct CacheConfig {
     pub fetch: bool,
     /// A rendered document, through `@uniflowed/server/fetch`.
     pub route: bool,
+    /// Where entries live: `"memory"`, `"filesystem"`, or a module specifier.
+    ///
+    /// `None` is `"memory"` and is the default. Not resolved or validated here:
+    /// a module specifier is resolved from the project by the host that
+    /// constructs the store, which is the only place it can be — this crate has
+    /// no module resolver and inventing one to reject a name early would be a
+    /// second, worse copy of Node's.
+    pub store: Option<CompactString>,
+    /// Where `"filesystem"` keeps entries. Defaults to `.uf/cache/route`.
+    ///
+    /// A path a *deployment* has to be able to write, which is why it is a
+    /// setting rather than a constant: a container has one mounted volume, a
+    /// Lambda has `/tmp`, and a checkout has the project directory.
+    pub store_dir: Option<CompactString>,
 }

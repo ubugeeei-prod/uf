@@ -78,7 +78,9 @@ which is the fastest way to answer "what is it actually using".
 | `builtins.style` | — | The style engine |
 | `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
 | `rendering.navigation` | `"client"` | What a link does: the client router takes it over, or the browser fetches a document — see below |
-| `rendering.cache.*` | all `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
+| `rendering.cache.route`, `.fetch` | `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
+| `rendering.cache.store` | `"memory"` | Where entries live: one process, `"filesystem"`, or a module exporting `createCacheProvider` |
+| `rendering.cache.storeDir` | `.uf/cache/route` | Where `"filesystem"` keeps them |
 | `targets` | — | Runtime targets the build must satisfy |
 
 ### rendering.modes
