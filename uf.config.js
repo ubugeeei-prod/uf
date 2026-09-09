@@ -442,6 +442,17 @@ export default defineConfig({
         "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/tui/startup.js",
       dependsOn: ["build"],
     },
+    // What a `ScrollBox` costs as its content grows, which is the wall-clock
+    // half of ubugeeei-prod/uf#314's "only the visible window is laid out and
+    // diffed". The exact half — how many times layout asks a row how tall it
+    // is — is counted in `tests/library/tui.test.js` and does run in CI,
+    // because a count is the same number on every machine and a millisecond
+    // is not. This needs no Ink, only the four sizes and a quiet machine.
+    "bench:tui:window": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/tui/window.js",
+      dependsOn: ["build"],
+    },
 
     // What the route cache is worth in front of a slow loader: the same page
     // served twice, with and without the cache `rendering.cache.route` turns

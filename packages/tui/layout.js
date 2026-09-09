@@ -141,14 +141,18 @@ export type LayoutNode = {
   width: number,
   height: number,
   /**
-   * Whether this node is outside a scrolling ancestor's window.
+   * The index of this node's first child that is inside a scrolling window,
+   * and how many of them are. Written by layout, read by the painter.
    *
-   * Written by layout and read by the painter. Zeroing the geometry would not
-   * be enough: a box zero cells wide draws nothing itself, and the painter
-   * would still walk into its children, whose geometry is whatever the last
-   * frame left there. A skipped subtree has to be skipped as a subtree.
+   * Zero and zero for everything that does not scroll, and for a scrolling box
+   * whose window has reached past the end of its content. The painter walks
+   * this range instead of the whole child list, which is the half of "only the
+   * visible window" that paint is responsible for: a child outside the range
+   * has geometry from whichever frame last showed it, and drawing that would
+   * put last frame's rows on top of this one's.
    */
-  hidden: boolean,
+  scrollFirst: number,
+  scrollCount: number,
   /** Rows of content a scrolling box holds. Written by layout. */
   scrollHeight: number,
   /** The first row it is actually showing, after clamping. Written by layout. */
@@ -165,7 +169,64 @@ export type LayoutNode = {
   scrollViewTop: number,
   scrollViewRows: number,
   scrollBarColumn: number,
+  /**
+   * The last intrinsic size this node reported, and what was offered for it.
+   *
+   * `measuredFor*` is `-1` when there is nothing cached, which is what
+   * `invalidate` in `internal/tree.js` writes when anything under the node
+   * changes. Layout never invalidates this itself: a cache that layout could
+   * clear would be cleared on the frame that most needs it.
+   */
+  measuredForWidth: number,
+  measuredForHeight: number,
+  measuredWidth: number,
+  measuredHeight: number,
+  /**
+   * The first child index whose height may have changed since the last frame,
+   * or `-1` when none has.
+   *
+   * Written by whoever changes the tree — `internal/tree.js`, which is to say
+   * React — and cleared by layout once it has acted on it. It is a number
+   * rather than a call into this module because the three participants named
+   * at the top of `internal/tree.js` do not import each other; a node's fields
+   * are the whole of what they say to one another.
+   */
+  scrollDirtyFrom: number,
+  /** A scrolling box's stack of child heights. Owned by {@link layout}. */
+  scrollIndex: ScrollIndex | null,
   ...
+};
+
+/**
+ * Where each child of a scrolling box sits in its content, kept between frames.
+ *
+ * This is what makes scrolling cost the window rather than the content. The
+ * stack of child heights does not change when the offset does, so rebuilding
+ * it on every frame would be recomputing the answer to a question nobody
+ * asked — and it is the only part of a scrolling box that is proportional to
+ * how many children it has.
+ *
+ * `from` is the first index that has to be rebuilt, and it is written from
+ * outside layout: `internal/tree.js` sets it when React mutates the tree, and
+ * sets it to the old child count when the mutation was an append, which is the
+ * shape a log has. A frame that changed nothing leaves it at the child count
+ * and rebuilds none of it.
+ *
+ * `tops[i]` is where child `i`'s border box starts, measured from the top of
+ * the content and including every margin and gap above it; `heights[i]` is how
+ * tall it is.
+ */
+export type ScrollIndex = {
+  /** The content width, viewport height and gap the stack was built for. */
+  width: number,
+  view: number,
+  gap: number,
+  /** The first index whose height is not known to be current. */
+  from: number,
+  tops: Array<number>,
+  heights: Array<number>,
+  /** Rows of content the whole stack adds up to. */
+  content: number,
 };
 
 /** A resolved size, in whole cells. */
@@ -272,6 +333,23 @@ export function intrinsicSize(
   availableWidth: number,
   availableHeight: number,
 ): Size {
+  // The same offer twice is the same answer twice, and the answer is only
+  // stale when something under the node changed — which is a fact React knows
+  // and layout does not, so `internal/tree.js` is what clears this. Without
+  // it, a scrolling box that has not changed re-measures every child on every
+  // frame, and measuring a line of text means walking it grapheme by grapheme.
+  if (node.measuredForWidth === availableWidth && node.measuredForHeight === availableHeight) {
+    return { width: node.measuredWidth, height: node.measuredHeight };
+  }
+  const size = measureIntrinsic(node, availableWidth, availableHeight);
+  node.measuredForWidth = availableWidth;
+  node.measuredForHeight = availableHeight;
+  node.measuredWidth = size.width;
+  node.measuredHeight = size.height;
+  return size;
+}
+
+function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHeight: number): Size {
   const style = node.style;
   const [insetTop, insetRight, insetBottom, insetLeft] = insets(node);
   const innerAvailableWidth = Math.max(0, availableWidth - insetLeft - insetRight);
@@ -290,6 +368,22 @@ export function intrinsicSize(
     );
     contentWidth = measured.width;
     contentHeight = measured.height;
+  } else if (style.overflow === "scroll") {
+    // A scrolling box's height is its content's, which the stack already
+    // knows; and its width is whatever it was offered, because there is no
+    // horizontal scrolling and so nothing about a child can widen it. Asking
+    // the children for a width would also be asking ten thousand of them, and
+    // the answer would be the width of a row that may be nowhere near the
+    // window — which is the coupling this whole component exists to break.
+    contentWidth = innerAvailableWidth;
+    // A box that was given a height has already answered this, and the answer
+    // below is thrown away — so the stack is not consulted for it. That also
+    // avoids keying one on a viewport this pass can only guess at, which
+    // `layout` would then have to rebuild whole at the height it settles on.
+    contentHeight =
+      fixedHeight != null
+        ? 0
+        : scrollStack(node, innerAvailableWidth, innerAvailableHeight).content;
   } else {
     const row = isRow(direction(node.style));
     const gap = gapOf(style, row);
@@ -375,9 +469,18 @@ export function layout(
   node.y = y;
   node.width = width;
   node.height = height;
-  node.hidden = false;
+  // Cleared before the branch that may set it, so that a box which has run out
+  // of children does not leave the painter a range into a list that no longer
+  // has those rows in it.
+  node.scrollFirst = 0;
+  node.scrollCount = 0;
 
   if (node.children.length === 0) {
+    // A scrolling box that has lost its content has nothing to say about where
+    // in it the window is, and a bar drawn from what it said last frame is a
+    // control pointing into rows that are gone.
+    node.scrollHeight = 0;
+    node.scrollOffset = 0;
     return;
   }
 
@@ -548,45 +651,27 @@ export function layout(
  *
  * # What this costs, exactly
  *
- * Every child is **measured** — its height at this width — because the total
- * is what `scrollTop` is clamped against, and a box that guessed its own
- * content height would let `Number.MAX_SAFE_INTEGER` scroll into empty space.
- * Measuring one line of text is measuring one line of text.
+ * A child is **measured** once — its height at this width — and the height is
+ * kept on the child until something under it changes. The total is what
+ * `scrollTop` is clamped against, so a box that guessed at its own content
+ * height would let `Number.MAX_SAFE_INTEGER` scroll into empty space; keeping
+ * the answer is how that total stays exact without being recomputed.
  *
- * Only the children that intersect the window are **laid out**: the rest get
- * no position, no size, and no walk into their subtrees, and {@link
- * LayoutNode.hidden} keeps the painter out of them too. So a ten-thousand-line
- * log costs one measure per line and a screenful of everything else — which is
- * the property the whole component exists for, and the reason this is not
- * `overflow: "hidden"` with a margin on top.
+ * Only the children that intersect the window are **laid out**, and the
+ * painter is given their range rather than a flag per child, so the rest get
+ * no position, no size, no walk into their subtrees and no visit at all. What
+ * remains proportional to the number of children is the stack of heights, and
+ * {@link ScrollIndex} rebuilds only the part of it that changed.
+ *
+ * So moving the window over ten thousand rows touches the rows in the window
+ * and nothing else, whatever the other nine thousand nine hundred and
+ * seventy-six are — which is the property the whole component exists for, and
+ * the reason this is not `overflow: "hidden"` with a margin on top.
  */
 function layoutScroll(node: LayoutNode, x: number, y: number, width: number, height: number): void {
   const children = node.children;
-  // What a scrolling box offers a child that has not been given a height:
-  // nothing in particular. That is what scrolling means — a child is as tall as
-  // its content and the window decides how much is seen — and the only thing
-  // this basis is read for is a percentage `minHeight` or `maxHeight` on the
-  // child, which inside a scroll region is a question with no good answer.
-  const unbounded = Number.MAX_SAFE_INTEGER;
-  const gap = gapOf(node.style, false);
-
-  // Margins are part of the stack, exactly as they are in the flex path and
-  // in `intrinsicSize`: a child's outer height is what the next one starts
-  // after and what the scroll range is made of. Leaving them out of any one
-  // of those makes the content shorter than it is drawn, which is a bottom
-  // the offset clamps to too early and a last row nobody can scroll to.
-  const margins = children.map((child) => margin(child.style));
-
-  const heights = new Array<number>(children.length);
-  let content = 0;
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
-    const available = Math.max(0, width - marginLeft - marginRight);
-    const fixed = resolve(child.style.height, height);
-    heights[index] = fixed ?? intrinsicSize(child, available, unbounded).height;
-    content += heights[index] + marginTop + marginBottom + (index > 0 ? gap : 0);
-  }
+  const stack = scrollStack(node, width, height);
+  const content = stack.content;
 
   const offset = clamp(Math.floor(node.style.scrollTop ?? 0), 0, Math.max(0, content - height));
   node.scrollHeight = content;
@@ -597,30 +682,141 @@ function layoutScroll(node: LayoutNode, x: number, y: number, width: number, hei
   // reserved by adding one to its right padding.
   node.scrollBarColumn = x + width;
 
-  let cursor = 0;
-  for (let index = 0; index < children.length; index += 1) {
-    const child = children[index];
-    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
-    const childHeight = heights[index];
-    const childY = y + cursor + marginTop - offset;
-    cursor += marginTop + childHeight + marginBottom + gap;
+  // The bottom of a child's border box only ever moves down the list, so the
+  // first child the window reaches can be found without looking at the ones
+  // above it. This is the step that would otherwise make the offset — the one
+  // thing about a scrolling box that changes every frame — cost the content.
+  const first = firstVisible(stack, offset);
+  let count = 0;
+  for (let index = first; index < children.length; index += 1) {
+    const top = stack.tops[index];
     // The border box, not the outer one: a margin draws nothing, so a child
     // whose own box has left the window has left it.
-    if (childY + childHeight <= y || childY >= y + height) {
-      hide(child);
-      continue;
+    if (top - offset >= height) {
+      break;
     }
+    const child = children[index];
+    const [, marginRight, , marginLeft] = margin(child.style);
     const available = Math.max(0, width - marginLeft - marginRight);
     const childWidth = Math.min(available, resolve(child.style.width, width) ?? available);
-    layout(child, x + marginLeft, childY, childWidth, childHeight);
+    layout(child, x + marginLeft, y + top - offset, childWidth, stack.heights[index]);
+    count += 1;
   }
+  node.scrollFirst = first;
+  node.scrollCount = count;
 }
 
-/** Take a node and everything under it out of this frame. */
-function hide(node: LayoutNode): void {
-  node.hidden = true;
-  node.width = 0;
-  node.height = 0;
+/**
+ * The first child whose border box has not finished above `offset`.
+ *
+ * A binary search rather than a scan, because a scan is the thing this is
+ * replacing. `tops[i] + heights[i]` never decreases as `i` grows — every term
+ * between two children is a height, a margin or a gap, and none of those is
+ * negative — which is exactly the ordering a binary search needs.
+ */
+function firstVisible(stack: ScrollIndex, offset: number): number {
+  let low = 0;
+  let high = stack.heights.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (stack.tops[middle] + stack.heights[middle] > offset) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  return low;
+}
+
+/**
+ * Where each child of a scrolling box sits, rebuilding only what moved.
+ *
+ * Margins are part of the stack, exactly as they are in the flex path and in
+ * {@link intrinsicSize}: a child's outer height is what the next one starts
+ * after and what the scroll range is made of. Leaving them out of any one of
+ * those makes the content shorter than it is drawn, which is a bottom the
+ * offset clamps to too early and a last row nobody can scroll to.
+ *
+ * The width, the viewport height and the gap are part of the key rather than
+ * inputs to a patch: all three change every height in the stack at once, so
+ * there is nothing to salvage. The viewport is in there because a child may
+ * give its height as a percentage, and the percentage is of the window.
+ */
+function scrollStack(node: LayoutNode, width: number, height: number): ScrollIndex {
+  const children = node.children;
+  const gap = gapOf(node.style, false);
+  let stack = node.scrollIndex;
+  if (stack == null || stack.width !== width || stack.view !== height || stack.gap !== gap) {
+    stack = {
+      width,
+      view: height,
+      gap,
+      from: 0,
+      tops: [],
+      heights: [],
+      content: 0,
+    };
+    node.scrollIndex = stack;
+  }
+
+  // What React changed since the last frame, taken rather than read: acting on
+  // it twice would be harmless and leaving it set would make every later frame
+  // rebuild from the same index forever.
+  if (node.scrollDirtyFrom >= 0) {
+    stack.from = Math.min(stack.from, node.scrollDirtyFrom);
+    node.scrollDirtyFrom = -1;
+  }
+
+  // Children the tree no longer has. `from` is clamped rather than reset: a
+  // removal has already put it at zero, and an unmount during a Suspense
+  // fallback must not be able to leave an index pointing past the end.
+  if (stack.heights.length > children.length) {
+    stack.heights.length = children.length;
+    stack.tops.length = children.length;
+    stack.from = Math.min(stack.from, children.length);
+  }
+
+  if (children.length === 0) {
+    stack.content = 0;
+    stack.from = 0;
+    return stack;
+  }
+
+  if (stack.from < children.length) {
+    // What a scrolling box offers a child that has not been given a height:
+    // nothing in particular. That is what scrolling means — a child is as tall
+    // as its content and the window decides how much is seen — and the only
+    // thing this basis is read for is a percentage `minHeight` or `maxHeight`
+    // on the child, which inside a scroll region is a question with no good
+    // answer.
+    const unbounded = Number.MAX_SAFE_INTEGER;
+    // Where the child before the first stale one ended. Read back out of the
+    // stack rather than carried, because a rebuild may start anywhere and only
+    // the entries below it are known to be current.
+    let cursor = 0;
+    if (stack.from > 0) {
+      const previous = children[stack.from - 1];
+      const [, , previousBottom] = margin(previous.style);
+      cursor = stack.tops[stack.from - 1] + stack.heights[stack.from - 1] + previousBottom + gap;
+    }
+    for (let index = stack.from; index < children.length; index += 1) {
+      const child = children[index];
+      const [marginTop, marginRight, marginBottom, marginLeft] = margin(child.style);
+      const available = Math.max(0, width - marginLeft - marginRight);
+      const fixed = resolve(child.style.height, height);
+      const own = fixed ?? intrinsicSize(child, available, unbounded).height;
+      stack.tops[index] = cursor + marginTop;
+      stack.heights[index] = own;
+      cursor += marginTop + own + marginBottom + gap;
+    }
+    // `cursor` counts a gap after the last child, which the content does not
+    // have. Subtracting it at the end rather than skipping the first one is
+    // what makes the running total patchable from any index.
+    stack.content = cursor - gap;
+    stack.from = children.length;
+  }
+
+  return stack;
 }
 
 // Not implemented here, on purpose, and tracked rather than discovered:

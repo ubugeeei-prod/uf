@@ -299,6 +299,21 @@ export type ScrollBoxProps = {
  * There is still no horizontal scrolling: a terminal column is not a pixel,
  * and content wider than the window is nearly always content that should have
  * wrapped.
+ *
+ * # What it costs
+ *
+ * The window, and not the content. Moving the offset over a hundred thousand
+ * rows measures none of them, lays out and paints the ones on the screen, and
+ * never visits the rest; appending a line to that log measures the line. The
+ * first frame is the exception and has to be: the height of the content is
+ * what `Number.MAX_SAFE_INTEGER` is clamped against, so every row is asked its
+ * height once, and after that the answer is kept until something under the row
+ * changes.
+ *
+ * That is a property of `layout.js` rather than of this component, which is
+ * why this is a component at all — a caller cannot decide which of their
+ * children to render, because which ones are visible is not known until after
+ * layout has run.
  */
 export component ScrollBox(
   children?: React.Node,

@@ -164,12 +164,6 @@ export function paint(
   clip: Rect,
   hits: HitGrid | null = null,
 ): void {
-  // A scrolling ancestor decided this subtree is not on screen. Its geometry
-  // is deliberately not up to date, so walking into it would draw the last
-  // frame's positions on top of this one's.
-  if (node.hidden) {
-    return;
-  }
   switch (node.type) {
     case "root":
       for (const child of node.children) {
@@ -231,8 +225,22 @@ function paintBox(
       })
     : clip;
 
-  for (const child of node.children) {
-    paint(child, frame, capabilities, childClip, hits);
+  if (node.style.overflow === "scroll") {
+    // The children a scrolling box laid out, and only those. The rest were
+    // never given a position this frame, so their geometry is from whichever
+    // frame last showed them and drawing it would put those rows back on the
+    // screen. Reading the range rather than a flag per child is also what
+    // keeps the walk proportional to the window: a box holding ten thousand
+    // rows is not visited ten thousand times to be told nine thousand nine
+    // hundred and seventy-six of them are elsewhere.
+    const end = node.scrollFirst + node.scrollCount;
+    for (let index = node.scrollFirst; index < end; index += 1) {
+      paint(node.children[index], frame, capabilities, childClip, hits);
+    }
+  } else {
+    for (const child of node.children) {
+      paint(child, frame, capabilities, childClip, hits);
+    }
   }
 
   if (node.style.overflow === "scroll" && node.props.scrollbar === true) {
