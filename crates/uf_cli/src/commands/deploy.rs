@@ -859,20 +859,25 @@ mod tests {
             cron: "*/15 * * * *".to_owned(),
         }];
 
-        // `edge` has both halves now — a trigger to fire and a `scheduled()`
-        // to answer it.
-        assert!(schedules::refuse_unrunnable(DeployAdapter::Edge, &declared).is_ok());
-
-        // The rest do not. The ones that keep a process are not handed the
-        // declaration by the entry uf generates; `serverless` has no
-        // configuration file uf writes at all.
+        // Every target with somewhere to run one. `edge` hands it to
+        // Cloudflare's scheduler; the other three tick it in the process they
+        // keep, through the `serve` call uf generates.
         for adapter in [
+            DeployAdapter::Edge,
             DeployAdapter::Node,
             DeployAdapter::Bun,
             DeployAdapter::Container,
-            DeployAdapter::Serverless,
-            DeployAdapter::Static,
         ] {
+            assert!(
+                schedules::refuse_unrunnable(adapter, &declared).is_ok(),
+                "{} runs schedules",
+                adapter.as_str()
+            );
+        }
+
+        // And the two that do not, each for its own reason: `serverless` has
+        // no configuration file uf writes, and `static` runs nothing at all.
+        for adapter in [DeployAdapter::Serverless, DeployAdapter::Static] {
             let message = schedules::refuse_unrunnable(adapter, &declared)
                 .expect_err("a schedule nothing would run is refused")
                 .to_string();

@@ -358,7 +358,7 @@ the sixth runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
-| `node` | `handler.js`, `server.js`, `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
+| `node` | `handler.js`, `server.js` (ticking any declared schedule), `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
 | `bun` | the same file names, with `Bun.serve` and `Bun.file` behind them | `cd .uf/deploy/bun && bun server.js` |
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json` (with `triggers.crons` and a `scheduled()` for any declared schedule), `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
