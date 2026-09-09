@@ -91,7 +91,7 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
   `install.ps1` resolves and says so rather than failing obscurely, and WSL2
   works.
 - **Packages.** Seventeen `@uniflowed/*` packages are on npm — the closure a new
-  project needs, plus the test runner. Eleven more are implemented and still
+  project needs, plus the test runner. Thirteen more are implemented and still
   workspace-only ([#210](https://github.com/ubugeeei-prod/uf/issues/210)); they
   wait in `tools/release/pending-packages.txt`. Every release so far is a
   prerelease and `latest` still points where the first publish left it, so name

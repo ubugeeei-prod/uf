@@ -4,6 +4,12 @@
 //! The crate is organised the way [`StdCategory`] is: one module per capability
 //! family, and [`std_modules`] names every `@uniflowed/std/*` specifier those
 //! families back.
+//!
+//! Read [`StdStatus`] before reading anything else in that table. Six of the
+//! specifiers are code in `packages/std`, one is a declaration surface, and the
+//! rest are a plan or a decision not to have one — and until
+//! ubugeeei-prod/uf#710 nothing in the entry said which, so `uf inspect`
+//! reported forty-five modules that did not exist.
 
 mod cloud;
 mod data;
@@ -37,7 +43,7 @@ pub use platform::{
     terminal_capabilities,
 };
 pub use registry::{
-    StdCategory, StdExports, StdModule, StdModuleList, std_modules, std_runtime_standard,
+    StdCategory, StdExports, StdModule, StdModuleList, StdStatus, std_modules, std_runtime_standard,
 };
 pub use serialization::{
     JsonDocument, QueryPair, QueryPairs, TomlDocument, YamlDocumentKind, detect_yaml, minify_json,

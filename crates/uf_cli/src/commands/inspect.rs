@@ -7,8 +7,8 @@ use serde_json::json;
 use uf_config::env_files::{self, ProjectEnv};
 use uf_config::{ResolvedConfig, load_config};
 use uf_lib::{
-    UiReadiness, builtin_modules, hook_descriptors, std_module_descriptors, tui_contract,
-    ui_components,
+    StdStatus, UiReadiness, builtin_modules, hook_descriptors, std_module_descriptors,
+    tui_contract, ui_components,
 };
 use uf_plugin::{PipelineMode, resolve_pipeline};
 use uf_pm::{DetectionOptions, PackageManagerPlan, detect_package_manager_with};
@@ -51,7 +51,27 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
     let issues = detection.issues.len().to_string();
     let rm_module = resolved.config.rm.module.to_string();
     let native_modules = builtin_modules().len().to_string();
-    let std_modules = std_module_descriptors().len().to_string();
+    // The same two lines as `ui` below, and for the same reason found twice.
+    // `std_module_descriptors().len()` was reported here as a project fact and
+    // it was the size of a wish: at ubugeeei-prod/uf#710, forty-five entries of
+    // which `packages/std` shipped none — every one of them constructed with
+    // `nativeBinding: true` by a function that could not say otherwise. Six
+    // subpaths are real code now, and the rest carry a status the JSON emits,
+    // so a consumer can filter rather than trust a count.
+    let std_catalogue = std_module_descriptors();
+    let std_by = |status: StdStatus| {
+        std_catalogue
+            .iter()
+            .filter(|module| module.status == status)
+            .count()
+    };
+    let std_modules = std_by(StdStatus::Ships).to_string();
+    let std_roadmap = format!(
+        "{} planned, {} declined, {} declaration only",
+        std_by(StdStatus::Planned),
+        std_by(StdStatus::Declined),
+        std_by(StdStatus::Declared)
+    );
     // Two lines rather than one number, because the table behind them is two
     // things at once. `ui_components().len()` was reported here as a project
     // fact and it was the size of a roadmap: at ubugeeei-prod/uf#249, fifty-one
@@ -221,6 +241,7 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
             &[
                 KeyValue::toned("native modules", &native_modules, Tone::Number),
                 KeyValue::toned("std modules", &std_modules, Tone::Number),
+                KeyValue::toned("std roadmap", &std_roadmap, Tone::Muted),
                 KeyValue::toned("ui components", &ui_component_count, Tone::Number),
                 KeyValue::toned("ui roadmap", &ui_roadmap, Tone::Muted),
                 KeyValue::toned("tui components", &tui_component_count, Tone::Number),
