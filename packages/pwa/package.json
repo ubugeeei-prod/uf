@@ -1,6 +1,7 @@
 {
   "name": "@uniflowed/pwa",
   "version": "0.0.0-alpha.18",
+  "private": true,
   "description": "Flow declarations for @uniflowed/pwa, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
