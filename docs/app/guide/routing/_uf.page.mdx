@@ -60,25 +60,27 @@ app/posts/[slug]/_uf.page.js      →  /posts/anything
 app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
 ```
 
-### Two spellings that are refused
+A directory named `@team` is a [parallel-route slot](#parallel-routes): it is
+not a URL segment at all. There is no escape hatch for a URL segment that
+really begins with `@`; capture it with a `[param]` instead.
 
-A directory named `@team` is a **parallel-route slot** and one named
-`(.)photo`, `(..)photo`, `(...)photo` or `(..)(..)photo` is an **intercepting
-route**. uf has neither feature, and both are refused by name — by `uf build`,
-by `uf dev` and by `uf lint`.
+### One spelling that is refused
 
-They are refused rather than ignored, and the difference is the point. Until
-[#267](https://github.com/ubugeeei-prod/uf/issues/267) neither name meant
-anything to the router, so both fell through to "an ordinary URL segment":
-`app/@team/_uf.page.js` served `/@team`, `app/feed/(.)photo/_uf.page.js` served
-`/feed/(.)photo` — a `(group)` is a segment that *ends* in `)`, which
-`(.)photo` does not — and both went into the generated `RoutePath`, so
-`route("/@team", …)` type checked. A person migrating from Next.js got a
-project that looked like it worked.
+A directory named `(.)photo`, `(..)photo`, `(...)photo` or `(..)(..)photo` is
+an **intercepting route**. uf does not have interception — a navigation carries
+where it is going and not where it came from — so the directory is refused by
+name, by `uf build`, by `uf dev` and by `uf lint`.
 
-There is no escape hatch for a URL segment that really begins with `@`;
-capture it with a `[param]` instead. A `(group)` is untouched: it ends in `)`
-and always did.
+It is refused rather than ignored, and the difference is the point. Until
+[#267](https://github.com/ubugeeei-prod/uf/issues/267) neither this name nor
+`@team` meant anything to the router, so both fell through to "an ordinary URL
+segment": `app/@team/_uf.page.js` served `/@team`,
+`app/feed/(.)photo/_uf.page.js` served `/feed/(.)photo` — a `(group)` is a
+segment that *ends* in `)`, which `(.)photo` does not — and both went into the
+generated `RoutePath`, so `route("/@team", …)` type checked. A person migrating
+from Next.js got a project that looked like it worked.
+
+A `(group)` is untouched: it ends in `)` and always did.
 
 "The rest" is the whole rest, so a spread is the last routing directory on the
 way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
@@ -143,6 +145,67 @@ segment with no `_uf.template.js` gets no wrapper at all.
 
 The key is the **pathname**, so a navigation that changes only the query string
 does not remount. A filter written into the URL keeps the page it filters.
+
+## Parallel routes
+
+A directory whose name starts with `@` is a **slot**: a second thing a layout
+renders, beside its `children`.
+
+```
+app/dashboard/_uf.layout.js            the frame, which renders both
+app/dashboard/_uf.page.js              →  /dashboard          as `children`
+app/dashboard/members/_uf.page.js      →  /dashboard/members  as `children`
+app/dashboard/@team/_uf.default.js     the team slot when the URL says nothing
+app/dashboard/@team/members/_uf.page.js  /dashboard/members   as `team`
+```
+
+The layout receives the slot under the directory's name without its `@`:
+
+```js
+// @flow
+// app/dashboard/_uf.layout.js
+import * as React from "react";
+
+export default component Dashboard(children: React.Node, team: React.Node) {
+  return (
+    <div className="dashboard">
+      <main>{children}</main>
+      <aside>{team}</aside>
+    </div>
+  );
+}
+```
+
+**A slot adds no URL.** `@team` contributes nothing to the path, the way a
+`(group)` does not, and the slot's pages are matched against the *same* URL the
+page is — so `/dashboard/members` renders `app/dashboard/members/_uf.page.js`
+as `children` and `app/dashboard/@team/members/_uf.page.js` as `team`, at once,
+each inside its own layouts. A URL no ordinary page matches is a 404 whatever
+the slots hold, which is why uf has no `default` for `children` the way Next.js
+does.
+
+`_uf.default.js` is what a slot renders when the URL matches none of *its*
+routes. A slot with none renders nothing, and the layout is handed `null` — so
+`{team ?? <Empty />}` is a thing you can write and rely on.
+
+Four rules, each refused by name rather than by silence:
+
+- the segment that declares a slot must have a layout of its own, because the
+  slot is a prop that layout receives;
+- a slot may not be named `children` or `params`, which are the props every
+  layout already receives — `@children` is the tempting one, because `children`
+  is what Next.js calls the page, and here the page always is `children`;
+- `_uf.default.js` belongs directly inside a slot directory, and nowhere else;
+- a slot holds pages, layouts, nested slots and one default — a `_uf.loading.js`,
+  `_uf.error.js`, `_uf.not-found.js`, `_uf.template.js`, `_uf.route.js` or
+  `_uf.middleware.js` inside one is refused, because uf's slots do not carry
+  boundaries of their own yet
+  ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
+
+A slot page's `loader` is not run — a slot's data has nowhere to be embedded for
+hydration — and a slot page that exports one says so rather than being handed
+`undefined`. Fetch inside the component, or put the data on the page the URL
+names.
 
 ## Not found nests too
 

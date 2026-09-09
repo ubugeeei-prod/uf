@@ -105,11 +105,24 @@ type PageRenderProps = {|
   readonly data: mixed,
 |};
 
-/** The props `RouteView` gives each layout, outermost first. */
-type LayoutRenderProps = {|
+/**
+ * The props `RouteView` gives each layout, outermost first.
+ *
+ * Inexact, and that is the parallel routes reaching the type: a layout on a
+ * segment that declares `@team` is handed a `team` prop beside `children`, and
+ * the names are the project's rather than this file's. Every extra prop is a
+ * `React.Node` — a rendered slot, or `null` when the URL addressed neither the
+ * slot's routes nor a `_uf.default.js`.
+ *
+ * The exactness is not lost so much as moved: what a layout may be *given* is
+ * open, and what it *declares* is still its own exact props type, which is
+ * where a typo in a slot name shows up.
+ */
+type LayoutRenderProps = {
   readonly params: RouteParams,
   readonly children: React.Node,
-|};
+  ...
+};
 
 /** What a page module may export. The component is `default` or `Page`. */
 export type PageModule = {
@@ -434,6 +447,81 @@ export type RouteRecord = {|
    * template renders exactly the tree it did before.
    */
   readonly templates?: $ReadOnlyArray<TemplateRecord>,
+  /**
+   * The parallel-route slots in scope on this route, outermost first.
+   *
+   * Optional for the reason `templates` is. A route with no slot renders
+   * exactly the tree it did before slots existed, which is most routes.
+   */
+  readonly slots?: $ReadOnlyArray<SlotRecord>,
+|};
+
+/**
+ * One parallel-route slot, as the route table carries it.
+ *
+ * A slot is a second thing a layout renders. `app/dashboard/@team/` gives
+ * `app/dashboard/_uf.layout.js` a `team` prop beside `children`, and the slot's
+ * pages are matched against the same URL the page is: `/dashboard/members`
+ * renders `app/dashboard/members/_uf.page.js` as `children` and
+ * `app/dashboard/@team/members/_uf.page.js` as `team`, at once, each inside its
+ * own layouts.
+ *
+ * A slot never adds a URL — the directory contributes no path segment — so
+ * `routes` here is a second table matched against paths the main table already
+ * defines. That is uf's answer to the question Next.js answers with a
+ * `default.js` for `children`: there is no such thing, because `children` is
+ * the page the URL matched and a URL that matches no page is a 404.
+ *
+ * `above` is how many of the route's `layouts` are outside the slot, so
+ * `layouts[above - 1]` is the one that receives it — the same number, spelled
+ * the same way, as [`TemplateRecord`]'s and [`LoadingRecord`]'s.
+ */
+export type SlotRecord = {|
+  readonly name: string,
+  readonly above: number,
+  /**
+   * `_uf.default.js`: what this slot renders when the URL matches none of its
+   * routes.
+   *
+   * `null` for a slot that declares none, and then the slot renders nothing at
+   * all. That is what an unaddressed slot does on a soft navigation in Next.js
+   * too, and it is the honest answer for a slot that only some URLs have
+   * something to put in — a modal, a detail pane.
+   */
+  readonly defaultPage: ?() => Promise<PageModule>,
+  /** The default's source path, for diagnostics; absent when there is none. */
+  readonly defaultFile?: string,
+  /** Whether that default is MDX content. */
+  readonly defaultMdx?: boolean,
+  readonly routes: $ReadOnlyArray<SlotRouteRecord>,
+|};
+
+/**
+ * One page inside a slot.
+ *
+ * A [`RouteRecord`] without the parts a slot does not have. No `loading` and no
+ * `templates`: those belong to the segment, and they already wrap the layout
+ * the slot renders into. Per-slot boundaries are the part of parallel routes uf
+ * has not built, and `@uniflowed/vite`'s scan refuses the files rather than
+ * leaving them unopened — see ubugeeei-prod/uf#267.
+ *
+ * `page` is required, unlike a `RouteRecord`'s: a slot route that ships no
+ * client page has no URL of its own to hand the browser, so there would be
+ * nothing to do with the entry. The client table drops the whole route when its
+ * page is dropped, slots and all.
+ *
+ * `layouts` are the layouts *inside* the slot, and `slots` are the slots a
+ * layout inside this one declares — the recursion is the feature rather than a
+ * special case.
+ */
+export type SlotRouteRecord = {|
+  readonly path: string,
+  readonly params: $ReadOnlyArray<RouteParamSpec>,
+  readonly mdx: boolean,
+  readonly file: string,
+  readonly page: () => Promise<PageModule>,
+  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
+  readonly slots: $ReadOnlyArray<SlotRecord>,
 |};
 
 /**
@@ -638,6 +726,36 @@ export type ResolvedRoute = {|
     readonly above: number,
     readonly module: TemplateModule,
   |}>,
+  /**
+   * The slots this route renders, outermost first, already imported.
+   *
+   * Empty for a route with no slot above it, and empty on a resolution that
+   * *is* a boundary — a not-found or an error page — for the reason its
+   * `templates` is: a boundary is matched rather than walked to, and a slot
+   * belongs to the segment the walk went through.
+   */
+  readonly slots: $ReadOnlyArray<ResolvedSlot>,
+|};
+
+/**
+ * One slot, matched against the URL and imported.
+ *
+ * `page` is `null` for a slot the URL addressed and that declares no
+ * `_uf.default.js`, and the layout receives `null` rather than nothing at all:
+ * a layout that declares a slot always gets that prop, so a project can write
+ * `{team ?? <Empty />}` and mean it.
+ *
+ * `params` are the slot's own. A slot matches the same URL by its own patterns,
+ * so `@team/[member]` captures `member` while the page beside it captures
+ * nothing — which is the point of matching twice rather than sharing one match.
+ */
+export type ResolvedSlot = {|
+  readonly name: string,
+  readonly above: number,
+  readonly page: ?PageModule,
+  readonly params: RouteParams,
+  readonly layouts: $ReadOnlyArray<LayoutModule>,
+  readonly slots: $ReadOnlyArray<ResolvedSlot>,
 |};
 
 /** Thrown by `notFound()`; the renderer answers with the not-found page. */
@@ -833,8 +951,25 @@ export function hasClientPage(route: RouteRecord): boolean {
  * Match a pathname against the table, preferring the most specific route.
  */
 export function matchRoute(routes: $ReadOnlyArray<RouteRecord>, pathname: string): ?RouteMatch {
+  return matchIn(routes, pathname);
+}
+
+/**
+ * The same match, over anything that has a route path.
+ *
+ * A slot is a second table matched against the same URL — see [`SlotRecord`] —
+ * and it has to be matched by *this* function rather than by one of its own:
+ * two matchers would be two answers to "which of these paths does this URL
+ * name", and the one that disagreed would show up as a slot holding somebody
+ * else's page. The generic is only about the record type; the ranking, the
+ * parameters and the tie-break are the route table's.
+ */
+function matchIn<TRecord: { +path: string, ... }>(
+  routes: $ReadOnlyArray<TRecord>,
+  pathname: string,
+): ?{| readonly route: TRecord, readonly params: RouteParams |} {
   const parts = pathname.split("/").filter((part) => part !== "");
-  let best: ?RouteMatch = null;
+  let best: ?{| readonly route: TRecord, readonly params: RouteParams |} = null;
   let bestScore = -1;
   for (const route of routes) {
     const segments = compile(route.path);
@@ -1074,6 +1209,11 @@ async function resolveRoute(
   // depends on nothing the loader produces.
   const loading = resolveLoading(matched.route, matched.route.layouts.length);
   const templates = resolveTemplates(matched.route, matched.route.layouts.length);
+  // Started alongside and awaited at the end, for the reason the boundaries
+  // are: a slot is matched against the URL and depends on nothing the loader
+  // produces, so the second match and its imports overlap the first page's
+  // loader rather than following it.
+  const slots = resolveSlots(matched.route.slots ?? [], pathname, matched.route.layouts.length);
 
   // The loader, run here and awaited below — or not awaited at all.
   //
@@ -1135,7 +1275,139 @@ async function resolveRoute(
     errorBoundary: await boundary,
     loading: await loading,
     templates: await templates,
+    slots: await slots,
   };
+}
+
+/**
+ * The route's slots, matched against the URL and imported.
+ *
+ * The second matching pass parallel routes are, and it is a pass rather than a
+ * branch of the first: a slot has its own patterns over the same path, so
+ * `/dashboard/members` can be `[member]` to one slot, a static segment to
+ * another and nothing at all to a third, at once.
+ *
+ * A slot that will not load renders nothing rather than taking the page with
+ * it, which is the judgement `resolveTemplates` and `resolveLoading` already
+ * make: a slot is a second thing beside the page, and a broken second thing
+ * must not become a broken route. The entry stays in the list with `page:
+ * null`, so the layout still receives the prop it declares.
+ */
+async function resolveSlots(
+  records: $ReadOnlyArray<SlotRecord>,
+  pathname: string,
+  layoutCount: number,
+): Promise<$ReadOnlyArray<ResolvedSlot>> {
+  if (records.length === 0) {
+    return [];
+  }
+  return Promise.all(records.map((record) => resolveSlot(record, pathname, layoutCount)));
+}
+
+async function resolveSlot(
+  record: SlotRecord,
+  pathname: string,
+  layoutCount: number,
+): Promise<ResolvedSlot> {
+  // Clamped exactly as a template's `above` is, and for the same reason: a
+  // hand-written table, or a `(group)` between the layout and the route, can
+  // leave a route with fewer layouts than the slot was declared above.
+  const above = Math.min(record.above, layoutCount);
+  const empty: ResolvedSlot = {
+    name: record.name,
+    above,
+    page: null,
+    params: {},
+    layouts: [],
+    slots: [],
+  };
+
+  const matched = matchIn(record.routes, pathname);
+  if (matched == null) {
+    // The URL says nothing about this slot. `_uf.default.js` is what it says
+    // instead, and a slot that declares none renders nothing at all.
+    const load = record.defaultPage;
+    if (load == null) {
+      return empty;
+    }
+    const module = await loadOrNull(load);
+    if (module == null) {
+      return empty;
+    }
+    return { ...empty, page: withoutLoader(module, record.defaultFile ?? record.name) };
+  }
+
+  const route = matched.route;
+  // Started together and awaited apart, so the two `await`s are not a
+  // waterfall and each keeps the type its loader had.
+  const pending = loadOrNull(route.page);
+  const pendingLayouts = Promise.all(route.layouts.map((layout) => loadOrNull(layout)));
+  const page = await pending;
+  const layouts = await pendingLayouts;
+  if (page == null) {
+    return empty;
+  }
+  const loaded = layouts.filter(Boolean);
+  if (loaded.length !== layouts.length) {
+    return empty;
+  }
+  return {
+    name: record.name,
+    above,
+    page: withoutLoader(page, route.file),
+    params: matched.params,
+    layouts: loaded,
+    // The slot's own layouts are what a nested slot is measured against, so
+    // the count handed down is this slot's rather than the route's.
+    slots: await resolveSlots(route.slots, pathname, loaded.length),
+  };
+}
+
+/**
+ * A module, or `null` when it would not import.
+ *
+ * The judgement [`resolveTemplates`] and [`resolveLoading`] already make, at
+ * the granularity a slot needs it: a slot is a second thing beside the page, so
+ * a slot whose module is missing renders nothing rather than taking the route
+ * down with it — and the import error surfaces where it belongs, the next time
+ * the module is asked for.
+ */
+async function loadOrNull<TModule>(load: () => Promise<TModule>): Promise<?TModule> {
+  try {
+    return await loadOnce(load);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same page module, having said out loud that a slot's loader does not run.
+ *
+ * A slot page is a component. It is *not* handed data, and this throws rather
+ * than passing `undefined` to a page that asked for some, because a slot whose
+ * loader is quietly skipped is exactly the failure ubugeeei-prod/uf#267 is
+ * about — a file written to a convention, and nothing that reads it.
+ *
+ * Why not run it. A page's loader answer is embedded in the document for the
+ * browser to hydrate from, once, under one id; a slot's would have nowhere to
+ * go, so it would run on the server and again in the browser on the way in.
+ * That is not merely two fetches: a loader that reads `cookies()` succeeds on
+ * the server and throws in the browser, and the slot would render on one side
+ * and not the other — a hydration mismatch produced by the router. So the rule
+ * is the narrow one, and lifting it means embedding per-slot data, which is
+ * named in the issue as what is left.
+ */
+function withoutLoader(module: PageModule, file: string): PageModule {
+  if (typeof module.loader === "function") {
+    throw new Error(
+      `@uniflowed/router: ${file} is inside a \`@slot\` and exports a \`loader\`, which the ` +
+        "router does not run — a slot's data has nowhere to be embedded for hydration, so it " +
+        "would be fetched again in the browser and a server-only loader would render one tree " +
+        "on the server and another in the page. Fetch inside the component, or move the data to " +
+        "the page the URL names. https://github.com/ubugeeei-prod/uf/issues/267",
+    );
+  }
+  return module;
 }
 
 /**
@@ -1367,6 +1639,11 @@ async function resolveError(
     // show, which is worse than none.
     loading: [],
     templates: [],
+    // And slots for the third time: a slot belongs to the segment the walk went
+    // through, and an error page is matched rather than walked to. A layout
+    // that declares one is still mounted above the boundary, holding the slot
+    // it was rendered with — the boundary replaces what is under it.
+    slots: [],
   };
 }
 
@@ -1438,6 +1715,8 @@ async function resolveNotFound(
     loading: [],
     // Templates are accumulated on that same walk, and for the same reason.
     templates: [],
+    // Slots too: a URL that matched no route addressed no slot either.
+    slots: [],
   };
 }
 
@@ -2371,7 +2650,22 @@ export component RouteView() {
     element = insideTemplates(element, resolved, depth);
     if (depth > 0) {
       const Layout = layoutComponent(resolved.layouts[depth - 1]);
-      element = <Layout params={resolved.params}>{element}</Layout>;
+      // The slots declared on this layout's own segment, beside `children`.
+      // Spread rather than passed as one `slots` object, because a slot is a
+      // prop a layout declares by name — `component Dashboard(children, team)`
+      // — and a bag would make every layout destructure a map to find out
+      // whether the router had anything for it.
+      // The spread first and `params` after it, so that a slot named after a
+      // prop the layout already has loses rather than wins. `@params` and
+      // `@children` are refused by the scan, and this is the second line of
+      // that defence for a table written by hand: losing a slot is a hole in
+      // the page, and overwriting `params` is every route in the segment
+      // rendering against the wrong parameters.
+      element = (
+        <Layout {...slotsAt(resolved.slots, depth)} params={resolved.params}>
+          {element}
+        </Layout>
+      );
     }
   }
   return (
@@ -2531,6 +2825,79 @@ function insideTemplates(element: React.Node, resolved: ResolvedRoute, depth: nu
     );
   }
   return out;
+}
+
+/**
+ * The slots declared at `depth`, as the props the layout there receives.
+ *
+ * One object per layout rather than one lookup per slot, so the common case —
+ * a project with no slots at all — allocates nothing and spreads nothing.
+ *
+ * A slot the URL addressed and that has no `_uf.default.js` is `null` rather
+ * than absent: a layout that declares `team` receives `team` on every route,
+ * so `{team ?? <Empty />}` is a thing a project can write and rely on.
+ */
+function slotsAt(
+  slots: $ReadOnlyArray<ResolvedSlot>,
+  depth: number,
+): { readonly [string]: React.Node } {
+  if (slots.length === 0) {
+    return EMPTY_SLOTS;
+  }
+  const props: { [string]: React.Node } = {};
+  for (const slot of slots) {
+    if (slot.above === depth) {
+      // `null` rather than an element that renders nothing, and the difference
+      // is the whole of what the prop is for: `{team ?? <Empty />}` has to be
+      // able to tell "this slot has nothing in it" from "this slot rendered
+      // something empty", and an element is never `null`.
+      props[slot.name] = slot.page == null ? null : <SlotView slot={slot} />;
+    }
+  }
+  return props;
+}
+
+/** One object for every layout on a project that declares no slot. */
+const EMPTY_SLOTS: { readonly [string]: React.Node } = Object.freeze({});
+
+/**
+ * One slot's tree: its page, inside the layouts declared under the slot, with
+ * the slots those layouts declare in turn.
+ *
+ * The same composition [`RouteView`] does and deliberately not the same
+ * function. A route's tree carries the things a slot does not have — the error
+ * boundary, the `<Suspense>` fallbacks, the templates, the head — and folding
+ * a second, simpler case into that loop would be four `if`s asking which of the
+ * two this is. What the two share is the *order*, page innermost and layouts
+ * backwards over a root-first list, and that is short enough to be right twice.
+ *
+ * A slot with no page is never rendered through this component at all —
+ * [`slotsAt`] hands the layout `null` instead, so the layout can tell an empty
+ * slot from one that rendered something empty. The guard below is what makes
+ * that a fact about one place rather than a convention two places share.
+ */
+component SlotView(slot: ResolvedSlot) {
+  // Before the early return, because a hook after one is a hook that runs on
+  // some renders and not others. The search string is the route's — a slot
+  // matches the path and the query belongs to the URL, not to either match.
+  const { resolved } = useRouterState();
+  const page = slot.page;
+  if (page == null) {
+    return null;
+  }
+  const Page = pageComponent(page);
+  let element: React.Node = (
+    <Page params={slot.params} searchParams={resolved.searchParams} data={undefined} />
+  );
+  for (let depth = slot.layouts.length; depth > 0; depth -= 1) {
+    const Layout = layoutComponent(slot.layouts[depth - 1]);
+    element = (
+      <Layout {...slotsAt(slot.slots, depth)} params={slot.params}>
+        {element}
+      </Layout>
+    );
+  }
+  return element;
 }
 
 /**

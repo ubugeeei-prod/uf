@@ -19,16 +19,17 @@
 //! makes adding a second one a decision somebody has to write down.
 //!
 //! The directory names are the second half. `@team` and `(.)photo` are Next.js
-//! conventions uf does not implement, and until ubugeeei-prod/uf#267 *neither*
-//! router had an opinion about them: both fell through to a literal URL
-//! segment, so a project that wrote one got `/@team` and no error. They agree
-//! about that now, and the tests at the bottom are what keeps them agreeing —
-//! a spelling one refuses and the other serves is worse than the hole was.
+//! conventions, and until ubugeeei-prod/uf#267 *neither* router had an opinion
+//! about them: both fell through to a literal URL segment, so a project that
+//! wrote one got `/@team` and no error. `@team` is a parallel route both
+//! routers serve now and `(.)photo` is one both refuse, and the tests at the
+//! bottom are what keeps them agreeing about which is which — a spelling one
+//! refuses and the other serves is worse than the hole was.
 
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use uf_router::{ReservedRole, RouteSegment, classify_route_segment};
+use uf_router::{LAYOUT_PROP_NAMES, ReservedRole, RouteSegment, classify_route_segment};
 
 /// Roles that are reserved names without being anything the router resolves.
 ///
@@ -158,6 +159,44 @@ fn both_routers_refuse_the_same_directory_spellings() {
         "`RouteSegment::UNSUPPORTED_EXAMPLES` and `UNSUPPORTED_SEGMENTS` in \
          `packages/vite/internal/routes.js` name different directory spellings, so one router \
          refuses a directory the other serves as a URL"
+    );
+}
+
+/// The names a slot may not take, on both sides.
+///
+/// A slot arrives as a prop named after its directory, so a name the layout
+/// already uses is a collision — and a list one router refuses and the other
+/// accepts is a slot that builds and renders nothing, which is the third way
+/// this pair of files has drifted.
+#[test]
+fn both_routers_reserve_the_same_layout_prop_names() {
+    let source = build_router_source();
+
+    let table = source
+        .split_once("export const LAYOUT_PROP_NAMES = Object.freeze([")
+        .expect(
+            "`LAYOUT_PROP_NAMES` is a frozen array literal; if it is not, this test is out of date",
+        )
+        .1
+        .split_once("]);")
+        .expect("the literal is closed")
+        .0;
+
+    let build_router: BTreeSet<String> = table
+        .split('"')
+        .filter(|value| !value.trim().is_empty() && !value.contains(','))
+        .map(str::to_owned)
+        .collect();
+    let grammar: BTreeSet<String> = LAYOUT_PROP_NAMES
+        .iter()
+        .map(|name| (*name).to_owned())
+        .collect();
+
+    assert_eq!(
+        grammar, build_router,
+        "`uf_router::LAYOUT_PROP_NAMES` and `LAYOUT_PROP_NAMES` in \
+         `packages/vite/internal/routes.js` name different props, so one router refuses a slot \
+         the other scans into a prop that overwrites something"
     );
 }
 

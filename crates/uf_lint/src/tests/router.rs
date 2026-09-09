@@ -94,18 +94,19 @@ fn router_reserved_files_leaves_project_owned_names_alone() {
     }
 }
 
-/// `router/unsupported-segment`: the two directory spellings uf reserves
-/// without serving.
+/// `router/unsupported-segment`: the directory spelling uf reserves without
+/// serving.
 ///
 /// The diagnostic lands on a file because a file is what `uf lint` can point
 /// at; what is wrong is the directory the file is in. Before this, `@team` and
 /// `(.)photo` were literal URL segments in both routers and nothing said so.
+/// `@team` is a slot uf serves now, and this rule is what is left: interception
+/// needs a navigation to carry where it came from.
 #[test]
-fn router_unsupported_segment_reports_a_slot_and_an_interception() {
+fn router_unsupported_segment_reports_an_interception() {
     for path in [
-        "app/dashboard/@team/_uf.page.js",
-        "app/@team/_uf.layout.js",
         "app/feed/(.)photo/_uf.page.js",
+        "app/feed/(..)photo/_uf.layout.js",
         "app/feed/(..)(..)photo/_uf.page.js",
     ] {
         let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
@@ -123,7 +124,7 @@ fn router_unsupported_segment_reports_a_slot_and_an_interception() {
 fn router_unsupported_segment_says_what_the_spelling_is_and_that_it_is_refused() {
     let diagnostics = lint_one(
         "router/unsupported-segment",
-        "app/dashboard/@team/_uf.page.js",
+        "app/feed/(.)photo/_uf.page.js",
         "// @flow\n",
     );
     let message = &diagnostics
@@ -132,8 +133,8 @@ fn router_unsupported_segment_says_what_the_spelling_is_and_that_it_is_refused()
         .expect("a diagnostic")
         .message;
 
-    assert!(message.contains("@team"), "{message}");
-    assert!(message.contains("parallel route"), "{message}");
+    assert!(message.contains("(.)photo"), "{message}");
+    assert!(message.contains("intercepting route"), "{message}");
     assert!(message.contains("refused"), "{message}");
     assert!(message.contains("267"), "{message}");
 }
@@ -145,9 +146,14 @@ fn router_unsupported_segment_leaves_the_segments_uf_serves_alone() {
         "app/(marketing)/about/_uf.page.js",
         "app/posts/[slug]/_uf.page.js",
         "app/docs/[...path]/_uf.page.js",
-        // A private subtree: neither router walks into it, so a slot there is
-        // not a route uf would have served.
-        "app/_drafts/@team/notes.js",
+        // A slot is a route uf serves: it renders into the layout of the
+        // segment that declares it, at that segment's own paths.
+        "app/dashboard/@team/_uf.page.js",
+        "app/@team/_uf.layout.js",
+        "app/dashboard/@team/_uf.default.js",
+        // A private subtree: neither router walks into it, so an interception
+        // there is not a route uf would have served.
+        "app/_drafts/(.)photo/notes.js",
         // Outside the router root entirely. `@scope` is a directory, not a
         // route, and a rule that reported it would report every workspace.
         "packages/@uniflowed/router/index.js",

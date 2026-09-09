@@ -1,22 +1,24 @@
 // @flow
 //
-// The directory names uf reserves inside the router root without serving.
+// What a directory name means to the route path, and the one spelling uf
+// reserves inside the router root without serving.
 //
 // Next.js spells a parallel route `@team` and an intercepting route
-// `(.)photo`. uf has neither, and until now neither router had an opinion
-// about the spellings: both fell through to "an ordinary URL segment", so
-// `app/@team/_uf.page.js` served `/@team`, `app/feed/(.)photo/_uf.page.js`
-// served `/feed/(.)photo` — the test for a `(group)` is that the segment
-// *ends* in `)` — and the generated `RoutePath` union contained both, so
-// `route("/@team", …)` type checked. A person who wrote one got no route and
-// no error, which is worse than not supporting it: the project looks like it
-// works. See ubugeeei-prod/uf#267.
+// `(.)photo`. Neither router had an opinion about either, so both fell through
+// to "an ordinary URL segment": `app/@team/_uf.page.js` served `/@team`,
+// `app/feed/(.)photo/_uf.page.js` served `/feed/(.)photo` — the test for a
+// `(group)` is that the segment *ends* in `)` — and the generated `RoutePath`
+// union contained both, so `route("/@team", …)` type checked. A person who
+// wrote one got no route and no error, which is worse than not supporting it:
+// the project looks like it works. See ubugeeei-prod/uf#267.
 //
-// Both routers refuse them now. `crates/uf_router/tests/reserved_names.rs`
-// holds the two to the same list of spellings; this file is the build router's
-// half of the behaviour, over real directories, because `scanRoutes` is
-// `readdirSync` and `statSync` and a fake tree would prove nothing about which
-// directory is walked into.
+// `@team` is a parallel route both routers serve now, and what it does is
+// `parallel-routes.test.js`; what this file keeps is that it is not a URL.
+// `(.)photo` is still refused by both. `crates/uf_router/tests/
+// reserved_names.rs` holds the two to the same list of refused spellings; this
+// file is the build router's half of the behaviour, over real directories,
+// because `scanRoutes` is `readdirSync` and `statSync` and a fake tree would
+// prove nothing about which directory is walked into.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -60,6 +62,8 @@ describe("classifying a directory name", () => {
   });
 
   it("names a slot rather than reading it as a URL segment", () => {
+    // A slot is a route now — `parallel-routes.test.js` is what it does — and
+    // the thing that has not changed is that it is not a *URL* segment.
     expect(classifyRouteSegment("@team")).toEqual({ kind: "slot", name: "team" });
     // The `@` has to start the segment: a name that merely contains one is an
     // ordinary literal, and a rule that read it otherwise would refuse it.
@@ -99,6 +103,12 @@ describe("classifying a directory name", () => {
     expect(routeFromSegments(["docs", "[...path]"]).path).toBe("/docs/:path*");
     expect(routeFromSegments([]).path).toBe("/");
   });
+
+  it("drops a slot from the path the way it drops a group", () => {
+    // The two are different decisions with one consequence here: a group
+    // organises files and a slot organises rendering, and neither is a URL.
+    expect(routeFromSegments(["dashboard", "@team", "members"]).path).toBe("/dashboard/members");
+  });
 });
 
 describe("scanning a router root that holds one", () => {
@@ -106,8 +116,8 @@ describe("scanning a router root that holds one", () => {
     for (const segment of UNSUPPORTED_SEGMENTS) {
       const root = appRoot([path.join("feed", segment, "_uf.page.js")]);
 
-      // The build serving `/feed/@team` is the bug. Throwing is the fix, and
-      // the message has to say the directory is *refused* — "unsupported"
+      // The build serving `/feed/(.)photo` is the bug. Throwing is the fix,
+      // and the message has to say the directory is *refused* — "unsupported"
       // reads as "ignored", and ignored is what it used to be.
       let thrown = null;
       try {
@@ -123,17 +133,17 @@ describe("scanning a router root that holds one", () => {
     }
   });
 
-  it("refuses a slot that holds no page, because it is still a slot", () => {
-    const root = appRoot(["_uf.page.js", path.join("@team", "_uf.layout.js")]);
+  it("refuses an interception that holds no page, because it is still one", () => {
+    const root = appRoot(["_uf.page.js", path.join("feed", "(.)photo", "_uf.layout.js")]);
 
-    expect(() => scanRoutes(root)).toThrow("@team");
+    expect(() => scanRoutes(root)).toThrow("(.)photo");
   });
 
   it("leaves a private directory alone, because no router walks into it", () => {
     // A leading `.` or `_` means the directory is a place to put things rather
-    // than a route, so `app/_drafts/@team/` was never going to be served and
-    // refusing it would be a rule about a place the router does not look.
-    const root = appRoot(["_uf.page.js", path.join("_drafts", "@team", "notes.js")]);
+    // than a route, so `app/_drafts/(.)photo/` was never going to be served
+    // and refusing it would be a rule about a place the router does not look.
+    const root = appRoot(["_uf.page.js", path.join("_drafts", "(.)photo", "notes.js")]);
 
     expect(scanRoutes(root).routes.map((route) => route.path)).toEqual(["/"]);
   });

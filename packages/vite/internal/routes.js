@@ -22,6 +22,7 @@ export const RESERVED = Object.freeze({
   layout: "_uf.layout",
   template: "_uf.template",
   page: "_uf.page",
+  default: "_uf.default",
   middleware: "_uf.middleware",
   notFound: "_uf.not-found",
   error: "_uf.error",
@@ -38,21 +39,40 @@ export const RESERVED = Object.freeze({
  * spelling one router refuses and the other serves as a URL is exactly the
  * disagreement that made this necessary.
  *
- * `@team` is Next.js's parallel-route slot and `(.)photo` its intercepting
- * route. uf has neither, and until #267 both fell through to "a literal URL
- * segment": `@team` became `/@team`, `(.)photo` became `/(.)photo` — the test
- * for a `(group)` is that the segment *ends* in `)` — and the generated
+ * `(.)photo` is Next.js's intercepting route. `@team`, its parallel-route
+ * slot, was on this list too: until #267 both fell through to "a literal URL
+ * segment", so `@team` became `/@team`, `(.)photo` became `/(.)photo` — the
+ * test for a `(group)` is that the segment *ends* in `)` — and the generated
  * `RoutePath` union contained them, so `route("/@team", …)` type checked. A
  * convention served as nonsense is worse than one that is refused, because the
  * project looks like it works.
+ *
+ * A slot is a route this router serves now; see {@link scanRoutes}. An
+ * interception is not: it needs a navigation to carry where it came from,
+ * which is a change to what a navigation is rather than to this scan.
  */
 export const UNSUPPORTED_SEGMENTS = Object.freeze([
-  "@team",
   "(.)photo",
   "(..)photo",
   "(...)photo",
   "(..)(..)photo",
 ]);
+
+/**
+ * The prop names a layout already receives, which a slot may therefore not
+ * take.
+ *
+ * A slot arrives as a prop named after its directory, so `@children` and
+ * `@params` are the two names that would land on top of something the layout
+ * already has. `@children` is the one somebody actually writes: `children` is
+ * what Next.js calls its implicit slot, so it is the first name a person
+ * migrating reaches for — and here the page the URL matched always is
+ * `children`.
+ *
+ * The same list as `uf_router::LAYOUT_PROP_NAMES`; see that file for why the
+ * collision is refused rather than resolved by precedence.
+ */
+export const LAYOUT_PROP_NAMES = Object.freeze(["children", "params"]);
 
 /** Extensions a page or layout may use; `.mdx` is a page written as content. */
 const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx"];
@@ -75,6 +95,61 @@ const MAX_DEPTH = 32;
  *   `layouts` are outside each one
  * @property {ReadonlyArray<{above: number, module: string}>} templates the
  *   `_uf.template.js` wrappers in scope, root first, with the same `above`
+ * @property {ReadonlyArray<Slot>} slots the parallel-route slots in scope,
+ *   outermost first
+ * @property {boolean} mdx whether the page is MDX content
+ */
+
+/**
+ * One parallel-route slot — a second thing a layout renders, beside its page.
+ *
+ * A directory named `@team` contributes no URL segment. It declares a slot on
+ * the segment that holds it, and that segment's own layout receives the
+ * rendered slot as a `team` prop beside `children`. The slot's pages are
+ * matched against the same URL the page is, so `app/dashboard/@team/members/
+ * _uf.page.js` is what `/dashboard/members` puts in the slot — not a second
+ * page at that path.
+ *
+ * `above` is how many of the route's `layouts` are outside the slot, counted
+ * after the declaring segment's own layout is added — so `layouts[above - 1]`
+ * is the layout that receives it. It is the same number, spelled the same way,
+ * as a template's and a loading boundary's. The layout has to be the segment's
+ * *own*: a slot rendered into an inherited layout would be a prop that layout
+ * never declared, on every route below it, so {@link scanRoutes} refuses a slot
+ * whose segment has no layout of its own.
+ *
+ * `defaultPage` is the slot's `_uf.default.js`: what it renders when the URL
+ * matches none of its routes. A slot with neither a match nor a default
+ * renders nothing, which is what an unaddressed slot on a soft navigation does
+ * in Next.js too.
+ *
+ * @typedef {object} Slot
+ * @property {string} name the slot's name, without the `@`
+ * @property {number} above how many of the route's layouts are outside it
+ * @property {?string} defaultPage absolute path of `_uf.default.*`, or `null`
+ * @property {boolean} defaultMdx whether that default is MDX content
+ * @property {ReadonlyArray<SlotRoute>} routes what the slot may render, by URL
+ */
+
+/**
+ * One page inside a slot.
+ *
+ * A `Route` without the parts a slot does not have: no `loading`, no
+ * `templates`, and no boundary of its own. Those are the segment's, and they
+ * already wrap the layout the slot renders into. Per-slot boundaries are the
+ * part of parallel routes uf has not built — see
+ * https://github.com/ubugeeei-prod/uf/issues/267 — and {@link scanRoutes}
+ * refuses the files rather than leaving them unopened.
+ *
+ * `layouts` are the layouts *inside* the slot, root first; the ones above it
+ * are already rendering, since the slot renders into one of them.
+ *
+ * @typedef {object} SlotRoute
+ * @property {string} path route path such as `/dashboard/members`
+ * @property {ReadonlyArray<{name: string, catchAll: boolean}>} params
+ * @property {string} page absolute path of the page module
+ * @property {ReadonlyArray<string>} layouts absolute paths, slot root first
+ * @property {ReadonlyArray<Slot>} slots slots declared inside this slot
  * @property {boolean} mdx whether the page is MDX content
  */
 
@@ -167,9 +242,16 @@ const MAX_DEPTH = 32;
  * Directories that do not exist yield an empty table rather than an error: a
  * library project has no router root, and that is not a mistake.
  *
- * Throws for a directory named the way a parallel route or an intercepting
- * route is spelled: uf has neither, and both used to become literal URL
- * segments. See {@link UNSUPPORTED_SEGMENTS}.
+ * Throws for a directory named the way an intercepting route is spelled: uf
+ * does not have interception, and the spelling used to become a literal URL
+ * segment. See {@link UNSUPPORTED_SEGMENTS}.
+ *
+ * A `@slot` directory is a parallel route and is scanned; see {@link Slot}. It
+ * throws for the three ways one can be written without being renderable: a
+ * slot on a segment with no layout of its own, a `_uf.default.js` that is not
+ * directly inside a slot, and a boundary or a handler inside a slot. Each is a
+ * file the router would otherwise never open, which is the failure #267 is
+ * about.
  *
  * @param {string} appRoot absolute path of the router root (`app/`)
  * @returns {{
@@ -192,11 +274,24 @@ export function scanRoutes(appRoot) {
   // records below are made of them. See the note beside them.
   let rootLayouts = [];
 
-  const walk = (directory, segments, layouts, loading, templates, depth) => {
+  const walk = (directory, segments, layouts, loading, templates, slots, depth) => {
     if (depth > MAX_DEPTH) return;
     const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
+
+    // A `_uf.default.js` answers one question — what a slot renders when the
+    // URL says nothing about it — and this walk is everywhere a slot is not,
+    // so one found here is a file nothing would ever open.
+    const strayDefault = findModule(directory, RESERVED.default, PAGE_EXTENSIONS);
+    if (strayDefault != null) {
+      throw new Error(
+        `${strayDefault}: \`_uf.default.js\` is what a \`@slot\` renders when the URL says ` +
+          "nothing about it, and it belongs directly inside the slot directory — one per slot, " +
+          "beside that slot's own pages. Nothing would ever render this one. uf has no " +
+          "`default` for `children`: a URL that matches no page is a 404.",
+      );
+    }
 
     const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS);
     const nextLayouts = ownLayout ? [...layouts, ownLayout] : layouts;
@@ -226,6 +321,29 @@ export function scanRoutes(appRoot) {
       ? [...templates, { above: nextLayouts.length, module: ownTemplate }]
       : templates;
 
+    // Slots before this directory's own page, because the page renders inside
+    // the layout that holds them: a slot declared here belongs to every route
+    // at or below this segment, the way a template does.
+    let nextSlots = slots;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+      const classified = classifyRouteSegment(entry.name);
+      if (classified.kind !== "slot") continue;
+      nextSlots = [
+        ...nextSlots,
+        scanSlot(
+          directory,
+          entry.name,
+          classified.name,
+          segments,
+          ownLayout,
+          nextLayouts.length,
+          depth,
+        ),
+      ];
+    }
+
     // A middleware guards this directory and everything below it, whether or
     // not this directory is itself a route: `app/dashboard/_uf.middleware.js`
     // with no `_uf.page.js` beside it still guards `/dashboard/settings`.
@@ -245,6 +363,7 @@ export function scanRoutes(appRoot) {
         layouts: nextLayouts,
         loading: nextLoading,
         templates: nextTemplates,
+        slots: nextSlots,
         mdx: page.endsWith(".mdx"),
       });
     }
@@ -287,9 +406,11 @@ export function scanRoutes(appRoot) {
       // A leading dot or underscore is private to the author: `_components/`
       // beside a page is a place to put things, not a route.
       if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+      // Already walked, above, into a table of its own.
+      if (classifyRouteSegment(entry.name).kind === "slot") continue;
       // Checked before descending, and after the private-directory test for
-      // the same reason `uf_router` prunes them: `app/_drafts/@team/` is not a
-      // route uf would have served, so it is not one to refuse.
+      // the same reason `uf_router` prunes them: `app/_drafts/(.)photo/` is not
+      // a route uf would have served, so it is not one to refuse.
       const refused = unsupportedSegmentReason(entry.name);
       if (refused != null) {
         throw new Error(`${path.join(directory, entry.name)}: ${refused}`);
@@ -300,12 +421,13 @@ export function scanRoutes(appRoot) {
         nextLayouts,
         nextLoading,
         nextTemplates,
+        nextSlots,
         depth + 1,
       );
     }
   };
 
-  walk(appRoot, [], [], [], [], 0);
+  walk(appRoot, [], [], [], [], [], 0);
 
   // A boundary at the router root for a project that declared none, carrying
   // the root's layouts and no module of its own.
@@ -351,6 +473,170 @@ export function scanRoutes(appRoot) {
   notFound.sort(byPath);
   errors.sort(byPath);
   return { routes, handlers, middleware, notFound, errors };
+}
+
+/**
+ * One `@slot` directory, scanned into a {@link Slot}.
+ *
+ * Separate from `walk` rather than a mode of it, because the two build
+ * different things out of the same tree. `walk` builds URLs and the boundaries
+ * around them; this builds what one named place may hold, matched against URLs
+ * somebody else's directories define. Folding them together would mean a
+ * `loading` accumulator that is dead in half the calls and a route table that
+ * is dead in the other half.
+ *
+ * Nested slots are ordinary: a slot's own layout may declare slots of its own,
+ * and they are collected here the same way, so the recursion is the shape of
+ * the feature rather than a special case.
+ *
+ * @param {string} parent the directory that declares the slot
+ * @param {string} directoryName the slot directory, `@team` as written
+ * @param {string} name the slot's name, `team`
+ * @param {ReadonlyArray<string>} segments the declaring segments, for the URL
+ * @param {?string} ownLayout the declaring segment's own layout, or `null`
+ * @param {number} above how many layouts are outside the slot
+ * @param {number} depth nesting depth, against `MAX_DEPTH`
+ * @returns {Slot}
+ */
+function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth) {
+  const directory = path.join(parent, directoryName);
+  if (LAYOUT_PROP_NAMES.includes(name)) {
+    throw new Error(
+      `${directory}: a slot arrives as a prop named after its directory, and \`${name}\` is a ` +
+        "prop every layout already receives, so one of the two would silently go missing. " +
+        "Rename the slot. The page a URL matches is always `children` — uf has no `@children` " +
+        "slot, which is the name Next.js gives that page.",
+    );
+  }
+  // The declaring segment's *own* layout, not the layouts in scope there. A
+  // slot is a prop that layout receives beside `children`, so a slot on a
+  // segment with no layout has nothing to render into — and rendering it into
+  // an inherited one would hand a prop to a layout that never declared it, on
+  // every route below.
+  if (ownLayout == null) {
+    const routePath = routeFromSegments(segments).path;
+    throw new Error(
+      `${directory}: \`${directoryName}\` is a parallel-route slot and \`${routePath}\` declares ` +
+        "no layout of its own, so there is nothing to render the slot into — a slot is a prop " +
+        "the segment's own layout receives beside `children`. Add " +
+        `\`${path.join(parent, `${RESERVED.layout}.js`)}\`, or move the slot to a segment that ` +
+        "has one.",
+    );
+  }
+
+  const routes = [];
+  const defaultPage = findModule(directory, RESERVED.default, PAGE_EXTENSIONS);
+
+  const walkSlot = (current, currentSegments, layouts, atSlotRoot, currentDepth) => {
+    if (currentDepth > MAX_DEPTH) return;
+    // What a slot does not have, said where somebody writing the file will
+    // read it rather than by never opening it. This is also the list of what
+    // is left of parallel routes; see the issue.
+    for (const role of [RESERVED.notFound, RESERVED.error, RESERVED.loading, RESERVED.template]) {
+      const found =
+        findModule(current, role, MODULE_EXTENSIONS) ?? findModule(current, role, PAGE_EXTENSIONS);
+      if (found != null) {
+        throw new Error(
+          `${found}: a \`@slot\` renders a page and the layouts inside the slot, and has no ` +
+            `\`${role.slice("_uf.".length)}\` of its own — uf's parallel routes do not carry ` +
+            "per-slot boundaries yet, so this file would never be opened. Put it outside " +
+            `\`${directoryName}\`, where it covers the whole segment. ` +
+            "https://github.com/ubugeeei-prod/uf/issues/267",
+        );
+      }
+    }
+    for (const role of [RESERVED.route, RESERVED.middleware]) {
+      const found = findModule(current, role, MODULE_EXTENSIONS);
+      if (found != null) {
+        throw new Error(
+          `${found}: a \`@slot\` renders inside the page at a URL and answers no request of its ` +
+            `own, so \`${role}.js\` here would never run. A slot directory contributes no URL ` +
+            `segment, so this would claim \`${routeFromSegments(currentSegments).path}\` — which ` +
+            `belongs to the segment that declares the slot. Move it out of \`${directoryName}\`.`,
+        );
+      }
+    }
+    // One default per slot, at the slot. A deeper one would be a second answer
+    // to a question that is asked once — the URL either addressed this slot or
+    // it did not.
+    if (!atSlotRoot && findModule(current, RESERVED.default, PAGE_EXTENSIONS) != null) {
+      throw new Error(
+        `${findModule(current, RESERVED.default, PAGE_EXTENSIONS)}: a \`@slot\` has one ` +
+          `\`_uf.default.js\`, directly inside \`${directoryName}\`, and this one is deeper, so ` +
+          "nothing would ever render it.",
+      );
+    }
+
+    const layoutHere = findModule(current, RESERVED.layout, MODULE_EXTENSIONS);
+    const nextLayouts = layoutHere ? [...layouts, layoutHere] : layouts;
+
+    const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
+
+    let nestedSlots = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+      const classified = classifyRouteSegment(entry.name);
+      if (classified.kind !== "slot") continue;
+      nestedSlots = [
+        ...nestedSlots,
+        scanSlot(
+          current,
+          entry.name,
+          classified.name,
+          currentSegments,
+          layoutHere,
+          nextLayouts.length,
+          currentDepth,
+        ),
+      ];
+    }
+
+    const page = findModule(current, RESERVED.page, PAGE_EXTENSIONS);
+    if (page) {
+      const { path: routePath, params } = routeFromSegments(currentSegments);
+      routes.push({
+        path: routePath,
+        params,
+        page,
+        layouts: nextLayouts,
+        slots: nestedSlots,
+        mdx: page.endsWith(".mdx"),
+      });
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
+      const classified = classifyRouteSegment(entry.name);
+      if (classified.kind === "slot") continue;
+      const refused = unsupportedSegmentReason(entry.name);
+      if (refused != null) {
+        throw new Error(`${path.join(current, entry.name)}: ${refused}`);
+      }
+      walkSlot(
+        path.join(current, entry.name),
+        [...currentSegments, entry.name],
+        nextLayouts,
+        false,
+        currentDepth + 1,
+      );
+    }
+  };
+
+  walkSlot(directory, segments, [], true, depth + 1);
+
+  const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+  routes.sort(byPath);
+  return {
+    name,
+    above,
+    defaultPage,
+    defaultMdx: defaultPage != null && defaultPage.endsWith(".mdx"),
+    routes,
+  };
 }
 
 function isDirectory(candidate) {
@@ -436,15 +722,6 @@ function interceptionMarker(segment) {
  */
 export function unsupportedSegmentReason(segment) {
   const classified = classifyRouteSegment(segment);
-  if (classified.kind === "slot") {
-    return (
-      `\`${segment}\` is a parallel-route slot, and uf does not have parallel routes — a route ` +
-      "here renders in one place, so there is nothing for a slot to render into. It is refused " +
-      `rather than served as the URL segment \`/${segment}\`, which is what it used to become. ` +
-      "Rename the directory; a URL segment that really starts with `@` has no spelling in this " +
-      "grammar, so capture it with a `[param]`. https://github.com/ubugeeei-prod/uf/issues/267"
-    );
-  }
   if (classified.kind === "interception") {
     return (
       `\`${segment}\` is an intercepting route, and uf does not have interception — a navigation ` +
@@ -461,16 +738,19 @@ export function unsupportedSegmentReason(segment) {
  * Turn directory segments into a route path and its parameters.
  *
  * `(group)` segments organise files without appearing in the URL, `[name]`
- * captures one segment, and `[...name]` captures the rest of the path. A slot
- * or an interception never reaches here: {@link scanRoutes} refuses the
- * directory before it walks into it.
+ * captures one segment, and `[...name]` captures the rest of the path. A
+ * `@slot` contributes nothing either — it is a named place a route renders
+ * into, matched against the URL of the segment that declares it — so a slot's
+ * pages are matched against ordinary paths and add none of their own. An
+ * interception never reaches here: {@link scanRoutes} refuses the directory
+ * before it walks into it.
  */
 export function routeFromSegments(segments) {
   const params = [];
   const out = [];
   for (const segment of segments) {
     const classified = classifyRouteSegment(segment);
-    if (classified.kind === "group") continue;
+    if (classified.kind === "group" || classified.kind === "slot") continue;
     if (classified.kind === "catchAll") {
       params.push({ name: classified.name, catchAll: true });
       out.push(`:${classified.name}*`);
@@ -648,6 +928,59 @@ export function routesModuleSource(table, options = {}) {
     return id;
   };
 
+  // Slots are hoisted like layouts and deduplicated by identity rather than by
+  // file: one `scanRoutes` slot record is shared by every route at or below the
+  // segment that declares it, so the object is the key. A slot holds a whole
+  // route table of its own, and emitting it once per route below it would be
+  // that table copied into the bundle once per route.
+  //
+  // Nested slots are emitted before the slot that holds them, because a `const`
+  // cannot read one declared after it.
+  const slotIds = new Map();
+  const slotDefinitions = [];
+  const slotFiles = new Set();
+  const slotId = (slot) => {
+    let id = slotIds.get(slot);
+    if (id !== undefined) {
+      return id;
+    }
+    const routes = slot.routes.map((route) => {
+      slotFiles.add(route.page);
+      for (const file of route.layouts) slotFiles.add(file);
+      const nested = route.slots.map(slotId);
+      return `    {
+      path: ${JSON.stringify(route.path)},
+      params: ${JSON.stringify(route.params)},
+      mdx: ${route.mdx},
+      file: ${JSON.stringify(displayFile(route.page))},
+      page: () => import(${JSON.stringify(route.page)}),
+      layouts: [${route.layouts.map(layoutId).join(", ")}],
+      slots: [${nested.join(", ")}],
+    }`;
+    });
+    // After the routes, so a nested slot's `const` is already emitted.
+    id = `slot${slotIds.size}`;
+    slotIds.set(slot, id);
+    if (slot.defaultPage != null) {
+      slotFiles.add(slot.defaultPage);
+    }
+    const fallback =
+      slot.defaultPage == null
+        ? "    defaultPage: null,"
+        : `    defaultPage: () => import(${JSON.stringify(slot.defaultPage)}),
+    defaultFile: ${JSON.stringify(displayFile(slot.defaultPage))},`;
+    slotDefinitions.push(`const ${id} = {
+    name: ${JSON.stringify(slot.name)},
+    above: ${slot.above},
+${fallback}
+    defaultMdx: ${slot.defaultMdx},
+    routes: [
+${routes.join(",\n")}
+    ],
+  };`);
+    return id;
+  };
+
   const entries = table.routes.map((route) => {
     if (!shipsPage(route)) {
       return `  {
@@ -658,6 +991,7 @@ export function routesModuleSource(table, options = {}) {
     layouts: [],
     loading: [],
     templates: [],
+    slots: [],
   }`;
     }
     const layouts = route.layouts.map(layoutId);
@@ -667,6 +1001,7 @@ export function routesModuleSource(table, options = {}) {
     const templates = (route.templates ?? []).map(
       (entry) => `{ above: ${entry.above}, module: ${templateId(entry.module)} }`,
     );
+    const slots = (route.slots ?? []).map(slotId);
     return `  {
     path: ${JSON.stringify(route.path)},
     params: ${JSON.stringify(route.params)},
@@ -676,6 +1011,7 @@ export function routesModuleSource(table, options = {}) {
     layouts: [${layouts.join(", ")}],
     loading: [${loading.join(", ")}],
     templates: [${templates.join(", ")}],
+    slots: [${slots.join(", ")}],
   }`;
   });
 
@@ -743,7 +1079,12 @@ export function routesModuleSource(table, options = {}) {
   // Last, because it is defined by what everything above did *not* import: a
   // layout a kept route also uses is already in the graph as a lazy chunk, and
   // importing it here as well would pull it into the entry chunk instead.
-  const carried = new Set([...layoutIds.keys(), ...loadingIds.keys(), ...templateIds.keys()]);
+  const carried = new Set([
+    ...layoutIds.keys(),
+    ...loadingIds.keys(),
+    ...templateIds.keys(),
+    ...slotFiles,
+  ]);
   const styleOnlyImports = [];
   for (const route of table.routes) {
     if (shipsPage(route)) {
@@ -754,6 +1095,7 @@ export function routesModuleSource(table, options = {}) {
       ...route.layouts,
       ...(route.loading ?? []).map((it) => it.module),
       ...(route.templates ?? []).map((it) => it.module),
+      ...slotModuleFiles(route.slots ?? []),
     ];
     for (const file of files) {
       if (carried.has(file)) {
@@ -764,7 +1106,7 @@ export function routesModuleSource(table, options = {}) {
     }
   }
 
-  return `${[...styleOnlyImports, ...layoutImports, ...loadingImports, ...templateImports].join("\n")}
+  return `${[...styleOnlyImports, ...layoutImports, ...loadingImports, ...templateImports, ...slotDefinitions].join("\n")}
 export const routes = [
 ${entries.join(",\n")}
 ];
@@ -782,6 +1124,27 @@ ${errorEntries.join(",\n")}
 ];
 export default routes;
 `;
+}
+
+/**
+ * Every module a slot tree holds, flattened.
+ *
+ * For the side-effect imports a dropped route needs: a slot's pages, its
+ * layouts and its default are as much a part of that route's stylesheets as
+ * its own page is, and a slot nested inside one is too.
+ *
+ * @param {ReadonlyArray<Slot>} slots
+ * @returns {Array<string>}
+ */
+function slotModuleFiles(slots) {
+  const files = [];
+  for (const slot of slots) {
+    if (slot.defaultPage != null) files.push(slot.defaultPage);
+    for (const route of slot.routes) {
+      files.push(route.page, ...route.layouts, ...slotModuleFiles(route.slots));
+    }
+  }
+  return files;
 }
 
 /**

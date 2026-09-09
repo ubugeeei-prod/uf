@@ -141,6 +141,12 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
     if (route.layouts.some(needed)) return true;
     if ((route.loading ?? []).some((entry) => needed(entry.module))) return true;
     if ((route.templates ?? []).some((entry) => needed(entry.module))) return true;
+    // A slot renders inside this route, so a `"use client"` anywhere in one is
+    // this route's reason to ship. Without this line a page whose only
+    // interactive part is in a slot would be dropped from the client bundle
+    // and served as a document — rendered correctly and never hydrated, which
+    // is the quietest way a feature can be half-implemented.
+    if (slotNeeds(route.slots ?? [], needed)) return true;
     // A boundary with no module of its own is the record the scan synthesises
     // at the router root, and what renders there is the framework's own page —
     // already in `@uniflowed/router`, reaching nothing this project wrote. It
@@ -159,6 +165,31 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
     }
     return false;
   };
+}
+
+/**
+ * Whether anything in a slot tree has to reach the browser.
+ *
+ * Recursive because slots nest: a slot's own layout may declare slots of its
+ * own, and a `"use client"` at any depth is still inside the page this route
+ * renders.
+ *
+ * @param {ReadonlyArray<{
+ *   defaultPage: ?string,
+ *   routes: ReadonlyArray<{page: string, layouts: ReadonlyArray<string>, slots: ReadonlyArray<*>}>,
+ * }>} slots
+ * @param {(file: ?string) => boolean} needed
+ */
+function slotNeeds(slots, needed) {
+  for (const slot of slots) {
+    if (slot.defaultPage != null && needed(slot.defaultPage)) return true;
+    for (const route of slot.routes) {
+      if (needed(route.page)) return true;
+      if (route.layouts.some(needed)) return true;
+      if (slotNeeds(route.slots, needed)) return true;
+    }
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
