@@ -1683,10 +1683,26 @@ pub enum ConfigError {
     },
     #[error("failed to parse {path}: {message}")]
     Parse { path: Utf8PathBuf, message: String },
-    #[error(
-        "unsupported config expression in {path}; use `export default defineConfig({{ ... }})`"
-    )]
-    UnsupportedExpression { path: Utf8PathBuf },
+    /// The config file is read without being run, and something in it is not a
+    /// literal.
+    ///
+    /// The message names the expression and its line, because the export shape
+    /// is nearly always already right and saying so sends the reader looking in
+    /// the wrong place. See ubugeeei-prod/uf#698, where the reported fix was
+    /// the thing the file already did.
+    #[error("{path}:{line}: {reason}\n  found: {snippet}")]
+    UnsupportedExpression {
+        path: Utf8PathBuf,
+        /// 1-based line of the expression that was refused.
+        line: usize,
+        /// The refused text, trimmed and bounded.
+        snippet: String,
+        reason: &'static str,
+    },
+    /// A config file uf has no reader for, which is not the same problem as a
+    /// config file it cannot evaluate — and used to share its message.
+    #[error("cannot read {path}: uf reads `.js`, `.mjs`, `.cjs` and `.flow` config files")]
+    UnreadableConfigFile { path: Utf8PathBuf },
     /// A cache switch that is `true` and means nothing.
     ///
     /// `rendering.cache` has four keys and uf implements two of them. Reading
@@ -1829,11 +1845,18 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
 
     match path.extension() {
         Some("js" | "mjs" | "cjs" | "flow") => {
-            let json5 = extract_config_object(&source).ok_or_else(|| {
-                ConfigError::UnsupportedExpression {
-                    path: path.to_path_buf(),
+            let json5 = match extract_config_object(&source) {
+                Some(json5) => json5,
+                None => {
+                    let refusal = diagnose_config_expression(&source);
+                    return Err(ConfigError::UnsupportedExpression {
+                        path: path.to_path_buf(),
+                        line: refusal.line,
+                        snippet: refusal.snippet,
+                        reason: refusal.reason,
+                    });
                 }
-            })?;
+            };
             let config: UniflowedConfig =
                 json5::from_str(&json5).map_err(|source| ConfigError::Parse {
                     path: path.to_path_buf(),
@@ -1853,7 +1876,7 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
             library::check(path, &config)?;
             Ok(config)
         }
-        _ => Err(ConfigError::UnsupportedExpression {
+        _ => Err(ConfigError::UnreadableConfigFile {
             path: path.to_path_buf(),
         }),
     }
@@ -1908,6 +1931,130 @@ pub fn extract_config_object(source: &str) -> Option<String> {
     }
 
     None
+}
+
+/// Why [`extract_config_object`] refused, with somewhere to look.
+///
+/// `uf.config.js` is read rather than run, so only literals survive. That is a
+/// real constraint and this type does not argue with it — it says *which*
+/// expression fell outside it and on what line, which is what the single
+/// message it replaces did not. See ubugeeei-prod/uf#698: the old message
+/// named `export default defineConfig({ ... })` as the fix, and the file it
+/// was reporting on already did exactly that.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnsupportedConfig {
+    /// 1-based line of the refused expression.
+    pub line: usize,
+    /// The refused text, trimmed and bounded so a minified file cannot make
+    /// the diagnostic unreadable.
+    pub snippet: String,
+    pub reason: &'static str,
+}
+
+/// Longest refused expression the message will quote.
+const SNIPPET_BYTES: usize = 120;
+
+/// Explain a refusal, for the file [`extract_config_object`] returned [`None`]
+/// for.
+///
+/// Separate from the extractor rather than folded into it: the extractor runs
+/// on every successful load too, and it should not carry the cost of
+/// describing a failure that is not going to happen.
+#[must_use]
+pub fn diagnose_config_expression(source: &str) -> UnsupportedConfig {
+    let mut in_block_comment = false;
+    for (index, raw) in source.lines().enumerate() {
+        let line = index + 1;
+        let mut text = raw.trim();
+
+        if in_block_comment {
+            match text.find("*/") {
+                Some(end) => {
+                    in_block_comment = false;
+                    text = text[end + 2..].trim();
+                }
+                None => continue,
+            }
+        }
+        while let Some(rest) = text.strip_prefix("/*") {
+            match rest.find("*/") {
+                Some(end) => text = rest[end + 2..].trim(),
+                None => {
+                    in_block_comment = true;
+                    text = "";
+                    break;
+                }
+            }
+        }
+
+        if text.is_empty() || text.starts_with("//") || text.starts_with("import ") {
+            continue;
+        }
+
+        // The first thing that is neither an import nor a comment. Whatever is
+        // wrong with this file, this is where a reader should start.
+        let Some(exported) = text.strip_prefix("export default") else {
+            return UnsupportedConfig {
+                line,
+                snippet: snippet(text),
+                reason: "uf reads this file without running it, so a statement before the \
+                         default export is not evaluated — inline the value at its use",
+            };
+        };
+
+        let exported = exported.trim();
+        if let Some(call) = exported.strip_prefix("defineConfig") {
+            let argument = call.trim_start().strip_prefix('(').unwrap_or(call).trim();
+            if !argument.starts_with('{') {
+                return UnsupportedConfig {
+                    line,
+                    snippet: snippet(argument),
+                    reason: "the argument to `defineConfig` has to be an object literal, \
+                             because uf reads this file without running it",
+                };
+            }
+            return UnsupportedConfig {
+                line,
+                snippet: snippet(text),
+                reason: "the object passed to `defineConfig` is not closed",
+            };
+        }
+
+        if exported.starts_with('{') {
+            return UnsupportedConfig {
+                line,
+                snippet: snippet(text),
+                reason: "the exported object literal is not closed",
+            };
+        }
+
+        return UnsupportedConfig {
+            line,
+            snippet: snippet(exported),
+            reason: "the default export has to be an object literal or \
+                     `defineConfig({ ... })`, because uf reads this file without running it",
+        };
+    }
+
+    UnsupportedConfig {
+        line: 1,
+        snippet: String::new(),
+        reason: "this file has no default export",
+    }
+}
+
+/// The refused text, on one line and bounded.
+fn snippet(text: &str) -> String {
+    let text = text.trim();
+    let mut cut = text.len().min(SNIPPET_BYTES);
+    while cut < text.len() && !text.is_char_boundary(cut) {
+        cut += 1;
+    }
+    let mut shown = text[..cut].replace(['\n', '\r'], " ");
+    if cut < text.len() {
+        shown.push('…');
+    }
+    shown
 }
 
 fn strip_leading_comments(mut source: &str) -> &str {
