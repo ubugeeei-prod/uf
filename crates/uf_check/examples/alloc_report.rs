@@ -25,7 +25,12 @@
 //! environment is separated from what a module costs to infer. The spans are
 //! uf's own — the vendored port is a submodule and carries none — so the row
 //! that ends up largest is the boundary uf hands work across, not a line
-//! inside inference.
+//! inside inference. That boundary is `check::infer_ast`, the single call into
+//! `flow_typing::type_inference`, and on `packages/router/internal/runtime.js`
+//! it is 89% of every allocation the check makes. What sits on either side of
+//! it inside `check::infer_one` — the parse and the diagnostics — is 2.2%
+//! between them, and the graph, the options and the project modules are 70
+//! allocations for the whole run.
 //!
 //! Debug and release give identical allocation counts — the counter is in the
 //! allocator, not in the optimiser — so this can be run without a release

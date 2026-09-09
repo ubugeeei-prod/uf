@@ -87,6 +87,16 @@
 //! Measured against `flow` itself before it was written, the same way 0001
 //! was: `flow-bin@0.330.0` reports `unknown` for every leading `infer` below
 //! through `flow check`, in the same words as an unpatched `uf check`.
+//!
+//! # 0003: an SSA normal form costs one set, not one per node
+//!
+//! ubugeeei-prod/uf#678, and the only patch here whose test is not in this
+//! file. It changes no answer — it is why `uf check` allocates a fifth less to
+//! reach the same one — so there is no diagnostic to assert and nothing to add
+//! below. Every test in this file passing *is* its correctness evidence, and
+//! what would fail without it is a count: `tests/upstream_patch_allocations.rs`,
+//! which is its own binary because the counters are in the allocator and a
+//! neighbouring test's allocations would land in the figure.
 
 #![cfg(feature = "upstream-typecheck")]
 

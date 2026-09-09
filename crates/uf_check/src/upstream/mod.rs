@@ -457,9 +457,25 @@ fn check_one(
     source: &Source<'_>,
     modules: &Rc<ProjectModules>,
 ) -> Result<Vec<TypeDiagnostic>, CheckError> {
+    // Three spans inside this one, and they partition it: on
+    // `packages/router/internal/runtime.js` they account for 1,951,920 of the
+    // 1,951,944 allocations `check::infer_one` reads, and the two dozen left
+    // over are this function's own bookkeeping. That is the point of them —
+    // ubugeeei-prod/uf#713 could say the checker spends 91.6% of its
+    // allocations here and not what *here* was, and the answer turned out to be
+    // one call: `check::infer_ast`, 89.4% of the whole check. Everything else
+    // this function does — the parse, the diagnostics, the context, the
+    // signature table — is the remaining 2.2%.
     profile_span!("check::infer_one");
     let file_key = FileKey::new(FileKeyInner::SourceFile(source.path.to_owned()));
-    let parsed = parse::parse_file(file_key.dupe(), source.source, options, false);
+    // The second parse of this file in a cold batch: `ProjectModules::facts`
+    // parsed it too, in the pass that describes the batch before anything is
+    // checked. Spanned so the duplicate has a number — 35,914 allocations on
+    // that module, 1.7% — rather than being an unmeasured line in a comment.
+    let parsed = {
+        profile_span!("check::infer_parse");
+        parse::parse_file(file_key.dupe(), source.source, options, false)
+    };
     if !parsed.is_parseable() {
         // A file that does not parse is broken whatever its docblock says, so
         // it is reported. Whether it also *counts* as checked is
@@ -498,17 +514,27 @@ fn check_one(
 
     let ast::Program { all_comments, .. } = parsed.ast.as_ref();
     let aloc_ast = flow_aloc::loc_to_aloc_ast(parsed.ast.as_ref());
-    type_inference::infer_ast(
-        &lint_severities,
-        &cx,
-        &parsed.file_key,
-        parsed.file_sig.dupe(),
-        &metadata,
-        all_comments,
-        aloc_ast,
-    )
-    .map_err(|error| job_error(source.path, error))?;
+    // The one call, and the only span here that is not uf's own code. It is
+    // where a cold `uf check` spends nine allocations in ten, so it is the row
+    // a reader should reach for first and the one a change to the port has to
+    // move.
+    {
+        profile_span!("check::infer_ast");
+        type_inference::infer_ast(
+            &lint_severities,
+            &cx,
+            &parsed.file_key,
+            parsed.file_sig.dupe(),
+            &metadata,
+            all_comments,
+            aloc_ast,
+        )
+        .map_err(|error| job_error(source.path, error))?;
+    }
 
+    // Suppression filtering and the translation into uf's diagnostics, together
+    // because they are one phase from outside: what the check has to say.
+    profile_span!("check::infer_diagnostics");
     let (errors, warnings) = suppressed(&cx, &parsed, cx.errors(), modules);
     Ok(convert::diagnostics(&errors, &warnings, source.path))
 }
