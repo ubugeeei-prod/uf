@@ -43,9 +43,13 @@ scratch() {
     > "$root/packages/orm/index.js"
   printf '// @flow\nexport const atom = <T>(value: T): { value: T } => ({ value });\n' \
     > "$root/packages/state/index.js"
-  for name in core orm state; do
+  for name in core state; do
     printf '{ "name": "@uniflowed/%s", "version": "0.0.0" }\n' "$name" > "$root/packages/$name/package.json"
   done
+  # `orm` is the declaration in neither list, so a correct tree says so in the
+  # manifest — that is the third rule this script now checks, and this fixture is
+  # what a repository looks like once it holds.
+  printf '{ "name": "@uniflowed/orm", "version": "0.0.0", "private": true }\n' > "$root/packages/orm/package.json"
   printf '# published\ncore\n' > "$root/tools/release/published-packages.txt"
   printf '# pending\nstate\n' > "$root/tools/release/pending-packages.txt"
 }
@@ -81,6 +85,27 @@ scratch forgotten
 printf '# published\ncore\n' > "$work/forgotten/tools/release/pending-packages.txt"
 run forgotten
 refuses "an implemented package in neither list" "packages/state"
+
+# --- and it has to say it is not for the registry ---------------------------
+# The rule the third check adds. A declaration in neither list is never
+# published, and until the manifest says `private` the only thing that ever
+# refuses is `npm install`, with `ETARGET` and no explanation. Taking the field
+# back out is exactly the state all twenty of these packages were in.
+scratch unmarked
+printf '{ "name": "@uniflowed/orm", "version": "0.0.0" }\n' > "$work/unmarked/packages/orm/package.json"
+run unmarked
+refuses "a declaration in neither list with no private" "packages/orm"
+
+# --- unless a list claims it -------------------------------------------------
+# Membership outranks the scan, which is what keeps `core` and `stylex`
+# publishable: both look like declarations to `isDeclaration` and both are
+# published on purpose. A package a list names is never asked to be private.
+scratch claimed
+printf '{ "name": "@uniflowed/orm", "version": "0.0.0" }\n' > "$work/claimed/packages/orm/package.json"
+printf '# pending\nstate\norm\n' > "$work/claimed/tools/release/pending-packages.txt"
+run claimed
+[ "$status" -eq 0 ] || fail "a declaration a list claims was refused: $out"
+pass "a list claiming a declaration outranks the scan"
 
 # --- a declaration is not required to be anywhere ---------------------------
 # The other direction of the same judgement: `packages/orm` is in no list and
