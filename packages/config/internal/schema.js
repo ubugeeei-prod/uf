@@ -372,6 +372,17 @@ export type UniflowedConfig = {
         readonly data?: boolean,
         readonly fetch?: boolean,
         readonly route?: boolean,
+        // Where cache entries live, and the only thing here that is a *name*
+        // rather than a switch: `"memory"` (the default) is one process,
+        // `"filesystem"` is uf's built-in durable provider, and anything else
+        // is a module specifier exporting `createCacheProvider` — the same
+        // shape `builder.module` has, and for the same red line. Turning this
+        // on caches nothing new: a route still has to state a lifetime.
+        readonly store?: string,
+        // Where `"filesystem"` keeps them. Defaults to `.uf/cache/route` under
+        // the project. A deployment that has one writable directory — `/tmp` on
+        // a Lambda, a mounted volume in a container — names it here.
+        readonly storeDir?: string,
       },
     },
   },

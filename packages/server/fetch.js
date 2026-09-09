@@ -217,6 +217,15 @@ export function createFetchHandler(
     const context = currentContext();
     if (context != null && cache != null) {
       context.cache = cache;
+      // And, in the same breath, the durable half of whatever this request
+      // does to that cache. A store with a provider starts its writes and does
+      // not await them — a reader must not wait on a disk for a document it is
+      // already holding — so something has to, or a host that stops the process
+      // when the response is written drops them. That host is every serverless
+      // one, and a shared cache is worth most exactly there. `settled()`
+      // resolves immediately when nothing is outstanding, which is every
+      // request on a memory-only store.
+      context.deferred.push(() => cache.store.settled());
     }
     // And beside it, for the same reason and at the same moment: a handler
     // that upgrades a connection or queues work is inside `dispatch` too, and
