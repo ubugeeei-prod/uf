@@ -59,14 +59,22 @@ fn main() {
     CountingAllocator::enable();
     let window = Window::open();
     let before = AllocSnapshot::capture();
+    let start = std::time::Instant::now();
     for _ in 0..runs {
         let report = uf_lint::lint_source(&file, &config).expect("lints");
         std::hint::black_box(&report);
     }
+    // Measured with the span gate shut, so it is the linter's own time and not
+    // the profiler's — which is the comparison a change to a hot path wants.
+    let elapsed = start.elapsed();
     let after = AllocSnapshot::capture();
     drop(window);
 
     let delta = after.delta_from(&before);
+    println!(
+        "time / run     {:.2} ms",
+        elapsed.as_secs_f64() * 1000.0 / runs as f64
+    );
     println!("allocs / run   {}", delta.allocations / runs);
     println!(
         "bytes / run    {:.2} MiB",

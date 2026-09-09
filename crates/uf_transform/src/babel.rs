@@ -14,7 +14,7 @@
 //! compiler's scope information refers to nodes; and `start`/`end` offsets,
 //! which it uses for positional queries.
 
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 use uf_profiler::profile_span;
 
 use crate::TransformError;
@@ -97,7 +97,7 @@ fn convert(node: &mut Value) -> Result<Edit, TransformError> {
         Convert::JsxText => {
             let value = node["value"].clone();
             let raw = take(node, "raw");
-            node["extra"] = json!({ "rawValue": value, "raw": raw });
+            node["extra"] = node! { "rawValue": value, "raw": raw };
             Edit::Keep
         }
         Convert::ArrayExpression => {
@@ -208,7 +208,7 @@ fn literal(node: &mut Value) -> Value {
         let mut out = base(node, "RegExpLiteral");
         out.insert("pattern".to_owned(), regex["pattern"].clone());
         out.insert("flags".to_owned(), regex["flags"].clone());
-        out.insert("extra".to_owned(), json!({ "raw": raw }));
+        out.insert("extra".to_owned(), node! { "raw": raw });
         return Value::Object(out);
     }
     if let Some(bigint) = node.get("bigint") {
@@ -216,7 +216,7 @@ fn literal(node: &mut Value) -> Value {
         out.insert("value".to_owned(), bigint.clone());
         out.insert(
             "extra".to_owned(),
-            json!({ "rawValue": bigint, "raw": raw }),
+            node! { "rawValue": bigint.clone(), "raw": raw },
         );
         return Value::Object(out);
     }
@@ -224,16 +224,13 @@ fn literal(node: &mut Value) -> Value {
         Value::String(text) => {
             let mut out = base(node, "StringLiteral");
             out.insert("value".to_owned(), Value::String(text.clone()));
-            out.insert("extra".to_owned(), json!({ "rawValue": text, "raw": raw }));
+            out.insert("extra".to_owned(), node! { "rawValue": text, "raw": raw });
             Value::Object(out)
         }
         Value::Number(number) => {
             let mut out = base(node, "NumericLiteral");
             out.insert("value".to_owned(), Value::Number(number.clone()));
-            out.insert(
-                "extra".to_owned(),
-                json!({ "rawValue": number, "raw": raw }),
-            );
+            out.insert("extra".to_owned(), node! { "rawValue": number, "raw": raw });
             Value::Object(out)
         }
         Value::Bool(flag) => {
@@ -369,7 +366,7 @@ fn import_expression(node: &mut Value) -> Value {
         arguments.push(options);
     }
     let mut out = base(node, "CallExpression");
-    out.insert("callee".to_owned(), json!({ "type": "Import" }));
+    out.insert("callee".to_owned(), node! { "type": "Import" });
     out.insert("arguments".to_owned(), Value::Array(arguments));
     Value::Object(out)
 }
@@ -460,7 +457,7 @@ fn lift_directives(node: &mut Value) {
                 .unwrap_or_else(|| Value::String(format!("\"{text}\"")));
             let mut literal = base(&statement["expression"], "DirectiveLiteral");
             literal.insert("value".to_owned(), Value::String(text.to_owned()));
-            literal.insert("extra".to_owned(), json!({ "rawValue": text, "raw": raw }));
+            literal.insert("extra".to_owned(), node! { "rawValue": text, "raw": raw });
             let mut directive = base(statement, "Directive");
             directive.insert("value".to_owned(), Value::Object(literal));
             directives.push(Value::Object(directive));
@@ -483,13 +480,13 @@ fn wrap_file(mut program: Value) -> Value {
     }
     let loc = program.get("loc").cloned().unwrap_or(Value::Null);
     let range = program.get("range").cloned().unwrap_or(Value::Null);
-    json!({
+    node! {
         "type": "File",
         "program": program,
         "comments": comments,
         "loc": loc,
         "range": range,
-    })
+    }
 }
 
 fn comment(node: &Value) -> Value {
@@ -606,10 +603,10 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
         if !overwrite_position(object, (start_line, start_column), (end_line, end_column)) {
             object.insert(
                 "loc".to_owned(),
-                json!({
-                    "start": { "line": start_line, "column": start_column },
-                    "end": { "line": end_line, "column": end_column },
-                }),
+                node! {
+                    "start": node!{ "line": start_line, "column": start_column },
+                    "end": node!{ "line": end_line, "column": end_column },
+                },
             );
         }
     } else if let Some(loc) = object.get_mut("loc").and_then(Value::as_object_mut) {

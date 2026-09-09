@@ -36,6 +36,41 @@
 //! assert!(out.code.contains("jsx"));
 //! ```
 
+/// An ESTree node, built without copying the children into it.
+///
+/// `json!` looks like the right tool here and is not. For anything that is not
+/// a literal it expands to `serde_json::to_value(&expr)`, which **serialises**
+/// the value into a fresh one — so a builder handed a subtree deep-copied it,
+/// and the copy was thrown away as soon as the parent was replaced.
+///
+/// It is not a small effect. `components::hook_to_function` wraps a `hook`
+/// body it already owns, in seven keys: it cost **564 allocations per hook**
+/// through `json!` and **150** through this, a 94% drop for a change that
+/// alters nothing about the tree. See ubugeeei-prod/uf#668.
+///
+/// The keys are still a `String` each, because a `serde_json::Map` is keyed by
+/// `String` and there is no `&'static str` to hand it. That is this data
+/// structure's floor, which #668 already says, and it is what the macro leaves
+/// on the table on purpose.
+///
+/// `null` has no `From` impl to reach, so a null field is written
+/// `Value::Null` rather than `null`.
+macro_rules! node {
+    ($($key:literal : $value:expr),* $(,)?) => {{
+        // `mut` is unused for `node!{}` with no fields, which `compiler.rs`
+        // writes for an empty `environment`.
+        #[allow(unused_mut)]
+        let mut map = ::serde_json::Map::new();
+        $(
+            map.insert(
+                ::std::string::String::from($key),
+                ::serde_json::Value::from($value),
+            );
+        )*
+        ::serde_json::Value::Object(map)
+    }};
+}
+
 pub mod babel;
 pub mod compiler;
 pub mod emit;
