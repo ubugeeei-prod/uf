@@ -221,7 +221,7 @@ pub fn scan_source_files(
 /// a generated file is exactly the thing somebody points at when they want to
 /// know why it will not compile.
 ///
-/// This is not hypothetical. `tests/library/module-mock.test.js` writes a
+/// This is not hypothetical. `packages/test/module-mock.test.js` writes a
 /// fixture into a gitignored directory — deliberately, so a run killed half way
 /// through does not leave it in the workspace — and then asks
 /// `uf check tests/library/<fixture>` about it by name. Applying the ignore to

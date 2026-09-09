@@ -54,7 +54,7 @@ import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
 
-import { everyMisuseIsReported } from "./type-tests.js";
+import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 
 /** This checkout, for the last `describe`, which reads three files of it. */
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

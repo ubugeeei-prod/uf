@@ -3,7 +3,7 @@
 //! `runtime.capabilityJsHost.hosts` lists Bun, the README lists it, and
 //! `docs/architecture.md` describes `packages/host/bun-preload.js` as the Bun
 //! counterpart of what `register.js` is on Node. Nothing ran it. The library
-//! suite runs on Node — that is what `uf test#library` means — so every claim
+//! suite runs on Node — that is what `uf test` means here — so every claim
 //! uf makes about Bun was unchecked, and the preload was in fact broken in two
 //! independent ways at once (ubugeeei-prod/uf#418):
 //!

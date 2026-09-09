@@ -6,7 +6,7 @@
 // through a browser here, so it is driven where it lives: `start()` is an
 // ordinary module that reads a `document`, watches it with a `MutationObserver`
 // and posts to an endpoint, and `@uniflowed/react-testing` installs a document
-// that has all three. `tests/library/dev-channel.test.js`'s neighbours are
+// that has all three. `packages/vite/dev-channel.test.js`'s neighbours are
 // where the channel's own half is checked.
 //
 // The two halves this file *does* check are the ones a mistake would be silent
@@ -24,9 +24,9 @@ import { cleanup, render } from "@uniflowed/react-testing";
 // if they were not there. In a browser they always are. Here the document is
 // installed by `@uniflowed/react-testing`, so the engine has to come after it —
 // which is why the import below is dynamic and this one reaches past the
-// package's own exports, the way `tests/library/streaming.test.js` does.
+// package's own exports, the way `packages/router/streaming.test.js` does.
 import { installDom } from "../../packages/react-testing/internal/dom.js";
-import { bodyOf } from "./dom.js";
+import { bodyOf } from "../../tests/library/dom.js";
 
 import {
   AUDIT_PUBLIC_PATH,
@@ -35,14 +35,14 @@ import {
   auditAvailable,
   auditRuntimeSource,
   auditTag,
-} from "../../packages/vite/internal/a11y.js";
-import { DIAGNOSTIC_ENDPOINT } from "../../packages/vite/internal/diagnostics.js";
-import uniflowed from "../../packages/vite/index.js";
-import { DEVTOOLS_HOOK } from "../../packages/vite/internal/devtools.js";
+} from "./internal/a11y.js";
+import { DIAGNOSTIC_ENDPOINT } from "./internal/diagnostics.js";
+import uniflowed from "./index.js";
+import { DEVTOOLS_HOOK } from "./internal/devtools.js";
 
 installDom();
 
-const { start } = await import("../../packages/vite/internal/a11y-runtime.js");
+const { start } = await import("./internal/a11y-runtime.js");
 
 /** Where a report is posted in this file; never actually fetched. */
 const ENDPOINT = "/__uf/diagnostic";
@@ -149,7 +149,7 @@ function flowPlugin(config: $FlowFixMe, command: "serve" | "build"): $FlowFixMe 
 
 describe("the wiring into a development document", () => {
   it("adds the audit to the document DevTools already owns, and adds it last", () => {
-    // The half `tests/library/devtools.test.js` deliberately does not check.
+    // The half `packages/vite/devtools.test.js` deliberately does not check.
     // That file turns this feature off so its own count is about DevTools;
     // this is the assertion that the two coexist — and it is the one that
     // would have caught the collision, because "the document has two tags" and

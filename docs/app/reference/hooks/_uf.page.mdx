@@ -179,7 +179,7 @@ the browser does not measure bandwidth and because it had not decided yet.
 
 ## Proving it
 
-`tests/library/hooks-ssr.test.js` renders every hook in the package in a process
+`packages/hooks/hooks-ssr.test.js` renders every hook in the package in a process
 with **no document at all** — the globals are removed before the file runs and
 put back after — and asserts the markup each one produces. A row of the table
 above that stopped being true fails there rather than in somebody's browser, and

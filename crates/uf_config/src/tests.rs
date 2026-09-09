@@ -478,7 +478,7 @@ fn parses_flow_config() {
 /// from there `createFetchHandler`'s `cache` option. Before ubugeeei-prod/uf#277
 /// they reached `dist/uf-build-manifest.json` and nothing else, which is
 /// indistinguishable from this assertion passing over a switch nobody reads —
-/// so the assertion that matters is in `tests/library/cache.test.js`, and this
+/// so the assertion that matters is in `packages/server/cache.test.js`, and this
 /// one only says the value survives the parse.
 #[test]
 fn reads_the_two_cache_switches_that_are_implemented() {

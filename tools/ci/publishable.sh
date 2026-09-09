@@ -55,11 +55,17 @@ const pending = names("tools/release/pending-packages.txt");
 // that says so in prose is exactly the kind this check must not excuse.
 const CALL = /(?<![A-Za-z0-9_$.])nativeRuntimeRequired\s*\(/;
 
+// The modules a package *ships*. A `.test.js` beside them is not one — every
+// manifest's `files` ends `"!*.test.js"`, so npm never packs it — and reading
+// one here would answer the wrong question in the quiet direction: a test that
+// asserts a refusal ("`withCalendar` raises `NativeRuntimeRequiredError`")
+// mentions the call, and one line of a test file would be enough to file the
+// whole package as a declaration that is never published.
 const modules = function* (directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) yield* modules(path);
-    else if (entry.name.endsWith(".js")) yield path;
+    else if (entry.name.endsWith(".js") && !entry.name.endsWith(".test.js")) yield path;
   }
 };
 

@@ -24,7 +24,7 @@ import {
   within,
 } from "@uniflowed/react-testing";
 
-import { elementIn, valueIn } from "./dom.js";
+import { elementIn, valueIn } from "../../tests/library/dom.js";
 
 component Greeting(name: string) {
   return <p>Hello, {name}</p>;

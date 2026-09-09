@@ -125,7 +125,9 @@ fn a_pattern_selects_by_substring_of_the_relative_path() {
 fn any_of_several_patterns_selects() {
     let patterns = vec!["packages/ui".to_string(), "tests/".to_string()];
 
-    assert!(selects(&patterns, "tests/library/ui.test.js"));
+    // One file per pattern, deliberately: a case that matched both would pass
+    // if either half of the disjunction stopped working.
+    assert!(selects(&patterns, "tests/library/deploy.test.js"));
     assert!(selects(&patterns, "packages/ui/menu.js"));
     assert!(!selects(&patterns, "packages/form/rules.js"));
 }

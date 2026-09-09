@@ -37,9 +37,9 @@ import { createRenderer } from "@uniflowed/router/server";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeEach, describe, expect, it } from "@uniflowed/test";
 
-import { elementIn, elementsIn } from "./dom.js";
+import { elementIn, elementsIn } from "../../tests/library/dom.js";
 import { routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
-import { DIAGNOSTIC_ENDPOINT } from "../../packages/router/internal/diagnostics.js";
+import { DIAGNOSTIC_ENDPOINT } from "./internal/diagnostics.js";
 import {
   type BoundaryFinding,
   type RouteBoundary,
@@ -58,7 +58,7 @@ import {
   insideBoundary,
   routeBoundaries,
   suspenseId,
-} from "../../packages/router/internal/boundaries.js";
+} from "./internal/boundaries.js";
 
 const roots: Array<string> = [];
 

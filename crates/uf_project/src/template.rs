@@ -272,7 +272,7 @@ export default routerView("./app");
 /// every page is worse than none: a page that suspends under it renders as an
 /// empty document instead of failing the way React says it should, and nothing
 /// says so. That is the argument `RouteView` already makes for not inserting
-/// one — `tests/library/streaming.test.js` — and a scaffold should not ship
+/// one — `packages/router/streaming.test.js` — and a scaffold should not ship
 /// the shape the router refuses. A route that wants a boundary declares one.
 ///
 /// And `children` is **`mixed`, not `React.Node`**, which is a scaffold

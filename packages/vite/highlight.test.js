@@ -27,15 +27,9 @@ import { describe, expect, it } from "@uniflowed/test";
 // public surface — `package_surface.rs` enforces that, with one allowlisted
 // exception for the native bridge — and a test is not a reason to widen it.
 // This file is inside the repository, so it can just say where the module is.
-import { highlightPlugin } from "../../packages/vite/internal/highlight.js";
-import { shimFlowGrammar } from "../../packages/vite/internal/flow-grammar-shim.js";
-import {
-  FLOW_MARK,
-  KEYWORD,
-  TYPE,
-  markLine,
-  markLines,
-} from "../../packages/vite/internal/flow-keywords.js";
+import { highlightPlugin } from "./internal/highlight.js";
+import { shimFlowGrammar } from "./internal/flow-grammar-shim.js";
+import { FLOW_MARK, KEYWORD, TYPE, markLine, markLines } from "./internal/flow-keywords.js";
 
 /**
  * The words `markLine` marked as keywords, given a line already split into

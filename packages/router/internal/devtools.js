@@ -29,7 +29,7 @@
 // panel props, hooks and source positions — is not checked here because a
 // browser cannot tell the difference from the outside, and because uf owns it
 // end to end: `mode` is `development` and `uf transform` is called with
-// `development: true`, both asserted in `tests/library/devtools.test.js`
+// `development: true`, both asserted in `packages/vite/devtools.test.js`
 // against the plugin rather than against a page. What is left is what only a
 // running page knows.
 //
@@ -53,7 +53,7 @@ import { reportDiagnostic } from "./diagnostics.js";
  * that file's neighbour `internal/diagnostics.js` gives about the endpoint
  * paths: `@uniflowed/vite` is loaded by Vite before any Flow transform exists
  * and this module is Flow, so the import cannot go either way.
- * `tests/library/devtools.test.js` asserts the two spellings agree, which is
+ * `packages/vite/devtools.test.js` asserts the two spellings agree, which is
  * what makes a duplicated constant honest.
  */
 export const DEVTOOLS_HOOK: string = "__REACT_DEVTOOLS_GLOBAL_HOOK__";

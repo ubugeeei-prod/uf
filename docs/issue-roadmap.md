@@ -99,7 +99,7 @@
       decisions without an editor host, and `tests/library/lsp.test.js` drives
       the real `uf lsp` over framed messages and asserts every capability the
       READMEs claim — and that the ones they disclaim are absent. Both run under
-      `uf test#library`, so both are in `uf run ci`.
+      `uf test`, so both are in `uf run ci`.
       One server bug found and not fixed here: `uf lsp --cwd <dir>` is accepted
       by the command line and ignored by the command, which reads `.` instead,
       so the flag silently gives a project uf's default `fmt` options and lint

@@ -100,7 +100,7 @@
 // and there are three guards rather than a promise. `capability.js` reproduces
 // `crates/uf_term/src/capability.rs`'s colour precedence and its size
 // precedence, `widths.js` holds the same Unicode tables as
-// `crates/uf_term/src/text/tables.rs`, and `tests/library/tui.test.js` reads
+// `crates/uf_term/src/text/tables.rs`, and `packages/tui/tui.test.js` reads
 // both Rust files and fails when either side is edited alone.
 //
 // # How the package is laid out

@@ -255,7 +255,7 @@ that constrains the design. Node's hooks may hand a module back untouched;
 Bun's plugin API selects a module by *pattern* and then requires the hook to
 answer with contents, and there is no shape that means "not mine" — so the
 policy exists twice in `packages/host/transform.js`, as `isFlowModule` and as
-`FLOW_MODULE_PATTERN`, and `tests/library/flow-modules.test.js` pins the two
+`FLOW_MODULE_PATTERN`, and `packages/host/flow-modules.test.js` pins the two
 equal path for path. It has to be equality rather than approximation in both
 directions: a pattern that under-matched would leave a `@uniflowed` package's
 Flow to Bun's parser, and one that over-matched would put a CommonJS

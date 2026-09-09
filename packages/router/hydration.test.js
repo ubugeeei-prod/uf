@@ -25,8 +25,8 @@ import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { act, render } from "@uniflowed/react-testing";
 
-import { bodyOf, elementIn } from "./dom.js";
-import { DIAGNOSTIC_ENDPOINT } from "../../packages/router/internal/diagnostics.js";
+import { bodyOf, elementIn } from "../../tests/library/dom.js";
+import { DIAGNOSTIC_ENDPOINT } from "./internal/diagnostics.js";
 import {
   SERVER_MARKUP_LIMIT,
   captureServerMarkup,
@@ -36,14 +36,14 @@ import {
   hydrationReport,
   isHydrationMessage,
   showHydrationReport,
-} from "../../packages/router/internal/hydration.js";
+} from "./internal/hydration.js";
 
 /**
  * React's two renderers, required rather than imported.
  *
  * `react-dom/client` reads `document` while it is being evaluated, so it cannot
  * be a static import in a file that installs the document itself. The same
- * reason `tests/library/rsc-split.test.js` reaches for its two entry points
+ * reason `packages/vite/rsc-split.test.js` reaches for its two entry points
  * through a dynamic import.
  */
 const load = createRequire(import.meta.url);

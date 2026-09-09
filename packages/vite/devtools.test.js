@@ -32,8 +32,8 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import uniflowed from "../../packages/vite/index.js";
-import { DEVTOOLS_HOOK, devtoolsPreamble } from "../../packages/vite/internal/devtools.js";
+import uniflowed from "./index.js";
+import { DEVTOOLS_HOOK, devtoolsPreamble } from "./internal/devtools.js";
 // The DOM is installed before the refresh runtime is imported, and never after:
 // that module assigns `window.__registerBeforePerformReactRefresh` while it is
 // being evaluated, so on a process with no window it throws at import rather
@@ -73,7 +73,7 @@ function runPreamble(win: $FlowFixMe): void {
 /** The vendored Fast Refresh runtime, once there is a window to import it. */
 async function refreshRuntime(): Promise<$FlowFixMe> {
   installDom();
-  return import("../../packages/vite/internal/refresh-runtime.js");
+  return import("./internal/refresh-runtime.js");
 }
 
 /** The uf plugin, configured the way the driver configures it. */

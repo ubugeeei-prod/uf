@@ -77,7 +77,7 @@
 // the price of the guarantee rather than an oversight. A render that has to be
 // reproducible fixes `at` and `seed` itself, which is what those two props are
 // for; `gives the same document however the host takes it` in
-// `tests/library/streaming.test.js` is a test that compares two renders and says
+// `packages/router/streaming.test.js` is a test that compares two renders and says
 // so.
 //
 // # What belongs in this module

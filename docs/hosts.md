@@ -101,7 +101,7 @@ The reference host. `node --import @uniflowed/host/register app.js` installs
 module hooks that transform every Flow module through `uf transform` as it
 loads, with `--enable-source-maps` so a stack frame names the line you wrote.
 `uf test`, `uf dev` and `uf build` all run here, and the `@uniflowed/*` suite
-that `uf test#library` runs is a Node suite.
+that `uf test` runs is a Node suite.
 
 Its permission model is `--permission` with `--allow-fs-read` and
 `--allow-fs-write`. There is no network dimension, no environment dimension, and
@@ -114,7 +114,7 @@ for what uf does about that.
 reached through Bun's plugin API. The filter is
 `packages/host/transform.js`'s `FLOW_MODULE_PATTERN`, which is `isFlowModule`
 written as a pattern and pinned equal to it by
-`tests/library/flow-modules.test.js` — Bun's `onLoad` has no way to say "not
+`packages/host/flow-modules.test.js` — Bun's `onLoad` has no way to say "not
 mine", so the decision has to be made before the hook rather than inside it.
 
 Bun has **no permission model of any kind**. A project that declares

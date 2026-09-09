@@ -157,7 +157,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let root = resolved.root.clone();
     // Named paths override `.gitignore`, as they do for `uf lint` and
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
-    // `tests/library/module-mock.test.js` does, so a killed run leaves nothing
+    // `packages/test/module-mock.test.js` does, so a killed run leaves nothing
     // behind — still has to be runnable by name.
     let scan = scan_selected_source_files(&root, &resolved.config, &args.paths)?;
     render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));

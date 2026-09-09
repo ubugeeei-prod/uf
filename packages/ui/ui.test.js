@@ -93,30 +93,30 @@ import { useFieldSource, useForm } from "@uniflowed/form";
 // argument for keeping the positioning there is that a consumer cannot get a
 // weaker copy of it. The arithmetic is still the one thing in this package a
 // test can hold to an exact number, so it is reached where it lives.
-import type { Align, Placement, Rect, Side } from "../../packages/ui/internal/anchor.js";
-import { placeOverlay, useAnchor } from "../../packages/ui/internal/anchor.js";
+import type { Align, Placement, Rect, Side } from "./internal/anchor.js";
+import { placeOverlay, useAnchor } from "./internal/anchor.js";
 // And the same, for the other half of a calendar: `internal/date-grid.js` says
 // which date a key means, over dates rather than over elements, and the month
 // boundaries are the cases worth being exhaustive about.
-import { moveDate, movementForDateKey, weeksOf } from "../../packages/ui/internal/date-grid.js";
+import { moveDate, movementForDateKey, weeksOf } from "./internal/date-grid.js";
 // The same reasoning, for the same reason: `focusable()` is this package's
 // definition of what `Tab` reaches, and "a slide nobody can see is not one of
 // them" is a claim about that definition rather than about a rendered tree.
-import { focusable } from "../../packages/ui/internal/focus.js";
+import { focusable } from "./internal/focus.js";
 // `document.body` is `HTMLBodyElement | null` — a parsed document need not have
 // one — so every `fireEvent` aimed at the page itself narrows through here
 // rather than thirteen times over. See ubugeeei-prod/uf#573.
-import { bodyOf } from "./dom.js";
+import { bodyOf } from "../../tests/library/dom.js";
 // The negative type tests below run `uf check` and read what it said; this is
 // the harness that does it, shared with the five other suites that make the
 // same kind of claim. See its module header for why the package goes to the
 // checker in the same command as the fixture.
-import type { CheckReport } from "./type-tests.js";
+import type { CheckReport } from "../../tests/library/type-tests.js";
 import {
   everyMisuseIsReported,
   repositoryRoot as repository,
   ufBinary as UF,
-} from "./type-tests.js";
+} from "../../tests/library/type-tests.js";
 
 /**
  * Every `aria-*` reference in the document that names an id nothing has.
@@ -6352,7 +6352,7 @@ describe("the five that are one element, audited rather than asserted", () => {
   // a live region announced twice.
   //
   // These five are where it is worth spending, because they are the components
-  // whose whole content is `aria-*` — `tests/library/axe.test.js` proves the
+  // whose whole content is `aria-*` — `packages/test/axe.test.js` proves the
   // matcher works and this is the matcher pointed at what it was built for.
   //
   // Inside a `<main>` with a heading because the rule set includes the
@@ -8735,6 +8735,17 @@ describe("the props a part spreads onto its element", () => {
   // nothing resolves a module for `@uniflowed/react` and the import is typed
   // `any` — a different bug, with a different fix, and not one this test
   // should start failing over.
+  //
+  // And scoped to what the package *ships*. `uf check packages/ui` now reads
+  // this file too, because this file is in `packages/ui` — that is what
+  // co-locating the suite means. The claim above is about the elements the
+  // package renders, so a diagnostic against a test file is not evidence for
+  // or against it, and counting one would make the suite's own call sites the
+  // subject. There is one today: the `Plans` component below spreads
+  // `Field.Control`'s render props onto a `RadioGroup.Root`, and the checker
+  // has an opinion about the `key` in them that nothing had asked for until
+  // this file moved. That is a real finding about the API and it belongs in
+  // an issue about `Field.Control`, not in an assertion about `merge-props.js`.
 
   it("does not make React's key mixed", () => {
     const run = spawnSync(UF, ["check", "packages/ui", "--json"], {
@@ -8761,12 +8772,20 @@ describe("the props a part spreads onto its element", () => {
     expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
 
     const keyed = report.typeCheck.diagnostics
+      .filter((diagnostic) => !diagnostic.primary.path.endsWith(".test.js"))
       .map((diagnostic) => ({
         at: `${diagnostic.primary.path}:${String(diagnostic.primary.start.line)}`,
         said: diagnostic.message.map((span) => span.text).join(""),
       }))
       .filter((diagnostic) => diagnostic.said.includes("in property key"));
     expect(keyed).toEqual([]);
+    // And the checker read the package rather than only this file, which is
+    // the way the filter above could have emptied the list it is asserting on.
+    expect(
+      report.typeCheck.diagnostics.some(
+        (diagnostic) => !diagnostic.primary.path.endsWith(".test.js"),
+      ),
+    ).toBe(true);
   });
 });
 

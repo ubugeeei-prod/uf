@@ -150,9 +150,9 @@ export type RenderOptions = {|
    * the head first cannot both be satisfied.
    *
    * uf's own injections are `head` and `head-prepend`, and Vite's client is
-   * head-injected, so this is about a third-party plugin. `dev-head-transform`
-   * in `tests/library` pins the table above, so the day it changes is a failing
-   * test rather than a surprise.
+   * head-injected, so this is about a third-party plugin.
+   * `packages/vite/dev-head-transform.test.js` pins the table above, so the day
+   * it changes is a failing test rather than a surprise.
    */
   readonly transformHead?: (html: string) => Promise<string>,
   /**

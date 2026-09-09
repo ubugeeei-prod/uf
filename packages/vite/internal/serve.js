@@ -32,7 +32,7 @@
 // module is the part that is genuinely Vite's: finding the build on disk and
 // reading the manifest a Vite build wrote.
 //
-// It moved because of `uf build --adapter`. `tests/library/serve.test.js` said
+// It moved because of `uf build --adapter`. `packages/server/serve.test.js` said
 // what was wrong with the old arrangement while it was still the only one:
 // "`internal/serve.js` is the seam a deploy adapter will need, and naming it
 // in `exports` before one exists would be promising an interface nothing has

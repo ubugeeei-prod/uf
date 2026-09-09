@@ -55,7 +55,7 @@
 // | `usePermission` | `"unknown"` | what the browser answers |
 // | `useScrollLock` | nothing at all — effects do not run in a prerender | the page is held |
 //
-// `tests/library/hooks-ssr.test.js` renders every one of them in a process with
+// `packages/hooks/hooks-ssr.test.js` renders every one of them in a process with
 // no document and asserts the markup, so a row of this table that stopped being
 // true would fail there rather than in somebody's browser.
 //

@@ -84,7 +84,7 @@ function stripQuery(id) {
  * rejected any path containing `node_modules` would silently stop
  * transforming.
  *
- * `tests/library/flow-modules.test.js` is that sentence as a test, over a
+ * `packages/host/flow-modules.test.js` is that sentence as a test, over a
  * table that includes every case either expression could get wrong on its own.
  * Two spellings of one rule are a drift risk and the test is the thing that
  * makes them not one; the extension list is shared rather than repeated for

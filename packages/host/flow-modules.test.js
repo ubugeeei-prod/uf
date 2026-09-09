@@ -33,7 +33,7 @@ import { describe, expect, it } from "@uniflowed/test";
 /** The module under test, reached as a path so no resolution is involved. */
 const TRANSFORM: string = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../packages/host/transform.js",
+  "./transform.js",
 );
 
 const host = await import(TRANSFORM);

@@ -52,8 +52,8 @@ import { afterAll, afterEach, describe, expect, it } from "@uniflowed/test";
 // `error-boundary.test.js` reach for the same package: `internal/` is the
 // build's own router and its own split, not something a project imports.
 import { installDom } from "../../packages/react-testing/internal/dom.js";
-import { clientRouteFilter, readRscManifest } from "../../packages/vite/internal/rsc.js";
-import { routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
+import { clientRouteFilter, readRscManifest } from "./internal/rsc.js";
+import { routesModuleSource, scanRoutes } from "./internal/routes.js";
 
 const roots: Array<string> = [];
 

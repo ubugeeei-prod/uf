@@ -64,7 +64,7 @@ impl Default for TuiFrameworkContract {
             input: TuiInputModel::KeyboardMouseSelectionFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
             // Ten, not twenty-three. Every one of these is exercised by
-            // `tests/library/tui.test.js` against a rendered frame; the other
+            // `packages/tui/tui.test.js` against a rendered frame; the other
             // thirteen variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
@@ -398,7 +398,7 @@ pub enum TuiPerformanceTarget {
     ///
     /// This replaces `"faster-than-react-ink"`, which was never measured
     /// against React Ink and so was not a claim, it was an ambition someone
-    /// wrote down. This one is measured, by `tests/library/tui.test.js`: in an
+    /// wrote down. This one is measured, by `packages/tui/tui.test.js`: in an
     /// 80×24 terminal, the first frame sends 1,920 cells and changing one
     /// character of a status line then sends **one cell in seven bytes** — a
     /// cursor move and the character.

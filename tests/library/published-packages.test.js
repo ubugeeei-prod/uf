@@ -265,6 +265,34 @@ describe("what the published packages pack", () => {
     expect(missing).toEqual([]);
   });
 
+  // The suite moved next to the code it tests, so this is no longer a
+  // hypothetical: `packages/ui/ui.test.js` is on disk, inside a package that
+  // goes to npm. `crates/uf_lib/tests/package_surface.rs` asserts the rule that
+  // keeps it out — every manifest's `files` ends `"!*.test.js"`, and the order
+  // is load-bearing — and this asserts the consequence, by asking npm.
+  //
+  // Both are wanted. The Rust one is non-vacuous before a test file exists and
+  // names the fix; this one is the only half that could catch npm reading an
+  // allowlist differently than we think it does.
+  it("no package publishes a test file", () => {
+    const shipped = [];
+    let beside = 0;
+    for (const name of published) {
+      for (const file of packed.get(name) ?? new Set()) {
+        if (file.endsWith(".test.js")) shipped.push(`@uniflowed/${name} packs ${file}`);
+      }
+      beside += fs
+        .readdirSync(path.join(repository, "packages", name), { recursive: true })
+        .filter((entry) => String(entry).endsWith(".test.js")).length;
+    }
+
+    expect(shipped).toEqual([]);
+    // And there was something to exclude. Without this the assertion above
+    // passes on a repository whose suite never moved, which is the state this
+    // test was written to stop being silent about.
+    expect(beside).toBeGreaterThan(0);
+  });
+
   it("every package publishes every file its published files import", () => {
     const missing = [];
     for (const name of published) {
@@ -285,7 +313,14 @@ describe("what the published packages pack", () => {
 });
 
 /**
- * Every `.js` file under `directory`, relative to the repository root.
+ * Every `.js` file `directory` publishes, relative to the repository root.
+ *
+ * The suite lives beside the packages now, so a `.js` under `packages/` is not
+ * necessarily one of them: a `.test.js` is subtracted by the `"!*.test.js"`
+ * every manifest's `files` ends with, and never reaches a tarball. The edge
+ * below is a rule about what a *published* package imports, so reading a test
+ * file would report an edge no consumer can observe — `form.test.js` rendering
+ * a `Field.Root` is not `@uniflowed/form` depending on `@uniflowed/ui`.
  */
 const sourcesUnder = (directory: string): Array<string> => {
   const found = [];
@@ -294,7 +329,7 @@ const sourcesUnder = (directory: string): Array<string> => {
       const full = path.join(at, entry.name);
       if (entry.isDirectory()) {
         if (entry.name !== "node_modules") walk(full);
-      } else if (entry.name.endsWith(".js")) {
+      } else if (entry.name.endsWith(".js") && !entry.name.endsWith(".test.js")) {
         found.push(path.relative(repository, full));
       }
     }

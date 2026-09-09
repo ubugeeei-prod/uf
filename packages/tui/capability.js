@@ -263,7 +263,7 @@ const usable = (value: number | void): number | null =>
  * Resolve how big the terminal is.
  *
  * Precedence, highest first — this list is `crates/uf_term/src/capability.rs`'s
- * `detect_size`, chain for chain, and `tests/library/tui.test.js` compares the
+ * `detect_size`, chain for chain, and `packages/tui/tui.test.js` compares the
  * two rather than believing this sentence:
  *
  * 1. `COLUMNS` and `LINES`, each on its own. POSIX makes them the override,

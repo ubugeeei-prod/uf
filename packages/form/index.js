@@ -225,7 +225,7 @@
 // functions, resolvers, and every message this package would show. Those need
 // the JavaScript, and a form whose correctness matters must also be checked on
 // the server it posts to. Every half of this is covered by
-// `tests/library/form.test.js`.
+// `packages/form/form.test.js`.
 
 export type {
   FieldPath,

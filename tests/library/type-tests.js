@@ -53,17 +53,19 @@ import { expect } from "@uniflowed/test";
 /**
  * This checkout, found by a directory it has rather than by counting `..`.
  *
- * Two levels above the worker's project is this repository only while that
- * project is `tests/library`, and which project it is depends on how the
- * command was typed. `uf test#library` selects `tests/library` by name;
- * `uf test tests/library/ui.test.js` from the checkout selects the
- * *repository*, because a path is a filter over the project the command was
- * typed in and `UF_PROJECT_ROOT` is that project's root. Two levels above the
- * checkout holds no uf project at all, so `uf check` printed nothing, and what
- * a reader got was `SyntaxError: Unexpected end of JSON input` at the parse
- * below — a message about JSON for a mistake about a directory, in the
- * invocation someone reaches for when they want one file. That is
- * ubugeeei-prod/uf#313.
+ * Counting `..` was wrong even when there was one project this could run in.
+ * `UF_PROJECT_ROOT` is the root of the project the command was typed in, and
+ * two levels above it was this repository only while that project was
+ * `tests/library` — two levels above the *checkout* holds no uf project at
+ * all, so `uf check` printed nothing and what a reader got was
+ * `SyntaxError: Unexpected end of JSON input` at the parse below: a message
+ * about JSON for a mistake about a directory. That is ubugeeei-prod/uf#313.
+ *
+ * It is now wrong in a second way, which is why the fix is worth keeping
+ * rather than simplifying away. The files that reach this harness are no
+ * longer all the same distance from the root: `packages/ui/ui.test.js` and
+ * `tests/library/server-actions.test.js` are two apiece, and nothing says the
+ * next one will be.
  *
  * Searching upwards for something this repository has is true under both, and
  * is what `write-atomically.test.js` already does for the same reason.
