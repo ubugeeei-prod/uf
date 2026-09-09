@@ -349,6 +349,10 @@ pub(crate) fn test_host(
         uf_config::CapabilityJsHost::Deno => HostKind::Deno,
     };
     let host_name = host.name();
+    // Read once: it is the values the workers get *and* the names the
+    // permission set has to grant, and the two must be the same list or a test
+    // would be handed a variable it may not read.
+    let exported = env.exported();
     // Deno's Flow loader is a directory rather than a module, and the worker it
     // runs is the compiled copy inside it. Built before the command, because
     // the worker's path is part of the command.
@@ -378,7 +382,7 @@ pub(crate) fn test_host(
     )
     // Every worker gets the project's `.env` values, so a test reads
     // `process.env.DATABASE_URL` and finds what `uf dev` would have found.
-    .with_env(env.exported());
+    .with_env(exported.clone());
     if let Some(deno) = deno.as_ref() {
         command = command.with_deno_import_map(&deno.import_map);
     }
@@ -410,15 +414,22 @@ pub(crate) fn test_host(
             &loader,
             Some(uf_binary.as_path()),
             permissions,
-            &env.exported()
-                .into_iter()
-                .map(|(name, _)| name)
+            &exported
+                .iter()
+                .map(|(name, _)| name.clone())
                 .collect::<Vec<_>>(),
         )?);
     }
     if !command.loads_flow() {
-        // The reason comes from `uf_runtime::HOSTS` rather than from a sentence
-        // written here, so that the message a person meets and the table
+        // No host reaches this today: Node registers hooks, Bun preloads a
+        // plugin, and Deno was handed a compiled tree above. It stays because
+        // the question it asks belongs to `uf_runtime::HOSTS` rather than to
+        // this function — a fourth `HostKind` whose row has no `flow_loader`
+        // must be refused here rather than allowed to meet a syntax error in
+        // somebody's own test file.
+        //
+        // The reason comes from the table rather than from a sentence written
+        // here, so that the message a person meets and the table
         // `docs/hosts.md` is generated from cannot drift apart. The two used to
         // be separate sentences and the enum's said nothing at all.
         let support = uf_runtime::HostSupport::for_host(runtime_host(kind));
