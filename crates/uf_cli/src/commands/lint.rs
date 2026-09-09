@@ -31,12 +31,15 @@ use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
+use uf_infra::FxHashSet;
 use uf_lint::{Diagnostic, LintReport, Severity, SourceFile, lint_sources};
 use uf_project::{SourceKind, scan_selected_source_files};
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
 };
 
+#[cfg(feature = "upstream-typecheck")]
+use crate::commands::check::libdefs;
 use crate::fix::files::{FixMode, FixSummary, fix_project};
 use crate::support::{
     ignore_deprecation, plural, problem_summary, quoted_list, render_ignore_deprecation, selects,
@@ -173,10 +176,31 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
     scan.unreadable
         .retain(|failure| selects(paths, &failure.relative_path));
     let unreadable = unreadable_lines(&scan.unreadable);
+    // A library definition is not a source file the project owns. It declares
+    // the environment the sources are checked in — `declare module` and a
+    // top-level `declare type` are library syntax — so `uf check` merges it and
+    // takes it out of the batch, and the lint must leave it alone for the same
+    // reason. The scan collects `flow-typed/` like any other directory, so
+    // until this filter existed a hand-written libdef was linted as a source:
+    // `declare type Provider = any` came back as `flow/unclear-type` and failed
+    // the run, over an `any` that is what a libdef for an untyped dependency is
+    // made of. ubugeeei-prod/uf#699.
+    //
+    // Empty when the checker is not compiled in, since `lib_paths` is Flow's
+    // own `.flowconfig` parser and comes with it; a build without it merges no
+    // libdefs either, so nothing is being both merged and linted.
+    #[cfg(feature = "upstream-typecheck")]
+    let declared: FxHashSet<String> = match uf_check::lib_paths(resolved.root.as_std_path()) {
+        Ok(paths) => libdefs::declared_paths(&resolved.root, &paths),
+        Err(_) => FxHashSet::default(),
+    };
+    #[cfg(not(feature = "upstream-typecheck"))]
+    let declared: FxHashSet<String> = FxHashSet::default();
     let collected = scan
         .files
         .into_iter()
         .filter(|file| file.kind.is_flow() || file.kind == SourceKind::PackageManifest)
+        .filter(|file| !declared.contains(file.relative_path.as_str()))
         .map(|file| SourceFile {
             path: file.relative_path,
             source: file.source,
@@ -195,6 +219,11 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
         (selected, collected)
     };
     if sources.is_empty() && !paths.is_empty() && unreadable.is_empty() {
+        // "no file matched" is true and unhelpful when the file is right
+        // there and uf declined to lint it, so say which it was instead.
+        if let Some(libdef) = declared.iter().find(|path| selects(paths, path)) {
+            bail!("{libdef} is a library definition, not a source file uf lints");
+        }
         bail!("no file matched {}", quoted_list(paths));
     }
     let report = lint_sources(&sources, &resolved.config)?;
