@@ -74,10 +74,61 @@ Two paths that do work: run uf under **WSL2**, where the Linux install above
 applies unchanged; or build it from source with `cargo install`, below, which
 needs no artifact.
 
+## With Nix
+
+The repository is a flake, and it is the whole install: it pins the Rust
+toolchain, fetches Meta's Flow port at the commit uf was built against, and
+applies uf's patches to it, so a build here is the same build everywhere.
+
+Run it without installing anything:
+
+<div className="command"><code>nix run github:ubugeeei-prod/uf</code></div>
+
+Install it into a profile:
+
+<div className="command"><code>nix profile install github:ubugeeei-prod/uf</code></div>
+
+Both give you `uf`, `ufr` and `ufx`. `nix run github:ubugeeei-prod/uf#ufx` runs
+one of the others directly.
+
+### In a system configuration
+
+For NixOS and nix-darwin, `nixosModules.default` and `darwinModules.default`
+take the same option; home-manager takes `homeManagerModules.default`:
+
+```nix
+{
+  inputs.uf.url = "github:ubugeeei-prod/uf";
+
+  # NixOS or nix-darwin
+  imports = [ inputs.uf.nixosModules.default ];
+  programs.uf.enable = true;
+}
+```
+
+Or take the overlay, if you would rather have `pkgs.uf` and place it yourself.
+It composes in the Rust overlay uf needs, so this is the only line required:
+
+```nix
+{
+  nixpkgs.overlays = [ inputs.uf.overlays.default ];
+  environment.systemPackages = [ pkgs.uf ];
+}
+```
+
+There is no binary cache for these yet, so the first build compiles the Flow
+parser and the React Compiler from source and takes a while. The release
+tarballs above are the fast path; this is the reproducible one.
+
+`aarch64-darwin`, `aarch64-linux`, `x86_64-darwin` and `x86_64-linux` are all
+declared. CI builds `x86_64-linux` on every change to the flake and weekly on a
+schedule; the other three are evaluated on every change but not built, so a
+break specific to one of them would reach you before it reached CI.
+
 ## From source
 
-uf builds with a pinned nightly Rust toolchain — Flow's own crates need
-`box_patterns`, which is still unstable — and vendors the Flow and React
+Without Nix. uf builds with a pinned nightly Rust toolchain — Flow's own crates
+need `box_patterns`, which is still unstable — and vendors the Flow and React
 Compiler sources as submodules.
 
 <div className="command"><code>git clone --recurse-submodules https://github.com/ubugeeei-prod/uf</code></div>

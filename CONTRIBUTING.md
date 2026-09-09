@@ -59,9 +59,16 @@ borrowed data over `String`, `Vec`, standard hash maps, and cloning. The
 repository keeps a Vize-style `clippy.toml` policy so these can be tightened as
 crate APIs stabilize.
 
-Fuzzing, formal verification, benchmarks, scripts, and Nix support live under
-`tools/` so the root stays focused on the Rust workspace and project metadata.
-Use `nix develop ./tools/nix` for the pinned development environment.
+Fuzzing, formal verification, benchmarks, and scripts live under `tools/` so the
+root stays focused on the Rust workspace and project metadata. Nix is the
+exception and is at the root, in `flake.nix`, because a flake is only usable at
+the root of the thing it builds: `nix build github:ubugeeei-prod/uf` has to find
+it without being told where to look.
+
+Use `nix develop` for the pinned development environment. It reads
+`rust-toolchain.toml`, so the compiler in that shell is the one this repository
+pins rather than a second opinion about it — which is what the shell used to
+hand you, and no crate here builds on a stable compiler.
 
 ## Reviews On Formatter Fixtures
 
