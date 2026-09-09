@@ -1511,9 +1511,11 @@ describe("the capability precedence matches the CLI's", () => {
   // expression it was bound to. Swap two checks on either side and the two
   // lists stop matching.
   //
-  // Colour only. The two files also disagree about glyphs — `NO_COLOR`
-  // downgrades them in the CLI and not in the library — which is
-  // ubugeeei-prod/uf#393, filed rather than quietly asserted either way here.
+  // Colour and glyphs, in two tests. The two files used to disagree about
+  // glyphs — `NO_COLOR` downgraded them in the CLI and not in the library,
+  // both on purpose — which was ubugeeei-prod/uf#393. They agree now, and the
+  // second test is what stops them drifting apart again: nothing compared them
+  // before, which is how two deliberate opposite decisions survived.
 
   const rust = (): string =>
     fs.readFileSync(path.join(REPO, "crates/uf_term/src/capability.rs"), "utf8");
@@ -1728,6 +1730,56 @@ describe("the capability precedence matches the CLI's", () => {
     expect(rustHelpers(rust()).declared_rows).toEqual(["LINES"]);
     expect(jsHelpers(js()).declaredColumns).toEqual(["COLUMNS"]);
     expect(jsHelpers(js()).declaredRows).toEqual(["LINES"]);
+  });
+
+  /**
+   * The glyph rule, which is a different question from the colour one.
+   *
+   * "Can this terminal draw `├─`" is not "may I colour it", and
+   * ubugeeei-prod/uf#393 was the two files answering the first one
+   * differently: the CLI folded `NO_COLOR` into it and the library did not.
+   * The convention at no-color.org is about ANSI colour and says nothing about
+   * characters, and uf already has the right signal for "cannot render
+   * Unicode" — the locale — so the CLI followed the library rather than the
+   * other way round.
+   *
+   * Compared the same way as the colour precedence above: the inputs each
+   * decision actually reads, recovered from the source rather than from the
+   * prose. Names are normalised because the two languages spell them
+   * differently and neither spelling is the rule.
+   */
+  it("decides glyphs from the same inputs on both sides", () => {
+    const rustSource = rust();
+    const jsSource = js();
+
+    const normalise = (name: string): string =>
+      name
+        .replace(/^is_/, "")
+        .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+        .toLowerCase();
+
+    const rustGlyphs = [];
+    for (const token of body(rustSource, "fn detect_glyphs(").matchAll(/env\.(\w+)\(\)/g)) {
+      rustGlyphs.push(normalise(token[1]));
+    }
+
+    // `glyphs:` in the returned object, and `dumb` resolved to what it was
+    // bound from — the same reduction the colour test does.
+    const glyphLine = (jsSource.match(/^\s*glyphs: (.+),\s*$/m) ?? [])[1] ?? "";
+    const jsGlyphs = [];
+    for (const token of glyphLine.matchAll(/\b([A-Za-z]\w*)\b/g)) {
+      const name = token[1];
+      if (name === "env" || name === "ascii" || name === "unicode") continue;
+      jsGlyphs.push(normalise(name));
+    }
+
+    // Both read the same two things, in the same order: is this terminal
+    // dumb, and is its locale UTF-8. `NO_COLOR` is on neither list, which is
+    // the decision #393 asked for.
+    expect(rustGlyphs).toEqual(["dumb", "utf8locale"]);
+    expect(jsGlyphs).toEqual(rustGlyphs);
+    expect(rustGlyphs).not.toContain("nocolor");
+    expect(rustGlyphs).not.toContain("nocolorrequested");
   });
 });
 
