@@ -701,9 +701,42 @@ process, a worker thread started with those `execArgv`, or a bundler
 environment resolved with that condition — which is the shape `@uniflowed/vite`
 would have to grow, since the first two are Node-only and uf's edge, serverless
 and workerd adapters all serve the same `handler.js`. That is the size of
-ubugeeei-prod/uf#519, and it is why the answer is not a smaller version of
-itself: half a payload format in the tree is the worst state for the thing
-whose whole risk is deserialisation.
+ubugeeei-prod/uf#519, and it is why the *element* half of the answer is not a
+smaller version of itself: half of it in the tree is the worst state for the
+thing whose whole risk is deserialisation.
+
+The framing is separable from that, and it has landed.
+`packages/router/internal/payload.js` is the wire format: a payload is a
+sequence of numbered rows rather than one value, row 0 is the model with each
+unresolved value replaced by a `"$P<n>"` reference, and each later row is a
+`<script type="application/json" data-uf-row="n">` React streams into the
+document at the moment that value settles. A loader may therefore leave a
+promise in what it returns — the shell goes out with a fallback and the value
+follows in the same response — and rows arrive in the order they resolved
+rather than the order they were written.
+
+It carries **one** reference kind, and that is the whole of why it could land
+alone: `$P<n>` names a position in the payload the reader itself created a
+promise for, so nothing in a payload names a constructor, a module, an export or
+a class. The two references the element payload needs — a client module and an
+element — are the ones a decoder resolves by *calling* something the payload
+named, and those still wait for the module graph above. `$` is a closed
+namespace and an unrecognised tag is refused rather than passed through, so
+adding one later is a change to a list rather than to a decoder that had already
+been letting it through.
+
+One thing that fell out of writing it is worth recording, because it is not
+about the payload. React's renderer cannot flush a segment while that segment
+holds an unresolved boundary, and every component between uf's render root and
+the route — `RenderProvider`, `RouterProvider`, `RouteView`, the error
+boundaries — renders no element of its own. So a `<Suspense>` at the top of
+uf's tree is a direct child of the *root* segment, and a document with one
+streams nothing at all: measured against React 19.2.8, `[<div>, <Suspense>]`
+writes its first byte when the boundary resolves, and the same tree with the
+boundary inside any host element writes it immediately. The payload's rows are
+inside a `<span hidden>` for that reason. A route whose `_uf.loading.js` sits
+above no layout is in exactly the same position and is still affected;
+ubugeeei-prod/uf#519 carries it.
 
 Until that lands, which modules the browser gets is a decision a reader has to
 be able to see, and `"use client"` is a directive whose cost is invisible until
