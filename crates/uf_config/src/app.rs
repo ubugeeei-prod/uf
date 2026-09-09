@@ -614,6 +614,11 @@ pub struct RenderingConfig {
     /// The default is all four, which is "decide per route and deploy a
     /// server" — the behaviour every uf project had before anything read this.
     pub modes: Vec<RenderingMode>,
+    /// What happens when a visitor follows a link.
+    ///
+    /// A second question from [`modes`](Self::modes), and deliberately not a
+    /// fifth value in that list; see [`Navigation`].
+    pub navigation: Navigation,
     pub cache: CacheConfig,
 }
 
@@ -626,7 +631,67 @@ impl Default for RenderingConfig {
                 RenderingMode::Ssg,
                 RenderingMode::Isr,
             ],
+            navigation: Navigation::default(),
             cache: CacheConfig::default(),
+        }
+    }
+}
+
+/// What happens when a visitor follows a link.
+///
+/// The other half of "what does this project deploy", and a **different
+/// question** from [`RenderingMode`] rather than a fifth value in it. That
+/// list says where a document comes from and is decided per route; this says
+/// what the browser does with the document once it has one, and is one answer
+/// for the whole application.
+///
+/// The two compose, which is the proof they are two axes and not one:
+///
+/// | | `client` | `document` |
+/// | --- | --- | --- |
+/// | `ssg` | a prerendered site the client router takes over | a static site of documents |
+/// | `ssr` | a server-rendered app the client router takes over | a server-rendered application in the older sense |
+///
+/// Every cell is a deployment somebody wants, and none of the four is a
+/// rendering strategy the build could pick *per route*: a route is prerendered
+/// or it is not, and the answer does not change because of what the browser
+/// does afterwards. Spelling this as `modes: ["mpa", …]` would have put a
+/// whole-application decision into a per-route allowlist, where
+/// `["mpa", "ssr"]` permits two things that are not alternatives — and an
+/// allowlist entry the build can never select is the defect
+/// `RenderingMode::Ppr` already is.
+///
+/// It is also deliberately not spelled the way the neighbours spell it.
+/// Next.js says `output: "export"` and Astro says `output: "static"`, and each
+/// conflates "no server" with "no client router" because each has one answer
+/// for both. uf already has a name for "no server" — `build.staticBuild` — so
+/// borrowing either spelling would give one question two names, which is
+/// `docs/red-lines.md`'s line 2 from the inside.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Navigation {
+    /// The client router takes the link over: the next route is resolved and
+    /// rendered in the page that is already open.
+    ///
+    /// The default, and what every uf application did before this key existed.
+    #[default]
+    Client,
+    /// The browser follows the link: a full document request, the way a link
+    /// works with no JavaScript at all.
+    ///
+    /// The application still hydrates — a `"use client"` component is still a
+    /// `"use client"` component — and what it does not do is take navigation
+    /// over. See the guide for what that costs and what it does not.
+    Document,
+}
+
+impl Navigation {
+    /// The spelling a `uf.config.js` uses.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Client => "client",
+            Self::Document => "document",
         }
     }
 }

@@ -360,6 +360,13 @@ export type UniflowedConfig = {
     },
     readonly rendering?: {
       readonly modes?: $ReadOnlyArray<"ppr" | "ssr" | "ssg" | "isr">,
+      // What the browser does when a visitor follows a link, which is a
+      // different question from `modes` rather than a fifth value in it:
+      // `modes` says where a document comes from, per route, and this says
+      // what happens once the browser has one. `"document"` is a full document
+      // request — the client router is not installed and `Link` renders an
+      // ordinary anchor. See docs/app/guide/routing/navigation.
+      readonly navigation?: "client" | "document",
       readonly cache?: {
         readonly actions?: boolean,
         readonly data?: boolean,
