@@ -258,3 +258,82 @@ fn explain_names_the_host_and_the_grants_uf_makes_for_itself() {
         "{detail}"
     );
 }
+
+/// And on Deno it is shown for a project that declared *nothing*.
+///
+/// Every other host answers "no permission set" by running the way it always
+/// did, so a project that opted out has nothing to read. Deno has no such
+/// state: its default grants nothing at all, so `uf test` hands it the
+/// toolchain's own access whether or not anybody asked — a real sandbox,
+/// narrower than what the same project gets on Node, and written down nowhere
+/// in the project. Leaving that stage out was the same invisibility this
+/// command exists to end, pointing the other way. See ubugeeei-prod/uf#246.
+///
+/// This needs no Deno on PATH: `uf explain` describes a plan, and names the
+/// host `capabilityJsHost.default` configures rather than one it resolved.
+#[test]
+fn explain_shows_denos_sandbox_even_when_the_project_declared_none() {
+    let project = Project::new(&[]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\n\
+         export default defineConfig({\n\
+         \x20 app: { runtime: { capabilityJsHost: { default: \"deno\" } } },\n\
+         });\n",
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "test", "--json"])
+        .output()
+        .expect("uf runs");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    let document: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    let stage = document["stages"]
+        .as_array()
+        .expect("stages")
+        .iter()
+        .find(|stage| stage["name"] == "permissions")
+        .unwrap_or_else(|| panic!("no permissions stage in {stdout}"));
+
+    let detail = stage["detail"].as_str().unwrap_or_default();
+    assert!(detail.contains("read: 0 declared, "), "{detail}");
+    // The environment is the category uf added for this host: it sets
+    // `UF_BINARY` and the rest on the worker, and on a runtime that denies by
+    // default a variable uf did not name is one the worker cannot read.
+    assert!(
+        detail.contains("env: 0 declared, ") && !detail.contains("env: 0 declared, 0 added"),
+        "uf's own environment grants have to be visible: {detail}"
+    );
+}
+
+/// And a project that declared nothing on *Node* still gets no stage.
+///
+/// The exception above is Deno's alone, and it is worth pinning: a stage
+/// reading "none declared, nothing enforced" on every project that never opted
+/// in is a line nobody learns anything from, which is why this command did not
+/// have one.
+#[test]
+fn explain_stays_quiet_about_permissions_a_node_project_never_declared() {
+    let project = Project::new(&[]);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "test", "--json"])
+        .output()
+        .expect("uf runs");
+
+    let stdout = String::from_utf8(output.stdout).expect("utf-8");
+    let document: serde_json::Value = serde_json::from_str(&stdout).expect("json");
+    assert!(
+        !document["stages"]
+            .as_array()
+            .expect("stages")
+            .iter()
+            .any(|stage| stage["name"] == "permissions"),
+        "{stdout}"
+    );
+}
