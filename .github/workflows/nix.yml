@@ -99,12 +99,21 @@ jobs:
         run: |
           set -eu
           pinned="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
-          date="${pinned#nightly-}"
-          got="$(nix develop . --command rustc --version)"
+          version="$(nix develop . --command rustc --version)"
+          # The sysroot and not the version string. A `nightly-2026-08-01`
+          # toolchain reports `rustc 1.99.0-nightly (ad3d0bc14 2026-07-31)` —
+          # the *commit* date, which is the day before the channel date,
+          # because a nightly is built from the previous day's commit. Matching
+          # the pin against the version therefore fails on a shell that is
+          # exactly right, which is what it did here. The sysroot is the
+          # toolchain's own directory and carries its name:
+          # `/nix/store/<hash>-rust-...-nightly-2026-08-01`.
+          sysroot="$(nix develop . --command rustc --print sysroot)"
           printf 'pinned  %s\n' "$pinned"
-          printf 'shell   %s\n' "$got"
-          case "$got" in
-            *"$date"*) ;;
+          printf 'shell   %s\n' "$version"
+          printf 'sysroot %s\n' "$sysroot"
+          case "$sysroot" in
+            *"$pinned"*) ;;
             *)
               echo >&2
               echo "The dev shell's rustc is not the pinned toolchain." >&2
