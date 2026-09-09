@@ -28,7 +28,7 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, LibraryPlan, Prerender, RenderingPlan, load_config};
+use uf_config::{DeployAdapter, LibraryPlan, Navigation, Prerender, RenderingPlan, load_config};
 use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
@@ -381,6 +381,12 @@ pub(crate) fn build(
             "server": plan.emits_a_server(),
             "declaredBy": plan.source().key(),
             "perRequest": vite.per_request.clone().unwrap_or_default(),
+            // Beside the prerender because a deploy step asks the same
+            // question about it: whether what is in the output directory is
+            // answered by the browser or by the documents alone. `client`
+            // for every project that has not set it, so the field is a fact
+            // rather than a presence to test for.
+            "navigation": plan.navigation().as_str(),
         },
         "runtime": {
             "default": resolved.config.app.runtime.default,
@@ -517,6 +523,17 @@ pub(crate) fn build(
         Prerender::Everything => "every route prerendered",
         Prerender::Possible => "prerendered where it can be, the rest per request",
         Prerender::Nothing => "nothing prerendered; every route per request",
+    };
+    // And what it decided about the other axis. A row rather than a line only
+    // when it is not the default: `app.rendering.navigation` is `client` in
+    // every project that has not heard of it, and a summary row saying so on
+    // every build is a row nobody reads. A build that ships no client router
+    // has to say so — it is the difference between a link that resolves in the
+    // page and a link that fetches a document, and nothing in `dist/` shows
+    // which one happened.
+    let navigation = match plan.navigation() {
+        Navigation::Client => None,
+        Navigation::Document => Some("a document request; this build ships no client router"),
     };
     let per_request = vite.per_request.clone().unwrap_or_default();
     let per_request_count = per_request.len().to_string();
@@ -672,6 +689,9 @@ pub(crate) fn build(
             Tone::Number,
         ));
         summary_rows.push(KeyValue::new("rendering", rendering));
+        if let Some(navigation) = navigation {
+            summary_rows.push(KeyValue::new("navigation", navigation));
+        }
         renderer.key_values(out, 2, &summary_rows);
         renderer.blank(out);
 
@@ -905,6 +925,14 @@ fn refuse_an_application_artefact(
 /// a refusal in `uf` does. Without it the driver would have to reconstruct
 /// "which setting made this a static build" from a flag that no longer says,
 /// and the two halves of one rule would tell a reader to look in two places.
+///
+/// `app.rendering.navigation` is deliberately **not** a fourth. It is not a
+/// decision about this build — it is the same answer for `uf dev`, `uf build`
+/// and `uf preview`, and neither of the first two is handed a rendering plan
+/// at all — so a builder reads it out of `uf.config.js` the way it reads
+/// `app.react.strictMode`. Passing it here as well would make the client entry
+/// a function of two sources that agree until one of them is a flag somebody
+/// forgot to forward.
 fn build_arguments(out_dir: &str, plan: RenderingPlan) -> Vec<String> {
     let mut args = vec![
         String::from("--out-dir"),

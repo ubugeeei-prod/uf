@@ -135,6 +135,13 @@ export default function uniflowed(options = {}) {
   // no `uf.config.js` will mention. It only ever reaches the *development*
   // client entry; see `flowPlugin`'s `load`. ubugeeei-prod/uf#516.
   const strictMode = app.react?.strictMode !== false;
+  // What the browser does with a link, read here for the reason Strict Mode is
+  // and honoured in every command rather than in the build alone: it is the
+  // one setting whose whole effect is what happens on a click, so a dev server
+  // that disagreed with the deployment would be the wrong application to look
+  // at. Anything but `"document"` is the client router, which is what every
+  // project that has not heard of the key has.
+  const navigation = app.rendering?.navigation === "document" ? "document" : "client";
 
   const accessibility = ufConfig.accessibility ?? {};
 
@@ -143,6 +150,7 @@ export default function uniflowed(options = {}) {
       routerRoot,
       appEntry,
       strictMode,
+      navigation,
       command: options.command,
       accessibility,
     }),
@@ -157,7 +165,7 @@ export default function uniflowed(options = {}) {
   ];
 }
 
-function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }) {
+function flowPlugin({ routerRoot, appEntry, strictMode, navigation, command, accessibility }) {
   let root = process.cwd();
   let isProduction = false;
   /**
@@ -356,8 +364,16 @@ function flowPlugin({ routerRoot, appEntry, strictMode, command, accessibility }
       // Strict Mode belongs to the client entry and to development only: a
       // build passes `false`, so the generated module is the one that existed
       // before #516 and a visitor's browser renders once.
+      //
+      // `navigation` is in the same entry and has no `isProduction` beside it,
+      // deliberately: it is what a link does, and a dev server whose links
+      // behave differently from the deployment is the wrong thing to be
+      // looking at. See `clientModuleSource`.
       if (id === resolved(VIRTUAL.client)) {
-        return clientModuleSource(entryPath, { strictMode: strictMode && !isProduction });
+        return clientModuleSource(entryPath, {
+          strictMode: strictMode && !isProduction,
+          navigation,
+        });
       }
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
       // Only `virtual:uf/server` imports this, so it is only ever asked for in

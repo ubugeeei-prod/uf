@@ -49,6 +49,17 @@
 // `app.react.strictMode: false` in `uf.config.js` turns it off. See
 // ubugeeei-prod/uf#516.
 //
+// # And an application can decline to be navigated
+//
+// `app.rendering.navigation: "document"` is the whole application saying what
+// the paragraph below says about one route: the document the server wrote is
+// what a link produces, and the browser fetches the next one. It is *not* the
+// same as declining to hydrate — the page still hydrates, so a `"use client"`
+// component is still interactive — and what it removes is the takeover. The
+// flag reaches the runtime through `installNavigation` before the first render;
+// see `internal/runtime.js` for what `RouterProvider` and `Link` then do, and
+// `docs/app/guide/rendering` for when a project wants it.
+//
 // # A route can decline to be hydrated
 //
 // uf's server-component analysis decides which routes have a `"use client"`
@@ -65,8 +76,10 @@ import { hydrateRoot } from "react-dom/client";
 
 import {
   type AppProps,
+  type Navigation,
   type RouteTable,
   hasClientPage,
+  installNavigation,
   installRoutes,
   matchRoute,
   resolveMatch,
@@ -86,6 +99,7 @@ export async function hydrate(options: {|
   readonly notFound: RouteTable["notFound"],
   readonly errors: RouteTable["errors"],
   readonly strictMode?: boolean,
+  readonly navigation?: Navigation,
 |}): Promise<void> {
   const table: RouteTable = {
     routes: options.routes,
@@ -93,6 +107,11 @@ export async function hydrate(options: {|
     errors: options.errors,
   };
   installRoutes(table);
+  // Beside the table, and before anything renders. `"client"` when the entry
+  // says nothing, which is what `virtual:uf/client` generated before
+  // `app.rendering.navigation` existed and what a hand-written entry still
+  // means: the default is the behaviour, not the absence of one.
+  installNavigation(options.navigation ?? "client");
 
   // Before the loader data is read and before `resolveMatch` is called: both
   // would go looking for a page module that is not in this bundle.

@@ -17,6 +17,14 @@
 //! only two questions the rest of the toolchain asks: **what gets prerendered**
 //! and **is there a server**.
 //!
+//! A third setting rides along without interacting with either:
+//! `app.rendering.navigation`, which says what the browser does once it has a
+//! document. It is carried here rather than read separately for the reason the
+//! other two are resolved together — the plan is what every caller already
+//! asks for, and a second reader of the same file is a second place for it to
+//! be wrong — but it decides nothing about the prerender, and
+//! [`RenderingPlan::resolve`] says so where it is copied in.
+//!
 //! # Why a plan and not two booleans
 //!
 //! Because the interesting case is the contradiction. `staticBuild: true` with
@@ -29,7 +37,7 @@
 
 use camino::Utf8Path;
 
-use crate::{ConfigError, RenderingMode, UniflowedConfig};
+use crate::{ConfigError, Navigation, RenderingMode, UniflowedConfig};
 
 /// How much of the route table `uf build` prerenders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +112,7 @@ pub struct RenderingPlan {
     prerender: Prerender,
     server: bool,
     source: PlanSource,
+    navigation: Navigation,
 }
 
 impl RenderingPlan {
@@ -113,6 +122,13 @@ impl RenderingPlan {
         let modes = &config.app.rendering.modes;
         let per_request = modes.contains(&RenderingMode::Ssr);
         let prerendered = modes.contains(&RenderingMode::Ssg);
+        // Carried rather than resolved *with* the two settings above, because
+        // it does not interact with either: a document is prerendered or it is
+        // not, and what the browser does after it has one does not change the
+        // answer. It is in the plan because the plan is the one thing every
+        // caller already asks for, and a second `config.app.rendering.…` read
+        // at each of them is how two readers of one file come apart.
+        let navigation = config.app.rendering.navigation;
 
         // `staticBuild` first, because it is the stronger claim: it is about
         // the artefact rather than about the routes, and a project that has
@@ -126,6 +142,7 @@ impl RenderingPlan {
                 prerender: Prerender::Everything,
                 server: false,
                 source: PlanSource::StaticBuild,
+                navigation,
             };
         }
         match (prerendered, per_request) {
@@ -137,6 +154,7 @@ impl RenderingPlan {
                 // message quoting a key that changed no decision sends the
                 // reader to a line that is not the problem.
                 source: PlanSource::Default,
+                navigation,
             },
             (true, false) => Self {
                 prerender: Prerender::Everything,
@@ -147,11 +165,13 @@ impl RenderingPlan {
                 // `uf start`. Every document it serves is one the build wrote.
                 server: true,
                 source: PlanSource::Modes,
+                navigation,
             },
             (false, true) => Self {
                 prerender: Prerender::Nothing,
                 server: true,
                 source: PlanSource::Modes,
+                navigation,
             },
             // Refused by `check`, which runs before any of this. Kept total
             // rather than `unreachable!()`: the fallback that cannot happen is
@@ -160,6 +180,7 @@ impl RenderingPlan {
                 prerender: Prerender::Possible,
                 server: true,
                 source: PlanSource::Default,
+                navigation,
             },
         }
     }
@@ -190,6 +211,24 @@ impl RenderingPlan {
     #[must_use]
     pub const fn source(self) -> PlanSource {
         self.source
+    }
+
+    /// What the browser does when a visitor follows a link.
+    ///
+    /// Carried by the plan rather than read from the config at each call site,
+    /// for the reason the other two are: one file, one reader.
+    #[must_use]
+    pub const fn navigation(self) -> Navigation {
+        self.navigation
+    }
+
+    /// Whether the client router takes navigation over.
+    ///
+    /// The predicate every caller actually wants, so that "is this an MPA" is
+    /// asked once here rather than spelled as a comparison in four places.
+    #[must_use]
+    pub const fn ships_a_client_router(self) -> bool {
+        matches!(self.navigation, Navigation::Client)
     }
 
     /// The clause a refusal starts with: the setting, and what it asked for.

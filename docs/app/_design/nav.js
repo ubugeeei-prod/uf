@@ -148,6 +148,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Vite runs both; uf decides what it is handed.",
       },
       {
+        href: "/guide/rendering",
+        title: "Rendering modes",
+        blurb: "Where a document comes from, and what the browser does once it has one.",
+      },
+      {
         href: "/guide/cache",
         title: "Caching",
         blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
