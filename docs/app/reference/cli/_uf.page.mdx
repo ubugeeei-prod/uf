@@ -691,6 +691,8 @@ find a program nobody wrote. Two consequences worth knowing:
 * uf runs **programs, not built-ins**. `echo` in a direct command is the
   `echo` on `PATH`, which does not interpret `\n` where a shell's built-in
   does. `printf` means the same thing either way.
+* a script a task names **needs its `#!` line**. A shell runs a file it cannot
+  execute with itself; starting a program directly has no such fallback.
 * a task written as a program and its arguments is the portable one. Anything
   else is a POSIX shell script, and uf will not reinterpret it under
   `cmd.exe`'s rules.

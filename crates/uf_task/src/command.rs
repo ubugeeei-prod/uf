@@ -48,6 +48,12 @@
 //! also why `uf run` already meant two different things here: `/bin/sh` is
 //! `dash` on the Linux runner, which does not expand it, and `bash` on a Mac,
 //! which does. One meaning is the point of reading the string at all.
+//!
+//! One more thing goes with running a program rather than asking a shell to,
+//! and it belongs beside those two: a script **needs its `#!` line**. A shell
+//! whose `execve` fails with `ENOEXEC` runs the file with itself; nothing
+//! starting a process directly does, so a shebang-less script that used to run
+//! now fails to start. All thirty-eight under `tools/` here have one.
 
 use std::fmt;
 
