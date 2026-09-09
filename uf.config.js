@@ -101,6 +101,17 @@ export default defineConfig({
     // until the submodule is checked out, and `uf run` needs a built `uf`.
     // One command breaks that circle, and it is in CONTRIBUTING.md.
     "upstream:sync": "tools/upstream/sync.sh",
+    // The sync applies `tools/upstream/patches/flow` to the submodule after
+    // checking it out, so a checkout is the pinned `facebook/flow` commit plus
+    // the fixes uf needs and upstream has not taken. That step is worth a test
+    // of its own because its failure mode is silence: a patch to a type checker
+    // that is quietly not applied compiles, passes, and answers differently.
+    // Every way one could go missing is a case in the script, against a scratch
+    // submodule rather than the 40 MB one.
+    "upstream:patches:test": {
+      command: "tools/upstream/test-patches.sh",
+      inputs: ["tools/upstream/sync.sh", "tools/upstream/test-patches.sh"],
+    },
     // React's compiler crates, Relay's compiler crates, and React Native's
     // codegen and Libraries — pinned in `tools/upstream/repos.txt`, fetched on
     // request rather than in every job because nothing in the cargo graph
@@ -728,6 +739,7 @@ export default defineConfig({
         "manifests",
         "lockfile",
         "lockfile:test",
+        "upstream:patches:test",
         "install:banner",
         "scripts:parse",
         "scripts:parse:test",

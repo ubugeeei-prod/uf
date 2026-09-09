@@ -1,0 +1,264 @@
+Subject: a match argument keeps its type variable instead of decaying to its bound
+
+Issue: ubugeeei-prod/uf#205
+Upstream: not filed with facebook/flow yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+A `match` pattern binding over a generic container came out as `mixed` --
+printed as `unknown` -- where `switch` on the same tag came out as the type
+variable:
+
+    type Box<out T> = { readonly kind: "one", readonly value: T };
+    function f<T, U>(box: Box<T>, change: (T) => U): U {
+      return match (box) { {kind: "one", value: const value} => change(value) };
+    }
+    // error: Cannot call change with value bound to the first parameter
+    //        because unknown [1] is incompatible with empty [2].
+
+Both sides of that error are a type variable reduced to its bounds: `unknown`
+is `T`'s upper bound and `empty` is the lower bound of the `T` in `change`'s
+parameter.
+
+The identity is dropped when the subject becomes the value union that drives
+exhaustiveness. `value_union_builder::of_type_inner` concretizes each member
+with `ConcretizeForMatchArg`, and `handle_generic` (flow_js/helpers.rs) lists
+three concretization kinds and not that one -- so a `GenericT` falls through to
+the generic-erasing catch-all in dispatch.rs, which sits *above* the arm that
+collects a match argument. That is the whole asymmetry with `switch`, whose
+collector sits below the same catch-all: `predicate_kit` gets the `GenericT`,
+unwraps it, filters the bound and wraps every survivor back up.
+
+So the patch is three changes and not one, because the first alone is a
+regression:
+
+  * dispatch.rs collects a `GenericT` for `ConcretizeForMatchArg` above the
+    catch-all, the way the predicate collector below it already receives one.
+  * match_pattern_ir.rs gives `ValueUnion` a `generics` field -- the variables
+    its values were unwrapped out of -- and has `to_type`, which is where a
+    pattern binding's type comes from, wrap them back on.
+  * exhaustive.rs unwraps a `GenericT` in the builder, recording it there, and
+    carries the record through `filter_values_by_patterns`.
+
+With only the first, `match (tag: T)` over `T extends "a" | "b"` reports
+match-not-exhaustive with both literal arms unused, because the exhaustiveness
+analysis then holds an opaque value where it used to hold the bound's members.
+`crates/uf_check/tests/upstream_patches.rs` pins that case alongside the three
+this fixes, so the dead end is not rediscovered.
+
+Measured against `flow` itself before it was written: `flow-bin@0.330.0`, the
+release this submodule commit is pinned to, reports the same diagnostics as
+`uf check` through `flow focus-check`. The port is faithful here and Flow's
+typing rule is what is wrong, which is why this is a stopgap -- delete it when
+`facebook/flow` takes the fix and the submodule is bumped past it.
+
+diff --git a/rust_port/crates/flow_typing_flow_js/src/flow_js/dispatch.rs b/rust_port/crates/flow_typing_flow_js/src/flow_js/dispatch.rs
+index 4b4237f22..97516f1c0 100644
+--- a/rust_port/crates/flow_typing_flow_js/src/flow_js/dispatch.rs
++++ b/rust_port/crates/flow_typing_flow_js/src/flow_js/dispatch.rs
+@@ -9436,6 +9436,19 @@ fn __flow_impl<'cx>(
+             })));
+             continue_(cx, env, trace, &generic, cont)?;
+         }
++        // A match argument keeps its type variable, the way the predicate
++        // collector below already does: the exhaustiveness analysis unwraps it
++        // itself, and a pattern binding needs the variable back afterwards.
++        (
++            TypeInner::GenericT(..),
++            UseTInner::ConcretizeT(box ConcretizeTData {
++                kind: ConcretizationKind::ConcretizeForMatchArg { .. },
++                collector,
++                ..
++            }),
++        ) => {
++            collector.add(l.dupe());
++        }
+         (TypeInner::GenericT(box GenericTData { reason, bound, .. }), _) => {
+             let repos = helpers::reposition_reason(cx, env, None, reason, false, bound)?;
+             rec_flow(cx, env, trace, (&repos, u))?;
+diff --git a/rust_port/crates/flow_typing_loc_env/src/match_pattern_ir.rs b/rust_port/crates/flow_typing_loc_env/src/match_pattern_ir.rs
+index 2553c0b4c..5d40cfbd9 100644
+--- a/rust_port/crates/flow_typing_loc_env/src/match_pattern_ir.rs
++++ b/rust_port/crates/flow_typing_loc_env/src/match_pattern_ir.rs
+@@ -23,8 +23,10 @@ use flow_parser::loc::Loc;
+ use flow_parser_utils_output::js_layout_generator;
+ use flow_typing_type::type_::BigIntLiteral;
+ use flow_typing_type::type_::EnumConcreteInfo;
++use flow_typing_type::type_::GenericTData;
+ use flow_typing_type::type_::NumberLiteral;
+ use flow_typing_type::type_::Type;
++use flow_typing_type::type_::TypeInner;
+ 
+ pub type PatternAstList = Vec<(MatchPattern<ALoc, (ALoc, Type)>, /* guarded */ bool)>;
+ 
+@@ -1049,6 +1051,11 @@ pub mod value_union {
+         pub objects: FlowVector<value_object::ValueObject<'cx, CX>>,
+         pub enum_unknown_members: FlowVector<(Reason, LeafSet)>,
+         pub inexhaustible: FlowVector<Type>,
++        /// The type variables the values below were unwrapped out of,
++        /// outermost first. A `GenericT` has no structure to match on, so the
++        /// builder strips it and analyses its bound; `to_type` puts it back,
++        /// so a binding keeps the type variable instead of its bound.
++        pub generics: FlowVector<GenericTData>,
+     }
+ 
+     impl<'cx, CX: Clone> ValueUnion<'cx, CX> {
+@@ -1060,6 +1067,7 @@ pub mod value_union {
+                 objects: FlowVector::default(),
+                 enum_unknown_members: FlowVector::default(),
+                 inexhaustible: FlowVector::default(),
++                generics: FlowVector::default(),
+             }
+         }
+ 
+@@ -1071,6 +1079,7 @@ pub mod value_union {
+                 objects,
+                 enum_unknown_members,
+                 inexhaustible,
++                generics: _,
+             } = self;
+             leafs.is_empty()
+                 && tuples.is_empty()
+@@ -1091,6 +1100,7 @@ pub mod value_union {
+                 objects,
+                 enum_unknown_members,
+                 inexhaustible,
++                generics: _,
+             } = self;
+             leafs.is_empty()
+                 && tuples.is_empty()
+@@ -1108,6 +1118,7 @@ pub mod value_union {
+                 mut objects,
+                 mut enum_unknown_members,
+                 mut inexhaustible,
++                generics,
+             } = vu1;
+             let Self {
+                 leafs: leafs2,
+@@ -1116,6 +1127,7 @@ pub mod value_union {
+                 objects: objects2,
+                 enum_unknown_members: enum_unknown_members2,
+                 inexhaustible: inexhaustible2,
++                generics: generics2,
+             } = vu2;
+ 
+             leafs.extend(leafs2);
+@@ -1124,6 +1136,19 @@ pub mod value_union {
+             objects.append(objects2.into());
+             enum_unknown_members.append(enum_unknown_members2.into());
+             inexhaustible.append(inexhaustible2.into());
++            // Two sides under the same type variables stay under them. Two
++            // sides under different ones have no single variable to be under,
++            // and re-wrapping in either would name the wrong one, so the union
++            // of `{k: "a", v: T}` and `{k: "b", v: U}` keeps neither.
++            let generics = if generics == generics2 {
++                generics
++            } else if generics.is_empty() {
++                generics2
++            } else if generics2.is_empty() {
++                generics
++            } else {
++                FlowVector::default()
++            };
+             Self {
+                 leafs,
+                 tuples,
+@@ -1131,6 +1156,7 @@ pub mod value_union {
+                 objects,
+                 enum_unknown_members,
+                 inexhaustible,
++                generics,
+             }
+         }
+ 
+@@ -1142,6 +1168,7 @@ pub mod value_union {
+                 objects,
+                 enum_unknown_members,
+                 inexhaustible,
++                generics: _,
+             } = self;
+ 
+             //   let (tuples_exact, tuples_inexact) =
+@@ -1224,6 +1251,7 @@ pub mod value_union {
+                 objects,
+                 enum_unknown_members,
+                 inexhaustible,
++                generics,
+             } = self;
+ 
+             let all_possible_types: Vec<Type> = [
+@@ -1248,7 +1276,17 @@ pub mod value_union {
+             ]
+             .concat();
+ 
+-            type_util::union_of_ts(r, all_possible_types, None)
++            if all_possible_types.is_empty() {
++                return type_util::union_of_ts(r, all_possible_types, None);
++            }
++            let t = type_util::union_of_ts(r, all_possible_types, None);
++            // Innermost first, so the outermost variable ends up outermost.
++            generics.iter().rev().fold(t, |bound, generic| {
++                Type::new(TypeInner::GenericT(Box::new(GenericTData {
++                    bound,
++                    ..generic.clone()
++                })))
++            })
+         }
+ 
+         pub fn select(&self, cx: &CX, selector: &Selector<ALoc, ALoc>) -> Option<Self> {
+diff --git a/rust_port/crates/flow_typing_utils/src/exhaustive.rs b/rust_port/crates/flow_typing_utils/src/exhaustive.rs
+index 691e4baac..2463c81d6 100644
+--- a/rust_port/crates/flow_typing_utils/src/exhaustive.rs
++++ b/rust_port/crates/flow_typing_utils/src/exhaustive.rs
+@@ -1212,6 +1212,18 @@ mod value_union_builder {
+                         value_union.inexhaustible.push(t.dupe());
+                     }
+                 },
++                // A type variable has no structure of its own to match on, so
++                // the analysis runs over its bound. The variable is recorded
++                // rather than dropped: `ValueUnion::to_type` puts it back, and
++                // without that a pattern binding comes out as the bound.
++                TypeInner::GenericT(box generic) => {
++                    value_union.generics.push(generic.clone());
++                    let repositioned = flow_typing_type::type_util::mod_reason_of_t(
++                        &|_| generic.reason.dupe(),
++                        &generic.bound,
++                    );
++                    value_union = of_type_inner(cx, value_union, &repositioned);
++                }
+                 _ => {
+                     value_union.inexhaustible.push(t.dupe());
+                 }
+@@ -1442,6 +1454,7 @@ fn filter_values_by_patterns<'cx>(
+         objects: value_objects,
+         enum_unknown_members,
+         inexhaustible,
++        generics,
+     } = value_union;
+     let pattern_union::PatternUnion {
+         leafs: pattern_leafs,
+@@ -1586,6 +1599,9 @@ fn filter_values_by_patterns<'cx>(
+         objects: objects_left.into_iter().collect(),
+         enum_unknown_members: enum_unknown_members.dupe(),
+         inexhaustible: inexhaustible.dupe(),
++        // Filtering narrows what the type variable stands for; it does not
++        // stop it being that variable.
++        generics: generics.dupe(),
+     };
+     // Mixed/any
+     let mixed_used_pattern_locs = match is_object_subtype_of_inexhaustible(inexhaustible) {
+@@ -1614,6 +1630,7 @@ fn filter_values_by_patterns<'cx>(
+                 objects: objects_matched.into_iter().collect(),
+                 enum_unknown_members: FlowVector::default(),
+                 inexhaustible: FlowVector::default(),
++                generics: generics.dupe(),
+             };
+             Ok(FilterUnionResult {
+                 value_left,
+@@ -2323,6 +2340,7 @@ pub fn analyze<'cx>(
+             objects,
+             enum_unknown_members,
+             inexhaustible,
++            generics: _,
+         } = &value_left;
+         let mut examples: Vec<(FlowSmolStr, Vec<Reason>)> = Vec::new();
+         let mut asts: Vec<(Loc, ast::match_pattern::MatchPattern<Loc, Loc>)> = Vec::new();

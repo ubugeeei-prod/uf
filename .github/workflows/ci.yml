@@ -370,6 +370,11 @@ jobs:
       # It reads the two files rather than asking npm to regenerate one, so
       # nothing but these cases says it works.
       - run: ./target/release/uf run lockfile:test
+      # And that the patch step in `tools/upstream/sync.sh` still refuses every
+      # way a patch to the Flow port could go missing. It is the one check here
+      # whose subject fails silently: a dropped patch to a type checker
+      # compiles, passes, and changes what `uf check` answers.
+      - run: ./target/release/uf run upstream:patches:test
       # And that every shell script in the repository parses under the shell
       # this runner uses. `uf@0.0.0-alpha.8` published all seventeen packages
       # and the release was reported as failed, over a `verify-npm.sh` that
