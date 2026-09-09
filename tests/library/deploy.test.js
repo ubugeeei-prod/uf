@@ -44,9 +44,17 @@
 // middleware before anything uf mounts behind it, so the file wins there and
 // therefore has to win everywhere.
 //
-// `the front doors give one answer` below drives all four of them over one
-// fixture and compares. It is the test that fails if a future adapter decides
-// to be cleverer than `uf preview` is allowed to be.
+// `the front doors give one answer` below drives all of them over one fixture
+// and compares. It is the test that fails if a future adapter decides to be
+// cleverer than `uf preview` is allowed to be.
+//
+// **Five doors, not four.** The fifth is `@uniflowed/server/standalone`, which
+// `uf build --compile` links into a single file. It is the one copy of the
+// order whose code genuinely cannot be shared — a binary has no `dist/` to
+// read, so its "a file the build already wrote" is a lookup in an embedded map
+// rather than a `stat` — and that is exactly why its *answer* has to be
+// checked here rather than only against itself in `standalone.test.js`. It was
+// outside this comparison until ubugeeei-prod/uf#391 said so.
 //
 // # What these tests do not establish
 //
@@ -59,6 +67,7 @@
 // that is what a Lambda Function URL sends. A passing test here is a statement
 // about uf, not about a deployment.
 
+import { Buffer } from "node:buffer";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -84,6 +93,7 @@ import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 import { createLambdaHandler } from "@uniflowed/server/lambda";
 import { createServeHandler, createStaticHandler } from "@uniflowed/server/node";
+import { createHandler as createStandaloneHandler } from "@uniflowed/server/standalone";
 
 // The other front door, for the comparison. Reached by path rather than by
 // specifier because `@uniflowed/vite` deliberately does not export it: it is
@@ -533,14 +543,15 @@ describe("the AWS front door an adapter's lambda.js runs", () => {
 
 describe("the front doors", () => {
   it("give one answer, including where a file and a handler collide", async () => {
-    const distDir = directoryWith({
+    const built = {
       "index.html": "<!doctype html><p>home</p>",
       // A path that is *both* a prerendered document and a route handler. The
       // router allows a handler beside a page in one directory, so this is a
       // project somebody can write, and it is the only request whose answer
       // depends on which implementation is running.
       "api/health/index.html": "<!doctype html><p>prerendered health</p>",
-    });
+    };
+    const distDir = directoryWith(built);
     const app = appWith({
       handler: (request: Request) =>
         new URL(request.url).pathname.startsWith("/api/health")
@@ -553,13 +564,21 @@ describe("the front doors", () => {
     const deployed = createServeHandler({ staticDir: distDir, handle });
     const worker = createWorkerFetch({ handle, beginRequest });
     const invoked = createLambdaHandler({ handle, beginRequest, staticDir: distDir });
+    // The fifth door, and the only one that is not `createFetchHandler` behind
+    // a socket. A compiled binary has no `dist/` to read, so
+    // `@uniflowed/server/standalone` carries its own copy of the order — over
+    // an embedded map instead of a directory, which is why the code cannot be
+    // shared and why the *answer* has to be checked instead. ubugeeei-prod/uf#391
+    // named it as the copy that was outside this comparison.
+    const compiled = createStandaloneHandler({ app, assets: embedded(built), document: assets });
 
-    // Four front doors, one question each. `uf start` is the reference,
+    // Five front doors, one question each. `uf start` is the reference,
     // because it is the one a person checks a build with; each of the other
-    // three is a deployment, and a deployment that answered differently from
+    // four is a deployment, and a deployment that answered differently from
     // the command it was checked with is the whole failure this file exists to
     // catch. The Worker's static half is the platform's, standing in as an
-    // `ASSETS` binding; the Lambda's is the package's own copy.
+    // `ASSETS` binding; the Lambda's is the package's own copy; the binary's is
+    // the bytes inside it.
     const doors = {
       "uf start": async (url: string, init?: mixed) => {
         const response = await started(request(url, init));
@@ -581,6 +600,32 @@ describe("the front doors", () => {
         const result = await invoked(await eventFor(request(url, init)));
         return `${String(result.statusCode)} ${result.body}`;
       },
+      "uf build --compile": async (url: string, init?: mixed) => {
+        const response = nodeResponse();
+        const method = String(init?.method ?? "GET");
+        const body = String(init?.body ?? "");
+        await compiled(
+          {
+            method,
+            url,
+            headers: { host: "localhost" },
+            // The handler hands a non-`GET` body straight to `Request`, so what
+            // stands in for the socket has to be async-iterable the way an
+            // `IncomingMessage` is. A `GET` carries none, and passing one would
+            // be rejected before the comparison could ask anything.
+            ...(method === "GET" || method === "HEAD"
+              ? {}
+              : {
+                  // eslint-disable-next-line
+                  [Symbol.asyncIterator]: async function* iterate() {
+                    yield new TextEncoder().encode(body);
+                  },
+                }),
+          },
+          response,
+        );
+        return `${String(response.statusCode)} ${response.body()}`;
+      },
     };
 
     for (const [url, init] of [
@@ -593,10 +638,80 @@ describe("the front doors", () => {
     ]) {
       const said = `${String(init?.method ?? "GET")} ${String(url)}`;
       const reference = await doors["uf start"](String(url), init);
-      for (const name of ["adapter node", "adapter edge", "adapter serverless"]) {
+      for (const name of [
+        "adapter node",
+        "adapter edge",
+        "adapter serverless",
+        "uf build --compile",
+      ]) {
         const answered = await doors[name](String(url), init);
         expect(`${name} ${said}: ${answered}`).toBe(`${name} ${said}: ${reference}`);
       }
     }
   });
 });
+
+/**
+ * The same files, as `uf build --compile` embeds them.
+ *
+ * Built from the fixture's own literal rather than by reading back the
+ * directory the other doors serve, so the comparison is about the *order* and
+ * not about the fixture — and so that "the same bytes" is something a reader
+ * can see rather than something a walk has to be trusted to have done.
+ */
+function embedded(files: { [string]: string }): {
+  [string]: { readonly type: string, readonly body: string },
+} {
+  const out: { [string]: { readonly type: string, readonly body: string } } = {};
+  for (const key of Object.keys(files)) {
+    out[key] = {
+      type: key.endsWith(".html") ? "text/html; charset=utf-8" : "application/octet-stream",
+      body: Buffer.from(files[key], "utf8").toString("base64"),
+    };
+  }
+  return out;
+}
+
+/**
+ * The `ServerResponse` members `@uniflowed/server/standalone` touches.
+ *
+ * Only what this comparison needs — a status and a body. The pacing and
+ * cancellation halves of that contract are `standalone.test.js`'s subject and
+ * have their own, fuller, recorder there; a second copy of it here would be a
+ * second thing to keep in step for a question this file does not ask.
+ */
+function nodeResponse() {
+  const chunks = [];
+  const headers: { [string]: string } = {};
+  const collect = (chunk: Uint8Array | string) => {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : Buffer.from(chunk));
+  };
+  return {
+    statusCode: 0,
+    headers,
+    setHeader(name: string, value: string) {
+      headers[name.toLowerCase()] = value;
+    },
+    // The handler attaches `drain` and `close` listeners to pace a body. This
+    // comparison never fills a socket, so there is nothing to pace and nothing
+    // to fire; `standalone.test.js` is where those are driven. Returning
+    // `undefined` rather than the response is what keeps this a plain object
+    // literal rather than one that refers to itself.
+    on() {},
+    once() {},
+    off() {},
+    write(chunk: Uint8Array | string) {
+      collect(chunk);
+      return true;
+    },
+    end(chunk?: Uint8Array | string) {
+      if (chunk != null) {
+        collect(chunk);
+      }
+    },
+    destroy() {},
+    body(): string {
+      return Buffer.concat(chunks).toString("utf8");
+    },
+  };
+}
