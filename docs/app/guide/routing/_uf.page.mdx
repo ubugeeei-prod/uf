@@ -895,7 +895,20 @@ would have to evaluate is one it cannot write down — and a computed one is
 refused by name rather than skipped, because a schedule the build could not
 read is a schedule the deployment would not run.
 
-**Every adapter refuses the build today**, and says which route, which
+`uf build --adapter edge` writes it into `wrangler.json` for Cloudflare's own
+scheduler, and a `scheduled()` into `worker.js` for that scheduler to call:
+
+```json
+"triggers": { "crons": ["*/15 * * * *"] }
+```
+
+A trigger fires a `GET` at the route's own path through the application's own
+handler, so a scheduled run and a `curl` of that path are the same code, and
+the request has a context — `cookies()`, `after()` and the request id all work
+inside one. A module that declares a schedule and exports no `GET` is refused
+at the build, because that trigger would fire into a 405 nobody reads.
+
+Every other adapter **refuses the build**, and says which route, which
 expression and which file:
 
 ```
@@ -905,18 +918,11 @@ happens:
     /api/sweep — `*/15 * * * *`, in app/api/sweep/_uf.route.js
 ```
 
-Each target is one piece of wiring away and none of the pieces is written.
 `node`, `bun` and `container` keep a process and `@uniflowed/server/schedule`
 ticks in one, but the entry `uf build` generates for them does not pass the
-declaration to `serve`. `edge` has Cloudflare's own scheduler and a
-`wrangler.json` uf already writes, but the `worker.js` uf generates exports
-`{ fetch }` and no `scheduled()` — and a Worker with a cron trigger and no
-scheduled handler fails the invocation, so writing the trigger first would be
-a configuration file that looks right for work that never runs.
-
-So the declaration is read and refused, and until the wiring lands, **pass your
-schedules to `serve` yourself** as above — that path works today.
-[#531](https://github.com/ubugeeei-prod/uf/issues/531) tracks the rest.
+declaration to `serve` yet — so on those targets, pass your schedules to
+`serve` yourself as above. `serverless` has no configuration file uf writes at
+all. [#531](https://github.com/ubugeeei-prod/uf/issues/531) tracks the rest.
 
 What each field *contains* is checked when the deployment starts rather than
 at build time: the meaning of a field lives in one place, and a second matcher

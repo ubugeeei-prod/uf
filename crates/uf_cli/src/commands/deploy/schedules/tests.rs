@@ -5,9 +5,16 @@ fn read(source: &str) -> Result<Option<String>> {
     read_schedule(source, Utf8Path::new("app/api/_uf.route.js"))
 }
 
+/// The same, for a module that declares a schedule and exports the `GET` a
+/// trigger calls — which is what a real one has to do, so most cases below
+/// would otherwise be testing the method refusal by accident.
+fn read_with_handler(declaration: &str) -> Result<Option<String>> {
+    read(&format!("{declaration}export function GET() {{}}\n"))
+}
+
 #[test]
 fn a_string_export_is_the_expression() {
-    let found = read("export const schedule = \"*/15 * * * *\";\nexport function GET() {}\n")
+    let found = read_with_handler("export const schedule = \"*/15 * * * *\";\n")
         .expect("a module that parses");
     assert_eq!(found.as_deref(), Some("*/15 * * * *"));
 }
@@ -69,7 +76,7 @@ fn an_expression_that_is_not_five_fields_is_refused_here() {
 #[test]
 fn what_a_field_holds_is_not_this_builds_question() {
     assert_eq!(
-        read("export const schedule = \"99 * * * *\";\n").expect("five fields"),
+        read_with_handler("export const schedule = \"99 * * * *\";\n").expect("five fields"),
         Some("99 * * * *".to_owned())
     );
 }
@@ -78,7 +85,7 @@ fn what_a_field_holds_is_not_this_builds_question() {
 fn a_let_export_is_read_the_same_way_a_const_is() {
     // The declaration kind is not the point — being written in the file is.
     assert_eq!(
-        read("export let schedule = \"0 0 * * *\";\n").expect("parses"),
+        read_with_handler("export let schedule = \"0 0 * * *\";\n").expect("parses"),
         Some("0 0 * * *".to_owned())
     );
 }
@@ -127,11 +134,11 @@ fn several_come_back_in_path_order() {
     let dir = project(&[
         (
             "app/api/sweep/_uf.route.js",
-            "export const schedule = \"*/15 * * * *\";\n",
+            "export const schedule = \"*/15 * * * *\";\nexport function GET() {}\n",
         ),
         (
             "app/api/digest/_uf.route.js",
-            "export const schedule = \"0 6 * * 1\";\n",
+            "export const schedule = \"0 6 * * 1\";\nexport function GET() {}\n",
         ),
     ]);
 
@@ -178,7 +185,8 @@ fn a_computed_expression_in_a_real_project_fails_the_walk() {
 #[test]
 fn a_specifier_export_is_read_the_same_way_a_declaration_is() {
     assert_eq!(
-        read("const schedule = \"*/15 * * * *\";\nexport { schedule };\n").expect("parses"),
+        read_with_handler("const schedule = \"*/15 * * * *\";\nexport { schedule };\n")
+            .expect("parses"),
         Some("*/15 * * * *".to_owned())
     );
 }
@@ -186,12 +194,14 @@ fn a_specifier_export_is_read_the_same_way_a_declaration_is() {
 #[test]
 fn a_renamed_specifier_export_is_read_under_the_name_it_takes() {
     assert_eq!(
-        read("const every = \"0 6 * * 1\";\nexport { every as schedule };\n").expect("parses"),
+        read_with_handler("const every = \"0 6 * * 1\";\nexport { every as schedule };\n")
+            .expect("parses"),
         Some("0 6 * * 1".to_owned())
     );
     // And the local name is not what is looked for.
     assert_eq!(
-        read("const schedule = \"0 6 * * 1\";\nexport { schedule as other };\n").expect("parses"),
+        read_with_handler("const schedule = \"0 6 * * 1\";\nexport { schedule as other };\n")
+            .expect("parses"),
         None
     );
 }
@@ -227,4 +237,37 @@ fn a_specifier_export_is_found_in_a_real_project_too() {
     let found = discovered(&dir);
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].cron, "*/15 * * * *");
+}
+
+/// A trigger fires a `GET` at the route's own path, so a module that declares
+/// a schedule and exports no `GET` is a trigger that would answer 405.
+#[test]
+fn a_schedule_without_the_handler_it_would_call_is_refused() {
+    let message = read("export const schedule = \"*/15 * * * *\";\nexport function POST() {}\n")
+        .expect_err("a schedule with no GET is refused")
+        .to_string();
+    assert!(message.contains("exports no `GET`"), "{message}");
+    assert!(message.contains("405"), "{message}");
+}
+
+#[test]
+fn the_handler_counts_in_any_spelling_a_module_may_use() {
+    for handler in [
+        "export function GET() {}\n",
+        "export const GET = () => new Response(\"\");\n",
+        "function handler() {}\nexport { handler as GET };\n",
+    ] {
+        let source = format!("export const schedule = \"0 0 * * *\";\n{handler}");
+        assert_eq!(
+            read(&source).expect("a module with a handler"),
+            Some("0 0 * * *".to_owned()),
+            "{handler}"
+        );
+    }
+}
+
+/// And a route handler that declares nothing is never asked about its methods.
+#[test]
+fn a_module_with_no_schedule_may_export_whatever_it_answers() {
+    assert_eq!(read("export function POST() {}\n").expect("parses"), None);
 }
