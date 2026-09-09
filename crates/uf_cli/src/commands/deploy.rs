@@ -88,6 +88,7 @@ use crate::commands::vite::{Driver, Event, LinkContext, LogLevel, render_error, 
 use crate::support::project_label;
 use crate::ui::Ui;
 
+pub(crate) mod schedules;
 pub(crate) mod static_host;
 
 /// Where the generated entry files are written before they are linked.
@@ -201,6 +202,7 @@ pub(crate) fn deploy(
     ui: &mut Ui,
     adapter: DeployAdapter,
     link: LinkContext<'_>,
+    schedules: &[schedules::DeclaredSchedule],
 ) -> Result<Deployed> {
     let LinkContext {
         host,
@@ -296,7 +298,7 @@ pub(crate) fn deploy(
         directory.join("package.json"),
         "{\n  \"private\": true,\n  \"type\": \"module\"\n}\n".to_owned(),
     )];
-    files.extend(platform_files(adapter, root, &directory));
+    files.extend(platform_files(adapter, root, &directory, schedules));
     for (file, contents) in &files {
         fs::write(file.as_std_path(), contents)
             .with_context(|| format!("failed to write {file}"))?;
@@ -436,9 +438,13 @@ fn platform_files(
     adapter: DeployAdapter,
     root: &Utf8Path,
     directory: &Utf8Path,
+    schedules: &[schedules::DeclaredSchedule],
 ) -> Vec<(Utf8PathBuf, String)> {
     match adapter {
-        DeployAdapter::Edge => vec![(directory.join("wrangler.json"), wrangler_config(root))],
+        DeployAdapter::Edge => vec![(
+            directory.join("wrangler.json"),
+            wrangler_config(root, schedules),
+        )],
         DeployAdapter::Container => vec![
             (directory.join("Dockerfile"), DOCKERFILE.to_owned()),
             (directory.join(".dockerignore"), DOCKERIGNORE.to_owned()),
@@ -482,8 +488,8 @@ const WORKERS_COMPATIBILITY_DATE: &str = "2024-09-23";
 /// * `not_found_handling: "none"`, so a miss comes back as a 404 the Worker
 ///   can fall through, and the 404 a visitor sees is the project's own
 ///   `_uf.not-found` rather than Cloudflare's.
-fn wrangler_config(root: &Utf8Path) -> String {
-    let config = json!({
+fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -> String {
+    let mut config = json!({
         "name": worker_name(root),
         "main": "./worker.js",
         "compatibility_date": WORKERS_COMPATIBILITY_DATE,
@@ -496,6 +502,18 @@ fn wrangler_config(root: &Utf8Path) -> String {
             "not_found_handling": "none",
         },
     });
+    // Cloudflare's own scheduler, told about what the project declared. Written
+    // only when there is something to write: an empty `crons` is a key Wrangler
+    // has to interpret, and "no schedules" is better said by silence.
+    // ubugeeei-prod/uf#531.
+    if !schedules.is_empty() {
+        config["triggers"] = json!({
+            "crons": schedules
+                .iter()
+                .map(|schedule| schedule.cron.clone())
+                .collect::<Vec<_>>(),
+        });
+    }
     format!(
         "{}\n",
         serde_json::to_string_pretty(&config).unwrap_or_default()
@@ -763,7 +781,7 @@ mod tests {
 
     #[test]
     fn the_wrangler_config_asks_for_what_the_bundle_needs() {
-        let written = wrangler_config(Utf8Path::new("/src/served-app"));
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[]);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(config["name"], "served-app");
         assert_eq!(config["main"], "./worker.js");
@@ -774,6 +792,82 @@ mod tests {
         assert_eq!(config["assets"]["run_worker_first"], true);
         assert_eq!(config["assets"]["not_found_handling"], "none");
         assert_eq!(config["assets"]["binding"], "ASSETS");
+        // Silence rather than an empty list: `crons: []` is a key Wrangler has
+        // to interpret, and a project with no schedules said nothing.
+        assert!(config.get("triggers").is_none(), "{written}");
+    }
+
+    /// A declared schedule reaches Cloudflare's own scheduler.
+    ///
+    /// The emission half of ubugeeei-prod/uf#531: `edge` keeps no process, so
+    /// the platform has to be told, and `wrangler.json` is the file uf already
+    /// writes to tell it.
+    #[test]
+    fn a_declared_schedule_becomes_a_cloudflare_trigger() {
+        let declared = vec![
+            schedules::DeclaredSchedule {
+                path: "/api/sweep".into(),
+                file: Utf8PathBuf::from("app/api/sweep/_uf.route.js"),
+                cron: "*/15 * * * *".to_owned(),
+            },
+            schedules::DeclaredSchedule {
+                path: "/api/digest".into(),
+                file: Utf8PathBuf::from("app/api/digest/_uf.route.js"),
+                cron: "0 6 * * 1".to_owned(),
+            },
+        ];
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &declared);
+        let config: serde_json::Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(config["triggers"]["crons"][0], "*/15 * * * *");
+        assert_eq!(config["triggers"]["crons"][1], "0 6 * * 1");
+        // And nothing else about the file moved.
+        assert_eq!(config["main"], "./worker.js");
+    }
+
+    /// The refusal #531 asks for by name, on every target that would not run it.
+    #[test]
+    fn a_target_that_would_not_run_a_schedule_refuses_the_build() {
+        let declared = vec![schedules::DeclaredSchedule {
+            path: "/api/sweep".into(),
+            file: Utf8PathBuf::from("app/api/sweep/_uf.route.js"),
+            cron: "*/15 * * * *".to_owned(),
+        }];
+
+        // `edge` has somewhere to put it.
+        assert!(schedules::refuse_unrunnable(DeployAdapter::Edge, &declared).is_ok());
+
+        // The rest do not, today — including the ones that keep a process,
+        // because the entry uf generates for them does not pass the
+        // declaration to `serve` yet. Saying so beats the silence.
+        for adapter in [
+            DeployAdapter::Node,
+            DeployAdapter::Bun,
+            DeployAdapter::Container,
+            DeployAdapter::Serverless,
+            DeployAdapter::Static,
+        ] {
+            let message = schedules::refuse_unrunnable(adapter, &declared)
+                .expect_err("a schedule nothing would run is refused")
+                .to_string();
+            assert!(message.contains(adapter.as_str()), "{message}");
+            // Names the route, the expression and the file, so the reader does
+            // not have to go looking for which one.
+            assert!(message.contains("/api/sweep"), "{message}");
+            assert!(message.contains("*/15 * * * *"), "{message}");
+            assert!(message.contains("_uf.route.js"), "{message}");
+            assert!(
+                message.contains("issues/531") || message.contains("uf#531"),
+                "{message}"
+            );
+        }
+    }
+
+    /// And a project that declares none is refused by nobody.
+    #[test]
+    fn no_schedules_is_no_refusal_anywhere() {
+        for adapter in DeployAdapter::ALL {
+            assert!(schedules::refuse_unrunnable(*adapter, &[]).is_ok());
+        }
     }
 
     #[test]

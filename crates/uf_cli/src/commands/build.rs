@@ -275,6 +275,17 @@ pub(crate) fn build(
     // which has a bundle to load and does not have it; that is refused in
     // `commands::serve`, where it is a fact rather than an opinion.
     let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
+    // Before the build rather than after it: a project whose scheduled work
+    // this target would never run should hear so in a second, not after a
+    // bundle. ubugeeei-prod/uf#531.
+    let declared_schedules = match adapter {
+        Some(adapter) => {
+            let found = deploy::schedules::discover_schedules(&root, &resolved.config)?;
+            deploy::schedules::refuse_unrunnable(adapter, &found)?;
+            found
+        }
+        None => Vec::new(),
+    };
     // The fourth thing that needs a process, and the only one `uf` can see
     // without evaluating a module. Checked here rather than in the builder for
     // exactly that reason — see `refuse_unanswerable_actions`.
@@ -486,7 +497,9 @@ pub(crate) fn build(
                 "writing the {} adapter's output",
                 adapter.as_str()
             ));
-            Some(timer.measure("adapter", || deploy::deploy(ui, adapter, link))?)
+            Some(timer.measure("adapter", || {
+                deploy::deploy(ui, adapter, link, &declared_schedules)
+            })?)
         }
         None => None,
     };
