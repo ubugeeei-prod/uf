@@ -1348,3 +1348,109 @@ fn the_documented_highlight_key_path_is_the_one_uf_serializes() {
         );
     }
 }
+
+// --- ubugeeei-prod/uf#698: the refusal says which expression, and where -----
+
+/// The case #698 filed: a `const` before the export.
+///
+/// The old message named `export default defineConfig({ ... })` as the fix,
+/// and the file already did exactly that — so it pointed away from the line
+/// that was actually refused. This pins the line and the text instead.
+#[test]
+fn a_statement_before_the_export_is_named_with_its_line() {
+    let source = "// @flow\n\
+                  import { defineConfig } from \"@uniflowed/config\";\n\
+                  \n\
+                  const tasks = { hello: { command: \"echo hi\" } };\n\
+                  \n\
+                  export default defineConfig({ tasks });\n";
+
+    assert!(extract_config_object(source).is_none());
+    let refusal = diagnose_config_expression(source);
+
+    assert_eq!(refusal.line, 4);
+    assert_eq!(
+        refusal.snippet,
+        "const tasks = { hello: { command: \"echo hi\" } };"
+    );
+    assert!(
+        refusal.reason.contains("without running it"),
+        "the reason has to say why a statement is not evaluated: {}",
+        refusal.reason
+    );
+    // The old message's advice, which was already what the file did.
+    assert!(
+        !refusal.reason.contains("export default defineConfig"),
+        "naming the export shape sends the reader to the one thing that is right"
+    );
+}
+
+/// A `defineConfig` handed something that is not an object literal.
+#[test]
+fn a_non_literal_argument_to_define_config_is_named() {
+    let source = "// @flow\nexport default defineConfig(aggregate(\"a\", \"b\"));\n";
+
+    assert!(extract_config_object(source).is_none());
+    let refusal = diagnose_config_expression(source);
+
+    assert_eq!(refusal.line, 2);
+    assert!(
+        refusal.snippet.starts_with("aggregate("),
+        "the argument is what was refused, not the whole line: {}",
+        refusal.snippet
+    );
+}
+
+/// A default export that is neither a literal nor `defineConfig`.
+#[test]
+fn a_default_export_that_is_a_call_is_named() {
+    let source = "// @flow\nexport default buildConfig();\n";
+    let refusal = diagnose_config_expression(source);
+
+    assert_eq!(refusal.line, 2);
+    assert_eq!(refusal.snippet, "buildConfig();");
+}
+
+/// Comments and imports are not the answer, however many of them there are.
+#[test]
+fn leading_comments_and_imports_do_not_become_the_reported_line() {
+    let source = "// @flow\n\
+                  /* a block\n\
+                     comment */\n\
+                  import a from \"a\";\n\
+                  \n\
+                  // and a line comment\n\
+                  let x = 1;\n\
+                  export default {};\n";
+    let refusal = diagnose_config_expression(source);
+
+    assert_eq!(refusal.line, 7, "the first line that is neither");
+    assert_eq!(refusal.snippet, "let x = 1;");
+}
+
+/// A file with nothing in it says so rather than pointing at a line.
+#[test]
+fn a_file_with_no_default_export_says_that() {
+    let refusal = diagnose_config_expression("// @flow\nimport a from \"a\";\n");
+    assert!(
+        refusal.reason.contains("no default export"),
+        "{}",
+        refusal.reason
+    );
+}
+
+/// The snippet is bounded, so a minified config cannot make the error
+/// unreadable.
+#[test]
+fn a_very_long_expression_is_cut() {
+    let long = "x".repeat(500);
+    let source = format!("// @flow\nconst a = \"{long}\";\nexport default {{}};\n");
+    let refusal = diagnose_config_expression(&source);
+
+    assert!(
+        refusal.snippet.len() <= SNIPPET_BYTES + 4,
+        "{}",
+        refusal.snippet.len()
+    );
+    assert!(refusal.snippet.ends_with('…'));
+}
