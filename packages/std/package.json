@@ -11,10 +11,23 @@
     "directory": "packages/std"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./bytes": "./bytes.js",
+    "./context": "./context.js",
+    "./errors": "./errors.js",
+    "./heap": "./heap.js",
+    "./hex": "./hex.js",
+    "./sync": "./sync.js",
+    "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
+    "bytes.js",
+    "context.js",
+    "errors.js",
+    "heap.js",
+    "hex.js",
+    "index.js",
+    "sync.js"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.18"
