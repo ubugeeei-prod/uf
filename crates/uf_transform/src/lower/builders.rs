@@ -4,7 +4,7 @@
 //! position: the printer falls back to the nearest positioned ancestor for the
 //! source map, which is the right answer for code the author never wrote.
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 /// Take every position off `node` and everything under it.
 ///
@@ -45,66 +45,66 @@ pub fn forget_positions(node: &mut Value) {
 /// `name`
 #[must_use]
 pub fn ident(name: &str) -> Value {
-    json!({ "type": "Identifier", "name": name })
+    node! { "type": "Identifier", "name": name }
 }
 
 /// A string literal.
 #[must_use]
 pub fn string_literal(value: &str) -> Value {
-    json!({ "type": "Literal", "value": value, "raw": serde_json::to_string(value).unwrap_or_default() })
+    node! { "type": "Literal", "value": value, "raw": serde_json::to_string(value).unwrap_or_default() }
 }
 
 /// A number literal.
 #[must_use]
 pub fn number_literal(value: usize) -> Value {
-    json!({ "type": "Literal", "value": value, "raw": value.to_string() })
+    node! { "type": "Literal", "value": value, "raw": value.to_string() }
 }
 
 /// `null`
 #[must_use]
 pub fn null_literal() -> Value {
-    json!({ "type": "Literal", "value": null, "raw": "null" })
+    node! { "type": "Literal", "value": ::serde_json::Value::Null, "raw": "null" }
 }
 
 /// `object.property` or `object[property]`.
 #[must_use]
 pub fn member(object: Value, property: Value, computed: bool) -> Value {
-    json!({
+    node! {
         "type": "MemberExpression",
         "object": object,
         "property": property,
         "computed": computed,
         "optional": false,
-    })
+    }
 }
 
 /// `callee(arguments)`
 #[must_use]
 pub fn call(callee: Value, arguments: Vec<Value>) -> Value {
-    json!({
+    node! {
         "type": "CallExpression",
         "callee": callee,
         "arguments": arguments,
         "optional": false,
-    })
+    }
 }
 
 /// `left <operator> right`
 #[must_use]
 pub fn binary(operator: &str, left: Value, right: Value) -> Value {
-    json!({ "type": "BinaryExpression", "operator": operator, "left": left, "right": right })
+    node! { "type": "BinaryExpression", "operator": operator, "left": left, "right": right }
 }
 
 /// `left <operator> right` for `&&`, `||`, `??`.
 #[must_use]
 pub fn logical(operator: &str, left: Value, right: Value) -> Value {
-    json!({ "type": "LogicalExpression", "operator": operator, "left": left, "right": right })
+    node! { "type": "LogicalExpression", "operator": operator, "left": left, "right": right }
 }
 
 /// `<operator> argument`
 #[must_use]
 pub fn unary(operator: &str, argument: Value) -> Value {
-    json!({ "type": "UnaryExpression", "operator": operator, "prefix": true, "argument": argument })
+    node! { "type": "UnaryExpression", "operator": operator, "prefix": true, "argument": argument }
 }
 
 /// `typeof argument === "kind"`
@@ -117,7 +117,7 @@ pub fn typeof_is(argument: Value, kind: &str) -> Value {
 #[must_use]
 pub fn conjunction(mut tests: Vec<Value>) -> Value {
     if tests.is_empty() {
-        return json!({ "type": "Literal", "value": true, "raw": "true" });
+        return node! { "type": "Literal", "value": true, "raw": "true" };
     }
     let mut result = tests.remove(0);
     for test in tests {
@@ -130,7 +130,7 @@ pub fn conjunction(mut tests: Vec<Value>) -> Value {
 #[must_use]
 pub fn disjunction(mut tests: Vec<Value>) -> Value {
     if tests.is_empty() {
-        return json!({ "type": "Literal", "value": false, "raw": "false" });
+        return node! { "type": "Literal", "value": false, "raw": "false" };
     }
     let mut result = tests.remove(0);
     for test in tests {
@@ -142,61 +142,61 @@ pub fn disjunction(mut tests: Vec<Value>) -> Value {
 /// `<kind> id = init;`
 #[must_use]
 pub fn variable_declaration(kind: &str, id: Value, init: Value) -> Value {
-    json!({
+    node! {
         "type": "VariableDeclaration",
         "kind": kind,
-        "declarations": [{ "type": "VariableDeclarator", "id": id, "init": init }],
-    })
+        "declarations": vec![node!{ "type": "VariableDeclarator", "id": id, "init": init }],
+    }
 }
 
 /// `{ body }`
 #[must_use]
 pub fn block(body: Vec<Value>) -> Value {
-    json!({ "type": "BlockStatement", "body": body })
+    node! { "type": "BlockStatement", "body": body }
 }
 
 /// `return argument;`
 #[must_use]
 pub fn return_statement(argument: Value) -> Value {
-    json!({ "type": "ReturnStatement", "argument": argument })
+    node! { "type": "ReturnStatement", "argument": argument }
 }
 
 /// `throw argument;`
 #[must_use]
 pub fn throw_statement(argument: Value) -> Value {
-    json!({ "type": "ThrowStatement", "argument": argument })
+    node! { "type": "ThrowStatement", "argument": argument }
 }
 
 /// `if (test) consequent [else alternate]`
 #[must_use]
 pub fn if_statement(test: Value, consequent: Value, alternate: Option<Value>) -> Value {
-    json!({
+    node! {
         "type": "IfStatement",
         "test": test,
         "consequent": consequent,
         "alternate": alternate.unwrap_or(Value::Null),
-    })
+    }
 }
 
 /// `expression;`
 #[must_use]
 pub fn expression_statement(expression: Value) -> Value {
-    json!({ "type": "ExpressionStatement", "expression": expression })
+    node! { "type": "ExpressionStatement", "expression": expression }
 }
 
 /// `((params) => { statements })(arguments)`
 #[must_use]
 pub fn iife(statements: Vec<Value>, params: Vec<Value>, arguments: Vec<Value>) -> Value {
     call(
-        json!({
+        node! {
             "type": "ArrowFunctionExpression",
-            "id": null,
+            "id": ::serde_json::Value::Null,
             "params": params,
             "body": block(statements),
             "async": false,
             "expression": false,
             "generator": false,
-        }),
+        },
         arguments,
     )
 }
@@ -204,18 +204,18 @@ pub fn iife(statements: Vec<Value>, params: Vec<Value>, arguments: Vec<Value>) -
 /// `test ? consequent : alternate`
 #[must_use]
 pub fn conditional(test: Value, consequent: Value, alternate: Value) -> Value {
-    json!({
+    node! {
         "type": "ConditionalExpression",
         "test": test,
         "consequent": consequent,
         "alternate": alternate,
-    })
+    }
 }
 
 /// A `Property` in an object pattern or expression.
 #[must_use]
 pub fn property(key: Value, value: Value, computed: bool, shorthand: bool) -> Value {
-    json!({
+    node! {
         "type": "Property",
         "key": key,
         "value": value,
@@ -223,11 +223,11 @@ pub fn property(key: Value, value: Value, computed: bool, shorthand: bool) -> Va
         "method": false,
         "shorthand": shorthand,
         "computed": computed,
-    })
+    }
 }
 
 /// `...argument`
 #[must_use]
 pub fn rest_element(argument: Value) -> Value {
-    json!({ "type": "RestElement", "argument": argument })
+    node! { "type": "RestElement", "argument": argument }
 }

@@ -15,7 +15,7 @@ use react_compiler::entrypoint::{CompileResult, PluginOptions, compile_program};
 use react_compiler_ast::File;
 use react_compiler_ast::scope::ScopeInfo;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use uf_infra::FxHashMap;
 
 use crate::{TransformError, TransformOptions};
@@ -146,20 +146,20 @@ pub(crate) fn plugin_options(
     source: &str,
     options: &TransformOptions,
 ) -> Result<PluginOptions, TransformError> {
-    serde_json::from_value(json!({
+    serde_json::from_value(node! {
         "shouldCompile": true,
         "enableReanimated": false,
         "isDev": options.development,
-        "filename": options.filename,
+        "filename": options.filename.clone(),
         "compilationMode": options.react_compiler.as_str(),
         "panicThreshold": "none",
         "target": "19",
         "noEmit": false,
         "flowSuppressions": true,
         "ignoreUseNoForget": false,
-        "environment": {},
+        "environment": node!{},
         "__sourceCode": source,
-    }))
+    })
     .map_err(|error| TransformError::Internal(format!("React Compiler options rejected: {error}")))
 }
 
@@ -364,6 +364,7 @@ mod tests {
     use super::*;
     use crate::estree::parse;
     use crate::{lower, scope};
+    use serde_json::json;
 
     fn compiled(source: &str, mode: ReactCompilerMode) -> (Value, Vec<CompilerDiagnostic>, usize) {
         let mut program = parse(source).unwrap();
