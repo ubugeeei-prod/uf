@@ -1750,9 +1750,11 @@ describe("the capability precedence matches the CLI's", () => {
   // expression it was bound to. Swap two checks on either side and the two
   // lists stop matching.
   //
-  // Colour only. The two files also disagree about glyphs — `NO_COLOR`
-  // downgrades them in the CLI and not in the library — which is
-  // ubugeeei-prod/uf#393, filed rather than quietly asserted either way here.
+  // Colour and glyphs, in two tests. The two files used to disagree about
+  // glyphs — `NO_COLOR` downgraded them in the CLI and not in the library,
+  // both on purpose — which was ubugeeei-prod/uf#393. They agree now, and the
+  // second test is what stops them drifting apart again: nothing compared them
+  // before, which is how two deliberate opposite decisions survived.
 
   const rust = (): string =>
     fs.readFileSync(path.join(REPO, "crates/uf_term/src/capability.rs"), "utf8");
@@ -1967,6 +1969,60 @@ describe("the capability precedence matches the CLI's", () => {
     expect(rustHelpers(rust()).declared_rows).toEqual(["LINES"]);
     expect(jsHelpers(js()).declaredColumns).toEqual(["COLUMNS"]);
     expect(jsHelpers(js()).declaredRows).toEqual(["LINES"]);
+  });
+
+  /**
+   * The glyph rule, which is a different question from the colour one.
+   *
+   * "Can this terminal draw `├─`" is not "may I colour it", and
+   * ubugeeei-prod/uf#393 was the two files answering the first one
+   * differently: the CLI folded `NO_COLOR` into it and the library did not.
+   * The convention at no-color.org is about ANSI colour and says nothing about
+   * characters, and uf already has the right signal for "cannot render
+   * Unicode" — the locale — so the CLI followed the library.
+   *
+   * Compared down to the **environment variables**, through the same helper
+   * resolution the colour test uses, rather than to the names each side gives
+   * them. A first draft of this compared `dumb` to `dumb` and would have
+   * passed if `const dumb = env.NO_COLOR != null` were written tomorrow: the
+   * rule would have changed and the guard would not have noticed, which is the
+   * whole thing it exists to stop.
+   */
+  it("decides glyphs from the same environment variables on both sides", () => {
+    const rustSource = rust();
+    const jsSource = js();
+
+    // `env.is_dumb()` and `env.utf8_locale()` reduced to the variables their
+    // `TerminalEnv` fields are filled from.
+    const helpers = rustHelpers(rustSource);
+    const rustGlyphs = [];
+    for (const call of body(rustSource, "fn detect_glyphs(").matchAll(/env\.(\w+)\(\)/g)) {
+      rustGlyphs.push(...(helpers[call[1]] ?? [`?${call[1]}`]));
+    }
+
+    // And the JavaScript the same way: `glyphs:`'s expression, with each
+    // helper reduced to what it reads and `dumb` to the variable it was bound
+    // from.
+    const functions = jsHelpers(jsSource);
+    const dumbFrom = (jsSource.match(/const dumb = env\.([A-Z_]+)/) ?? [])[1];
+    expect(dumbFrom).toBeDefined();
+    const glyphLine = (jsSource.match(/^\s*glyphs: (.+),\s*$/m) ?? [])[1] ?? "";
+    const jsGlyphs = [];
+    for (const token of glyphLine.matchAll(/\b([A-Za-z]\w*)\b/g)) {
+      const name = token[1];
+      if (name === "dumb") jsGlyphs.push(dumbFrom);
+      else if (functions[name] != null) jsGlyphs.push(...functions[name]);
+    }
+
+    // Both reach the same variables in the same order, and `NO_COLOR` is on
+    // neither list — which is the decision #393 asked for, asserted where it
+    // cannot be quietly undone on one side.
+    expect(runs(rustGlyphs)).toEqual(runs(jsGlyphs));
+    expect(runs(rustGlyphs)).not.toContain("NO_COLOR");
+    // Spelled out, so a failure says which rule moved rather than only that
+    // something did. `TERM` decides dumb; the locale is read from three, in
+    // their own precedence order.
+    expect(runs(rustGlyphs)).toEqual(["TERM", "LC_ALL", "LC_CTYPE", "LANG"]);
   });
 });
 
