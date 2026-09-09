@@ -12,6 +12,13 @@ authors.workspace = true
 uf_config = { path = "../uf_config" }
 uf_flow = { path = "../uf_flow" }
 uf_infra = { path = "../uf_infra" }
+# `profile_span!` in the hot path, and the counting allocator behind the
+# figures in ubugeeei-prod/uf#668. A dependency rather than a dev-dependency
+# because the spans are compiled into the library itself: with the gate shut
+# each one is a relaxed atomic load and a `bool`, which is the price of a
+# profiler that is already there when the question arrives rather than one
+# that has to be added first. See `uf_profiler`'s own header.
+uf_profiler = { path = "../uf_profiler" }
 uf_react_compiler = { path = "../uf_react_compiler" }
 uf_router = { path = "../uf_router" }
 uf_transform = { path = "../uf_transform" }
@@ -22,10 +29,6 @@ thiserror.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-# For `examples/alloc_report.rs`: the counting allocator behind the figures in
-# ubugeeei-prod/uf#668, so the next person to touch the linter's hot path can
-# take them again rather than trust them.
-uf_profiler = { path = "../uf_profiler" }
 
 [[bench]]
 name = "lint"

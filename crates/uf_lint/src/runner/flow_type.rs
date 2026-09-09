@@ -3,6 +3,7 @@
 //! whose exactness the author never said out loud.
 
 use uf_config::UniflowedConfig;
+use uf_profiler::profile_span;
 
 use crate::flow_builtin::FlowBuiltinLint;
 use crate::scan::{
@@ -26,6 +27,7 @@ pub(crate) fn run_flow_unclear_type(
     config: &UniflowedConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
+    profile_span!("run_flow_unclear_type");
     let rule = FlowBuiltinLint::UnclearType.as_rule_id();
     let Some(severity) = severity(config, rule) else {
         return;
