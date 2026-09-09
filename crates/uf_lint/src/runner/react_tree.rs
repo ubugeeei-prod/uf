@@ -76,13 +76,19 @@ const EFFECT: &str = "useEffect";
 /// exists to avoid, on every module, to catch a spelling nobody writes.
 const STATE: &str = "useState";
 
-/// Report the rules that need the module's tree.
-pub(crate) fn run_react_tree_rules(
-    scan: &FileScan<'_>,
-    config: &UniflowedConfig,
-    diagnostics: &mut Vec<Diagnostic>,
-) {
-    profile_span!("run_react_tree_rules");
+/// What these rules want out of a parse, or [`None`] when they want none.
+///
+/// Split from the analysis so that one parse can serve every runner that
+/// needs the module's tree — see [`super::module_tree`], which owns it.
+pub(super) struct ReactWork {
+    derived: Option<crate::Severity>,
+    memo: Option<crate::Severity>,
+    wants_effects: bool,
+    wants_memo: bool,
+}
+
+/// Whether these rules want this module read at all.
+pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<ReactWork> {
     let derived = severity(config, DERIVED_STATE);
     // A project that has turned the compiler off gets no report: without it,
     // a hand-written `useMemo` is the only memoization there is.
@@ -94,10 +100,10 @@ pub(crate) fn run_react_tree_rules(
         .then(|| severity(config, REDUNDANT_MEMO))
         .flatten();
     if derived.is_none() && memo.is_none() {
-        return;
+        return None;
     }
     if !super::flow_syntax::is_flow_syntax_target(&scan.file.path) {
-        return;
+        return None;
     }
 
     let source = &scan.file.source;
@@ -108,32 +114,87 @@ pub(crate) fn run_react_tree_rules(
     let wants_memo =
         memo.is_some() && (source.contains("useMemo") || source.contains("useCallback"));
     if !wants_effects && !wants_memo {
-        return;
+        return None;
     }
+    Some(ReactWork {
+        derived,
+        memo,
+        wants_effects,
+        wants_memo,
+    })
+}
 
-    // The same ceilings `uf_flow::upstream` applies before it parses. A module
-    // over one of them has already been reported by `flow/syntax`; reaching
-    // for the parser again would only be a slower way to overflow.
-    let depths = uf_flow::depths(source);
-    if source.len() > uf_flow::MAX_PARSE_BYTES
-        || depths.brackets > uf_flow::MAX_NESTING_DEPTH
-        || depths.chain > uf_flow::MAX_CHAIN_DEPTH
-    {
-        return;
-    }
-
-    let Some(found) = analyse(scan, config, wants_effects, wants_memo) else {
-        return;
+/// Run whichever of the two rules was asked for, over a tree somebody else
+/// parsed.
+///
+/// # Call this on the thread that built `parsed`
+///
+/// The lowering recurses over the tree; [`super::module_tree`] is the caller
+/// and is on a thread with `uf_flow::PARSE_STACK_BYTES`.
+pub(super) fn analyse_parsed(
+    parsed: &uf_flow::Parsed,
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    work: &ReactWork,
+) -> Vec<TreeFinding> {
+    profile_span!("run_react_tree_rules");
+    let source = &scan.file.source;
+    let options = TransformOptions {
+        react_compiler: compiler_mode(config),
+        ..TransformOptions::new(scan.file.path.clone())
     };
 
+    // Lowered, not raw: `component` and `match` are Flow's own syntax, and
+    // this rule reads functions and calls. After the lowering a component
+    // *is* a `FunctionDeclaration`, which is the tree the rule was always
+    // written against.
+    //
+    // From the tree the caller already holds rather than from the source:
+    // `uf lint` used to hand the text back to `estree::parse` here and have
+    // the module parsed a second time. See ubugeeei-prod/uf#668.
+    let Ok((program, _)) = uf_transform::lowered_from_parsed(&parsed.program, source) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    if work.wants_effects {
+        found.extend(derived_state_effects(&program));
+    }
+    // An error here is a bug in uf rather than in the module — the tree did
+    // not fit the compiler's own schema — and it says nothing about the
+    // effects the other rule already found, so it costs that rule nothing.
+    if work.wants_memo
+        && let Ok(file) = uf_transform::babel_from_lowered(program, source)
+        && let Ok(redundant) = uf_transform::redundant_memoization(&file, source, &options)
+    {
+        found.extend(redundant.into_iter().map(|memo| TreeFinding {
+            kind: FindingKind::RedundantMemo,
+            line: memo.line,
+            column: memo.column,
+            message: format!(
+                "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
+                memo.hook
+            ),
+        }));
+    }
+    found
+}
+
+/// Turn what the analysis found into diagnostics.
+pub(super) fn report(
+    scan: &FileScan<'_>,
+    work: &ReactWork,
+    found: Vec<TreeFinding>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let source = &scan.file.source;
     for finding in found {
         let rule = match finding.kind {
             FindingKind::DerivedState => DERIVED_STATE,
             FindingKind::RedundantMemo => REDUNDANT_MEMO,
         };
         let level = match finding.kind {
-            FindingKind::DerivedState => derived,
-            FindingKind::RedundantMemo => memo,
+            FindingKind::DerivedState => work.derived,
+            FindingKind::RedundantMemo => work.memo,
         };
         let Some(index) = usize::try_from(finding.line)
             .ok()
@@ -180,83 +241,13 @@ enum FindingKind {
 }
 
 /// One finding, positioned the way the tree positions things.
-struct TreeFinding {
+pub(super) struct TreeFinding {
     kind: FindingKind,
     /// 1-based line.
     line: u32,
     /// 0-based column, in UTF-16 code units.
     column: u32,
     message: String,
-}
-
-/// Parse the module and run whichever of the two rules was asked for.
-///
-/// [`None`] when the module could not be parsed or lowered — `flow/syntax`
-/// reports the first and the build reports the second, and a rule that cannot
-/// see the tree has nothing to say about it.
-fn analyse(
-    scan: &FileScan<'_>,
-    config: &UniflowedConfig,
-    wants_effects: bool,
-    wants_memo: bool,
-) -> Option<Vec<TreeFinding>> {
-    let source = &scan.file.source;
-    let options = TransformOptions {
-        react_compiler: compiler_mode(config),
-        ..TransformOptions::new(scan.file.path.clone())
-    };
-
-    let work = || {
-        // Parsed and lowered, and converted to Babel's shape only if the memo
-        // rule is the one asking. `to_babel` is 184,472 allocations of the
-        // 575,198 this file used to cost — a third of the tree's price — and
-        // `react/no-derived-state-effect` never needed what it buys. See
-        // ubugeeei-prod/uf#668.
-        //
-        // Lowered, not raw: `component` and `match` are Flow's own syntax, and
-        // this rule reads functions and calls. After the lowering a component
-        // *is* a `FunctionDeclaration`, which is the tree the rule was always
-        // written against.
-        let (program, _) = uf_transform::lowered_ast(source).ok()?;
-        let mut found = Vec::new();
-        if wants_effects {
-            found.extend(derived_state_effects(&program));
-        }
-        // An error here is a bug in uf rather than in the module — the tree
-        // did not fit the compiler's own schema — and it says nothing about
-        // the effects the other rule already found, so it costs that rule
-        // nothing.
-        if wants_memo
-            && let Ok(file) = uf_transform::babel_from_lowered(program, source)
-            && let Ok(redundant) = uf_transform::redundant_memoization(&file, source, &options)
-        {
-            found.extend(redundant.into_iter().map(|memo| TreeFinding {
-                kind: FindingKind::RedundantMemo,
-                line: memo.line,
-                column: memo.column,
-                message: format!(
-                    "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
-                    memo.hook
-                ),
-            }));
-        }
-        Some(found)
-    };
-
-    std::thread::scope(|scope| {
-        std::thread::Builder::new()
-            .stack_size(uf_flow::PARSE_STACK_BYTES)
-            .spawn_scoped(scope, || {
-                let found = work();
-                // Spans opened here are thread-local and die with the thread;
-                // this is the hand-over `scope::flush_thread_spans` documents.
-                uf_profiler::scope::flush_thread_spans();
-                found
-            })
-            .ok()?
-            .join()
-            .ok()?
-    })
 }
 
 /// The mode uf would compile this project's modules in.

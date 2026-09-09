@@ -2,28 +2,39 @@
 //! reading it as text, and the extension test that decides which files it claims.
 
 use uf_config::UniflowedConfig;
-use uf_flow::FlowParser;
+use uf_flow::ParseDiagnostic;
 use uf_profiler::profile_span;
 
 use crate::scan::FileScan;
-use crate::{Diagnostic, LintError, push, severity};
+use crate::{Diagnostic, Severity, push, severity};
 
-pub(crate) fn run_flow_syntax(
+/// Whether `flow/syntax` wants this module read, and at what severity.
+///
+/// Split from the report so that one parse can serve every runner that needs
+/// the module's tree — see [`super::module_tree`], which owns that parse.
+/// `flow/syntax` is the reason a module is read even when no other rule wants
+/// it, and it is the only runner whose answer is the parser's own output
+/// rather than a walk over the tree.
+pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Severity> {
+    let severity = severity(config, "flow/syntax")?;
+    is_flow_syntax_target(&scan.file.path).then_some(severity)
+}
+
+/// Report what the parser said.
+///
+/// `parsed` is `uf_flow::Parsed::diagnostics`, or the one diagnostic a refusal
+/// becomes: a linter that cannot parse a file has something to say about it
+/// and thirty thousand other files to get through, so a refusal is a
+/// diagnostic like any other and the run continues. `uf_flow::upstream` argues
+/// that at length.
+pub(super) fn report(
     scan: &FileScan<'_>,
-    config: &UniflowedConfig,
+    severity: Severity,
+    parsed: &[ParseDiagnostic],
     diagnostics: &mut Vec<Diagnostic>,
-) -> Result<(), LintError> {
+) {
     profile_span!("run_flow_syntax");
-    let Some(severity) = severity(config, "flow/syntax") else {
-        return Ok(());
-    };
-    if !is_flow_syntax_target(&scan.file.path) {
-        return Ok(());
-    }
-
-    let parser = FlowParser;
-    let outcome = parser.validate_source(&scan.file.source)?;
-    for diagnostic in outcome.diagnostics {
+    for diagnostic in parsed {
         push(
             diagnostics,
             scan.file,
@@ -31,11 +42,9 @@ pub(crate) fn run_flow_syntax(
             severity,
             diagnostic.line.unwrap_or(1) as usize,
             diagnostic.column.unwrap_or(0) as usize + 1,
-            diagnostic.message,
+            diagnostic.message.clone(),
         );
     }
-
-    Ok(())
 }
 
 /// Whether `path` is Flow source uf should parse.

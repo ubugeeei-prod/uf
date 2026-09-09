@@ -11,6 +11,7 @@
 //! columns count code points instead; [`crate::babel`] recomputes them from
 //! the offsets so every position downstream agrees.
 
+use flow_parser::ast;
 use flow_parser::estree_translator::{self, Config, OffsetStyle};
 use flow_parser::loc::Loc;
 use flow_parser::offset_utils::{OffsetKind, OffsetTable};
@@ -76,6 +77,33 @@ pub fn parse(source: &str) -> Result<Value, TransformError> {
         offset_style: OffsetStyle::JsIndices,
     };
     Ok(estree_translator::program(&offsets, &config, &ast))
+}
+
+/// Render a tree the caller already parsed, without parsing it again.
+///
+/// [`parse`] is this preceded by a call to `uf_flow::module::parse`, and the
+/// two exist separately because a caller may already have that tree. `uf lint`
+/// is the one that does: `flow/syntax` wants the parser's diagnostics, the JSX
+/// rules want the typed tree, and the `react/*` tree rules want this
+/// rendering — and before this seam existed, one `uf lint` of one module
+/// parsed it three times. `estree.rs` has always said the intent was "one
+/// file, one reading, whichever command asked"; this is what lets a command
+/// keep to it internally as well.
+///
+/// Infallible: a syntax error is a property of the parse, and a caller holding
+/// a tree has already been told about it — `uf_flow::Parsed::diagnostics`
+/// carries exactly what [`parse`] would have raised.
+#[must_use]
+pub fn render(program: &ast::Program<Loc, Loc>, source: &str) -> Value {
+    profile_span!("estree::render");
+    // JavaScript columns: UTF-16 code units, which is what source maps count.
+    let offsets = OffsetTable::make_with_kind(OffsetKind::JavaScript, source);
+    let config = Config {
+        include_locs: true,
+        include_filename: false,
+        offset_style: OffsetStyle::JsIndices,
+    };
+    estree_translator::program(&offsets, &config, program)
 }
 
 #[cfg(test)]

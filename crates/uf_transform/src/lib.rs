@@ -247,6 +247,32 @@ pub fn lowered_ast(source: &str) -> Result<(Value, lower::Lowered), TransformErr
     Ok((program, lowered))
 }
 
+/// [`lowered_ast`] for a caller that has already parsed the module.
+///
+/// The lowering half of the pipeline over a tree somebody else read. `uf lint`
+/// is the caller this exists for: it holds a `uf_flow::Parsed` because
+/// `flow/syntax` and the JSX rules both want it, and before this it handed the
+/// *source* back to `estree::parse` and had the module parsed a second time.
+///
+/// # Errors
+///
+/// [`TransformError::Lowering`] and [`TransformError::Internal`], exactly as
+/// [`lowered_ast`] raises them. There is no [`TransformError::Syntax`] here:
+/// the parse already happened, and its errors are the caller's.
+///
+/// # Call this from a thread with `uf_flow::PARSE_STACK_BYTES` of stack
+///
+/// For the reason [`babel_ast`] gives — and the caller is on one already,
+/// because that is where the tree it is holding had to be built.
+pub fn lowered_from_parsed(
+    program: &flow_parser::ast::Program<flow_parser::loc::Loc, flow_parser::loc::Loc>,
+    source: &str,
+) -> Result<(Value, lower::Lowered), TransformError> {
+    let mut rendered = estree::render(program, source);
+    let lowered = lower::lower(&mut rendered, source)?;
+    Ok((rendered, lowered))
+}
+
 /// The rest of [`babel_ast`], for a caller that already has [`lowered_ast`].
 ///
 /// # Errors

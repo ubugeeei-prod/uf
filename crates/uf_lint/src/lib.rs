@@ -39,16 +39,15 @@ use crate::rules::deprecated_aliases_for;
 use crate::runner::{
     run_fetch_no_global_override, run_flow_ambiguous_object_type, run_flow_deprecated_type,
     run_flow_export_renamed_default, run_flow_internal_type, run_flow_mixed_import_and_require,
-    run_flow_non_const_var_export, run_flow_syntax, run_flow_unclear_type,
-    run_flow_unnecessary_optional_chain, run_flow_unsafe_getters_setters,
-    run_flow_unsafe_object_assign, run_no_npm_script_invocation, run_no_tabs,
-    run_no_trailing_whitespace, run_package_no_npm_scripts, run_react_compiler_rules,
-    run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
-    run_react_no_default_export_component, run_react_tree_rules, run_router_reserved_files,
-    run_router_unsupported_segment, run_security_no_dangerously_set_inner_html,
-    run_security_no_eval, run_server_no_client_secret, run_server_no_server_only_import_in_client,
-    run_server_use_client_directive_position, run_server_use_server_actions, run_structure_rules,
-    run_tree_rules,
+    run_flow_non_const_var_export, run_flow_unclear_type, run_flow_unnecessary_optional_chain,
+    run_flow_unsafe_getters_setters, run_flow_unsafe_object_assign, run_module_tree_rules,
+    run_no_npm_script_invocation, run_no_tabs, run_no_trailing_whitespace,
+    run_package_no_npm_scripts, run_react_compiler_rules, run_react_component_syntax,
+    run_react_hook_syntax, run_react_native_platform_split, run_react_no_default_export_component,
+    run_router_reserved_files, run_router_unsupported_segment,
+    run_security_no_dangerously_set_inner_html, run_security_no_eval, run_server_no_client_secret,
+    run_server_no_server_only_import_in_client, run_server_use_client_directive_position,
+    run_server_use_server_actions, run_structure_rules,
 };
 use crate::scan::FileScan;
 use crate::suppression::UNKNOWN_SUPPRESSION_RULE;
@@ -221,7 +220,9 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
         }
     }
 
-    run_flow_syntax(&scan, config, &mut diagnostics)?;
+    // One parse serves `flow/syntax`, the JSX rules and the two `react/*`
+    // tree rules. See `runner::module_tree`.
+    run_module_tree_rules(&scan, config, &mut diagnostics)?;
     run_no_tabs(&scan, config, &mut diagnostics);
     run_no_trailing_whitespace(&scan, config, &mut diagnostics);
     run_no_npm_script_invocation(&scan, config, &mut diagnostics);
@@ -242,7 +243,6 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_react_no_default_export_component(&scan, config, &mut diagnostics);
     run_react_compiler_rules(&scan, config, &mut diagnostics);
     run_react_native_platform_split(&scan, config, &mut diagnostics);
-    run_react_tree_rules(&scan, config, &mut diagnostics);
     run_structure_rules(&scan, config, &mut diagnostics);
 
     run_server_no_client_secret(&scan, config, &mut diagnostics);
@@ -257,8 +257,6 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
 
     run_security_no_dangerously_set_inner_html(&scan, config, &mut diagnostics);
     run_security_no_eval(&scan, config, &mut diagnostics);
-
-    run_tree_rules(&scan, config, &mut diagnostics);
 
     if !suppressions.is_empty() {
         diagnostics
