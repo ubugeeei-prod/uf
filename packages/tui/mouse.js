@@ -34,12 +34,20 @@
 // the node under the pointer up through its parents. A component written
 // against OpenTUI's interaction page behaves the same way here.
 //
-// What is *not* here is `preventDefault()`. OpenTUI has one because it has a
-// default to prevent — a drag over selectable text selects it. This renderer
-// has no text selection yet (ubugeeei-prod/uf#314) and does not move focus on
-// a click, so nothing happens to a mouse event that a handler could suppress,
-// and a `preventDefault()` that suppressed nothing would be a promise rather
-// than a method. It arrives with selection.
+// `preventDefault()` is here now, and it is worth saying what it prevents,
+// because a method that suppressed nothing would be a promise rather than a
+// method — which is why this module did not have one until there was a default
+// to suppress. There is exactly one: a left press clears the selection and, if
+// it landed on selectable text, starts a new one. A handler that calls
+// `preventDefault()` on that `down` keeps the selection the reader already
+// had and starts none, which is what a box that does its own thing with a
+// drag — a slider, a canvas, a splitter — needs in order not to leave a
+// highlight behind it. Nothing else this renderer does to a mouse event can be
+// prevented, and no other event type has anything to prevent.
+//
+// It is not a severity of `stopPropagation()`, the same way it is not one for
+// a key: one of them decides whether anybody else sees the event, the other
+// decides whether the renderer acts on it.
 
 /** OpenTUI's nine mouse event types. */
 export type MouseEventType =
@@ -130,8 +138,18 @@ export type MouseEvent = {
   source: string | null,
   /** Stop the event reaching this node's ancestors. */
   stopPropagation(): void,
+  /**
+   * Keep the renderer from doing its own thing with this event.
+   *
+   * On a left `"down"` that is the selection: the one the reader had is kept,
+   * and no new one begins under this press. Every other event type has no
+   * default, so calling this on one is harmless and does nothing.
+   */
+  preventDefault(): void,
   /** Whether `stopPropagation()` was called. */
   propagationStopped: boolean,
+  /** Whether `preventDefault()` was called. */
+  defaultPrevented: boolean,
 };
 
 /** The fields a decoded report carries before routing fills the rest in. */
@@ -164,8 +182,12 @@ export function mouseEvent(fields: MouseFields): MouseEvent {
     currentTarget: null,
     source: null,
     propagationStopped: false,
+    defaultPrevented: false,
     stopPropagation() {
       event.propagationStopped = true;
+    },
+    preventDefault() {
+      event.defaultPrevented = true;
     },
   };
   return event;

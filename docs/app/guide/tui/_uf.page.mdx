@@ -380,6 +380,11 @@ modifier key nobody mentioned. An application that handles the mouse is trading
 that away on purpose; one that ignores it should not have it traded away on its
 behalf. `testRender` turns it on, because there is no terminal there to damage.
 
+What the trade buys back is the next section: with the mouse on, this renderer
+draws and reports the selection itself, so the gesture a reader knows still
+works — over a smaller amount of text than the terminal could offer, but with
+the same hand.
+
 With it on, every `Box` takes OpenTUI's handlers — `onMouseDown`, `onMouseUp`,
 `onMouseMove`, `onMouseDrag`, `onMouseDragEnd`, `onMouseDrop`, `onMouseOver`,
 `onMouseOut`, `onMouseScroll`, and `onMouse` for all of them:
@@ -451,6 +456,88 @@ old for SGR-encoded reports gets no mouse rather than a wrong one — its
 encoding cannot express a column past 223, and this decoder recognises those
 reports only to discard them, so a click on such a terminal does nothing
 instead of typing three characters into whatever has focus.
+
+## Selecting text
+
+Turning the mouse on takes the terminal's own click-and-drag selection away
+from the reader, so the mouse brings a replacement with it. **A left press on
+text and a drag from it selects the cells between the two**, drawn inverse, and
+the application reads them back:
+
+```js
+component Output(lines: Array<string>) {
+  const renderer = useRenderer();
+  const [yanked, setYanked] = useState<string>("");
+  useKeyboard((key) => {
+    if (key.name === "y" && renderer.hasSelection()) {
+      setYanked(renderer.getSelectedText());
+      renderer.clearSelection();
+    }
+  });
+  return (
+    <Box>
+      {lines.map((line) => (
+        <Text key={line}>{line}</Text>
+      ))}
+      <Text dim={true}>{yanked}</Text>
+    </Box>
+  );
+}
+```
+
+That example keeps the text rather than copying it, and the reason is that
+there is no clipboard here: `getSelectedText()` hands back a string and
+OpenTUI's clipboard API is still
+[#314](https://github.com/ubugeeei-prod/uf/issues/314). What the renderer owns
+is the selection: one per renderer, because a frame has one way of showing that
+a cell is selected.
+
+**A selection is two cells of the screen, not a range inside your text.** That
+is the same thing a terminal's own selection is, and it is why dragging works
+over a `ScrollBox`, over clipped content, and over two `Text`s in a row without
+any of them knowing about each other. It also has a consequence worth saying
+out loud: a selection survives a re-render, and if the text under it moved, the
+selection now covers what moved in. A terminal behaves the same way, and the
+alternative — dropping the selection on every commit — would drop it on the
+keystroke that scrolled the window somebody was selecting from. A *resize* does
+drop it, because the emulator reflowed the screen in a way this renderer
+neither performed nor can predict.
+
+Each row of a selection runs from its first selectable cell to its last and
+keeps what is between them, so a row laid out as two columns comes back with
+the gap in it rather than as one run-on word. Blanks outside that span are the
+shape of the box and are not copied.
+
+**Text is selectable unless something says otherwise**, which is OpenTUI's
+default. `selectable={false}` is inherited like a colour, so one prop keeps a
+whole status bar or a decorative frame out of a copy:
+
+```js
+<Box selectable={false}>
+  <Text dim={true}>3 workers · 12 files · 1.2s</Text>
+</Box>
+```
+
+`selectionFg` and `selectionBg` name the colours instead of inverting, and are
+inherited the same way. Inverse is the default because `SGR 7` exists on
+terminals with no colour at all, and because toggling it — rather than setting
+it — leaves the cell an `Input` draws its cursor in visible as a hole in the
+highlight.
+
+**A press clears the selection, and `preventDefault()` is how a box keeps it.**
+That is the renderer's one default and therefore the only thing that method
+does. A box that means its own thing by a drag — a splitter, a canvas, a slider
+— suppresses it and leaves the reader's highlight alone:
+
+```js
+<Box id="splitter" onMouseDown={(event) => event.preventDefault()} onMouseDrag={resize} />
+```
+
+What is not here is OpenTUI's repeated-press gestures: a second press does not
+select the word under the pointer and a third does not select the line. There
+is one selection behaviour rather than three, so there is no `behavior` to
+report, and that is [#314](https://github.com/ubugeeei-prod/uf/issues/314) as
+well.
 
 ## Terminals that cannot do what yours can
 
@@ -536,18 +623,20 @@ behind it, which is the thing this was fixing.
 
 ## What is not here yet
 
-Text selection, key release, images, the rich-content components (`Code`,
-`Markdown`, `Diff`, `TextTable`) and OpenTUI's application APIs — clipboard,
-notifications, audio, animation — are not implemented. They are
+Key release, images, the rich-content components (`Code`, `Markdown`, `Diff`,
+`TextTable`) and OpenTUI's application APIs — clipboard, notifications, audio,
+animation — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
 rather than present as functions that throw: `uf inspect` reports four
 components because there are four.
 
-Selection is the one to expect next, and it is the mouse's other half: drag
-over `selectable` text, one selection per renderer, `getSelectedText()`. It is
-also where `preventDefault()` on a mouse event starts to mean something —
-there is no such method today, because nothing this renderer does to a mouse
-event by default could be prevented.
+The clipboard is the one to expect next, and it is the half of the section
+above that is missing: `getSelectedText()` hands back a string, and putting a
+string where the reader's next paste will find it is an OSC 52 sequence, a
+terminal that may refuse it, and a fallback nobody has argued out yet. The
+other near one is *item* selection — `Select` and `TabSelect`, which are
+components rather than a renderer capability, and which is why `uf inspect`
+reports text selection as implemented and neither of them as existing.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not

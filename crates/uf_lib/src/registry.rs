@@ -777,6 +777,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "parseColor",
                 "plainCapabilities",
                 "render",
+                "selectionContains",
                 "testRender",
                 "useKeyboard",
                 "useRenderer",

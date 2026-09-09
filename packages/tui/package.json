@@ -19,6 +19,7 @@
     "./keys": "./keys.js",
     "./layout": "./layout.js",
     "./mouse": "./mouse.js",
+    "./selection": "./selection.js",
     "./terminal": "./terminal.js",
     "./widths": "./widths.js",
     "./package.json": "./package.json"
