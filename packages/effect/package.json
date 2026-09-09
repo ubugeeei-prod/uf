@@ -18,7 +18,8 @@
   "files": [
     "index.js",
     "schedule.js",
-    "stream.js"
+    "stream.js",
+    "!*.test.js"
   ],
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.18"

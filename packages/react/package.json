@@ -15,7 +15,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "index.js"
+    "index.js",
+    "!*.test.js"
   ],
   "peerDependencies": {
     "react": ">=19"
