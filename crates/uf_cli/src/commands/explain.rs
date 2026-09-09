@@ -290,7 +290,9 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "execution",
             provider: "uf".to_string(),
             detail: format!(
-                "a task with a `command` runs here; package scripts are {}",
+                "a task with a `command` runs here — started by uf when the command is a \
+                 program and its arguments, through `sh -c` when it uses shell syntax; \
+                 package scripts are {}",
                 if resolved.config.task_runner.allow_package_scripts {
                     "allowed"
                 } else {

@@ -3,7 +3,8 @@
 //! `docs/roadmap.md` promised "cached, dependency-aware task execution" and
 //! `uf run` was a `sh -c` per task, in a depth-first `for` loop, with no
 //! memory between runs. This crate is the three things that sentence names,
-//! and it is deliberately not the fourth thing it could have been.
+//! plus the one the `sh` was — and it is deliberately not the fifth thing it
+//! could have been.
 //!
 //! * **Dependency-aware.** A plan is a graph, not a recursion, so two tasks
 //!   with no path between them run at once — bounded by
@@ -22,6 +23,12 @@
 //!   of a green pipeline reads like the first one rather than like nothing
 //!   happening.
 //!
+//! * **Started, rather than handed to a shell.** [`command::parse`] reads a
+//!   task's command string, and a command that is a program and its arguments
+//!   — every one of this repository's own — is started by uf on any platform,
+//!   `sh` or no `sh`. A command that uses shell syntax says which construct
+//!   made it one, so the caller can name it.
+//!
 //! What it is not is a build system. It does not restore artefacts, it does
 //! not know what a task read that the task did not declare, and it has no
 //! opinion about workspaces — `--filter` and the rest of ubugeeei-prod/uf#272
@@ -29,12 +36,14 @@
 //! something it checked.
 
 mod cache;
+mod command;
 mod digest;
 mod graph;
 mod inputs;
 mod runner;
 
 pub use crate::cache::{Change, TaskCache};
+pub use crate::command::{Command, Direct, ShellSyntax, parse};
 pub use crate::graph::{Plan, PlanError, PlanNode};
 pub use crate::inputs::InputError;
 pub use crate::runner::{

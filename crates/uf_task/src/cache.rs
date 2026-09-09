@@ -21,7 +21,8 @@
 //!   task in this repository that runs uf does exactly that.
 //! * **Nothing is cached by default.** `uf check` can cache every file it sees
 //!   because it knows what it read: it *is* the reader. Nothing here knows what
-//!   `sh -c "tools/ci/whatever.sh"` opens. So the input set is declared, and a
+//!   `tools/ci/whatever.sh` opens once it is running — [`crate::command`] says
+//!   what a task starts, not what it reads. So the input set is declared, and a
 //!   task that declares none always runs. See
 //!   [`uf_config::TaskDefinition::is_cacheable`].
 //! * **A record is not answered from unless the declared outputs are still

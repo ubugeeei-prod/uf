@@ -765,12 +765,20 @@ A `**` does not descend into `.git`, `.uf`, `.uniflowed`, `dist`,
 `node_modules` or `target`, but a pattern that names a path inside one of them
 — `target/release/uf` — still resolves.
 
+`command` is a program and its arguments, which uf starts itself — quoting,
+escaping and word splitting are a POSIX shell's, and a `NAME=value` in front
+of the program is the child's environment. A command that uses shell syntax
+(`|`, `&&`, `;`, a redirection, `$VAR`, a glob) goes to `sh -c` instead, and
+so needs a machine that has one; [`uf run`](/reference/cli#uf-run-script-args)
+says what falls on each side.
+
 `inputs` is what uf keys the cache on, so it has to be everything the task
 reads. **A task that declares none always runs**, which is the honest default:
-uf cannot see what a shell command opens, so a task that has not said is a
-task uf will not guess about. `cache: false` opts a task that does declare
-them back out; `cache: true` is that default said out loud, and is an error on
-a task with no `inputs` rather than a request uf quietly ignores.
+uf knows what a command starts and not what it opens once it is running, so a
+task that has not said is a task uf will not guess about. `cache: false` opts
+a task that does declare them back out; `cache: true` is that default said out
+loud, and is an error on a task with no `inputs` rather than a request uf
+quietly ignores.
 
 `outputs` is checked rather than restored: a cached result is replayed only
 while the files it produced are still on disk with the contents it produced,
