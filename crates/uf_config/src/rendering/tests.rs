@@ -1,7 +1,7 @@
 use camino::Utf8Path;
 
 use super::{PlanSource, Prerender, RenderingPlan, check};
-use crate::{ConfigError, RenderingMode, UniflowedConfig};
+use crate::{ConfigError, Navigation, RenderingMode, UniflowedConfig};
 
 /// A config whose `modes` is exactly `modes`, with everything else default.
 fn with_modes(modes: &[RenderingMode]) -> UniflowedConfig {
@@ -126,4 +126,61 @@ fn static_build_with_no_ssg_is_the_contradiction_that_is_refused() {
     let message = error.to_string();
     assert!(message.contains("staticBuild"), "{message}");
     assert!(message.contains("ssg"), "{message}");
+}
+
+#[test]
+fn navigation_is_the_client_router_unless_a_project_says_otherwise() {
+    let plan = RenderingPlan::resolve(&UniflowedConfig::default());
+    assert_eq!(plan.navigation(), Navigation::Client);
+    assert!(plan.ships_a_client_router());
+}
+
+#[test]
+fn document_navigation_changes_nothing_about_the_prerender() {
+    // The whole argument for `navigation` being a second key rather than a
+    // fifth `modes` value, as an assertion: it composes with each of the three
+    // prerender answers and moves none of them.
+    for modes in [
+        vec![RenderingMode::Ssg, RenderingMode::Ssr],
+        vec![RenderingMode::Ssg],
+        vec![RenderingMode::Ssr],
+    ] {
+        let mut config = with_modes(&modes);
+        let before = RenderingPlan::resolve(&config);
+        config.app.rendering.navigation = Navigation::Document;
+        let after = RenderingPlan::resolve(&config);
+        assert_eq!(before.prerender(), after.prerender(), "{modes:?}");
+        assert_eq!(before.emits_a_server(), after.emits_a_server(), "{modes:?}");
+        assert_eq!(before.source(), after.source(), "{modes:?}");
+        assert!(!after.ships_a_client_router(), "{modes:?}");
+    }
+}
+
+#[test]
+fn a_static_build_carries_its_navigation_too() {
+    // `staticBuild` returns early, before the match, so it is the one path
+    // that could have dropped the setting on the floor.
+    let mut config = UniflowedConfig::default();
+    config.build.static_build = true;
+    config.app.rendering.navigation = Navigation::Document;
+    let plan = RenderingPlan::resolve(&config);
+    assert_eq!(plan.prerender(), Prerender::Everything);
+    assert!(!plan.emits_a_server());
+    assert_eq!(plan.navigation(), Navigation::Document);
+}
+
+#[test]
+fn document_navigation_is_never_a_refusal_on_its_own() {
+    // There is no `modes` it contradicts: every cell of the table in
+    // `Navigation`'s documentation is a deployment somebody wants.
+    for modes in [
+        vec![RenderingMode::Ssg, RenderingMode::Ssr],
+        vec![RenderingMode::Ssg],
+        vec![RenderingMode::Ssr],
+        vec![RenderingMode::Ssg, RenderingMode::Isr],
+    ] {
+        let mut config = with_modes(&modes);
+        config.app.rendering.navigation = Navigation::Document;
+        check(Utf8Path::new("uf.config.js"), &config).unwrap();
+    }
 }

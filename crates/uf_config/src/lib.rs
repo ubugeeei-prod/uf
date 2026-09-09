@@ -21,7 +21,7 @@ pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
     EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, HighlightConfig, HighlightThemes,
     LinkPrefetchMode, LoaderConfig, MarkdownConfig, MarkdownEngineConfig, MdxConfig,
-    MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, OrmConfig, PwaConfig,
+    MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, Navigation, OrmConfig, PwaConfig,
     ReactCompilerConfig, ReactCompilerImplementation, ReactCompilerMode, ReactConfig,
     RenderingConfig, RenderingMode, RouterConfig, RouterConvention, RuntimeTarget, StyleEngine,
     TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,

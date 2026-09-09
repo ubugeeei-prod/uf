@@ -1869,16 +1869,57 @@ export type RouteInfo = {|
   readonly pending: boolean,
 |};
 
+/**
+ * What this application does when a visitor follows a link.
+ *
+ * `app.rendering.navigation` in `uf.config.js`, and the same two words: the
+ * client router takes the link over, or the browser does.
+ */
+export type Navigation = "client" | "document";
+
 type RouterState = {|
   readonly resolved: ResolvedRoute,
   readonly router: Router,
   readonly pending: boolean,
+  readonly navigation: Navigation,
 |};
 
 const RouterContext: React.Context<?RouterState> = createContext(null);
 
 /** The route table the application was started with. */
 let installedTable: ?RouteTable = null;
+
+/**
+ * How the application navigates, installed by the entry that started it.
+ *
+ * Module state beside `installedTable`, and for the same reason: the entry is
+ * the only thing that knows, and every component that needs the answer is
+ * somewhere under a `RouterProvider` it did not construct. `routerView` builds
+ * that provider from two props the server handed it, and threading a third one
+ * from the entry through the application root would have made every
+ * hand-written `<App>` in a test a place the default lives.
+ *
+ * `"client"` until something says otherwise, which is what every uf
+ * application did before `app.rendering.navigation` existed and what a test
+ * that renders `routerView` directly still gets.
+ */
+let installedNavigation: Navigation = "client";
+
+/**
+ * Say how this application navigates. Called once, by the client entry.
+ *
+ * `@uniflowed/vite` generates the call into `virtual:uf/client` from
+ * `app.rendering.navigation`; nothing else should call it, and calling it after
+ * the first render is a change no rendered `Link` will notice.
+ */
+export function installNavigation(navigation: Navigation): void {
+  installedNavigation = navigation;
+}
+
+/** How this application navigates. */
+export function navigationMode(): Navigation {
+  return installedNavigation;
+}
 
 /** Register the generated route table. Called once by the client and server entries. */
 export function installRoutes(table: RouteTable): void {
@@ -1926,10 +1967,31 @@ function isBrowser(): boolean {
  * provider listens to history and to `Link` clicks; a navigation resolves the
  * next route (loading its chunks and running its loader) *before* committing,
  * inside a transition, so the previous page stays interactive meanwhile.
+ *
+ * # Unless the application asked the browser to do it
+ *
+ * Under `app.rendering.navigation: "document"` every one of those sentences
+ * stops being true, and the provider is still here: the tree below it still
+ * reads `useRoute`, still renders `<RouteView>`, and still hydrates whatever
+ * `"use client"` boundary made the document interactive. What it does not do is
+ * take the link over. `navigate` hands the URL to the browser, no `popstate`
+ * listener is installed, and `prefetch` — which exists to load the chunks of a
+ * route this page will render — has no page to load them for.
+ *
+ * That is one branch rather than a second provider because the two differ in
+ * what happens on a click and in nothing else. A second implementation would
+ * have had to keep `resolved`, `pending`, the context and every hook that
+ * reads it in step with this one, which is four things to keep in step for one
+ * that actually differs.
  */
 export component RouterProvider(url: string, initial: ResolvedRoute, children: React.Node) {
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
   const [pending, setPending] = useState<boolean>(false);
+  // Read once per render rather than per navigation: it is installed by the
+  // entry before the first render and never changes after it, and a `Link`
+  // that asked at click time would be asking a question whose answer decided
+  // what it rendered.
+  const navigation = navigationMode();
 
   const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (!isBrowser()) {
@@ -1937,6 +1999,19 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     }
     const target = new URL(to, window.location.href);
     const next = target.pathname + target.search;
+    // The browser's job in this application. `assign` and `replace` rather
+    // than the history API, because the point is a document request: the
+    // history entry, the scroll position, the `Referer` and the unload
+    // handlers are then the browser's, done the way they are done for a link
+    // in a page with no JavaScript on it at all.
+    if (navigation === "document") {
+      if (options?.replace === true) {
+        window.location.replace(target.href);
+      } else {
+        window.location.assign(target.href);
+      }
+      return;
+    }
     // The half of the split that is not about bytes. A route whose page is not
     // in this bundle is not a route this router can render, and pretending
     // otherwise is the silent break: the navigation would resolve to nothing
@@ -1986,6 +2061,15 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     if (!isBrowser()) {
       return undefined;
     }
+    // Nothing pushed a history entry, so there is nothing to pop back into: a
+    // document-navigating application left this page when the link was
+    // followed, and the back button asks the browser for the previous document
+    // rather than asking this listener to rebuild it. Installing one anyway
+    // would put a `resolveMatch` on the back button of a page that is about to
+    // be replaced by the one the browser already has.
+    if (navigation === "document") {
+      return undefined;
+    }
     const onPopState = () => {
       const next = window.location.pathname + window.location.search;
       // Back into a route this bundle has no page for. The history entry is
@@ -2015,7 +2099,12 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     push: (to, options) => navigate(to, options),
     replace: (to) => navigate(to, { replace: true }),
     prefetch: async (to) => {
-      if (!isBrowser()) {
+      // A prefetch loads the modules the *next render* will need, and under
+      // document navigation there is no next render in this page: the browser
+      // fetches a document and throws this one away. Loading the chunks would
+      // be bytes spent on a page that is leaving, so this declines rather than
+      // warming a cache nothing reads.
+      if (!isBrowser() || navigation === "document") {
         return;
       }
       const target = new URL(to, window.location.href);
@@ -2031,6 +2120,14 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     },
     refresh: async () => {
       if (!isBrowser()) {
+        return;
+      }
+      // The same URL, rendered again — which under document navigation is what
+      // the browser calls a reload. Resolving it in the page instead would
+      // re-run the loader and commit a tree whose links this application has
+      // already said it does not drive.
+      if (navigation === "document") {
+        window.location.reload();
         return;
       }
       const nextResolved = await resolveMatch(
@@ -2057,7 +2154,7 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     },
   };
 
-  const value: RouterState = { resolved, router, pending };
+  const value: RouterState = { resolved, router, pending, navigation };
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 
@@ -2747,6 +2844,22 @@ export type LinkPrefetch = "off" | "intent" | "render";
  * default) loads the destination's chunks on hover or focus, and
  * `transition={false}` makes this one navigation a cut — most navigations are
  * a link, so the opt-out in [`NavigateOptions`] has to be reachable from one.
+ *
+ * # Under `app.rendering.navigation: "document"` it is only the anchor
+ *
+ * No click handler of uf's, no `preventDefault`, no prefetch listeners: the
+ * element the browser gets is the one it would have got from `<a href>` in the
+ * source. That is the whole of what changing the mode does to a component,
+ * which is the point — a project moving between the two rewrites its
+ * `uf.config.js` and none of its pages, and a component library built on
+ * `Link` works in both without knowing which it is in.
+ *
+ * It matters that the handler is *absent* rather than a handler that calls
+ * `location.assign`. The two look the same for a left click and are not the
+ * same link: `preventDefault` and a scripted navigation lose `download`, lose
+ * a `target`, and change what the browser does with a middle click and with a
+ * gesture uf has not heard of. An ordinary link is not an approximation of an
+ * ordinary link.
  */
 export component Link(
   to: string,
@@ -2758,11 +2871,12 @@ export component Link(
   onClick?: (event: SyntheticMouseEvent<HTMLAnchorElement>) => mixed,
   ...rest: { readonly [string]: mixed }
 ) {
-  const router = useRouter();
+  const { router, navigation } = useRouterState();
   const prefetched = React.useRef(false);
+  const drives = navigation === "client";
 
   const doPrefetch = () => {
-    if (prefetch === "off" || prefetched.current || isExternal(to)) {
+    if (!drives || prefetch === "off" || prefetched.current || isExternal(to)) {
       return;
     }
     prefetched.current = true;
@@ -2798,14 +2912,18 @@ export component Link(
     });
   };
 
+  // The caller's own `onClick` still runs under document navigation — it is
+  // theirs, and an application that closes a menu when a link is clicked is
+  // not asking uf to take the navigation over — so it is passed through rather
+  // than dropped with the rest of the behaviour.
   return (
     <a
       {...rest}
       href={to}
       className={className}
-      onClick={handleClick}
-      onMouseEnter={prefetch === "intent" ? doPrefetch : undefined}
-      onFocus={prefetch === "intent" ? doPrefetch : undefined}
+      onClick={drives ? handleClick : onClick}
+      onMouseEnter={drives && prefetch === "intent" ? doPrefetch : undefined}
+      onFocus={drives && prefetch === "intent" ? doPrefetch : undefined}
     >
       {children}
     </a>

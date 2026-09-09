@@ -803,15 +803,31 @@ export default routes;
  * hydrates the way its deployment does, which is the whole of the escape
  * hatch.
  *
+ * # Navigation is a generated constant for a different reason
+ *
+ * `app.rendering.navigation` decides whether the client router takes a link
+ * over, and it is written in here for the reason Strict Mode is not: it must
+ * be the *same* in development and in the build. A `uf dev` whose links
+ * resolve in the page and a deployment whose links fetch a document are two
+ * applications, and the one a person is looking at is the one that is not
+ * deployed. So this is generated from the config with no `isProduction` beside
+ * it, and `uf dev`, `uf build` and `uf preview` all get what the project asked
+ * for.
+ *
+ * `"client"` is emitted as an absent argument rather than as
+ * `navigation: "client"`, so the module a default project gets is byte for
+ * byte the one it got before this option existed.
+ *
  * @param {string} appEntry the project's `app.js`, as an import specifier
- * @param {{ strictMode?: boolean }} [options]
+ * @param {{ strictMode?: boolean, navigation?: "client" | "document" }} [options]
  */
 export function clientModuleSource(appEntry, options = {}) {
   const strictMode = options.strictMode === true ? ", strictMode: true" : "";
+  const navigation = options.navigation === "document" ? ', navigation: "document"' : "";
   return `import { hydrate } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-hydrate({ App, routes, notFound, errors${strictMode} });
+hydrate({ App, routes, notFound, errors${strictMode}${navigation} });
 `;
 }
 
