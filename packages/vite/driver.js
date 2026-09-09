@@ -423,6 +423,30 @@ async function preview() {
   if (handle != null) {
     server.middlewares.use(answer(server));
   }
+  // The rewrite rule a single-page deployment needs, in the one place uf can
+  // apply one. A `["csr"]` build writes `index.html` and nothing else that is a
+  // page, so a file server answers `/` and 404s every other URL — and this
+  // preview exists to be believed about the deployment. A host serving that
+  // build has to send unmatched paths to the shell, so a preview that did not
+  // would be right about a deployment nobody is doing.
+  //
+  // Behind the static middleware, which is what makes it a *fallback*: a real
+  // file still wins, so `/assets/client.js` is still the chunk and not the
+  // shell. And `Accept: text/html` only, so a `fetch` for a missing JSON file
+  // gets a 404 rather than a document — the failure mode of a fallback that
+  // answers everything is a parse error two layers away from the missing file.
+  if (flag("--spa-fallback")) {
+    const shell = path.resolve(root, inline.build.outDir, "index.html");
+    server.middlewares.use((request, response, next) => {
+      if (request.method !== "GET" && request.method !== "HEAD") return next();
+      if (!(request.headers.accept ?? "").includes("text/html")) return next();
+      if (!existsSync(shell)) return next();
+      response.statusCode = 200;
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end(request.method === "HEAD" ? undefined : readFileSync(shell));
+      return undefined;
+    });
+  }
 
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
@@ -657,11 +681,50 @@ async function build() {
   // host would then serve uf's error page to every visitor who mistyped a URL,
   // and nothing between the throw and the deploy would have mentioned it.
   let attempted = pages.length;
+  // The single-page build's whole output, written here because it is the one
+  // document this build has and the loop above had no route to write it for.
+  //
+  // Twice, to two names, and the second is the load-bearing one. `index.html`
+  // is what a host serves for `/`; `404.html` is what a static host serves for
+  // every path it has no file for, which under this plan is *every other URL
+  // in the application*. Without it a deployment of `dist/` answers `/` and
+  // 404s `/orders` — a build with a hole in it, found from a 404, which is the
+  // failure ubugeeei-prod/uf#336 is about wearing a different hat.
+  //
+  // It is still the host's rewrite rule that makes this correct, and the two
+  // files are what uf can do without one: a host with a proper SPA fallback
+  // serves `index.html` and never looks at `404.html`, and a host with only an
+  // error document (Pages, Netlify, an S3 bucket) serves `404.html` and gets
+  // the same bytes with a 404 status — which is the right status for a URL
+  // this application does not have, and the not-found boundary is what the
+  // browser then renders into it.
+  if (prerender === "shell") {
+    const html = server.shellDocument(assets);
+    for (const [file, url, status] of [
+      ["index.html", "/", 200],
+      ["404.html", "/404", 404],
+    ]) {
+      const target = path.join(outDir, file);
+      writeFileSync(target, html);
+      attempted += 1;
+      emit("page", {
+        url,
+        file: path.relative(root, target),
+        status,
+        bytes: Buffer.byteLength(html),
+      });
+    }
+  }
   // Not for a build that prerenders nothing. `404.html` is a file a static
   // host serves for every path it has no file for, and a project whose
   // `rendering.modes` allows only `ssr` has no such host: its not-found
   // boundary is rendered per request, by the server, with the right status.
-  if (prerender !== "nothing" && server.notFound.some((boundary) => boundary.path === "/")) {
+  //
+  // Nor for a shell build, which has just written its own: the boundary this
+  // would render is one the *browser* renders in that plan, and a document
+  // holding the framework's 404 markup would be served in place of the shell
+  // for every URL the host could not match.
+  else if (prerender !== "nothing" && server.notFound.some((boundary) => boundary.path === "/")) {
     attempted += 1;
     // `/404` rather than `/__uf_not_found__`: the internal path is how the
     // router is asked, and the file the reader is looking for is `404.html`.
@@ -1536,6 +1599,15 @@ function readManifest(outDir) {
 async function renderingPlan(server, prerender) {
   const urls = [];
   const perRequest = [];
+
+  // One document, and it is no route's, so there is no route to ask anything
+  // about. `perRequest` is empty rather than "every route": nothing here is
+  // left for a server — the browser answers all of it — and listing routes
+  // under a heading that means "these need a process" would be a build
+  // describing itself wrongly to `uf`, which prints that list.
+  if (prerender === "shell") {
+    return { urls: [], perRequest: [] };
+  }
 
   // Nothing is prerendered and nothing is refused, so no page module is
   // loaded: a project that renders everything per request should not pay for

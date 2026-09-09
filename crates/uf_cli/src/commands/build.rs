@@ -52,6 +52,7 @@ use crate::ui::Ui;
 mod guards;
 mod library;
 mod site;
+mod spa;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
@@ -279,6 +280,28 @@ pub(crate) fn build(
     // without evaluating a module. Checked here rather than in the builder for
     // exactly that reason — see `refuse_unanswerable_actions`.
     refuse_unanswerable_actions(plan, &rsc, adapter, standalone)?;
+    // And everything else that needs one, for the one plan whose builder will
+    // never find it. The other three prerender something, so a page that reads
+    // a request throws while it is being rendered and the build says so; a
+    // shell build renders no route at all, so the same page would build,
+    // deploy, and fail in a browser. See [`spa`].
+    //
+    // Not lifted by `--adapter` or `--compile`, unlike the actions above, and
+    // the difference is which declaration each is about. `staticBuild` is a
+    // claim about the *artefact*, so a build that also emits a server has
+    // honoured it; `modes: ["csr"]` is a claim about the **routes** — that
+    // every one of them is rendered in a browser — and that is still true
+    // inside a Worker or an executable, because neither of them writes the
+    // per-route documents the shell exists instead of.
+    if plan.prerender() == Prerender::Shell {
+        spa::refuse(
+            &resolved.root,
+            &routes,
+            &server_modules,
+            &rsc.graph,
+            &plan.because(),
+        )?;
+    }
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -523,6 +546,7 @@ pub(crate) fn build(
         Prerender::Everything => "every route prerendered",
         Prerender::Possible => "prerendered where it can be, the rest per request",
         Prerender::Nothing => "nothing prerendered; every route per request",
+        Prerender::Shell => "one shell prerendered; every route rendered in the browser",
     };
     // And what it decided about the other axis. A row rather than a line only
     // when it is not the default: `app.rendering.navigation` is `client` in
