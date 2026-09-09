@@ -322,6 +322,15 @@ pub(crate) fn deploy(
         copied.count(fs::metadata(directory.join(entry).as_std_path())?.len());
     }
 
+    // The last thing before this directory is reported as an artefact: what it
+    // says about its scheduled work, read back out of the files rather than
+    // assumed from the list they were written from. `entry_files` above asks
+    // whether the driver wrote the entry it promised; this asks whether the
+    // entry and the platform file beside it agree about what runs — which is
+    // the question #712 shipped the wrong answer to. See
+    // [`schedules::assert_wired`].
+    schedules::assert_wired(adapter, &directory, schedules)?;
+
     Ok(Deployed {
         adapter,
         directory,
