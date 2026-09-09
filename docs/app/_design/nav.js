@@ -96,6 +96,18 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Files become routes; layouts nest; loaders run before the page.",
       },
       {
+        href: "/guide/server-components",
+        title: "Server Components",
+        blurb:
+          "The boundary a directive draws, the graph that resolves it, and a split at the route, not the module.",
+      },
+      {
+        href: "/guide/server-actions",
+        title: "Server actions",
+        blurb:
+          "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
+      },
+      {
         href: "/guide/styling",
         title: "Styling and content",
         blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
@@ -155,7 +167,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/cache",
         title: "Caching",
-        blurb: "A route cache and a fetch cache, opt-in, in memory, and honest about it.",
+        blurb:
+          "A route cache and a fetch cache, opt-in, in memory by default, durable when you say so.",
       },
       {
         href: "/guide/auth",
@@ -229,6 +242,12 @@ export const sections: $ReadOnlyArray<Section> = [
         title: "Internationalisation",
         blurb:
           "MessageFormat 2 with typed arguments, the subset uf implements, and where the type system stops.",
+      },
+      {
+        href: "/reference/std",
+        title: "Standard library",
+        blurb:
+          "The Go standard library modules JavaScript does not have, and the measurements behind why they are JavaScript.",
       },
     ],
   },

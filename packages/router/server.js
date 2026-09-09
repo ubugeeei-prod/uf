@@ -465,6 +465,36 @@ function redirectDocument(error: RedirectError): RenderResult {
  * carried two of them, one in each place, and only one was where a browser
  * looks. Hoisting the rendered one leaves the metadata with a single source.
  */
+/**
+ * The document a single-page build writes, and the only one it writes.
+ *
+ * `app.rendering.modes: ["csr"]` renders no route at build time: the client
+ * router resolves and renders every one of them in the browser, so what the
+ * build has to leave behind is the *chrome* — the stylesheets, the module
+ * script, and the empty root the client renders into. That is exactly
+ * [`shellFor`]'s three strings with nothing between them, which is why this is
+ * three concatenations rather than a fourth shape of document to keep in step
+ * with the other three.
+ *
+ * No React runs. There is nothing to render: no URL has been asked for, and
+ * whatever this document is served for is decided by the host rather than by
+ * this build.
+ *
+ * # What it costs, said here because it is not visible from the file
+ *
+ * The document has no `<title>`, no `<meta name="description">` and no content.
+ * A crawler that runs no JavaScript sees an empty page for **every** URL, and a
+ * reader sees nothing until the bundle has loaded and the route has resolved.
+ * That is what a single-page application is, and it is why `modes: ["csr"]` is
+ * a declaration a project makes rather than something a build falls back to.
+ * A project that wants a document per route has `ssg`, and one that wants a
+ * document per request has `ssr`.
+ */
+export function shellDocument(assets: RenderAssets): string {
+  const shell = shellFor(assets);
+  return `${shell.open}${shell.body}${shell.close}`;
+}
+
 function shellFor(assets: RenderAssets): DocumentShell {
   const head = headTags(assets);
   return {

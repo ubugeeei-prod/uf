@@ -42,11 +42,34 @@
 //
 // # Where it lives
 //
-// In memory, in one process. Four processes behind a load balancer hold four of
-// these and disagree; a restart empties it; `revalidateTag` in one of them does
-// not reach the other three. That is the whole truth about it today and there
-// is no configuration that changes it. What would is a durable store behind
-// `resolve`, which is an adapter's to provide.
+// In memory, in one process, unless a host gives the store somewhere else to
+// keep things. That was the whole truth once — four processes behind a load
+// balancer held four of these and disagreed, a restart emptied one, and
+// `revalidateTag` in one did not reach the other three — and the fix this
+// header named is now written: **a durable store behind `resolve`**.
+//
+// `./internal/cache-provider.js` is the seam, five methods over strings.
+// `./cache-filesystem.js` is one implementation of it, and a deployment adapter
+// with a Redis or a KV namespace writes another without uf naming either. A
+// store handed one keeps entries across a restart, shares them between
+// processes, and takes an invalidated tag out of the store all of them fill
+// from — which, with the `revalidate`/`expire` window and the on-demand
+// invalidation that were already here, is incremental static regeneration.
+//
+// Two things stay exactly as they were, and both are deliberate.
+//
+// **Nothing caches without a stated lifetime**, durable or not. Persistence is
+// a second opt-in on top of the first and never a way around it.
+//
+// **A durable store needs the identity of the build that filled it.**
+// `./internal/cache-key.js` argues why at length: a durable entry outlives the
+// build, so the build is the first member of every durable key, and a store
+// constructed with a provider and no `build` is refused rather than allowed to
+// serve the last deployment's documents.
+//
+// What is still not here is **prerendering into it** — `uf build` filling the
+// store so the first request to a cold URL is a read rather than a render. See
+// the guide.
 
 import type {
   CacheLifetime,
@@ -70,6 +93,20 @@ export type {
   CacheStoreOptions,
 } from "./internal/cache-store.js";
 export { CacheStore } from "./internal/cache-store.js";
+
+// The durable seam, re-exported from the package's front door for the cache so
+// that an adapter writing a provider imports one module and not two — and, more
+// to the point, so that "what a provider is" is part of the public surface
+// rather than something reached by path into `internal/`. `encodeCacheValue`
+// comes with them because a provider that wants to store something other than
+// a string — a Redis hash, a KV entry with metadata — still has to agree with
+// uf about what an entry *is*.
+export type { CacheProvider, DurableCacheEntry } from "./internal/cache-provider.js";
+export {
+  UnserialisableCacheValueError,
+  decodeCacheValue,
+  encodeCacheValue,
+} from "./internal/cache-provider.js";
 
 /**
  * Raised when something that only means anything inside a cached fill is called
@@ -116,7 +153,9 @@ export class OutsideCachedRequestError extends Error {
  *
  * A function rather than the constructor as the front door, so the store can
  * grow a second implementation — a durable one, from an adapter — without every
- * caller having named a class.
+ * caller having named a class. That second implementation turned out to be an
+ * option rather than a class: pass `provider` and `build` and the same store
+ * keeps its entries where the provider puts them.
  */
 export function createCacheStore(options?: CacheStoreOptions): CacheStore {
   return new CacheStore(options);
@@ -191,23 +230,65 @@ function require$Cache(binding: string): CacheOptions {
 }
 
 /**
- * Expire every entry filled under `tag`. Answers how many went.
+ * Expire every entry filled under `tag`. Answers how many went **here**.
  *
  * Expired, not marked stale: a tag is invalidated because somebody changed the
  * thing it names, so the entry is known wrong rather than possibly old. See
  * `./internal/cache-store.js`, which argues the difference.
  *
- * In this process. A deployment with four of them has four caches and this
- * empties one — which is why the count comes back rather than nothing, so a
- * caller can log what it actually did rather than what it meant to.
+ * The number is this process's, and with a durable store that is a smaller
+ * number than the invalidation. The store this process shares with the other
+ * three loses every entry carrying the tag; what this counts is the copies in
+ * *this* process's memory, because that is the only quantity available without
+ * making a mutation handler wait on a disk to find out an integer it is going
+ * to put in a log. Nothing is lost by that: the durable half is finished before
+ * the request is, which is what [`carryDurableWork`] arranges.
+ *
+ * With no durable store this is exactly what it always was — a count of what
+ * one process forgot, in a deployment where that is all there is to forget.
  */
 export function revalidateTag(tag: string): number {
-  return require$Cache("revalidateTag").store.revalidateTag(tag);
+  const store = require$Cache("revalidateTag").store;
+  const dropped = store.revalidateTag(tag);
+  carryDurableWork(store);
+  return dropped;
 }
 
-/** Expire every entry filled for `path`. Answers how many went. */
+/** Expire every entry filled for `path`. Answers how many went here. */
 export function revalidatePath(path: string): number {
-  return require$Cache("revalidatePath").store.revalidatePath(path);
+  const store = require$Cache("revalidatePath").store;
+  const dropped = store.revalidatePath(path);
+  carryDurableWork(store);
+  return dropped;
+}
+
+/**
+ * Make the request wait for the durable half of what just happened.
+ *
+ * A durable invalidation is started and not awaited — see the store — which is
+ * right for a long-lived server and is a dropped write on a host that stops the
+ * process the moment a response is written. Every serverless target is one of
+ * those, and it is the target where a shared cache matters most, so the work is
+ * handed to the request: `after()` runs at `settle()`, which is where a worker
+ * hands `ctx.waitUntil` its promise and where `./node.js` waits for the bytes.
+ *
+ * Registered here rather than inside the store because the store deliberately
+ * does not know what a request is — `./internal/cache-store.js`'s note on
+ * `refresh` gives that reason and this respects it. Outside a request there is
+ * nothing to register with and nothing to do: a caller holding a store directly
+ * has `store.settled()`.
+ *
+ * `./fetch.js` registers the same thing once per request, because a route fill
+ * writes durably without anybody calling this. Both registrations landing is
+ * not a problem worth code to avoid: `settled()` is idempotent and resolves
+ * without yielding when there is nothing outstanding.
+ */
+function carryDurableWork(store: CacheStore): void {
+  const context = currentContext();
+  if (context == null) {
+    return;
+  }
+  context.deferred.push(() => store.settled());
 }
 
 /** The cache answering this request, or `null` where the host installed none. */

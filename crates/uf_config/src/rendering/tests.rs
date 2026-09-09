@@ -129,6 +129,85 @@ fn static_build_with_no_ssg_is_the_contradiction_that_is_refused() {
 }
 
 #[test]
+fn csr_alone_writes_one_shell_and_no_server() {
+    let config = with_modes(&[RenderingMode::Csr]);
+    check(Utf8Path::new("uf.config.js"), &config).unwrap();
+    let plan = RenderingPlan::resolve(&config);
+    assert_eq!(plan.prerender(), Prerender::Shell);
+    assert!(!plan.emits_a_server());
+    // Not `is_static_only`: nothing has to be prerenderable, because nothing is
+    // prerendered. The refusal a `csr` build makes is a different one.
+    assert!(!plan.is_static_only());
+    assert_eq!(plan.source().key(), Some("app.rendering.modes"));
+    assert!(plan.because().contains("shell"), "{}", plan.because());
+}
+
+#[test]
+fn csr_is_not_in_the_default_list() {
+    // The whole of why: a default that could select it would make a build
+    // decide to be a single-page application because nothing forbade it.
+    let plan = RenderingPlan::resolve(&UniflowedConfig::default());
+    assert_eq!(plan.prerender(), Prerender::Possible);
+    assert!(
+        !UniflowedConfig::default()
+            .app
+            .rendering
+            .modes
+            .contains(&RenderingMode::Csr)
+    );
+}
+
+#[test]
+fn csr_beside_another_mode_is_refused() {
+    for other in [
+        RenderingMode::Ssg,
+        RenderingMode::Ssr,
+        RenderingMode::Ppr,
+        RenderingMode::Isr,
+    ] {
+        let config = with_modes(&[RenderingMode::Csr, other]);
+        let error = check(Utf8Path::new("uf.config.js"), &config).unwrap_err();
+        assert!(
+            matches!(error, ConfigError::CsrIsNotOneOfSeveral { .. }),
+            "{other:?}: {error}"
+        );
+        let message = error.to_string();
+        assert!(message.contains("csr"), "{message}");
+        assert!(message.contains(other.as_str()), "{message}");
+    }
+}
+
+#[test]
+fn csr_with_static_build_is_refused_in_its_own_words() {
+    // Both refusals are available for this file and only one of them is any
+    // use: the `ssg` rule would tell a single-page project to add `"ssg"` to
+    // the list, which is advice to build a different application.
+    let mut config = with_modes(&[RenderingMode::Csr]);
+    config.build.static_build = true;
+    let error = check(Utf8Path::new("uf.config.js"), &config).unwrap_err();
+    assert!(
+        matches!(error, ConfigError::CsrWithStaticBuild { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("drop `staticBuild`"), "{error}");
+}
+
+#[test]
+fn csr_composes_with_navigation_the_way_everything_else_does() {
+    // A single-page application navigates in the browser by construction, and
+    // the config can still say `document`. Not refused, because it is not a
+    // contradiction: every link fetches the shell again and the browser renders
+    // the route from it, which works and is a slow way to have an SPA. A
+    // refusal here would be uf deciding that a working deployment is a mistake.
+    let mut config = with_modes(&[RenderingMode::Csr]);
+    config.app.rendering.navigation = Navigation::Document;
+    check(Utf8Path::new("uf.config.js"), &config).unwrap();
+    let plan = RenderingPlan::resolve(&config);
+    assert_eq!(plan.prerender(), Prerender::Shell);
+    assert!(!plan.ships_a_client_router());
+}
+
+#[test]
 fn navigation_is_the_client_router_unless_a_project_says_otherwise() {
     let plan = RenderingPlan::resolve(&UniflowedConfig::default());
     assert_eq!(plan.navigation(), Navigation::Client);

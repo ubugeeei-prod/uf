@@ -619,12 +619,28 @@ an entry *stale* and a tag makes it *expired*, which are deliberately different;
 eviction is least-recently-used, bounded by count, with no background sweep; and
 a request that arrives during a fill joins it rather than starting a second one.
 
-The key departs from both of the disk caches described above, and the departure
-is the reason the store is in memory. `.uf/cache/check` and `.uf/cache/transform`
-each put the identity of the `uf` that produced the entry into the key, because
-both outlive the process that wrote them. This one cannot, so that identity is a
-constant rather than an input — and the day a durable store exists behind
-`resolve`, the key gains a build id before anything is written to it.
+The key has two forms, and the difference is the whole of what makes a durable
+store safe. `.uf/cache/check` and `.uf/cache/transform` each put the identity of
+the `uf` that produced the entry into the key, because both outlive the process
+that wrote them. An in-memory cache entry cannot, so in memory that identity is
+a constant rather than an input. A **durable** entry can, so `hashDurableCacheKey`
+puts the build id in front of the key before anything is written to a provider,
+and a deploy reads a cold cache instead of answering the new build's URLs with
+the previous build's documents. A store handed a provider and no build identity
+is refused where it is constructed rather than allowed to guess.
+
+`rendering.cache.store` selects the store: `"memory"` (the default),
+`"filesystem"` for uf's built-in provider, or a module specifier exporting
+`createCacheProvider` — the same shape `builder.module` has, so a Redis or a KV
+namespace goes behind the seam without uf naming either. The seam itself is
+`packages/server/internal/cache-provider.js`: five methods over strings, no
+staleness, no eviction policy, no fill. Everything a cache decides stays in the
+store; a provider decides only where bytes go. A durable store is what turns
+time-based revalidation and on-demand invalidation into ISR — a URL rendered
+once, served from a store four processes share, refreshed behind a reader, and
+dropped the moment a mutation says it is wrong. What is not written is seeding
+that store from `uf build`'s prerender, so the *first* request to each URL still
+renders.
 
 Nothing is cached without a stated lifetime: a route says `cacheLife` and
 `cacheTag` from inside its own render, a request says `cache` at the call, and a
@@ -645,9 +661,12 @@ Node 24, twenty pairs, medians):
 
 The cold request is fractionally slower because a document has to be whole
 before it can be an entry, so a cached route buffers where an uncached one
-streams. It is in memory and in one process, which means four server processes
-hold four caches that disagree and a restart empties one. `docs/app/guide/cache`
-says all of that to a reader rather than to a maintainer.
+streams. Those numbers are the default store: in memory and in one process,
+which means four server processes hold four caches that disagree and a restart
+empties one. A project that names `rendering.cache.store` trades a read of the
+provider on a cold key for a cache the four of them share and a restart does not
+empty. `docs/app/guide/cache` says all of that to a reader rather than to a
+maintainer.
 
 That analysis is load-bearing at the route level, and only there. `uf_rsc`
 resolves the module graph and marks every module a `"use client"` boundary is
@@ -982,8 +1001,8 @@ entirely — see [The other build: a library](#the-other-build-a-library).
 The third pass has three answers per route, not two, and which ones a project
 allows is `app.rendering.modes` and `build.staticBuild`. `uf` resolves those
 two together into a *rendering plan* (`uf_config`'s `RenderingPlan`) and hands
-the builder one word — `everything`, `possible` or `nothing` — because they
-only mean something read together and three commands read them.
+the builder one word — `everything`, `possible`, `nothing` or `shell` — because
+they only mean something read together and three commands read them.
 
 | Route | Answer |
 | --- | --- |
@@ -999,6 +1018,18 @@ error** naming it and both ways out, because there is no process to render it
 and a `dist/` with a hole in it is a 404 nobody sees until the deploy. Under
 `nothing` no document is written at all, which is what `["ssr"]` has always
 claimed to mean and, until it was read, did not.
+
+`shell` — `rendering.modes: ["csr"]` — is the plan that is not per-route at
+all: no route is rendered, and the build writes one document that belongs to no
+route (an empty root, the stylesheets, the module script) to both `index.html`
+and `404.html`, so a static host answers `/` from the first and every other URL
+from the second. The client entry then `render`s rather than hydrating, because
+no markup was written for it to attach to. Every row of the table above that
+says "per request" is a **build error** under this plan too, and so is any
+module the application reaches that imports a server-only package: nothing here
+renders, so nothing here would have discovered them, and the failure would have
+been a browser's rather than a build's. `uf preview` applies the SPA rewrite
+(`--spa-fallback`) so that the preview matches a host that is configured.
 
 `build.staticBuild` additionally removes `.uf/build/server/` once the last
 document is written: the bundle is a build intermediate — the prerender renders
@@ -1128,7 +1159,7 @@ Optional; a builder that transforms nothing needs neither.
 | `dev` | `--root --mode [--host --port --strict-port]` | Serves the project, rendering every navigation |
 | `build` | `--root --mode --out-dir --prerender --because [--static-build]` | Writes the client bundle, the server bundle and the prerendered documents |
 | `library` | `--root --mode --out-dir --entry… --format… [--external…]` | Writes one module per entry per format, for a project that is a library |
-| `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build]` | Serves the build through the builder's own preview server |
+| `preview` | `--root --mode --out-dir [--host --port --strict-port --static-build --spa-fallback]` | Serves the build through the builder's own preview server |
 | `start` | `--root --out-dir [--host --port]` | Serves the build with no bundler in the process |
 | `compile` | `--root --mode --out-dir --assets --bundle` | Links the application into one module, for `uf build --compile` |
 | `deploy` | `--root --mode --out-dir --adapter --work --output` | Links the application into a directory to copy |
@@ -1138,7 +1169,12 @@ Optional; a builder that transforms nothing needs neither.
 `env.active`; the `.env` files it selected have already been read, by uf, into
 the driver's environment. `--prerender` is the rendering plan above and
 `--because` is the sentence to quote when refusing, so a refusal in the builder
-names the same config key a refusal in uf does. `UF_BINARY` names the `uf` that
+names the same config key a refusal in uf does. `--spa-fallback` reaches
+`preview` only, and is asked for by name rather than inferred from
+`--static-build`: a `build.staticBuild` project has a document per route and
+wants a 404 for a URL it does not have, and a `["csr"]` project has one document
+and wants it served for every URL, so the flag they share cannot tell them
+apart. `UF_BINARY` names the `uf` that
 started it, and `UF_RSC_MANIFEST` the server-component analysis.
 
 **What the driver says**, one JSON object per line, `{"event": "...", ...}`:

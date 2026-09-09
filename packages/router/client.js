@@ -1,6 +1,13 @@
 // @flow
 //
-// Hydrating the document in the browser.
+// Starting the application in the browser.
+//
+// Two entry points, and which one `virtual:uf/client` calls is decided by
+// `app.rendering.modes`. `hydrate` is the one every uf build has used: a server
+// or a prerender wrote the markup, and React attaches to it. `render` is for
+// `["csr"]`, where the build wrote one shell with an empty root and nothing has
+// been rendered anywhere yet; see its own comment for why that is not `hydrate`
+// with a flag.
 //
 // `virtual:uf/client` calls `hydrate` with the app root and the route table.
 // The current route's chunks are loaded and its embedded loader data read
@@ -72,16 +79,18 @@
 
 import * as React from "react";
 import { StrictMode, startTransition } from "react";
-import { hydrateRoot } from "react-dom/client";
+import { createRoot, hydrateRoot } from "react-dom/client";
 
 import {
   type AppProps,
   type Navigation,
   type RouteTable,
+  RedirectError,
   hasClientPage,
   installNavigation,
   installRoutes,
   matchRoute,
+  resolveFailure,
   resolveMatch,
 } from "./internal/runtime.js";
 import { DATA_ID, ROOT_ID } from "./internal/document.js";
@@ -170,4 +179,86 @@ export async function hydrate(options: {|
     const { reportDevtools } = await import("./internal/devtools.js");
     reportDevtools(window);
   }
+}
+
+/**
+ * Render the current route into an empty shell.
+ *
+ * The single-page entry point: `app.rendering.modes: ["csr"]` writes one
+ * document with an empty root and no markup in it, and this is what fills it.
+ *
+ * # Why it is not `hydrate` with a flag
+ *
+ * Because hydration is React comparing what it renders against what a server
+ * sent, and here no server sent anything. `hydrateRoot` against an empty
+ * container is a mismatch on the first node of every page — React would report
+ * it, throw the shell away and render from scratch, which is this function
+ * with a warning in front of it. `createRoot` says what is actually happening:
+ * the browser is the only renderer this application has.
+ *
+ * Three more things follow from there, and each of them is a line below rather
+ * than an omission:
+ *
+ *   * **The loader runs here.** `resolveMatch` fetches the route's modules and
+ *     runs its loader in the browser, because there was no server render to run
+ *     it in and no `<script id="__uf_data">` for it to have left an answer in.
+ *   * **A URL that matches nothing is the not-found boundary**, resolved the
+ *     way a server resolves it. The host served this shell for a URL it had no
+ *     file for, so "nothing matched" is a perfectly ordinary arrival here
+ *     rather than the exception it is during hydration.
+ *   * **A redirect is the browser's.** `redirect()` from a loader throws before
+ *     anything is rendered; on a server that becomes a 307 and here it becomes
+ *     `location.replace`, which is the same instruction to the same browser.
+ */
+export async function render(options: {|
+  readonly App: React.ComponentType<AppProps>,
+  readonly routes: RouteTable["routes"],
+  readonly notFound: RouteTable["notFound"],
+  readonly errors: RouteTable["errors"],
+  readonly strictMode?: boolean,
+  readonly navigation?: Navigation,
+|}): Promise<void> {
+  const table: RouteTable = {
+    routes: options.routes,
+    notFound: options.notFound,
+    errors: options.errors,
+  };
+  installRoutes(table);
+  installNavigation(options.navigation ?? "client");
+
+  const url = window.location.pathname + window.location.search;
+  let resolved;
+  try {
+    resolved = await resolveMatch(table, url);
+  } catch (error) {
+    if (error instanceof RedirectError) {
+      window.location.replace(error.to);
+      return;
+    }
+    // The error boundary, chosen the same way the server chooses it. A throw
+    // from a loader is a page that cannot render, and rendering the boundary is
+    // what this application has instead of a 500.
+    resolved = await resolveFailure(table, url, error);
+  }
+
+  const { App } = options;
+  // An element, and never `document` — which is the other difference from
+  // `hydrate` above. `hydrateRoot` takes a document, because an app whose root
+  // layout renders `<html>` owns the whole of one and the server wrote it;
+  // `createRoot` does not, because creating a root *is* replacing the
+  // container's children and the container here would be the document. The
+  // shell always writes this element, so its absence means the document being
+  // rendered into is not one this build produced.
+  const container = document.getElementById(ROOT_ID);
+  if (container == null) {
+    throw new Error(
+      `@uniflowed/router: no #${ROOT_ID} in this document, so there is nothing to render into. ` +
+        "A single-page build writes the shell that carries it; this document came from " +
+        "somewhere else.",
+    );
+  }
+  const tree = <App url={url} initial={resolved} />;
+  createRoot(container).render(
+    options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
+  );
 }

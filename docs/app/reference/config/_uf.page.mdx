@@ -78,7 +78,9 @@ which is the fastest way to answer "what is it actually using".
 | `builtins.style` | — | The style engine |
 | `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
 | `rendering.navigation` | `"client"` | What a link does: the client router takes it over, or the browser fetches a document — see below |
-| `rendering.cache.*` | all `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
+| `rendering.cache.route`, `.fetch` | `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
+| `rendering.cache.store` | `"memory"` | Where entries live: one process, `"filesystem"`, or a module exporting `createCacheProvider` |
+| `rendering.cache.storeDir` | `.uf/cache/route` | Where `"filesystem"` keeps them |
 | `targets` | — | Runtime targets the build must satisfy |
 
 ### rendering.modes
@@ -98,10 +100,24 @@ a process.
 | contains `ssg` and `ssr` (the default) | Prerenders what it can; the rest are rendered by `uf start`, `uf preview` or a deploy adapter |
 | `["ssg"]` | Prerenders everything, and **fails**, naming the route, if anything can only be answered per request |
 | `["ssr"]` | Prerenders nothing. Every route is rendered per request |
+| `["csr"]` | Prerenders one shell that is no route's document, and the browser renders every route from it |
 
 `ppr` and `isr` are **Planned**. Naming one alongside an implemented mode is
 allowed and selects nothing; a list that names *only* planned modes is refused
 while the config is read, because there is no build behind it.
+
+`csr` is the one value that **cannot share the list**. The others answer "where
+does this route's document come from", which is what makes the list a set the
+build picks from per route; `csr` answers it for the whole application with a
+document that belongs to no route, so there is no per-route decision left to
+make. `["csr", "ssg"]` is refused while the config is read, and so is `csr`
+beside `build.staticBuild`, which prerenders every route where this prerenders
+none. It is also the one value **not in the default list**. A `csr` build
+refuses, by name and before the bundle, any route that needs a server — a route
+handler, a middleware, a callable server action, or a module the application
+reaches that imports `@uniflowed/server`, `@uniflowed/db` or `server-only`. The
+[guide](/guide/rendering) has the two files it writes and the rewrite rule a
+host needs.
 
 Three things can only be answered per request, and under `["ssg"]` each is an
 error naming the route: a page with parameters and no `generateStaticParams`, a

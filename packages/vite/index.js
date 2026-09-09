@@ -142,6 +142,13 @@ export default function uniflowed(options = {}) {
   // at. Anything but `"document"` is the client router, which is what every
   // project that has not heard of the key has.
   const navigation = app.rendering?.navigation === "document" ? "document" : "client";
+  // Whether this application starts by attaching to markup or by rendering
+  // into an empty root. `["csr"]` is the only list that means the second, and
+  // `uf` refuses that value beside any other while the config is read — so the
+  // question here is "is it in the list", not "is it the only thing in it",
+  // and a driver started by hand on a config `uf` never validated gets the same
+  // answer for the same reason a project would want.
+  const mount = (app.rendering?.modes ?? []).includes("csr") ? "render" : "hydrate";
 
   const accessibility = ufConfig.accessibility ?? {};
 
@@ -151,6 +158,7 @@ export default function uniflowed(options = {}) {
       appEntry,
       strictMode,
       navigation,
+      mount,
       command: options.command,
       accessibility,
     }),
@@ -165,7 +173,15 @@ export default function uniflowed(options = {}) {
   ];
 }
 
-function flowPlugin({ routerRoot, appEntry, strictMode, navigation, command, accessibility }) {
+function flowPlugin({
+  routerRoot,
+  appEntry,
+  strictMode,
+  navigation,
+  mount,
+  command,
+  accessibility,
+}) {
   let root = process.cwd();
   let isProduction = false;
   /**
@@ -373,6 +389,7 @@ function flowPlugin({ routerRoot, appEntry, strictMode, navigation, command, acc
         return clientModuleSource(entryPath, {
           strictMode: strictMode && !isProduction,
           navigation,
+          mount,
         });
       }
       if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
@@ -702,6 +719,30 @@ function flowPlugin({ routerRoot, appEntry, strictMode, navigation, command, acc
                 return true;
               }
               if (notDocument != null) return false;
+
+              // A single-page project's deployment answers every navigation
+              // with the same empty shell, so this does too. Rendering the
+              // route here instead would have been the better-looking dev
+              // server and the wrong one: a page that only works because the
+              // server rendered it would work all through development and be
+              // blank the day it shipped. It is the same argument
+              // `app.rendering.navigation` makes about a link, one level up.
+              //
+              // The three steps above still ran — the guard, the action, the
+              // handler — and each of them is something `uf build` refuses in
+              // a `["csr"]` project by name. A dev server that skipped them
+              // would hide the very thing the build is going to stop.
+              if (mount === "render") {
+                response.statusCode = 200;
+                response.setHeader("content-type", "text/html; charset=utf-8");
+                const shell = entry.shellDocument({
+                  scripts: [devUrlFor(VIRTUAL.client)],
+                  styles: [],
+                  preloads: [],
+                });
+                response.end(await devServer.transformIndexHtml(url, shell));
+                return true;
+              }
 
               const result = await entry.render(
                 url,

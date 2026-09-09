@@ -39,6 +39,7 @@
 // Rust side reads a config that may hold functions and plugin instances: the
 // one host that can evaluate the file evaluates it.
 
+import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { builtinModules, register } from "node:module";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -52,11 +53,14 @@ import { send, toRequest } from "./internal/http.js";
 import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, scanRoutes } from "./internal/routes.js";
 import {
+  BUILD_ID_FILE,
   assetsFromManifest,
+  buildIdentity,
   createPrerenderGate,
   createServeHandler,
   loadBuild,
   nodeListener,
+  providerSpecifier,
   withRequest,
 } from "./internal/serve.js";
 
@@ -112,6 +116,33 @@ run().catch((error) => {
   emit("error", errorEvent(error));
   process.exit(1);
 });
+
+/**
+ * What this build is called, for anything that outlives it.
+ *
+ * `UF_BUILD_ID` when it is set, and a fresh random name otherwise — which is
+ * `crates/uf_rsc`'s `BuildId::from_env_or_generate` exactly, reading the same
+ * variable, because it is the same question asked by a different half of the
+ * toolchain. Two artefacts that have to *be* one build say so with the
+ * variable; everything else gets a name no other build has.
+ *
+ * Minted once per build and written into the build, never per process. Four
+ * servers started from one artefact are one build and must share one cache;
+ * generating this where the server starts would give them four, which is worse
+ * than none at all — four copies of everything written into one directory and
+ * none of them read.
+ *
+ * Not a hash of the output. A content hash would be reproducible, which is
+ * appealing and wrong here: two builds with identical client bundles can have
+ * different server behaviour — a loader's body moves and no asset hash does —
+ * and a cache keyed by one would serve the old loader's documents. A name that
+ * changes whenever the build ran is the conservative direction to be wrong in.
+ */
+function mintBuildId() {
+  const named = process.env.UF_BUILD_ID;
+  if (typeof named === "string" && named.trim() !== "") return named.trim();
+  return randomUUID().replaceAll("-", "");
+}
 
 /** Load `uf.config.js`, reporting where it was found. */
 async function loadConfig() {
@@ -423,6 +454,30 @@ async function preview() {
   if (handle != null) {
     server.middlewares.use(answer(server));
   }
+  // The rewrite rule a single-page deployment needs, in the one place uf can
+  // apply one. A `["csr"]` build writes `index.html` and nothing else that is a
+  // page, so a file server answers `/` and 404s every other URL — and this
+  // preview exists to be believed about the deployment. A host serving that
+  // build has to send unmatched paths to the shell, so a preview that did not
+  // would be right about a deployment nobody is doing.
+  //
+  // Behind the static middleware, which is what makes it a *fallback*: a real
+  // file still wins, so `/assets/client.js` is still the chunk and not the
+  // shell. And `Accept: text/html` only, so a `fetch` for a missing JSON file
+  // gets a 404 rather than a document — the failure mode of a fallback that
+  // answers everything is a parse error two layers away from the missing file.
+  if (flag("--spa-fallback")) {
+    const shell = path.resolve(root, inline.build.outDir, "index.html");
+    server.middlewares.use((request, response, next) => {
+      if (request.method !== "GET" && request.method !== "HEAD") return next();
+      if (!(request.headers.accept ?? "").includes("text/html")) return next();
+      if (!existsSync(shell)) return next();
+      response.statusCode = 200;
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end(request.method === "HEAD" ? undefined : readFileSync(shell));
+      return undefined;
+    });
+  }
 
   const urls = server.resolvedUrls ?? { local: [], network: [] };
   emit("listening", {
@@ -560,6 +615,13 @@ async function build() {
       },
     },
   });
+  // What this build is, beside the bundle it is about. One line, written by
+  // every build and read by nothing unless a project turned a durable cache on
+  // — at which point it is the thing that stops a deploy answering the new
+  // build's URLs with the previous build's documents. See
+  // `packages/server/internal/cache-key.js`, which argues the whole of it, and
+  // `internal/serve.js`'s `buildIdentity`, which is what reads this.
+  writeFileSync(path.join(serverDir, BUILD_ID_FILE), `${mintBuildId()}\n`);
 
   // 3. Which routes this build renders when, and every route it renders now.
   //
@@ -657,11 +719,50 @@ async function build() {
   // host would then serve uf's error page to every visitor who mistyped a URL,
   // and nothing between the throw and the deploy would have mentioned it.
   let attempted = pages.length;
+  // The single-page build's whole output, written here because it is the one
+  // document this build has and the loop above had no route to write it for.
+  //
+  // Twice, to two names, and the second is the load-bearing one. `index.html`
+  // is what a host serves for `/`; `404.html` is what a static host serves for
+  // every path it has no file for, which under this plan is *every other URL
+  // in the application*. Without it a deployment of `dist/` answers `/` and
+  // 404s `/orders` — a build with a hole in it, found from a 404, which is the
+  // failure ubugeeei-prod/uf#336 is about wearing a different hat.
+  //
+  // It is still the host's rewrite rule that makes this correct, and the two
+  // files are what uf can do without one: a host with a proper SPA fallback
+  // serves `index.html` and never looks at `404.html`, and a host with only an
+  // error document (Pages, Netlify, an S3 bucket) serves `404.html` and gets
+  // the same bytes with a 404 status — which is the right status for a URL
+  // this application does not have, and the not-found boundary is what the
+  // browser then renders into it.
+  if (prerender === "shell") {
+    const html = server.shellDocument(assets);
+    for (const [file, url, status] of [
+      ["index.html", "/", 200],
+      ["404.html", "/404", 404],
+    ]) {
+      const target = path.join(outDir, file);
+      writeFileSync(target, html);
+      attempted += 1;
+      emit("page", {
+        url,
+        file: path.relative(root, target),
+        status,
+        bytes: Buffer.byteLength(html),
+      });
+    }
+  }
   // Not for a build that prerenders nothing. `404.html` is a file a static
   // host serves for every path it has no file for, and a project whose
   // `rendering.modes` allows only `ssr` has no such host: its not-found
   // boundary is rendered per request, by the server, with the right status.
-  if (prerender !== "nothing" && server.notFound.some((boundary) => boundary.path === "/")) {
+  //
+  // Nor for a shell build, which has just written its own: the boundary this
+  // would render is one the *browser* renders in that plan, and a document
+  // holding the framework's 404 markup would be served in place of the shell
+  // for every URL the host could not match.
+  else if (prerender !== "nothing" && server.notFound.some((boundary) => boundary.path === "/")) {
     attempted += 1;
     // `/404` rather than `/__uf_not_found__`: the internal path is how the
     // router is asked, and the file the reader is looking for is `404.html`.
@@ -975,8 +1076,8 @@ async function compile() {
  */
 const ADAPTERS = {
   node: {
-    entries: (document, cache) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES),
+    entries: (document, cache, build) => ({
+      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build),
       server: nodeEntrySource("./handler.js"),
     }),
   },
@@ -995,8 +1096,8 @@ const ADAPTERS = {
   // nobody here. `edge` pays that price because it must: there is no
   // `node:stream` in a Worker.
   bun: {
-    entries: (document, cache) => ({
-      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES),
+    entries: (document, cache, build) => ({
+      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build),
       server: bunEntrySource("./handler.js"),
     }),
   },
@@ -1005,14 +1106,14 @@ const ADAPTERS = {
   // output rather than anything the bundler produces — see `uf_cli`'s
   // `commands::deploy`.
   container: {
-    entries: (document, cache) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES),
+    entries: (document, cache, build) => ({
+      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build),
       server: nodeEntrySource("./handler.js"),
     }),
   },
   edge: {
-    entries: (document, cache) => ({
-      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES),
+    entries: (document, cache, build) => ({
+      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build),
       worker: workerEntrySource("./handler.js"),
     }),
     // `workerd` first, so React resolves to the build that has
@@ -1020,10 +1121,16 @@ const ADAPTERS = {
     // after it are Vite's own SSR defaults, kept so a dependency with no
     // worker condition still resolves the way it does for every other target.
     conditions: ["workerd", "worker", "edge-light", "browser", "module", "import", "default"],
+    // A Worker has no filesystem, so uf's built-in durable provider cannot run
+    // here. Refused by name at the build rather than linked into a bundle that
+    // fails on its first `node:fs` import — the deployment rule is that a
+    // target which cannot provide a durable store says so, and this is the one
+    // target that cannot.
+    filesystem: false,
   },
   serverless: {
-    entries: (document, cache) => ({
-      handler: handlerEntrySource(document, cache, SERVERLESS_CAPABILITIES),
+    entries: (document, cache, build) => ({
+      handler: handlerEntrySource(document, cache, SERVERLESS_CAPABILITIES, build),
       lambda: lambdaEntrySource("./handler.js"),
     }),
   },
@@ -1140,7 +1247,22 @@ async function deploy() {
   // misbehaves.
   mkdirSync(work, { recursive: true });
   const document = assetsFromManifest(readManifest(outDir));
-  const entries = shape.entries(document, config.app?.rendering?.cache);
+  // Whatever `build` above minted, so a durable cache in the deployed artefact
+  // is keyed by the build that produced it and not by the moment it was
+  // packaged. Read rather than minted again for exactly that reason: a second
+  // `randomUUID()` here would key the adapter's copy differently from the one
+  // `uf start` serves out of `.uf/build/`, which is two caches for one build.
+  const buildId = await buildIdentity(root, path.join(".uf", "build", "server"));
+  const cacheConfig = config.app?.rendering?.cache;
+  if (shape.filesystem === false && cacheConfig?.store === "filesystem") {
+    throw new Error(
+      `uf: rendering.cache.store is "filesystem" and \`--adapter ${adapter}\` has no ` +
+        "filesystem. Name a module exporting `createCacheProvider` instead — a KV " +
+        "namespace or a Redis behind the same seam — or leave the store in memory. See " +
+        "docs/app/guide/cache.",
+    );
+  }
+  const entries = shape.entries(document, cacheConfig, buildId);
   const input = {};
   for (const name of Object.keys(entries)) {
     writeFileSync(path.join(work, `${name}.js`), entries[name]);
@@ -1230,8 +1352,22 @@ async function deploy() {
  * re-exported above — a module-level singleton belongs to whichever copy of the
  * package a bundler happened to give it, and the copy that matters is the one
  * the application resolved. See ubugeeei-prod/uf#277 and #389.
+ *
+ * # And where a durable store is named
+ *
+ * `rendering.cache.store` is the fifth key, and it is the one that turns the
+ * store into a shared one: `"filesystem"` links uf's built-in provider, and
+ * anything else is a module specifier the project wrote, imported here by name
+ * so the bundler links it like any other dependency of the application. Neither
+ * appears at all when the key is absent, which is what a default project keeps.
+ *
+ * `build` is baked in beside it, and it is the reason this can be an `import`
+ * at all rather than something read at boot: the build id is a fact about the
+ * artefact being written, known here and nowhere later. `internal/serve.js`'s
+ * `buildIdentity` is where it came from and
+ * `packages/server/internal/cache-key.js` is why it exists.
  */
-function handlerEntrySource(document, cache, capabilities) {
+function handlerEntrySource(document, cache, capabilities, build) {
   const route = cache?.route === true;
   const fetchCache = cache?.fetch === true;
   // Nothing at all when both switches are off, so a default project's
@@ -1239,6 +1375,7 @@ function handlerEntrySource(document, cache, capabilities) {
   // generated output nobody asked for is the second half of the complaint
   // #277 makes about the first half.
   const store = route || fetchCache;
+  const durable = store ? durableStoreSource(root, cache, build) : null;
   const options = [
     "app",
     `document: ${JSON.stringify(document)}`,
@@ -1246,19 +1383,29 @@ function handlerEntrySource(document, cache, capabilities) {
     "capabilities",
   ].join(", ");
   const cacheImport = store ? 'import { createCacheStore } from "@uniflowed/server/cache";\n' : "";
+  const providerImport = durable == null ? "" : `${durable.import}\n`;
   const from = JSON.stringify(capabilities.module);
   const capabilityImport = `import { ${capabilities.name} } from ${from};`;
   return `// Generated by \`uf build --adapter\`. Not checked in, not edited.
 import { createFetchHandler } from "@uniflowed/server/fetch";
-${cacheImport}${capabilityImport}
+${cacheImport}${providerImport}${capabilityImport}
 import * as app from ${JSON.stringify(VIRTUAL.server)};
 
 ${
   store
-    ? `// \`rendering.cache\` from uf.config.js. One store per process: it is
+    ? `// \`rendering.cache\` from uf.config.js. ${
+        durable == null
+          ? `One store per process: it is
 // emptied by a restart and is not shared with any other instance of this
-// application. See ubugeeei-prod/uf#277.
-const cache = { store: createCacheStore(), route: ${String(route)}, fetch: ${String(fetchCache)} };
+// application.`
+          : `Entries are kept by ${durable.what},
+// under this build's identity, so a restart finds them where it left them and
+// every process of this deployment reads one store — and \`revalidateTag\` in
+// any of them takes an entry out of the store all of them fill from.`
+      } See ubugeeei-prod/uf#277.
+const cache = { store: createCacheStore(${
+        durable == null ? "" : `{ provider: ${durable.provider}, build: ${JSON.stringify(build)} }`
+      }), route: ${String(route)}, fetch: ${String(fetchCache)} };
 
 `
     : ""
@@ -1275,6 +1422,57 @@ export const beginRequest = app.beginRequest;
 
 export default { fetch, beginRequest };
 `;
+}
+
+/**
+ * The import and the expression that give a generated handler a durable store.
+ *
+ * `null` for `"memory"` and for a project that said nothing, which is every
+ * project until one asks: persistence is a second opt-in on top of `route` and
+ * `fetch`, not something a build decides on a project's behalf.
+ *
+ * The directory is baked in as written rather than resolved here, and that is
+ * deliberate. This function runs on the machine doing the build; the path has
+ * to mean something on the machine doing the *serving*, which may be a
+ * container with one writable mount or a Lambda with only `/tmp`. A relative
+ * one is resolved against the working directory at boot, by the provider, where
+ * the answer is a fact rather than a guess.
+ *
+ * The specifier is resolved against the project for the same reason
+ * `internal/serve.js`'s `providerSpecifier` does it: `"./cache/redis.js"` in
+ * `uf.config.js` is relative to the project, and this file is written into
+ * `.uf/deploy/work/`, where that path means nothing. Absolute is safe here
+ * because the bundler inlines the module rather than emitting the specifier.
+ *
+ * @param {string} root
+ * @param {{store?: string, storeDir?: string}} cache
+ * @param {string | null} build
+ */
+function durableStoreSource(root, cache, build) {
+  const named = cache?.store ?? "memory";
+  if (named === "memory") return null;
+  if (build == null) {
+    throw new Error(
+      `uf: rendering.cache.store is ${JSON.stringify(named)}, which keeps entries between ` +
+        "restarts, and this build has no identity to key them by. Run `uf build` so one is " +
+        "written, or set UF_BUILD_ID. Without one the deployment would answer this build's " +
+        "URLs with the previous build's documents.",
+    );
+  }
+  const directory = JSON.stringify(cache?.storeDir ?? path.join(".uf", "cache", "route"));
+  if (named === "filesystem") {
+    return {
+      import: 'import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";',
+      provider: `createFilesystemCache({ directory: ${directory} })`,
+      what: "uf's filesystem provider",
+    };
+  }
+  const from = JSON.stringify(providerSpecifier(root, named));
+  return {
+    import: `import { createCacheProvider } from ${from};`,
+    provider: `createCacheProvider({ build: ${JSON.stringify(build)}, directory: ${directory} })`,
+    what: `${named}'s provider`,
+  };
 }
 
 /**
@@ -1536,6 +1734,15 @@ function readManifest(outDir) {
 async function renderingPlan(server, prerender) {
   const urls = [];
   const perRequest = [];
+
+  // One document, and it is no route's, so there is no route to ask anything
+  // about. `perRequest` is empty rather than "every route": nothing here is
+  // left for a server — the browser answers all of it — and listing routes
+  // under a heading that means "these need a process" would be a build
+  // describing itself wrongly to `uf`, which prints that list.
+  if (prerender === "shell") {
+    return { urls: [], perRequest: [] };
+  }
 
   // Nothing is prerendered and nothing is refused, so no page module is
   // loaded: a project that renders everything per request should not pay for

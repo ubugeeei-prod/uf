@@ -49,7 +49,7 @@
 
 use anyhow::{Result, bail};
 use camino::Utf8Path;
-use uf_config::{RenderingPlan, load_config};
+use uf_config::{Prerender, RenderingPlan, load_config};
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
@@ -311,6 +311,18 @@ fn driver_args(
     let mut args = vec![String::from("--out-dir"), out_dir.to_owned()];
     if !plan.emits_a_server() {
         args.push(String::from("--static-build"));
+    }
+    // The rewrite rule a single-page deployment cannot work without, asked for
+    // by name rather than inferred from `--static-build`: a `build.staticBuild`
+    // project has a document per route and wants a 404 for a URL it does not
+    // have, and a `["csr"]` project has one document and wants it served for
+    // every URL. Both emit no server, so the flag they share cannot tell them
+    // apart. Without this, `uf preview` would 404 every path but `/` on a build
+    // that a correctly configured host serves completely — a preview that is
+    // wrong about the deployment, which is the one thing this command must not
+    // be.
+    if plan.prerender() == Prerender::Shell {
+        args.push(String::from("--spa-fallback"));
     }
     if let Some(bind) = host {
         args.push(String::from("--host"));
