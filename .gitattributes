@@ -4,5 +4,11 @@
 #     --print-width 100 crates/uf_fmt/tests/fixtures/<name>.js
 #
 # Saying so collapses them in a diff, where the interesting half is the input
-# beside them, and keeps review tools from reading them as code somebody meant.
+# beside them.
+#
+# It does not keep a review tool out, which is what #158 hoped for when it
+# added this line. GitHub Code Quality does not read `linguist-generated`, and
+# #434 is the proof: it commented on `top_level_await.expected.js` on the 6th,
+# the day after this line landed on the 5th. CONTRIBUTING.md says what to do
+# with those comments; ubugeeei-prod/uf#157 is where the exclusion is argued.
 crates/uf_fmt/tests/fixtures/*.expected.js linguist-generated=true

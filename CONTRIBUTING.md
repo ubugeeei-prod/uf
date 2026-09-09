@@ -63,25 +63,39 @@ Fuzzing, formal verification, benchmarks, scripts, and Nix support live under
 `tools/` so the root stays focused on the Rust workspace and project metadata.
 Use `nix develop ./tools/nix` for the pinned development environment.
 
-## Reviews On Formatter Fixtures
+## Reviews On Test Fixtures
 
-`crates/uf_fmt/tests/fixtures` holds input to a printer, not programs. Nothing
-declared in a fixture is meant to be used, half the constructs are deliberately
-awkward, and the `.expected.js` beside each one is Prettier's output for it
-byte for byte.
+The JavaScript under `crates/` is fixtures — input to the tool the Rust tests
+beside it are exercising, not programs anybody runs. `crates/uf_fmt` holds
+badly formatted input and, beside each file, the `.expected.js` that is
+Prettier's output for it byte for byte; `crates/uf_check` holds input that
+fails to check on purpose; `crates/uf_cli` holds small applications a test
+builds and serves. Nothing declared in any of them is meant to be used, which
+is why `uf.config.js` keeps the whole of `crates` out of `uf fmt`, `uf lint`,
+`uf check`, `uf test` and `uf doc`.
 
-GitHub's code-quality review reads them as code anyway, and reports every
-binding in them as an unused variable. A pull request that adds a fixture
-arrives with a dozen of those, and because `main` requires conversations to be
-resolved, they block the merge.
+GitHub Code Quality reads them as code anyway, and reports every binding in
+them as an unused variable. A pull request that adds a fixture arrives with a
+dozen of those: on #139 and on #154, every single review thread — 31 and 23
+of them — was one. Because `main` requires conversations to be resolved, they
+block the merge with every check green. Nor is it only the formatter's: a
+comment landed on `crates/uf_check/tests/fixtures` in #652.
 
 They are false positives and they are resolved as such — with a reply saying
-so, not silently. Do not "fix" one by using a variable in a fixture: the
-fixture is what Prettier was run on, and changing it changes what the
-expectation means.
+so, not silently. Do not "fix" one by using a variable in a fixture: a
+formatter fixture is what Prettier was run on, and a checker fixture is the
+program whose error is the expectation. Editing either changes what the test
+asserts.
 
-The exclusion belongs in the analysis rather than in the fixtures, and it is
-not configurable from this repository. See ubugeeei-prod/uf#157.
+The exclusion belongs in the analysis rather than in the fixtures, and there is
+nowhere to put it. Code Quality has no path filter at all — GitHub's answer to
+[the request for one][cq-paths] is that choosing the directories to scan is on
+the roadmap — and it does not read `linguist-generated`, so the
+`.gitattributes` entry that marks the expectations as generated does not keep
+them out either. Until it ships, the reply is the procedure. See
+ubugeeei-prod/uf#157.
+
+[cq-paths]: https://github.com/orgs/community/discussions/186446
 
 ## Verification
 
