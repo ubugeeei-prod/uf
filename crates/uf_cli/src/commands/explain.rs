@@ -953,6 +953,11 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
              request"
                 .to_string()
         }
+        Prerender::Shell => {
+            "one shell, which is no route's document: `app.rendering.modes` is [\"csr\"], so \
+             every route is resolved and rendered in the browser"
+                .to_string()
+        }
     };
     Stage {
         name: "prerender",

@@ -1,6 +1,6 @@
 ---
 title: "Caching · uf"
-description: "A route cache and a fetch cache, opt-in, in memory, and honest about it."
+description: "A route cache and a fetch cache, opt-in, in memory by default, durable when you say so."
 ---
 
 <p className="eyebrow">The tools</p>
@@ -8,11 +8,13 @@ description: "A route cache and a fetch cache, opt-in, in memory, and honest abo
 # Caching
 
 <div className="lede">
-A route cache and a fetch cache, both off by default, both opt-in per route and
-per request, and both in the memory of one process. Time-based revalidation with
-an optional stale-while-revalidate window, and on-demand invalidation by tag or
-by path. What uf does not have is named here too, because a cache you cannot
-describe is a cache you cannot trust.
+A route cache and a fetch cache, both off by default and both opt-in per route
+and per request. Time-based revalidation with an optional stale-while-revalidate
+window, and on-demand invalidation by tag or by path. In the memory of one
+process unless you name somewhere else to keep it — and naming somewhere else is
+what turns all of the above into incremental static regeneration. What uf does
+not have is named here too, because a cache you cannot describe is a cache you
+cannot trust.
 </div>
 
 ## Turning it on
@@ -53,9 +55,8 @@ export default async function Posts() {
 ```
 
 A page that says nothing is rendered for every request, exactly as it is with
-the cache off. There is no default lifetime and there will not be one: an
-in-memory entry with no stated end is an answer served until the process
-restarts.
+the cache off. There is no default lifetime and there will not be one: an entry
+with no stated end is an answer served until somebody notices.
 
 ## What the two numbers mean
 
@@ -153,20 +154,136 @@ under the other's name.
 
 ## Where it lives
 
-**In memory, in one process.** Four server processes behind a load balancer hold
-four caches and they disagree; a restart empties one; `revalidateTag` in one of
-them does not reach the other three. There is no configuration that changes
-this.
+**In memory, in one process, until you say otherwise.** That is still the
+default and it is still a real limit: four server processes behind a load
+balancer hold four caches and they disagree, a restart empties one, and
+`revalidateTag` in one of them does not reach the other three.
 
-That is a real limit, and it is stated rather than implied because the shape of
-the alternative is already decided: the store is one method, `resolve`, and
-anything that can answer it can be the store. A durable one is an adapter's to
-provide, and per uf's deployment rules a target that cannot provide one has to
-say so rather than degrade quietly.
+Naming a store is what fixes it:
 
-Cache entries are bounded by count — the least recently used entry goes when the
-store is full — and nothing sweeps in the background, because a cache with a
-timer in it is a process that will not exit.
+<div className="command"><code>uf.config.js</code></div>
+
+```js
+// @flow
+export default {
+  app: {
+    rendering: {
+      cache: {
+        route: true,
+        store: "filesystem",
+        // Optional. Defaults to `.uf/cache/route` under the project.
+        storeDir: "/var/cache/uf",
+      },
+    },
+  },
+};
+```
+
+Then a restart finds the entries where it left them, every process of one
+deployment reads one store, and `revalidateTag` takes an entry out of the store
+all of them fill from. With `revalidate`/`expire` and on-demand invalidation
+already in place, that is **incremental static regeneration**: a URL is rendered
+once, served from the store until it goes stale, refreshed behind a reader
+inside the window, and dropped the moment a mutation says it is wrong.
+
+Persistence is a second opt-in on top of the first, and nothing about the first
+changes. A route still has to state a lifetime; a render that read the request
+is still never stored; `data` and `actions` are still refused.
+
+### Entries are keyed by the build
+
+A durable entry outlives the build that produced it, which an in-memory one
+cannot, so **the identity of the build is the first part of every durable key**.
+A deploy therefore reads a cold cache rather than answering the new build's URLs
+with the previous build's documents — a class of bug that has no symptom except
+a page that is subtly wrong.
+
+`uf build` mints that identity and writes it beside the server bundle. Set
+`UF_BUILD_ID` when two artefacts have to *be* one build — a blue/green pair, or
+a rebuild of a tagged commit — which is the same variable, read for the same
+reason, as the one server action ids are derived from.
+
+A store asked to persist with no build identity to key it by **refuses to
+start**, and says so. It does not fall back to memory: a project that asked for
+a cache surviving restarts and got one that does not would see nothing but a
+`MISS` on every cold request, which is what a cold cache looks like anyway.
+
+### Somewhere else than a disk
+
+`"filesystem"` is uf's built-in and it is a convenience, not an architecture.
+Behind the store's one method — `resolve` — anything that can answer six calls
+can hold the entries, so a Redis, a KV namespace or an S3 bucket is a module you
+write and name:
+
+<div className="command"><code>cache/redis.js</code></div>
+
+```js
+// @flow
+import type { CacheProvider, DurableCacheEntry } from "@uniflowed/server/cache";
+
+export function createCacheProvider(): CacheProvider {
+  return {
+    name: "redis",
+    async read(key) {
+      const found = await client.get(key);
+      return found == null ? null : JSON.parse(found);
+    },
+    async write(key, entry: DurableCacheEntry) {
+      await client.set(key, JSON.stringify(entry));
+      for (const tag of entry.tags) await client.sAdd(`tag:${tag}`, key);
+    },
+    async remove(key) {
+      await client.del(key);
+    },
+    async invalidateTag(tag) {
+      const keys = await client.sMembers(`tag:${tag}`);
+      await client.del([...keys, `tag:${tag}`]);
+      return keys.length;
+    },
+    async invalidatePath(path) {
+      return dropAll(await client.sMembers(`path:${path}`));
+    },
+    async clear() {
+      await client.flushDb();
+    },
+  };
+}
+```
+
+```js
+cache: { route: true, store: "./cache/redis.js" }
+```
+
+A provider stores entries and nothing else. It does not decide what is stale, it
+does not run a fill, and it never sees a value uf has not already encoded — so
+the five answers above hold identically whichever store is behind them, and a
+provider cannot get them subtly different. The value is encoded by uf because a
+rendered document is a `Uint8Array` and plain JSON turns one into an object of
+six thousand numeric keys with no error anywhere.
+
+A deployment adapter can hand a store its provider directly rather than through
+the config, which is what a target with a binding rather than a package does:
+
+```js
+createCacheStore({ provider: myProvider, build: BUILD_ID });
+```
+
+`--adapter edge` **refuses** `"filesystem"` at the build rather than linking
+`node:fs` into a Worker that would fail on its first request. A Worker's durable
+store is a module you name, and that is the one target where naming one is not
+optional.
+
+### What a shared store does not reach
+
+An entry another process is **already holding in memory** when you invalidate a
+tag. It is gone from the shared store, so nothing fills from it again and no
+process without a copy can serve it; a process that has a copy serves it until
+its own `revalidate` — the number the page itself named as how stale it may be.
+
+Entries are bounded by count on both sides: the least recently used goes from
+memory when the store is full, and the filesystem provider sweeps its directory
+coldest-first, expired entries first. Nothing sweeps in the background, because
+a cache with a timer in it is a process that will not exit.
 
 ## What it is worth
 
@@ -188,15 +305,21 @@ The last column is the half a median cannot show. Ten simultaneous requests for 
 page nobody has asked for yet are one render, because a request that arrives
 while an entry is being filled joins the fill rather than starting a second one.
 
+Those numbers are the memory store. A durable one adds a read of the provider on
+a key this process has not seen — and a read is what it replaces a *render* with,
+which is the trade the whole feature is: 0.16 ms becomes a file read or a network
+hop instead of 52 ms, on every process rather than on the one that rendered it.
+
 ## What is not here
 
 - **The data cache and the action cache.** `rendering.cache.data` and
   `rendering.cache.actions` are refused rather than ignored.
-- **A durable store.** See "Where it lives".
+- **Prerendering into the store.** `uf build` prerenders routes into `dist/` and
+  that is a cache of a kind; seeding the durable store from it would make the
+  *first* request to a cold URL a read rather than a render. Today the first
+  request to each URL renders, and every request after it is the cache. That is
+  the remaining half of ISR and it is not written.
 - **Build-time enforcement** of the request-state rule, above.
-- **ISR.** `uf build` prerenders routes and that is a cache of a kind; joining it
-  to this one is what incremental static regeneration is, and the join is not
-  written.
 - **`uf build --compile`.** A compiled binary answers from bytes it carries
   rather than from a directory, so it has its own copy of the resolution order
   and not its own copy of the cache. `uf preview`, `uf start` and every

@@ -611,8 +611,10 @@ impl Default for ReactConfig {
 pub struct RenderingConfig {
     /// The rendering strategies this project will deploy, in no order.
     ///
-    /// The default is all four, which is "decide per route and deploy a
-    /// server" — the behaviour every uf project had before anything read this.
+    /// The default is the four that decide per route, which together mean
+    /// "decide per route and deploy a server" — the behaviour every uf project
+    /// had before anything read this. [`RenderingMode::Csr`] is deliberately
+    /// not among them and says why on itself.
     pub modes: Vec<RenderingMode>,
     /// What happens when a visitor follows a link.
     ///
@@ -698,13 +700,17 @@ impl Navigation {
 
 /// One rendering strategy a project may allow.
 ///
-/// Two of the four are implemented, and the enum keeps all four because the
-/// list is an allowlist: naming a strategy uf cannot do yet permits something
-/// that never happens, which costs nothing, where *removing* the name would
-/// make today's `uf.config.js` files fail to parse. What is refused is a list
-/// that allows **only** unimplemented strategies — see
+/// Three of the five are implemented, and the enum keeps the other two because
+/// the list is an allowlist: naming a strategy uf cannot do yet permits
+/// something that never happens, which costs nothing, where *removing* the name
+/// would make today's `uf.config.js` files fail to parse. What is refused is a
+/// list that allows **only** unimplemented strategies — see
 /// [`crate::ConfigError::NoImplementedRenderingMode`] — because that is a
 /// project asking for a build uf cannot produce at all.
+///
+/// [`Csr`](Self::Csr) is the value that does not behave like the others, and
+/// its own documentation says why: it is not a per-route answer, so it is the
+/// one value that cannot share a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RenderingMode {
@@ -719,6 +725,32 @@ pub enum RenderingMode {
     /// selected. `rendering.cache` and ubugeeei-prod/uf#277 are the half of it
     /// that exists.
     Isr,
+    /// Rendered in the browser, from one shell prerendered at build time.
+    /// **Implemented.**
+    ///
+    /// A single-page application. The build writes one document — an empty root
+    /// and the script and stylesheet tags — and the client router resolves and
+    /// renders every route from there. No route gets a document of its own, and
+    /// no server renders one.
+    ///
+    /// # Why it cannot share a list
+    ///
+    /// Every other value answers "where does *this route's* document come
+    /// from", which is what makes a list of them a set the build picks from per
+    /// route. This one answers "where does every route come from" with a single
+    /// document that belongs to no route, and once it is chosen there is no
+    /// per-route decision left. `["csr", "ssg"]` is therefore a project asking
+    /// for a build that both writes a document per route and does not, and its
+    /// two honest readings — "prerender what you can and fall back to the
+    /// shell" and "the shell, and never mind the rest of the list" — are
+    /// different applications. So it is refused rather than resolved by
+    /// precedence; see [`crate::ConfigError::CsrIsNotOneOfSeveral`].
+    ///
+    /// It is also **not in the default list**, which every other value is. The
+    /// default means "decide per route and deploy a server", and a build that
+    /// quietly decided to be a single-page application because nothing forbade
+    /// it would be the largest semantic change a default has ever made.
+    Csr,
 }
 
 impl RenderingMode {
@@ -730,6 +762,7 @@ impl RenderingMode {
             Self::Ssr => "ssr",
             Self::Ssg => "ssg",
             Self::Isr => "isr",
+            Self::Csr => "csr",
         }
     }
 
@@ -740,11 +773,22 @@ impl RenderingMode {
     /// nothing else is refused, and this is the predicate that decides it.
     #[must_use]
     pub const fn is_implemented(self) -> bool {
-        matches!(self, Self::Ssr | Self::Ssg)
+        matches!(self, Self::Ssr | Self::Ssg | Self::Csr)
+    }
+
+    /// Whether this value is the whole application's answer rather than one
+    /// route's.
+    ///
+    /// One value, and a predicate rather than a comparison, because the
+    /// refusal, the plan and the message that explains them all have to agree
+    /// about which value it is.
+    #[must_use]
+    pub const fn is_exclusive(self) -> bool {
+        matches!(self, Self::Csr)
     }
 }
 
-/// Which of uf's caches a project has turned on.
+/// Which of uf's caches a project has turned on, and where they keep things.
 ///
 /// Four switches, and for a long time all four of them were read once, copied
 /// into `dist/uf-build-manifest.json` and read by nothing — so setting any of
@@ -769,6 +813,29 @@ impl RenderingMode {
 /// All four still default to `false`. `docs/roadmap.md` says "opt-in-only cache
 /// controls" and that has not changed; what has changed is that opting in now
 /// does something.
+///
+/// # And a fifth key, which is a name rather than a switch
+///
+/// [`CacheConfig::store`] says *where* entries live, and it is what turns the
+/// route cache into incremental static regeneration. Absent — the default —
+/// means the memory of one process, which is what the cache has always been:
+/// four servers behind a load balancer hold four of them, a restart empties
+/// one, and an invalidation in one does not reach the other three. A store that
+/// outlives the process fixes all three at once, and the time-based
+/// revalidation and on-demand invalidation that make it ISR were already there.
+///
+/// It is a *name* and not an enumeration on purpose. `docs/red-lines.md`'s
+/// third line says every built-in provider must be replaceable and that "a
+/// provider a project can replace has to be a name it can write, and an enum
+/// with one variant cannot become one without a release of uf" — so
+/// `"filesystem"` is uf's built-in and anything else is a module specifier
+/// exporting `createCacheProvider`, exactly as `builder.module` names a builder.
+/// A project with a Redis or a KV namespace puts it behind the seam without a
+/// release of uf and without uf naming either.
+///
+/// Persistence is a second opt-in on top of the first and never a way around
+/// it: a route with no stated lifetime is still not cached, wherever the cache
+/// keeps things.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
@@ -781,4 +848,18 @@ pub struct CacheConfig {
     pub fetch: bool,
     /// A rendered document, through `@uniflowed/server/fetch`.
     pub route: bool,
+    /// Where entries live: `"memory"`, `"filesystem"`, or a module specifier.
+    ///
+    /// `None` is `"memory"` and is the default. Not resolved or validated here:
+    /// a module specifier is resolved from the project by the host that
+    /// constructs the store, which is the only place it can be — this crate has
+    /// no module resolver and inventing one to reject a name early would be a
+    /// second, worse copy of Node's.
+    pub store: Option<CompactString>,
+    /// Where `"filesystem"` keeps entries. Defaults to `.uf/cache/route`.
+    ///
+    /// A path a *deployment* has to be able to write, which is why it is a
+    /// setting rather than a constant: a container has one mounted volume, a
+    /// Lambda has `/tmp`, and a checkout has the project directory.
+    pub store_dir: Option<CompactString>,
 }

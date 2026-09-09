@@ -100,23 +100,88 @@ function deployment() {
  * reporting that it expired nothing. A project that turned the cache off should
  * be told that it did, not handed a cache that quietly does nothing.
  *
- * One store per server process, built when the handler is, which is the whole
- * of what "in memory, per process" means in practice: `uf preview` and
- * `uf start` each hold one, and two of them running at once share nothing.
+ * One store per server process, built when the handler is. With no
+ * `rendering.cache.store` that is the whole of what "in memory, per process"
+ * means in practice: `uf preview` and `uf start` each hold one, and two of them
+ * running at once share nothing. With one, the two processes share whatever the
+ * provider is in front of — see [`providerFor`].
  *
- * The store's own options are not configurable from `uf.config.js` and are not
- * named here: `rendering.cache` has four keys and no fifth, and a parameter
- * threaded through for a setting nobody can set would be the shape of
- * configurability with none of the substance.
+ * The store's remaining options are still not configurable from `uf.config.js`
+ * and are still not named here: `maxEntries` and `now` are facts about one
+ * process's heap and one process's clock, and a parameter threaded through for
+ * a setting nobody can set would be the shape of configurability with none of
+ * the substance.
  *
- * @param {{route?: boolean, fetch?: boolean} | undefined} declared
+ * @param {{route?: boolean, fetch?: boolean, store?: string, storeDir?: string} | undefined} declared
  * @param {(options?: object) => object} createCacheStore
+ * @param {{root: string, build: string | null}} where
  */
-function cacheFor(declared, createCacheStore) {
+async function cacheFor(declared, createCacheStore, where) {
   const route = declared?.route === true;
   const fetchCache = declared?.fetch === true;
   if (!route && !fetchCache) return undefined;
-  return { store: createCacheStore(), route, fetch: fetchCache };
+  const provider = await providerFor(declared, where);
+  const store =
+    provider == null ? createCacheStore() : createCacheStore({ provider, build: where.build });
+  return { store, route, fetch: fetchCache };
+}
+
+/**
+ * The durable provider `rendering.cache.store` names, or `null` for memory.
+ *
+ * Three answers, and the third is the one that matters to
+ * `docs/red-lines.md`'s third line. `"memory"` — the default, and what every
+ * project that says nothing gets — keeps the store exactly as it was.
+ * `"filesystem"` is uf's built-in, and it is a convenience rather than an
+ * architecture. Anything else is a **module specifier**, resolved from the
+ * project, exporting `createCacheProvider`: the same shape `builder.module`
+ * has, chosen for the same reason that document gives — "a provider a project
+ * can replace has to be a name it can write, and an enum with one variant
+ * cannot become one without a release of uf".
+ *
+ * So a project with a Redis, a KV namespace or an S3 bucket writes twenty lines
+ * against `@uniflowed/server/cache`'s `CacheProvider` type, names the module
+ * here, and uf never learns which of those it was.
+ *
+ * # Why a missing build identity is a refusal
+ *
+ * Because the alternatives are both worse. Falling back to memory would give a
+ * project that asked for a cache surviving restarts one that does not, and the
+ * symptom is a `MISS` on every cold request — indistinguishable from a cache
+ * that is simply cold. Generating an identity per process would be worse again:
+ * four servers would write four copies of everything into one directory and
+ * read none of each other's. The deployment rules say a target that cannot
+ * provide a durable store has to say so, and this is a host saying so.
+ *
+ * @param {{store?: string, storeDir?: string} | undefined} declared
+ * @param {{root: string, build: string | null}} where
+ */
+async function providerFor(declared, { root, build }) {
+  const named = declared?.store ?? "memory";
+  if (named === "memory") return null;
+  if (build == null) {
+    throw new Error(
+      `uf: rendering.cache.store is ${JSON.stringify(named)}, which keeps entries between ` +
+        "restarts, and there is no build identity to key them by. `uf build` writes one " +
+        "beside the server bundle; set UF_BUILD_ID to name it yourself. Without one, a " +
+        "deploy would answer the new build's URLs with the previous build's documents.",
+    );
+  }
+  const directory = path.resolve(root, declared?.storeDir ?? path.join(".uf", "cache", "route"));
+  if (named === "filesystem") {
+    const { createFilesystemCache } = await import("@uniflowed/server/cache/filesystem");
+    return createFilesystemCache({ directory });
+  }
+  const provider = await import(providerSpecifier(root, named));
+  const create = provider.createCacheProvider ?? provider.default;
+  if (typeof create !== "function") {
+    throw new Error(
+      `uf: rendering.cache.store names ${JSON.stringify(named)}, which exports no ` +
+        "`createCacheProvider`. A durable cache provider is a module exporting that " +
+        "function; see @uniflowed/server/cache's CacheProvider type for what it returns.",
+    );
+  }
+  return create({ build, directory });
 }
 
 /**
@@ -147,7 +212,63 @@ export async function loadBuild({ root, outDir, serverDir }) {
   const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
   const entry = await import(pathToFileURL(entryFile).href);
   await deployment();
-  return { entry, assets: assetsFromManifest(manifest), distDir };
+  const build = await buildIdentity(root, serverDir);
+  return { entry, assets: assetsFromManifest(manifest), distDir, root, build };
+}
+
+/**
+ * What `import()` should be given for a provider a project named.
+ *
+ * A relative path in `uf.config.js` is relative to *the project*, which is what
+ * anybody writing `"./cache/redis.js"` means and is not what `import()` from
+ * this module would do — it would look beside `@uniflowed/vite`, find nothing,
+ * and report a missing module the config file does not mention. `builder.module`
+ * settled the same question the same way in `uf_cli`'s `project_directory`.
+ *
+ * A bare specifier is left alone: `"@acme/uf-cache-redis"` is a package, and
+ * resolving it is Node's job and not this function's.
+ *
+ * @param {string} root
+ * @param {string} named
+ */
+export function providerSpecifier(root, named) {
+  if (!named.startsWith(".") && !path.isAbsolute(named)) return named;
+  return pathToFileURL(path.resolve(root, named)).href;
+}
+
+/** What `uf build` writes its identity into, beside the server bundle. */
+export const BUILD_ID_FILE = "uf-build-id";
+
+/**
+ * The identity of the build being served, or `null`.
+ *
+ * Only a durable cache reads it, and only a durable cache needs it: an entry
+ * that cannot outlive the process cannot outlive the build either, so every
+ * command that keeps its cache in memory is entitled to `null` here and never
+ * looks. `packages/server/internal/cache-key.js` argues the rest.
+ *
+ * `UF_BUILD_ID` first, then the file `uf build` wrote. The environment wins for
+ * the reason it wins in `crates/uf_rsc`'s `BuildId::from_env_or_generate`,
+ * which reads the same variable for the same kind of fact: a deployment that
+ * needs two artefacts to *be* one build — a blue/green pair, a rebuild of a
+ * tagged commit — has no other way to say so.
+ *
+ * `null` rather than a generated fallback, and that is the whole point of the
+ * function. A per-process identity would give four servers four caches with a
+ * shared disk between them, which is worse than four memories: it would write
+ * four copies of everything and read none of them. Whoever asked for a durable
+ * store is told there is no build to key it by, and gets to fix it.
+ */
+export async function buildIdentity(root, serverDir) {
+  const named = process.env.UF_BUILD_ID;
+  if (typeof named === "string" && named !== "") return named;
+  try {
+    const file = path.join(path.resolve(root, serverDir), BUILD_ID_FILE);
+    const value = (await readFile(file, "utf8")).trim();
+    return value === "" ? null : value;
+  } catch {
+    return null;
+  }
 }
 
 async function readable(file, message) {
@@ -309,20 +430,29 @@ export async function beginRequest(entry, request) {
  * the point where four switches that used to reach a JSON file and nothing else
  * become a store a request can hit. See ubugeeei-prod/uf#277.
  *
- * @param {{entry: object, assets: object, cache?: object}} build
+ * `root` and `build` come with it, and only the cache reads either: `root` is
+ * where a `storeDir` is resolved from and `build` is what a durable entry is
+ * keyed by. Both are `undefined` for a caller that constructs a handler by
+ * hand, which is the memory-only store and needs neither.
+ *
+ * @param {{entry: object, assets: object, cache?: object, root?: string, build?: string | null}} build
  */
-export function createApplicationHandler({ entry, assets, cache }) {
-  const ready = deployment().then(({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
-    createFetchHandler({
-      app: entry,
-      document: assets,
-      cache: cacheFor(cache, createCacheStore),
-      // `uf preview` and `uf start` are a Node process with a socket, which is
-      // what a deployed `--adapter node` build is too — so a route handler
-      // that streams events answers the same way in the preview it is checked
-      // in and in the deployment it ends up as. See `withRequest` above.
-      capabilities: nodeCapabilities(),
-    }),
+export function createApplicationHandler({ entry, assets, cache, root, build }) {
+  const ready = deployment().then(
+    async ({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
+      createFetchHandler({
+        app: entry,
+        document: assets,
+        cache: await cacheFor(cache, createCacheStore, {
+          root: root ?? process.cwd(),
+          build: build ?? null,
+        }),
+        // `uf preview` and `uf start` are a Node process with a socket, which is
+        // what a deployed `--adapter node` build is too — so a route handler
+        // that streams events answers the same way in the preview it is checked
+        // in and in the deployment it ends up as. See `withRequest` above.
+        capabilities: nodeCapabilities(),
+      }),
   );
   return async function handle(request) {
     return (await ready)(request);
@@ -352,11 +482,11 @@ export function createStaticHandler({ root }) {
  * project whose handler path collides with a file in `public/` behaves one way
  * when it is checked and the other way when it is deployed.
  *
- * @param {{entry: object, assets: object, distDir: string, cache?: object}} build
+ * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null}} build
  */
-export function createServeHandler({ entry, assets, distDir, cache }) {
+export function createServeHandler({ entry, assets, distDir, cache, root, build }) {
   const serveStatic = createStaticHandler({ root: distDir });
-  const application = createApplicationHandler({ entry, assets, cache });
+  const application = createApplicationHandler({ entry, assets, cache, root, build });
   return async function handle(request) {
     return (await serveStatic(request)) ?? (await application(request));
   };

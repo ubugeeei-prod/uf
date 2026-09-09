@@ -1735,6 +1735,35 @@ pub enum ConfigError {
          this project's routes need."
     )]
     StaticBuildWithoutSsg { path: Utf8PathBuf },
+    /// `csr` in a list with anything else.
+    ///
+    /// Every other mode answers "where does this route's document come from",
+    /// which is what makes the list a set the build picks from per route. `csr`
+    /// answers it for the whole application with one document that is no
+    /// route's, so a list holding it and something else has two readings —
+    /// "prerender what you can and fall back to the shell", and "the shell, and
+    /// never mind the rest" — that are different applications. Whichever were
+    /// read second would silently win, which is the failure
+    /// ubugeeei-prod/uf#385 is about with different keys.
+    #[error(
+        "{path}: app.rendering.modes is [{modes}], and `csr` cannot share the list. It renders \
+         every route in the browser from one shell, where the others write a document per \
+         route — so a build cannot pick between them per route, which is what this list is \
+         for. Write `[\"csr\"]` for a single-page application, or drop it."
+    )]
+    CsrIsNotOneOfSeveral { path: Utf8PathBuf, modes: String },
+    /// `build.staticBuild` in a `csr` project.
+    ///
+    /// `staticBuild` is "prerender every route and emit no server bundle", and
+    /// `csr` prerenders no route at all. The second half of the two agrees and
+    /// the first half cannot, so this is a project that has asked for every
+    /// route to be prerendered by a build that writes one document.
+    #[error(
+        "{path}: build.staticBuild prerenders every route, and app.rendering.modes is \
+         [\"csr\"], which prerenders none — the build writes one shell and the browser renders \
+         the routes. A `csr` build already emits no server, so drop `staticBuild`."
+    )]
+    CsrWithStaticBuild { path: Utf8PathBuf },
     /// `build.lib` in a project whose file-system router is on.
     ///
     /// One project is one kind of build. `app.router.enabled` is what says
