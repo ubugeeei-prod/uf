@@ -36,17 +36,3 @@
 # ubugeeei-prod/uf#710's second housekeeping question, and this line is the
 # answer. `crates/uf_std`'s registry carries the same distinction per subpath,
 # and `uf inspect` reports it.
-
-brand
-cell
-effect
-form
-i18n
-immer
-mock
-state
-std
-story
-testing
-tui
-web
