@@ -259,17 +259,26 @@ fn unreadable(file: &Utf8Path) -> String {
 
 /// Whether `adapter` would actually run what a project declared.
 ///
-/// `edge` is the only one today: `uf build` writes its `wrangler.json`, so
-/// there is a file to put `triggers.crons` in and Cloudflare's own scheduler
-/// to read it.
+/// **None of them yet**, and that is the honest answer rather than a
+/// placeholder. Each target is one piece of wiring away and none of the pieces
+/// is written:
 ///
-/// `node`, `bun` and `container` *could* — they keep a process, and
-/// `@uniflowed/server/schedule` ticks in one — but the entry `uf build`
-/// generates for them does not pass the declaration to `serve` yet. Until it
-/// does, a declaration in a route module would do nothing on those targets,
-/// and saying so is better than the silence.
-pub(crate) const fn runs_schedules(adapter: DeployAdapter) -> bool {
-    matches!(adapter, DeployAdapter::Edge)
+/// * `node`, `bun` and `container` keep a process and
+///   `@uniflowed/server/schedule` ticks in one — but the entry `uf build`
+///   generates for them does not pass the declaration to `serve`.
+/// * `edge` has Cloudflare's own scheduler and a `wrangler.json` uf already
+///   writes, so `triggers.crons` is a two-line emission — but the `worker.js`
+///   uf generates exports `{ fetch }` and no `scheduled()`, and a Worker with
+///   a cron trigger and no scheduled handler fails the invocation. Emitting
+///   the trigger without the handler is the "deployment whose scheduled work
+///   never runs" this file exists to refuse, wearing a configuration file that
+///   looks right. It was emitted for one commit; this is that taken back.
+/// * `serverless` has no configuration file uf writes at all.
+///
+/// So every declaration is refused, and `refuse_unrunnable` says which wiring
+/// is missing. See ubugeeei-prod/uf#531.
+pub(crate) const fn runs_schedules(_adapter: DeployAdapter) -> bool {
+    false
 }
 
 /// Refuse a build whose schedules this target would not run.
@@ -299,10 +308,11 @@ pub(crate) fn refuse_unrunnable(
     bail!(
         "the `{}` adapter would not run the {} schedule(s) this project declares, so this \
          build would produce a deployment whose scheduled work never happens:{named}\n  \
-         `--adapter edge` writes them into `wrangler.json` for Cloudflare's own scheduler. \
-         On a target that keeps a process, pass them to `serve` yourself with \
-         `@uniflowed/server/schedule` — declaring one in a route module is not wired for \
-         those yet (ubugeeei-prod/uf#531).",
+         No adapter runs a declared schedule yet: the targets that keep a process are not \
+         handed it by the entry uf generates, and the Worker uf writes exports no \
+         `scheduled()` for Cloudflare's cron to call. Pass your schedules to `serve` \
+         yourself with `@uniflowed/server/schedule`, which does run them \
+         (ubugeeei-prod/uf#531).",
         adapter.as_str(),
         schedules.len()
     );
