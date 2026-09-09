@@ -52,6 +52,7 @@ use crate::ui::Ui;
 mod guards;
 mod library;
 mod site;
+mod spa;
 
 /// How many assets `--size-report` names before the list is cut off.
 const LARGEST_ASSETS_SHOWN: usize = 20;
@@ -275,10 +276,43 @@ pub(crate) fn build(
     // which has a bundle to load and does not have it; that is refused in
     // `commands::serve`, where it is a fact rather than an opinion.
     let adapter = deploy::resolve(&resolved.config.app.runtime.deploy, requested_adapter)?;
+    // Before the build rather than after it: a project whose scheduled work
+    // this target would never run should hear so in a second, not after a
+    // bundle. ubugeeei-prod/uf#531.
+    let declared_schedules = match adapter {
+        Some(adapter) => {
+            let found = deploy::schedules::discover_schedules(&root, &resolved.config)?;
+            deploy::schedules::refuse_unrunnable(adapter, &found)?;
+            found
+        }
+        None => Vec::new(),
+    };
     // The fourth thing that needs a process, and the only one `uf` can see
     // without evaluating a module. Checked here rather than in the builder for
     // exactly that reason — see `refuse_unanswerable_actions`.
     refuse_unanswerable_actions(plan, &rsc, adapter, standalone)?;
+    // And everything else that needs one, for the one plan whose builder will
+    // never find it. The other three prerender something, so a page that reads
+    // a request throws while it is being rendered and the build says so; a
+    // shell build renders no route at all, so the same page would build,
+    // deploy, and fail in a browser. See [`spa`].
+    //
+    // Not lifted by `--adapter` or `--compile`, unlike the actions above, and
+    // the difference is which declaration each is about. `staticBuild` is a
+    // claim about the *artefact*, so a build that also emits a server has
+    // honoured it; `modes: ["csr"]` is a claim about the **routes** — that
+    // every one of them is rendered in a browser — and that is still true
+    // inside a Worker or an executable, because neither of them writes the
+    // per-route documents the shell exists instead of.
+    if plan.prerender() == Prerender::Shell {
+        spa::refuse(
+            &resolved.root,
+            &routes,
+            &server_modules,
+            &rsc.graph,
+            &plan.because(),
+        )?;
+    }
 
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
@@ -397,6 +431,12 @@ pub(crate) fn build(
             "fetch": resolved.config.app.rendering.cache.fetch,
             "data": resolved.config.app.rendering.cache.data,
             "actions": resolved.config.app.rendering.cache.actions,
+            // Where the entries go, for a deploy step that has to provision it:
+            // `"filesystem"` needs a writable directory that outlives the
+            // process, and a module specifier needs whatever that module
+            // connects to. Absent means memory, which needs nothing.
+            "store": resolved.config.app.rendering.cache.store.as_deref(),
+            "storeDir": resolved.config.app.rendering.cache.store_dir.as_deref(),
         },
     });
     timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;
@@ -480,7 +520,9 @@ pub(crate) fn build(
                 "writing the {} adapter's output",
                 adapter.as_str()
             ));
-            Some(timer.measure("adapter", || deploy::deploy(ui, adapter, link))?)
+            Some(timer.measure("adapter", || {
+                deploy::deploy(ui, adapter, link, &declared_schedules)
+            })?)
         }
         None => None,
     };
@@ -523,6 +565,7 @@ pub(crate) fn build(
         Prerender::Everything => "every route prerendered",
         Prerender::Possible => "prerendered where it can be, the rest per request",
         Prerender::Nothing => "nothing prerendered; every route per request",
+        Prerender::Shell => "one shell prerendered; every route rendered in the browser",
     };
     // And what it decided about the other axis. A row rather than a line only
     // when it is not the default: `app.rendering.navigation` is `client` in

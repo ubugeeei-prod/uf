@@ -1,0 +1,271 @@
+---
+title: "Server Components · uf"
+description: "The boundary a directive draws, the graph that resolves it, and a split at the route, not the module."
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Server Components
+
+<div className="lede">
+Every module in a uf application belongs to the server until it says otherwise,
+and `"use client"` is how it says otherwise. What that directive is worth is
+decided by a graph rather than by a convention: uf resolves the whole import
+tree, finds every place the server hands off to the browser, and reports every
+way an application can break the contract. What it does not do yet is split
+anything smaller than a route, and that is written down here rather than left
+for you to discover by measuring `dist/`.
+</div>
+
+## Three kinds of module
+
+A module's environment is decided by its first statement and by nothing else.
+
+| First statement | Environment | What it means |
+| --- | --- | --- |
+| nothing | Server | A Server Component, or ordinary server code. The default. |
+| `"use client";` | Client | A client bundle root. Its code is the browser's, and everything it imports comes with it. |
+| `"use server";` | Server actions | Every export is a function the browser may call by id. See [Server actions](/guide/server-actions). |
+
+A directive is honoured under the ECMAScript *directive prologue* rules, which
+is what React and the bundlers implement:
+
+- a UTF-8 BOM, a `#!` line, comments and blank lines may come before it;
+- it must be a plain single- or double-quoted string literal, so a template
+  literal or a concatenation is not one;
+- it must end at `;`, at a line break, at the `}` that closes its block, or at
+  the end of the file;
+- the text between the quotes is compared byte for byte, so `"use  client"`
+  with two spaces is an ordinary string statement — exactly as `"use strict"`
+  behaves in the language.
+
+**A directive uf cannot honour is reported rather than ignored.** A `"use
+client"` further down the file, one built by concatenation, a module declaring
+both directives, a `"use client"` inside a function body: each is a named
+diagnostic. Silently dropping one is how a module its author believed was a
+Client Component ends up rendered only on the server, which is the bug this
+pass exists to prevent.
+
+A `"use server"` at the top of a *function body* is a different and supported
+construct — it marks that one closure as an action rather than changing the
+module. Those are collected separately, and the limit on them is in
+[Server actions](/guide/server-actions).
+
+## The boundary is an import
+
+```js
+// @flow
+// app/counter/_uf.page.js
+import * as React from "@uniflowed/react";
+
+import Counter from "./_components/Counter.js";
+
+export default component CounterPage() {
+  return (
+    <section>
+      <h1>rsc-split-app counter</h1>
+      <Counter />
+    </section>
+  );
+}
+```
+
+```js
+"use client";
+// @flow
+// app/counter/_components/Counter.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+
+export default component Counter() {
+  const [count, setCount] = useState<number>(0);
+  return (
+    <button type="button" onClick={() => setCount(count + 1)}>
+      {count}
+    </button>
+  );
+}
+```
+
+That import is the boundary: a server module importing a `"use client"` module.
+The `"use client"` module becomes a client bundle root, and the analysis records
+the edge. Both files are trimmed from
+`crates/uf_cli/tests/fixtures/rsc-split-app`, which is the project uf's own build
+tests read the answer out of rather than asserting it.
+
+## What the graph decides
+
+For every module in the project, the analysis answers four questions.
+
+| Question | Answers |
+| --- | --- |
+| Which environment does it run in? | `server`, `client`, `server-actions` |
+| Which halves reach it? | `unreachable`, `server-only`, `client-only`, `server-and-client` |
+| Can a closure it defines cross into the browser? | `isolated`, `reaches-boundary` |
+| Does the browser have to evaluate it? | yes when it declares `"use client"`, and yes when it reaches a boundary |
+
+The last one is the split, and it is two facts joined by an `or`. A
+`"use client"` module is a bundle root by definition. A module *above* a
+boundary is in the browser too, and that second half is uf's client renderer
+talking rather than React's: `packages/router/client.js` hydrates by
+re-rendering the matched tree from the same modules the server rendered it
+from, so a Server Component above a boundary is a module React needs in order
+to reach the boundary at all.
+
+Which leaves the module that reaches **no** boundary. Nothing under it is ever
+rendered in the browser, so nothing under it has to be shipped — and that is
+the whole of the split uf performs today.
+
+## The split is at the route
+
+`uf build` drops a route's page from the *client* route table when no client
+boundary is reachable from that route's page, its layouts, its `_uf.loading.js`
+and `_uf.template.js` modules, or the not-found and error boundaries that cover
+it. Nothing in the browser imports the page, so nothing only the page reached is
+emitted.
+
+Three properties of that are worth knowing before you rely on it.
+
+**A dropped route is not hydrated, and a `Link` into one is a document
+navigation.** There is no page for the client router to render, so the browser
+fetches the document — which is what the anchor would have done on its own. See
+[Routing](/guide/routing).
+
+**A dropped page is still imported for its side effects.** A uf build links the
+stylesheets it finds in the client module graph, and those are the whole graph's
+— so a route removed from it outright would take its rules off every page of the
+site. The import stays, nothing is read from it, and the code is tree-shaken
+rather than never resolved.
+
+**Unknown means ship it.** The analysis scans `.js`. A page written as `.mdx`, a
+`.jsx` module, a file past the scanner's size limit: none of them is in the
+manifest, and the honest reading of a module the analysis never saw is that it
+might reach a boundary. Every unknown answers "keep it", so the split can only
+remove a route uf has positively decided needs no browser — and a manifest that
+is missing, unreadable, or written by an older uf removes nothing at all. A
+project driving Vite itself, without `uf build` or `uf dev`, gets no split.
+
+## Seeing what moved
+
+<div className="command"><code>uf dev</code></div>
+
+The analysis is rerun on every save, and what moved across the client bundle
+since the last scan is reported under a `client bundle` heading. A module that
+entered it is named with the shortest chain of imports that put it there —
+`app/counter/_uf.page.js imports app/counter/_components/Counter.js, which
+declares "use client"` — and a module that left is named with no chain, because
+there is none to give. So a page arriving in the browser's bundle is a line in
+the terminal on the save that did it, rather than a number in a bundle report a
+week later.
+
+The whole project is rescanned rather than one module patched, because whether a
+module is client-only depends on which entries reach it — there is no per-module
+answer that is also a complete one.
+
+<div className="command"><code>uf build</code></div>
+
+The build's summary counts what the analysis found:
+
+```
+  modules            11
+  client components  3
+  server actions     0
+  rsc diagnostics    0
+```
+
+and adds a `pages in the client bundle  2 of 5` row **only** when the split
+removed something. The absence of that row means what it meant before the split
+existed: every page went to the browser.
+
+`.uf/build/meta/uf-rsc-manifest.json` carries the decision per module as
+`proximity`, along with every boundary, every bundle root, and every callable
+action. It does not carry the build id, only a fingerprint of it —
+[Server actions](/guide/server-actions) says why that matters.
+
+## What it reports
+
+Every one of these is an error, and `uf build` prints them before it runs the
+bundler and then fails: a module that breaks the contract is not going to be
+fixed by bundling it. The one exception is the last row.
+
+| Rule | What it means |
+| --- | --- |
+| `rsc/server-only-import-in-client` | A module the client graph reaches imports `@uniflowed/db`, `@uniflowed/server`, `server-only`, a subpath of one of those, or a `*.server.js` file |
+| `rsc/client-only-api-in-server` | A Server Component calls `useState`, `useEffect`, `createContext` and the rest, or reads `window`, `document`, `localStorage`, `sessionStorage`, `navigator` or `alert` |
+| `rsc/client-only-hook-in-server` | A Server Component calls a hook `@uniflowed/hooks` declares as browser-only |
+| `rsc/server-action-not-async` | A `"use server"` export React cannot call, because it is not an async function |
+| `rsc/server-action-not-a-function` | A `"use server"` module exporting something that is not a function at all |
+| `rsc/import-escapes-project-root` | An import that resolves outside the project |
+| `rsc/module-outside-project-root` | A module whose own path is not inside the project |
+| `rsc/directive-not-in-prologue` | A directive that is not the module's first statement |
+| `rsc/directive-not-a-string-literal` | A directive built from a template literal or a concatenation |
+| `rsc/conflicting-directives` | One module declaring both `"use client"` and `"use server"` |
+| `rsc/client-directive-in-function` | `"use client"` inside a function body, which React does not support |
+| `rsc/unclassified-hook-in-server` | **A warning.** The check matched names and this hook is not one of them |
+
+That last row is the only thing in the analysis that is not a verdict, and it is
+a warning because it is a statement that the analysis *stopped*. The client-only
+check matches identifiers against two name lists, so `useState` in a Server
+Component is caught and `useRoute` — which is built on `useContext` — is not,
+and neither is any hook you wrote yourself. Deciding it properly means binding
+an export to the APIs its body reaches; that is
+[#388](https://github.com/ubugeeei-prod/uf/issues/388). Until then the honest
+output is the question rather than silence, because silence reads as "checked
+and fine", which is the one thing it is not.
+
+`uf dev` prints the same list and changes no exit code. A dev server that
+refused to serve a module over a contract violation would be a dev server you
+could not use to fix one.
+
+## Where `uf lint` fits
+
+Four of uf's lint rules are about this boundary. They read one file at a time,
+by text, with no graph — which is why they can run on a git hook over the staged
+files, and why they are not a substitute for the analysis above.
+
+| Rule | What it matches |
+| --- | --- |
+| `server/no-server-only-import-in-client` | A `"use client"` module importing `@uniflowed/server` or a `*.server.js` file |
+| `server/no-client-secret` | A line in a `"use client"` module mentioning `SECRET` or `PRIVATE_` |
+| `server/use-client-directive-position` | A boundary directive that is not the module's first statement |
+| `server/use-server-actions` | A module under `server/` or named `*.server.js` that mentions `serverAction` and does not open with `"use server";` |
+
+All four are errors by default. The first and third answer a narrower version of
+an `rsc/` question sooner — one file, no imports resolved, no graph. The second
+has no counterpart in the graph, because a secret read from a client module is a
+string and not an edge. The fourth is about where a project keeps its action
+modules rather than about the boundary at all.
+
+## What is not here
+
+**The Flight payload, and everything downstream of it.** uf has no
+client-re-renderable payload describing the tree the server rendered, so:
+
+- **the split cannot be at the module.** A Server Component above a boundary
+  ships whole, because the client re-renders the matched tree from the same
+  modules the server used. The analysis, the bundler and the roadmap all carry
+  that same sentence, and it is why the unit is a route.
+- **a `"use client"` module is not a reference in the server render.** It is a
+  module the browser also gets, which is ordinary SSR with full hydration for
+  every route that keeps its page.
+- **`rsc/server-only-import-in-client` does not cover a page above a
+  boundary.** It asks about modules the client graph *reaches*, and a module
+  above a boundary is not one of them — it is server-reachable code that the
+  route-level split ships anyway. Until the payload lands, keep a `cookies()`
+  call out of a page that renders a client component, or move it behind an
+  action.
+
+Streaming is *not* the missing half: `renderToPipeableStream` and
+`renderToReadableStream` are what uf renders documents with, and Suspense
+boundaries already resolve independently in the HTML stream. What is missing is
+the payload a **client** re-renders a tree from, and it is a second module graph
+rather than a second dependency — React's server renderer only loads under the
+`react-server` export condition, which resolves `react` to a build with no
+`useState` in it, and `react-dom/server` needs the ordinary one. Two builds of
+React cannot share one module registry, so this needs a Vite environment uf does
+not have yet, a client-reference manifest keyed to Rollup's chunk ids, and a
+rewrite of the client's hydration.
+
+[#252](https://github.com/ubugeeei-prod/uf/issues/252) and
+[#519](https://github.com/ubugeeei-prod/uf/issues/519) carry that argument in
+full. [What uf does not do](/guide/scope) lists this beside every other gap.

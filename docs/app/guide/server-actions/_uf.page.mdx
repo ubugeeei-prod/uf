@@ -1,0 +1,414 @@
+---
+title: "Server actions · uf"
+description: "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself."
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Server actions
+
+<div className="lede">
+A `"use server"` export is a function the browser can invoke over the network,
+and it is a public HTTP endpoint from the moment the build contains it. So this
+page is as much about what uf refuses as about what you write: the grammar the
+arguments have to fit, the three independent things standing between the
+endpoint and a cross-site call, and the one guarantee uf cannot give you —
+that whoever made the call was allowed to.
+</div>
+
+## Writing one
+
+A module whose first statement is `"use server";`. Every export is an action,
+and every export has to be an async function.
+
+```js
+"use server";
+// @flow
+// app/counter/_actions/tally.js
+import { cookies } from "@uniflowed/server";
+
+import { tallyFor } from "./ledger.js";
+
+/** Record a count and answer with what the server made of it. */
+export async function recordCount(count: number): Promise<{|
+  readonly total: number,
+  readonly visitor: string,
+|}> {
+  return {
+    total: tallyFor(count),
+    visitor: cookies().get("visitor") ?? "anonymous",
+  };
+}
+```
+
+Two things in that file are the point of it. `cookies()` comes from
+`@uniflowed/server`, which imports `node:async_hooks`; `./ledger.js` is an
+ordinary module with no directive of its own, standing in for the database
+handle a real action reaches for. **Neither reaches the browser.**
+`@uniflowed/vite` answers the client build with a generated module *in place of*
+this file — one reference per callable export — so the body, its imports, and
+everything only they reached stay where they were written. The graph agrees with
+the bundler about it: an import from the client graph into a `"use server"`
+module is coloured server, so a database handle reached only through an action
+is not in the client graph at all.
+
+## Calling one
+
+An ordinary import and an ordinary call.
+
+```js
+"use client";
+// @flow
+// app/counter/_components/Counter.js
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+
+import { recordCount } from "../_actions/tally.js";
+
+export default component Counter() {
+  const [count, setCount] = useState<number>(0);
+  const [recorded, setRecorded] = useState<string>("");
+  return (
+    <div>
+      <button type="button" onClick={() => setCount(count + 1)}>
+        add one
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void recordCount(count).then((answer) => {
+            setRecorded(`${String(answer.total)} ${answer.visitor}`);
+          });
+        }}
+      >
+        record
+      </button>
+      <output>{recorded}</output>
+    </div>
+  );
+}
+```
+
+On the server that import *is* the function. In the browser it is a reference:
+`createServerReference(id, "app/counter/_actions/tally.js#recordCount")`, which
+is an id and a `fetch`. You never write one — `@uniflowed/vite` emits one per
+callable export, in the client graph only.
+
+**Flow reads the module, not the reference.** The bundler's substitution is not
+something the checker sees, so `recordCount("nine")` against
+`recordCount(count: number)` is a `uf check` error rather than a `400` with
+nothing in it. That half needs nothing from the runtime, and
+`tests/type-tests/server-actions.js` exists so that a change which breaks it is
+caught by a test rather than by a user.
+
+## Forms
+
+A reference is an ordinary async function, which is all React 19's form APIs
+ask for.
+
+```js
+"use server";
+// @flow
+// app/counter/_actions/notes.js
+import { maxLength, minLength, object, pipe, safeParse, string, trim } from "@uniflowed/validator";
+import { put } from "@uniflowed/validator/plain-object";
+
+const Note = object({ note: pipe(string(), trim(), minLength(1), maxLength(80)) });
+
+/** What `useActionState` holds between submits. */
+export type NoteState = {| readonly saved: string | null, readonly problem: string | null |};
+
+export async function submitNote(previous: NoteState, form: FormData): Promise<NoteState> {
+  const fields: { [string]: string } = {};
+  for (const [name, value] of form.entries()) {
+    if (typeof value === "string") {
+      put(fields, name, value);
+    }
+  }
+
+  const parsed = safeParse(Note, fields);
+  if (!parsed.ok) {
+    // The previous `saved` survives a rejected submit, which is why
+    // `useActionState` hands an action the previous state at all.
+    return { saved: previous.saved, problem: "a note is 1 to 80 characters" };
+  }
+  return { saved: parsed.value.note, problem: null };
+}
+```
+
+```js
+"use client";
+// @flow
+// app/counter/_components/NoteForm.js
+import * as React from "@uniflowed/react";
+import { useActionState } from "@uniflowed/react";
+import { useFormStatus } from "react-dom";
+
+import { type NoteState, submitNote } from "../_actions/notes.js";
+
+const NO_NOTE: NoteState = { saved: null, problem: null };
+
+component SaveNote() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending}>
+      save note
+    </button>
+  );
+}
+
+export default component NoteForm() {
+  const [note, saveNote] = useActionState<NoteState, FormData>(submitNote, NO_NOTE);
+  return (
+    <form action={saveNote}>
+      <input name="note" maxLength={80} defaultValue="" />
+      <SaveNote />
+      <output>{note.saved ?? note.problem ?? ""}</output>
+    </form>
+  );
+}
+```
+
+`<form action={fn}>` hands the action a `FormData`; `useActionState` hands it
+the previous state and then the `FormData`. `useFormStatus` has to be read from
+a component *inside* the form, which is React's rule rather than uf's — a button
+that knows whether its own submit is in flight cannot be the component rendering
+the `<form>`.
+
+The schema is on the server because that is the only place it is a check.
+`<input required maxlength="80">` is a convenience for the person typing, and
+the request that reaches the function was not necessarily made by that document.
+
+A rejected submit is a value on the state rather than an exception: the endpoint
+answers a thrown action with a `500` and nothing in it, and "your note is too
+long" is not an internal error.
+
+**A form submitted before its page has hydrated does not work.** That is the one
+piece of React's form story uf does not have, and it is a deliberate trade; the
+last section says what it buys.
+
+## What may cross
+
+**A server action's arguments are plain JSON data, plus at most one form.** One
+object, `{"args": [...]}`, of valid UTF-8. Each value is `null`, a boolean, a
+finite number, a string, an array of those, or a plain object whose keys are
+ordinary strings. The result comes back under the same grammar, plus `undefined`
+for an action that returns nothing — and never a form, because a form is
+something a browser submits and not something a server answers with.
+
+| Bound | Value |
+| --- | --- |
+| Request body | 1 MiB |
+| Positional arguments | 16 |
+| Nesting depth | 24 |
+| Values in one payload | 10,000 |
+| Fields in one submitted form | 256 |
+| Length of one form field name | 128 |
+
+And what is refused, each for a reason:
+
+- **Functions, symbols, bigints, `undefined` as an argument.** JSON has no
+  spelling for them, and an action declared to take one would be taking
+  something the caller cannot send.
+- **`NaN` and the infinities.** `JSON.stringify` writes `null` for each, so
+  accepting one would mean the action was called with a different number from
+  the one the caller passed.
+- **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays, React
+  elements.** Each would need a tag in the payload naming a constructor to call,
+  and a tag naming a constructor is what every deserialisation CVE is made of.
+  An action that wants a date takes an ISO string and parses it, where the parse
+  is yours and is checked.
+- **`__proto__`, `constructor` and `prototype` as keys.** `JSON.parse` gives
+  `__proto__` an *own* property rather than changing the prototype, so a payload
+  carrying one is not itself pollution — it becomes pollution in the first line
+  of application code that spreads or merges it. Refused in one place rather
+  than left for every action to remember.
+- **A value that refers to itself, or twice to the same object.** The
+  alternative is a marker meaning "this is the object you saw earlier", which is
+  a reference format by another name.
+- **A file in a form.** Bytes here would be base64 in a JSON string with no
+  ceiling of their own, and an upload wants a content type, a streaming read and
+  a size limit that are not this module's.
+- **A second form in one call.** The envelope names the form's position once.
+- **Symbol keys.** `JSON.stringify` drops them silently, so the payload would
+  arrive missing a property nobody could see was missing.
+
+The same grammar runs on both sides, so the browser refuses to *send* what the
+server would refuse to receive. A bad argument is
+`argument 2.createdAt is a class instance …` thrown at the call site with a
+stack that reaches your component, rather than a `400` with nothing in it.
+
+A submitted form does not widen any of that. It travels *beside* the values —
+`{"args": [null, null], "form": {"at": 1, "entries": [["note", "hi"]]}}` — never
+inside one. A tag in the value tree would be a payload saying which constructor
+to call; outside the tree, `at` names a position and not a type, the slot it
+names must hold `null`, and the decoder's only constructor is `FormData`, fixed
+in the code and never named by the payload.
+
+## The call, and the endpoint
+
+A `POST` to **the page's own URL**, with `uf-action: <id>`,
+`content-type: application/json`, `credentials: same-origin` and `cache: no-store`.
+
+The URL is the page rather than a path uf reserves so that the middleware
+guarding that path runs above the call exactly as it does above the page — no
+new route to collide with a project's own, and no second spelling of "which
+guard applies here". Every host runs the action dispatcher in the same place:
+below the middleware, above the route handlers. A guard that answers is the
+whole request; a request naming no action is declined outright, so a
+`_uf.route.js` at the same path still gets it.
+
+Every answer is one of these, and every refusal carries the same fixed body —
+the status says what a caller may usefully do differently, and nothing says what
+went wrong:
+
+| Status | When |
+| --- | --- |
+| `200` | The action ran and its result crossed |
+| `400` | The payload is not this grammar |
+| `403` | `Origin` is absent, unparseable, or not equal to `Host` |
+| `404` | No row has that id — malformed, well-formed but unknown, or not callable |
+| `405` | Not a `POST`. Carries `Allow: POST` |
+| `413` | The body is larger than an action accepts |
+| `415` | The content type is not exactly `application/json` |
+| `500` | The action threw, or its result cannot cross |
+
+**Cross-site calls cannot happen by accident, three times over.** `uf-action` is
+not a header a simple request may set, so a cross-origin caller needs a
+preflight and nothing answers one. `application/json` is not a content type a
+`<form>` can produce. And `Origin` must be present and must equal `Host`. Any
+one of the three would do; all three are there because the cost is three `if`s
+and the failure is somebody's account.
+
+`Origin` is compared against `Host` and against nothing else, because `Host` is
+what the browser was talking to and `X-Forwarded-Host` is a string the caller
+wrote. **A proxy in front of a uf application has to preserve `Host`**, and one
+that rewrites it turns every action call into a `403` rather than into a hole.
+The port is part of the comparison, so `:5173` and `:5174` on one machine are
+two origins — which is what a cookie already thinks.
+
+## An action authorizes itself
+
+The middleware running above the call is a convenience and **it is not a
+boundary**, because the URL is the caller's to choose: a client that wants to
+skip the guard on `/dashboard` posts the same id to `/`.
+
+**A server action is the unit of authorization, the way a route handler is.** A
+`"use server"` function that relies on a path guard having run is a function
+with a hole in it. Read the session inside the action, decide inside the action,
+and treat every argument as something a stranger sent — because one may have.
+
+## The id, and what is dialable at all
+
+An action id is `HMAC-SHA256(build id, module ‖ export ‖ kind)`, rendered as 64
+lowercase hexadecimal characters. Four properties follow, and each answers a
+failure that has produced a real CVE in another React framework.
+
+- **Ids are not guessable.** The whole repository plus a published sourcemap is
+  not enough to derive the id of a function the interface does not offer,
+  because the build id is the key and is never published — the manifest carries
+  only a fingerprint of it.
+- **Ids do not survive a rebuild.** A new build id changes every action id, so
+  an id captured from an older, more permissive deployment cannot be replayed.
+- **Only actions a client boundary can reach have a row.** An action nothing can
+  hand across a boundary is recorded in the registry and never written to the
+  manifest, so it has no endpoint. There is no path from a request to a module
+  specifier, a file name or an export name: the id selects a row, and the row
+  was decided at build time.
+- **Every failed lookup answers identically.** A malformed id, a well-formed id
+  nobody has, and an id naming something not callable are all `404` with the
+  same body — and the table is scanned in full with a constant-time comparison,
+  so the time taken does not answer either. A malformed *payload* is decided
+  before the id is even looked up, so a bad body cannot be used to test a guess.
+
+Set `UF_BUILD_ID` when a build has to be reproducible. It is an HMAC key, so it
+has to be at least 8 bytes and at most 256; a value outside that is ignored and
+one is generated from operating-system entropy instead, which is also what
+happens when the variable is unset.
+
+## Nothing about a failure comes back
+
+An action that throws is a `500` with a fixed body. The exception goes to the
+host's error reporting with the module and export named; a message, a name or a
+stack in the *response* is your application's internals published to whoever
+asked for them. This is true in development too, because `uf dev` and `uf build`
+have to agree about what the endpoint answers, and the terminal is where you
+read the exception anyway.
+
+On the browser side a failed call is a `ServerActionError` carrying the status
+and the action's build-time `module#export` name, and nothing else — because
+nothing else came back.
+
+## Draft mode
+
+A server action is one of the two places `draftMode().enable()` is allowed, the
+other being a route handler. Both own a response, and a cookie is part of one.
+That is what makes a CMS whose "preview" is a button rather than a link work.
+
+The refusals stay outside that scope: a `403` for a cross-origin call carries no
+cookie, and nothing in that path ran that could have asked for one. See
+[Routing](/guide/routing) for the rest of draft mode.
+
+## The types the wire needs
+
+Flow reading a declaration tells you `createUser(36)` is wrong. It cannot tell
+you whether `string` is a thing that can cross a network — and
+`createUser(when: Date)` type-checks perfectly at every call site and then
+arrives on the server as `{}`.
+
+<div className="command"><code>uf prepare</code></div>
+
+`uf prepare` writes `server-actions.js`: every callable action of the project
+keyed by `module#export`, with its real type read off the declaring module
+through `import typeof`, plus two lines that hold every action's arguments and
+result against the wire grammar over the whole project at once. An action taking
+a callback, or returning a `Map`, is a `uf check` error naming the offending
+type.
+
+The file is types only — every import in it is erased — so importing it adds
+nothing to a bundle. It is for code holding an action's *name* rather than the
+action: a dispatch table, a test harness, an RPC client. A client component that
+imports the action already has its type.
+
+## What is not here
+
+- **Progressive enhancement.** A form that submits before its JavaScript has
+  arrived does not work. React's mechanism for that is a `$$FORM_ACTION`
+  property that turns the submit into a *native* form post, and a native form
+  post is `multipart/form-data` — the content type this endpoint refuses on
+  purpose. So a reference carries no such property, React writes
+  `action="javascript:throw …"` as it does for any client action, and a submit
+  before hydration throws in the page rather than posting anywhere. Nothing
+  reaches a server that was not meant to; what is missing is the submit working
+  at all. [#252](https://github.com/ubugeeei-prod/uf/issues/252).
+- **Uploads.** A `File` entry is refused by name at the call site. Multipart
+  parsing is its own attack surface and is deliberately absent; use a route
+  handler.
+- **Inline `"use server"` closures.** A closure whose body opens with the
+  directive is recognised, keyed and written into the manifest, but it has no
+  export name to import — so it gets no reference in the client bundle and no
+  row in the server's table, and nothing can call it. Reaching one needs the
+  payload [#252](https://github.com/ubugeeei-prod/uf/issues/252) is about. Write
+  a module export.
+- **A reference format.** Nothing in a payload can name a function, a module, a
+  class, a prototype, a React element or a reference, and this grammar is not
+  where one grows quietly. That is the same absence
+  [#519](https://github.com/ubugeeei-prod/uf/issues/519) describes from the
+  other side.
+- **A type error for two forms in one signature.** The wire refuses a second
+  form at run time; the types accept the signature, because saying it needs a
+  walk over the parameter tuple that
+  [#300](https://github.com/ubugeeei-prod/uf/issues/300) makes answer *wrongly*
+  rather than fail. A constraint built on it would report every signature as
+  fine, which is worse than none.
+- **An action cache.** `rendering.cache.actions` is refused by name when the
+  config loads rather than accepted and ignored. See [Caching](/guide/cache).
+- **A static deployment.** `build.staticBuild` and `uf build --adapter static`
+  refuse a project whose build the browser can call an action in: the client
+  bundle carries the reference either way, so the button would be wired with
+  nothing to answer it. `--adapter node` and the other four server targets run
+  the same application file.
+
+The whole of the split this sits inside — what a `"use client"` boundary is,
+and what is still route-shaped — is in
+[Server Components](/guide/server-components).

@@ -5812,6 +5812,94 @@ fn allowing_ssr_beside_ssg_builds_the_same_project() {
     );
 }
 
+/// `rendering.modes: ["csr"]` is a single-page application: one document.
+///
+/// The whole of what the plan produces, asserted against a real build rather
+/// than against the plan that describes it. Three things have to be true at
+/// once and each of them is a different half of the toolchain: the driver
+/// writes the shell instead of running the prerender, the shell is *empty* —
+/// no route rendered into it — and the server bundle is gone, because a build
+/// with no route to render per request has nothing to run.
+#[test]
+fn allowing_only_csr_writes_one_empty_shell() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"csr\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "{said}");
+
+    let index = fs::read_to_string(project.path().join("dist/index.html")).unwrap();
+    // The root is there and nothing is in it. `home` is what `minimal_app`'s
+    // page renders, so its absence is the assertion that no route was
+    // prerendered into the document a visitor gets first.
+    assert!(index.contains("id=\"uf-root\""), "{index}");
+    assert!(
+        !index.contains("home"),
+        "the shell carries a route's markup:\n{index}"
+    );
+    // And the fallback, which is what a static host serves for every URL that
+    // is not `/` — which under this plan is every URL the application has.
+    let not_found = fs::read_to_string(project.path().join("dist/404.html")).unwrap();
+    assert_eq!(not_found, index, "the fallback is not the shell");
+    // No server anywhere: not in the output, and not left behind beside it.
+    assert!(
+        !project.path().join(".uf/build/server/server.js").exists(),
+        "a single-page build left a server bundle:\n{said}"
+    );
+    assert!(
+        said.contains("browser"),
+        "the build did not say what it did:\n{said}"
+    );
+}
+
+/// The refusal a single-page build has to make for itself.
+///
+/// Every other plan prerenders something, so a page that reads a request is
+/// found by *trying* to render it. This one renders nothing, so the same page
+/// would build, deploy, and fail in a browser — which is why the check is
+/// static and why it is worth an integration test rather than only the unit
+/// tests in `commands::build::spa`: the thing that could break is the wiring
+/// between the analysis and the plan, not the walk.
+#[test]
+fn a_route_that_reads_the_request_fails_a_csr_build() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/orders/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { cookies } from \"@uniflowed/server\";\n\nexport component Orders() {\n  return <main>{cookies().get(\"who\")?.value ?? \"nobody\"}</main>;\n}\n",
+    ));
+    let project = Project::new(&files);
+    project.write(
+        "uf.config.js",
+        &config_with("  app: { rendering: { modes: [\"csr\"] } },\n"),
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(!succeeded, "the build should have refused:\n{said}");
+    assert!(said.contains("/orders"), "the route is not named:\n{said}");
+    assert!(
+        said.contains("@uniflowed/server"),
+        "what makes it a server's is not named:\n{said}"
+    );
+    assert!(
+        said.contains("app.rendering.modes"),
+        "the declaration that caused it is not quoted:\n{said}"
+    );
+    // Before the bundle, like every other refusal in this family.
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "a refused build wrote a document anyway"
+    );
+}
+
 /// `rendering.modes: ["ssr"]` used to mean SSG, because SSG was all there was.
 #[test]
 fn allowing_only_ssr_prerenders_nothing() {
