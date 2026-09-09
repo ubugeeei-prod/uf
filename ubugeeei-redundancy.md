@@ -262,7 +262,7 @@ minimal runtime overhead.
 
 | Domain | Required scope |
 | --- | --- |
-| Application framework | A full-stack React framework with RSC, Server Actions, SSR, ISR, SSG, and routing. Target Next.js-class completeness with portable deployment and optional provider integrations. |
+| Application framework | A React framework with RSC, Server Actions, SSR, ISR, SSG, and routing. Target Next.js-class completeness with portable deployment and optional provider integrations. The server half is a **BFF** — the backend *for this frontend*: route handlers, server actions and rendering, sized to what the UI needs. Not an application backend. A team's domain services, their database and their business logic stay where they are, and uf talks to them. "Full-stack" is what this looks like from far away, and the wrong thing to build toward: a framework that grows a backend grows a second place for the domain to live. |
 | Data and correctness | GraphQL, state management, validation, and an effect system designed together around end-to-end Flow types. |
 | Immutable updates | An Immer-class immutable-update library implemented in Flow, with ergonomic draft-based updates, structural sharing, and strong inference. |
 | Forms | A React Hook Form-class form library implemented in Flow, with strict React semantics, excellent inference, validation integration, and production-grade performance. |

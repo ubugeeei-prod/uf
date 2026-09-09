@@ -209,6 +209,20 @@ plausible-sounding step toward the thing this document is about.
 - **Vendoring a provider to make it fit.** If uf needs behaviour Vite does not
   have, the fix is upstream or a plugin, never a fork — red line 1, and the
   reason it is first.
+- **An application backend.** uf's server half is a **BFF**: the backend *for
+  this frontend*. Route handlers, server actions, and rendering — the server a
+  UI needs in order to be a UI, and no more. What it is not is the place a
+  team's domain lives: no ORM as a first-class concern, no migrations, no job
+  queue, no service framework. Those belong to services uf talks to.
+
+  This is a red line and not a roadmap gap, because the pull is constant and
+  each step is individually reasonable. A framework that can render on the
+  server can obviously fetch; one that can fetch can obviously cache; one that
+  caches wants a schema; and a schema wants migrations. The end of that path
+  is a second place for the domain to live, owned by the frontend toolchain,
+  which is how a build tool becomes a platform nobody can leave. The word for
+  the far-away view of this is "full-stack", and it is not what uf is aiming
+  at.
 
 ## The failure this does not prevent
 
