@@ -34,12 +34,20 @@
 //! globs, tildes, newlines, reserved words, and a first word that is a
 //! built-in with no program behind it. [`ShellSyntax`] is the list.
 //!
-//! One departure is deliberate and visible: **uf runs programs, not
-//! built-ins.** `echo` in a direct command is the `echo` on `PATH`, and a
-//! shell's built-in `echo` interprets backslash escapes where
-//! `/bin/echo` does not — `echo "a\nb"` prints two lines under macOS's `sh`
-//! and one under `/bin/echo`. No task in this repository has a backslash in
-//! an `echo` argument, and `printf` means the same thing either way.
+//! Two departures are deliberate and visible.
+//!
+//! **uf runs programs, not built-ins.** `echo` in a direct command is the
+//! `echo` on `PATH`, and a shell's built-in `echo` interprets backslash
+//! escapes where `/bin/echo` does not — `echo "a\nb"` prints two lines under
+//! macOS's `sh` and one under `/bin/echo`. No task in this repository has a
+//! backslash in an `echo` argument, and `printf` means the same thing either
+//! way.
+//!
+//! **The shell this implements is POSIX `sh`, not `bash`.** `{a,b}` is two
+//! characters and a comma, because brace expansion is not in POSIX — which is
+//! also why `uf run` already meant two different things here: `/bin/sh` is
+//! `dash` on the Linux runner, which does not expand it, and `bash` on a Mac,
+//! which does. One meaning is the point of reading the string at all.
 
 use std::fmt;
 
@@ -682,6 +690,13 @@ mod tests {
         assert_eq!(words("echo hello"), ["echo", "hello"]);
         assert_eq!(words("printf '%s\\n' hi"), ["printf", "%s\\n", "hi"]);
         assert_eq!(words("true"), ["true"]);
+    }
+
+    /// The shell this implements is POSIX `sh`. A brace is a brace, which is
+    /// what `dash` makes of it and what `bash` does not.
+    #[test]
+    fn a_brace_is_a_character() {
+        assert_eq!(words("echo {a,b}"), ["echo", "{a,b}"]);
     }
 
     #[test]
