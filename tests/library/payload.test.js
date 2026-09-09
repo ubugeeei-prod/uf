@@ -266,8 +266,8 @@ function rowDocument(): {|
   readonly watchers: () => number,
 |} {
   const elements: Array<{|
-    +getAttribute: (name: string) => string | null,
-    +textContent: string,
+    readonly getAttribute: (name: string) => string | null,
+    readonly textContent: string,
   |}> = [];
   let callbacks: Array<() => void> = [];
   return {
