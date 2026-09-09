@@ -43,7 +43,7 @@
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useMemo } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { forwarded } from "./internal/merge-props.js";
 import {
   DialogBody,
@@ -110,17 +110,21 @@ export component SheetRoot(
 }
 
 /** What opens it, and what focus comes back to when it closes. */
-export component SheetTrigger(children: React.Node, ...rest: Rest) {
-  return <DialogTrigger {...forwarded(rest)}>{children}</DialogTrigger>;
+export component SheetTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <DialogTrigger {...forwarded(rest)} render={render}>
+      {children}
+    </DialogTrigger>
+  );
 }
 
 /**
  * The backdrop, which knows the edge so a stylesheet does not have to be told
  * twice.
  */
-export component SheetOverlay(...rest: Rest) {
+export component SheetOverlay(render?: RenderProp, ...rest: Rest) {
   const sheet = useSheet("Sheet.Overlay");
-  return <DialogOverlay {...forwarded(rest)} data-side={sheet.side} />;
+  return <DialogOverlay {...forwarded(rest)} data-side={sheet.side} render={render} />;
 }
 
 /**
@@ -129,37 +133,57 @@ export component SheetOverlay(...rest: Rest) {
  * Every modal promise `dialog.js` makes is made here, unchanged. This part adds
  * `data-side` and nothing else, which is the honest size of the difference.
  */
-export component SheetBody(children: React.Node, ...rest: Rest) {
+export component SheetBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const sheet = useSheet("Sheet.Body");
 
   return (
-    <DialogBody {...forwarded(rest)} data-side={sheet.side}>
+    <DialogBody {...forwarded(rest)} data-side={sheet.side} render={render}>
       {children}
     </DialogBody>
   );
 }
 
 /** The top of the sheet. See `Dialog.Header` for why it is not a `<header>`. */
-export component SheetHeader(children: React.Node, ...rest: Rest) {
-  return <DialogHeader {...forwarded(rest)}>{children}</DialogHeader>;
+export component SheetHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <DialogHeader {...forwarded(rest)} render={render}>
+      {children}
+    </DialogHeader>
+  );
 }
 
 /** The bottom of the sheet, where the actions go. */
-export component SheetFooter(children: React.Node, ...rest: Rest) {
-  return <DialogFooter {...forwarded(rest)}>{children}</DialogFooter>;
+export component SheetFooter(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <DialogFooter {...forwarded(rest)} render={render}>
+      {children}
+    </DialogFooter>
+  );
 }
 
 /** The sheet's accessible name. A modal without one is announced as "dialog". */
-export component SheetTitle(children: React.Node, ...rest: Rest) {
-  return <DialogTitle {...forwarded(rest)}>{children}</DialogTitle>;
+export component SheetTitle(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <DialogTitle {...forwarded(rest)} render={render}>
+      {children}
+    </DialogTitle>
+  );
 }
 
 /** What the sheet is for, announced after its name. */
-export component SheetDescription(children: React.Node, ...rest: Rest) {
-  return <DialogDescription {...forwarded(rest)}>{children}</DialogDescription>;
+export component SheetDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <DialogDescription {...forwarded(rest)} render={render}>
+      {children}
+    </DialogDescription>
+  );
 }
 
 /** A button that closes the sheet. */
-export component SheetClose(children: React.Node, ...rest: Rest) {
-  return <DialogClose {...forwarded(rest)}>{children}</DialogClose>;
+export component SheetClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  return (
+    <DialogClose {...forwarded(rest)} render={render}>
+      {children}
+    </DialogClose>
+  );
 }

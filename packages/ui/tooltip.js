@@ -75,7 +75,7 @@ import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { DelayGroup, HoverIntent } from "./internal/hover-intent.js";
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { composeRefs, withProps, withoutComposed } from "./internal/merge-props.js";
 import {
   DEFAULT_CLOSE_DELAY,
@@ -243,11 +243,7 @@ export component TooltipRoot(
  * `render` function that forgets to spread something still gets a working
  * tooltip; see the module header.
  */
-export component TooltipTrigger(
-  children?: React.Node,
-  render?: (props: Rest) => React.Node,
-  ...rest: Rest
-) {
+export component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const tooltip = useTooltip("Tooltip.Trigger");
   const { closeDelay, dismissed, intent, openDelay, setOpen, triggerRef } = tooltip;
   useFocusableTrigger(triggerRef, "Tooltip.Trigger");
@@ -301,25 +297,16 @@ export component TooltipTrigger(
   });
   // Only while it is there. `aria-describedby` pointing at an element that has
   // been removed is the dangling reference this package keeps coming back to.
-  const ours = {
+  const props = withProps(withoutComposed(rest, ["ref"]), {
     "aria-describedby": tooltip.open ? `${tooltip.base}-body` : undefined,
+    children,
     ref: attach,
-  };
+  });
 
   if (render != null) {
-    return render(withProps(withoutComposed(rest, ["ref"]), ours));
+    return render(props);
   }
-
-  return (
-    <button
-      {...withoutComposed(rest, ["ref"])}
-      aria-describedby={ours["aria-describedby"]}
-      ref={attach}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  return <button {...props} type="button" />;
 }
 
 /**

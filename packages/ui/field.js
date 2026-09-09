@@ -96,7 +96,7 @@
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useEffect, useId, useMemo, useState } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
 import { withProps } from "./internal/merge-props.js";
 
 /**
@@ -289,7 +289,7 @@ export component FieldLabel(children: React.Node, ...rest: Rest) {
  * `ref` and handlers *and* the field's attributes from one spread instead of
  * two that overwrite each other.
  */
-export component FieldControl(render: (props: Rest) => React.Node) {
+export component FieldControl(render: RenderProp) {
   const field = useField("Field.Control");
   // A group already carries the name, the description and the validity, and a
   // control repeating them makes a reader hear the error once for the set and
