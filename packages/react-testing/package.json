@@ -13,6 +13,10 @@
   "exports": {
     ".": "./index.js"
   },
+  "browser": {
+    "happy-dom": "./internal/browser/happy-dom.js",
+    "node:module": "./internal/browser/module.js"
+  },
   "files": [
     "index.js",
     "internal",

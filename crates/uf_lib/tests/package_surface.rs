@@ -56,11 +56,30 @@ const EXPORTED_INTERNALS: &[&str] = &[
 /// `@uniflowed/vite` is executed by Vite before any transform is reachable.
 const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["host", "vite"];
 
-/// Individual modules that are process entry points, and so run when they are
-/// loaded because that is what running them means. Everything else in their
-/// package is held to the ordinary bar — including the Flow pragma: an entry
-/// point is still Flow, it just does something when it loads.
-const ENTRY_POINT_MODULES: &[&str] = &["test/worker.js"];
+/// Individual modules that are entry points, and so run when they are loaded
+/// because that is what running them means. Everything else in their package is
+/// held to the ordinary bar — including the Flow pragma: an entry point is
+/// still Flow, it just does something when it loads.
+///
+/// Three of them, and each is the beginning of a run rather than a module
+/// something imports for its exports:
+///
+/// * `test/worker.js` — the process `uf test` starts to run a file on Node.
+/// * `test/browser-worker.js` — the same for `uf test --browser`, which holds
+///   the browser's handle and serves the page its modules.
+/// * `test/internal/browser/page.js` — the module the *page* loads. It takes
+///   over `console` on load for the reason the Node worker does, and it is an
+///   entry in the only sense a page has: nothing imports it for a name.
+///
+/// The list is named files rather than a directory or a suffix on purpose. An
+/// exemption that matched a pattern would quietly cover the next module written
+/// beside these, and the whole value of this rule is that a shipped module
+/// doing work on import is a decision somebody made once, in writing.
+const ENTRY_POINT_MODULES: &[&str] = &[
+    "test/worker.js",
+    "test/browser-worker.js",
+    "test/internal/browser/page.js",
+];
 
 /// Whether `module` (relative to `packages/`) is plain JavaScript by necessity.
 ///

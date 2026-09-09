@@ -241,6 +241,19 @@ function writer(
  * Installed once, for the life of the worker: a worker runs many files, and
  * restoring the real methods between them would leave a window in which a
  * straggling `setTimeout` from the previous file writes into the protocol.
+ *
+ * # A page has no stream to take
+ *
+ * `uf test --browser` runs this same capture inside a page
+ * (`./browser/page.js`), and there the whole premise of the returned value is
+ * absent: there is no `process.stdout`, so there is nothing for a test to
+ * write into by accident, and the protocol's channel is a separate HTTP
+ * request rather than a stream anything else can reach. So the two `write`
+ * methods are only replaced when there are two `write` methods, and the
+ * "raw stream" handed back is a no-op nobody has a use for.
+ *
+ * Deliberately not a `typeof process` check at each use: the question is asked
+ * once, here, because the answer cannot change under a running host.
  */
 export function install(to: OutputSink): (chunk: string) => void {
   const global = host();
@@ -248,11 +261,14 @@ export function install(to: OutputSink): (chunk: string) => void {
   if (already != null) {
     return already;
   }
-  const stdout = global.process.stdout;
-  const real = stdout.write;
-  const protocol = (chunk: string) => {
-    real.call(stdout, chunk);
-  };
+  const stdout = global.process?.stdout;
+  const real = stdout?.write;
+  const protocol =
+    real == null
+      ? (_chunk: string) => {}
+      : (chunk: string) => {
+          real.call(stdout, chunk);
+        };
   raw = protocol;
   sink = to;
   for (const method of Object.keys(CONSOLE_STREAMS)) {
@@ -271,8 +287,10 @@ export function install(to: OutputSink): (chunk: string) => void {
     capture("stderr", `${userFrames(error.stack) ?? `Trace: ${error.message}`}\n`);
   };
 
-  global.process.stdout.write = writer("stdout");
-  global.process.stderr.write = writer("stderr");
+  if (global.process?.stdout != null) {
+    global.process.stdout.write = writer("stdout");
+    global.process.stderr.write = writer("stderr");
+  }
   return protocol;
 }
 

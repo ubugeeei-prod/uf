@@ -227,7 +227,14 @@ in `uf`.
   computes no layout, so the contrast and overlap rules come back *incomplete*
   there and are answered only by the audit that runs in the browser.
 - Add story system, MSW-compatible mocks, Playwright-compatible browser
-  automation, and VRT baseline diffing.
+  automation, and VRT baseline diffing. The half of the browser work that runs
+  a test file **where a component runs** is **Done**: `uf test --browser` makes
+  the browser another host in the shape `uf_test` already had for Node and Bun,
+  one page load per file, scheduling still in Rust. It drives a browser the
+  machine already has and refuses the run by name when there is none. What is
+  *not* done is the half that needs a driver protocol — clicking, navigating,
+  screenshots, throttling — and VRT sits behind that, because a baseline is a
+  screenshot.
 - Add `uf prepare` with lint-staged-compatible checks and code generation.
 - Add watch mode with dependency-aware reruns.
 

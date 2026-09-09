@@ -56,16 +56,59 @@ pub enum HostKind {
     Bun,
     /// Deno.
     Deno,
+    /// A real browser, driven by `@uniflowed/test/browser-worker.js`.
+    ///
+    /// # Why this is a host and not a mode
+    ///
+    /// A host, in this module, is *where a test body runs*. On the three above
+    /// that is the process uf starts; here it is a page, and the process uf
+    /// starts is the driver that serves it. Nothing else about the seam moves:
+    /// the driver is spawned like any worker, is written to on stdin, answers
+    /// with the same events on stdout, is bounded by the same deadline, and is
+    /// killed and replaced when it stops answering. Scheduling — which files,
+    /// in what order, how many at once, what a retry means — stays in Rust and
+    /// never learns that this one is a browser.
+    ///
+    /// What is different is written down rather than hidden: [`Self::program`]
+    /// on the driver, [`HostCommand::browser`] for the browser it drives, and
+    /// [`HostCommand::can_collect_coverage`] for the one thing this host cannot
+    /// be asked for.
+    Browser,
 }
 
 impl HostKind {
     /// The executable's name on PATH.
+    ///
+    /// For [`Self::Browser`] this is the *driver's* program, not the browser's.
+    /// A page cannot read a pipe, so the process uf starts for a browser run is
+    /// still an ordinary JavaScript host running an ordinary worker module; the
+    /// browser is a second binary that worker launches, and it is named
+    /// separately in [`HostCommand::browser`] because it is a separate
+    /// dependency with a separate way of being absent.
+    ///
+    /// Node rather than the project's Capability JS Host, deliberately and for
+    /// now. The driver runs one HTTP server and one child process and shuttles
+    /// JSON between them — nothing about it needs to be the runtime under test,
+    /// because the runtime under test is the browser. Pinning it to one host
+    /// removes an axis from a feature that already has enough of them, and
+    /// `docs/hosts.md` says so on the browser's row.
     #[must_use]
     pub const fn program(self) -> &'static str {
         match self {
-            Self::Node => "node",
+            Self::Node | Self::Browser => "node",
             Self::Bun => "bun",
             Self::Deno => "deno",
+        }
+    }
+
+    /// How a message names this host to a person.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Node => "Node.js",
+            Self::Bun => "Bun",
+            Self::Deno => "Deno",
+            Self::Browser => "the browser",
         }
     }
 }
@@ -102,6 +145,15 @@ pub struct HostCommand {
     /// with the run the way `update_snapshots` does: two files in one run must
     /// not be able to disagree about what "accessible" means.
     pub axe: Option<String>,
+    /// The browser a [`HostKind::Browser`] command drives.
+    ///
+    /// Passed to the driver in the environment rather than on the command line
+    /// because it is a property of the run and not of any one file, exactly
+    /// like `update_snapshots` and `axe`. Which binary this is, and what
+    /// happens when there is none, is [`crate::browser`]; by the time it
+    /// reaches here the question has already been answered or the run has
+    /// already stopped.
+    pub browser: Option<Utf8PathBuf>,
     /// Where each worker writes its V8 coverage document, when coverage is on.
     ///
     /// Set as `NODE_V8_COVERAGE`, which is Node's own switch: V8 counts
@@ -146,9 +198,17 @@ impl HostCommand {
             env: Vec::new(),
             update_snapshots: false,
             axe: None,
+            browser: None,
             coverage_dir: None,
             deno_import_map: None,
         }
+    }
+
+    /// Drive this browser, for a [`HostKind::Browser`] command.
+    #[must_use]
+    pub fn with_browser(mut self, browser: Utf8PathBuf) -> Self {
+        self.browser = Some(browser);
+        self
     }
 
     /// Set these variables on every worker this command starts.
@@ -170,7 +230,13 @@ impl HostCommand {
             // the author wrote rather than the line the transform produced:
             // the loader appends a source map to every module it transforms,
             // and without this Node ignores it.
-            HostKind::Node => vec![
+            // The browser's driver is a Node process running an ordinary Flow
+            // module, so it registers the loader the ordinary way. What the
+            // *page* imports is transformed by the same `uf transform` through
+            // a different door — the driver's module server — because a page
+            // has no loader hook to install one in. Same compiler, same cache,
+            // two ways in; see `packages/test/internal/browser/serve.js`.
+            HostKind::Node | HostKind::Browser => vec![
                 String::from("--enable-source-maps"),
                 String::from("--import"),
                 register.to_string(),
@@ -244,10 +310,18 @@ impl HostCommand {
     /// its modules are compiled ahead of time, so what makes Flow loadable
     /// there is the import map this command was given and not something
     /// installed in the runtime.
+    ///
+    /// A browser answers unconditionally, and for neither of the other two
+    /// reasons: the page is not what reads a module. The driver serves it
+    /// every one through the same `uf transform` the Node loader calls, so
+    /// there is nothing to install in the runtime and nothing to compile
+    /// beforehand — which is also why this arm is spelled out rather than
+    /// folded in with Node and Bun's.
     #[must_use]
     pub const fn loads_flow(&self) -> bool {
         match self.kind {
             HostKind::Node | HostKind::Bun => true,
+            HostKind::Browser => true,
             HostKind::Deno => self.deno_import_map.is_some(),
         }
     }
@@ -283,6 +357,14 @@ impl HostCommand {
     /// `NODE_V8_COVERAGE`, and Deno has no Flow loader in `@uniflowed/host` to
     /// produce a map with. A caller is expected to say so rather than report a
     /// run of zeroes.
+    ///
+    /// The browser is the interesting `false`, because the counters are right
+    /// there — V8 is counting in the renderer exactly as it counts in Node. The
+    /// switch is not: `NODE_V8_COVERAGE` is Node's own, written from a Node
+    /// exit handler, and the only way to ask a page for its profile is the
+    /// DevTools protocol, which is a browser-shaped dependency this mode
+    /// deliberately does not have (see [`crate::browser`]). Coverage from a
+    /// browser run is worth having and is not this change.
     #[must_use]
     pub const fn can_collect_coverage(&self) -> bool {
         matches!(self.kind, HostKind::Node)
@@ -774,6 +856,9 @@ impl Worker {
         if let Some(axe) = &command.axe {
             process.env("UF_AXE", axe.as_str());
         }
+        if let Some(browser) = &command.browser {
+            process.env(crate::browser::BROWSER_VARIABLE, browser.as_str());
+        }
         if let Some(directory) = &command.coverage_dir {
             process.env("NODE_V8_COVERAGE", directory.as_str());
         }
@@ -1121,6 +1206,49 @@ mod tests {
 
         assert_eq!(command.leading_args, ["--preload", "/p/bun-preload.js"]);
         assert!(command.loads_flow());
+    }
+
+    /// The browser is a host, and everything else about the seam is unchanged.
+    ///
+    /// The three claims worth pinning: the process uf starts is the driver's
+    /// and not the browser's, the driver registers the same Flow loader Node
+    /// does, and the browser binary travels on the command rather than in the
+    /// arguments — because it is a property of the run, not of a file.
+    #[test]
+    fn a_browser_command_drives_a_browser_from_a_node_driver() {
+        let command = HostCommand::new(
+            HostKind::Browser,
+            Utf8PathBuf::from("/usr/bin/node"),
+            Utf8PathBuf::from("/p/browser-worker.js"),
+            Utf8PathBuf::from("/p"),
+        )
+        .with_flow_loader(
+            Utf8Path::new("@uniflowed/host/register"),
+            Utf8Path::new("/p/bun-preload.js"),
+        )
+        .with_browser(Utf8PathBuf::from("/usr/bin/chromium"));
+
+        assert_eq!(HostKind::Browser.program(), "node");
+        assert_eq!(
+            command.leading_args,
+            [
+                "--enable-source-maps",
+                "--import",
+                "@uniflowed/host/register"
+            ]
+        );
+        assert!(command.loads_flow(), "the page's modules are transformed");
+        assert_eq!(
+            command.browser.as_deref(),
+            Some(Utf8Path::new("/usr/bin/chromium"))
+        );
+        // The one capability the browser does not have, and the message a
+        // caller writes from it names a host that does.
+        assert!(!command.can_collect_coverage());
+        assert_eq!(HostKind::Browser.name(), "the browser");
+        // A browser command is never handed an import map, and does not need
+        // one to load Flow. The check above must not be reading Deno's.
+        assert!(command.deno_import_map.is_none());
     }
 
     /// Deno with no import map is the host ubugeeei-prod/uf#246 found: it
