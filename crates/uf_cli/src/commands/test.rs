@@ -33,7 +33,7 @@ use uf_test::{
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
 use crate::commands::deno_loader;
-use crate::commands::vite::{find_program, resolve_host};
+use crate::commands::driver::{find_program, resolve_host};
 
 use crate::support::{
     TEST, ignore_deprecation, plural, project_env, quoted_list, render_ignore_deprecation, selects,

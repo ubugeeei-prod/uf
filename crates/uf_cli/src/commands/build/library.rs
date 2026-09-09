@@ -88,7 +88,7 @@ use uf_config::{LibraryPlan, ResolvedConfig};
 use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
 
 use crate::commands::builder;
-use crate::commands::vite::{Driver, Event, render_error, render_log, resolve_host};
+use crate::commands::driver::{Driver, Event, render_error, render_log, resolve_host};
 use crate::support::{
     PRODUCTION, plural, project_env, project_label, relative_to, write_json_file,
 };
@@ -149,13 +149,13 @@ pub(crate) fn build(
             match event {
                 Event::Phase { name } => progress.tick(&format!("vite: {name}")),
                 Event::Log { level, message } => match level {
-                    crate::commands::vite::LogLevel::Error => render_log(ui, level, &message),
+                    crate::commands::driver::LogLevel::Error => render_log(ui, level, &message),
                     // Held until the summary rather than printed now, which is
                     // what the application build does with them and for the
                     // same reason: a warning above the report is a warning
                     // scrolled off the top of it.
-                    crate::commands::vite::LogLevel::Warn => warnings.push(message),
-                    crate::commands::vite::LogLevel::Info => {}
+                    crate::commands::driver::LogLevel::Warn => warnings.push(message),
+                    crate::commands::driver::LogLevel::Info => {}
                 },
                 Event::Error(error) => {
                     let failure = render_error(ui, &root, &error);

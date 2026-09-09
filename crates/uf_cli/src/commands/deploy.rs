@@ -84,7 +84,7 @@ use uf_rsc::RSC_MANIFEST_ENV;
 
 use crate::commands::build::Prerendered;
 use crate::commands::compile::binary_names;
-use crate::commands::vite::{Driver, Event, LinkContext, LogLevel, render_error, render_log};
+use crate::commands::driver::{Driver, Event, LinkContext, LogLevel, render_error, render_log};
 use crate::support::project_label;
 use crate::ui::Ui;
 

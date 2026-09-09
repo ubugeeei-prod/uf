@@ -1182,7 +1182,7 @@ started it, and `UF_RSC_MANIFEST` the server-component analysis.
 **What the driver says**, one JSON object per line, `{"event": "...", ...}`:
 `config-loaded`, `phase`, `log`, `listening`, `page`, `page-failed`,
 `rendering`, `rsc-split`, `source-changed`, `done`, `config` and `error`. The
-full shape of each is `Event` in `crates/uf_cli/src/commands/vite.rs`, which is
+full shape of each is `Event` in `crates/uf_cli/src/commands/driver.rs`, which is
 the only reader. A command a builder has not implemented is answered with
 `error` and a message naming the ones it has — never with silence and a zero
 exit, which would be a build that produced nothing and said it succeeded.

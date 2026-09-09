@@ -1,7 +1,7 @@
 //! `uf dev` and `uf lsp`: the two commands that hold a socket or a protocol.
 //!
 //! `uf dev` is Vite's dev server, started through `@uniflowed/vite`'s driver
-//! on the project's JavaScript host (see [`super::vite`]). Vite owns the
+//! on the project's JavaScript host (see [`super::driver`]). Vite owns the
 //! module graph, hot module replacement and the transform pipeline; uf owns
 //! the terminal, the generated route types, and the transform itself, which
 //! the driver reaches back into through `uf transform`.
@@ -35,10 +35,10 @@ use uf_rsc::RSC_MANIFEST_ENV;
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
-use crate::commands::lint::identifier_span;
-use crate::commands::vite::{
+use crate::commands::driver::{
     Driver, Event, render_diagnostic, render_error, render_log, resolve_host,
 };
+use crate::commands::lint::identifier_span;
 use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label, relative_to};
 use crate::ui::Ui;
 

@@ -50,7 +50,7 @@ use uf_term::{
 
 use super::scripts_allowed;
 use crate::brand;
-use crate::commands::vite::resolve_host;
+use crate::commands::driver::resolve_host;
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
 

@@ -4,7 +4,7 @@
 //! that can run it: a client bundle, a server bundle, and prerendered HTML,
 //! all of which want a JavaScript runtime and a `node_modules` beside them.
 //! This step removes both requirements. It links the server bundle and an
-//! embedded copy of the output directory into one module ([`super::vite`]'s
+//! embedded copy of the output directory into one module ([`super::driver`]'s
 //! driver does the linking, because Vite is uf's bundler), then wraps a
 //! JavaScript runtime around that module.
 //!
@@ -15,7 +15,7 @@
 //! on. Until ubugeeei-prod/uf#312 this one flag ignored it and required Bun,
 //! so a project that pins Node was told to install a second runtime to compile
 //! at all. [`runtime`] now walks the project's accepted hosts in the order
-//! [`super::vite::resolve_host`] walks them and returns the first that has a
+//! [`super::driver::resolve_host`] walks them and returns the first that has a
 //! backend here and can be used:
 //!
 //! | host | backend | cross-compiles | what it needs |
@@ -87,7 +87,7 @@ use uf_rsc::RSC_MANIFEST_ENV;
 use uf_runtime::{RuntimeHost, ToolchainAccess};
 use uf_term::Status;
 
-use crate::commands::vite::{
+use crate::commands::driver::{
     Driver, Event, LinkContext, LogLevel, find_program, render_error, render_log,
 };
 use crate::support::project_label;
@@ -462,7 +462,7 @@ fn program_version(program: &Utf8Path, argument: &str) -> Option<String> {
 ///
 /// The project's `capabilityJsHost.default` first, then — only when
 /// `autoDetect` is on — the rest of the accepted set, which is exactly what
-/// [`super::vite::resolve_host`] does for every other command. A project that
+/// [`super::driver::resolve_host`] does for every other command. A project that
 /// pins one host and cannot compile on it is told so rather than handed a
 /// binary running a runtime it did not choose, and a project that accepts
 /// several gets the first that works, with the summary naming it.

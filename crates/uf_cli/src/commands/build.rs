@@ -2,7 +2,7 @@
 //!
 //! The build belongs to the project's **builder** — `@uniflowed/vite` unless
 //! `builder.module` names another — driven on the project's JavaScript host
-//! (see [`super::builder`] for which one and [`super::vite`] for the protocol):
+//! (see [`super::builder`] for which one and [`super::driver`] for the protocol):
 //! a client bundle, a server bundle, and the routes this project prerenders,
 //! as HTML. uf's own phases run around it:
 //! the config, the route table and its generated types, the server-component
@@ -42,8 +42,8 @@ use uf_term::{
 use crate::commands::builder;
 use crate::commands::compile;
 use crate::commands::deploy;
+use crate::commands::driver::{Driver, Event, LinkContext, render_error, render_log, resolve_host};
 use crate::commands::lint::identifier_span;
-use crate::commands::vite::{Driver, Event, LinkContext, render_error, render_log, resolve_host};
 use crate::support::{
     PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
 };
@@ -338,7 +338,7 @@ pub(crate) fn build(
                 Event::PageFailed { url, error } => {
                     render_log(
                         ui,
-                        crate::commands::vite::LogLevel::Error,
+                        crate::commands::driver::LogLevel::Error,
                         &format!("{url} failed to render"),
                     );
                     let _ = render_error(ui, &root, &error);
@@ -346,9 +346,9 @@ pub(crate) fn build(
                 Event::Rendering { per_request, .. } => report.per_request = Some(per_request),
                 Event::RscSplit { pages, routes } => report.split = Some((pages, routes)),
                 Event::Log { level, message } => match level {
-                    crate::commands::vite::LogLevel::Warn => report.warnings.push(message),
-                    crate::commands::vite::LogLevel::Error => render_log(ui, level, &message),
-                    crate::commands::vite::LogLevel::Info => {}
+                    crate::commands::driver::LogLevel::Warn => report.warnings.push(message),
+                    crate::commands::driver::LogLevel::Error => render_log(ui, level, &message),
+                    crate::commands::driver::LogLevel::Info => {}
                 },
                 Event::Error(error) => {
                     let failure = render_error(ui, &root, &error);

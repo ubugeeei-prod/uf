@@ -7,11 +7,19 @@
 //! per line to stdout and this module renders them.
 //!
 //! Which builder that is comes from [`super::builder`], and Vite is only the
-//! default. Nothing in this file names it: the subcommands, the arguments and
-//! the [`Event`] vocabulary below are the *contract*, written down in full in
-//! `docs/architecture.md`, and `@uniflowed/vite` is one implementation of it.
-//! That distinction is ubugeeei-prod/uf#549, and it is red line 3 — a default
-//! is a default, not a dependency.
+//! default. The contract names no implementation: the subcommands, the
+//! arguments, the [`Event`] vocabulary below and every message this module
+//! puts in front of a person are written in terms of *a* builder's driver,
+//! written down in full in `docs/architecture.md`, and `@uniflowed/vite` is
+//! one implementation of it. That distinction is ubugeeei-prod/uf#549, and it
+//! is red line 3 — a default is a default, not a dependency. (Comments below
+//! do name Vite, where the thing being explained is why the default behaves as
+//! it does. Explaining an implementation is not depending on one.)
+//!
+//! This module was called `vite` while saying all of that, and three of its
+//! error messages named Vite to whoever was running the paper builder. Both
+//! are fixed; the name is `driver` because that is the word the rest of this
+//! file and `uf.builder.driver` already use.
 //!
 //! Two things about the process are deliberate. The driver is told which `uf`
 //! binary started it (`UF_BINARY`), so every module it transforms goes
@@ -518,7 +526,7 @@ impl Driver {
             let read = self
                 .stdout
                 .read_line(&mut line)
-                .context("reading from the Vite driver")?;
+                .context("reading from the builder's driver")?;
             if read == 0 {
                 return Ok(None);
             }
@@ -562,7 +570,10 @@ impl Driver {
 
     /// Wait for the driver to exit, failing when it did not exit cleanly.
     pub(crate) fn finish(mut self, what: &str) -> Result<()> {
-        let status = self.child.wait().context("waiting for the Vite driver")?;
+        let status = self
+            .child
+            .wait()
+            .context("waiting for the builder's driver")?;
         if status.success() {
             Ok(())
         } else {
@@ -578,7 +589,7 @@ pub(crate) fn render_error(ui: &mut Ui, root: &Utf8Path, error: &DriverError) ->
         .message
         .lines()
         .next()
-        .unwrap_or("the Vite driver failed")
+        .unwrap_or("the builder's driver failed")
         .to_owned();
     let path = error.file.as_deref().map(|file| {
         Utf8Path::new(file)

@@ -25,7 +25,7 @@
 //!   are two questions and #549 asks both.
 //!
 //! Everything else — the subcommands, the arguments, the event vocabulary — is
-//! in [`super::vite`], which is where the protocol lives and is deliberately
+//! in [`super::driver`], which is where the protocol lives and is deliberately
 //! not named after any implementation of it.
 //!
 //! # Why the manifest and not a convention

@@ -53,7 +53,7 @@ use uf_config::{Prerender, RenderingPlan, load_config};
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
-use crate::commands::vite::{Driver, Event, LogLevel, render_error, render_log, resolve_host};
+use crate::commands::driver::{Driver, Event, LogLevel, render_error, render_log, resolve_host};
 use crate::support::{PRODUCTION, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
