@@ -24,6 +24,15 @@ instead of the full 190 MB repository. `uf_flow` builds against that port,
 which is not published to crates.io. The sync is idempotent, so re-run it after
 pulling a submodule bump — `uf run setup` does.
 
+It then applies `tools/upstream/patches/flow` on top, so **a checkout is the
+pinned commit plus those patches** — fixes to the port that uf needs and
+`facebook/flow` has not taken yet. `upstream/flow` shows as modified in
+`git status` for that reason; never commit the submodule pointer in that state.
+The sync owns that work tree and restores it whenever it finds a change no
+patch accounts for, so snapshot an edit made directly in `upstream/flow` into a
+patch file before running anything that syncs. That directory's README is the
+whole procedure for adding, refreshing and deleting one.
+
 ## Commit Style
 
 Use focused conventional commits, for example:

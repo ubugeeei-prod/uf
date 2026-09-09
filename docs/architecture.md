@@ -142,6 +142,28 @@ Measured against `rustc 1.100.0-nightly (5db7f4be8 2026-09-01)`:
 reach outside `rust_port` into `lib/`, `prelude/`, and `tslib/`, so
 `tools/upstream/sync.sh` checks those out too and asserts they arrived.
 
+### Patches to the port
+
+A checkout of `upstream/flow` is the pinned commit **plus**
+`tools/upstream/patches/flow`. The sync applies every patch in that directory
+after checking the submodule out, so a fix uf needs and `facebook/flow` has not
+taken yet survives a re-sync instead of being deleted by it —
+[#205](https://github.com/ubugeeei-prod/uf/issues/205) was open on that gap
+alone, with a root cause and a working diff and nowhere to keep them, and
+[#707](https://github.com/ubugeeei-prod/uf/issues/707) is the mechanism.
+
+They are a stopgap with an expiry date, not a fork. The directory's README is
+the contract; the properties worth knowing here are that a patch which does not
+apply **stops the sync**, and therefore the build, and therefore every job. A
+patch quietly dropped from a type checker is otherwise invisible: nothing fails
+to compile, no test goes red, and `uf check` answers differently than it did
+yesterday. The sync also refuses a patch the pinned commit already contains,
+which is how the day it can be deleted announces itself.
+
+Each patch has a test in `crates/uf_check/tests/upstream_patches.rs` that fails
+without it, and `tools/upstream/test-patches.sh` covers the mechanism itself
+against every way a patch could go missing.
+
 The submodule costs one gate. `cargo-semver-checks` builds its baseline from a
 copy of each crate, outside the workspace, where the relative path to
 `upstream/flow` no longer resolves — and a path dependency is relative by

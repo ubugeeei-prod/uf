@@ -411,9 +411,10 @@ dependency, so cargo cannot build `uf` until the submodule is checked out, and
 `uf run` needs a built `uf`.
 
 `tools/upstream/sync.sh` checks out only `rust_port/` from a shallow, blobless
-clone of Meta's official Flow Rust port, which is not published to crates.io.
-Nothing builds without it: `uf` parses and type-checks Flow with that port and
-has no second backend.
+clone of Meta's official Flow Rust port, which is not published to crates.io,
+and applies `tools/upstream/patches/flow` on top — fixes uf needs that
+`facebook/flow` has not taken yet. Nothing builds without it: `uf` parses and
+type-checks Flow with that port and has no second backend.
 
 `rust-toolchain.toml` pins `nightly-2026-08-01`. That is a requirement rather
 than a preference — 23 crates in the port declare `#![feature(box_patterns)]`,
