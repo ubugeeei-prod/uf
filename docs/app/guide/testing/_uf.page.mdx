@@ -309,8 +309,129 @@ out so the top frame is yours.
 | `-j N` | Run at most N files at once; defaults to one per core |
 | `--list` | Print what would run without running it |
 | `--json` | The whole report, machine-readable |
+| `--browser` | Run every file in a real browser instead of a DOM shim |
 | `--coverage` | Measure which Flow lines the suite executed |
 | `--reporter junit --reporter-outfile FILE` | Write the results as JUnit XML |
+
+## Browser mode
+
+<div className="command"><code>uf test --browser</code></div>
+
+`@uniflowed/react-testing` renders into happy-dom, which is fast, runs anywhere,
+and **computes no layout at all**. That is fine until a component's behaviour
+depends on its size, and then it is not fine in a particular way:
+
+| Asked of a half-width box | happy-dom | a browser |
+| --- | --- | --- |
+| `getComputedStyle(el).width` | `"50%"` | `"300px"` |
+| `el.getBoundingClientRect().width` | `0` | `300` |
+| `el.offsetWidth` | `0` | `300` |
+| an `IntersectionObserver` on it | never fires | fires |
+
+The first row is the expensive one. happy-dom does not decline to answer — it
+resolves the cascade and hands back the *declared* value under the name of the
+computed one. A test asserting that a panel is half its container's width passes
+against a string that says nothing about width, and keeps passing after the
+component stops being half its container's width.
+
+`--browser` runs the same files, with the same `describe` / `it` / `expect`, in
+a page. `tests/library/browser-layout.test.js` in this repository is the table
+above written as assertions, and it runs in both modes.
+
+### What it is
+
+**A host, not a second runner.** Node and Bun are hosts `uf test` fans files out
+to; the browser is a third. `uf` still discovers the files, orders them
+longest-first from recorded timings, decides how many run at once, bounds each
+one with a wall clock it will not negotiate, retries what the retry policy says
+to retry, and assembles the report. None of that knows a browser is involved.
+
+What it starts is a small Node process that serves the page its modules —
+transformed by the same `uf transform` a build uses — and shuttles JSON between
+a pipe and a socket. A page cannot read a pipe; that is the whole reason there
+is a process in the middle.
+
+**One page load per file.** This is stronger isolation than Node mode gets. A
+Node worker serves many files out of one process, so everything two files could
+share has to be put back between them by hand. A page reloads: new realm, new
+document, new module registry, and a `setInterval` the last file abandoned is
+gone rather than merely ignored.
+
+**One browser per worker.** `-j` means what it always meant — how many files run
+at once — and in browser mode each of those is a browser process with a scratch
+profile of its own. That is a few hundred megabytes each, so `-j 2` is worth
+typing on a small CI container; nothing about the flag changes, but what it
+costs does.
+
+**Not every test file belongs here.** `--browser` runs the files it is given,
+and a file that imports `node:fs`, spawns a process or reads a fixture off disk
+cannot run in a page — the import is refused by name, and the file is reported
+as failing to load. That is the right answer rather than a bug: point
+`--browser` at the component tests, which is the half of a suite it is for.
+
+### What it depends on
+
+**A browser you already have.** uf does not download one, does not vendor one,
+and does not pin a version. It looks on `PATH` for `chromium`, `chrome`,
+`google-chrome`, `google-chrome-stable`, `microsoft-edge` and `brave-browser`,
+then for an installed Google Chrome, Chromium or Microsoft Edge; `UF_BROWSER`
+names one outright and is never second-guessed.
+
+With none of those, the run is **refused**, and the message lists everything it
+looked for. It does not fall back to the shim: you asked for a browser because
+you stopped believing the shim's answer, and a green run on it would be an
+answer to a question nobody asked.
+
+The list is Chromium-shaped and the reason is not favouritism. A run needs to
+tell a browser from a command line to open a page headlessly, keep it open, and
+take a scratch profile. Firefox and Safari each need a driver protocol for that,
+and adopting one would make the test runner own a browser automation library.
+
+There is no Playwright here and no Puppeteer. The browser is started with a URL
+and left alone; everything uf learns comes back over HTTP from the page's own
+code.
+
+One switch is worth naming because it looks like an exception and is not.
+`--remote-debugging-pipe` is passed, and uf never writes a byte to it: Chrome
+treats that pipe as its lifeline and shuts down when it closes. That is what
+makes the browser die with the process that started it — `uf` kills a worker
+that misses its deadline, a killed process runs no exit handler, and without the
+pipe a timed-out file would leave a browser running with nobody to stop it. A
+pipe rather than `--remote-debugging-port` because a port is something anything
+on the machine can speak to.
+
+### What it cannot do yet
+
+That last paragraph is a ceiling as well as a floor. **uf cannot drive this
+browser.** No clicking a real cursor, no navigation, no screenshots, no network
+throttling, no second tab. Those are the other half of
+[Playwright-compatible browser automation](https://github.com/ubugeeei-prod/uf/issues/517)
+and they want the protocol this mode deliberately does not speak. `fireEvent`
+and `userEvent` work exactly as they do on Node, because they dispatch DOM
+events — which is a different thing from driving a browser, and enough for a
+component test.
+
+Four more, each refused by name rather than half-done:
+
+- **Snapshots.** `toMatchSnapshot` writes a file beside the test that took it,
+  and a page has no filesystem. `uf test --browser -u` is refused; record
+  snapshots on Node and check them in the browser.
+  `toMatchInlineSnapshot` needs no file and works.
+- **Module mocking.** `uft.mock` intercepts module resolution, which is
+  `node:module`'s synchronous hooks on Node and nothing at all in a page.
+- **Coverage.** V8 is counting in the renderer exactly as it counts in Node, but
+  `NODE_V8_COVERAGE` is Node's own switch and the only way to ask a page for its
+  profile is the protocol above. `--browser --coverage` is refused before the
+  browser is even looked for, because installing one would not fix it.
+- **`permissions`.** A declared set describes what a *process* may reach, and
+  the process the tests run in is a browser uf started rather than a host uf
+  configured. Sandboxing the driver instead would produce a run that reads as
+  sandboxed and a renderer with the whole machine's network, so the run is
+  refused instead.
+
+Anything a page cannot have — `node:fs`, a synchronous `require` — throws a
+sentence naming what is missing and what to do instead, at the moment it is
+reached. None of them answers plausibly and moves on.
 
 ## Coverage
 

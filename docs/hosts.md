@@ -34,6 +34,38 @@ never exited. That is what an unchecked row is worth.
 Deno's row has a test and is still *planned*, which is the distinction the
 column exists for: the test establishes where Deno stops, not that it works.
 
+## The browser, which is a different question
+
+`uf test --browser` runs a test file in a real page, and the browser is a host
+in `uf_test`'s sense — a process uf starts, writes requests to, and reads
+events from. It is deliberately **not** a row above, because the matrix grades
+runtimes that *run a uf project* and a browser already runs one: it is the
+target runtime, which [Three runtimes, not one](red-lines.md) is careful to
+keep separate from the plugin runtime. A row for it would be answering a
+question the column headings do not ask.
+
+What it is, in the same shape as the rows above:
+
+| | |
+| --- | --- |
+| Runs a test file | yes, one page load per file |
+| Flow loader | the driver's module server, through the same `uf transform` |
+| Permissions enforced | none, and a declared set is refused rather than ignored |
+| Coverage | no: `NODE_V8_COVERAGE` is Node's own switch |
+| Driver | Node, whatever `app.runtime.capabilityJsHost` says |
+| Checked by | `crates/uf_cli/tests/browser_host.rs` and `tests/library/browser-layout.test.js` |
+
+The driver row is the surprising one. A page cannot read a pipe, so a Node
+process holds the browser's process handle and serves the page its modules; the
+runtime under test is the browser, and the driver only shuttles JSON between a
+pipe and a socket, so making it follow the project's Capability JS Host would
+add an axis to a feature that has enough of them.
+
+The browser binary itself is a dependency uf does not install: it drives one
+that is already on the machine, named by `UF_BROWSER` or found on `PATH`, and
+refuses the run by name when there is none. See
+[Testing](app/guide/testing/_uf.page.mdx) for what browser mode cannot do yet.
+
 ## Node.js
 
 The reference host. `node --import @uniflowed/host/register app.js` installs

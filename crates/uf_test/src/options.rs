@@ -13,6 +13,22 @@ use crate::retry_schedule::{Attempt, Decision, Schedule};
 /// Default wall-clock budget for one test file.
 pub const DEFAULT_FILE_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Default wall-clock budget for one test file in a browser.
+///
+/// Six times [`DEFAULT_FILE_TIMEOUT`], and not because a browser is six times
+/// slower at running a test. The driver starts the browser while `uf` is
+/// already holding the stopwatch for the run's *first* file, and a cold
+/// Chromium with a cold profile is seven seconds on a laptop and worse in a
+/// container — so under the ordinary budget the first file of every browser run
+/// was reported as timed out, and the tests in it never ran at all.
+///
+/// The alternative was a handshake: a driver that says "the browser is up"
+/// before `uf` starts counting. That is a change to the protocol every host
+/// speaks, for the benefit of one, and it would buy a tighter bound on a
+/// failure — a page that hangs — that a bound already catches. A number with
+/// this paragraph attached is the cheaper honest answer.
+pub const BROWSER_FILE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Largest per-file budget that can be requested.
 ///
 /// A budget is a guarantee that the run terminates; an unbounded one is not a

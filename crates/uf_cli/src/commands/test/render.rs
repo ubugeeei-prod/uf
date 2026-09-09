@@ -135,7 +135,15 @@ pub(super) fn render_report(
     coverage: Option<&CoverageSection>,
 ) {
     let label = project_label(root).to_string();
-    let runtime = host.kind.program().to_string();
+    // The browser is named, not just labelled. Every other host answers to one
+    // word because a project declared it and `uf explain` can print it; a
+    // browser was *found* on this machine, and a run whose result depends on
+    // which binary answered and does not say which is a run nobody can
+    // reproduce from the report.
+    let runtime = match host.browser.as_ref() {
+        Some(browser) => format!("{browser} (driven from {})", host.kind.program()),
+        None => host.kind.program().to_string(),
+    };
     let workers = args.options().concurrency.threads().to_string();
     let cache = timings_label(root);
     let cache = crate::support::relative_to(root, &cache);

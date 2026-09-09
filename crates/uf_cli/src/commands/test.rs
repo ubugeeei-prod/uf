@@ -70,6 +70,8 @@ pub(crate) struct TestArgs {
     pub(crate) retry: u32,
     /// Rewrite any snapshot that did not match.
     pub(crate) update_snapshots: bool,
+    /// Run every file in a real browser instead of on Node's DOM shim.
+    pub(crate) browser: bool,
     /// Run at most this many files at once.
     pub(crate) threads: Option<usize>,
     /// How often watch mode looks for changes, in milliseconds.
@@ -101,6 +103,14 @@ impl TestArgs {
                 RetryPolicy::none()
             } else {
                 RetryPolicy::retries(self.retry)
+            },
+            // The run's first file pays for the browser's start-up, because
+            // `uf` starts its stopwatch when it writes the request and the
+            // driver is still opening a page. See [`BROWSER_FILE_TIMEOUT`].
+            file_timeout: if self.browser {
+                uf_test::BROWSER_FILE_TIMEOUT
+            } else {
+                uf_test::DEFAULT_FILE_TIMEOUT
             },
             ..RunOptions::default()
         }
@@ -189,7 +199,35 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         return watch::watch(ui, &root, resolved.config, &env, args);
     }
 
-    let mut host = test_host(&root, &resolved.config, &env)?
+    // A snapshot is a file beside the test that took it, and a page has no
+    // filesystem to write one to. Said here rather than let through to
+    // `internal/browser/node.js`'s refusal, because `-u` is a request to
+    // *change files on disk* and answering it with a per-test failure would
+    // leave a reader wondering which snapshots did get rewritten. None did.
+    if args.browser && args.update_snapshots {
+        bail!(
+            "`uf test --browser -u` cannot rewrite snapshots: a snapshot is a file beside the \
+             test that took it, and the tests are running in a page that has no filesystem. Run \
+             `uf test -u` to record them on Node, then `uf test --browser` to check them where \
+             the component lives."
+        );
+    }
+    // Before the browser is looked for, deliberately. Installing a browser
+    // would not make this combination work, so "there is no browser on this
+    // machine" would be a true sentence that sent a reader somewhere useless.
+    // The `can_collect_coverage` check below still stands for Bun and Deno,
+    // where the question is about the host that was already chosen.
+    if args.browser && (args.coverage || resolved.config.test.coverage.enabled) {
+        bail!(
+            "`uf test --browser --coverage` cannot measure anything: V8 is counting in the \
+             renderer exactly as it counts in Node, but `NODE_V8_COVERAGE` is Node's own switch \
+             and the only way to ask a page for its profile is the DevTools protocol, which this \
+             mode does not speak. Run `uf test --coverage` on Node for the numbers, and \
+             `uf test --browser` for what a browser answers."
+        );
+    }
+
+    let mut host = test_host(&root, &resolved.config, &env, args.browser)?
         .with_snapshot_updates(args.update_snapshots)
         .with_axe(resolved.config.accessibility.axe.as_json());
 
@@ -214,7 +252,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
                  through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
                  loader attaches. {} provides neither, and reporting zeroes would be worse than \
                  saying so.",
-                host.kind.program()
+                host.kind.name()
             );
         }
         let raw = coverage::RawCoverage::create(&root)?;
@@ -312,10 +350,16 @@ fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport
 /// The worker and the loader both live in the project's `node_modules`, so a
 /// project that has not installed its dependencies is told that rather than
 /// being handed a module-not-found from inside a worker.
+///
+/// `browser` swaps the host rather than adding a flag to one: the process uf
+/// starts is a different module, the thing that runs the test body is a page,
+/// and everything above this function is unchanged. See [`HostKind::Browser`]
+/// and [`uf_test::browser`] for what that costs and what it depends on.
 pub(crate) fn test_host(
     root: &Utf8Path,
     config: &uf_config::UniflowedConfig,
     env: &ProjectEnv,
+    browser: bool,
 ) -> Result<HostCommand> {
     let host = resolve_host(config)?;
     // The loader, not the bundler. `uf test` transforms through `uf transform`
@@ -323,9 +367,14 @@ pub(crate) fn test_host(
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
     // loads.
     let loader = uniflowed_package(root, "host", "register.js")?;
+    let worker_module = if browser {
+        "test/browser-worker.js"
+    } else {
+        "test/worker.js"
+    };
     let worker = loader
         .parent()
-        .map(|scope| scope.join("test/worker.js"))
+        .map(|scope| scope.join(worker_module))
         .filter(|worker| worker.is_file())
         .ok_or_else(|| {
             anyhow::anyhow!(
@@ -334,13 +383,33 @@ pub(crate) fn test_host(
             )
         })?;
 
-    let kind = match host.kind {
-        uf_config::CapabilityJsHost::Node => HostKind::Node,
-        uf_config::CapabilityJsHost::Bun => HostKind::Bun,
-        uf_config::CapabilityJsHost::Deno => HostKind::Deno,
+    let kind = if browser {
+        HostKind::Browser
+    } else {
+        match host.kind {
+            uf_config::CapabilityJsHost::Node => HostKind::Node,
+            uf_config::CapabilityJsHost::Bun => HostKind::Bun,
+            uf_config::CapabilityJsHost::Deno => HostKind::Deno,
+        }
     };
-    let host_name = host.name();
-    let mut command = HostCommand::new(kind, host.program, worker, root.to_path_buf())
+    // The driver of a browser run is Node whatever the project's Capability JS
+    // Host is, because the runtime under test is the browser and the driver
+    // only shuttles JSON between a pipe and a socket. Found here rather than
+    // assumed, so a machine with no `node` is told that instead of being handed
+    // a "no such file or directory" from `spawn`.
+    let host_name = if browser { "the browser" } else { host.name() };
+    let program = if browser {
+        find_program(HostKind::Browser.program()).ok_or_else(|| {
+            anyhow::anyhow!(
+                "`uf test --browser` drives a browser from a Node process, and there is no \
+                 `node` on PATH. The page is where the tests run; Node is what serves it their \
+                 modules and holds the browser's process handle."
+            )
+        })?
+    } else {
+        host.program
+    };
+    let mut command = HostCommand::new(kind, program, worker, root.to_path_buf())
         .with_flow_loader(
             Utf8Path::new("@uniflowed/host/register"),
             &loader.join("bun-preload.js"),
@@ -356,6 +425,23 @@ pub(crate) fn test_host(
     // transform service the right to exist: a worker that may not start `uf
     // transform` cannot load a line of Flow.
     if let Some(permissions) = config.permissions.as_ref() {
+        if browser {
+            // Refused rather than translated, for the reason Bun's set is
+            // refused: a set that four hosts enforce and one silently ignores
+            // is worse than no set at all. Every category a project can declare
+            // describes a *process* — which files it may read, which programs
+            // it may start — and the process a browser run sandboxes would be
+            // the driver, not the page the tests are in. Putting `--allow-read`
+            // on the driver would produce a run that reads as sandboxed in `uf
+            // explain` and a renderer with the whole machine's network.
+            bail!(
+                "`uf test --browser` cannot enforce this project's `permissions`: they describe \
+                 what a process may reach, and the process the tests run in is a browser uf \
+                 started rather than a host uf configured. A set uf cannot enforce stops the run \
+                 rather than being partly applied — run the suite without `--browser`, where \
+                 Node and Deno enforce it."
+            );
+        }
         command = command.with_permissions(worker_permissions(
             kind,
             root,
@@ -363,6 +449,17 @@ pub(crate) fn test_host(
             Some(uf_binary.as_path()),
             permissions,
         )?);
+    }
+    if browser {
+        // `UF_BROWSER` from this process's environment, and deliberately not
+        // from the project's `.env`: which browser a suite is measured in is a
+        // property of the machine, and a cloned repository's `.env` must not be
+        // able to answer it. `docs/security.md` makes the same claim about
+        // `UF_BINARY` for the same reason.
+        let named = std::env::var(uf_test::browser::BROWSER_VARIABLE).ok();
+        let found = uf_test::find_browser(named.as_deref(), &find_program, &Utf8Path::is_file)
+            .map_err(|error| anyhow::anyhow!("{error}"))?;
+        command = command.with_browser(found.program);
     }
     if !command.loads_flow() {
         // The reason comes from `uf_runtime::HOSTS` rather than from a sentence
@@ -559,9 +656,18 @@ pub(crate) fn toolchain_access(
 }
 
 /// The host, as `uf_runtime` names it.
+///
+/// [`HostKind::Browser`] maps to [`RuntimeHost::Node`], and the reason it is
+/// not a fourth row is worth stating: `uf_runtime::HOSTS` grades runtimes that
+/// **run a uf project** — a server, a build, an application — and a browser
+/// already runs one, as the target rather than as the host. What this function
+/// answers for is the *process* uf starts, and for a browser run that process
+/// is the Node driver. The two callers ask exactly that: which permission
+/// arguments to translate into (a browser run refuses before reaching them),
+/// and which host's missing-loader row to quote (a browser run loads Flow).
 pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
     match kind {
-        HostKind::Node => RuntimeHost::Node,
+        HostKind::Node | HostKind::Browser => RuntimeHost::Node,
         HostKind::Bun => RuntimeHost::Bun,
         HostKind::Deno => RuntimeHost::Deno,
     }

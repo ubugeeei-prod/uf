@@ -14,9 +14,11 @@
     ".": "./index.js",
     "./in-source": "./in-source.js",
     "./worker": "./worker.js",
+    "./browser-worker": "./browser-worker.js",
     "./package.json": "./package.json"
   },
   "files": [
+    "browser-worker.js",
     "in-source.js",
     "index.js",
     "internal",

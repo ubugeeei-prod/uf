@@ -61,7 +61,8 @@ pub(super) fn watch(
     // Resolved once, with the environment the session started with: a watch
     // that reloaded `.env` mid-session would change what the suite means
     // between two runs of the same file.
-    let host = super::test_host(root, &config, env)?.with_axe(config.accessibility.axe.as_json());
+    let host = super::test_host(root, &config, env, args.browser)?
+        .with_axe(config.accessibility.axe.as_json());
     let mut graph = build_graph(&files);
     let filter = args.filter();
 

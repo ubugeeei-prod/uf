@@ -61,6 +61,7 @@
 //! # Ok::<(), uf_test::RunError>(())
 //! ```
 
+pub mod browser;
 mod coverage;
 mod discovery;
 mod filter;
@@ -81,6 +82,7 @@ mod watch;
 
 use thiserror::Error;
 
+pub use crate::browser::{Browser, NoBrowser, find_browser};
 pub use crate::coverage::{
     BranchCoverage, Coverage, CoverageError, CoverageScope, FileCoverage, FunctionCoverage,
     MAX_COVERAGE_DOCUMENT_BYTES, MAX_FUNCTION_NAME_BYTES, MAX_RANGES_PER_SCRIPT,
@@ -92,8 +94,8 @@ pub use crate::filter::{MAX_PATTERN_BYTES, PathPatternList, TestFilter};
 pub use crate::graph::{ImportGraph, MAX_IMPORTS_PER_MODULE, MAX_MODULES, MODULE_EXTENSIONS};
 pub use crate::host::{FileOutcome, HostCommand, HostKind, SpawnError, Worker};
 pub use crate::options::{
-    Bail, Concurrency, DEFAULT_FILE_TIMEOUT, DEFAULT_MAX_ASSERTIONS_PER_TEST, MAX_ATTEMPTS,
-    MAX_FILE_TIMEOUT, MAX_RETRY_DELAY, MIN_FILE_TIMEOUT, RetryPolicy, RunOptions,
+    BROWSER_FILE_TIMEOUT, Bail, Concurrency, DEFAULT_FILE_TIMEOUT, DEFAULT_MAX_ASSERTIONS_PER_TEST,
+    MAX_ATTEMPTS, MAX_FILE_TIMEOUT, MAX_RETRY_DELAY, MIN_FILE_TIMEOUT, RetryPolicy, RunOptions,
 };
 pub use crate::path::{MAX_RELATIVE_PATH_BYTES, is_safe_relative, normalize_relative};
 pub use crate::plan::{
