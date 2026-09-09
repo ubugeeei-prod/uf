@@ -158,7 +158,21 @@ function splitStep(
   if (!Number.isInteger(step) || step < 1) {
     throw fieldError(spec.name, part, source, `a step must be a whole number above zero`);
   }
-  return [term.slice(0, at), step];
+  const range = term.slice(0, at);
+  // `5/15` is the one form that would otherwise be read here as `5` with the
+  // step quietly dropped — an hourly-looking schedule that runs once a day.
+  // Vixie cron reads it as `5-59/15`, and this module's whole rule is that it
+  // accepts only what every cron agrees on; `n/step` is not on that list, so
+  // it is refused with the spelling that is.
+  if (range !== "*" && !range.includes("-")) {
+    throw fieldError(
+      spec.name,
+      part,
+      source,
+      `a step needs \`*\` or a range before it — write \`${range}-${String(spec.max)}/${String(step)}\``,
+    );
+  }
+  return [range, step];
 }
 
 /** `a-b` or `a` or `*` into the pair of numbers it covers. */

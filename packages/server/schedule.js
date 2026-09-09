@@ -126,6 +126,23 @@ export function createScheduler(options: {|
   // runs the minute it was late for.
   const lastRun: Map<string, string> = new Map();
 
+  // Keyed by name, so two schedules sharing one would take turns being the one
+  // that already ran this minute — each suppressing the other, silently, and
+  // only when their minutes overlapped. Refused here rather than keyed by
+  // identity instead, because the name is not decoration: it is what a
+  // platform's scheduler calls back, and two schedules answering to one name
+  // is ambiguous wherever it is read.
+  const names: Set<string> = new Set();
+  for (const schedule of options.schedules) {
+    if (names.has(schedule.name)) {
+      throw new TypeError(
+        `two schedules are named ${JSON.stringify(schedule.name)}; a name is what a ` +
+          `platform's scheduler calls back, so it has to name one of them`,
+      );
+    }
+    names.add(schedule.name);
+  }
+
   const tick = async (instant: Instant): Promise<Tick> => {
     const minute = minuteOf(instant);
     const ran: Array<string> = [];

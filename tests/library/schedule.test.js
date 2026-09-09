@@ -77,6 +77,22 @@ describe("a cron expression", () => {
     );
   });
 
+  // The step would otherwise be dropped and `0 5/15 * * *` would run once a
+  // day while looking hourly — the one refusal that is about a form uf could
+  // have half-read rather than one it cannot read at all.
+  it("refuses a step on a single value, and says what to write instead", () => {
+    expect(() => defineSchedule({ name: "s", cron: "0 5/15 * * *", run: () => {} })).toThrow(
+      /a step needs .* or a range before it/,
+    );
+    expect(() => defineSchedule({ name: "s", cron: "0 5/15 * * *", run: () => {} })).toThrow(
+      /5-23\/15/,
+    );
+    // The two spellings that do carry a step still work.
+    expect(due("0 */6 * * *", "2026-03-04T06:00:00Z")).toBe(true);
+    expect(due("0 5-23/15 * * *", "2026-03-04T20:00:00Z")).toBe(true);
+    expect(due("0 5-23/15 * * *", "2026-03-04T06:00:00Z")).toBe(false);
+  });
+
   it("refuses the syntaxes it does not implement, instead of ignoring them", () => {
     for (const cron of ["@daily", "0 0 * * MON", "0 0 L * *", "0 0 * * 1#2"]) {
       expect(() => defineSchedule({ name: "s", cron, run: () => {} })).toThrow();
@@ -241,6 +257,20 @@ describe("the scheduler", () => {
     const tick = await scheduler.tick(at("2026-03-04T09:00:00Z"));
     expect(finished).toBe(true);
     expect(tick.ran).toEqual(["slow"]);
+  });
+
+  // `lastRun` is keyed by name, so two schedules sharing one would take turns
+  // suppressing each other — silently, and only in the minutes they overlap.
+  it("refuses two schedules with one name rather than letting them suppress each other", () => {
+    expect(() =>
+      createScheduler({
+        schedules: [
+          defineSchedule({ name: "sweep", cron: "* * * * *", run: () => {} }),
+          defineSchedule({ name: "sweep", cron: "0 * * * *", run: () => {} }),
+        ],
+        log: quiet,
+      }),
+    ).toThrow(/two schedules are named "sweep"/);
   });
 
   it("needs a name, because a platform's scheduler calls one back", () => {
