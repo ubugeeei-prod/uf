@@ -80,14 +80,14 @@ export type PayloadReader = {|
 
 /** The parts of a `Document` this module uses, so it needs no DOM lib. */
 type DocumentLike = interface {
-  +querySelectorAll: (selector: string) => Iterable<ElementLike>,
-  +documentElement: mixed,
+  readonly querySelectorAll: (selector: string) => Iterable<ElementLike>,
+  readonly documentElement: mixed,
 };
 
 /** The parts of an `Element` this module uses. */
 type ElementLike = interface {
-  +getAttribute: (name: string) => string | null,
-  +textContent: string | null,
+  readonly getAttribute: (name: string) => string | null,
+  readonly textContent: string | null,
 };
 
 /** One row the page is waiting for. */
