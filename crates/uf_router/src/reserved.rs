@@ -52,10 +52,22 @@
 //! checked. A convention silently served as a URL is worse than one that is
 //! not supported: the project looks like it works.
 //!
-//! So [`RouteSegment::Slot`] and [`RouteSegment::Interception`] are names in
-//! this grammar without being routes. Both routers refuse them, `uf lint`
-//! reports them, and the refusal says which feature the spelling belongs to.
-//! See ubugeeei-prod/uf#267.
+//! So [`RouteSegment::Slot`] and [`RouteSegment::Interception`] became names in
+//! this grammar, and both routers refused them by name rather than serving
+//! them.
+//!
+//! A slot is a route now. [`RouteSegment::Slot`] contributes no URL segment —
+//! it is a `(group)` in that one respect — and everything under it is a route
+//! *into a named place* rather than into the one page a URL has: the layout of
+//! the segment that declares the slot receives it as a prop beside `children`.
+//! [`ReservedRole::Default`] is the other half, and it is the reason a slot
+//! can be a route at all: a URL that says nothing about a slot still has to
+//! leave something in it.
+//!
+//! [`RouteSegment::Interception`] is still a name without a route. It needs a
+//! navigation to carry where it came from, which is a change to what a
+//! navigation *is* rather than a change to this grammar, so it stays refused
+//! by name. See ubugeeei-prod/uf#267.
 
 use std::str::FromStr;
 
@@ -81,6 +93,27 @@ pub enum ReservedRole {
     Template,
     /// Renders a route.
     Page,
+    /// Renders in a slot the URL says nothing about.
+    ///
+    /// A slot — `app/dashboard/@team/` — is matched against the same URL its
+    /// segment is, and a URL is free to address one slot and not another:
+    /// `/dashboard/members` has a page for `@team` and nothing at all for
+    /// `@analytics`. Without this file the second slot would be empty, so a
+    /// link into one half of a two-slot layout would produce half a page, and
+    /// arriving at that URL directly would produce it too.
+    ///
+    /// It is a page in every way that matters — it is a component and it may
+    /// be Markdown — except that no path leads to it, which is why it is not
+    /// one of [`route_parts`](ReservedRole::route_parts) for the same reason
+    /// [`NotFound`](ReservedRole::NotFound) is not.
+    ///
+    /// Only inside a slot. Next.js also reads a `default.js` beside an
+    /// ordinary page, for the `children` slot on a hard navigation; uf's
+    /// `children` is the page the URL matched and there is no case where it is
+    /// missing, so a `_uf.default.js` outside a slot would be a file the
+    /// router never reaches. `discover_routes` refuses it rather than leaving
+    /// it there to be wondered about.
+    Default,
     /// Runs before a route resolves.
     Middleware,
     /// Renders a path no route matched.
@@ -130,6 +163,7 @@ impl ReservedRole {
             Self::Layout => "layout",
             Self::Template => "template",
             Self::Page => "page",
+            Self::Default => "default",
             Self::Middleware => "middleware",
             Self::NotFound => "not-found",
             Self::Error => "error",
@@ -147,11 +181,12 @@ impl ReservedRole {
     /// Two `all` in one module meaning two different things is the drift this
     /// module exists to prevent, one level up.
     #[must_use]
-    pub const fn all() -> [Self; 9] {
+    pub const fn all() -> [Self; 10] {
         [
             Self::Layout,
             Self::Template,
             Self::Page,
+            Self::Default,
             Self::Middleware,
             Self::NotFound,
             Self::Error,
@@ -164,10 +199,11 @@ impl ReservedRole {
     /// The roles a rendered route is built from.
     ///
     /// A `route` answers a request rather than rendering, a `story` names a
-    /// state of a component, a `not-found` is reached by no path, an `error`
-    /// renders instead of the route rather than as part of it, and a `loading`
-    /// renders while it is not there yet — so none of the five composes a
-    /// route, though all five are reserved names.
+    /// state of a component, a `not-found` is reached by no path, a `default`
+    /// stands in for a slot the URL did not address, an `error` renders
+    /// instead of the route rather than as part of it, and a `loading` renders
+    /// while it is not there yet — so none of the six composes a route, though
+    /// all six are reserved names.
     ///
     /// A `template` does compose one. It is a layout that remounts, and the
     /// rendered route contains it exactly the way it contains a layout.
@@ -185,6 +221,7 @@ impl FromStr for ReservedRole {
             "layout" => Ok(Self::Layout),
             "template" => Ok(Self::Template),
             "page" => Ok(Self::Page),
+            "default" => Ok(Self::Default),
             "middleware" => Ok(Self::Middleware),
             "not-found" => Ok(Self::NotFound),
             "error" => Ok(Self::Error),
@@ -328,8 +365,9 @@ impl ReservedRole {
     pub const fn extensions(self) -> &'static [&'static str] {
         match self {
             // A `not-found` is a page in every way that matters, so it is one
-            // here too.
-            Self::Page | Self::NotFound => &crate::PAGE_EXTENSIONS,
+            // here too, and so is a `default`: both render in place of a page
+            // and neither is handed anything Markdown cannot receive.
+            Self::Page | Self::NotFound | Self::Default => &crate::PAGE_EXTENSIONS,
             // A story names a rendered state of a component, so it is code
             // for the same reason a layout is.
             // A template is a layout that remounts, and a story names a
@@ -416,13 +454,18 @@ pub enum RouteSegment<'a> {
     CatchAll(&'a str),
     /// An ordinary URL segment, spelled exactly as the directory is.
     Literal(&'a str),
-    /// `@team` — a parallel-route slot. Not a route uf can serve.
+    /// `@team` — a parallel-route slot, under the borrowed name.
     ///
     /// A slot is a route that matches into a *named place* rather than into
-    /// the one page a URL has, and a layout renders several of them at once,
-    /// each with its own loading and error state. uf's `RouteRecord` is one
-    /// page and a list of layouts and `RouteView` composes exactly that, so
-    /// there is no second child to give a layout and no place to put one.
+    /// the one page a URL has: the segment holding `@team` gives its layout a
+    /// `team` prop beside `children`, and the two are matched against the same
+    /// URL independently. So the directory contributes no URL segment, exactly
+    /// as a [`Group`](RouteSegment::Group) does — `app/dashboard/@team/
+    /// members/_uf.page.js` is what `/dashboard/members` puts in the `team`
+    /// slot, and it is not a second page at that path.
+    ///
+    /// A URL is free to address one slot and not another, which is what
+    /// [`ReservedRole::Default`] answers.
     Slot(&'a str),
     /// `(.)photo`, `(..)photo`, `(...)photo`, `(..)(..)photo` — an intercepting
     /// route. Not a route uf can serve.
@@ -439,28 +482,39 @@ pub enum RouteSegment<'a> {
     },
 }
 
-impl RouteSegment<'_> {
+impl<'a> RouteSegment<'a> {
     /// One directory name per spelling uf refuses.
     ///
     /// Here so that `tests/reserved_names.rs` can hold the build router to the
     /// same list, the way it already holds it to [`ReservedRole`]. A spelling
     /// one router refuses and the other serves is the disagreement this module
     /// exists to prevent, and the two are separate implementations.
-    pub const UNSUPPORTED_EXAMPLES: &'static [&'static str] = &[
-        "@team",
-        "(.)photo",
-        "(..)photo",
-        "(...)photo",
-        "(..)(..)photo",
-    ];
+    pub const UNSUPPORTED_EXAMPLES: &'static [&'static str] =
+        &["(.)photo", "(..)photo", "(...)photo", "(..)(..)photo"];
 
     /// Whether uf serves a segment spelled this way.
     ///
-    /// False for the two Next.js conventions uf has reserved without
-    /// implementing. Refusing is the point: they used to be literals.
+    /// False for interception alone. `@team` was here too until slots became
+    /// routes; refusing is still the point for what is left, because a literal
+    /// is what these used to be.
     #[must_use]
     pub const fn is_supported(&self) -> bool {
-        !matches!(self, Self::Slot(_) | Self::Interception { .. })
+        !matches!(self, Self::Interception { .. })
+    }
+
+    /// The slot this segment names, if it names one.
+    ///
+    /// Here rather than at each `matches!` site because three callers ask the
+    /// same question — discovery skips the segment, the path builder drops it,
+    /// and the refusal below needs to know a slot from a literal — and a slot
+    /// that one of them read differently from the others is a page rendered in
+    /// a place no other part of uf agrees about.
+    #[must_use]
+    pub const fn slot(&self) -> Option<&'a str> {
+        match self {
+            Self::Slot(name) => Some(name),
+            _ => None,
+        }
     }
 
     /// Why uf refuses a directory spelled this way, or [`None`] when it
@@ -478,14 +532,6 @@ impl RouteSegment<'_> {
     #[must_use]
     pub fn unsupported_reason(&self, segment: &str) -> Option<String> {
         match self {
-            Self::Slot(_) => Some(format!(
-                "`{segment}` is a parallel-route slot, and uf does not have parallel routes — a \
-                 route here renders in one place, so there is nothing for a slot to render into. \
-                 It is refused rather than served as the URL segment `/{segment}`, which is what \
-                 it used to become. Rename the directory; a URL segment that really starts with \
-                 `@` has no spelling in this grammar, so capture it with a `[param]`. \
-                 https://github.com/ubugeeei-prod/uf/issues/267"
-            )),
             Self::Interception { route, .. } => Some(format!(
                 "`{segment}` is an intercepting route, and uf does not have interception — a \
                  navigation carries where it is going and not where it came from, so nothing here \
@@ -494,7 +540,9 @@ impl RouteSegment<'_> {
                  belongs at, or rename the directory. \
                  https://github.com/ubugeeei-prod/uf/issues/267"
             )),
-            Self::Group | Self::Param(_) | Self::CatchAll(_) | Self::Literal(_) => None,
+            Self::Group | Self::Param(_) | Self::CatchAll(_) | Self::Literal(_) | Self::Slot(_) => {
+                None
+            }
         }
     }
 }
@@ -848,16 +896,36 @@ mod tests {
     }
 
     #[test]
-    fn a_slot_is_named_rather_than_served_as_a_url() {
+    fn a_slot_is_a_route_that_contributes_no_url_segment() {
         // `@team` used to be the literal URL segment `/@team`, in both routers
-        // and in the generated `RoutePath`. See ubugeeei-prod/uf#267.
+        // and in the generated `RoutePath`; then it was refused by name; now it
+        // is a slot uf serves. See ubugeeei-prod/uf#267.
         assert_eq!(classify_route_segment("@team"), RouteSegment::Slot("team"));
-        assert!(!classify_route_segment("@team").is_supported());
+        assert!(classify_route_segment("@team").is_supported());
+        assert_eq!(classify_route_segment("@team").slot(), Some("team"));
         // Not a slot: the `@` has to start the segment, so a scoped-looking
         // name in the middle is an ordinary literal.
         assert_eq!(
             classify_route_segment("mail@example"),
             RouteSegment::Literal("mail@example")
+        );
+        assert_eq!(classify_route_segment("mail@example").slot(), None);
+    }
+
+    #[test]
+    fn a_default_file_is_reserved_and_is_not_part_of_a_route() {
+        // What a slot renders when the URL addresses the other one. A page in
+        // every way but the path that leads to it, which is why it takes the
+        // page extensions and is not one of `route_parts`.
+        assert_eq!(recognized("_uf.default.js").role, ReservedRole::Default);
+        assert_eq!(
+            recognized("_uf.default.native.js").variant,
+            ReservedVariant::Native
+        );
+        assert!(!classify_reserved_file("_uf.default.mdx").is_unknown());
+        assert!(
+            !ReservedRole::route_parts().contains(&ReservedRole::Default),
+            "a default stands in for a slot's page rather than composing a route"
         );
     }
 
@@ -894,7 +962,7 @@ mod tests {
     }
 
     #[test]
-    fn every_unsupported_example_is_one_of_the_two_kinds() {
+    fn every_unsupported_example_is_an_interception() {
         for segment in RouteSegment::UNSUPPORTED_EXAMPLES {
             let classified = classify_route_segment(segment);
             assert!(
@@ -913,7 +981,7 @@ mod tests {
 
     #[test]
     fn a_segment_uf_serves_has_no_reason_to_refuse_it() {
-        for segment in ["(marketing)", "[slug]", "[...path]", "posts"] {
+        for segment in ["(marketing)", "[slug]", "[...path]", "posts", "@team"] {
             assert_eq!(
                 classify_route_segment(segment).unsupported_reason(segment),
                 None,

@@ -57,7 +57,11 @@ fn grammar() -> String {
     format!("reserved file names are _uf.<{roles}>[.<{variants}>].js")
 }
 
-/// `router/unsupported-segment`: `@slot` and `(.)segment` directories.
+/// `router/unsupported-segment`: `(.)segment` directories.
+///
+/// `@slot` was reported here too, until slots became routes. What is left is
+/// interception, which needs a navigation to carry where it came from — a
+/// change to what a navigation is rather than to this grammar.
 ///
 /// A file-scan rule for something that is not about the file, and that is the
 /// shape the linter has: a directory is only ever seen through the files under
