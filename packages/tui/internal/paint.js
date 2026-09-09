@@ -164,6 +164,15 @@ export function paint(
   clip: Rect,
   hits: HitGrid | null = null,
 ): void {
+  // `hideInstance` — React's for a Suspense fallback and for `<Activity>` —
+  // sets `width: 0, height: 0, hidden: true`. The zero size is not enough on
+  // its own: `overflow` defaults to `"visible"`, so a child laid out inside a
+  // 0x0 box still draws over its edge, and the walk would also record hits for
+  // a subtree the reader cannot see. The flag is the thing that says the
+  // subtree is not here; read it before anything is drawn.
+  if (node.props.hidden === true) {
+    return;
+  }
   switch (node.type) {
     case "root":
       for (const child of node.children) {
