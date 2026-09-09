@@ -756,6 +756,22 @@ function flowPlugin({
                   // Vite sees the head and only the head. That is what lets the
                   // development server stream like every other host — see below.
                   transformHead: (head) => devServer.transformIndexHtml(url, head),
+                  // And what the streaming actually did, when it changed. The
+                  // router has already decided there is something worth saying
+                  // and written the words — see its `internal/inspector.js`,
+                  // which cannot be imported from here because this file is
+                  // plain JavaScript that Vite loads before any Flow transform
+                  // exists. `info`, because a page that streamed is a
+                  // measurement and not a problem; `origin`, because a report
+                  // that does not say which page produced it is one somebody
+                  // has to reproduce before they can act on it.
+                  onStream: (diagnostic) =>
+                    emit("diagnostic", {
+                      severity: "info",
+                      origin: url,
+                      message: diagnostic.message,
+                      detail: diagnostic.detail,
+                    }),
                 },
               );
               if (result.error != null) reportRenderError(devServer, url, result.error);
