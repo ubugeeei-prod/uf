@@ -251,8 +251,20 @@ fn no_color_beats_clicolor_force() {
     assert_plain(&String::from_utf8(output.stdout).unwrap());
 }
 
+/// `NO_COLOR` takes the colour and leaves the characters.
+///
+/// This asserted the opposite until ubugeeei-prod/uf#393. uf and
+/// `@uniflowed/tui` had made opposite decisions about whether `NO_COLOR`
+/// reaches the glyph set, both deliberately, so the CLI drew `|- ` where an
+/// application built on the library drew `├─` in the same shell. The
+/// convention at no-color.org is about ANSI colour and says nothing about
+/// characters, so the CLI followed the library.
+///
+/// What is asserted is both halves of that: no escape sequence survives, and
+/// the box drawing does. Asserting only the first would pass on a run that had
+/// quietly lost its glyphs too.
 #[test]
-fn no_color_also_falls_back_to_ascii_glyphs() {
+fn no_color_takes_the_colour_and_leaves_the_glyphs() {
     let dir = tempfile::tempdir().unwrap();
     let app = dir.path().join("app");
 
@@ -260,17 +272,22 @@ fn no_color_also_falls_back_to_ascii_glyphs() {
         .args(["create", "app", "react"])
         .arg(&app)
         .env("NO_COLOR", "1")
+        // A UTF-8 locale, said out loud: the glyph rule reads it, and a CI
+        // runner with none would take the branch this test is not about.
+        .env("LC_ALL", "en_US.UTF-8")
         .output()
         .unwrap();
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.is_ascii(), "NO_COLOR must not print box drawing");
-    assert!(stdout.contains("|- app"));
-    assert!(stdout.contains("`- uf.config.js"));
+    assert_plain(&stdout);
+    assert!(
+        stdout.contains("├─ app") || stdout.contains("└─ uf.config.js"),
+        "NO_COLOR asks for no colour, not for ASCII:\n{stdout}"
+    );
     // Nine: the eight source files and the `.gitignore` that keeps uf's
     // own output out of a new project's first commit.
-    assert!(stdout.contains("+ created 9 files"));
+    assert!(stdout.contains("created 9 files"), "{stdout}");
 }
 
 #[test]

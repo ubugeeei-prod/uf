@@ -1,9 +1,10 @@
 //! Shared helpers for the CLI integration tests.
 //!
-//! Every command is launched with a scrubbed terminal environment. Colour and
-//! glyph selection reads `NO_COLOR`, `FORCE_COLOR`, `CLICOLOR`, `TERM`, and the
-//! locale, so a developer running the suite with `NO_COLOR=1` exported would
-//! otherwise see different output from CI.
+//! Every command is launched with a scrubbed terminal environment. Colour
+//! selection reads `NO_COLOR`, `FORCE_COLOR`, `CLICOLOR` and `TERM`, and glyph
+//! selection reads `TERM` and the locale — `NO_COLOR` is not among the second
+//! set, which is ubugeeei-prod/uf#393 — so a developer running the suite with
+//! any of them exported would otherwise see different output from CI.
 #![allow(dead_code)]
 
 use assert_cmd::Command;
