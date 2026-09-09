@@ -384,6 +384,15 @@ jobs:
       # first thing anybody sees from `curl … | sh`, and a line wider than the
       # window wraps without its indent.
       - run: ./target/release/uf run install:banner
+      # And what `uniflowed.dev` answers. The apex serves a landing page now
+      # and hands every other path to the documentation host exactly as it did
+      # when that was all it did — which is a promise about `/guide`,
+      # `/og.png` and `/sitemap.xml`, paths written down in issues and in
+      # other people's pages. Nothing else in this repository would notice
+      # them turning into 404s, because the failure is invisible from the
+      # machine of whoever changed the worker.
+      - run: ./target/release/uf run apex:routes
+      - run: ./target/release/uf run apex:routes:test
       - run: ./target/release/uf run scripts:parse
       - run: ./target/release/uf run scripts:parse:test
       # And that the three CI integrations still configure the installer with

@@ -10,8 +10,10 @@ on:
       - "docs/**"
       - "infra/cloudflare/setup-assets/**"
       - "infra/cloudflare/workers/docs.js"
+      - "infra/cloudflare/workers/root.js"
       - "infra/cloudflare/workers/setup.js"
       - "infra/cloudflare/wrangler.docs.jsonc"
+      - "infra/cloudflare/wrangler.root.jsonc"
       - "infra/cloudflare/wrangler.setup.jsonc"
       - "tools/docs/**"
   push:
@@ -25,8 +27,10 @@ on:
       - "docs/**"
       - "infra/cloudflare/setup-assets/**"
       - "infra/cloudflare/workers/docs.js"
+      - "infra/cloudflare/workers/root.js"
       - "infra/cloudflare/workers/setup.js"
       - "infra/cloudflare/wrangler.docs.jsonc"
+      - "infra/cloudflare/wrangler.root.jsonc"
       - "infra/cloudflare/wrangler.setup.jsonc"
       - "tools/docs/**"
   workflow_dispatch:
@@ -67,6 +71,11 @@ jobs:
           UF_BIN: ./target/release/uf
       - run: npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.docs.jsonc
       - run: npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.setup.jsonc
+      # The apex worker bundles and finds its assets. What it *answers* is
+      # `uf run apex:routes` in `ci.yml`, which drives the handler; this is the
+      # half that only wrangler can tell us — that the config resolves and the
+      # `brand/` directory is where it says it is.
+      - run: npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.root.jsonc
 
   deploy:
     name: Deploy docs
@@ -101,3 +110,11 @@ jobs:
           UF_BIN: ./target/release/uf
       - run: npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.docs.jsonc
       - run: npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.setup.jsonc
+      # No `uf-root` here, deliberately. The apex is the one hostname whose
+      # worker is managed by `infra/cloudflare/main.tf`, and a push that
+      # deployed it from here would leave Terraform's state describing a script
+      # it no longer owns — two systems writing one resource, which is how a
+      # `tofu apply` months later silently reverts a landing page. Deploy it
+      # with `tofu apply`, or with
+      # `wrangler deploy --config infra/cloudflare/wrangler.root.jsonc` if you
+      # would rather, and pick one.

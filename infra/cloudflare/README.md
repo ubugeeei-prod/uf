@@ -4,7 +4,17 @@ This directory is the IaC source of truth for `uniflowed.dev`.
 
 ## Topology
 
-- `uniflowed.dev` and `www.uniflowed.dev`: redirect to docs.
+- `uniflowed.dev`: the landing page, from `workers/root.js`. It answers `/`,
+  `/robots.txt` and `/brand/*` — the last out of the repository's own `brand/`
+  directory, bound as `ASSETS` and read in place rather than copied — and
+  **308s every other path to `docs.uniflowed.dev`**, which is the whole of what
+  this worker used to do. That fallthrough is the compatibility rule: links to
+  `uniflowed.dev/guide`, `/og.png` and `/sitemap.xml` exist in issues and in
+  other people's pages, and none of them may stop resolving.
+  `tools/ci/apex-routes.sh` drives the handler and fails when one does.
+- `www.uniflowed.dev`: 308 to the apex, same path. One origin is canonical;
+  two hostnames serving one document split the cache and need a `rel=canonical`
+  afterwards to say which of them counts.
 - `docs.uniflowed.dev`: Workers Static Assets for the generated docs site.
 - `setup.uniflowed.dev`: Worker endpoint for `curl -fsSL https://setup.uniflowed.dev | sh`.
 - `releases.uniflowed.dev`: public R2 custom domain for release archives.
@@ -52,6 +62,40 @@ npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.setup.jsonc
 `.github/workflows/docs.yml` builds docs for pull requests and deploys the
 existing `uf-docs` and `uf-setup` Workers from `main` when
 `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` are available.
+
+## The apex
+
+`uf-root` is **not** in that deploy job, and that is deliberate: it is the one
+Worker whose script `main.tf` owns, and two systems writing one resource is how
+a `tofu apply` months later silently reverts a landing page. Pick one. Terraform
+is the default because the apex and `www` custom domains are declared there too:
+
+```sh
+tofu -chdir=infra/cloudflare apply -var account_id=... -var zone_id=...
+```
+
+Wrangler deploys the same script and assets without touching DNS, which is the
+faster loop while editing the page:
+
+```sh
+npx --yes wrangler@4.128.0 deploy --dry-run --config infra/cloudflare/wrangler.root.jsonc
+npx --yes wrangler@4.128.0 deploy --config infra/cloudflare/wrangler.root.jsonc
+```
+
+Locally, `wrangler dev` serves the real thing — the page, the `brand/` assets
+and every redirect — with no account and no credentials:
+
+```sh
+npx --yes wrangler@4.128.0 dev --config infra/cloudflare/wrangler.root.jsonc
+```
+
+What it answers is checked rather than described. `uf run apex:routes` imports
+the worker, calls its `fetch` with an `ASSETS` binding over `brand/`, and fails
+when `/` stops being a page, when a path that used to redirect stops resolving
+at the same path, when `www` points anywhere but the apex, when the page loads
+something this worker cannot serve, or when the `style-src` hash no longer
+matches the stylesheet the page returned. `uf run apex:routes:test` checks that
+that check still catches each of those.
 
 ## Release Upload
 

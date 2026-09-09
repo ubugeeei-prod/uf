@@ -113,6 +113,21 @@ resource "cloudflare_workers_script" "root" {
   content_file       = "${path.module}/workers/root.js"
   content_sha256     = filesha256("${path.module}/workers/root.js")
   main_module        = "root.js"
+
+  # The repository's `brand/` directory, which the worker serves under
+  # `/brand/` after stripping the prefix. It is the same directory
+  # `tools/docs/build.sh` stages into the documentation site, read in place
+  # rather than copied, and it is what lets the landing page load the mark
+  # from its own origin under `img-src 'self'`.
+  #
+  # `run_worker_first` is `true` so that the worker decides every path. Without
+  # it the asset router would answer `/README.md` and `/og.html` out of this
+  # directory ahead of the redirect that is supposed to answer them.
+  assets = {
+    directory        = "${path.module}/../../brand"
+    binding          = "ASSETS"
+    run_worker_first = true
+  }
 }
 
 resource "cloudflare_workers_custom_domain" "apex" {
