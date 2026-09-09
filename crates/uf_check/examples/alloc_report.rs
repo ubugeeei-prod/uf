@@ -20,6 +20,13 @@
 //!   the second: a record's key is over the file's own text, so a keystroke
 //!   makes a key nothing has been filed under.
 //!
+//! `--phases` adds the table #678 asks for and could not take: one row per
+//! `profile_span!` in the checker, so the fixed cost of forcing a builtin
+//! environment is separated from what a module costs to infer. The spans are
+//! uf's own — the vendored port is a submodule and carries none — so the row
+//! that ends up largest is the boundary uf hands work across, not a line
+//! inside inference.
+//!
 //! Debug and release give identical allocation counts — the counter is in the
 //! allocator, not in the optimiser — so this can be run without a release
 //! build. Release is worth it for the wall clock and nothing else.
@@ -27,13 +34,20 @@
 use std::path::Path;
 
 use uf_check::{CheckCache, CheckLimits, Source, check_sources, check_sources_cached};
-use uf_profiler::{AllocDelta, AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{
+    AllocDelta, AllocSnapshot, CountingAllocator, Recorder, ReportConfig, SortBy, Window, scope,
+};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
 
 fn main() {
-    let Arguments { path, batch, cache } = Arguments::parse(std::env::args().skip(1));
+    let Arguments {
+        path,
+        batch,
+        cache,
+        phases,
+    } = Arguments::parse(std::env::args().skip(1));
     let source = std::fs::read_to_string(&path).expect("read the module");
 
     if !uf_check::is_available() {
@@ -80,6 +94,32 @@ fn main() {
         std::hint::black_box(&report);
     });
     print_delta(&delta, runs);
+
+    if phases {
+        // A second pass rather than the one above: a span reads the
+        // allocator's counters as it opens and closes, and the headline should
+        // not be made to carry that.
+        // `measure` turns the allocator off when it is done, and a span with
+        // nothing counting reads four zeroes — so it goes back on around this
+        // pass or the table has a time column and nothing else.
+        CountingAllocator::enable();
+        scope::enable();
+        let mut recorder = Recorder::new("check_sources").with_config(ReportConfig {
+            sort_by: SortBy::Allocations,
+            ..ReportConfig::default()
+        });
+        for _ in 0..runs {
+            recorder.record(|| {
+                let report = check_sources(&sources, &[], &CheckLimits::default()).expect("checks");
+                std::hint::black_box(report)
+            });
+        }
+        let report = recorder.finish();
+        scope::disable();
+        CountingAllocator::disable();
+        println!();
+        println!("{}", report.render_table());
+    }
 }
 
 /// The three calls the cache question is actually about.
@@ -185,6 +225,8 @@ struct Arguments {
     batch: usize,
     /// Whether to run the three cached calls instead of the plain report.
     cache: bool,
+    /// Whether to print the per-phase table as well as the headline.
+    phases: bool,
 }
 
 impl Arguments {
@@ -198,10 +240,12 @@ impl Arguments {
         let mut path = None;
         let mut batch = 1;
         let mut cache = false;
+        let mut phases = false;
         let mut arguments = arguments.peekable();
         while let Some(argument) = arguments.next() {
             match argument.as_str() {
                 "--cache" => cache = true,
+                "--phases" => phases = true,
                 "--batch" => {
                     // Taken whatever it says, so a mistyped count is not
                     // silently a path as well as silently a batch of one.
@@ -222,6 +266,7 @@ impl Arguments {
             path: path.unwrap_or_else(|| String::from("packages/router/internal/runtime.js")),
             batch,
             cache,
+            phases,
         }
     }
 }

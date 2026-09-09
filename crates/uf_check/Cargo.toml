@@ -73,10 +73,11 @@ flow_utils_concurrency = { workspace = true, optional = true }
 # The parse boundary, for the one question the port cannot be asked: whether
 # it is reading a module. See `uf_flow::module`.
 uf_flow = { path = "../uf_flow", optional = true }
+# `profile_span!` in the checker's own phases, and the counting allocator
+# behind the figures in ubugeeei-prod/uf#678. A dependency rather than a
+# dev-dependency because the spans are compiled into the library: with the gate
+# shut each is a relaxed atomic load and a `bool`. See `uf_profiler`'s header.
+uf_profiler = { path = "../uf_profiler" }
 
 [dev-dependencies]
 tempfile.workspace = true
-# For `examples/alloc_report.rs`: the counting allocator behind the figures in
-# ubugeeei-prod/uf#678, so the next person to touch the checker can take them
-# again rather than trust them.
-uf_profiler = { path = "../uf_profiler" }

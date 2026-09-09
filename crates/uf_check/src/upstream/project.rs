@@ -76,6 +76,7 @@ use std::cell::{LazyCell, OnceCell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
+use uf_profiler::profile_span;
 
 use compact_str::{CompactString, ToCompactString};
 use dupe::Dupe;
@@ -199,6 +200,7 @@ impl ProjectModules {
         mk_builtins: MkBuiltins,
         limits: &CheckLimits,
     ) -> Self {
+        profile_span!("check::project_modules");
         Self {
             index: ModuleIndex::new(sources.iter().map(|source| source.path)),
             packages: WorkspacePackages::new(sources, &options),
@@ -264,6 +266,7 @@ impl ProjectModules {
     /// types mention, while inference resolves every import the file has, and
     /// it is inference whose answer is being cached.
     pub(super) fn facts(&self, index: usize) -> ModuleFacts {
+        profile_span!("check::module_facts");
         let (path, source) = &self.sources[index];
         let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
         let parsed = parse::parse_file(file_key, source, &self.options, false);

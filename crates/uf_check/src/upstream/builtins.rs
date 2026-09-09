@@ -27,6 +27,7 @@ use std::sync::Once;
 use std::sync::OnceLock;
 use std::time::Duration;
 use std::time::Instant;
+use uf_profiler::profile_span;
 
 use compact_str::ToCompactString;
 use flow_common::type_strictness::TypeStrictnessKind;
@@ -113,6 +114,7 @@ pub(super) fn digest(libs: &[Source<'_>]) -> Digest {
 
 /// Build the environment `libs` makes, or return the shared one.
 pub(crate) fn prepare(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError> {
+    profile_span!("check::builtins_prepare");
     let started = Instant::now();
     let (builtins, cold) = environment(libs)?;
     Ok(BuiltinsTiming {
@@ -124,6 +126,7 @@ pub(crate) fn prepare(libs: &[Source<'_>]) -> Result<BuiltinsTiming, CheckError>
 
 /// The shared master context for `libs`, building it on first use.
 pub(super) fn master_context(libs: &[Source<'_>]) -> Result<Arc<MasterContext>, CheckError> {
+    profile_span!("check::master_context");
     Ok(environment(libs)?.0.master_cx)
 }
 

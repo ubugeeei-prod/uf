@@ -34,6 +34,7 @@
 //! publishing a name.
 
 use compact_str::CompactString;
+use uf_profiler::profile_span;
 
 use super::project::ProjectModules;
 use crate::cache::{CachedRequire, Digest, Fields, hex};
@@ -97,6 +98,7 @@ impl<'a> Graph<'a> {
         facts: &'a [ModuleFacts],
         modules: &ProjectModules,
     ) -> Self {
+        profile_span!("check::graph");
         let resolutions: Vec<Vec<Resolution>> = paths
             .iter()
             .zip(facts)

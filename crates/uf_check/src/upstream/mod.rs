@@ -42,6 +42,7 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
+use uf_profiler::profile_span;
 
 use compact_str::{CompactString, ToCompactString};
 use dupe::{Dupe, OptionDupedExt};
@@ -153,7 +154,15 @@ where
         let worker = std::thread::Builder::new()
             .name("uf-typecheck".to_owned())
             .stack_size(CHECK_STACK_BYTES)
-            .spawn_scoped(scope, work)
+            .spawn_scoped(scope, || {
+                let checked = work();
+                // Spans opened here are thread-local and die with the thread;
+                // this is the hand-over `scope::flush_thread_spans` documents.
+                // Every phase of the check runs on this thread, so without it
+                // the profiler would see none of them.
+                uf_profiler::scope::flush_thread_spans();
+                checked
+            })
             .map_err(|error| CheckError::Worker {
                 path: path.to_compact_string(),
                 detail: error.to_compact_string(),
@@ -184,6 +193,7 @@ fn check_batch(
     limits: &CheckLimits,
     cache: Option<&CheckCache>,
 ) -> Result<CheckReport, CheckError> {
+    profile_span!("check::batch");
     // Before anything reads a source, including the pass that only wants its
     // signature: the AST alone is several times the size of the text, so an
     // unbounded file is an unbounded allocation and no phase of this function
@@ -202,15 +212,29 @@ fn check_batch(
 
     let builtins = builtins::prepare(libs)?;
     let master_cx = builtins::master_context(libs)?;
-    let options = options::options(limits);
+    let options = {
+        profile_span!("check::options");
+        options::options(limits)
+    };
     // One builtin environment for the batch, made from the metadata a file has
     // before its own docblock is applied — `mk_check_file` keeps exactly this
     // one and hands it to every file it checks. Per file it would be both
     // wasted work and wrong: a type crossing a module boundary is compared
     // against the importer's builtins, and two independent merges of `core.js`
     // do not agree on `Array`.
-    let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
-    let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
+    // Spanned together because they are one thing: the builtin environment this
+    // call will check against. `builtins::prepare` and `master_context` are
+    // memoized per process and read as zero after a warm-up, so this is where
+    // the per-*call* fixed cost ubugeeei-prod/uf#678 measured actually lands.
+    // `_base_metadata` is bound rather than dropped: `mk_builtins` is built
+    // from it, and the original code kept it alive for the rest of the
+    // function. Keeping that exactly, so the span is the only change here.
+    let (_base_metadata, mk_builtins) = {
+        profile_span!("check::environment");
+        let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
+        let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
+        (base_metadata, mk_builtins)
+    };
     let modules = Rc::new(ProjectModules::new(
         sources,
         options.clone(),
@@ -433,6 +457,7 @@ fn check_one(
     source: &Source<'_>,
     modules: &Rc<ProjectModules>,
 ) -> Result<Vec<TypeDiagnostic>, CheckError> {
+    profile_span!("check::infer_one");
     let file_key = FileKey::new(FileKeyInner::SourceFile(source.path.to_owned()));
     let parsed = parse::parse_file(file_key.dupe(), source.source, options, false);
     if !parsed.is_parseable() {
