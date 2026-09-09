@@ -373,6 +373,105 @@ fn arguments_are_part_of_what_is_cached() {
     assert_eq!(lines(dir.path(), "ran.txt").len(), 2);
 }
 
+// --- What runs the command ------------------------------------------------
+
+/// A command that is a program and its arguments is started by uf.
+///
+/// The proof is the error, because that is the one place the two paths cannot
+/// be confused: a shell that cannot find a program says so itself and exits
+/// 127, and uf reports "exited with". uf starting it itself fails before
+/// there is a process at all, and names the program.
+#[test]
+fn a_program_uf_cannot_find_is_named_rather_than_left_to_a_shell() {
+    let dir = project(r#"{ "gone": { "command": "uf-no-such-program --check" } }"#);
+
+    let run = run(dir.path(), &["gone"]);
+    assert!(!run.ok);
+    assert!(
+        run.stderr.contains("could not start `uf-no-such-program`"),
+        "{}",
+        run.stderr
+    );
+}
+
+/// And a command that needs one is still a shell's, unchanged.
+#[test]
+fn a_command_with_shell_syntax_still_goes_to_the_shell() {
+    let dir = project(r#"{ "gone": { "command": "uf-no-such-program --check; true" } }"#);
+
+    let run = run(dir.path(), &["gone"]);
+    assert!(run.ok, "{}", run.stderr);
+}
+
+/// Quoting is the shell's, in full: one argument, `#` and all.
+///
+/// `printf '%s\n'` writes one line per argument, so this fails loudly if the
+/// quoted argument is split, if the `#` starts a comment — `uf test#library`
+/// is a real task here — or if the backslash escape is dropped.
+#[test]
+fn words_are_split_and_quotes_removed_the_way_a_shell_would() {
+    let dir = project(
+        r#"{ "say": { "command": "printf '%s\\n' one 'two words' a#b \"three  spaces\" ''" } }"#,
+    );
+
+    let run = run(dir.path(), &["say"]);
+    assert!(run.ok, "{}", run.stderr);
+    assert_eq!(
+        run.stdout.lines().collect::<Vec<_>>(),
+        ["one", "two words", "a#b", "three  spaces", ""]
+    );
+}
+
+/// `NAME=value` in front of the program is the child's environment.
+///
+/// There is no shell syntax in this command, so uf is the one applying it —
+/// which is the point: a task that sets a variable in front of its program
+/// does not need a shell to do it.
+#[test]
+fn an_inline_assignment_reaches_the_task_without_a_shell() {
+    let dir =
+        project(r#"{ "show": { "command": "MESSAGE='from the command' printenv MESSAGE" } }"#);
+
+    let run = run(dir.path(), &["show"]);
+    assert!(run.ok, "{}", run.stderr);
+    assert_eq!(run.stdout.trim(), "from the command");
+}
+
+/// A relative program is resolved against the directory the task runs in.
+#[test]
+fn a_relative_program_is_resolved_against_the_tasks_directory() {
+    let dir = project(r#"{ "here": { "command": "./say.sh", "cwd": "sub" } }"#);
+    fs::create_dir_all(dir.path().join("sub")).unwrap();
+    let script = dir.path().join("sub/say.sh");
+    fs::write(&script, "#!/bin/sh\necho from sub\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let run = run(dir.path(), &["here"]);
+    assert!(run.ok, "{}", run.stderr);
+    assert_eq!(run.stdout.trim(), "from sub");
+}
+
+/// A command uf cannot read is refused before anything is started.
+#[test]
+fn an_unclosed_quote_is_refused_by_name() {
+    let dir = project(r#"{ "bad": { "command": "echo 'unclosed" } }"#);
+
+    let run = run(dir.path(), &["bad"]);
+    assert!(!run.ok);
+    assert!(
+        run.stderr.contains("its command cannot be read")
+            && run.stderr.contains("never closed")
+            // Named once, by the runner, rather than twice.
+            && run.stderr.matches("\"bad\"").count() == 1,
+        "{}",
+        run.stderr
+    );
+}
+
 /// The cache lives where the other two do.
 #[test]
 fn records_are_written_under_the_projects_uf_directory() {
