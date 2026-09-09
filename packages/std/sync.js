@@ -395,12 +395,18 @@ export type GroupOptions = {
  *
  * # What happens on the first failure
  *
- * `wait` rejects with the first error, and every task still running is told to
- * stop through the `signal` it was handed. Telling is all a group can do —
- * JavaScript has no way to interrupt a function that ignores its signal — so a
- * task that never looks at it runs to completion, and `wait` will have already
- * rejected by then. Its result is discarded and its failure, if it has one, is
- * observed here rather than becoming an unhandled rejection.
+ * Every task still running is told to stop, through the `signal` it was handed,
+ * and any task still queued for a permit is dropped without being started.
+ * Telling is all a group can do: JavaScript has no way to interrupt a function
+ * that ignores its signal.
+ *
+ * So `wait` still waits for every task, and rejects with the first error once
+ * the last one has finished. That is deliberate, and it is the difference from
+ * `Promise.all`: a `wait` that rejected while its tasks were still running
+ * would hand the caller a scope it believes is finished — which is how a test
+ * tears down the database its own fixtures are still writing to. The results
+ * of the tasks that finished after the failure are discarded, and their
+ * failures are observed here rather than becoming unhandled rejections.
  *
  * A group is used once. After `wait` has been called, `go` throws rather than
  * silently starting work nobody will ever look at.
