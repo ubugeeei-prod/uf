@@ -851,3 +851,59 @@ fn a_mapped_types_variance_operator_is_not_dropped() {
     // And the tree says so too, not just the text.
     similar_asserts::assert_eq!(support::structure(source), support::structure(&output));
 }
+
+/// The chain that was not its own fixed point, and the one that must stay flat.
+///
+/// `shipped_sources_are_formatted_idempotently` catches this only when a file
+/// in `packages/` happens to contain the shape, which is how it was found —
+/// `packages/core/temporal.test.js`, moving into `packages/` in
+/// ubugeeei-prod/uf#729, put the printer's output back through the printer and
+/// got something else. Written down here as the shape rather than left to a
+/// file that might be edited.
+///
+/// It takes three things at once: an object argument, an outer chain, and
+/// enough indentation that the flat form does not fit. A conditional group
+/// measures a candidate as far as its first line break, so once the object
+/// carries the break its author wrote — which, after one pass, is the break
+/// *this printer* wrote — `at.until(later).total({` measures as fitting and the
+/// chain that expanded a moment ago stays flat.
+///
+/// The second case is the one that makes the fix narrow rather than blunt.
+/// Refusing every flat form that breaks also breaks
+/// `permissions.query({ name }).then(cb)`, which is one line plus a body and is
+/// meant to be: `packages/hooks/browser.js`, `packages/i18n/negotiate.js` and
+/// `packages/router/internal/runtime.js` all reformat for the worse under that
+/// version. A callback breaks because it is a callback, not because of what the
+/// previous pass wrote.
+#[test]
+fn a_member_chain_is_its_own_fixed_point() {
+    const OBJECT_ARGUMENT: &str = "// @flow\ndescribe(\"d\", () => {\n  it(\"x\", () => {\n    \
+         expect(at.until(later).total({ unit: \"minute\" })).toBeCloseTo(3.0917, 3);\n  });\n});\n";
+    const CALLBACK_ARGUMENT: &str = "// @flow\ndescribe(\"d\", () => {\n  it(\"x\", () => {\n    \
+         permissions.query({ name }).then((result) => {\n      use(result);\n    });\n  });\n});\n";
+
+    for (label, source) in [
+        ("an object argument", OBJECT_ARGUMENT),
+        ("a callback argument", CALLBACK_ARGUMENT),
+    ] {
+        for config in configurations() {
+            let once = format_source(source, &config)
+                .unwrap_or_else(|error| panic!("{label} formats: {error}"))
+                .output;
+            let twice = format_source(&once, &config)
+                .unwrap_or_else(|error| panic!("{label} reformats: {error}"))
+                .output;
+            similar_asserts::assert_eq!(once, twice, "{label} is not idempotent");
+        }
+    }
+
+    // And the callback chain is still *flat*, which the equality above cannot
+    // say: two passes agreeing on a needlessly expanded chain would pass it.
+    let flat = format_source(CALLBACK_ARGUMENT, &FmtConfig::default())
+        .expect("a callback chain formats")
+        .output;
+    assert!(
+        flat.contains("permissions.query({ name }).then("),
+        "the callback chain was broken up:\n{flat}"
+    );
+}
