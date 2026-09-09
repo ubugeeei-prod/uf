@@ -1740,46 +1740,50 @@ describe("the capability precedence matches the CLI's", () => {
    * differently: the CLI folded `NO_COLOR` into it and the library did not.
    * The convention at no-color.org is about ANSI colour and says nothing about
    * characters, and uf already has the right signal for "cannot render
-   * Unicode" — the locale — so the CLI followed the library rather than the
-   * other way round.
+   * Unicode" — the locale — so the CLI followed the library.
    *
-   * Compared the same way as the colour precedence above: the inputs each
-   * decision actually reads, recovered from the source rather than from the
-   * prose. Names are normalised because the two languages spell them
-   * differently and neither spelling is the rule.
+   * Compared down to the **environment variables**, through the same helper
+   * resolution the colour test uses, rather than to the names each side gives
+   * them. A first draft of this compared `dumb` to `dumb` and would have
+   * passed if `const dumb = env.NO_COLOR != null` were written tomorrow: the
+   * rule would have changed and the guard would not have noticed, which is the
+   * whole thing it exists to stop.
    */
-  it("decides glyphs from the same inputs on both sides", () => {
+  it("decides glyphs from the same environment variables on both sides", () => {
     const rustSource = rust();
     const jsSource = js();
 
-    const normalise = (name: string): string =>
-      name
-        .replace(/^is_/, "")
-        .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
-        .toLowerCase();
-
+    // `env.is_dumb()` and `env.utf8_locale()` reduced to the variables their
+    // `TerminalEnv` fields are filled from.
+    const helpers = rustHelpers(rustSource);
     const rustGlyphs = [];
-    for (const token of body(rustSource, "fn detect_glyphs(").matchAll(/env\.(\w+)\(\)/g)) {
-      rustGlyphs.push(normalise(token[1]));
+    for (const call of body(rustSource, "fn detect_glyphs(").matchAll(/env\.(\w+)\(\)/g)) {
+      rustGlyphs.push(...(helpers[call[1]] ?? [`?${call[1]}`]));
     }
 
-    // `glyphs:` in the returned object, and `dumb` resolved to what it was
-    // bound from — the same reduction the colour test does.
+    // And the JavaScript the same way: `glyphs:`'s expression, with each
+    // helper reduced to what it reads and `dumb` to the variable it was bound
+    // from.
+    const functions = jsHelpers(jsSource);
+    const dumbFrom = (jsSource.match(/const dumb = env\.([A-Z_]+)/) ?? [])[1];
+    expect(dumbFrom).toBeDefined();
     const glyphLine = (jsSource.match(/^\s*glyphs: (.+),\s*$/m) ?? [])[1] ?? "";
     const jsGlyphs = [];
     for (const token of glyphLine.matchAll(/\b([A-Za-z]\w*)\b/g)) {
       const name = token[1];
-      if (name === "env" || name === "ascii" || name === "unicode") continue;
-      jsGlyphs.push(normalise(name));
+      if (name === "dumb") jsGlyphs.push(dumbFrom);
+      else if (functions[name] != null) jsGlyphs.push(...functions[name]);
     }
 
-    // Both read the same two things, in the same order: is this terminal
-    // dumb, and is its locale UTF-8. `NO_COLOR` is on neither list, which is
-    // the decision #393 asked for.
-    expect(rustGlyphs).toEqual(["dumb", "utf8locale"]);
-    expect(jsGlyphs).toEqual(rustGlyphs);
-    expect(rustGlyphs).not.toContain("nocolor");
-    expect(rustGlyphs).not.toContain("nocolorrequested");
+    // Both reach the same variables in the same order, and `NO_COLOR` is on
+    // neither list — which is the decision #393 asked for, asserted where it
+    // cannot be quietly undone on one side.
+    expect(runs(rustGlyphs)).toEqual(runs(jsGlyphs));
+    expect(runs(rustGlyphs)).not.toContain("NO_COLOR");
+    // Spelled out, so a failure says which rule moved rather than only that
+    // something did. `TERM` decides dumb; the locale is read from three, in
+    // their own precedence order.
+    expect(runs(rustGlyphs)).toEqual(["TERM", "LC_ALL", "LC_CTYPE", "LANG"]);
   });
 });
 
