@@ -1723,6 +1723,36 @@ pub enum ConfigError {
         path: Utf8PathBuf,
         key: &'static str,
     },
+    /// A runtime named as this project's, with no host behind the name.
+    ///
+    /// `uf`, `edge`, `serverless` and `container` parse here and are graded
+    /// `planned` with no Flow loader in `uf_runtime::HOSTS`, so a project that
+    /// names one cannot import its own first file there. Naming one changed
+    /// nothing a command does and two things a reader sees — `uf explain`
+    /// printed it as the JavaScript host, and `.uf/install.json` recorded it
+    /// among the hosts that must be available — which is the failure
+    /// ubugeeei-prod/uf#246 is named after.
+    #[error(
+        "{path}: {key} names `{engine}`, and uf has no host for it — \
+         `uf_runtime::HOSTS` grades `{engine}` {level} with no Flow loader, so a project that \
+         names it still runs on whichever of {hosts} the machine has. \
+         Which host a command starts is `app.runtime.capabilityJsHost.default`; \
+         which target `uf build` writes an artefact for is `app.runtime.deploy.adapter`. \
+         Name one of {hosts} here, or drop the key. See {tracking}."
+    )]
+    RuntimeEngineWithoutHost {
+        path: Utf8PathBuf,
+        /// The key that named it, so a reader knows which of the two to edit.
+        key: &'static str,
+        /// The refused name, as it is written.
+        engine: &'static str,
+        /// How `uf_runtime::HOSTS` grades it.
+        level: &'static str,
+        /// The names that are hosts, from the same table.
+        hosts: String,
+        /// Where the rest of the answer is.
+        tracking: String,
+    },
     /// A `rendering.modes` that leaves the build with nothing it can do.
     ///
     /// The list is an allowlist, so naming a strategy uf has not written is
@@ -1892,6 +1922,12 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
                     message: source.to_string(),
                 })?;
             check_cache_switches(path, &config.app.rendering.cache)?;
+            // Which runtime this project says it is written for, checked
+            // against the table that says which runtimes have a host. Before
+            // the rendering and library checks only because it is the
+            // cheapest of the three; the three are independent. See
+            // ubugeeei-prod/uf#246.
+            runtime::check(path, &config)?;
             // What the project says a build may produce, checked where it was
             // written. `rendering::check` refuses the two combinations that
             // have no build behind them; `RenderingPlan::resolve` is

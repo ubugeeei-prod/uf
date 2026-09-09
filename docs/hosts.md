@@ -35,6 +35,34 @@ Deno's row is *experimental* rather than implemented, which is the distinction
 the middle grade exists for: a uf project runs there, and the way it is made to
 run has a gap a person can meet. See [Deno](#deno) for what the gap is.
 
+## What a project may name, and which key decides
+
+Three keys in `uf.config.js` mention a runtime, and only one of them chooses
+the process that starts:
+
+| key | what it decides | what it accepts |
+| --- | --- | --- |
+| `app.runtime.capabilityJsHost.default` | **the host `uf dev`, `uf test` and `uf build` actually start**, tried first and then the rest of `hosts` while `autoDetect` is on | `node`, `deno`, `bun` |
+| `app.runtime.default`, `app.runtime.compatibility` | what this project *says* it is written for; it reaches `.uf/install.json` and `uf inspect --json` as the hosts that must be available | the rows above that have a Flow loader — today `node`, `deno`, `bun` |
+| `app.runtime.deploy.adapter` | which artefact `uf build` writes | the deploy adapters, which are a longer list and a different question |
+
+The second row used to accept all seven names in the table, `edge`,
+`serverless`, `container` and `uf` included, and the default `compatibility`
+claimed three of them. Nothing enforced the claim and nothing could: those four
+rows have no Flow loader, so a uf project cannot import its own first file
+there. What naming one changed was not the run — it went on being Node — but
+what uf told the reader afterwards: `uf explain` printed the name as the
+JavaScript host, and every `uf install` wrote it into `.uf/install.json` among
+the hosts that must be available. That is this page's own sentence, produced by
+uf: a name in an enum is not compatibility.
+
+So a name uf has no host for is refused at the key that wrote it, and the
+message names the level the table gives it, the two keys that do decide
+something, and the issue tracking the host. The accepted set is read off
+`uf_runtime::HOSTS` rather than listed a second time — `uf_config`'s tests fail
+if the two disagree — so a host that earns a loader opens its name here by
+earning it. See ubugeeei-prod/uf#246.
+
 ## Node.js
 
 The reference host. `node --import @uniflowed/host/register app.js` installs
@@ -171,6 +199,31 @@ application target; it should not be read as one.
 
 This is the same ahead-of-time question Deno's loader asks, and answering it
 once serves both. Tracked by ubugeeei-prod/uf#246.
+
+### Nothing here has been checked on a worker runtime
+
+Worth stating in the column's own terms rather than leaving as an em dash.
+`uf build --adapter edge` does write a Cloudflare Worker — `worker.js`,
+`wrangler.json` and `static/` — and `tests/library/deploy.test.js` drives that
+handler's answers and compares them with `uf start`'s. **None of that starts a
+worker runtime.** The handler runs in Node, in process, and a `wrangler.json`
+being the shape Cloudflare documents is not the same claim as Cloudflare
+accepting it.
+
+Nor could it be checked here yet. No test in this repository starts `workerd`,
+`wrangler dev` or any other worker runtime; the machine uf is developed on has
+none installed; and CI installs Node, Bun and Deno and nothing else — see
+`.github/workflows/ci.yml`. The one place `wrangler` is run at all is
+`docs.yml`, which deploys the documentation site, and a `--dry-run` there
+bundles a script rather than executing one.
+
+So this row stays **planned** with an empty "Checked by", which is what that
+column is for. Grading it on the strength of an in-process handler test would
+be the same move Bun's row made for a year on the strength of a README
+sentence, and [the matrix](#the-matrix) says what that was worth.
+
+Tracked by ubugeeei-prod/uf#246, which is also where the shape a real edge host
+would take is written down.
 
 ## Serverless and containers
 

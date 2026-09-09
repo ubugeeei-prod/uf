@@ -74,7 +74,17 @@ export type PackageManagerPreference =
   | "bun";
 // uf-lint-enable uniflowed/no-npm-script-invocation
 
-export type RuntimeEngine = "uf" | "node" | "deno" | "bun" | "edge" | "serverless" | "container";
+// The runtimes a project may say it is written for, which are the runtimes uf
+// has a host for. It read `"uf" | ... | "edge" | "serverless" | "container"`,
+// and those four are rows `uf_runtime::HOSTS` grades planned with no Flow
+// loader — so a project that named one could not import its own first file
+// there, and every command went on running on Node anyway. uf refuses them at
+// the key that named them now; this type is where a reader finds that out
+// before `uf check` does. See docs/hosts.md and ubugeeei-prod/uf#246.
+//
+// A deployment target is `DeployAdapter`, on `app.runtime.deploy`, and is a
+// different question with a longer list.
+export type RuntimeEngine = "node" | "deno" | "bun";
 
 export type DeployAdapter =
   | "node"

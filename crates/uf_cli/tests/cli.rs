@@ -1390,6 +1390,96 @@ fn explain_names_the_provider_for_every_stage() {
     assert!(stdout.contains("VITE_"), "{stdout}");
 }
 
+/// The host `uf explain` names is the host that will start.
+///
+/// It named `app.runtime.default`, which resolves nothing: `commands::vite`'s
+/// `resolve_host` reads `capabilityJsHost`, and the two keys disagree the
+/// moment a project sets one of them. `app.runtime.default` also accepted
+/// `edge`, `serverless`, `container` and `uf` — so this stage would report
+/// that Vite runs on a runtime uf has no host for, which is
+/// ubugeeei-prod/uf#246's sentence printed by the command whose job is to say
+/// what will happen.
+#[test]
+fn explain_names_the_host_the_run_will_actually_start() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({\n  app: { runtime: { capabilityJsHost: \
+         { default: \"bun\" } } },\n});\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "dev"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let provider = stdout
+        .lines()
+        .skip_while(|line| !line.contains("JavaScript host"))
+        .nth(1)
+        .expect("the host stage names a provider");
+
+    assert!(provider.contains("provider"), "{stdout}");
+    // `bun`, because that is what this project's `capabilityJsHost.default`
+    // says. `app.runtime.default` is still `node` here and is not this
+    // question's answer.
+    assert!(provider.contains("bun"), "{stdout}");
+    assert!(!provider.contains("node"), "{stdout}");
+    // And the detail says how the name becomes a process, which is the half a
+    // reader cannot get from the key.
+    assert!(
+        stdout.contains("app.runtime.capabilityJsHost.default"),
+        "{stdout}"
+    );
+}
+
+/// A project may not name a runtime uf has no host for.
+///
+/// The refusal is the feature. `app.runtime.default: "edge"` used to load, and
+/// the only trace of it was `uf explain` calling `edge` the JavaScript host and
+/// `.uf/install.json` recording it among the hosts that must be available —
+/// while every command went on running on Node. See ubugeeei-prod/uf#246.
+#[test]
+fn a_runtime_with_no_host_is_refused_before_anything_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({ app: { runtime: { default: \"edge\" } } });\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["explain", "dev"])
+        .output()
+        .unwrap();
+
+    assert!(
+        !output.status.success(),
+        "a runtime with no host is refused"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("app.runtime.default"), "{stderr}");
+    assert!(stderr.contains("edge"), "{stderr}");
+    // The two keys that do something, because one of them is what was meant.
+    assert!(
+        stderr.contains("app.runtime.capabilityJsHost.default"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("app.runtime.deploy.adapter"), "{stderr}");
+    assert!(stderr.contains("246"), "{stderr}");
+}
+
 #[test]
 fn explain_says_which_commands_it_knows() {
     let dir = tempfile::tempdir().unwrap();
