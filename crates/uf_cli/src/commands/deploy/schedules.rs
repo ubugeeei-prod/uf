@@ -375,5 +375,301 @@ pub(crate) fn refuse_unrunnable(
     );
 }
 
+/// Check the finished artefact against the list it was built from.
+///
+/// # Why this is a check in the product and not only in a test
+///
+/// A deployment description that claims a capability the code beside it does
+/// not serve is the failure this whole area has had once already: #712 wrote
+/// `triggers.crons` into a `wrangler.json` beside a `worker.js` that exported
+/// no `scheduled()`, which Cloudflare accepts, deploys, and then fails on
+/// every invocation — a Worker that looks configured for work that never
+/// happens. #717 took it back and `assert_worker_shape` in
+/// `crates/uf_cli/tests/vite.rs` began asserting the pairing in both
+/// directions.
+///
+/// That assertion is worth having and was never once exercised in the
+/// direction that broke: no fixture in this repository declares a schedule, so
+/// every artefact those tests have ever built carried no `triggers` and no
+/// `scheduled`, and the comparison could only ever be `false == false`. A
+/// change that emitted one half again would have gone green.
+///
+/// So the check moved to where the artefact is: `uf build --adapter` reads
+/// back the files it just wrote and refuses to report a directory whose two
+/// halves disagree. It costs two file reads on a command that has just copied
+/// a build, it holds for a project this repository has no fixture for, and it
+/// is the same rule stated once rather than once per test.
+///
+/// # What is checked, and why it is only this
+///
+/// The two files this reads are *bundler output*. `@uniflowed/vite` writes an
+/// entry and Rolldown links it, so the identifiers, the whitespace and the
+/// statement shapes in the artefact belong to a third program and are none of
+/// uf's business — a check that matched `const routes = {` would be uf
+/// asserting how Rolldown formats an object, and would go red the day it
+/// formatted one differently. What no bundler alters is the *data*: a cron
+/// expression and a route path are string literals, and a property name an
+/// object is read by at runtime is preserved because dropping it would break
+/// the program. So that is the whole of what is matched here.
+///
+/// * `edge` — `wrangler.json`'s `triggers.crons` is exactly the declared list,
+///   `worker.js` exports a `scheduled` when and only when there is one to
+///   call, and for every declared schedule the worker carries its expression
+///   *followed by its route*, which is the routes map entry Cloudflare's
+///   invocation is looked up in. An expression the map does not hold is an
+///   invocation with nowhere to go, which the `scheduled` export alone would
+///   not catch.
+/// * `node`, `bun`, `container` — the process is its own scheduler, so there
+///   is no platform file to disagree with and what can disagree is the entry.
+///   `server.js` has to carry a `cron:` and a `path:` holding the strings of
+///   every declaration.
+/// * `serverless`, `static`, `deno` — run none, and [`refuse_unrunnable`] has
+///   already said so. Reaching here with a schedule means that refusal was
+///   bypassed rather than that this one is wrong, so it is reported as the
+///   internal fault it is.
+///
+/// The direction this cannot state is an *extra* schedule on a target with no
+/// platform file. Those entries carry the scheduler itself — `serve` reaches
+/// `@uniflowed/server/schedule` for every project — so a bare `cron:` in a
+/// linked `server.js` is `schedule.js`'s own code far more often than it is a
+/// schedule, and telling one from the other needs a JavaScript parser. A
+/// second one of those in `uf` is a worse trade than the gap. On `edge`, where
+/// the platform file is uf's own rather than a linker's, both directions are
+/// exact.
+///
+/// # Errors
+///
+/// When a file cannot be read, or when what the artefact declares and what it
+/// carries are not the same list.
+pub(crate) fn assert_wired(
+    adapter: DeployAdapter,
+    directory: &Utf8Path,
+    schedules: &[DeclaredSchedule],
+) -> Result<()> {
+    match adapter {
+        DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Container => {
+            assert_process_entry(adapter, &directory.join("server.js"), schedules)
+        }
+        DeployAdapter::Edge => assert_worker(directory, schedules),
+        DeployAdapter::Serverless | DeployAdapter::Static | DeployAdapter::Deno => {
+            if schedules.is_empty() {
+                Ok(())
+            } else {
+                bail!(
+                    "the `{}` adapter runs no schedule and this build carried {} — \
+                     `refuse_unrunnable` should have refused it before anything was linked \
+                     (ubugeeei-prod/uf#531)",
+                    adapter.as_str(),
+                    schedules.len()
+                )
+            }
+        }
+    }
+}
+
+/// The three targets that keep a process, checked against their `server.js`.
+fn assert_process_entry(
+    adapter: DeployAdapter,
+    entry: &Utf8Path,
+    schedules: &[DeclaredSchedule],
+) -> Result<()> {
+    let source =
+        std::fs::read_to_string(entry.as_std_path()).with_context(|| format!("reading {entry}"))?;
+
+    // Deliberately no "and carries nothing else". `serve` reaches
+    // `@uniflowed/server/schedule` whether or not a project declared anything,
+    // so `schedule.js`'s own `cron: parseCron(options.cron)` is linked into
+    // every one of these entries — and a check that read a bare `cron:` as a
+    // schedule would refuse every `node` build there has ever been. What is
+    // unambiguous is a `cron:` whose value is *this* expression, so that is
+    // what is asked, once per declaration.
+    for schedule in schedules {
+        for (what, value) in [("path", schedule.path.as_str()), ("cron", &schedule.cron)] {
+            if !carries_property(&source, what, value) {
+                bail!(
+                    "{entry} runs no schedule with `{what}: {}` and this project declares one \
+                     on {} at `{}` — {}{}",
+                    json_string(value),
+                    schedule.path,
+                    schedule.cron,
+                    pairing_note(adapter),
+                    shown(entry, &source)
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Cloudflare's two halves: what it is told to fire, and what answers.
+fn assert_worker(directory: &Utf8Path, schedules: &[DeclaredSchedule]) -> Result<()> {
+    let worker_file = directory.join("worker.js");
+    let config_file = directory.join("wrangler.json");
+    let worker = std::fs::read_to_string(worker_file.as_std_path())
+        .with_context(|| format!("reading {worker_file}"))?;
+    let config: Value = serde_json::from_str(
+        &std::fs::read_to_string(config_file.as_std_path())
+            .with_context(|| format!("reading {config_file}"))?,
+    )
+    .with_context(|| format!("parsing {config_file}"))?;
+
+    // `wrangler.json` is uf's own file rather than a bundler's, so this half is
+    // an exact comparison and not a search.
+    let declared: Vec<&str> = schedules
+        .iter()
+        .map(|schedule| schedule.cron.as_str())
+        .collect();
+    let triggers: Vec<&str> = config
+        .pointer("/triggers/crons")
+        .and_then(Value::as_array)
+        .map(|crons| crons.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    if triggers != declared {
+        bail!(
+            "{config_file} tells Cloudflare to fire {triggers:?} and this project declares \
+             {declared:?} — {}",
+            pairing_note(DeployAdapter::Edge)
+        );
+    }
+
+    // The half #712 shipped without. A property name an object is read by
+    // survives linking, because dropping it would break the program.
+    let answers = property_value(&worker, "scheduled").is_some();
+    if answers != !schedules.is_empty() {
+        bail!(
+            "{config_file} carries {} cron trigger(s) and {worker_file} {} — {}{}",
+            declared.len(),
+            if answers {
+                "exports a `scheduled()` for Cloudflare to call"
+            } else {
+                "exports no `scheduled()` for Cloudflare to call"
+            },
+            pairing_note(DeployAdapter::Edge),
+            shown(&worker_file, &worker)
+        );
+    }
+
+    // And each expression reaches its route. Cloudflare fires the string, so
+    // an expression the map does not hold is an invocation with nowhere to go.
+    for schedule in schedules {
+        if !followed_by(
+            &worker,
+            &json_string(&schedule.cron),
+            &json_string(&schedule.path),
+        ) {
+            bail!(
+                "{config_file} tells Cloudflare to fire `{}` and {worker_file} does not route \
+                 it to {} — {}{}",
+                schedule.cron,
+                schedule.path,
+                pairing_note(DeployAdapter::Edge),
+                shown(&worker_file, &worker)
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Whether `text` carries `name: "value"`, whatever it was formatted like.
+///
+/// The property name and the string are the two halves a runtime reads, so
+/// they are the two halves that survive linking; the space between them is the
+/// linker's and is skipped rather than matched.
+fn carries_property(text: &str, name: &str, value: &str) -> bool {
+    let quoted = json_string(value);
+    let mut rest = text;
+    while let Some(found) = property_value(rest, name) {
+        if found.starts_with(&quoted) {
+            return true;
+        }
+        // Past this one, and on to the next property of the same name: an
+        // entry with several schedules carries several `cron:`. One character
+        // rather than one byte, because a value is a string a project wrote
+        // and this must not slice one down the middle of a character.
+        let at = rest.len() - found.len();
+        let step = rest[at..].chars().next().map_or(1, char::len_utf8);
+        rest = &rest[at + step..];
+    }
+    false
+}
+
+/// What follows the first `name:` in `text`, with the whitespace skipped.
+///
+/// [`None`] when there is no such property. A bare `contains(\"name:\")` would
+/// answer the same question and answer it wrong: `"scheduled:"` also matches
+/// the middle of a longer identifier, and a linker is free to produce one.
+fn property_value<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let mut from = 0;
+    while let Some(at) = text[from..].find(name) {
+        let at = from + at;
+        let before_is_name = text[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|character| character.is_alphanumeric() || character == '_');
+        let after = text[at + name.len()..].trim_start();
+        if !before_is_name && let Some(value) = after.strip_prefix(':') {
+            return Some(value.trim_start());
+        }
+        from = at + name.len();
+    }
+    None
+}
+
+/// Whether `first` appears somewhere with `second` right after it, past one
+/// `:` and whatever whitespace the linker left.
+///
+/// The shape of a routes map entry — `"*/15 * * * *": "/api/sweep"` — read
+/// without depending on how the object around it is written.
+fn followed_by(text: &str, first: &str, second: &str) -> bool {
+    let mut from = 0;
+    while let Some(at) = text[from..].find(first) {
+        let at = from + at;
+        let after = text[at + first.len()..].trim_start();
+        if after
+            .strip_prefix(':')
+            .is_some_and(|rest| rest.trim_start().starts_with(second))
+        {
+            return true;
+        }
+        from = at + first.len();
+    }
+    false
+}
+
+/// The file, appended to a message about it.
+///
+/// These entries are small — the application is `handler.js` beside them —
+/// and a fault that says "these two do not agree" without showing either is a
+/// fault somebody has to reproduce before they can read it. Capped, because
+/// "small" is a fact about today's generator and not a promise.
+fn shown(file: &Utf8Path, source: &str) -> String {
+    const MOST: usize = 4_000;
+    let (text, elided) = match source.char_indices().nth(MOST) {
+        Some((at, _)) => (&source[..at], "\n… (truncated)"),
+        None => (source, ""),
+    };
+    format!("\n\n{file}:\n{text}{elided}")
+}
+
+/// The sentence every one of these failures ends with.
+///
+/// One string rather than one per message, because the reader needs the same
+/// two things each time: what has gone wrong in general, and where to read
+/// about why it is refused rather than warned about.
+fn pairing_note(adapter: DeployAdapter) -> String {
+    format!(
+        "a schedule and the code that runs it must arrive together, and the `{}` artefact \
+         `uf build` just wrote has one without the other. This is a fault in uf rather than \
+         in the project: report it with the file(s) named above \
+         (ubugeeei-prod/uf#712, ubugeeei-prod/uf#531).",
+        adapter.as_str()
+    )
+}
+
+/// One string, quoted the way JavaScript quotes it.
+fn json_string(value: &str) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| format!("\"{value}\""))
+}
+
 #[cfg(test)]
 mod tests;
