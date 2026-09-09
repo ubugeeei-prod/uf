@@ -397,6 +397,12 @@ pub(crate) fn build(
             "fetch": resolved.config.app.rendering.cache.fetch,
             "data": resolved.config.app.rendering.cache.data,
             "actions": resolved.config.app.rendering.cache.actions,
+            // Where the entries go, for a deploy step that has to provision it:
+            // `"filesystem"` needs a writable directory that outlives the
+            // process, and a module specifier needs whatever that module
+            // connects to. Absent means memory, which needs nothing.
+            "store": resolved.config.app.rendering.cache.store.as_deref(),
+            "storeDir": resolved.config.app.rendering.cache.store_dir.as_deref(),
         },
     });
     timer.measure("manifest", || write_json_file(&build_manifest, &payload))?;

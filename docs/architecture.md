@@ -597,12 +597,28 @@ an entry *stale* and a tag makes it *expired*, which are deliberately different;
 eviction is least-recently-used, bounded by count, with no background sweep; and
 a request that arrives during a fill joins it rather than starting a second one.
 
-The key departs from both of the disk caches described above, and the departure
-is the reason the store is in memory. `.uf/cache/check` and `.uf/cache/transform`
-each put the identity of the `uf` that produced the entry into the key, because
-both outlive the process that wrote them. This one cannot, so that identity is a
-constant rather than an input — and the day a durable store exists behind
-`resolve`, the key gains a build id before anything is written to it.
+The key has two forms, and the difference is the whole of what makes a durable
+store safe. `.uf/cache/check` and `.uf/cache/transform` each put the identity of
+the `uf` that produced the entry into the key, because both outlive the process
+that wrote them. An in-memory cache entry cannot, so in memory that identity is
+a constant rather than an input. A **durable** entry can, so `hashDurableCacheKey`
+puts the build id in front of the key before anything is written to a provider,
+and a deploy reads a cold cache instead of answering the new build's URLs with
+the previous build's documents. A store handed a provider and no build identity
+is refused where it is constructed rather than allowed to guess.
+
+`rendering.cache.store` selects the store: `"memory"` (the default),
+`"filesystem"` for uf's built-in provider, or a module specifier exporting
+`createCacheProvider` — the same shape `builder.module` has, so a Redis or a KV
+namespace goes behind the seam without uf naming either. The seam itself is
+`packages/server/internal/cache-provider.js`: five methods over strings, no
+staleness, no eviction policy, no fill. Everything a cache decides stays in the
+store; a provider decides only where bytes go. A durable store is what turns
+time-based revalidation and on-demand invalidation into ISR — a URL rendered
+once, served from a store four processes share, refreshed behind a reader, and
+dropped the moment a mutation says it is wrong. What is not written is seeding
+that store from `uf build`'s prerender, so the *first* request to each URL still
+renders.
 
 Nothing is cached without a stated lifetime: a route says `cacheLife` and
 `cacheTag` from inside its own render, a request says `cache` at the call, and a
@@ -623,9 +639,12 @@ Node 24, twenty pairs, medians):
 
 The cold request is fractionally slower because a document has to be whole
 before it can be an entry, so a cached route buffers where an uncached one
-streams. It is in memory and in one process, which means four server processes
-hold four caches that disagree and a restart empties one. `docs/app/guide/cache`
-says all of that to a reader rather than to a maintainer.
+streams. Those numbers are the default store: in memory and in one process,
+which means four server processes hold four caches that disagree and a restart
+empties one. A project that names `rendering.cache.store` trades a read of the
+provider on a cold key for a cache the four of them share and a restart does not
+empty. `docs/app/guide/cache` says all of that to a reader rather than to a
+maintainer.
 
 That analysis is load-bearing at the route level, and only there. `uf_rsc`
 resolves the module graph and marks every module a `"use client"` boundary is
