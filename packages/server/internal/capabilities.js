@@ -83,6 +83,12 @@ export type WebSocketUpgrade = {|
  */
 export type WebSocketUpgrader = (request: Request) => WebSocketUpgrade;
 
+/** Where scheduled work runs from; see `../schedule.js`. */
+export type SchedulerBackend = {|
+  readonly name: string,
+  readonly triggered: boolean,
+|};
+
 /** One unit of deferred work as it is stored; see `../queue.js`. */
 export type JobRecord = {|
   readonly id: string,
@@ -164,12 +170,22 @@ export type ServerCapabilities = {|
   readonly websocket: WebSocketUpgrader | null,
   /** Where `enqueue` puts work, or `null` where the deployment named none. */
   readonly queue: QueueBackend | null,
+  /**
+   * Where scheduled work runs from, or `null` where the deployment named none.
+   *
+   * Read by the adapters rather than by `../schedule.js`, the same way `queue`
+   * is: what the scheduler needs from a target is somewhere to be at the right
+   * minute, and whether that is uf's tick or the platform's own call is the
+   * one bit `triggered` carries.
+   */
+  readonly scheduler: SchedulerBackend | null,
 |};
 
 /** What a deployment may hand an adapter; everything else is the target's. */
 export type CapabilityOptions = {|
   readonly websocket?: WebSocketUpgrader | null,
   readonly queue?: QueueBackend | null,
+  readonly scheduler?: SchedulerBackend | null,
 |};
 
 /** Raised when a deployment is wired with something its target cannot do. */
@@ -239,6 +255,7 @@ export function capabilitiesFor(
     persistent: defaults.persistent,
     websocket: options?.websocket ?? null,
     queue: options?.queue ?? null,
+    scheduler: options?.scheduler ?? null,
   };
 }
 
@@ -265,6 +282,21 @@ export function assertCapable(capabilities: ServerCapabilities): ServerCapabilit
       capabilities.target,
       `queue (${queue.name})`,
       "the work would be pushed into a process that ends with this response and lost with it",
+    );
+  }
+  const scheduler = capabilities.scheduler;
+  if (scheduler != null && !scheduler.triggered && !capabilities.persistent) {
+    // The same shape as the queue rule above, and the same reason: a tick in a
+    // process that ends with the response is a schedule that never fires, and
+    // a deployment whose scheduled work silently never runs is the failure
+    // ubugeeei-prod/uf#531 exists to refuse. A target whose platform calls it
+    // (`triggered`) is fine here — what it still needs is the configuration
+    // naming the schedule, which is that issue's other half.
+    throw new CapabilityRefusedError(
+      capabilities.target,
+      `scheduler (${scheduler.name})`,
+      "nothing would be running at the minute the schedule names: this target keeps no " +
+        "process, and its platform has not been told to call one",
     );
   }
   return capabilities;

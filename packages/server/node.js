@@ -62,6 +62,8 @@ import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilit
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import { locateStatic, staticRoot } from "./internal/static.js";
+import type { Schedule } from "./schedule.js";
+import { startSchedules } from "./schedule.js";
 import type { Logger } from "./internal/log.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
@@ -446,6 +448,16 @@ export async function serve(options: {|
   readonly port?: number,
   /** Where this server's lines go. The process logger by default. */
   readonly log?: Logger,
+  /**
+   * Schedules to run in this process, from `@uniflowed/server/schedule`.
+   *
+   * A target that keeps a process is the one that can hold a scheduler, which
+   * is what `processScheduler`'s `triggered: false` says and what
+   * `assertCapable` refuses elsewhere. Ticking stops when `close` resolves,
+   * so a test that takes a server down does not leave one running behind it.
+   * See ubugeeei-prod/uf#531.
+   */
+  readonly schedules?: $ReadOnlyArray<Schedule>,
 |}): Promise<{|
   readonly host: string,
   readonly port: number,
@@ -478,11 +490,14 @@ export async function serve(options: {|
   const shown = host === "0.0.0.0" || host === "::" ? "localhost" : host;
   process.stdout.write(`uf: listening on http://${shown}:${String(bound)}\n`);
 
+  const stopSchedules = startSchedules(options.schedules, log);
+
   return {
     host,
     port: bound,
     close: () =>
       new Promise((resolve) => {
+        stopSchedules();
         server.close(() => resolve());
       }),
   };

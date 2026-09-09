@@ -39,6 +39,8 @@ import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilit
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import { locateStatic, staticRoot } from "./internal/static.js";
+import type { Schedule } from "./schedule.js";
+import { startSchedules } from "./schedule.js";
 import type { Logger } from "./internal/log.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 import { Temporal } from "@uniflowed/core/temporal";
@@ -152,6 +154,15 @@ export async function serve(options: {|
   readonly port?: number,
   /** Where this server's lines go. The process logger by default. */
   readonly log?: Logger,
+  /**
+   * Schedules to run in this process, from `./schedule.js`.
+   *
+   * Bun keeps a process, so it is one of the targets that can hold a
+   * scheduler rather than needing its platform to call one — the same as
+   * `./node.js`, through the same helper, so the two cannot drift about how
+   * often a tick happens. See ubugeeei-prod/uf#531.
+   */
+  readonly schedules?: $ReadOnlyArray<Schedule>,
 |}): Promise<{|
   readonly host: string,
   readonly port: number,
@@ -177,10 +188,13 @@ export async function serve(options: {|
   const shown = host === "0.0.0.0" || host === "::" ? "localhost" : host;
   process.stdout.write(`uf: listening on http://${shown}:${String(server.port)}\n`);
 
+  const stopSchedules = startSchedules(options.schedules, log);
+
   return {
     host,
     port: server.port,
     close: async () => {
+      stopSchedules();
       await server.stop(true);
     },
   };

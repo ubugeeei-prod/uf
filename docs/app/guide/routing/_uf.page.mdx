@@ -834,17 +834,59 @@ A queue is not `after()`. `after()` runs a callback in this process once the
 response has gone, with no retry and no record it ever existed, which is right
 for a metric and wrong for anything a user would notice missing.
 
+And work that no request starts at all is a schedule:
+
+```js
+// @flow
+import { defineSchedule } from "@uniflowed/server/schedule";
+import { serve } from "@uniflowed/server/node";
+
+const sweep = defineSchedule({
+  name: "sweep-sessions",
+  cron: "*/15 * * * *",
+  run: async () => expireSessions(),
+});
+
+await serve({ handle, staticDir, beginRequest, schedules: [sweep] });
+```
+
+**uf provides the expression's meaning and the decision that a minute is due —
+five fields, in UTC, run at most once per minute however often the scheduler is
+ticked. Your deployment provides something alive at that minute.** On a target
+that keeps a process uf ticks it itself, and `processScheduler` says what that
+is worth: a `setInterval` and nothing more, so a restart between two ticks
+misses whatever was due in the gap and two instances each run every schedule.
+
+The expression is five fields and only the syntax every cron agrees on: `*`,
+`n`, `a-b`, `*/n`, `a-b/n`, and comma-separated lists of those. No `@daily`, no
+`JAN`/`MON`, no seconds, no `L`/`W`/`#` — each of those is spelled differently
+by Vixie cron, Quartz and every cloud, and a schedule uf accepted and a platform
+read differently would be worse than one refused at the line that wrote it.
+When day-of-month and day-of-week are both restricted a time matches when
+**either** does, which is POSIX's rule: `0 0 1 * 1` is "the first, and every
+Monday".
+
+Fields are UTC. A container's zone and a platform scheduler's zone are not the
+same, and a schedule that meant different minutes in the two would be worse
+than one that always means the same minute.
+
+A target that keeps no process is **refused** an in-process schedule where the
+host is wired, because nothing would be running at the minute it names. Those
+targets need their platform's own scheduler pointed at the deployment, and
+emitting that configuration per platform is
+[#531](https://github.com/ubugeeei-prod/uf/issues/531).
+
 ### What each target can do
 
 The two questions that decide all three: does a response body reach the client
 as it is produced, and is the process still there once it has.
 
-| Target | Streams | Outlives the response | Event streams | WebSockets | In-process queue |
-| --- | --- | --- | --- | --- | --- |
-| `uf dev`, `uf preview`, `uf start` | yes | yes | yes | with an upgrader | yes |
-| `node`, `container`, `--compile` | yes | yes | yes | with an upgrader | yes |
-| `edge` | yes | no | yes | with an upgrader | **refused** |
-| `serverless` | no | no | **refused** | **refused** | **refused** |
+| Target | Streams | Outlives the response | Event streams | WebSockets | In-process queue | In-process schedule |
+| --- | --- | --- | --- | --- | --- | --- |
+| `uf dev`, `uf preview`, `uf start` | yes | yes | yes | with an upgrader | yes | yes |
+| `node`, `bun`, `container`, `--compile` | yes | yes | yes | with an upgrader | yes | yes |
+| `edge` | yes | no | yes | with an upgrader | **refused** | **refused** |
+| `serverless` | no | no | **refused** | **refused** | **refused** | **refused** |
 
 Refused means refused where the host is wired, before a single connection is
 accepted and dropped — a serverless deployment handed a WebSocket upgrader
