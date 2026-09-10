@@ -23,8 +23,8 @@
 // how the preamble is injected, could have taken it away in a diff nobody would
 // read as being about DevTools. See ubugeeei-prod/uf#503.
 //
-// So the hook is installed here, first, deliberately, and `tests/library/
-// devtools.test.js` runs this script's own text against a fake window.
+// So the hook is installed here, first, deliberately, and `devtools.test.js`
+// beside this package runs this script's own text against a fake window.
 //
 // # Three things DevTools needs, and what carries each
 //

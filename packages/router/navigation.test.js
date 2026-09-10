@@ -40,12 +40,7 @@ import { installDom } from "../../packages/react-testing/internal/dom.js";
 // package specifier and a runtime that reached it relatively would have to be
 // the same module instance for the reset below to reset anything. Taking both
 // from the one path is how that stops being a property of the resolver.
-import {
-  Link,
-  installNavigation,
-  routerView,
-  useRouter,
-} from "../../packages/router/internal/runtime.js";
+import { Link, installNavigation, routerView, useRouter } from "./internal/runtime.js";
 import { clientModuleSource } from "../../packages/vite/internal/routes.js";
 
 // ---------------------------------------------------------------------------

@@ -16,7 +16,7 @@ import * as React from "@uniflowed/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, render, waitFor } from "@uniflowed/react-testing";
 
-import { everyMisuseIsReported } from "./type-tests.js";
+import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 import {
   derived as derivedCell,
   read as readCell,

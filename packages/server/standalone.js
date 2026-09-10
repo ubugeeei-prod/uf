@@ -45,7 +45,7 @@
 //
 // Both copies are driven by a test: `serve.test.js` and
 // `preview_and_start_serve_the_whole_of_a_build` for that one,
-// `tests/library/standalone.test.js` and
+// `packages/server/standalone.test.js` and
 // `compile_writes_one_file_that_serves_the_site_from_an_empty_directory` for
 // this one.
 //

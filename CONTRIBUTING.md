@@ -126,7 +126,7 @@ uf run rust:clippy      # cargo clippy --workspace --all-targets -- -D warnings
 uf run rust:test        # cargo test --workspace
 uf run rust:bench       # cargo bench --workspace --no-run
 uf run fmt:check        # uf's own formatter, over this repository's Flow
-uf run test:lib         # uf test#library, the @uniflowed/* suite
+uf run test:lib         # uf test, the @uniflowed/* suite beside the packages
 uf run docs:build       # uf build#docs
 uf run docs:dev         # uf dev#docs, to look at the site while editing it
 uf run docs:links       # every link in what the build wrote resolves

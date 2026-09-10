@@ -38,7 +38,7 @@ import {
   COMPILE_ASSETS_ID,
   COMPILE_ASSETS_RESOLVED_ID,
   compileAssetsPlugin,
-} from "../../packages/vite/internal/compile-assets.js";
+} from "./internal/compile-assets.js";
 
 /** A generated payload on disk, the shape `uf_bundle::embed` writes. */
 function payload(contents: string): string {

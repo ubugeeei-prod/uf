@@ -27,7 +27,7 @@
 //!   smallest cache, and wrong: it makes a bisect or a rebase that walks back
 //!   over a compiler change recompile everything each way. Both the transform
 //!   cache and the check cache have a test that pins the *opposite* guarantee
-//!   on purpose — `tests/library/transform-cache.test.js`'s "still has a
+//!   on purpose — `packages/host/transform-cache.test.js`'s "still has a
 //!   build's entries when that build comes back" and
 //!   `uf_check::tests::cache::a_rebuilt_uf_is_not_served_what_the_previous_one_decided`
 //!   — so this option means retiring a guarantee rather than adding one.

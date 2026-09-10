@@ -13,6 +13,13 @@
 //! - the Rust registry in `uf_lib` and the shipped subpaths agree,
 //! - every `@uniflowed/*` a package imports is declared in its manifest.
 //!
+//! Every one of those is about a *shipped* module, and since the JavaScript
+//! suite moved beside the code it tests that is narrower than "a `.js` under
+//! `packages/`": a `.test.js` sits in the tree and is never published. Which
+//! files those are is not a second list kept here — it is the `"!*.test.js"`
+//! the manifests end with, read by [`is_test_file`]. A file npm would publish
+//! is held to everything below; a file it would not is not a shipped module.
+//!
 //! The names a re-export carries are checked next door, in `uf_lib`'s unit
 //! tests: `a_barrel_re_export_names_something_its_source_has` asks whether the
 //! module a `from` names really exports the name beside it, and it needs the
@@ -35,6 +42,36 @@ use walkdir::WalkDir;
 /// Directory holding an implementation detail that is deliberately kept out of
 /// `package.json#exports`, so `@uniflowed/core/internal/*` is unresolvable.
 const INTERNAL_DIR: &str = "internal";
+
+/// The `files` entry every shipped manifest ends with, which subtracts a test
+/// file from whatever the entries before it added.
+///
+/// One string, read two ways, and that is deliberate. It is what
+/// [`a_shipped_package_never_publishes_a_test_file`] requires of a manifest,
+/// and it is what [`is_test_file`] derives "this file is not shipped" from —
+/// so "a test file is not a shipped module" is not a second opinion that could
+/// drift from the first. A package that stopped excluding test files would
+/// fail that test rather than quietly widening every invariant here.
+///
+/// No `/`, so npm reads it the way `.gitignore` does — matching at any depth,
+/// which is what closes the bare-`internal` hole as well as the top-level
+/// `*.js` one.
+const TEST_FILE_NEGATION: &str = "!*.test.js";
+
+/// Whether `path` is a test file: one the allowlist subtracts rather than
+/// publishes.
+///
+/// The suffix comes from [`TEST_FILE_NEGATION`] rather than being written out
+/// again, because the two questions have to have one answer. A file that npm
+/// would publish is held to every invariant below; a file it would not is not
+/// a shipped module and is held to none of them, and it is the *manifest* that
+/// decides which a file is.
+fn is_test_file(path: &Utf8Path) -> bool {
+    let suffix = TEST_FILE_NEGATION
+        .strip_prefix("!*")
+        .expect("the negation is `!` and `*` before the suffix it subtracts");
+    path.file_name().is_some_and(|name| name.ends_with(suffix))
+}
 
 /// The internal modules that are nonetheless exported, and why.
 ///
@@ -155,10 +192,32 @@ fn shipped_files() -> Vec<Utf8PathBuf> {
     files
 }
 
+/// Every module `packages` *ships*: the `.js` files under it that npm would
+/// publish, which is every `.js` file except the test files beside them.
+///
+/// A test file sits under `packages/` and is not a shipped module, and every
+/// invariant below is written about shipped modules. Holding a co-located test
+/// to them would be wrong three times over: its top-level `describe(...)` is
+/// exactly the import-time side effect [`shipped_modules_have_no_import_time_side_effects`]
+/// forbids, [`every_shipped_module_is_reachable_through_exports`] would demand
+/// an `exports` subpath for `alert.test.js` — the opposite of what a package
+/// wants — and [`every_uniflowed_import_is_declared`] would make
+/// `@uniflowed/test` a dependency of `@uniflowed/ui`.
+///
+/// Which files those are is [`is_test_file`]'s answer, and it is the manifest's
+/// own: the same entry that keeps a test file out of the tarball is what keeps
+/// it out of this list. Not a second list to maintain, and not a judgement this
+/// file makes on its own — if a file is published it is held to the invariants,
+/// and if it is held to none of them it is because npm would not publish it.
+///
+/// [`shipped_files`] is deliberately left whole: a test file is still a file in
+/// the tree, so it is still a resolution target for
+/// [`every_relative_import_resolves_to_a_shipped_file`] and still has to be a
+/// `.js` or a `package.json` under [`shipped_package_contains_only_modules_and_manifests`].
 fn shipped_modules() -> Vec<Utf8PathBuf> {
     shipped_files()
         .into_iter()
-        .filter(|path| path.extension() == Some("js"))
+        .filter(|path| path.extension() == Some("js") && !is_test_file(path))
         .collect()
 }
 
@@ -883,12 +942,7 @@ fn shipped_packages_never_publish_flow_declaration_files() {
 /// move the negation to the front and start publishing tests silently.
 #[test]
 fn a_shipped_package_never_publishes_a_test_file() {
-    /// The entry that subtracts test files from whatever precedes it.
-    ///
-    /// No `/`, so npm reads it the way `.gitignore` does — matching at any
-    /// depth, which is what closes the bare-`internal` hole as well as the
-    /// top-level `*.js` one.
-    const NEGATION: &str = "!*.test.js";
+    const NEGATION: &str = TEST_FILE_NEGATION;
 
     for relative in shipped_manifests() {
         let manifest = manifest(&relative);
@@ -909,6 +963,41 @@ fn a_shipped_package_never_publishes_a_test_file() {
              beside the module it tests is not published; found {entries:?}"
         );
     }
+}
+
+/// What [`shipped_modules`] leaves out, and that it leaves something out.
+///
+/// Every invariant in this file now says "except a test file", and an exemption
+/// is only as good as the predicate behind it. Two halves, and the second is
+/// the one that would rot: that `packages/` really does hold co-located tests,
+/// so the exclusion is doing work rather than describing a case that never
+/// arises. Without it, `is_test_file` could stop matching anything — a rename
+/// to `alert.spec.js`, a manifest that dropped the negation — and every
+/// assertion here would go on passing over a list that had quietly grown.
+#[test]
+fn a_test_file_is_exactly_what_the_allowlist_subtracts() {
+    assert!(is_test_file(Utf8Path::new("ui/alert.test.js")));
+    assert!(is_test_file(Utf8Path::new("cell/internal/store.test.js")));
+    assert!(!is_test_file(Utf8Path::new("ui/alert.js")));
+    // The suffix is `.test.js` and not `test.js`: a module actually called
+    // `test.js` is a shipped module, and `@uniflowed/test/index.js` is one.
+    assert!(!is_test_file(Utf8Path::new("ui/test.js")));
+
+    let colocated = shipped_files()
+        .into_iter()
+        .filter(|path| is_test_file(path))
+        .count();
+    assert!(
+        colocated > 0,
+        "no test file sits under `packages/`, so every exemption {TEST_FILE_NEGATION:?} \
+         grants is exempting nothing — either the suite moved back out or the negation \
+         stopped naming what a test file is called"
+    );
+
+    assert!(
+        shipped_modules().iter().all(|module| !is_test_file(module)),
+        "a test file reached the shipped modules, which are what the invariants below are about"
+    );
 }
 
 /// And that no test file is reachable through an `exports` subpath either.

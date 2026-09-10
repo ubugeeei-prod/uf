@@ -703,7 +703,7 @@ function sameLoadable<T>(
  * not there yet. ubugeeei-prod/uf#317 is where that was worked out.
  *
  * Three things had to be decided rather than typed, and each is a property
- * `tests/library/state.test.js` holds this to.
+ * `packages/state/state.test.js` holds this to.
  *
  * **A write while the first read is in flight wins, and the read is dropped.**
  * Not by a flag counting generations — `@uniflowed/cell` already has one, and

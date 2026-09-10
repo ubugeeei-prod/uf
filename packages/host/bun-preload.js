@@ -25,7 +25,7 @@
 //
 // So the module is never selected in the first place. `FLOW_MODULE_PATTERN`
 // is `isFlowModule` as a pattern, equal to it path for path and pinned to it
-// by `tests/library/flow-modules.test.js`; Bun asks it before it calls
+// by `packages/host/flow-modules.test.js`; Bun asks it before it calls
 // anything, and a dependency uf does not own goes to Bun's own loader having
 // never touched this file.
 

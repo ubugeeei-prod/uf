@@ -19,7 +19,7 @@ import { describe, expect, it } from "@uniflowed/testing";
 import { render, screen } from "@uniflowed/react-testing";
 import { Font, Icon, IconSprite, Image, OgImage } from "@uniflowed/web";
 
-import { assetModuleSource, withUrls } from "../../packages/vite/internal/assets.js";
+import { assetModuleSource, withUrls } from "./internal/assets.js";
 
 /** A reply from `uf assets` for a photograph: three JPEG widths, no WebP. */
 const photograph = () => ({

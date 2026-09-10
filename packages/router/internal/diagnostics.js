@@ -29,7 +29,7 @@
 // published package that depends on an unpublished one, because the tarball
 // would name a version the registry does not have; `@uniflowed/router` is on
 // npm and `@uniflowed/hmr` is a declaration package that is not. What the two
-// posters do share is the contract, and `tests/library/dev-channel.test.js`
+// posters do share is the contract, and `packages/vite/dev-channel.test.js`
 // asserts that every spelling of these paths agrees — a duplicated constant
 // with a test on it is honest, and one without is how a browser ends up
 // posting to a path nothing serves.

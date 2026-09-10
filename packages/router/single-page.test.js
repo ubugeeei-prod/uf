@@ -26,7 +26,7 @@ import { act, cleanup, userEvent } from "@uniflowed/react-testing";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 
 import { installDom } from "../../packages/react-testing/internal/dom.js";
-import { installNavigation, redirect, routerView } from "../../packages/router/internal/runtime.js";
+import { installNavigation, redirect, routerView } from "./internal/runtime.js";
 import { clientModuleSource } from "../../packages/vite/internal/routes.js";
 
 // ---------------------------------------------------------------------------

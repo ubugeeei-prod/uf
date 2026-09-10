@@ -174,7 +174,7 @@ export async function hydrate(options: {|
   // `import.meta.hot` is the gate because it is the one signal that is right in
   // all three places this module is evaluated. Vite defines it while serving
   // and replaces it with `undefined` in a build, so the branch is statically
-  // dead there; Node leaves it undefined, so `tests/library/rsc-split.test.js`
+  // dead there; Node leaves it undefined, so `packages/vite/rsc-split.test.js`
   // imports this file without a bundler and gets the production path. The
   // import is dynamic so that the overlay is not merely shaken out of a
   // production bundle but never reachable from one.

@@ -30,7 +30,7 @@ Each line below is asserted against the real server by
 `tests/library/lsp.test.js`, which drives `uf lsp` over framed messages the way
 an editor does. The extension's own half — binary resolution, the arguments,
 the working directory, the settings — is covered by
-`tests/library/vscode-extension.test.js`. Both run under `uf test#library`, so
+`tests/library/vscode-extension.test.js`. Both run under `uf test`, so
 they are in `uf run ci`.
 
 | | Where it comes from | How you use it |

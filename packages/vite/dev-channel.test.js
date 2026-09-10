@@ -41,7 +41,7 @@ import {
   browserDiagnostic,
   createChannelMiddleware,
   vitalsDiagnostic,
-} from "../../packages/vite/internal/diagnostics.js";
+} from "./internal/diagnostics.js";
 
 /** A diagnostic as the channel carries it, which is what `emit` is handed. */
 type Reported = {

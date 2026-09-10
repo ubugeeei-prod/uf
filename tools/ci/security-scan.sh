@@ -30,7 +30,7 @@
 #   * every row has the three cells the header promises, and none is empty.
 #   * every row that is not `todo` names something that exists — a file, a
 #     crate, a module, a package. This is a *name* check: it cannot know
-#     whether `tests/library/middleware.test.js` still asserts the thing the
+#     whether `packages/router/middleware.test.js` still asserts the thing the
 #     row claims, and says so. What it does catch is the drift that makes the
 #     table dishonest without anybody touching it — a rename, a deleted test,
 #     a module that moved crates.

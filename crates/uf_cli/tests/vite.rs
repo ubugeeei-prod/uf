@@ -370,7 +370,7 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 /// server: the whole chain — the directory scan, the generated table, the
 /// bundle, the runner — is exercised either way, and this way the test needs
 /// no socket, so it runs in the sandboxes where `TcpListener::bind` is
-/// refused. `tests/library/middleware.test.js` owns the runner's own rules.
+/// refused. `packages/router/middleware.test.js` owns the runner's own rules.
 ///
 /// The probe is a host, so it owns the request the way the four real ones do:
 /// `beginRequest` from the bundle, `run` around the guard, `settle` after the
@@ -3957,7 +3957,7 @@ fn try_http_request(
 /// refuses `bind` cannot host the request half — but it can still host the
 /// half that matters most for a *binary*, which is whether the file carries
 /// the site at all, and that half runs unconditionally. What the requests add
-/// on top is covered without a socket by `tests/library/standalone.test.js`,
+/// on top is covered without a socket by `packages/server/standalone.test.js`,
 /// which drives the same handler directly.
 #[test]
 fn compile_writes_one_file_that_serves_the_site_from_an_empty_directory() {
@@ -5052,7 +5052,7 @@ fn the_build_reads_env_files_and_ships_only_the_prefixed_ones() {
 ///
 /// Asserted over `dist/` rather than over the plugin, because the plugin's
 /// answer is already covered without a build by
-/// `tests/library/devtools.test.js`. What only a real build can say is that
+/// `packages/vite/devtools.test.js`. What only a real build can say is that
 /// nothing *else* in the pipeline put it back: the prerendered documents go
 /// through `transformIndexHtml` too.
 ///

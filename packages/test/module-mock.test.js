@@ -48,14 +48,14 @@ import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 // Part of the subject, not a convenience: a `uft.mock` written below this line
 // must not change what this binding holds, and the only way to assert that is
 // to have the binding.
-import * as staticallyImported from "./fixtures/module-mock/client.js";
+import * as staticallyImported from "../../tests/library/fixtures/module-mock/client.js";
 
-import { hostName, unsupportedReason } from "../../packages/test/internal/modules.js";
+import { hostName, unsupportedReason } from "./internal/modules.js";
 
-const CLIENT = "./fixtures/module-mock/client.js";
-const CONSUMER = "./fixtures/module-mock/consumer.js";
-const COUNTER = "./fixtures/module-mock/counter.js";
-const SHAPES = "./fixtures/module-mock/shapes.js";
+const CLIENT = "../../tests/library/fixtures/module-mock/client.js";
+const CONSUMER = "../../tests/library/fixtures/module-mock/consumer.js";
+const COUNTER = "../../tests/library/fixtures/module-mock/counter.js";
+const SHAPES = "../../tests/library/fixtures/module-mock/shapes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, "..", "..");
@@ -459,7 +459,7 @@ const TYPED_FIXTURES: $ReadOnlyArray<[string, string]> = [
     "right.js",
     "// @flow\n" +
       'import typeof * as Dep from "./dep.js";\n' +
-      'import { uft } from "../../../packages/test/index.js";\n' +
+      'import { uft } from "../index.js";\n' +
       "\n" +
       "export async function replace(): Promise<void> {\n" +
       '  await uft.mock<Dep>("./dep.js", () => ({ BASE: "https://stub.test" }));\n' +
@@ -470,7 +470,7 @@ const TYPED_FIXTURES: $ReadOnlyArray<[string, string]> = [
     "wrong.js",
     "// @flow\n" +
       'import typeof * as Dep from "./dep.js";\n' +
-      'import { uft } from "../../../packages/test/index.js";\n' +
+      'import { uft } from "../index.js";\n' +
       "\n" +
       "export async function replace(): Promise<void> {\n" +
       '  await uft.mock<Dep>("./dep.js", () => ({ BASE: 42 }));\n' +
@@ -574,13 +574,13 @@ describe("a factory is checked against the module it stands in for", () => {
           fs.writeFileSync(path.join(directory, file), source);
         }
 
-        const report = await ufCheck([`tests/library/${name}`, "packages/test"]);
+        const report = await ufCheck([`packages/test/${name}`, "packages/test"]);
         const types = report.typeCheck;
         expect(types.status).toBe("checked");
 
         const named = (file: string) =>
           types.diagnostics.filter(
-            (diagnostic: $FlowFixMe) => diagnostic.primary.path === `tests/library/${name}/${file}`,
+            (diagnostic: $FlowFixMe) => diagnostic.primary.path === `packages/test/${name}/${file}`,
           );
 
         expect(named("right.js")).toEqual([]);

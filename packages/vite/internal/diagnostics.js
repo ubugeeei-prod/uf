@@ -57,7 +57,7 @@
 // `@uniflowed/router`'s `internal/diagnostics.js` are the same two strings, and
 // they are the contract. They cannot be *imported* here: this module is loaded
 // by Vite before any Flow transform exists, and both of those are Flow. So they
-// are written out, and `tests/library/dev-channel.test.js` asserts that all
+// are written out, and `packages/vite/dev-channel.test.js` asserts that all
 // four spellings agree — a duplicated constant with a test on it is honest, and
 // one without is how the browser ends up posting to a path nothing serves.
 //

@@ -112,9 +112,9 @@
 // tuples, unions, variants and pipelines; a `pipe` that changes the output
 // type with the change surviving into the inferred type; `toJsonSchema` with
 // `$defs` for recursion and a reported list of what it could not express.
-// `tests/library/validator.test.js` covers each of those, including
+// `packages/validator/validator.test.js` covers each of those, including
 // `@uniflowed/form`'s resolver over both a synchronous and an asynchronous
-// schema, and `tests/library/form.test.js` covers that resolver inside a real
+// schema, and `packages/form/form.test.js` covers that resolver inside a real
 // form.
 //
 // **Experimental.** [`describe`] and the [`Description`] type. The shape is

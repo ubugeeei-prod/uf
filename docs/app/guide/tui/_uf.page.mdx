@@ -58,7 +58,7 @@ That draws this, and the arrow keys change the number:
 ╰──────────────────────────╯
 ```
 
-The frame above is not a screenshot. `tests/library/tui.test.js` renders the
+The frame above is not a screenshot. `packages/tui/tui.test.js` renders the
 component on this page and asserts it comes out character for character, so a
 change to the renderer that would make this picture a lie fails the build
 instead.
@@ -93,7 +93,7 @@ it cell by cell, and writes the difference. For the application above, in the
 | pressing the up arrow | 1 | 8 |
 
 Eight bytes: a cursor move, and the digit. Both numbers are asserted in
-`tests/library/tui.test.js`.
+`packages/tui/tui.test.js`.
 
 ## Measured against React Ink
 
@@ -168,7 +168,7 @@ its throttle's; that does not touch its byte counts. Input is out of scope — I
 has no equivalent of `Input` to compare against.
 
 uf's four byte counts are asserted against the renderer in
-`tests/library/tui.test.js`, so this half of the table cannot go stale without a
+`packages/tui/tui.test.js`, so this half of the table cannot go stale without a
 test failing. Ink's are a recorded measurement: reproduce them with the command
 above.
 
@@ -232,7 +232,7 @@ it has to: the height of the content is what `Number.MAX_SAFE_INTEGER` is
 clamped against, so every row is asked its height once. After that the answer is
 kept until something under that row changes.
 
-That is counted rather than claimed. `tests/library/tui.test.js` builds the
+That is counted rather than claimed. `packages/tui/tui.test.js` builds the
 layout tree by hand so that it can count the calls layout makes into its leaves,
 and asserts a hundred thousand measurements on the first frame and **zero** on
 every scroll after it — a renderer that laid all hundred thousand rows out and

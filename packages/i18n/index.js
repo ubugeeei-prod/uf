@@ -202,7 +202,7 @@
 // definition-time contract checks, translations with partial coverage and an
 // `untranslated` list, lazily loaded locales with one load per locale, and
 // negotiation over `Accept-Language` including quality values and `*`.
-// `tests/library/i18n.test.js` covers each.
+// `packages/i18n/i18n.test.js` covers each.
 //
 // **Not implemented, and a gap.** The catalogue is not extracted at build
 // time. `uf build` does not walk a project for `message(…)` calls, so there is

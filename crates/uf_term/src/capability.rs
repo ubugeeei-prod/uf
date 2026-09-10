@@ -441,7 +441,7 @@ impl TerminalSize {
     /// Resolve the terminal's size, once.
     ///
     /// Precedence, highest first — the same list `@uniflowed/tui`'s
-    /// `detectSize` walks, and `tests/library/tui.test.js` compares the two
+    /// `detectSize` walks, and `packages/tui/tui.test.js` compares the two
     /// orders rather than believing this sentence:
     ///
     /// 1. `COLUMNS` and `LINES`, each on its own, when they parse as a
@@ -490,7 +490,7 @@ impl TerminalSize {
 /// above it is a pure function of its inputs.
 ///
 /// `@uniflowed/tui`'s `detectSize` is this function, chain for chain, and
-/// `tests/library/tui.test.js` compares the two rather than believing this
+/// `packages/tui/tui.test.js` compares the two rather than believing this
 /// sentence.
 fn detect_size(env: &TerminalEnv, reported: Option<(usize, usize)>) -> TerminalSize {
     let columns = env

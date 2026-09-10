@@ -20,7 +20,7 @@
 //
 // A `// expect:` comment says that the line after it must be reported, and that
 // the report must contain that text. A line without one must not be reported at
-// all. `tests/library/i18n.test.js` runs `uf check` and compares the two, via
+// all. `packages/i18n/i18n.test.js` runs `uf check` and compares the two, via
 // the shared harness in `tests/library/type-tests.js`.
 //
 // # Why it is checked with the package rather than on its own

@@ -689,10 +689,15 @@ mod tests {
         // `packages/cell` is on no importer's `node_modules` path, so a climb
         // alone would never find it — and it is the package this repository's
         // own files import by name.
+        //
+        // The first importer is the package's own test, which is where this
+        // repository's suite lives now: a co-located test says `@uniflowed/cell`
+        // rather than `./index.js`, because the specifier is part of what it is
+        // testing. The second is a stranger, and is the "from everywhere" half.
         let packages = packages(&[Source::new("packages/cell/package.json", CELL)]);
 
         assert_eq!(
-            exact_from(&packages, "tests/library/cell.test.js", "@uniflowed/cell"),
+            exact_from(&packages, "packages/cell/cell.test.js", "@uniflowed/cell"),
             "packages/cell/index.js"
         );
         assert_eq!(

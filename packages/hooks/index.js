@@ -111,8 +111,8 @@
 // cross-tab sync;
 // broadcast channels; the clipboard; a server-sent event stream, including the
 // one case the platform's own reconnection gives up on; the render anchor and
-// the seeded stream in `render.js`. `tests/library/hooks.test.js` covers
-// behaviour and cleanup, and `tests/library/hooks-ssr.test.js` renders the
+// the seeded stream in `render.js`. `packages/hooks/hooks.test.js` covers
+// behaviour and cleanup, and `packages/hooks/hooks-ssr.test.js` renders the
 // whole surface in a process that has no DOM at all.
 //
 // **Experimental.** `useGeolocation`, `useNetwork` and `usePermission`. The

@@ -31,7 +31,7 @@ import {
   classifyRouteSegment,
   routeFromSegments,
   scanRoutes,
-} from "../../packages/vite/internal/routes.js";
+} from "./internal/routes.js";
 
 const roots: Array<string> = [];
 

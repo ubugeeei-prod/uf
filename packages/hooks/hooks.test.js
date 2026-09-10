@@ -13,7 +13,7 @@ import { afterEach, describe, expect, fn, it, uft } from "@uniflowed/test";
 import { act, fireEvent, render, screen, userEvent, waitFor } from "@uniflowed/react-testing";
 import { fixedClock, setClock } from "@uniflowed/core/clock";
 
-import { bodyOf, elementIn, parentOf } from "./dom.js";
+import { bodyOf, elementIn, parentOf } from "../../tests/library/dom.js";
 import {
   RenderProvider,
   useAnimationFrame,

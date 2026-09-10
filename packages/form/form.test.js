@@ -39,8 +39,8 @@ import type {
   ValidationRules,
 } from "@uniflowed/form";
 
-import { controlIn, elementIn, elementsIn, valueIn } from "./dom.js";
-import { everyMisuseIsReported } from "./type-tests.js";
+import { controlIn, elementIn, elementsIn, valueIn } from "../../tests/library/dom.js";
+import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 
 const submitForm = (container: Element) => {
   fireEvent.submit(elementIn(container, "form"));

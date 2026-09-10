@@ -55,9 +55,19 @@ export default defineConfig({
 
   test: {
     // `uf run test:lib:coverage` measures the packages this repository ships,
-    // and nothing else. The suite that drives them lives in `tests/library`,
-    // and the docs site and the fixtures under `tests/` are not the product —
-    // counting them would move the number for reasons nobody could act on.
+    // and nothing else. The suite that drives them now lives *inside* them —
+    // `packages/ui/ui.test.js` beside `packages/ui/alert.js`, the way
+    // `crates/*/src/tests.rs` sits beside its own — and the docs site and the
+    // fixtures under `tests/` are not the product, so counting them would move
+    // the number for reasons nobody could act on.
+    //
+    // What a co-located suite does *not* do is measure itself. `exclude`
+    // defaults to `[".test.", ".spec."]` and is left at that default, so a
+    // test file inside `packages/` is a project file the runner loads and not
+    // a file the report counts. A hundred per cent by construction is not
+    // information, and before the move `include: ["packages/"]` was what kept
+    // it out; now the default `exclude` is. Widening `include` without
+    // knowing that would silently add eighty files at 100%.
     //
     // No threshold yet, deliberately. A gate is a promise about the next
     // change, and the honest first step is to publish the number and let it
@@ -139,15 +149,29 @@ export default defineConfig({
     // --- The toolchain, used on itself ---------------------------------
     //
     // Each of these is a first-class uf command run against a workspace of
-    // this repository, not a script that reimplements one. `uf test#library`
-    // is the command a contributor types; the task exists so CI types it too,
-    // and so `uf run ci` covers it.
+    // this repository, not a script that reimplements one. `uf test` is the
+    // command a contributor types; the task exists so CI types it too, and so
+    // `uf run ci` covers it.
     build: "cargo build --release --bin uf",
 
     // Every `@uniflowed/*` package is Flow, so `cargo test` cannot run a line
     // of it. These are uf tests, run by the runner this repository ships.
+    //
+    // The repository root, with no selector, and that is the whole reason the
+    // suite could move next to the code it tests. A uf workspace member is any
+    // directory with its own `uf.config.js` (`crates/uf_project/src/workspace.rs`),
+    // so `uf test#library` made `tests/library` the project root — and
+    // discovery walks *down* from the root, which put `packages/` outside it.
+    // A test file moved into `packages/ui` was not a test that failed; it was
+    // a test that silently stopped existing. Entering here is what makes the
+    // two halves one suite: `packages/**` and whatever is left in
+    // `tests/library/**` are both under this root.
+    //
+    // The name stays `test:lib` because that is what it runs — the library's
+    // suite — and because CI, CONTRIBUTING.md and every muscle memory point at
+    // it. What changed is the door, not the room.
     "test:lib": {
-      command: "./target/release/uf test#library",
+      command: "./target/release/uf test",
       dependsOn: ["build"],
       // No `inputs`, so it runs every time. It executes Flow on the Node that
       // happens to be on `PATH`, through the transform cache in `.uf`, against
@@ -156,11 +180,11 @@ export default defineConfig({
       // hash, so there is nothing honest to key on.
     },
 
-    // The same suite, with V8's counters on, run from the repository root so
-    // that `packages/*` is inside the project and the counts have somewhere to
-    // land. `uf test#library` cannot do it: its project root is
-    // `tests/library`, and coverage is about the project's own files, so every
-    // package the suite exercises would be outside it.
+    // The same suite, with V8's counters on. It was already the one task that
+    // ran from the repository root — coverage is about the project's own
+    // files, and every package the suite exercises was outside `tests/library`
+    // — so what changed here is only that it no longer names a directory: the
+    // suite is no longer in one.
     //
     // Not in `ci`, and the reason is the threshold rather than the cost —
     // collecting and mapping is 0.4 s on a run that takes a minute. Until
@@ -169,7 +193,7 @@ export default defineConfig({
     // one command rather than a gate, and what is left to do is choose the
     // number; #280 carries that argument.
     "test:lib:coverage": {
-      command: "./target/release/uf test tests/library --coverage",
+      command: "./target/release/uf test --coverage",
       dependsOn: ["build"],
     },
 
@@ -433,7 +457,7 @@ export default defineConfig({
     // `bench:tui` needs React Ink, which is a dependency of the benchmark and
     // of nothing else in this repository — `npm install` inside
     // `tools/bench/tui` first. Its byte counts are deterministic and *are*
-    // checked in CI, by `tests/library/tui.test.js`, which asserts uf's half of
+    // checked in CI, by `packages/tui/tui.test.js`, which asserts uf's half of
     // the table in `docs/app/guide/tui/_uf.page.mdx` against the renderer. What
     // this task adds is Ink's half and the wall clock, and a wall clock on a
     // shared build agent is a measurement of the agent.
@@ -474,7 +498,7 @@ export default defineConfig({
     // `setTimeout`, so the cold column is a measurement of a sleep and the
     // whole thing is a wall clock on whatever machine ran it. The behaviour it
     // is a number *about* is checked without a clock at all, in
-    // `tests/library/cache.test.js`, which drives the store's own `now`.
+    // `packages/server/cache.test.js`, which drives the store's own `now`.
     "bench:route-cache": {
       command:
         "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/cache/route-cache.js",

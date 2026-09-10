@@ -388,7 +388,7 @@ fn a_file_git_is_told_to_ignore_is_not_the_projects_source() {
 /// `.gitignore` says what the project's source *is*. It does not say what a
 /// person may ask about, and those are different questions.
 ///
-/// `tests/library/module-mock.test.js` is the case that found this: it writes a
+/// `packages/test/module-mock.test.js` is the case that found this: it writes a
 /// fixture into a gitignored directory — deliberately, so a killed run leaves
 /// nothing behind — and then asks `uf check` about it by name. Applying the
 /// ignore answered "no diagnostics" for a file that has one, which is silence

@@ -435,7 +435,7 @@ export function markLines(lines) {
  *
  * Exported because it is where the decision is visible without starting Shiki:
  * give it the token split a grammar would produce and it says which words it
- * marked. `tests/library/highlight.test.js` uses exactly that, and the splits
+ * marked. `packages/vite/highlight.test.js` uses exactly that, and the splits
  * in it are the ones that had bugs.
  */
 export function markLine(line) {

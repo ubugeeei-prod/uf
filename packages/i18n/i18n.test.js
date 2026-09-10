@@ -21,7 +21,7 @@ import path from "node:path";
 import { describe, expect, it } from "@uniflowed/test";
 import type { Catalogue } from "@uniflowed/i18n";
 
-import { everyMisuseIsReported } from "./type-tests.js";
+import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 import {
   MessageContractError,
   MessageFormatError,

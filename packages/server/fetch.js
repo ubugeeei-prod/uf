@@ -12,7 +12,7 @@
 // # Why it lives here and not where it was written
 //
 // It was `createApplicationHandler` in `@uniflowed/vite/internal/serve.js`,
-// and `tests/library/serve.test.js` said what was wrong with that: "not a
+// and `packages/server/serve.test.js` said what was wrong with that: "not a
 // package export, deliberately — `internal/serve.js` is the seam a deploy
 // adapter will need, and naming it in `exports` before one exists would be
 // promising an interface nothing has used yet". An adapter exists now, and it

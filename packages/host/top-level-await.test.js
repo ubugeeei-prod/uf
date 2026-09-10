@@ -24,7 +24,7 @@ import { describe, expect, it } from "@uniflowed/test";
 /** The loader under test, reached as a path so no resolution is involved. */
 const REGISTER: string = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../packages/host/register.js",
+  "./register.js",
 );
 
 /** What one run of a module said. */

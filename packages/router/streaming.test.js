@@ -37,7 +37,7 @@ import { afterAll, describe, expect, it } from "@uniflowed/test";
 // Not a package export: the Web-standard branch of `renderDocument` is
 // unreachable in this process — Node has `renderToPipeableStream` — so it is
 // driven directly, with a renderer of the test's own.
-import { renderWithReadableStream } from "../../packages/router/internal/stream.js";
+import { renderWithReadableStream } from "./internal/stream.js";
 import { RESERVED, routesModuleSource, scanRoutes } from "../../packages/vite/internal/routes.js";
 
 // `@uniflowed/router/client` statically imports `react-dom/client`, which reads
