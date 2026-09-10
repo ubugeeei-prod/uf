@@ -3,11 +3,6 @@
   "private": true,
   "type": "module",
   "description": "A small SSR social app example for uf, React 19.3, RSC, Actions, SQLite, and StyleX.",
-  "scripts": {
-    "dev": "uf dev",
-    "build": "uf build",
-    "test": "uf test ../../tests/library/examples.test.js ../../tests/library/simple-sns-components.test.js"
-  },
   "dependencies": {
     "@uniflowed/config": "0.0.0-alpha.18",
     "@uniflowed/react": "0.0.0-alpha.18",
