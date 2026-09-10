@@ -1551,6 +1551,70 @@ fn dev_answers_the_fixture_the_way_a_build_does() {
     });
 }
 
+/// Runtime imports of `@uniflowed/react` go straight to the application's
+/// React peer.
+///
+/// The wrapper package remains for Flow's type surface, but React itself is a
+/// peer dependency and its named value exports belong to the version the
+/// application installed. Vite cannot safely infer names through
+/// `export * from "react"` when React is CommonJS, so the development graph
+/// aliases the wrapper to `react` instead of asking the browser to load
+/// `@uniflowed/react/index.js`.
+#[test]
+fn dev_resolves_uniflowed_react_to_the_react_peer() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/Counter.js",
+        "\"use client\";\n// @flow\nimport { createContext, useState } from \"@uniflowed/react\";\n\nconst CounterContext = createContext(0);\n\nexport component Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <CounterContext.Provider value={count}>\n      <button type=\"button\" onClick={() => setCount(count + 1)}>\n        {count}\n      </button>\n    </CounterContext.Provider>\n  );\n}\n",
+    ));
+    files[2] = (
+        "app/_uf.page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
+    );
+    let project = Project::new(&files);
+    let said = Mutex::new(String::new());
+    std::thread::scope(|scope| {
+        let mut server = Server::start(project.path(), &["dev", "--port", "0"], scope, &said);
+        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+            panic!(
+                "the dev server never announced a port\n{}",
+                server.evidence(&said)
+            );
+        };
+        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
+            panic!(
+                "the dev server announced port {port} and never answered\n{}",
+                server.evidence(&said)
+            );
+        };
+        assert!(body.starts_with("HTTP/1.1 200"), "{body}");
+
+        let counter = get(&mut server, port, "/app/Counter.js", &said);
+        assert!(
+            counter.starts_with("HTTP/1.1 200"),
+            "the client module was not served:\n{counter}\n{}",
+            server.evidence(&said)
+        );
+        assert!(
+            !counter.contains("@uniflowed/react"),
+            "`@uniflowed/react` reached the browser module:\n{counter}"
+        );
+        assert!(
+            !counter.contains("/node_modules/@uniflowed/react/index.js"),
+            "the browser would load the wrapper instead of React:\n{counter}"
+        );
+        assert!(
+            counter.contains("createContext") && counter.contains("useState"),
+            "the named React imports were lost:\n{counter}"
+        );
+
+        drop(server);
+    });
+}
+
 /// Everything `uf dev` has to answer for `served-app`, once it is listening.
 fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &str) {
     let context =
