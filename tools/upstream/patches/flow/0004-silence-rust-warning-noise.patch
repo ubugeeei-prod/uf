@@ -90,6 +90,15 @@ index 16934b3cb..d7fba6ef5 100644
                              && let expression::ExpressionInner::Assignment {
                                  inner: assign,
                                  ..
+@@ -324,7 +324,7 @@ fn convert_switch_inner<M: Dupe>(
+                         && last_case
+                         && let statement::StatementInner::Expression {
+                             inner: expr_stmt, ..
+-                        } = last_stmt.deref().deref()
++                        } = (*last_stmt).deref()
+                         && let expression::ExpressionInner::Assignment {
+                             inner: assign, ..
+                         } = expr_stmt.expression.deref()
 diff --git a/rust_port/crates/flow_typing_ty_normalizer/src/env.rs b/rust_port/crates/flow_typing_ty_normalizer/src/env.rs
 index d2b3a9ff3..2e80196a9 100644
 --- a/rust_port/crates/flow_typing_ty_normalizer/src/env.rs
