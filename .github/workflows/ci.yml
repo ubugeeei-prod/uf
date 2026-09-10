@@ -32,7 +32,7 @@ jobs:
     name: Toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -57,7 +57,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -78,7 +78,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -101,7 +101,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -115,7 +115,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # `uf build --compile` embeds the build in a Bun runtime, and the two
       # tests that exercise it fail rather than skip when Bun is absent: a
       # single-file build nobody runs is a single-file build nobody has.
@@ -154,7 +160,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -168,7 +174,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # `rust:fmt:check` is cargo's half. This is uf's: the formatter this
       # repository ships, over the Flow this repository is written in. It is
       # the only thing that checks the shipped packages' formatting at all.
@@ -184,7 +196,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -198,7 +210,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # uf is the only thing that can lint uf's own packages, so until this job
       # existed a regression in the linter was invisible to every other check
       # in the pipeline — including to the linter's own Rust tests, which
@@ -215,7 +233,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -226,7 +244,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # The documentation site is a uf project in this repository, built by
       # `uf build#docs`. The Docs workflow builds it too, on its own trigger;
       # this job is what makes a pull request that breaks the site fail before
@@ -265,7 +289,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -276,7 +300,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       # The `@uniflowed/*` packages are Flow, so `cargo test` cannot run a line
@@ -294,7 +324,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -321,7 +351,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -343,7 +373,7 @@ jobs:
     needs: toolchain
     runs-on: blacksmith-32vcpu-ubuntu-2404
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -508,7 +538,7 @@ jobs:
       # because `rust-toolchain.toml` overrides `rustup default`.
       RUSTUP_TOOLCHAIN: nightly-2026-08-01
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -524,7 +554,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # `uf build --compile` embeds the build in a Bun runtime, and the two
       # tests that exercise it fail rather than skip when Bun is absent: a
       # single-file build nobody runs is a single-file build nobody has.
@@ -555,7 +591,7 @@ jobs:
       # `rustup default`, so the moving channel only takes effect through this.
       RUSTUP_TOOLCHAIN: nightly
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh

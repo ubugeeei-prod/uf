@@ -48,7 +48,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -62,7 +62,13 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # This repository is a uf project: the site is built by the task in
       # `uf.config.js`, with the toolchain it ships.
       - run: cargo build --release --bin uf
@@ -87,7 +93,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -101,7 +107,13 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # This repository is a uf project: the site is built by the task in
       # `uf.config.js`, with the toolchain it ships.
       - run: cargo build --release --bin uf

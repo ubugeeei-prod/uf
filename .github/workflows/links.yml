@@ -38,7 +38,7 @@ jobs:
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
@@ -50,7 +50,13 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: npm ci --no-audit --no-fund
+      - name: Mount npm cache
+        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        with:
+          key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
+          path: ~/.npm
+          commit: ${{ github.ref == 'refs/heads/main' && 'on-change' || 'false' }}
+      - run: npm ci --prefer-offline --no-audit --no-fund
       # The site has to be built before its links can be resolved, and the
       # links this pass is about are the ones in the markup rather than the
       # ones in the sources — a link the layout computes is in no `.mdx` file.
