@@ -580,6 +580,10 @@ fn the_std_registry_names_exactly_what_the_std_package_exports() {
         let path = entry.expect("a readable directory entry").path();
         if path.extension().is_some_and(|extension| extension == "js")
             && path.file_name().is_some_and(|name| name != "index.js")
+            && !path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".test.js"))
             && !files.contains(&path)
         {
             unaccounted.push(path.display().to_string());
