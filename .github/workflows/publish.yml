@@ -81,8 +81,11 @@ jobs:
         with:
           deno-version: v1.x
       - run: deno --version
-      # GitHub-hosted Ubuntu runners install Chromium but do not give it a
-      # usable sandbox under the AppArmor/user-namespace policy in this image.
+      # GitHub-hosted Ubuntu runners install Chromium-family browsers but do
+      # not give Chromium a usable sandbox under the AppArmor/user-namespace
+      # policy in this image, and the distro `chromium` shim can spend the
+      # browser worker's start budget talking to a broken DBus session before
+      # it ever opens the test page.
       # The same browser test runs sandboxed in CI on Blacksmith; this wrapper
       # is only for the publish runner, so the release can still prove browser
       # mode before npm receives the packages.
@@ -90,7 +93,7 @@ jobs:
         run: |
           set -eu
           browser=
-          for candidate in chromium google-chrome google-chrome-stable chrome; do
+          for candidate in google-chrome-stable google-chrome chrome chromium; do
             if command -v "$candidate" >/dev/null 2>&1; then
               browser="$(command -v "$candidate")"
               break
@@ -101,9 +104,14 @@ jobs:
             exit 1
           fi
           mkdir -p "$RUNNER_TEMP/uf-browser"
-          wrapper="$RUNNER_TEMP/uf-browser/chromium-no-sandbox"
-          printf '%s\n' '#!/bin/sh' 'exec "$UF_REAL_BROWSER" --no-sandbox "$@"' > "$wrapper"
+          wrapper="$RUNNER_TEMP/uf-browser/chromium-publish"
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'unset DBUS_SESSION_BUS_ADDRESS' \
+            'exec "$UF_REAL_BROWSER" --no-sandbox --disable-setuid-sandbox --no-zygote "$@"' \
+            > "$wrapper"
           chmod +x "$wrapper"
+          echo "Using $browser for UF_BROWSER"
           {
             echo "UF_REAL_BROWSER=$browser"
             echo "UF_BROWSER=$wrapper"
