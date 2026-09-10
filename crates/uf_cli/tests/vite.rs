@@ -793,44 +793,28 @@ fn dev_reports_a_contract_violation_when_one_appears() {
     }
     let root = project_with_a_clean_server_component();
     let helper = root.join("app/greeting.js");
-    let said = Mutex::new(String::new());
 
-    std::thread::scope(|scope| {
-        // See the note in `dev_answers_the_fixture_the_way_a_build_does`.
-        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
-        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
-            panic!(
-                "the dev server never announced a port\n{}",
-                server.evidence(&said)
-            );
-        };
-        if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
-            panic!(
-                "the dev server announced port {port} and did not answer on it\n{}",
-                server.evidence(&said)
-            );
-        }
-
-        // A clean project says nothing. Asserted after the server has
-        // answered a request, which is well after the start-up analysis.
+    serve_dev_on_any_port(&root, |server, _port, said, _body| {
+        // A clean project says nothing. Asserted after the server has answered
+        // a request, which is well after the start-up analysis.
         assert!(
-            !said_contains(&said, "server components"),
+            !said_contains(said, "server components"),
             "a project with no violations must not report any:\n{}",
-            server_said(&said)
+            server_said(said)
         );
 
         fs::write(&helper, HELPER_THAT_TOUCHES_THE_BROWSER).unwrap();
         let reported = wait_for_said(
-            &said,
+            said,
             "rsc/client-only-api-in-server",
             Duration::from_secs(30),
         );
         assert!(
             reported,
             "the dev server did not report the violation that appeared:\n{}",
-            server.evidence(&said)
+            server.evidence(said)
         );
-        let text = server_said(&said);
+        let text = server_said(said);
         assert!(
             text.contains("app/greeting.js"),
             "the report must name the module:\n{text}"
@@ -844,14 +828,14 @@ fn dev_reports_a_contract_violation_when_one_appears() {
         // report nobody can use to tell whether they fixed it.
         fs::write(&helper, CLEAN_HELPER).unwrap();
         let cleared = wait_for_said(
-            &said,
+            said,
             "the server-component contract holds",
             Duration::from_secs(30),
         );
         assert!(
             cleared,
             "the dev server never said the violation was gone:\n{}",
-            server.evidence(&said)
+            server.evidence(said)
         );
     });
 }
@@ -1302,14 +1286,14 @@ impl Drop for Server {
     }
 }
 
-/// How many ports to try before giving up on getting one to ourselves.
+/// How many starts to try before giving up on a server that has not answered.
 ///
-/// The port is chosen by binding zero and letting the listener go, so between
-/// choosing it and `uf dev` binding it, anything on the machine can take it —
-/// and Vite's default is to move to the next free port rather than fail, so a
-/// lost race is a server that is up somewhere this test is not asking about.
-/// That is the shape of both CI failures so far: one where nothing ever
-/// answered, and one where something answered and then went away.
+/// A typed port is chosen by binding zero and letting the listener go, so
+/// between choosing it and the server binding it, anything on the machine can
+/// take it — and Vite's default is to move to the next free port rather than
+/// fail, so a lost race is a server that is up somewhere this test is not
+/// asking about. That is the shape of both CI failures so far: one where
+/// nothing ever answered, and one where something answered and then went away.
 ///
 /// Retrying is honest here because the subject is "this server serves this
 /// application", not "binding a port works first time". It is capped, it only
@@ -1318,13 +1302,11 @@ impl Drop for Server {
 /// times and prints three servers' reasons, which is more than the one line
 /// this used to give.
 ///
-/// Most of the `uf dev` tests no longer need it: `uf dev --port 0` asks the
-/// operating system for a port *through the process that then holds it*, and
-/// prints the answer, so there is no window to lose. Three of them have moved
-/// — the two here and [`dev_serves_the_docs_site_through_vite`] — after this
-/// race failed CI five times in one afternoon, three of those on
-/// `Port … is already in use` after all three attempts lost, which is what a
-/// loaded runner does to a window this wide.
+/// `uf dev --port 0` is better than picking a port in this test, because the
+/// server prints the port it actually got and the test follows that. But the
+/// process can still exit before it announces anything — CI has seen the
+/// driver report a concrete `Port … is already in use` from that path — so
+/// those tests use the same retry rule until the first successful answer.
 ///
 /// What is left needs a port it can name twice.
 /// [`dev_rereads_an_env_file_that_changed_under_it`] asserts across a
@@ -1334,6 +1316,48 @@ impl Drop for Server {
 /// commands with no such flag are in the same position. For those this is
 /// still the best available answer.
 const PORT_ATTEMPTS: usize = 3;
+
+/// Start `uf dev --port 0`, wait for the announced port to answer, and run the
+/// assertion while the server is still alive.
+fn serve_dev_on_any_port(root: &Path, check: impl Fn(&mut Server, u16, &Mutex<String>, &str)) {
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &["dev", "--port", "0"], scope, &said);
+            let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
+                refused.push(format!(
+                    "attempt {attempt}: the dev server never announced a port\n{}",
+                    server.evidence(&said)
+                ));
+                drop(server);
+                return false;
+            };
+            let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: the dev server announced a port and did \
+                     not answer on it\n{}",
+                    server.evidence(&said)
+                ));
+                drop(server);
+                return false;
+            };
+
+            check(&mut server, port, &said, &body);
+            true
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "`uf dev --port 0` never answered, on {PORT_ATTEMPTS} starts\n{}",
+        refused.join("\n\n")
+    );
+}
 
 /// The port in the first `http://host:port` URL a server has printed, if any.
 ///
@@ -1399,37 +1423,9 @@ fn dev_serves_the_docs_site_through_vite() {
         return;
     }
     let root = docs_root();
-    let said = Mutex::new(String::new());
 
-    std::thread::scope(|scope| {
-        // `--port 0`, and the server says which port it got. The alternative —
-        // bind zero, read the number, close the listener, and hand it to `uf
-        // dev` — is a race nothing manages: anything on the machine can take
-        // the port in between, and Vite moving to the next free one produces a
-        // server that is up somewhere this test is not asking about. That is
-        // the second half of ubugeeei-prod/uf#234, and asking the operating
-        // system once, through the process that will hold the socket, is the
-        // fix the issue prefers to a retry.
-        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
-        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
-            panic!(
-                "the dev server never announced a port\n{}",
-                server.evidence(&said)
-            );
-        };
-        // Then wait for the port to answer rather than trusting the line that
-        // named it: `listening` is emitted from the driver, and what this test
-        // is about is whether a request reaches a rendered page.
-        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
-            panic!(
-                "the dev server announced port {port} and did not answer on it\n{}",
-                server.evidence(&said)
-            );
-        };
-        assert_page(&mut server, port, &said, &body);
-        // Inside the scope on purpose: the drain threads end when the pipes
-        // close, and the pipes close when the child does.
-        drop(server);
+    serve_dev_on_any_port(&root, |server, port, said, body| {
+        assert_page(server, port, said, body);
     });
 }
 
@@ -1527,27 +1523,9 @@ fn dev_answers_the_fixture_the_way_a_build_does() {
     // of them wrote.
     let _served = served_lock();
     let root = served_app_root();
-    let said = Mutex::new(String::new());
 
-    std::thread::scope(|scope| {
-        // `--port 0` rather than a port chosen here: asking the operating
-        // system *through the process that will hold the socket* leaves no
-        // window for anything else on the machine to take it. See
-        // [`Server::bound_port`].
-        let mut server = Server::start(&root, &["dev", "--port", "0"], scope, &said);
-        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
-            panic!(
-                "the dev server never announced a port\n{}",
-                server.evidence(&said)
-            );
-        };
-        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
-            panic!(
-                "the dev server announced port {port} and never answered `served-app`\n{}",
-                server.evidence(&said)
-            );
-        };
-        assert_dev_served(&mut server, port, &said, &body);
+    serve_dev_on_any_port(&root, |server, port, said, body| {
+        assert_dev_served(server, port, said, body);
     });
 }
 
@@ -1575,28 +1553,15 @@ fn dev_resolves_uniflowed_react_to_the_react_peer() {
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
     );
     let project = Project::new(&files);
-    let said = Mutex::new(String::new());
-    std::thread::scope(|scope| {
-        let mut server = Server::start(project.path(), &["dev", "--port", "0"], scope, &said);
-        let Some(port) = server.bound_port(&said, Duration::from_secs(90)) else {
-            panic!(
-                "the dev server never announced a port\n{}",
-                server.evidence(&said)
-            );
-        };
-        let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) else {
-            panic!(
-                "the dev server announced port {port} and never answered\n{}",
-                server.evidence(&said)
-            );
-        };
+
+    serve_dev_on_any_port(project.path(), |server, port, said, body| {
         assert!(body.starts_with("HTTP/1.1 200"), "{body}");
 
-        let counter = get(&mut server, port, "/app/Counter.js", &said);
+        let counter = get(server, port, "/app/Counter.js", said);
         assert!(
             counter.starts_with("HTTP/1.1 200"),
             "the client module was not served:\n{counter}\n{}",
-            server.evidence(&said)
+            server.evidence(said)
         );
         assert!(
             !counter.contains("@uniflowed/react"),
@@ -1610,8 +1575,6 @@ fn dev_resolves_uniflowed_react_to_the_react_peer() {
             counter.contains("createContext") && counter.contains("useState"),
             "the named React imports were lost:\n{counter}"
         );
-
-        drop(server);
     });
 }
 
