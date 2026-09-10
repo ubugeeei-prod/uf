@@ -82,6 +82,15 @@ pub enum EnvError {
         /// The path, as the operating system gave it.
         path: std::path::PathBuf,
     },
+    /// A project manifest could not be decoded.
+    #[error("failed to parse {path}: {source}")]
+    ManifestJson {
+        /// The manifest path.
+        path: Utf8PathBuf,
+        /// The underlying JSON error.
+        #[source]
+        source: serde_json::Error,
+    },
     /// Neither the XDG variable nor `$HOME` is set, so there is nowhere the
     /// store could mean.
     #[error("neither XDG_DATA_HOME nor HOME is set, so there is no store directory")]

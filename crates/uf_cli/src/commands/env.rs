@@ -42,7 +42,7 @@ fn declared(cwd: &Utf8Path) -> Result<(uf_config::ResolvedConfig, Vec<uf_env::Pi
             std::env::consts::ARCH
         )
     })?;
-    let pins = uf_env::project::declared(&resolved.config, platform)?;
+    let pins = uf_env::project::declared_for_project(&resolved.root, &resolved.config, platform)?;
     Ok((resolved, pins))
 }
 
@@ -56,7 +56,8 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
             renderer.status(
                 out,
                 Status::Warn,
-                "uf.config.js declares no toolchain, so nothing is pinned to this project",
+                "neither uf.config.js nor package.json engines declares an exact toolchain, so \
+                 nothing is pinned to this project",
             );
         });
         return Ok(());
@@ -149,7 +150,11 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
         renderer.blank(out);
         renderer.heading(out, 2, "this project");
         if mine.is_empty() {
-            renderer.bullet_list(out, 4, &["nothing pinned in uf.config.js"]);
+            renderer.bullet_list(
+                out,
+                4,
+                &["nothing pinned in uf.config.js or package.json engines"],
+            );
         } else {
             renderer.bullet_list(out, 4, &mine);
         }

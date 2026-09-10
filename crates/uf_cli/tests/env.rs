@@ -70,8 +70,43 @@ fn a_project_that_pins_nothing_is_told_so_and_succeeds() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("declares no toolchain"), "{stdout}");
+    assert!(
+        stdout.contains("neither uf.config.js nor package.json engines declares"),
+        "{stdout}"
+    );
     assert!(!dir.path().join(".uniflowed/env/bin").exists());
+}
+
+/// The standard manifest field is enough to tell `uf env` what this project
+/// wants, without repeating the same pin in uf.config.js.
+#[test]
+fn env_list_reports_exact_package_json_engines() {
+    let dir = tempfile::tempdir().unwrap();
+    let (store, roots) = project(dir.path(), "{}");
+    fs::write(
+        dir.path().join("package.json"),
+        r#"{ "engines": { "node": "24.14.0", "npm": ">=10" } }"#,
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["env", "list"])
+        .env("UF_STORE", &store)
+        .env("UF_ROOTS", &roots)
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("node@24.14.0"), "{stdout}");
+    assert!(!stdout.contains("npm@"), "{stdout}");
+    assert_plain(&stdout);
 }
 
 /// A range is refused, and the message says which tool and what was written.
