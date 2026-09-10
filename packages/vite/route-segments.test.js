@@ -5,8 +5,8 @@
 //
 // Next.js spells a parallel route `@team` and an intercepting route
 // `(.)photo`. Neither router had an opinion about either, so both fell through
-// to "an ordinary URL segment": `app/@team/_uf.page.js` served `/@team`,
-// `app/feed/(.)photo/_uf.page.js` served `/feed/(.)photo` — the test for a
+// to "an ordinary URL segment": `app/@team/$page.js` served `/@team`,
+// `app/feed/(.)photo/$page.js` served `/feed/(.)photo` — the test for a
 // `(group)` is that the segment *ends* in `)` — and the generated `RoutePath`
 // union contained both, so `route("/@team", …)` type checked. A person who
 // wrote one got no route and no error, which is worse than not supporting it:
@@ -114,7 +114,7 @@ describe("classifying a directory name", () => {
 describe("scanning a router root that holds one", () => {
   it("refuses every spelling, naming the directory and what it is", () => {
     for (const segment of UNSUPPORTED_SEGMENTS) {
-      const root = appRoot([path.join("feed", segment, "_uf.page.js")]);
+      const root = appRoot([path.join("feed", segment, "$page.js")]);
 
       // The build serving `/feed/(.)photo` is the bug. Throwing is the fix,
       // and the message has to say the directory is *refused* — "unsupported"
@@ -134,7 +134,7 @@ describe("scanning a router root that holds one", () => {
   });
 
   it("refuses an interception that holds no page, because it is still one", () => {
-    const root = appRoot(["_uf.page.js", path.join("feed", "(.)photo", "_uf.layout.js")]);
+    const root = appRoot(["$page.js", path.join("feed", "(.)photo", "$layout.js")]);
 
     expect(() => scanRoutes(root)).toThrow("(.)photo");
   });
@@ -143,13 +143,13 @@ describe("scanning a router root that holds one", () => {
     // A leading `.` or `_` means the directory is a place to put things rather
     // than a route, so `app/_drafts/(.)photo/` was never going to be served
     // and refusing it would be a rule about a place the router does not look.
-    const root = appRoot(["_uf.page.js", path.join("_drafts", "(.)photo", "notes.js")]);
+    const root = appRoot(["$page.js", path.join("_drafts", "(.)photo", "notes.js")]);
 
     expect(scanRoutes(root).routes.map((route) => route.path)).toEqual(["/"]);
   });
 
   it("still serves a route group, which is the spelling next to it", () => {
-    const root = appRoot([path.join("(marketing)", "about", "_uf.page.js")]);
+    const root = appRoot([path.join("(marketing)", "about", "$page.js")]);
 
     expect(scanRoutes(root).routes.map((route) => route.path)).toEqual(["/about"]);
   });

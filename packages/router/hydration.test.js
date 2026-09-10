@@ -35,6 +35,7 @@ import {
   hydrationErrorHandler,
   hydrationReport,
   isHydrationMessage,
+  prepareDevHeadForHydration,
   showHydrationReport,
 } from "./internal/hydration.js";
 
@@ -341,11 +342,51 @@ describe("naming the component", () => {
 });
 
 describe("the snapshot of the server's markup", () => {
+  it("hides dev head artifacts before a document-root app hydrates", () => {
+    render(<div />);
+    const document = globalThis.document;
+    document.head.innerHTML =
+      "\n  " +
+      '<script data-uf-dev-head-preamble="react-devtools">hook()</script>' +
+      "\n  " +
+      '<script type="module" data-uf-dev-head-preamble="react-refresh">refresh()</script>' +
+      "\n\n  " +
+      '<script type="module" src="/@vite/client"></script>' +
+      "\n" +
+      '<script type="module" src="/@id/__x00__virtual:uf/client"></script>' +
+      '<style type="text/css" data-vite-dev-id="uf-style:/app/$layout.js.css">.root{margin:0}</style>' +
+      '<script type="module" src="/assets/client.js"></script>';
+
+    const restore = prepareDevHeadForHydration(document);
+
+    expect(document.head.textContent).not.toContain("hook()");
+    expect(document.head.textContent).not.toContain("refresh()");
+    expect(document.head.querySelector('script[src="/@vite/client"]')).toBe(null);
+    expect(document.head.querySelector('script[src="/@id/__x00__virtual:uf/client"]')).toBe(null);
+    expect(document.head.querySelector("style[data-vite-dev-id]")).toBe(null);
+    expect(document.head.querySelector('script[src="/assets/client.js"]')).not.toBe(null);
+    expect(document.head.firstChild?.nodeType).not.toBe(3);
+
+    restore();
+
+    const style = document.head.querySelector("style[data-vite-dev-id]");
+    expect(style?.textContent).toBe(".root{margin:0}");
+  });
+
   it("keeps the children of the element React hydrates", () => {
     render(<div />);
     const container = globalThis.document.createElement("div");
     container.innerHTML = "<p>server</p>";
     expect(captureServerMarkup(container)).toBe("<p>server</p>");
+  });
+
+  it("ignores Vite's restored dev styles when explaining a document mismatch", () => {
+    const report = reportFor(
+      "<html><head><title>Simple SNS</title></head><body><main>ok</main></body></html>",
+      '<html><head><title>Simple SNS</title><style data-vite-dev-id="uf-style:/app/$layout.js.css">.root{margin:0}</style></head><body><main>ok</main></body></html>',
+    );
+    expect(report.difference).toBe(null);
+    expect(report.note).toContain("agree");
   });
 
   /**
@@ -402,15 +443,17 @@ describe("the snapshot of the server's markup", () => {
 });
 
 describe("the report as text", () => {
-  it("leads with the two values and the path, and puts React's sentence last", () => {
+  it("leads with the mismatch and then explains what to try", () => {
     const text = formatHydrationReport(
       reportFor("<main><p>3 minutes ago</p></main>", "<main><p>5 minutes ago</p></main>"),
     );
     expect(text).toContain("Hydration mismatch in <Article>");
-    expect(text).toContain("server   3 minutes ago");
-    expect(text).toContain("client   5 minutes ago");
-    expect(text).toContain("Rendered by: Article < Layout < App");
-    expect(text).toContain(`React said: ${MISMATCH}`);
+    expect(text).toContain("What changed");
+    expect(text).toContain("server rendered  3 minutes ago");
+    expect(text).toContain("browser rendered 5 minutes ago");
+    expect(text).toContain("Try this next");
+    expect(text).toContain("Component trail: Article < Layout < App");
+    expect(text).toContain(`React's original message: ${MISMATCH}`);
   });
 });
 
@@ -529,7 +572,7 @@ describe("reaching the terminal", () => {
     expect(sent.file).toBe(undefined);
     expect(sent.line).toBe(undefined);
     const detail = sent.detail.join("\n");
-    for (const fact of ["3 items", "4 items", "different every time it is read"]) {
+    for (const fact of ["What changed", "3 items", "4 items", "Try this next"]) {
       expect(detail).toContain(fact);
       expect(shown).toContain(fact);
     }
@@ -635,9 +678,13 @@ describe("the overlay", () => {
     const host = elementIn(bodyOf(), "#uf-hydration-overlay");
     const shown = host.shadowRoot?.textContent ?? "";
     expect(shown).toContain("Hydration mismatch in <Article>");
+    expect(shown).toContain("The server HTML and the browser's first render");
+    expect(shown).toContain("What changed");
     expect(shown).toContain("3 items");
     expect(shown).toContain("4 items");
+    expect(shown).toContain("Try this next");
     expect(shown).toContain("Article < Layout < App");
+    expect(host.shadowRoot?.querySelector('[role="dialog"]')).not.toBe(null);
     host.remove();
   });
 });

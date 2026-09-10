@@ -26,7 +26,7 @@ fn a_project_with_one_action() -> ServerActionRegistry {
     registry(
         &[
             (
-                "app/_uf.page.js",
+                "app/$page.js",
                 "import Counter from \"./Counter.js\";\nimport { createUser } from \"./actions.js\";\n",
             ),
             ("app/Counter.js", "\"use client\";\n"),
@@ -35,7 +35,7 @@ fn a_project_with_one_action() -> ServerActionRegistry {
                 "\"use server\";\n\nexport async function createUser(name: string): Promise<void> {}\n",
             ),
         ],
-        &["app/_uf.page.js"],
+        &["app/$page.js"],
     )
 }
 
@@ -82,7 +82,7 @@ fn the_generated_file_says_it_is_generated() {
 fn two_builds_of_the_same_sources_generate_the_same_bytes() {
     let sources = [
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             "import C from \"./C.js\";\nimport { b, a } from \"./actions.js\";\n",
         ),
         ("app/C.js", "\"use client\";\n"),
@@ -91,8 +91,8 @@ fn two_builds_of_the_same_sources_generate_the_same_bytes() {
             "\"use server\";\n\nexport async function b(): Promise<void> {}\nexport async function a(): Promise<void> {}\n",
         ),
     ];
-    let first = registry(&sources, &["app/_uf.page.js"]);
-    let second = registry(&sources, &["app/_uf.page.js"]);
+    let first = registry(&sources, &["app/$page.js"]);
+    let second = registry(&sources, &["app/$page.js"]);
 
     assert_ne!(
         first.build_fingerprint(),
@@ -111,7 +111,7 @@ fn rows_are_ordered_by_name() {
     let generated = generate_server_action_types(&registry(
         &[
             (
-                "app/_uf.page.js",
+                "app/$page.js",
                 "import C from \"./C.js\";\nimport { z } from \"./z.js\";\nimport { a } from \"./a.js\";\n",
             ),
             ("app/C.js", "\"use client\";\n"),
@@ -124,7 +124,7 @@ fn rows_are_ordered_by_name() {
                 "\"use server\";\n\nexport async function a(): Promise<void> {}\n",
             ),
         ],
-        &["app/_uf.page.js"],
+        &["app/$page.js"],
     ));
 
     let a = generated.find("app/a.js#a").expect("the first action");
@@ -141,8 +141,8 @@ fn rows_are_ordered_by_name() {
 #[test]
 fn a_project_with_no_actions_generates_an_empty_table() {
     let generated = generate_server_action_types(&registry(
-        &[("app/_uf.page.js", "export default function Page() {}\n")],
-        &["app/_uf.page.js"],
+        &[("app/$page.js", "export default function Page() {}\n")],
+        &["app/$page.js"],
     ));
 
     assert!(
@@ -162,16 +162,13 @@ fn a_project_with_no_actions_generates_an_empty_table() {
 fn an_action_no_client_can_reach_is_not_in_the_table() {
     let generated = generate_server_action_types(&registry(
         &[
-            (
-                "app/_uf.page.js",
-                "import { hidden } from \"./actions.js\";\n",
-            ),
+            ("app/$page.js", "import { hidden } from \"./actions.js\";\n"),
             (
                 "app/actions.js",
                 "\"use server\";\n\nexport async function hidden(): Promise<void> {}\n",
             ),
         ],
-        &["app/_uf.page.js"],
+        &["app/$page.js"],
     ));
 
     assert!(!generated.contains("hidden"), "{generated}");
@@ -187,12 +184,12 @@ fn an_inline_closure_is_left_to_the_manifest() {
     let registry = registry(
         &[
             (
-                "app/_uf.page.js",
+                "app/$page.js",
                 "import C from \"./C.js\";\n\nexport default function Page() {\n  async function save() {\n    \"use server\";\n  }\n  return save;\n}\n",
             ),
             ("app/C.js", "\"use client\";\n"),
         ],
-        &["app/_uf.page.js"],
+        &["app/$page.js"],
     );
 
     // The closure is registered — this is not a test that the scanner missed it.

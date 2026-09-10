@@ -189,7 +189,7 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         category: RuleCategory::Router,
         default_level: RuleLevel::Error,
         requirement: SourceText,
-        description: "`_uf.*` file names are reserved for layout, page, and middleware",
+        description: "`$*` file names are reserved for layout, page, and middleware",
     },
     RuleDescriptor {
         id: "router/unsupported-segment",

@@ -176,6 +176,78 @@ const TEXT_NODE = 3;
 const ELEMENT_NODE = 1;
 const COMMENT_NODE = 8;
 
+type DetachedHeadStyle = {|
+  readonly anchor: Comment,
+  readonly style: HTMLStyleElement,
+|};
+
+/**
+ * Hide development-only head artifacts before React compares the document.
+ *
+ * `uf dev` injects the React DevTools hook, the Fast Refresh preamble and
+ * Vite's dev styles into the head before the client entry. By the time
+ * `hydrate` runs the scripts have done their job; leaving them in a
+ * document-root app makes React compare bytes the application never rendered
+ * and report a hydration mismatch for uf's own instrumentation.
+ *
+ * The styles are different: the page still needs them. They are detached only
+ * for the instant in which React claims the document, and the returned function
+ * puts them back in the same order.
+ */
+export function prepareDevHeadForHydration(document: Document): () => void {
+  for (const script of document.head.querySelectorAll("script")) {
+    if (isDevHeadScript(script)) {
+      script.remove();
+    }
+  }
+  for (const child of Array.from(document.head.childNodes)) {
+    if (isIgnorableHeadWhitespace(child)) {
+      child.remove();
+    }
+  }
+  const detached = [];
+  for (const style of document.head.querySelectorAll("style")) {
+    if (isViteDevStyle(style)) {
+      const anchor = document.createComment("uf dev style");
+      document.head.insertBefore(anchor, style);
+      style.remove();
+      detached.push({ anchor, style });
+    }
+  }
+  return () => restoreDevHeadStyles(document, detached);
+}
+
+function isDevHeadScript(script: HTMLScriptElement): boolean {
+  if (script.getAttribute("data-uf-dev-head-preamble") != null) {
+    return true;
+  }
+  const src = script.getAttribute("src");
+  if (src == null) {
+    return false;
+  }
+  const path = src.startsWith("http") ? new URL(src).pathname : src;
+  return path === "/@vite/client" || path === "/@id/__x00__virtual:uf/client";
+}
+
+function isViteDevStyle(style: HTMLStyleElement): boolean {
+  return style.getAttribute("data-vite-dev-id") != null;
+}
+
+function restoreDevHeadStyles(
+  document: Document,
+  detached: $ReadOnlyArray<DetachedHeadStyle>,
+): void {
+  for (const { anchor, style } of detached) {
+    const parent = anchor.parentNode;
+    if (parent != null) {
+      parent.insertBefore(style, anchor);
+      parent.removeChild(anchor);
+    } else {
+      document.head.appendChild(style);
+    }
+  }
+}
+
 /**
  * What the server sent, taken out of the document before React touches it.
  *
@@ -233,9 +305,41 @@ function parseServerMarkup(
 function children(node: Node): Array<Node> {
   const out = [];
   for (const child of node.childNodes) {
+    if (isDevHeadArtifact(child)) {
+      continue;
+    }
     out.push(child);
   }
   return out;
+}
+
+function isDevHeadArtifact(node: Node): boolean {
+  if (isIgnorableHeadWhitespace(node)) {
+    return true;
+  }
+  if (node.nodeType === COMMENT_NODE && node.textContent === "uf dev style") {
+    return true;
+  }
+  if (node.nodeType !== ELEMENT_NODE) {
+    return false;
+  }
+  const element = node as $FlowFixMe as Element;
+  if (element.tagName === "STYLE" && element.getAttribute("data-vite-dev-id") != null) {
+    return true;
+  }
+  if (element.tagName !== "SCRIPT") {
+    return false;
+  }
+  return isDevHeadScript(element as $FlowFixMe as HTMLScriptElement);
+}
+
+function isIgnorableHeadWhitespace(node: Node): boolean {
+  return (
+    node.nodeType === TEXT_NODE &&
+    node.parentNode != null &&
+    (node.parentNode as $FlowFixMe as Element).tagName === "HEAD" &&
+    (node.textContent ?? "").trim() === ""
+  );
 }
 
 /**
@@ -656,32 +760,46 @@ function isHostElement(name: string): boolean {
  */
 export function formatHydrationReport(report: HydrationReport): string {
   const lines = [];
-  const where = report.components.length > 0 ? ` in <${report.components[0]}>` : "";
-  lines.push(`Hydration mismatch${where}`);
+  lines.push(reportTitle(report));
+  lines.push("");
+  lines.push(
+    "The server HTML and the browser's first render disagreed. React repaired the page, but the first paint may not be the UI you meant to ship.",
+  );
   lines.push("");
   const difference = report.difference;
   if (difference == null) {
+    lines.push("What changed");
     lines.push(report.note ?? "There is nothing to compare.");
   } else {
-    lines.push(`at       ${difference.path}`);
+    lines.push("What changed");
+    lines.push(`path             ${difference.path}`);
     if (difference.attribute != null) {
-      lines.push(`in       the ${difference.attribute} attribute`);
+      lines.push(`attribute        ${difference.attribute}`);
     }
-    lines.push(`server   ${difference.server ?? "(nothing)"}`);
-    lines.push(`client   ${difference.client ?? "(nothing)"}`);
+    lines.push(`server rendered  ${difference.server ?? "(nothing)"}`);
+    lines.push(`browser rendered ${difference.client ?? "(nothing)"}`);
   }
   if (report.explanation !== "") {
     lines.push("");
+    lines.push("Likely cause");
     lines.push(report.explanation);
+    lines.push("");
+    lines.push("Try this next");
     lines.push(report.remedy);
   }
   if (report.components.length > 1) {
     lines.push("");
-    lines.push(`Rendered by: ${report.components.join(" < ")}`);
+    lines.push(`Component trail: ${report.components.join(" < ")}`);
   }
   lines.push("");
-  lines.push(`React said: ${headline(report.message)}`);
+  lines.push(`React's original message: ${headline(report.message)}`);
   return lines.join("\n");
+}
+
+function reportTitle(report: HydrationReport): string {
+  return report.components.length > 0
+    ? `Hydration mismatch in <${report.components[0]}>`
+    : "Hydration mismatch";
 }
 
 /**
@@ -707,26 +825,61 @@ const OVERLAY_STYLE = `
   position: fixed;
   inset: auto 1rem 1rem 1rem;
   z-index: 2147483647;
-  max-height: 60vh;
+  max-height: min(78vh, 720px);
   overflow: auto;
-  padding: 1rem 1.25rem;
-  border: 1px solid #f0b9b9;
-  border-radius: 6px;
-  background: #fff5f5;
-  color: #2b1b1b;
-  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+  padding: 1rem;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fffafa;
+  color: #1f2937;
+  font: 14px/1.55 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  box-shadow: 0 18px 60px rgba(15, 23, 42, 0.24);
 }
-h2 { margin: 0 0 0.5rem; font-size: 13px; font-weight: 700; }
-dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 1rem; margin: 0 0 0.75rem; }
-dt { color: #8a4b4b; }
-dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-p { margin: 0 0 0.5rem; font-family: ui-sans-serif, system-ui, sans-serif; }
-.react { color: #6b5555; }
+.top { display: grid; gap: 0.35rem; padding-right: 2rem; }
+.badge {
+  color: #be123c;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+h2 { margin: 0; color: #111827; font-size: 1.05rem; line-height: 1.25; }
+h3 { margin: 0 0 0.45rem; color: #9f1239; font-size: 0.82rem; line-height: 1.25; }
+.lead { margin: 0; color: #4b5563; }
+section {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #fee2e2;
+}
+dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 0.85rem;
+  margin: 0;
+}
+dt { color: #9f1239; font-weight: 800; }
+dd {
+  margin: 0;
+  color: #111827;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+}
+p { margin: 0; color: #374151; }
+.react { color: #6b7280; font-size: 0.82rem; }
 button {
-  position: absolute; top: 0.5rem; right: 0.5rem;
-  border: 0; background: transparent; cursor: pointer;
-  font: inherit; color: #8a4b4b;
+  position: absolute; top: 0.65rem; right: 0.65rem;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  color: #9f1239;
+  padding: 0.3rem 0.55rem;
+}
+@media (min-width: 760px) {
+  .panel { left: auto; width: min(680px, calc(100vw - 2rem)); }
 }
 `;
 
@@ -758,17 +911,34 @@ export function showHydrationReport(report: HydrationReport, document: Document)
 
   const panel = document.createElement("div");
   panel.className = "panel";
+  panel.setAttribute("role", "dialog");
+  panel.setAttribute("aria-modal", "false");
+  panel.setAttribute("aria-labelledby", "uf-hydration-title");
+  panel.setAttribute("aria-describedby", "uf-hydration-lead");
 
+  const top = document.createElement("div");
+  top.className = "top";
+  const badge = document.createElement("div");
+  badge.className = "badge";
+  badge.textContent = "uf dev hydration report";
+  top.appendChild(badge);
   const heading = document.createElement("h2");
-  heading.textContent =
-    report.components.length > 0
-      ? `Hydration mismatch in <${report.components[0]}>`
-      : "Hydration mismatch";
-  panel.appendChild(heading);
+  heading.id = "uf-hydration-title";
+  heading.textContent = reportTitle(report);
+  top.appendChild(heading);
+  const lead = paragraph(
+    document,
+    "The server HTML and the browser's first render did not match. React repaired it, but this is the first place to look.",
+    "lead",
+  );
+  lead.id = "uf-hydration-lead";
+  top.appendChild(lead);
+  panel.appendChild(top);
 
   const dismiss = document.createElement("button");
   dismiss.type = "button";
-  dismiss.textContent = "close";
+  dismiss.textContent = "Close";
+  dismiss.setAttribute("aria-label", "Close hydration report");
   dismiss.addEventListener("click", () => host.remove());
   panel.appendChild(dismiss);
 
@@ -784,19 +954,42 @@ export function showHydrationReport(report: HydrationReport, document: Document)
     addRow(document, rows, "server", difference.server ?? "(nothing)");
     addRow(document, rows, "client", difference.client ?? "(nothing)");
   }
-  if (report.components.length > 1) {
-    addRow(document, rows, "rendered by", report.components.join(" < "));
-  }
-  panel.appendChild(rows);
+  panel.appendChild(section(document, "What changed", rows));
 
   if (report.explanation !== "") {
-    panel.appendChild(paragraph(document, report.explanation, null));
-    panel.appendChild(paragraph(document, report.remedy, null));
+    panel.appendChild(
+      section(document, "Likely cause", paragraph(document, report.explanation, null)),
+    );
+    panel.appendChild(section(document, "Try this next", paragraph(document, report.remedy, null)));
   }
-  panel.appendChild(paragraph(document, `React said: ${headline(report.message)}`, "react"));
+  if (report.components.length > 1) {
+    panel.appendChild(
+      section(
+        document,
+        "Component trail",
+        paragraph(document, report.components.join(" < "), null),
+      ),
+    );
+  }
+  panel.appendChild(
+    section(
+      document,
+      "React's original message",
+      paragraph(document, headline(report.message), "react"),
+    ),
+  );
 
   root.appendChild(panel);
   body.appendChild(host);
+}
+
+function section(document: Document, title: string, child: Element): Element {
+  const element = document.createElement("section");
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  element.appendChild(heading);
+  element.appendChild(child);
+  return element;
 }
 
 function addRow(document: Document, rows: Element, label: string, value: string): void {

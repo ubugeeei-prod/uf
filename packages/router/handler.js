@@ -2,13 +2,13 @@
 //
 // Route handlers: a path that answers a request instead of rendering a page.
 //
-// `app/api/users/_uf.route.js` exporting `GET` and `POST` serves
+// `app/api/users/$route.js` exporting `GET` and `POST` serves
 // `/api/users`. A handler takes a `Request` and returns a `Response` — the
 // platform's own types, not a framework's wrapper — because that is what runs
 // unchanged on Node.js, Bun, Deno and a Cloudflare Worker, and uf's whole
 // position is that the host is a capability rather than a target.
 //
-//   // app/api/users/[id]/_uf.route.js
+//   // app/api/users/[id]/$route.js
 //   // @flow
 //   export async function GET(request: Request, context: HandlerContext) {
 //     const user = await find(context.params.id);

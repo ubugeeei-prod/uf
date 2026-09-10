@@ -2,25 +2,25 @@
 //
 // `@uniflowed/router`: the file-system router.
 //
-// Pages live in `app/` as `_uf.page.js` (or `.mdx`), layouts as
-// `_uf.layout.js`, and `app.js` exports `routerView("./app")`. The route table
+// Pages live in `app/` as `$page.js` (or `.mdx`), layouts as
+// `$layout.js`, and `app.js` exports `routerView("./app")`. The route table
 // is generated from the directory at build time; this module is the runtime
 // that matches, loads, navigates and renders it.
 //
-// `_uf.not-found.js` and `_uf.error.js` are the two boundaries: the page for a
+// `$not-found.js` and `$error.js` are the two boundaries: the page for a
 // path that matched nothing, and what renders in place of a subtree that threw.
 // Both are segment files, resolved by the nearest one above the path — and the
 // router root always has one of each, so a project that declares neither still
 // answers a 404 inside its own layouts rather than beside them.
 //
-// `_uf.template.js` is a layout that remounts on every navigation, for the
+// `$template.js` is a layout that remounts on every navigation, for the
 // cases where a layout's persistence is the wrong default.
 //
 // A directory named `@team` is a parallel-route slot: it contributes no URL
 // segment, and the layout of the segment that holds it receives the slot as a
 // `team` prop beside `children`. The slot's pages are matched against the same
 // URL the page is, so one URL renders two subtrees at once, and
-// `_uf.default.js` is what a slot renders when the URL matched none of its
+// `$default.js` is what a slot renders when the URL matched none of its
 // routes. See ubugeeei-prod/uf#267.
 
 import * as React from "react";
@@ -97,7 +97,7 @@ export type PageProps<
   readonly data: TData,
 |};
 
-/** Props an `_uf.error.js` component receives. */
+/** Props an `$error.js` component receives. */
 export type ErrorProps = {|
   readonly error: RouteError,
   readonly reset: () => void,
@@ -114,7 +114,7 @@ export type ErrorProps = {|
  *     component Dashboard(children: React.Node, team: React.Node, analytics: React.Node)
  *
  * and the router passes `null` for a slot the URL addressed by neither a route
- * of its own nor a `_uf.default.js`, so `{team ?? <Empty />}` is a thing that
+ * of its own nor a `$default.js`, so `{team ?? <Empty />}` is a thing that
  * can be written and relied on.
  */
 export type LayoutProps<

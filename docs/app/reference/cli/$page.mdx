@@ -112,7 +112,7 @@ error `uf build` would give rather than silently left out of the table.
 
 ### uf routes add PATH [--layout] [--loader] [--middleware]
 
-Writes a route: the directory, `_uf.page.js`, and whichever of the rest was
+Writes a route: the directory, `$page.js`, and whichever of the rest was
 asked for.
 
 ```
@@ -178,7 +178,7 @@ here changes an exit code.
 
 Builds the client and server bundles and prerenders what can be prerendered.
 `--size-report` prints the cost of each chunk. A route that a
-`_uf.middleware.js` guards and the prerender wrote a document for is listed
+`$middleware.js` guards and the prerender wrote a document for is listed
 under `guards`, and in `.uf/build/meta/uf-build-manifest.json` as
 `prerenderedUnderMiddleware` — a static host serves that file without running
 the guard, and which half of `dist/` you deploy is the one thing the build
@@ -187,7 +187,7 @@ cannot know.
 Every route the build wrote **no** document for is listed too, under `answered
 by a server` and in the same manifest as `rendering.perRequest`: a page with
 parameters and no `generateStaticParams`, a page that exports `dynamic =
-"force-dynamic"`, a `_uf.route.js` handler. Those routes need a process, and
+"force-dynamic"`, a `$route.js` handler. Those routes need a process, and
 until they were reported the only way to find out that `dist/` did not contain
 one was a 404 after the deploy.
 
@@ -454,7 +454,7 @@ have read them:
   asset without invoking your script; uf asks for the asset *from inside* the
   Worker instead, so the file-then-handler-then-render order is uf's own and is
   the same order `uf start` uses. A miss comes back as a 404 the Worker falls
-  through, so the 404 a visitor sees is your `_uf.not-found` page rather than
+  through, so the 404 a visitor sees is your `$not-found` page rather than
   Cloudflare's.
 
 React is linked from its `server.edge.js` build for this target, so a document
@@ -526,8 +526,8 @@ so this target adds no output. What it adds is that a project a static host
 
 | What | Why a file is not it |
 | --- | --- |
-| a `_uf.route.js` | it answers a request, and a `POST` has no file behind it |
-| a `_uf.middleware.js` | it runs once per request, before the route resolves, and nothing runs on a static host |
+| a `$route.js` | it answers a request, and a `POST` has no file behind it |
+| a `$middleware.js` | it runs once per request, before the route resolves, and nothing runs on a static host |
 | a route the prerender wrote no document for — parameters and no `generateStaticParams` | there is nothing to upload for it |
 | a `"use server"` export the browser can call | an action is a `POST` back to the application, at the page's own URL |
 

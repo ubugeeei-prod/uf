@@ -970,7 +970,7 @@ describe("the module the browser is given in place of a `use server` file", () =
   });
 
   it("leaves every other module alone in both environments", () => {
-    const page = path.join(root, "app", "counter", "_uf.page.js");
+    const page = path.join(root, "app", "counter", "$page.js");
     expect(loaded(page, false)).toBe(null);
     expect(loaded(page, true)).toBe(null);
   });

@@ -56,7 +56,7 @@ const CONTENT_SECURITY_POLICY = [
     "script-src 'self'",
     // The theme bootstrap, from `docs/app/_design/theme.js`.
     "'sha256-GfUNcJf52UpaQd6LU2T1KTtYHa1CrhXX4vgwslYyF14='",
-    // The site's `application/ld+json`, from `docs/app/_uf.layout.js`.
+    // The site's `application/ld+json`, from `docs/app/$layout.js`.
     "'sha256-O/S3orjEiDkT0iCx3O669yJorYrgNFq2eYh8Es05qlM='",
     // React's streaming runtime: the timing stub, and the reveal function.
     "'sha256-7mu4H06fwDCjmnxxr/xNHyuQC6pLTHr4M2E4jXw5WZs='",

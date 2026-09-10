@@ -20,7 +20,7 @@ fn errors_render_with_their_path() {
 fn a_full_analysis_flows_from_sources_to_a_manifest() {
     let mut builder = RscGraphBuilder::new();
     builder.add_source(
-        "app/_uf.page.js",
+        "app/$page.js",
         "import Counter from \"./Counter.js\";\nimport { save } from \"../server/actions.js\";\n",
     );
     builder.add_source("app/Counter.js", "\"use client\";\n");
@@ -28,7 +28,7 @@ fn a_full_analysis_flows_from_sources_to_a_manifest() {
         "server/actions.js",
         "\"use server\";\nexport async function save() {}\n",
     );
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
 
     let graph = builder.build();
     let build_id = BuildId::new("lib-test-build-id").unwrap();

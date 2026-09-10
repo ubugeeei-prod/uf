@@ -54,7 +54,7 @@ const get = (url: string, init?: mixed) => new Request(`http://localhost${url}`,
 /** A middleware table entry whose module is given inline. */
 const guard = (path: string, middleware: mixed) => ({
   path,
-  file: `app${path === "/" ? "" : path}/_uf.middleware.js`,
+  file: `app${path === "/" ? "" : path}/$middleware.js`,
   load: async () => ({ default: middleware }),
 });
 
@@ -62,7 +62,7 @@ const guard = (path: string, middleware: mixed) => ({
 const route = (path: string, module: mixed) => ({
   path,
   params: [],
-  file: `app${path}/_uf.route.js`,
+  file: `app${path}/$route.js`,
   load: async () => module,
 });
 
@@ -344,7 +344,7 @@ function pageTable(Page: React.ComponentType<empty>) {
         path: "/",
         params: [],
         mdx: false,
-        file: "app/_uf.page.js",
+        file: "app/$page.js",
         page: () => Promise.resolve({ default: Page }),
         layouts: [],
         loading: [],

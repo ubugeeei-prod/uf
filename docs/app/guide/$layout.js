@@ -3,7 +3,7 @@
 // The manual.
 //
 // The sidebar, the seam, the prose column and the next-page link. `/guide` and
-// `/reference` both use it; `/reference/_uf.layout.js` re-exports this one
+// `/reference` both use it; `/reference/$layout.js` re-exports this one
 // rather than copying it, so the two halves of the manual cannot drift apart.
 
 import * as React from "@uniflowed/react";

@@ -144,7 +144,7 @@ type CachedDocument = {|
  *
  * Returns `null` for nothing, ever — a request that matches no handler and no
  * route is a rendered 404, because the renderer is what knows what the
- * project's `_uf.not-found` page says.
+ * project's `$not-found` page says.
  *
  * The order is the dev server's, and has to stay the dev server's: middleware
  * first, then server actions, then handlers for every method, because a

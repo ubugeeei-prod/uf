@@ -7,8 +7,8 @@
 // ubugeeei-prod/uf#636 answered the third: `uf dev` says why a module is in the
 // client bundle, out loud, at the moment the answer changes. This is the other
 // two, and the gap it fills was named in that issue's triage: *the route table
-// already has the data*. `_uf.loading.js` nests and carries the number of
-// layouts outside it, `_uf.error.js` binds to the nearest ancestor, and
+// already has the data*. `$loading.js` nests and carries the number of
+// layouts outside it, `$error.js` binds to the nearest ancestor, and
 // `RouteView` threads both into one stack. What did not exist is a way to point
 // at the **DOM subtree** each of them owns.
 //
@@ -22,9 +22,8 @@
 // # The mechanism: a pair of inert marks, and why a pair
 //
 // Each boundary `RouteView` renders wraps its children between two
-// `<template data-uf-boundary>` elements. A `<template>` is `display: none` in
-// every browser's UA stylesheet and its content is inert, so it lays nothing
-// out and runs nothing; the pair are siblings of the nodes between them,
+// `<span hidden data-uf-boundary>` elements. The `hidden` attribute keeps the
+// marks out of layout and accessibility trees; the pair are siblings of the nodes between them,
 // because React fragments create no element, so "what this boundary owns" is
 // `open.nextElementSibling` up to `close`.
 //
@@ -55,7 +54,7 @@
 //
 // `marksAreLive` is what keeps that from costing a second commit forever. It is
 // latched by the first edge to mount, and every edge mounted afterwards — a
-// navigation, or a `_uf.loading.js` that HMR has just added — starts live and
+// navigation, or a `$loading.js` that HMR has just added — starts live and
 // is in the DOM in the same commit that created it. That matters for the report
 // below, which reads the DOM in the commit where the boundaries changed.
 //
@@ -65,7 +64,7 @@
 // and #636 argued for again: a diagnostic that exists only in a browser window
 // has to be noticed by somebody who does not know to look. And it is quiet
 // unless the answer *changed* — the first sighting of a route says nothing, the
-// same boundaries on the same route say nothing, and adding an `_uf.error.js`
+// same boundaries on the same route say nothing, and adding an `$error.js`
 // says where it landed and what it took over. A boundary map printed on every
 // reload is the banner nobody reads.
 //
@@ -129,7 +128,7 @@ export type BoundaryKind = "suspense" | "error";
  * `source` is the file it was declared in, and is `null` for every `<Suspense>`
  * boundary. That asymmetry is the route table's rather than this module's: an
  * error boundary is matched by path, so the table carries its `file`, while a
- * `_uf.loading.js` is carried by depth alone. Adding a path to the loading
+ * `$loading.js` is carried by depth alone. Adding a path to the loading
  * records would put one in every visitor's bundle to serve a report only
  * `uf dev` reads.
  */
@@ -145,7 +144,7 @@ export function suspenseId(index: number): string {
   return `suspense:${index}`;
 }
 
-/** The id of the boundary a route's own `_uf.error.js` renders. */
+/** The id of the boundary a route's own `$error.js` renders. */
 export const ROUTE_ERROR_ID: string = "error:route";
 
 /**
@@ -182,7 +181,7 @@ type BoundedRoute = {
  * itself.
  *
  * @param resolved the route being rendered
- * @param errorSource the `file` of the nearest `_uf.error.js`, when the table
+ * @param errorSource the `file` of the nearest `$error.js`, when the table
  *   has one; `null` leaves the boundary named by its depth alone
  */
 export function routeBoundaries(
@@ -224,10 +223,10 @@ let marksAreLive = false;
 /**
  * One end of one boundary.
  *
- * A `<template>` and not a comment node, because React renders elements;
- * `display: none` in the UA stylesheet is what makes an element acceptable
- * here, and inert content is what makes it free. It carries no children, so
- * nothing is parsed into its document fragment either.
+ * A hidden element and not a comment node, because React renders elements.
+ * This used to be a `<template>`, but React 19.3 reports template insertion
+ * during document-root hydration as a browser error. A `span hidden` carries
+ * the same marker data without entering layout or the accessibility tree.
  */
 component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
   const [live, setLive] = useState<boolean>(() => marksAreLive);
@@ -239,10 +238,11 @@ component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
     return null;
   }
   if (edge === "close") {
-    return <template data-uf-boundary={boundary.id} data-uf-boundary-edge="close" />;
+    return <span hidden data-uf-boundary={boundary.id} data-uf-boundary-edge="close" />;
   }
   return (
-    <template
+    <span
+      hidden
       data-uf-boundary={boundary.id}
       data-uf-boundary-edge="open"
       data-uf-boundary-source={boundary.source ?? undefined}
@@ -256,8 +256,8 @@ component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
  * `children` unchanged when there is no boundary to mark, so a caller never has
  * to ask twice. The marks are the first and last children of a fragment rather
  * than a wrapper's, so the nodes between them are siblings of them, and every
- * position in the fragment is fixed — an edge going from `null` to a
- * `<template>` after mount is an insertion beside `children` and not around it,
+ * position in the fragment is fixed — an edge going from `null` to a hidden
+ * mark after mount is an insertion beside `children` and not around it,
  * which is why it costs no remount.
  */
 export function insideBoundary(boundary: ?RouteBoundary, children: React.Node): React.Node {

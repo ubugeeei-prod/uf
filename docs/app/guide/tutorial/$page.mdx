@@ -50,9 +50,9 @@ uf new · reading-list
   reading-list
   ├─ app
   │  ├─ Counter.js
-  │  ├─ _uf.layout.js
-  │  ├─ _uf.page.js
-  │  ├─ _uf.page.test.js
+  │  ├─ $layout.js
+  │  ├─ $page.js
+  │  ├─ $page.test.js
   │  └─ useCounter.js
   ├─ .gitignore
   ├─ app.js
@@ -98,7 +98,7 @@ is the entry because those are the defaults; the `tasks` block is there so
 [the config reference](/reference/config).
 
 Delete the three files the template wrote as a demonstration —
-`app/Counter.js`, `app/useCounter.js` and `app/_uf.page.test.js` — and start.
+`app/Counter.js`, `app/useCounter.js` and `app/$page.test.js` — and start.
 
 ## The data
 
@@ -174,7 +174,7 @@ object property, not `+`. The variance sigil is deprecated in modern Flow, and
 
 ## The list page
 
-A page is `_uf.page.js`, and a page that needs data exports a `loader` that runs
+A page is `$page.js`, and a page that needs data exports a `loader` that runs
 before it renders:
 
 ```js
@@ -221,7 +221,7 @@ wired by position.
 ## The article page
 
 A directory in brackets is a parameter, so
-`app/articles/[slug]/_uf.page.js` serves `/articles/one-parse`:
+`app/articles/[slug]/$page.js` serves `/articles/one-parse`:
 
 ```js
 // @flow
@@ -271,7 +271,7 @@ return. Without the `throw`, `article` is still `null` on the next line.
 
 ## The layout
 
-`app/_uf.layout.js` renders the document and receives the page as `children`:
+`app/$layout.js` renders the document and receives the page as `children`:
 
 ```js
 // @flow
@@ -776,16 +776,16 @@ uf build · reading-list
     asset                                          kind             gzip        raw
     assets/client-Ck9fJOtz.js.map                  source-map  176.63 kB  881.84 kB
     assets/client-Ck9fJOtz.js                      javascript   63.64 kB  202.42 kB
-    assets/_uf.page-CCpsAGfo.js.map                source-map   58.84 kB  213.07 kB
+    assets/$page-CCpsAGfo.js.map                source-map   58.84 kB  213.07 kB
     assets/state-C5bwrBVn.js.map                   source-map   29.72 kB   98.43 kB
-    assets/_uf.page-CCpsAGfo.js                    javascript   10.10 kB   28.65 kB
+    assets/$page-CCpsAGfo.js                    javascript   10.10 kB   28.65 kB
     assets/state-C5bwrBVn.js                       javascript    2.58 kB    6.56 kB
     assets/articles-DzlNJoIc.js.map                source-map      911 B    2.00 kB
-    assets/_uf.page-Dk6TuWlb.js.map                source-map      803 B    1.97 kB
+    assets/$page-Dk6TuWlb.js.map                source-map      803 B    1.97 kB
     index.html                                     html            801 B    1.95 kB
-    assets/_uf.layout-DVv7YWPk.js.map              source-map      743 B    1.92 kB
-    assets/_uf.layout-DVv7YWPk.js                  javascript      522 B      914 B
-    assets/_uf.page-Dk6TuWlb.js                    javascript      522 B      933 B
+    assets/$layout-DVv7YWPk.js.map              source-map      743 B    1.92 kB
+    assets/$layout-DVv7YWPk.js                  javascript      522 B      914 B
+    assets/$page-Dk6TuWlb.js                    javascript      522 B      933 B
     assets/articles-DzlNJoIc.js                    javascript      415 B      651 B
     articles/the-compiler-is-not-magic/index.html  html            407 B      676 B
     articles/component-syntax/index.html           html            406 B      671 B

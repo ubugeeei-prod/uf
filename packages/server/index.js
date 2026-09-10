@@ -121,7 +121,7 @@ export function cookies(): CookieStore {
  *
  * The flow it exists for is one route handler:
  *
- *     // app/api/preview/_uf.route.js
+ *     // app/api/preview/$route.js
  *     export function GET(request: Request): Response {
  *       const url = new URL(request.url);
  *       if (url.searchParams.get("token") !== process.env.CMS_PREVIEW_TOKEN) {

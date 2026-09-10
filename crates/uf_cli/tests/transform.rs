@@ -144,7 +144,7 @@ fn development_output_registers_for_fast_refresh() {
 /// leaves the function it took them out of behind.
 ///
 /// Three shapes, because they are lowered by three different paths: a declared
-/// component, a default-exported one (the shape every `_uf.page.js` uses), and
+/// component, a default-exported one (the shape every `$page.js` uses), and
 /// a plain arrow assigned to a `const`, whose name comes from JavaScript's own
 /// inference rather than from a binding the transform wrote.
 ///
@@ -163,7 +163,7 @@ fn a_component_keeps_its_name_through_the_compiler() {
                 "options": development,
             }),
             serde_json::json!({
-                "id": "/app/_uf.page.js",
+                "id": "/app/$page.js",
                 "code": "// @flow\nimport {useState} from 'react';\nexport default component Page() {\n  const [n] = useState(0);\n  return <main>{n}</main>;\n}\n",
                 "options": development,
             }),

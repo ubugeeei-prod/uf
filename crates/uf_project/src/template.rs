@@ -19,9 +19,9 @@ pub(crate) fn app_react_files(name: &str) -> Vec<(&'static str, String)> {
         ("package.json", app_package_json(name)),
         ("uf.config.js", app_config()),
         ("app.js", app_entry()),
-        ("app/_uf.layout.js", app_layout()),
-        ("app/_uf.page.js", app_page()),
-        ("app/_uf.page.test.js", app_test()),
+        ("app/$layout.js", app_layout()),
+        ("app/$page.js", app_page()),
+        ("app/$page.test.js", app_test()),
         ("app/Counter.js", app_counter()),
         ("app/useCounter.js", app_counter_hook()),
         (".gitignore", gitignore()),
@@ -324,10 +324,7 @@ export component Page() {
   return (
     <main>
       <Headline mood={Mood.Calm} />
-      <p>
-        Edit <code>app/_uf.page.js</code> and this page reloads. There is no second config file to
-        keep in step with this one.
-      </p>
+      <p>Edit app/$page.js and this page reloads.</p>
       <Counter initial={0} />
     </main>
   );

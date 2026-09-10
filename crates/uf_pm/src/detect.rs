@@ -19,8 +19,8 @@
 //! | 5 | [`DetectionSource::Default`] | [`PackageManager::Uf`] |
 //!
 //! Lockfiles are ranked against each other by [`Lockfile`] declaration order
-//! (`uf.lock` > `bun.lock` > `bun.lockb` > `pnpm-lock.yaml` > `yarn.lock` >
-//! `package-lock.json` > `npm-shrinkwrap.json`). When lockfiles naming *different*
+//! (`bun.lock` > `bun.lockb` > `pnpm-lock.yaml` > `yarn.lock` >
+//! `package-lock.json` > `npm-shrinkwrap.json` > `uf.lock`). When lockfiles naming *different*
 //! managers sit side by side the tie-break is still deterministic, but
 //! [`Detection::outcome`] reports [`DetectionOutcome::Ambiguous`] with every
 //! conflicting lockfile so the choice is never silent.

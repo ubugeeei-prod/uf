@@ -93,7 +93,7 @@ for (const route of prerendered) {
 emit("done", { outDir: path.relative(root, outDir), pages: prerendered.length });
 process.exit(0);
 
-/** Every `_uf.page.js` under `directory`, as `{ path, dynamic }`. */
+/** Every `$page.js` under `directory`, as `{ path, dynamic }`. */
 function pages(directory, routePath) {
   let found = [];
   let entries;
@@ -102,7 +102,7 @@ function pages(directory, routePath) {
   } catch {
     return found;
   }
-  if (entries.some((entry) => entry.isFile() && entry.name === "_uf.page.js")) {
+  if (entries.some((entry) => entry.isFile() && entry.name === "$page.js")) {
     found.push({ path: routePath, dynamic: routePath.includes(":") });
   }
   for (const entry of entries) {

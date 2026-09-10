@@ -2,31 +2,31 @@
 //
 // `@uniflowed/story/collect`: which files are stories, and what is in them.
 //
-// A story file is `_uf.story.js`, beside the component it describes.
+// A story file is `$story.js`, beside the component it describes.
 //
 //   src/components/Button.js
-//   src/components/_uf.story.js
+//   src/components/$story.js
 //
 // # The name is the repository's own grammar, not a second one
 //
-// uf already reserves `_uf.<role>[.<variant>].js` for the files the framework
+// uf already reserves `$<role>[.<variant>].js` for the files the framework
 // gives meaning to, and `crates/uf_router/src/reserved.rs` is its single
 // source of truth: `uf create` generates those names, the router looks for
 // them, and `uf lint`'s `router/reserved-files` rejects the ones that do not
 // fit. A story file is exactly such a file — a name uf assigns meaning to, in
-// a project's own source tree — so it is spelled `_uf.story.js` and not
+// a project's own source tree — so it is spelled `$story.js` and not
 // `*.stories.js`.
 //
 // The variants are the same vocabulary for the same reason, and the rule
 // about them is the router's too: only the default variant is the thing the
-// runner renders. `_uf.story.native.js` is a companion for a React Native
-// build, the way `_uf.page.native.js` is, and [`findStoryFiles`] leaves it
+// runner renders. `$story.native.js` is a companion for a React Native
+// build, the way `$page.native.js` is, and [`findStoryFiles`] leaves it
 // alone until there is a renderer that could mount it.
 //
 // **`story` is not yet one of the roles the Rust grammar defines.** Adding it
 // is one arm in `ReservedRole` in `crates/uf_router/src/reserved.rs`, and
 // this package cannot make that change from JavaScript. Until it lands,
-// `uf lint` reports `router/reserved-files` on every `_uf.story.js` — the
+// `uf lint` reports `router/reserved-files` on every `$story.js` — the
 // name is right and the linter has not been told. `index.js` lists it under
 // **Readiness** rather than leaving it to be discovered by whoever writes the
 // first story file.
@@ -36,7 +36,7 @@
 //
 // Discovery is by name alone: a walk that had to read every file to find out
 // whether it declared stories would be a parse of the whole tree. Loading is
-// where a file is judged, and a `_uf.story.js` that exports no story set is
+// where a file is judged, and a `$story.js` that exports no story set is
 // an error rather than an empty result — the name is a claim, and a file that
 // does not honour it is a mistake somebody made, not a fact about the
 // project.
@@ -72,7 +72,7 @@ import { isStorySet } from "./story.js";
 export const STORY_ROLE: "story" = "story";
 
 /** The name of a story file with no variant: the one the runner renders. */
-export const STORY_FILE: "_uf.story.js" = "_uf.story.js";
+export const STORY_FILE: "$story.js" = "$story.js";
 
 /**
  * Which build a story file applies to.
@@ -102,10 +102,10 @@ const IGNORED: $ReadOnlyArray<string> = [
  * a caller with a path can normalise it two ways and get two answers.
  */
 export function classifyStoryFile(fileName: string): StoryVariant | null {
-  if (!fileName.startsWith("_uf.") || !fileName.endsWith(".js")) {
+  if (!fileName.startsWith("$") || !fileName.endsWith(".js")) {
     return null;
   }
-  const segments = fileName.slice("_uf.".length, -".js".length).split(".");
+  const segments = fileName.slice("$".length, -".js".length).split(".");
   if (segments[0] !== STORY_ROLE) {
     return null;
   }
@@ -113,7 +113,7 @@ export function classifyStoryFile(fileName: string): StoryVariant | null {
     return "default";
   }
   if (segments.length > 2) {
-    // `_uf.story.native.test.js`: one variant, not a stack of them.
+    // `$story.native.test.js`: one variant, not a stack of them.
     return null;
   }
   const variant = VARIANTS.find((each) => each === segments[1]);

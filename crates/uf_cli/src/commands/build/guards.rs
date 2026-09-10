@@ -1,8 +1,8 @@
-//! Prerendered documents that a `_uf.middleware.js` never sees.
+//! Prerendered documents that a `$middleware.js` never sees.
 //!
 //! `uf build` writes an HTML file for every route it can render without a
 //! request, and a host serves that file to whoever asks for it. A
-//! `_uf.middleware.js` is the other thing: code that runs on a server, once
+//! `$middleware.js` is the other thing: code that runs on a server, once
 //! per request, before the route resolves — redirects, headers, and the
 //! session check the routing guide names first. A route that is both is a
 //! route whose guard applies to one half of what this build produced and not
@@ -103,7 +103,7 @@ pub(crate) fn unguarded_pages(
         // rather than over the guarded ones: a `(group)` segment is dropped
         // from a route path but not from the directory tree, so
         // `app/(marketing)/posts/new/` serves `/posts/new` and inherits
-        // nothing from `app/posts/_uf.middleware.js`. Searching the guarded
+        // nothing from `app/posts/$middleware.js`. Searching the guarded
         // routes alone would have named the guard that does not apply, which
         // is a report about a file that is served exactly as intended.
         //

@@ -14,7 +14,7 @@ fn bench_large_route_tree(c: &mut Criterion) {
     for index in 0..1_000 {
         let route = root.join(format!("app/team/[teamId]/project/[projectId]/view{index}"));
         fs::create_dir_all(&route).expect("route dir");
-        fs::write(route.join("_uf.page.js"), "// @flow\n").expect("page");
+        fs::write(route.join("$page.js"), "// @flow\n").expect("page");
     }
 
     let config = UniflowedConfig::default();

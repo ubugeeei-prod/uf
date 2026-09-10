@@ -208,7 +208,7 @@ fn a_stylex_application_ships_the_stylesheet_it_compiled() {
     let mut files = app_scaffold();
     files.push(("app/plain.css", ".plain-heading { color: #663399; }\n"));
     files.push((
-        "app/_uf.page.js",
+        "app/$page.js",
         r#"// @flow
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
@@ -334,7 +334,7 @@ export component Counter() {
     ));
     files.push(("node_modules/@uniflowed/probe/index.js", refs_during_render));
     files.push((
-        "app/_uf.page.js",
+        "app/$page.js",
         r#"// @flow
 import { useRef } from "react";
 import { Counter } from "@uniflowed/probe";
@@ -368,7 +368,7 @@ export default component Home() {
         .collect();
     let mut positions: Vec<&str> = mine
         .iter()
-        .filter_map(|line| line.split("app/_uf.page.js:").nth(1))
+        .filter_map(|line| line.split("app/$page.js:").nth(1))
         .filter_map(|rest| rest.split(further_colon).next())
         .map(|position| position.trim_end_matches(':'))
         .collect();

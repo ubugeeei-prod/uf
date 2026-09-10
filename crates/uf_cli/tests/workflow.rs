@@ -148,16 +148,17 @@ fn install_runs_the_package_manager_that_drives_the_project() {
     );
 
     // The package and runtime plan `uf upgrade` used to write is `uf install`'s
-    // now (ubugeeei-prod/uf#424). It records the workspace resolution, which
-    // happened — the manager failing afterwards does not un-resolve it.
+    // now (ubugeeei-prod/uf#424). It records the delegated manager before that
+    // manager fails, without forcing a uf-native lockfile into an npm project.
     let plan = fs::read_to_string(dir.path().join(".uf/install.json")).unwrap();
     let plan: serde_json::Value = serde_json::from_str(&plan).unwrap();
-    assert_eq!(plan["packageManager"]["resolver"], "uf-native");
+    assert_eq!(plan["packageManager"]["resolver"], "delegated");
+    assert_eq!(plan["packageManager"]["manager"], "npm");
     assert!(
         plan["packageManager"]["lockfile"]
             .as_str()
             .unwrap()
-            .ends_with("uf.lock")
+            .ends_with("package-lock.json")
     );
     assert_eq!(plan["runtimeManager"]["engine"], "node");
     assert_eq!(plan["runtimeManager"]["acquisition"], "auto");
@@ -207,7 +208,7 @@ fn install_rejects_npm_scripts() {
 /// have meant rather than clap's guess at a spelling.
 ///
 /// Exit 2, not 1: uf did not run a command and find a problem, it does not
-/// have the command. See `docs/app/reference/cli/_uf.page.mdx`.
+/// have the command. See `docs/app/reference/cli/$page.mdx`.
 #[test]
 fn upgrade_is_retired_and_names_what_replaced_it() {
     let dir = tempfile::tempdir().unwrap();

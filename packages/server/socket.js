@@ -9,7 +9,7 @@
 // belongs to the host, and the hosts uf targets disagree about that more than
 // they disagree about anything else in this package.
 //
-//   // app/api/room/[id]/_uf.route.js
+//   // app/api/room/[id]/$route.js
 //   // @flow
 //   import { upgradeWebSocket } from "@uniflowed/server/socket";
 //

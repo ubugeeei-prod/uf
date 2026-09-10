@@ -191,5 +191,5 @@ pub(crate) fn run_react_no_default_export_component(
 fn is_router_module(path: &str) -> bool {
     path.rsplit('/')
         .next()
-        .is_some_and(|name| name.starts_with("_uf."))
+        .is_some_and(|name| name.starts_with("$"))
 }

@@ -6,7 +6,7 @@
 // ubugeeei-prod/uf#636 answered one of them: `uf dev` says why a module is in
 // the client bundle. The other two are Suspense and error, and the thing that
 // was missing about them is not the *data* — the route table nests
-// `_uf.loading.js` and binds `_uf.error.js` to the nearest ancestor, and
+// `$loading.js` and binds `$error.js` to the nearest ancestor, and
 // `error-boundary.test.js` and `streaming.test.js` already hold both — but the
 // *page*. A `<Suspense>` renders no element and neither does a class boundary,
 // so what a boundary owns is a run of nodes in a parent that also holds the
@@ -72,7 +72,7 @@ afterAll(() => {
  * Everything this file has put in the document, so it can take it out again.
  *
  * The document belongs to the process rather than to the file — `uf test` runs
- * several files in one worker — and a `<template data-uf-boundary>` left behind
+ * several files in one worker — and a `[data-uf-boundary]` mark left behind
  * is a mark the next test in this file would find by `querySelector` and
  * attribute to its own render. See the same paragraph in `hydration.test.js`.
  */
@@ -139,7 +139,7 @@ describe("the boundaries a route renders", () => {
           path: "/first",
           params: [],
           mdx: false,
-          file: "app/first/_uf.page.js",
+          file: "app/first/$page.js",
           page: pageOf("the first page"),
           layouts: [loadFrame],
           loading: [],
@@ -151,7 +151,7 @@ describe("the boundaries a route renders", () => {
     };
     const resolved = await resolveMatch(table, "/first");
 
-    const found = routeBoundaries(resolved, "app/_uf.error.js");
+    const found = routeBoundaries(resolved, "app/$error.js");
 
     expect([...found.keys()]).toEqual([ROOT_ERROR_ID, ROUTE_ERROR_ID]);
     expect(found.get(ROOT_ERROR_ID)).toEqual({
@@ -160,10 +160,10 @@ describe("the boundaries a route renders", () => {
       above: 0,
       source: SYNTHESISED_SOURCE,
     });
-    expect(found.get(ROUTE_ERROR_ID)?.source).toBe("app/_uf.error.js");
+    expect(found.get(ROUTE_ERROR_ID)?.source).toBe("app/$error.js");
   });
 
-  it("gives every `_uf.loading.js` its own boundary at the depth it sits at", async () => {
+  it("gives every `$loading.js` its own boundary at the depth it sits at", async () => {
     // `above` is how many of the route's layouts are outside the fallback, and
     // it is the table's number rather than a second one computed here: one
     // vocabulary for where a thing sits in the stack, which is the rule
@@ -174,7 +174,7 @@ describe("the boundaries a route renders", () => {
           path: "/deep",
           params: [],
           mdx: false,
-          file: "app/deep/_uf.page.js",
+          file: "app/deep/$page.js",
           page: pageOf("the deep page"),
           layouts: [loadFrame, loadFrame],
           loading: [
@@ -215,7 +215,7 @@ describe("the boundaries a route renders", () => {
       error: { kind: "thrown", error: new Error("boom") },
     };
 
-    const found = routeBoundaries(resolved, "app/_uf.error.js");
+    const found = routeBoundaries(resolved, "app/$error.js");
 
     expect([...found.keys()]).toEqual([ROOT_ERROR_ID]);
   });
@@ -226,7 +226,7 @@ describe("the boundaries a route renders", () => {
     // exists. A duplicated constant with a test on it is honest; one without is
     // how a report ends up naming a file nothing wrote. Same argument as
     // `devtools.test.js` makes about `__REACT_DEVTOOLS_GLOBAL_HOOK__`.
-    const root = appRoot("uf-boundaries-source-", ["_uf.layout.js", "_uf.page.js"]);
+    const root = appRoot("uf-boundaries-source-", ["$layout.js", "$page.js"]);
 
     const source = routesModuleSource(scanRoutes(root));
 
@@ -261,17 +261,17 @@ describe("the marks a boundary renders", () => {
     // makes the walk `nextElementSibling` rather than a tree search.
     expect(elementsIn(container, "#shell > *").map((it) => it.tagName.toLowerCase())).toEqual([
       "nav",
-      "template",
+      "span",
       "article",
-      "template",
+      "span",
       "footer",
     ]);
   });
 
   it("nests, and neither boundary counts the other's marks as its own", () => {
-    // Two boundaries in one parent, which is what a `_uf.loading.js` inside
+    // Two boundaries in one parent, which is what a `$loading.js` inside
     // another one produces. The outer owns all three paragraphs and none of the
-    // four `<template>`s; the inner owns exactly its own.
+    // four marker elements; the inner owns exactly its own.
     const outer = suspense(suspenseId(0), 0);
     const inner = suspense(suspenseId(1), 0);
 
@@ -368,12 +368,12 @@ describe("the marks a boundary renders", () => {
       id: ROUTE_ERROR_ID,
       kind: "error",
       above: 1,
-      source: "app/docs/_uf.error.js",
+      source: "app/docs/$error.js",
     };
 
     const container = mount(<Frame>{insideBoundary(boundary, <article>the post</article>)}</Frame>);
 
-    expect(elementsIn(container, `[${SOURCE_ATTRIBUTE}="app/docs/_uf.error.js"]`).length).toBe(1);
+    expect(elementsIn(container, `[${SOURCE_ATTRIBUTE}="app/docs/$error.js"]`).length).toBe(1);
     expect(elementIn(container, `[${SOURCE_ATTRIBUTE}]`).getAttribute(EDGE_ATTRIBUTE)).toBe("open");
   });
 });
@@ -390,7 +390,7 @@ describe("the report", () => {
         rendered: true,
       },
       {
-        boundary: { id: ROUTE_ERROR_ID, kind: "error", above: 1, source: "app/docs/_uf.error.js" },
+        boundary: { id: ROUTE_ERROR_ID, kind: "error", above: 1, source: "app/docs/$error.js" },
         owns: ["article.doc", "aside.toc"],
         more: 3,
         rendered: true,
@@ -408,7 +408,7 @@ describe("the report", () => {
     expect(report.message).toBe("3 boundaries render /docs/:slug");
     expect(report.detail).toEqual([
       "error (uf's own error page), outside every layout — owns div#shell",
-      "error (app/docs/_uf.error.js), inside 1 layout — owns article.doc, aside.toc and 3 more",
+      "error (app/docs/$error.js), inside 1 layout — owns article.doc, aside.toc and 3 more",
       "suspense, inside 2 layouts — showing its fallback",
     ]);
   });
@@ -430,7 +430,7 @@ describe("the report", () => {
   });
 
   it("reports the moment the same route's boundaries change", async () => {
-    // Which is the moment somebody added an `_uf.error.js` and HMR handed the
+    // Which is the moment somebody added an `$error.js` and HMR handed the
     // page a new table — the one time a boundary map is what the reader wants.
     const before: Map<string, RouteBoundary> = new Map([
       [suspenseId(0), suspense(suspenseId(0), 0)],
@@ -439,7 +439,7 @@ describe("the report", () => {
       id: ROUTE_ERROR_ID,
       kind: "error",
       above: 1,
-      source: "app/_uf.error.js",
+      source: "app/$error.js",
     };
     const after: Map<string, RouteBoundary> = new Map([
       [ROUTE_ERROR_ID, routeError],
@@ -460,7 +460,7 @@ describe("the report", () => {
     expect(body.severity).toBe("info");
     expect(body.message).toBe("2 boundaries render /docs/:slug");
     expect(body.detail).toEqual([
-      "error (app/_uf.error.js), inside 1 layout — showing its fallback",
+      "error (app/$error.js), inside 1 layout — showing its fallback",
       "suspense, outside every layout — showing its fallback",
     ]);
   });
@@ -530,7 +530,7 @@ describe("a bundle without `import.meta.hot`", () => {
           path: "/plain",
           params: [],
           mdx: false,
-          file: "app/plain/_uf.page.js",
+          file: "app/plain/$page.js",
           page: pageOf("the plain page"),
           layouts: [loadFrame],
           loading: [{ above: 1, module: loadFallback }],
@@ -559,7 +559,7 @@ describe("a bundle without `import.meta.hot`", () => {
           path: "/plain",
           params: [],
           mdx: false,
-          file: "app/plain/_uf.page.js",
+          file: "app/plain/$page.js",
           page: pageOf("the plain page"),
           layouts: [loadFrame],
           loading: [],

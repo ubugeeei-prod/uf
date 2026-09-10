@@ -86,15 +86,17 @@ export function auditRuntimeSource(settings) {
 /**
  * The tag that loads it, or `null` when this project has no engine.
  *
- * `injectTo: "body"` rather than the head: the audit reads the rendered tree,
- * so there is nothing for it to do until there is one, and a script in the
- * head would only sit through the same wait with the parser stopped behind it.
+ * `injectTo: "head"` because `uf dev` streams the body. Vite's HTML hook only
+ * sees the opening chunk; a `body` injection can land at a React chunk boundary
+ * and split an attribute before the rest of the body arrives. A module in the
+ * head still waits for a settled DOM before auditing — see the runtime — while
+ * staying in markup the opening transform can safely rewrite.
  */
 export function auditTag(base, available) {
   if (!available) return null;
   return {
     tag: "script",
     attrs: { type: "module", src: `${base}${AUDIT_PUBLIC_PATH.slice(1)}` },
-    injectTo: "body",
+    injectTo: "head",
   };
 }

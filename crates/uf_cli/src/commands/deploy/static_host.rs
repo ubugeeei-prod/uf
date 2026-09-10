@@ -21,8 +21,8 @@
 //! | a server action | the RSC registry | it is a `POST` the browser makes back to the application |
 //!
 //! Two of those four are invisible to the route table, which is why
-//! [`uf_router::discover_server_modules`] exists: a `_uf.route.js` has no page
-//! and is therefore in no [`Route`], and a `_uf.middleware.js` reaches
+//! [`uf_router::discover_server_modules`] exists: a `$route.js` has no page
+//! and is therefore in no [`Route`], and a `$middleware.js` reaches
 //! [`Route::middleware`] only for routes that have a page under it — a project
 //! may guard a subtree it has not written a page in yet.
 //!
@@ -45,9 +45,9 @@ use crate::support::relative_to;
 /// Why a static host has no answer for something in this project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Reason {
-    /// A `_uf.route.js`.
+    /// A `$route.js`.
     RouteHandler,
-    /// A `_uf.middleware.js`.
+    /// A `$middleware.js`.
     Middleware,
     /// A route with parameters that no `generateStaticParams` enumerated.
     NoStaticParams,

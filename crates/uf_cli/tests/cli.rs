@@ -105,6 +105,11 @@ fn install_has_a_one_letter_alias() {
     // followed by one of `uf_term::push_duration`'s four units — rather than
     // by dropping the lines that hold them, so the timings and the verdict are
     // still compared for everything except how long they took.
+    //
+    // The chosen package-manager source differs for the same reason: the long
+    // run creates `package-lock.json`, and the alias run quite rightly detects
+    // it. The manager and command still have to match; the provenance line is
+    // not the alias contract.
     let rendered = |output: &[u8]| {
         let text = String::from_utf8_lossy(output).into_owned();
         let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
@@ -128,7 +133,13 @@ fn install_has_a_one_letter_alias() {
         lines[..=banner + 1]
             .iter()
             .chain(&lines[table..])
-            .map(|line| without_durations(line))
+            .map(|line| {
+                if line.trim_start().starts_with("chosen by ") {
+                    "  chosen by  <source>".to_owned()
+                } else {
+                    without_durations(line)
+                }
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(rendered(&short.stdout), rendered(&long.stdout));
@@ -1247,7 +1258,7 @@ fn creates_react_app_from_cli() {
 
     assert!(app.join("app.js").exists());
     assert!(app.join("uf.config.js").exists());
-    assert!(app.join("app/_uf.page.js").exists());
+    assert!(app.join("app/$page.js").exists());
     assert!(app.join("app/Counter.js").exists());
     assert!(app.join("app/useCounter.js").exists());
 
@@ -1288,7 +1299,7 @@ fn a_single_argument_that_is_not_a_template_is_the_path() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(app.join("uf.config.js").exists(), "it scaffolded nothing");
-    assert!(app.join("app/_uf.page.js").exists());
+    assert!(app.join("app/$page.js").exists());
 }
 
 /// And a single argument that *is* a template still is one.
@@ -1832,7 +1843,7 @@ fn the_files_a_scaffolded_route_is() {
         "uf routes add:\n{stdout}{}",
         String::from_utf8_lossy(&added.stderr)
     );
-    for name in ["_uf.page.js", "_uf.layout.js", "_uf.middleware.js"] {
+    for name in ["$page.js", "$layout.js", "$middleware.js"] {
         assert!(
             app.join("app/articles/[slug]").join(name).is_file(),
             "{name} was reported but not written:\n{stdout}"

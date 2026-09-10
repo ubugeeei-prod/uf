@@ -107,7 +107,7 @@ LOCK
   printf 'use flake .\n' > "$root/.envrc"
   printf 'Enter it with `nix develop .` first.\n' > "$root/README.md"
 
-  cat > "$root/docs/app/guide/install/_uf.page.mdx" <<'DOC'
+  cat > "$root/docs/app/guide/install/\$page.mdx" <<'DOC'
 # Install
 
 ## With Nix
@@ -216,7 +216,7 @@ pass "rejects a stale flake reference"
 # 8. An install page with no Nix on it, which is what the page said while
 #    `README.md` told the reader that Nix was documented there.
 root="$(scratch undocumented)"
-printf '# Install\n\n## From source\n' > "$root/docs/app/guide/install/_uf.page.mdx"
+printf '# Install\n\n## From source\n' > "$root/docs/app/guide/install/\$page.mdx"
 ( cd "$root" && git add -A && git -c user.email=t@e -c user.name=t commit -qm undoc ) >/dev/null 2>&1
 if run "$root"; then
   fail "accepted an install page that documents no Nix install path"

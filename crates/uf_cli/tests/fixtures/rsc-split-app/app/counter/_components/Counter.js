@@ -5,7 +5,7 @@
 // form, and a marker string that has to survive into the browser bundle.
 //
 // `"use client"` makes this a client bundle root, so `crates/uf_rsc` reports a
-// boundary at `app/counter/_uf.page.js` and every module above it stays in the
+// boundary at `app/counter/$page.js` and every module above it stays in the
 // client bundle. That is the assertion the split has to keep true: dropping a
 // route the browser does not need must not drop the one it does.
 //

@@ -101,7 +101,7 @@ collectVitals({ report: vitalsBeacon("/api/vitals") });
 ```
 
 ```js
-// app/api/vitals/_uf.route.js
+// app/api/vitals/$route.js
 export async function POST(request: Request): Promise<Response> {
   const report = await request.json();
   // { url: "https://example.com/pricing", vitals: [ … ] }

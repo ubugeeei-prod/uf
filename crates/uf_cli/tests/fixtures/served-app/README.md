@@ -3,12 +3,12 @@
 The smallest uf application that has the things a build could not serve until
 `uf preview` and `uf start` existed:
 
-- `app/posts/[slug]/_uf.page.js` — a route with a parameter and **no**
+- `app/posts/[slug]/$page.js` — a route with a parameter and **no**
   `generateStaticParams`, so `uf build` prerenders nothing for it and the only
   way it can answer is per request;
-- `app/api/health/_uf.route.js` — a route handler, which answers a `POST` that
+- `app/api/health/$route.js` — a route handler, which answers a `POST` that
   no page can and which `uf build` never called;
-- `app/old/[slug]/_uf.page.js` — a page whose loader calls `redirect()`, which
+- `app/old/[slug]/$page.js` — a page whose loader calls `redirect()`, which
   is the one answer that is entirely a *header*: a server that writes the status
   and the body and drops the render's headers answers a 307 with no `Location`.
   A parameter and no `generateStaticParams` keeps it out of the prerender, so
@@ -17,8 +17,8 @@ The smallest uf application that has the things a build could not serve until
 
 It also has the route that shows the renderer streaming:
 
-- `app/slow/[id]/_uf.page.js` — a page that suspends for 500 ms while it
-  renders, with `app/slow/_uf.loading.js` beside it. A parameter and no
+- `app/slow/[id]/$page.js` — a page that suspends for 500 ms while it
+  renders, with `app/slow/$loading.js` beside it. A parameter and no
   `generateStaticParams` keeps it out of the prerender, so `uf start` renders it
   per request and the test can watch the layout and the fallback arrive before
   the page does.

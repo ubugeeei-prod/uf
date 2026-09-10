@@ -14,21 +14,21 @@ pub use crate::reserved::{
     classify_reserved_file, classify_route_segment,
 };
 
-pub const RESERVED_LAYOUT: &str = "_uf.layout.js";
-pub const RESERVED_PAGE: &str = "_uf.page.js";
-pub const RESERVED_MIDDLEWARE: &str = "_uf.middleware.js";
-pub const RESERVED_ROUTE: &str = "_uf.route.js";
+pub const RESERVED_LAYOUT: &str = "$layout.js";
+pub const RESERVED_PAGE: &str = "$page.js";
+pub const RESERVED_MIDDLEWARE: &str = "$middleware.js";
+pub const RESERVED_ROUTE: &str = "$route.js";
 
 /// The stem every reserved page is spelled with, without an extension.
-pub const RESERVED_PAGE_STEM: &str = "_uf.page";
+pub const RESERVED_PAGE_STEM: &str = "$page";
 /// The stem every reserved layout is spelled with.
-pub const RESERVED_LAYOUT_STEM: &str = "_uf.layout";
+pub const RESERVED_LAYOUT_STEM: &str = "$layout";
 /// The stem every reserved middleware is spelled with.
-pub const RESERVED_MIDDLEWARE_STEM: &str = "_uf.middleware";
+pub const RESERVED_MIDDLEWARE_STEM: &str = "$middleware";
 /// The stem every reserved route handler is spelled with.
-pub const RESERVED_ROUTE_STEM: &str = "_uf.route";
+pub const RESERVED_ROUTE_STEM: &str = "$route";
 /// The stem a slot's stand-in page is spelled with.
-pub const RESERVED_DEFAULT_STEM: &str = "_uf.default";
+pub const RESERVED_DEFAULT_STEM: &str = "$default";
 
 /// What a page may be written in, in the order a directory holding two is
 /// resolved.
@@ -58,8 +58,8 @@ pub const MODULE_EXTENSIONS: [&str; 2] = [".js", ".jsx"];
 /// The first spelling of `stem` that exists in `directory`.
 ///
 /// First rather than "the only one", mirroring `findModule` in
-/// `packages/vite/internal/routes.js`: a directory holding both `_uf.page.js`
-/// and `_uf.page.mdx` resolves to the same one on both sides, which matters
+/// `packages/vite/internal/routes.js`: a directory holding both `$page.js`
+/// and `$page.mdx` resolves to the same one on both sides, which matters
 /// more than which one it is.
 fn find_module(directory: &Utf8Path, stem: &str, extensions: &[&str]) -> Option<Utf8PathBuf> {
     extensions.iter().find_map(|extension| {
@@ -94,14 +94,14 @@ pub struct Route {
     pub page: Utf8PathBuf,
     pub params: Vec<RouteParam>,
     pub has_layout: bool,
-    /// Every `_uf.middleware.js` that runs before this route resolves,
+    /// Every `$middleware.js` that runs before this route resolves,
     /// outermost first.
     ///
     /// Inherited down the tree, the way layouts are, because that is what
     /// `packages/vite/internal/routes.js` puts on the route table the build
     /// actually runs (`ownMiddleware`, accumulated root-first). This field was
     /// a `has_middleware: bool` read off `directory`, and the two answer
-    /// different questions: `app/dashboard/_uf.middleware.js` guards
+    /// different questions: `app/dashboard/$middleware.js` guards
     /// `/dashboard/settings`, whose own directory declares nothing. Anything
     /// asking "is this route guarded" — and `uf build` now asks, so it can say
     /// which prerendered files a guard never sees — got `false` from the
@@ -249,7 +249,7 @@ pub enum RouterError {
          routing directory in it, or make `{catch_all}` a `[{parameter}]`."
     )]
     NonTerminalCatchAll {
-        /// The `_uf.page.js` that cannot be reached.
+        /// The `$page.js` that cannot be reached.
         page: Utf8PathBuf,
         /// The catch-all directory, as it is written on disk.
         catch_all: String,
@@ -309,7 +309,7 @@ pub enum RouterError {
         /// The layout file that would receive it.
         layout: Utf8PathBuf,
     },
-    /// A `_uf.default.js` that is not directly inside a `@slot` directory.
+    /// A `$default.js` that is not directly inside a `@slot` directory.
     ///
     /// A default answers one question — what a slot renders when the URL
     /// addresses the other one — so it is asked once, at the slot, and is
@@ -320,7 +320,7 @@ pub enum RouterError {
     /// Refused rather than ignored, because a file the router never opens is
     /// the failure this whole issue is about.
     #[error(
-        "{file}: `_uf.default.js` is what a `@slot` renders when the URL says nothing about it, \
+        "{file}: `$default.js` is what a `@slot` renders when the URL says nothing about it, \
          and it belongs directly inside the slot directory — one per slot, beside that slot's own \
          pages. Nothing would ever render this one. uf has no `default` for `children`: a URL \
          that matches no page is a 404."
@@ -329,7 +329,7 @@ pub enum RouterError {
         /// The file, as it is written on disk.
         file: Utf8PathBuf,
     },
-    /// A `_uf.route.js` or `_uf.middleware.js` inside a `@slot`.
+    /// A `$route.js` or `$middleware.js` inside a `@slot`.
     ///
     /// A slot is matched and rendered as part of the page at a URL; it never
     /// answers a request of its own and never guards one. A handler or a guard
@@ -338,7 +338,7 @@ pub enum RouterError {
     /// appear to claim is the *declaring* segment's, which is somebody else's.
     #[error(
         "{file}: a `@slot` renders inside the page at a URL and answers no request of its own, so \
-         `_uf.{role}.js` here would never run. A slot directory contributes no URL segment, so \
+         `${role}.js` here would never run. A slot directory contributes no URL segment, so \
          this would claim `{path}` — which belongs to the segment that declares the slot. Move it \
          out of `{slot}`."
     )]
@@ -444,7 +444,7 @@ pub fn discover_routes(
             .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
         let directory = page.parent().unwrap_or(&app_root).to_path_buf();
         // One page per directory, and the walk is over files: a directory
-        // holding both `_uf.page.js` and `_uf.page.mdx` reached here twice and
+        // holding both `$page.js` and `$page.mdx` reached here twice and
         // pushed two `/guide` routes, while the router the build runs called
         // `findModule` once and rendered one of them. Two `Route`s with the
         // same path put the same string in the generated `RoutePath` twice,
@@ -465,14 +465,14 @@ pub fn discover_routes(
         // so. A slot never *adds* a path: it renders into the layout of the
         // segment that declares it, matched against the URL that segment's own
         // routes are matched against. So `app/dashboard/@team/members/
-        // _uf.page.js` is what `/dashboard/members` puts in the `team` slot,
+        // $page.js` is what `/dashboard/members` puts in the `team` slot,
         // and it is not a second page at that path — which is what it would be
         // if it fell through to here, since the slot segment contributes
         // nothing to `route_path_and_params`.
         //
         // The consequence is worth stating rather than discovering: a slot
         // decorates URLs that already exist. `/dashboard/members` with no
-        // `app/dashboard/members/_uf.page.js` is a 404 whatever the slots hold,
+        // `app/dashboard/members/$page.js` is a 404 whatever the slots hold,
         // and that is uf's answer to the question Next.js answers with a
         // `default.js` for `children`.
         if slot_in(relative).is_some() {
@@ -511,15 +511,15 @@ pub fn discover_routes(
 /// What a module in the router root needs a server for.
 ///
 /// Two roles rather than every reserved name, because these are the two that
-/// are *only* ever a server: a `_uf.route.js` answers a request instead of
-/// rendering, and a `_uf.middleware.js` runs before a route resolves. Every
+/// are *only* ever a server: a `$route.js` answers a request instead of
+/// rendering, and a `$middleware.js` runs before a route resolves. Every
 /// other reserved file — a layout, a template, a loading boundary — is part of
 /// a document a prerender can write to disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServerModuleKind {
-    /// `_uf.route.js`: answers a request instead of rendering a page.
+    /// `$route.js`: answers a request instead of rendering a page.
     RouteHandler,
-    /// `_uf.middleware.js`: runs before a route resolves.
+    /// `$middleware.js`: runs before a route resolves.
     Middleware,
 }
 
@@ -541,7 +541,7 @@ pub struct ServerModule {
     /// spelling [`Route::path`] uses.
     ///
     /// A middleware's path is the subtree it guards rather than a URL that is
-    /// necessarily served: `app/dashboard/_uf.middleware.js` is reported at
+    /// necessarily served: `app/dashboard/$middleware.js` is reported at
     /// `/dashboard` whether or not that directory has a page of its own.
     pub path: CompactString,
     /// The file, as it is written on disk.
@@ -560,7 +560,7 @@ pub struct ServerModule {
 /// cannot get either from the route table.
 ///
 /// The directory walk resolves each role through [`find_module`], so a
-/// directory holding both `_uf.route.js` and `_uf.route.jsx` reports the one
+/// directory holding both `$route.js` and `$route.jsx` reports the one
 /// the build's router would run rather than both. Sorted by path so a message
 /// built from this does not depend on the order the filesystem hands entries
 /// back.
@@ -610,7 +610,7 @@ pub fn discover_server_modules(
 /// difference is what gets caught: `app/feed/(.)photo/` may hold a layout, a
 /// loading file and no page at all, and it is still a directory the author
 /// wrote expecting an intercepting route. The walk above only ever sees
-/// `_uf.page.js`.
+/// `$page.js`.
 ///
 /// Private directories are pruned, because the build's router prunes them: a
 /// leading `.` or `_` means the directory is a place to put things rather than
@@ -669,9 +669,9 @@ fn slot_in(relative: &Utf8Path) -> Option<&str> {
 /// Four rules, and each is a file that would otherwise be opened by nobody. A
 /// slot needs a layout at the segment that declares it, because a slot *is* a
 /// prop that layout receives, and it needs a name that is not one of the props
-/// the layout already has. A `_uf.default.js` needs to be directly inside a
-/// slot, because that is the only question it answers. A `_uf.route.js` or
-/// `_uf.middleware.js` inside a slot has no request to see, and the path it
+/// the layout already has. A `$default.js` needs to be directly inside a
+/// slot, because that is the only question it answers. A `$route.js` or
+/// `$middleware.js` inside a slot has no request to see, and the path it
 /// would appear to claim belongs to the segment above.
 ///
 /// Private directories are pruned for the reason
@@ -788,7 +788,7 @@ fn check_slots(app_root: &Utf8Path) -> Result<(), RouterError> {
     Ok(())
 }
 
-/// Every `_uf.middleware.js` from `app_root` down to `directory`, outermost
+/// Every `$middleware.js` from `app_root` down to `directory`, outermost
 /// first.
 ///
 /// Walked upwards and reversed rather than accumulated on the way down,

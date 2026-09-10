@@ -5,31 +5,31 @@ use super::*;
 
 #[test]
 fn router_reserved_files_are_constrained() {
-    // `_uf.handler.js` looks like a reserved name and is not one. `_uf.route.js`
+    // `$handler.js` looks like a reserved name and is not one. `$route.js`
     // used to be this test's example, and it became a real role when route
     // handlers landed.
-    let diagnostics = lint_one("router/reserved-files", "app/_uf.handler.js", "// @flow\n");
+    let diagnostics = lint_one("router/reserved-files", "app/$handler.js", "// @flow\n");
 
     assert!(fired(&diagnostics, "router/reserved-files"));
 }
 
-/// `uf create app react` generates `_uf.page.native.js` and `_uf.page.test.js`,
+/// `uf create app react` generates `$page.native.js` and `$page.test.js`,
 /// and the rule used to reject both — a freshly scaffolded project failed its
 /// own linter. The grammar now lives in `uf_router::reserved`, so the scaffold,
 /// the router, and this rule cannot drift apart again.
 #[test]
 fn router_reserved_files_accepts_platform_and_test_variants() {
     for name in [
-        "app/_uf.layout.js",
-        "app/_uf.page.js",
-        "app/_uf.middleware.js",
-        "app/api/_uf.route.js",
-        "app/_uf.page.native.js",
-        "app/_uf.page.ios.js",
-        "app/_uf.page.android.js",
-        "app/_uf.page.web.js",
-        "app/_uf.page.test.js",
-        "app/_uf.layout.test.js",
+        "app/$layout.js",
+        "app/$page.js",
+        "app/$middleware.js",
+        "app/api/$route.js",
+        "app/$page.native.js",
+        "app/$page.ios.js",
+        "app/$page.android.js",
+        "app/$page.web.js",
+        "app/$page.test.js",
+        "app/$layout.test.js",
     ] {
         let diagnostics = lint_one("router/reserved-files", name, "// @flow\n");
 
@@ -43,14 +43,14 @@ fn router_reserved_files_accepts_platform_and_test_variants() {
 #[test]
 fn router_reserved_files_still_rejects_names_uf_does_not_define() {
     for name in [
-        "app/_uf.handler.js",
-        "app/_uf.page.server.js",
-        "app/_uf.page.native.test.js",
-        "app/_uf.page.ts",
+        "app/$handler.js",
+        "app/$page.server.js",
+        "app/$page.native.test.js",
+        "app/$page.ts",
         // A layout the build's router would never load, because a layout is a
-        // component and Markdown cannot be one. `_uf.page.mdx` *is* loaded and
+        // component and Markdown cannot be one. `$page.mdx` *is* loaded and
         // is not here — see ubugeeei-prod/uf#437.
-        "app/_uf.layout.mdx",
+        "app/$layout.mdx",
     ] {
         let diagnostics = lint_one("router/reserved-files", name, "// @flow\n");
 
@@ -67,11 +67,11 @@ fn router_reserved_files_still_rejects_names_uf_does_not_define() {
 #[test]
 fn router_reserved_files_accepts_every_extension_the_build_runs() {
     for name in [
-        "app/_uf.page.js",
-        "app/_uf.page.jsx",
-        "app/_uf.page.mdx",
-        "app/_uf.layout.jsx",
-        "app/_uf.not-found.mdx",
+        "app/$page.js",
+        "app/$page.jsx",
+        "app/$page.mdx",
+        "app/$layout.jsx",
+        "app/$not-found.mdx",
     ] {
         let diagnostics = lint_one("router/reserved-files", name, "// @flow\n");
 
@@ -105,9 +105,9 @@ fn router_reserved_files_leaves_project_owned_names_alone() {
 #[test]
 fn router_unsupported_segment_reports_an_interception() {
     for path in [
-        "app/feed/(.)photo/_uf.page.js",
-        "app/feed/(..)photo/_uf.layout.js",
-        "app/feed/(..)(..)photo/_uf.page.js",
+        "app/feed/(.)photo/$page.js",
+        "app/feed/(..)photo/$layout.js",
+        "app/feed/(..)(..)photo/$page.js",
     ] {
         let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
 
@@ -124,7 +124,7 @@ fn router_unsupported_segment_reports_an_interception() {
 fn router_unsupported_segment_says_what_the_spelling_is_and_that_it_is_refused() {
     let diagnostics = lint_one(
         "router/unsupported-segment",
-        "app/feed/(.)photo/_uf.page.js",
+        "app/feed/(.)photo/$page.js",
         "// @flow\n",
     );
     let message = &diagnostics
@@ -142,15 +142,15 @@ fn router_unsupported_segment_says_what_the_spelling_is_and_that_it_is_refused()
 #[test]
 fn router_unsupported_segment_leaves_the_segments_uf_serves_alone() {
     for path in [
-        "app/_uf.page.js",
-        "app/(marketing)/about/_uf.page.js",
-        "app/posts/[slug]/_uf.page.js",
-        "app/docs/[...path]/_uf.page.js",
+        "app/$page.js",
+        "app/(marketing)/about/$page.js",
+        "app/posts/[slug]/$page.js",
+        "app/docs/[...path]/$page.js",
         // A slot is a route uf serves: it renders into the layout of the
         // segment that declares it, at that segment's own paths.
-        "app/dashboard/@team/_uf.page.js",
-        "app/@team/_uf.layout.js",
-        "app/dashboard/@team/_uf.default.js",
+        "app/dashboard/@team/$page.js",
+        "app/@team/$layout.js",
+        "app/dashboard/@team/$default.js",
         // A private subtree: neither router walks into it, so an interception
         // there is not a route uf would have served.
         "app/_drafts/(.)photo/notes.js",

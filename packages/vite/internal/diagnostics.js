@@ -105,7 +105,7 @@ const SEVERITIES = new Set(["error", "warn", "info"]);
  * The connect middleware that answers the channel.
  *
  * Mounted **before** the application middleware, so a request under `/__uf/`
- * never reaches a project's `_uf.middleware.js` or its route table. A guard
+ * never reaches a project's `$middleware.js` or its route table. A guard
  * that ran for a page's own telemetry would be a guard asked a question the
  * application never asks, and one that redirected it would turn a report into
  * a login page.

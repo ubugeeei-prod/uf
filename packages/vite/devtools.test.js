@@ -171,11 +171,12 @@ describe("what a document is given", () => {
 
     expect(tags.length).toBe(2);
     expect(tags[0].tag).toBe("script");
-    expect(tags[0].attrs).toBe(undefined);
+    expect(tags[0].attrs?.["data-uf-dev-head-preamble"]).toBe("react-devtools");
     expect(tags[0].injectTo).toBe("head-prepend");
     expect(tags[0].children).toContain(DEVTOOLS_HOOK);
     // The Fast Refresh preamble is second, and it is a module.
     expect(tags[1].attrs?.type).toBe("module");
+    expect(tags[1].attrs?.["data-uf-dev-head-preamble"]).toBe("react-refresh");
   });
 
   it("injects nothing into a build", () => {

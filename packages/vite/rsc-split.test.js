@@ -116,9 +116,9 @@ function manifestIn(root: string, manifest: mixed): mixed {
 function splitProject(): string {
   const page = "// @flow\nexport default function Page() {}\n";
   return project({
-    "app/_uf.layout.js": page,
-    "app/_uf.page.js": page,
-    "app/counter/_uf.page.js": page,
+    "app/$layout.js": page,
+    "app/$page.js": page,
+    "app/counter/$page.js": page,
   });
 }
 
@@ -129,9 +129,9 @@ function splitManifest(version: number = 2) {
     engine: "uf-native",
     buildFingerprint: "0".repeat(64),
     modules: [
-      manifestModule("app/_uf.layout.js", false),
-      manifestModule("app/_uf.page.js", false),
-      manifestModule("app/counter/_uf.page.js", true),
+      manifestModule("app/$layout.js", false),
+      manifestModule("app/$page.js", false),
+      manifestModule("app/counter/$page.js", true),
     ],
     clientBoundaries: [],
     clientBundleRoots: [],
@@ -148,10 +148,10 @@ describe("the client route table", () => {
 
     const source = routesModuleSource(table, { shipsPage });
 
-    expect(source).toContain("app/counter/_uf.page.js");
+    expect(source).toContain("app/counter/$page.js");
     // The layout too: the browser re-renders the whole matched tree, so a
     // route that hydrates needs everything above the boundary as well.
-    expect(source).toContain("app/_uf.layout.js");
+    expect(source).toContain("app/$layout.js");
   });
 
   it("drops the page of a route that reaches none, which is the whole point", () => {
@@ -166,7 +166,7 @@ describe("the client route table", () => {
     // 404. What goes is the `import()`, which is the only thing in this table
     // a bundler follows.
     expect(source).toContain('path: "/"');
-    expect(source).not.toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+    expect(source).not.toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
   });
 
   it("still imports a dropped page for its side effects, which is its stylesheet", () => {
@@ -182,10 +182,10 @@ describe("the client route table", () => {
 
     const source = routesModuleSource(table, { shipsPage });
 
-    expect(source).toContain(`import ${JSON.stringify(path.join(root, "app/_uf.page.js"))};`);
+    expect(source).toContain(`import ${JSON.stringify(path.join(root, "app/$page.js"))};`);
     // Not the layout: `/counter` keeps it, so it is already in the table as a
     // lazy import, and a second static one would pull it into the entry chunk.
-    expect(source).not.toContain(`import ${JSON.stringify(path.join(root, "app/_uf.layout.js"))};`);
+    expect(source).not.toContain(`import ${JSON.stringify(path.join(root, "app/$layout.js"))};`);
   });
 
   it("ships every page when there is no manifest to read", () => {
@@ -199,7 +199,7 @@ describe("the client route table", () => {
       shipsPage: clientRouteFilter(readRscManifest(undefined), root, table),
     });
 
-    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
   });
 
   it("ships every page when the manifest is older than the field it needs", () => {
@@ -213,7 +213,7 @@ describe("the client route table", () => {
 
     const source = routesModuleSource(table, { shipsPage });
 
-    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
   });
 
   it("ships a page the analysis never saw", () => {
@@ -222,20 +222,20 @@ describe("the client route table", () => {
     // boundary, and every unknown answers so — which is why this split can
     // only ever drop a route uf positively decided needs no browser.
     const root = project({
-      "app/_uf.layout.js": "// @flow\nexport default function Layout() {}\n",
-      "app/_uf.page.mdx": "# home\n",
+      "app/$layout.js": "// @flow\nexport default function Layout() {}\n",
+      "app/$page.mdx": "# home\n",
     });
     const table = scanRoutes(path.join(root, "app"));
     const manifest = manifestIn(root, {
       ...splitManifest(),
-      modules: [manifestModule("app/_uf.layout.js", false)],
+      modules: [manifestModule("app/$layout.js", false)],
     });
 
     const source = routesModuleSource(table, {
       shipsPage: clientRouteFilter(manifest, root, table),
     });
 
-    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.mdx"))})`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.mdx"))})`);
   });
 
   it("generates the whole table by default, which is what the server gets", () => {
@@ -243,10 +243,8 @@ describe("the client route table", () => {
 
     const source = routesModuleSource(scanRoutes(path.join(root, "app")));
 
-    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
-    expect(source).toContain(
-      `import(${JSON.stringify(path.join(root, "app/counter/_uf.page.js"))})`,
-    );
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/counter/$page.js"))})`);
   });
 
   it("states each route's file relative to the project when asked", () => {
@@ -265,12 +263,10 @@ describe("the client route table", () => {
 
     const source = routesModuleSource(table, { relativeTo: root });
 
-    expect(source).toContain(`file: ${JSON.stringify("app/_uf.page.js")}`);
-    expect(source).toContain(`file: ${JSON.stringify("app/counter/_uf.page.js")}`);
-    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/_uf.page.js"))})`);
-    expect(source.includes(`file: ${JSON.stringify(path.join(root, "app/_uf.page.js"))}`)).toBe(
-      false,
-    );
+    expect(source).toContain(`file: ${JSON.stringify("app/$page.js")}`);
+    expect(source).toContain(`file: ${JSON.stringify("app/counter/$page.js")}`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
+    expect(source.includes(`file: ${JSON.stringify(path.join(root, "app/$page.js"))}`)).toBe(false);
   });
 
   it("leaves the file absolute when nothing asked for a root", () => {
@@ -280,7 +276,7 @@ describe("the client route table", () => {
 
     const source = routesModuleSource(scanRoutes(path.join(root, "app")));
 
-    expect(source).toContain(`file: ${JSON.stringify(path.join(root, "app/_uf.page.js"))}`);
+    expect(source).toContain(`file: ${JSON.stringify(path.join(root, "app/$page.js"))}`);
   });
 });
 
@@ -357,7 +353,7 @@ function tables() {
     path: "/",
     params: [],
     mdx: false,
-    file: "app/_uf.page.js",
+    file: "app/$page.js",
     page: () => Promise.resolve(staticPage),
     layouts: [],
     loading: [],
@@ -366,7 +362,7 @@ function tables() {
     path: "/counter",
     params: [],
     mdx: false,
-    file: "app/counter/_uf.page.js",
+    file: "app/counter/$page.js",
     page: () => Promise.resolve(counterPage),
     layouts: [],
     loading: [],

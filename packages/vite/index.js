@@ -510,12 +510,13 @@ function flowPlugin({
       const tags = [
         {
           tag: "script",
+          attrs: { "data-uf-dev-head-preamble": "react-devtools" },
           children: devtoolsPreamble(),
           injectTo: "head-prepend",
         },
         {
           tag: "script",
-          attrs: { type: "module" },
+          attrs: { type: "module", "data-uf-dev-head-preamble": "react-refresh" },
           children: preambleCode(base),
           injectTo: "head-prepend",
         },
@@ -545,9 +546,8 @@ function flowPlugin({
       // missing `route` — so adding a route handler to a running dev server
       // did not rebuild the table and the handler stayed invisible until a
       // restart. A list that has to match another list has to be that list.
-      const stems = Object.values(RESERVED)
-        .map((stem) => stem.replaceAll(".", "\\."))
-        .join("|");
+      const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const stems = Object.values(RESERVED).map(escapeRegExp).join("|");
       const reserved = new RegExp(`/(${stems})(\\.[a-z]+)?\\.(js|jsx|mdx)$`);
       const onRouteFile = (file) => {
         if (!reserved.test(file) || !file.startsWith(appRoot)) return;
@@ -598,7 +598,7 @@ function flowPlugin({
       // claimed, this one decided, and the other was reached only for what
       // this one declined. Route-handler dispatch was in the other. A
       // `GET /feed` from a browser is `Accept: text/html` with no extension,
-      // so it looked like a document, so `app/feed/_uf.route.js` was never
+      // so it looked like a document, so `app/feed/$route.js` was never
       // asked and the reader got the route table's page — or the not-found
       // page — for a path that had a handler. See ubugeeei-prod/uf#349.
       //
@@ -634,7 +634,7 @@ function flowPlugin({
       // list rather than something this middleware can decide on its own.
       return () => {
         // The browser's own reporting channel, mounted above the application
-        // so that a report never reaches a project's `_uf.middleware.js` or
+        // so that a report never reaches a project's `$middleware.js` or
         // its route table. See `internal/diagnostics.js`.
         devServer.middlewares.use(
           createChannelMiddleware((diagnostic) => emit("diagnostic", diagnostic)),
@@ -783,7 +783,7 @@ function flowPlugin({
               // `transformIndexHtml` is a *whole document* hook — which made the
               // one place a developer would notice streaming the one place it
               // did not happen: a slow page showed nothing until it was finished
-              // and `_uf.loading.js` looked broken.
+              // and `$loading.js` looked broken.
               //
               // `transformHead` above is the seam. `internal/stream.js` already
               // held the opening chunk back until the head was complete and

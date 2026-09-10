@@ -65,7 +65,7 @@ add an axis to a feature that has enough of them.
 The browser binary itself is a dependency uf does not install: it drives one
 that is already on the machine, named by `UF_BROWSER` or found on `PATH`, and
 refuses the run by name when there is none. See
-[Testing](app/guide/testing/_uf.page.mdx) for what browser mode cannot do yet.
+[Testing](app/guide/testing/$page.mdx) for what browser mode cannot do yet.
 
 ## What a project may name, and which key decides
 

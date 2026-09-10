@@ -91,13 +91,17 @@ fn the_summary_says_which_manager_ran_and_what_it_wrote() {
         row(&stdout, "lockfile").contains("package-lock.json"),
         "{stdout}"
     );
-    // `install_workspace` writes `uf.lock` a step earlier, so by the time the
-    // manager is detected there *is* evidence and it names uf — whose resolver
-    // cannot fetch. The old report said "no lockfile or packageManager field"
-    // here, which was not true of any project that had run `uf install` once.
     assert_eq!(
         row(&stdout, "chosen by"),
-        "chosen by  uf.lock names uf, whose resolver cannot fetch yet"
+        "chosen by  no lockfile or packageManager field"
+    );
+    assert!(
+        !dir.path().join("uf.lock").exists(),
+        "a project delegated to npm must not grow uf.lock"
+    );
+    assert!(
+        !dir.path().join(".uf/store").exists(),
+        "a project delegated to npm must not grow uf's native store"
     );
 }
 

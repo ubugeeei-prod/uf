@@ -36,11 +36,11 @@ my-site/
   uf.config.js         the only config file
   app.js               the application entry
   app/
-    _uf.layout.js      the document: <html>, <head>, <body>
-    _uf.page.js        the page at "/"
+    $layout.js      the document: <html>, <head>, <body>
+    $page.js        the page at "/"
     Counter.js         a client component, as a demonstration
     useCounter.js      a hook declaration, as a demonstration
-    _uf.page.test.js   a test, as a demonstration
+    $page.test.js   a test, as a demonstration
   package.json         dependencies, and nothing else
   .gitignore           the generated files, which are not yours to commit
 ```
@@ -103,7 +103,7 @@ export component Layout(children: mixed) {
 }
 ```
 
-A page is `_uf.page.js`, exported as `Page`:
+A page is `$page.js`, exported as `Page`:
 
 ```js
 // @flow

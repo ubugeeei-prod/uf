@@ -18,7 +18,7 @@ fn route(path: &str, directory: &str) -> Route {
     Route {
         path: path.into(),
         directory: Utf8PathBuf::from(format!("{ROOT}/{directory}")),
-        page: Utf8PathBuf::from(format!("{ROOT}/{directory}/_uf.page.js")),
+        page: Utf8PathBuf::from(format!("{ROOT}/{directory}/$page.js")),
         params: Vec::new(),
         has_layout: false,
         middleware: Vec::new(),
@@ -49,9 +49,9 @@ fn found(routes: &[Route], modules: &[ServerModule], graph: &RscGraph) -> Vec<Un
 /// page.
 fn reads_the_request() -> RscGraph {
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js").with_import("../session.js"));
+    builder.add_module(module("app/$page.js").with_import("../session.js"));
     builder.add_module(module("session.js").with_import("@uniflowed/server"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
     builder.build()
 }
 
@@ -93,9 +93,9 @@ fn the_refusal_names_the_route_and_quotes_the_setting() {
 #[test]
 fn a_project_that_reads_no_request_builds() {
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js").with_import("../format.js"));
+    builder.add_module(module("app/$page.js").with_import("../format.js"));
     builder.add_module(module("format.js"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
     let graph = builder.build();
 
     assert_eq!(found(&[route("/", "app")], &[], &graph), Vec::new());
@@ -108,9 +108,9 @@ fn a_server_only_module_nothing_imports_is_not_a_refusal() {
     // only fix is deleting a file the project was not using, and the analysis
     // already knows the difference.
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js"));
+    builder.add_module(module("app/$page.js"));
     builder.add_module(module("old/session.js").with_import("@uniflowed/server"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
     let graph = builder.build();
 
     assert_eq!(found(&[route("/", "app")], &[], &graph), Vec::new());
@@ -121,9 +121,9 @@ fn a_module_named_server_js_counts_too() {
     // The other half of `uf_rsc`'s rule, and the one a specifier check misses:
     // `*.server.js` is server-only by name rather than by what it imports.
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js").with_import("../orders.server.js"));
+    builder.add_module(module("app/$page.js").with_import("../orders.server.js"));
     builder.add_module(module("orders.server.js"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
     let graph = builder.build();
 
     let findings = found(&[route("/", "app")], &[], &graph);
@@ -142,36 +142,32 @@ fn a_module_no_page_reaches_is_reported_by_its_file() {
     // inside, so the walk from the pages never arrives. Naming a route it does
     // not belong to would be a worse answer than naming none.
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js"));
-    builder.add_module(module("app/_uf.layout.js").with_import("@uniflowed/server"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
-    builder.add_entry("app/_uf.layout.js", EntryKind::Server);
+    builder.add_module(module("app/$page.js"));
+    builder.add_module(module("app/$layout.js").with_import("@uniflowed/server"));
+    builder.add_entry("app/$page.js", EntryKind::Server);
+    builder.add_entry("app/$layout.js", EntryKind::Server);
     let graph = builder.build();
 
     let findings = found(&[route("/", "app")], &[], &graph);
     assert_eq!(findings.len(), 1, "{findings:?}");
     assert_eq!(findings[0].route, None);
-    assert_eq!(findings[0].file, "app/_uf.layout.js");
+    assert_eq!(findings[0].file, "app/$layout.js");
 }
 
 #[test]
 fn a_route_handler_and_a_middleware_are_both_refused() {
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_module(module("app/$page.js"));
+    builder.add_entry("app/$page.js", EntryKind::Server);
     let graph = builder.build();
 
     let findings = found(
         &[route("/", "app")],
         &[
-            server_module(
-                "/api",
-                "app/api/_uf.route.js",
-                ServerModuleKind::RouteHandler,
-            ),
+            server_module("/api", "app/api/$route.js", ServerModuleKind::RouteHandler),
             server_module(
                 "/dashboard",
-                "app/dashboard/_uf.middleware.js",
+                "app/dashboard/$middleware.js",
                 ServerModuleKind::Middleware,
             ),
         ],
@@ -198,11 +194,11 @@ fn one_helper_two_routes_is_reported_for_both() {
     // about an application, and "these two routes cannot be rendered in a
     // browser" is the shape of that decision.
     let mut builder = RscGraphBuilder::new();
-    builder.add_module(module("app/_uf.page.js").with_import("../session.js"));
-    builder.add_module(module("app/orders/_uf.page.js").with_import("../../session.js"));
+    builder.add_module(module("app/$page.js").with_import("../session.js"));
+    builder.add_module(module("app/orders/$page.js").with_import("../../session.js"));
     builder.add_module(module("session.js").with_import("@uniflowed/server"));
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
-    builder.add_entry("app/orders/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
+    builder.add_entry("app/orders/$page.js", EntryKind::Server);
     let graph = builder.build();
 
     let findings = found(

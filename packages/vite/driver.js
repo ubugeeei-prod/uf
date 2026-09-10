@@ -707,7 +707,7 @@ async function build() {
   //
   // The condition is "there is a root boundary", not "there is any boundary",
   // because `/__uf_not_found__` is a path at the root: a project whose only
-  // `_uf.not-found.js` is in `app/guide/` would otherwise get a `404.html`
+  // `$not-found.js` is in `app/guide/` would otherwise get a `404.html`
   // rendered from the framework's bare default, which is worse than the file
   // it used to write, which was none.
   //
@@ -1072,7 +1072,7 @@ async function compile() {
  *
  * `bun`, `deno` and `static` are deliberately absent; `uf_config`'s
  * `DeployAdapter::is_implemented` is the other half of that fact and
- * `docs/app/reference/cli/_uf.page.mdx` says why for each of them.
+ * `docs/app/reference/cli/$page.mdx` says why for each of them.
  */
 const ADAPTERS = {
   node: {
@@ -1789,7 +1789,7 @@ function readManifest(outDir) {
  * this function are about.
  *
  * Handlers and middleware are in the same list, and they belong there: this is
- * the list of things that need a process, and a `_uf.route.js` needs one more
+ * the list of things that need a process, and a `$route.js` needs one more
  * obviously than any page does. They carry no per-route render — the build has
  * never written a file for either — so they appear only when the answer might
  * be a refusal.

@@ -39,7 +39,7 @@ const APP = path.join(REPO, "docs/app");
 /** The file behind a route, or `null` when the route has no page. */
 function pageFile(href: string): string | null {
   const dir = path.join(APP, href.replace(/^\//, ""));
-  for (const name of ["_uf.page.mdx", "_uf.page.js"]) {
+  for (const name of ["$page.mdx", "$page.js"]) {
     const file = path.join(dir, name);
     if (fs.existsSync(file)) {
       return file;

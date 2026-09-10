@@ -852,7 +852,7 @@ pub(crate) enum RoutesCommand {
         /// The route's URL path, as its directories spell it.
         #[arg(value_name = "PATH")]
         path: String,
-        /// Also write `_uf.layout.js`: a wrapper for this path and everything
+        /// Also write `$layout.js`: a wrapper for this path and everything
         /// under it.
         #[arg(long)]
         layout: bool,
@@ -865,7 +865,7 @@ pub(crate) enum RoutesCommand {
         /// a separate file is uf's business rather than theirs.
         #[arg(long)]
         loader: bool,
-        /// Also write `_uf.middleware.js`: what runs before this path answers.
+        /// Also write `$middleware.js`: what runs before this path answers.
         #[arg(long)]
         middleware: bool,
     },

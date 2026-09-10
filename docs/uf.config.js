@@ -51,7 +51,7 @@ export default defineConfig({
   // what makes the `robots.txt` worth writing is its `Sitemap:` line — the way
   // a crawler that was handed nothing else finds the thirty URLs.
   //
-  // The same origin appears as `metadataBase` in `docs/app/_uf.layout.js`,
+  // The same origin appears as `metadataBase` in `docs/app/$layout.js`,
   // which is what the renderer resolves `/brand/uf.png` against. Two readers,
   // two places; keep them in step.
   site: {

@@ -11,7 +11,7 @@ fn route(path: &str, directory: &str, middleware: &[&str]) -> Route {
     Route {
         path: path.into(),
         directory: Utf8PathBuf::from(format!("{ROOT}/{directory}")),
-        page: Utf8PathBuf::from(format!("{ROOT}/{directory}/_uf.page.js")),
+        page: Utf8PathBuf::from(format!("{ROOT}/{directory}/$page.js")),
         params: path
             .split('/')
             .filter_map(|segment| segment.strip_prefix(':'))
@@ -27,7 +27,7 @@ fn route(path: &str, directory: &str, middleware: &[&str]) -> Route {
         has_layout: false,
         middleware: middleware
             .iter()
-            .map(|dir| Utf8PathBuf::from(format!("{ROOT}/{dir}/_uf.middleware.js")))
+            .map(|dir| Utf8PathBuf::from(format!("{ROOT}/{dir}/$middleware.js")))
             .collect(),
     }
 }
@@ -61,7 +61,7 @@ fn a_guarded_route_that_was_prerendered_is_named() {
     assert_eq!(found.len(), 1, "{found:#?}");
     assert_eq!(found[0].url, "/dashboard");
     assert_eq!(found[0].file, "dist/dashboard/index.html");
-    assert_eq!(found[0].middleware, ["app/dashboard/_uf.middleware.js"]);
+    assert_eq!(found[0].middleware, ["app/dashboard/$middleware.js"]);
 }
 
 /// A route below the guard is the one nobody would think to check, and the
@@ -81,7 +81,7 @@ fn an_inherited_guard_counts() {
     let found = found(&routes, &pages);
 
     assert_eq!(found.len(), 1, "{found:#?}");
-    assert_eq!(found[0].middleware, ["app/dashboard/_uf.middleware.js"]);
+    assert_eq!(found[0].middleware, ["app/dashboard/$middleware.js"]);
 }
 
 /// A route with parameters is prerendered only when it has
@@ -144,14 +144,11 @@ fn the_route_that_would_answer_is_the_one_reported() {
 
     assert_eq!(found.len(), 2, "{found:#?}");
     assert_eq!(found[0].url, "/posts/hello");
-    assert_eq!(found[0].middleware, ["app/posts/_uf.middleware.js"]);
+    assert_eq!(found[0].middleware, ["app/posts/$middleware.js"]);
     assert_eq!(found[1].url, "/posts/new");
     assert_eq!(
         found[1].middleware,
-        [
-            "app/posts/_uf.middleware.js",
-            "app/posts/new/_uf.middleware.js"
-        ]
+        ["app/posts/$middleware.js", "app/posts/new/$middleware.js"]
     );
 }
 
@@ -159,8 +156,8 @@ fn the_route_that_would_answer_is_the_one_reported() {
 /// reported for it.
 ///
 /// A `(group)` segment is dropped from a route path and not from the directory
-/// tree, so `app/(marketing)/posts/new/_uf.page.js` serves `/posts/new` and
-/// inherits nothing from `app/posts/_uf.middleware.js`. Matching against the
+/// tree, so `app/(marketing)/posts/new/$page.js` serves `/posts/new` and
+/// inherits nothing from `app/posts/$middleware.js`. Matching against the
 /// guarded routes alone would have named a guard that does not apply to that
 /// path — a warning about a document that is served exactly as intended, which
 /// is how a report stops being read.
@@ -217,7 +214,7 @@ fn a_parameter_outranks_a_catch_all_at_the_same_literal_count() {
     assert_eq!(found.len(), 1, "{found:#?}");
     assert_eq!(
         found[0].middleware,
-        ["app/posts/_uf.middleware.js"],
+        ["app/posts/$middleware.js"],
         "{found:#?}"
     );
 }
@@ -249,5 +246,5 @@ fn a_catch_all_does_not_hide_the_guard_on_the_route_that_answers() {
 
     assert_eq!(found.len(), 1, "{found:#?}");
     assert_eq!(found[0].url, "/posts/archive/foo/edit");
-    assert_eq!(found[0].middleware, ["app/posts/[a]/_uf.middleware.js"]);
+    assert_eq!(found[0].middleware, ["app/posts/[a]/$middleware.js"]);
 }

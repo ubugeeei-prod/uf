@@ -128,7 +128,7 @@ jobs:
           command: << parameters.command >>
 ORB
 
-  cat > "$root/docs/app/guide/ci/_uf.page.mdx" <<'GUIDE'
+  cat > "$root/docs/app/guide/ci/\$page.mdx" <<'GUIDE'
 ---
 title: "uf in CI"
 ---

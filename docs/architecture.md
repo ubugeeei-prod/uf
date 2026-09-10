@@ -734,7 +734,7 @@ uf's tree is a direct child of the *root* segment, and a document with one
 streams nothing at all: measured against React 19.2.8, `[<div>, <Suspense>]`
 writes its first byte when the boundary resolves, and the same tree with the
 boundary inside any host element writes it immediately. The payload's rows are
-inside a `<span hidden>` for that reason. A route whose `_uf.loading.js` sits
+inside a `<span hidden>` for that reason. A route whose `$loading.js` sits
 above no layout is in exactly the same position and is still affected;
 ubugeeei-prod/uf#519 carries it.
 
@@ -1021,7 +1021,7 @@ and registers uf's plugins:
   development it renders every document request on the server, so `uf dev`
   serves the markup `uf build` writes.
 - `uf:mdx` is `@mdx-js/rollup` with GitHub-flavoured markdown, front matter and
-  heading ids, so `_uf.page.mdx` works with no configuration.
+  heading ids, so `$page.mdx` works with no configuration.
 
 A build is three passes: the client bundle (with a manifest, so the renderer
 knows which script and stylesheet tags to write), the server bundle (kept
@@ -1045,7 +1045,7 @@ they only mean something read together and three commands read them.
 | parameters, page exports `generateStaticParams` | prerendered, once per set |
 | parameters, no `generateStaticParams` | rendered per request |
 | any page exporting `dynamic = "force-dynamic"` | rendered per request |
-| a `_uf.route.js` handler, or anything under a `_uf.middleware.js` | answered per request |
+| a `$route.js` handler, or anything under a `$middleware.js` | answered per request |
 
 Under a plan of `everything` — `rendering.modes: ["ssg"]`, or
 `build.staticBuild` — a route in one of the last three rows is a **build

@@ -38,10 +38,10 @@ use crate::reserved::{ReservedFile, ReservedRole, ReservedVariant, RouteSegment}
 /// flag on the command.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RouteParts {
-    /// Also write `_uf.layout.js` — a wrapper for this path and everything
+    /// Also write `$layout.js` — a wrapper for this path and everything
     /// under it.
     pub layout: bool,
-    /// Also write `_uf.middleware.js` — what runs before this path answers.
+    /// Also write `$middleware.js` — what runs before this path answers.
     pub middleware: bool,
     /// Give the page a `loader`.
     ///
@@ -247,7 +247,7 @@ pub fn scaffold_route(
 /// The name uf reserves for `role`'s default variant.
 ///
 /// One call rather than a literal per role, which is the whole reason this
-/// module is in this crate: `_uf.layout.js` written out here would be a second
+/// module is in this crate: `$layout.js` written out here would be a second
 /// spelling of [`ReservedRole::as_str`]'s answer.
 fn file_name(role: ReservedRole) -> String {
     ReservedFile {
@@ -321,7 +321,7 @@ fn heading(relative: &Utf8Path) -> String {
     name
 }
 
-/// The `_uf.page.js` for a route at `relative`.
+/// The `$page.js` for a route at `relative`.
 ///
 /// # Two properties the generated source has to have
 ///
@@ -396,7 +396,7 @@ fn page_source(relative: &Utf8Path, loader: bool) -> String {
     source
 }
 
-/// The `_uf.layout.js` a `--layout` writes.
+/// The `$layout.js` a `--layout` writes.
 ///
 /// Content and not a document: a layout that renders `<html>` is the *root*
 /// one, and a second one below it would put a document inside a document. The
@@ -412,7 +412,7 @@ export component Layout(children: React.Node) {
 }
 "#;
 
-/// The `_uf.middleware.js` a `--middleware` writes.
+/// The `$middleware.js` a `--middleware` writes.
 ///
 /// It returns nothing, which is the shape that means "carry on": a middleware
 /// answers by returning a `Response` and passes by returning `undefined`, so
@@ -565,7 +565,7 @@ mod tests {
             files[0]
                 .path
                 .as_str()
-                .ends_with("app/articles/[slug]/_uf.page.js")
+                .ends_with("app/articles/[slug]/$page.js")
         );
     }
 

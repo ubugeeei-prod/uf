@@ -2,7 +2,7 @@ use super::*;
 
 /// Read one module's `schedule` export, without a project around it.
 fn read(source: &str) -> Result<Option<String>> {
-    read_schedule(source, Utf8Path::new("app/api/_uf.route.js"))
+    read_schedule(source, Utf8Path::new("app/api/$route.js"))
 }
 
 /// The same, for a module that declares a schedule and exports the `GET` a
@@ -49,7 +49,7 @@ fn a_computed_expression_is_refused_by_name_rather_than_skipped() {
         .to_string();
     assert!(message.contains("cannot read"), "{message}");
     assert!(message.contains("*/15 * * * *"), "{message}");
-    assert!(message.contains("_uf.route.js"), "{message}");
+    assert!(message.contains("$route.js"), "{message}");
 }
 
 #[test]
@@ -112,10 +112,10 @@ fn discovered(dir: &tempfile::TempDir) -> Vec<DeclaredSchedule> {
 fn a_route_handler_that_declares_one_is_found_at_its_path() {
     let dir = project(&[
         (
-            "app/api/sweep/_uf.route.js",
+            "app/api/sweep/$route.js",
             "export const schedule = \"*/15 * * * *\";\nexport function GET() {}\n",
         ),
-        ("app/api/health/_uf.route.js", "export function GET() {}\n"),
+        ("app/api/health/$route.js", "export function GET() {}\n"),
     ]);
 
     let found = discovered(&dir);
@@ -123,7 +123,7 @@ fn a_route_handler_that_declares_one_is_found_at_its_path() {
     assert_eq!(found[0].path, "/api/sweep");
     assert_eq!(found[0].cron, "*/15 * * * *");
     assert!(
-        found[0].file.as_str().ends_with("_uf.route.js"),
+        found[0].file.as_str().ends_with("$route.js"),
         "{:?}",
         found[0].file
     );
@@ -133,11 +133,11 @@ fn a_route_handler_that_declares_one_is_found_at_its_path() {
 fn several_come_back_in_path_order() {
     let dir = project(&[
         (
-            "app/api/sweep/_uf.route.js",
+            "app/api/sweep/$route.js",
             "export const schedule = \"*/15 * * * *\";\nexport function GET() {}\n",
         ),
         (
-            "app/api/digest/_uf.route.js",
+            "app/api/digest/$route.js",
             "export const schedule = \"0 6 * * 1\";\nexport function GET() {}\n",
         ),
     ]);
@@ -153,7 +153,7 @@ fn several_come_back_in_path_order() {
 #[test]
 fn a_middleware_is_not_asked() {
     let dir = project(&[(
-        "app/dashboard/_uf.middleware.js",
+        "app/dashboard/$middleware.js",
         "export const schedule = \"* * * * *\";\nexport function middleware() {}\n",
     )]);
     assert_eq!(discovered(&dir), Vec::new());
@@ -169,7 +169,7 @@ fn a_project_with_no_router_root_declares_none() {
 #[test]
 fn a_computed_expression_in_a_real_project_fails_the_walk() {
     let dir = project(&[(
-        "app/api/sweep/_uf.route.js",
+        "app/api/sweep/$route.js",
         "export const schedule = everyMinutes(15);\n",
     )]);
     let root = Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
@@ -231,7 +231,7 @@ fn a_re_export_is_refused_rather_than_missed() {
 #[test]
 fn a_specifier_export_is_found_in_a_real_project_too() {
     let dir = project(&[(
-        "app/api/sweep/_uf.route.js",
+        "app/api/sweep/$route.js",
         "const schedule = \"*/15 * * * *\";\nexport { schedule };\nexport function GET() {}\n",
     )]);
     let found = discovered(&dir);
@@ -305,7 +305,7 @@ fn a_type_annotation_does_not_hide_the_declaration() {
 fn declared(path: &str, cron: &str) -> DeclaredSchedule {
     DeclaredSchedule {
         path: path.into(),
-        file: Utf8PathBuf::from(format!("app{path}/_uf.route.js")),
+        file: Utf8PathBuf::from(format!("app{path}/$route.js")),
         cron: cron.to_owned(),
     }
 }

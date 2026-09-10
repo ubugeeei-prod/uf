@@ -44,7 +44,7 @@ fn alt_text_reports_an_area_and_an_image_input() {
 #[test]
 fn alt_text_accepts_every_way_an_alt_can_arrive() {
     // An empty `alt` is the answer for a decorative image and must not be
-    // reported: uf's own `docs/app/_uf.layout.js` writes one.
+    // reported: uf's own `docs/app/$layout.js` writes one.
     for markup in [
         "    <img src=\"/cat.png\" alt=\"a cat\" />",
         "    <img src=\"/mark.svg\" alt=\"\" />",

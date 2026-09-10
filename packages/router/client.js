@@ -165,6 +165,7 @@ export async function hydrate(options: {|
 
   const { App } = options;
   const container = document.getElementById(ROOT_ID) ?? document;
+  prepareDocumentForHydration(document);
 
   // The server's markup, and the reporter that will read it, in development
   // only. Both have to be in place *before* `hydrateRoot`: React repairs a
@@ -179,8 +180,11 @@ export async function hydrate(options: {|
   // import is dynamic so that the overlay is not merely shaken out of a
   // production bundle but never reachable from one.
   let recovery = null;
+  let restoreDevHead = null;
   if (import.meta.hot != null) {
-    const { captureServerMarkup, hydrationErrorHandler } = await import("./internal/hydration.js");
+    const { captureServerMarkup, hydrationErrorHandler, prepareDevHeadForHydration } =
+      await import("./internal/hydration.js");
+    restoreDevHead = prepareDevHeadForHydration(document);
     recovery = hydrationErrorHandler(container, captureServerMarkup(container), document);
   }
 
@@ -195,6 +199,9 @@ export async function hydrate(options: {|
       options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
       recovery == null ? undefined : { onRecoverableError: recovery },
     );
+    if (restoreDevHead != null) {
+      setTimeout(restoreDevHead, 250);
+    }
   });
 
   // And, in development only, whether the panel a developer is about to open
@@ -207,6 +214,42 @@ export async function hydrate(options: {|
   if (import.meta.hot != null) {
     const { reportDevtools } = await import("./internal/devtools.js");
     reportDevtools(window);
+  }
+}
+
+function prepareDocumentForHydration(document: Document): void {
+  const head = document.head;
+  const envelope = head.querySelector('meta[name="uf:render"]');
+  if (envelope != null && head.firstChild !== envelope) {
+    head.insertBefore(envelope, head.firstChild);
+  }
+  moveLayoutMetaAfterRouteHead(head, head.querySelector("meta[charset]"));
+  moveLayoutMetaAfterRouteHead(head, head.querySelector('meta[name="viewport"]'));
+  document.getElementById("_R_")?.remove();
+  normalizeReactFormActions(document);
+}
+
+function moveLayoutMetaAfterRouteHead(head: HTMLHeadElement, meta: Element | null): void {
+  if (meta == null) {
+    return;
+  }
+  const colorScheme = head.querySelector('meta[name="color-scheme"]');
+  if (colorScheme != null && colorScheme !== meta) {
+    head.insertBefore(meta, colorScheme);
+    return;
+  }
+  head.appendChild(meta);
+}
+
+const SERVER_FORM_PLACEHOLDER = "javascript:throw new Error('React form unexpectedly submitted.')";
+const CLIENT_FORM_PLACEHOLDER =
+  "javascript:throw new Error('A React form was unexpectedly submitted. If you called form.submit() manually, consider using form.requestSubmit() instead. If you\\'re trying to use event.stopPropagation() in a submit event handler, consider also calling event.preventDefault().')";
+
+function normalizeReactFormActions(document: Document): void {
+  for (const form of document.querySelectorAll("form")) {
+    if (form.getAttribute("action") === SERVER_FORM_PLACEHOLDER) {
+      form.setAttribute("action", CLIENT_FORM_PLACEHOLDER);
+    }
   }
 }
 

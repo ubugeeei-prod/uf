@@ -15,7 +15,7 @@
 // `path` and `multiValueHeaders`), and it is not an ALB target-group event.
 // Supporting all three by sniffing the event would be three untested code
 // paths where the platform's own documentation says which one you get; this
-// one is named in `docs/app/reference/cli/_uf.page.mdx`, and an event that is
+// one is named in `docs/app/reference/cli/$page.mdx`, and an event that is
 // not it is refused by [`toRequest`] with a message saying so rather than
 // answered from fields that happen to be undefined.
 //

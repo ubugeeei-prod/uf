@@ -112,10 +112,10 @@
 
 - [x] Use `app.js` as the framework entrypoint.
 - [x] Load `./app` through `routerView('./app')`.
-- [x] Reserve `app/_uf.layout.js`.
-- [x] Reserve `app/_uf.page.js`.
-- [x] Reserve `app/_uf.middleware.js`.
-- [x] Define one reserved-name grammar, `_uf.<role>[.<variant>].js`, shared by
+- [x] Reserve `app/$layout.js`.
+- [x] Reserve `app/$page.js`.
+- [x] Reserve `app/$middleware.js`.
+- [x] Define one reserved-name grammar, `$<role>[.<variant>].js`, shared by
       `uf create`, the router, and the linter.
 - [x] Generate `router.js` with route path and params types.
 - [ ] Enforce typed route guards and constraints.
@@ -256,7 +256,7 @@
       was a green run over no tests while `uf lint`, `uf fmt` and `uf check`
       all refused it. Still open: uf does not classify its *runtime* failures,
       so a broken `uf.config.js` and a missing `@uniflowed/vite` exit `1` where
-      `docs/app/reference/cli/_uf.page.mdx` documents `2`.
+      `docs/app/reference/cli/$page.mdx` documents `2`.
 - [x] Report what a test printed. `console.log` in a test used to kill the file
       it was in, because the worker's stdout was the protocol.
 - [ ] Add snapshot tests for generated templates and router types.
@@ -266,8 +266,8 @@
       rendered state of a component that both a person and a test can reach.
       `defineStories` declares the props a state needs — complete on the set, a
       delta per story — plus its decorators, its mocked requests and its play
-      function; `_uf.story.js` is where they live, following the repository's
-      own `_uf.<role>[.<variant>].js` grammar rather than a second convention;
+      function; `$story.js` is where they live, following the repository's
+      own `$<role>[.<variant>].js` grammar rather than a second convention;
       and one renderer serves `@uniflowed/test` and a serialised page alike, so
       a story is not a picture only a bespoke UI can draw. Six Flow modules,
       no native binding: the `NativeHandle` contract is replaced, not kept.
@@ -276,7 +276,7 @@
       Two gaps are named in the package's Readiness section rather than left to
       be discovered. `story` is not yet a role in
       `crates/uf_router/src/reserved.rs`, so `uf lint` reports
-      `router/reserved-files` on every `_uf.story.js` — the name is right and
+      `router/reserved-files` on every `$story.js` — the name is right and
       the linter has not been told. And `uf test` discovers `it(` only with a
       string-literal name, so a file whose only content is
       `describeStories(set)` is not run at all, and the run reports zero files

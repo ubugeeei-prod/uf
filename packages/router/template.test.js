@@ -1,6 +1,6 @@
 // @flow
 //
-// `_uf.template.js`: a layout that remounts.
+// `$template.js`: a layout that remounts.
 //
 // A layout persists across navigation — that is the point of one, and it is
 // why a sidebar keeps its scroll position when the page under it changes.
@@ -62,28 +62,26 @@ describe("scanning for templates", () => {
     // as a loading boundary's. A template that sat outside its own layout
     // would remount the frame it is supposed to be inside.
     const root = appRoot([
-      "_uf.layout.js",
-      "guide/_uf.layout.js",
-      "guide/_uf.template.js",
-      "guide/_uf.page.js",
+      "$layout.js",
+      "guide/$layout.js",
+      "guide/$template.js",
+      "guide/$page.js",
     ]);
 
-    expect(templatesOf(root)).toEqual([
-      { above: 2, module: path.join("guide", "_uf.template.js") },
-    ]);
+    expect(templatesOf(root)).toEqual([{ above: 2, module: path.join("guide", "$template.js") }]);
   });
 
   it("nests them the way layouts nest, root first", () => {
     const root = appRoot([
-      "_uf.template.js",
-      "guide/_uf.layout.js",
-      "guide/_uf.template.js",
-      "guide/_uf.page.js",
+      "$template.js",
+      "guide/$layout.js",
+      "guide/$template.js",
+      "guide/$page.js",
     ]);
 
     expect(templatesOf(root)).toEqual([
-      { above: 0, module: "_uf.template.js" },
-      { above: 1, module: path.join("guide", "_uf.template.js") },
+      { above: 0, module: "$template.js" },
+      { above: 1, module: path.join("guide", "$template.js") },
     ]);
   });
 
@@ -91,15 +89,15 @@ describe("scanning for templates", () => {
     // A segment with no template contributes nothing at all: a project that
     // declares none renders exactly the tree it rendered before the file
     // existed.
-    expect(templatesOf(appRoot(["_uf.layout.js", "_uf.page.js"]))).toEqual([]);
+    expect(templatesOf(appRoot(["$layout.js", "$page.js"]))).toEqual([]);
   });
 
   it("carries them into the generated module as lazy imports", () => {
-    const root = appRoot(["_uf.template.js", "_uf.page.js"]);
+    const root = appRoot(["$template.js", "$page.js"]);
 
     const source = routesModuleSource(scanRoutes(root));
 
-    expect(source).toContain("_uf.template.js");
+    expect(source).toContain("$template.js");
     expect(source).toContain("templates: [{ above: 0, module: template0 }]");
   });
 });
@@ -139,7 +137,7 @@ const page = (routePath: string, text: string) => ({
   path: routePath,
   params: [],
   mdx: false,
-  file: `app${routePath}/_uf.page.js`,
+  file: `app${routePath}/$page.js`,
   page: () => Promise.resolve({ default: () => <p>{text}</p> }),
   layouts: [loadFrame],
   loading: [],

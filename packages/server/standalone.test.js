@@ -297,7 +297,7 @@ describe("route handlers", () => {
   });
 
   it("does not shadow a page the build already prerendered", async () => {
-    // The router lets `_uf.route.js` sit beside `_uf.page.js`, so one path can
+    // The router lets `$route.js` sit beside `$page.js`, so one path can
     // have both a handler and a prerendered document. Vite's preview server
     // serves the file first and gives uf no say in it, so a compiled binary
     // that let the handler win would answer one way when the build was checked

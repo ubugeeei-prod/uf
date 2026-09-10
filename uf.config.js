@@ -458,7 +458,7 @@ export default defineConfig({
     // of nothing else in this repository — `npm install` inside
     // `tools/bench/tui` first. Its byte counts are deterministic and *are*
     // checked in CI, by `packages/tui/tui.test.js`, which asserts uf's half of
-    // the table in `docs/app/guide/tui/_uf.page.mdx` against the renderer. What
+    // the table in `docs/app/guide/tui/$page.mdx` against the renderer. What
     // this task adds is Ink's half and the wall clock, and a wall clock on a
     // shared build agent is a measurement of the agent.
     //
@@ -715,7 +715,7 @@ export default defineConfig({
       // task's.
       inputs: [
         "integrations/**",
-        "docs/app/guide/ci/_uf.page.mdx",
+        "docs/app/guide/ci/$page.mdx",
         "tools/ci/recipes-are-runnable.sh",
       ],
     },
@@ -798,7 +798,7 @@ export default defineConfig({
         ".envrc",
         "CONTRIBUTING.md",
         "README.md",
-        "docs/app/guide/install/_uf.page.mdx",
+        "docs/app/guide/install/$page.mdx",
         "tools/ci/nix-first-class.sh",
       ],
     },

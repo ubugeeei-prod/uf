@@ -11,7 +11,7 @@
 #   integrations/github-actions/action.yml
 #   integrations/gitlab/uf.gitlab-ci.yml
 #   integrations/circleci/orb.yml
-#   docs/app/guide/ci/_uf.page.mdx     (its fenced blocks, which are copied)
+#   docs/app/guide/ci/$page.mdx     (its fenced blocks, which are copied)
 #
 # That is the whole argument for this file. A shipped recipe is a copy of the
 # CLI's surface that ages on its own: rename a flag and three files go on
@@ -55,7 +55,7 @@ cd "$repo_root"
 YAML_RECIPES="integrations/github-actions/action.yml
 integrations/gitlab/uf.gitlab-ci.yml
 integrations/circleci/orb.yml"
-GUIDE="docs/app/guide/ci/_uf.page.mdx"
+GUIDE='docs/app/guide/ci/$page.mdx'
 
 # Commands that read `node_modules`, and therefore need `uf install` to have run.
 #

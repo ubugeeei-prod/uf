@@ -66,7 +66,7 @@ async function documentFor(
         path: "/guide",
         params: [],
         mdx: false,
-        file: "app/guide/_uf.page.js",
+        file: "app/guide/$page.js",
         page: () => Promise.resolve({ default: Page, metadata }),
         layouts:
           layoutMetadata == null && layout == null
@@ -434,7 +434,7 @@ async function documentOf(page: PageModule, layout?: ?LayoutModule): Promise<str
         path: "/guide",
         params: [],
         mdx: false,
-        file: "app/guide/_uf.page.js",
+        file: "app/guide/$page.js",
         page: () => Promise.resolve(page),
         layouts: layout == null ? [] : [() => Promise.resolve(layout)],
       },

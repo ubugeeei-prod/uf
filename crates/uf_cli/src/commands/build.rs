@@ -372,7 +372,7 @@ pub(crate) fn build(
         Ok(report)
     })?;
 
-    // Which of the documents Vite just wrote are under a `_uf.middleware.js`.
+    // Which of the documents Vite just wrote are under a `$middleware.js`.
     // Answerable only here, because the pages are what the prerender produced
     // rather than what the route table said it might; the reason it is a
     // report and not a refusal is argued in [`guards`].

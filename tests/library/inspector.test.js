@@ -59,7 +59,7 @@ beforeEach(() => {
 /**
  * The shell of a document with two boundaries suspended in it.
  *
- * Exactly what React 19.2.8 writes, with the fallbacks a `_uf.loading.js` would
+ * Exactly what React 19.2.8 writes, with the fallbacks a `$loading.js` would
  * have rendered: an empty `<template id="B:n">`, the fallback, and the comment
  * that closes the boundary.
  */
@@ -307,7 +307,7 @@ describe("the report", () => {
 describe("when it speaks", () => {
   it("speaks the first time a path streams", () => {
     // Which is the moment the answer changed: you have just written the
-    // `_uf.loading.js`, or the `await` that made the page suspend.
+    // `$loading.js`, or the `await` that made the page suspend.
     const sent: Array<StreamDiagnostic> = [];
     streamReporter("/slow", (report) => {
       sent.push(report);
@@ -532,7 +532,7 @@ function suspendingTable(waited: Promise<string>) {
         path: "/slow",
         params: [],
         mdx: false,
-        file: "app/slow/_uf.page.js",
+        file: "app/slow/$page.js",
         page: () => Promise.resolve({ default: SlowPage }),
         layouts: [() => Promise.resolve({ default: SiteLayout })],
         loading: [{ above: 1, module: () => Promise.resolve({ default: Loading }) }],
