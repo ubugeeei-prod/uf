@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/test",
-  "version": "0.0.0-alpha.18",
+  "version": "0.0.0-alpha.19",
   "description": "The test API and worker for `uf test`: describe/it, a full matcher set, and the process uf fans test files out to.",
   "type": "module",
   "license": "MIT",
@@ -26,7 +26,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/host": "0.0.0-alpha.18"
+    "@uniflowed/host": "0.0.0-alpha.19"
   },
   "peerDependencies": {
     "axe-core": ">=4"
