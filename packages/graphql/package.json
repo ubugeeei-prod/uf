@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/graphql",
-  "version": "0.0.0-alpha.19",
+  "version": "0.0.0-alpha.20",
   "description": "The Relay environment, without the boilerplate, for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/fetch": "0.0.0-alpha.19"
+    "@uniflowed/fetch": "0.0.0-alpha.20"
   },
   "peerDependencies": {
     "relay-runtime": ">=20"

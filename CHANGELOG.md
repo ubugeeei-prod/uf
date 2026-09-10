@@ -1,5 +1,22 @@
 # Changelog
 
+## uf@0.0.0-alpha.20
+
+_2026-09-10_
+
+### Internal
+
+- **ci**: harden publish browser wrapper (#761)
+- **ci**: give npm publish tests more room (#760)
+- **ci**: deny clippy warnings with all features (#759)
+
+### Other
+
+- env: read exact tool pins from package engines (#765)
+- upstream: silence remaining Flow deref warning (#764)
+- check: resolve package imports aliases (#763)
+- release: keep untrusted packages out of the OIDC publish closure (#762)
+
 ## uf@0.0.0-alpha.19
 
 _2026-09-10_
