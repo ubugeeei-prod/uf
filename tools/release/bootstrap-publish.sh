@@ -53,12 +53,26 @@ case "$version" in
   *-rc*) tag=rc ;;
 esac
 
+check_release_manifests() {
+  for manifest in \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt
+  do
+    [ -r "$manifest" ] || {
+      echo "bootstrap-publish: cannot read ${manifest}" >&2
+      exit 1
+    }
+  done
+}
+
 release_packages() {
   grep -h -vE '^[[:space:]]*(#|$)' \
     tools/release/published-packages.txt \
     tools/release/pending-packages.txt |
     awk '!seen[$0]++'
 }
+
+check_release_manifests
 
 missing=""
 for package in $(release_packages); do
