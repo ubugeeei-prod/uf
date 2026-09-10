@@ -395,6 +395,17 @@ jobs:
       - run: ./target/release/uf run apex:routes:test
       - run: ./target/release/uf run scripts:parse
       - run: ./target/release/uf run scripts:parse:test
+      # And that the flake is still one flake that reads one toolchain pin.
+      # It was two flakes naming a stable Rust channel for a workspace that
+      # only compiles on a pinned nightly, so `nix build` could not have
+      # produced a binary and `nix develop` handed a contributor a shell the
+      # next line of the README fails in. Nothing said so because the only Nix
+      # in CI was `Formal`, which enters a shell and never builds a crate.
+      # This half needs no Nix installed, which is why it is here and not only
+      # in `nix.yml`: a second `flake.nix` added under `tools/` would not match
+      # a path filter naming the root one.
+      - run: ./target/release/uf run nix
+      - run: ./target/release/uf run nix:test
       # And that the three CI integrations still configure the installer with
       # variables it reads. They are YAML for three systems this repository has
       # no runner for, and the installer is shell; nothing else sees both

@@ -743,6 +743,48 @@ export default defineConfig({
       inputs: ["tools/ci/gate-covers-every-job.sh", "tools/ci/test-gate-covers-every-job.sh"],
     },
 
+    // And that the flake is still one flake, still reads one toolchain pin,
+    // and is still pointed at by everything that mentions it.
+    //
+    // Nix was present here long before it worked. Two flakes disagreed about
+    // the dev shell; both named `rust-bin.stable."1.98.0"` for a workspace
+    // `rust-toolchain.toml` pins to `nightly-2026-08-01`, which is not a
+    // version that fell behind but a channel that cannot compile 23 of the
+    // crates at all; the build symlinked the pinned Flow commit without
+    // `tools/upstream/patches/flow` on top; and `README.md` pointed at an
+    // install page that had no Nix on it. None of it was noticed because the
+    // only Nix in CI was `Formal` entering a shell to run `why3`.
+    //
+    // This is the half that needs no Nix installed, so it runs in `Metadata`
+    // on every pull request rather than only on the ones that touch the
+    // flake — a second `flake.nix` appearing under `tools/` is exactly the
+    // change that would not match a path filter naming the root one.
+    // `.github/workflows/nix.yml` is the other half, and it is the one that
+    // actually builds the package.
+    nix: {
+      command: "tools/ci/nix-first-class.sh",
+      // Every side of the agreement: the flake and its lock, the pin it has to
+      // read, the patches it has to apply, and the two documents that tell a
+      // reader which of them to run.
+      inputs: [
+        "**/flake.nix",
+        "**/flake.lock",
+        "rust-toolchain.toml",
+        ".envrc",
+        "CONTRIBUTING.md",
+        "README.md",
+        "docs/app/guide/install/_uf.page.mdx",
+        "tools/ci/nix-first-class.sh",
+      ],
+    },
+    // And that each of those failures still goes red. Every one of them was
+    // true of this repository at some point and passed review, so a guard over
+    // a repository where they are all absent proves nothing on its own.
+    "nix:test": {
+      command: "tools/ci/test-nix-first-class.sh",
+      inputs: ["tools/ci/nix-first-class.sh", "tools/ci/test-nix-first-class.sh"],
+    },
+
     // The crates `cargo semver-checks` cannot compare, which is computed and
     // therefore capable of being wrong in two directions: too narrow and the
     // job fails for every pull request, which is what #633 did by adding a

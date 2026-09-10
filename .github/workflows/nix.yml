@@ -1,0 +1,176 @@
+name: Nix
+
+# The flake is a supported way to get uf, so something has to run it.
+#
+# Until this file existed, nothing did. The only Nix in CI was the `Formal`
+# job, which enters the dev shell to run `why3` and never builds a crate — so
+# `nix build .#uf` had never been executed by anything, on any machine, since
+# it was written. It could not have worked: it pinned `rust-bin.stable."1.98.0"`
+# while `rust-toolchain.toml` pins `nightly-2026-08-01`, and 23 crates in the
+# Flow port declare `#![feature(box_patterns)]`, which no stable compiler
+# accepts. A flake nothing builds is a flake that is broken and nobody knows.
+#
+# The split below is about cost. Evaluation is seconds and runs on every pull
+# request that touches anything Nix reads. The build compiles the whole
+# workspace into the store and is half an hour, so it runs on `main`, on a
+# schedule, and on pull requests that change what the build itself consumes —
+# the flake, the lock, the toolchain pin, or the upstream patches.
+#
+# None of these is a required context. They are not in
+# `tools/ci/gate-covers-every-job.sh`'s `required_contexts`, which is this
+# repository's written record of branch protection, and adding one there would
+# be a check widening the set of checks it must pass. The `Nix` jobs are
+# advisory until somebody changes that setting deliberately.
+
+on:
+  pull_request:
+    paths:
+      # `**/`, not just the root: a second flake appearing somewhere under
+      # `tools/` is the change this most needs to see, and it is the one a
+      # pattern naming the root flake would miss.
+      - "**/flake.nix"
+      - "**/flake.lock"
+      - "rust-toolchain.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/**"
+      - "tools/upstream/patches/**"
+      - ".github/workflows/nix.yml"
+  push:
+    branches:
+      - main
+  # Weekly, because the inputs move even when this repository does not:
+  # `nixos-unstable` and `rust-overlay` are branches, and `flake.lock` has
+  # nothing updating it — Dependabot has no ecosystem for Nix flakes, so the
+  # `cargo` and `github-actions` entries in `.github/dependabot.yml` leave it
+  # alone. This run is what says the lock has gone stale, in the absence of
+  # anything that would refresh it.
+  schedule:
+    - cron: "0 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast, and the one worth running most often: it type-checks the whole flake
+  # for all four systems without building any of it, which is what catches an
+  # output that no longer evaluates.
+  flake:
+    name: Flake
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # The static half: one flake, no toolchain named twice, the consumer
+      # outputs present. It needs no Nix, so `Metadata` in `ci.yml` runs it on
+      # every pull request; it is repeated here so that this workflow still
+      # holds the line if it is ever dropped from there.
+      - run: tools/ci/nix-first-class.sh
+
+      # `--all-systems`, because three of the four cannot be built here and an
+      # output that fails to evaluate on `aarch64-darwin` is exactly the one a
+      # contributor on this repository's own author's machine would hit first.
+      - run: nix flake check --no-build --all-systems
+      - run: nix flake show --all-systems
+
+      # A lock that does not cover the inputs makes every `--locked` consumer
+      # refuse to start, and `nix flake check` above does not say so on its own.
+      - run: nix flake metadata --json > /dev/null
+
+  # The shell `README.md` and `CONTRIBUTING.md` tell a contributor to enter.
+  # What matters is not that it opens but that the next line of the README
+  # works inside it, so this asserts the toolchain rather than the exit code.
+  shell:
+    name: Dev shell
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      - name: The shell's Rust is the one rust-toolchain.toml pins
+        run: |
+          set -eu
+          pinned="$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)"
+          version="$(nix develop . --command rustc --version)"
+          # The sysroot and not the version string. A `nightly-2026-08-01`
+          # toolchain reports `rustc 1.99.0-nightly (ad3d0bc14 2026-07-31)` —
+          # the *commit* date, which is the day before the channel date,
+          # because a nightly is built from the previous day's commit. Matching
+          # the pin against the version therefore fails on a shell that is
+          # exactly right, which is what it did here. The sysroot is the
+          # toolchain's own directory and carries its name:
+          # `/nix/store/<hash>-rust-...-nightly-2026-08-01`.
+          sysroot="$(nix develop . --command rustc --print sysroot)"
+          printf 'pinned  %s\n' "$pinned"
+          printf 'shell   %s\n' "$version"
+          printf 'sysroot %s\n' "$sysroot"
+          case "$sysroot" in
+            *"$pinned"*) ;;
+            *)
+              echo >&2
+              echo "The dev shell's rustc is not the pinned toolchain." >&2
+              echo >&2
+              echo "This is the failure that made the flake unusable before" >&2
+              echo "it read rust-toolchain.toml: a shell whose compiler cannot" >&2
+              echo "build the workspace it is a shell for. 23 crates in the" >&2
+              echo "Flow port need the nightly, so the difference is not a" >&2
+              echo "version preference, it is whether cargo build works." >&2
+              exit 1
+              ;;
+          esac
+
+      # The rest of what the shell promises. `cargo`, `clippy` and `rustfmt`
+      # because `uf run ci` runs all three; Node and Bun because uf needs a
+      # JavaScript host and the shell is meant to supply one.
+      - run: nix develop . --command cargo --version
+      - run: nix develop . --command cargo clippy --version
+      - run: nix develop . --command cargo fmt --version
+      - run: nix develop . --command node --version
+      - run: nix develop . --command bun --version
+      - run: nix develop . --command why3 --version
+
+  # The real proof. Everything above this job is evaluation, and evaluation is
+  # what said the old flake was fine.
+  #
+  # Only `x86_64-linux` is built. The author of this repository runs
+  # nix-darwin, so `aarch64-darwin` is the platform most likely to be installed
+  # from this flake and it is *not* covered here — a macOS runner would roughly
+  # double the cost of a job that already takes half an hour. That gap is
+  # written down rather than implied; `nix build .#uf` on a Mac is the check
+  # nobody is running.
+  build:
+    name: Build
+    runs-on: blacksmith-32vcpu-ubuntu-2404
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # No `tools/upstream/sync.sh` here, deliberately. The flake's own
+      # `postPatch` is what fetches the pinned Flow port and applies
+      # `tools/upstream/patches/flow/` on top, and if it did not, this job
+      # would pass on a checkout the sync script had prepared and say nothing
+      # about the flake. A Nix build has to be hermetic or it is not a Nix
+      # build.
+      - run: nix build .#uf --print-build-logs
+
+      # And that the thing it produced is the thing it claims. All three
+      # binaries, because `installPhase` installs three and a missing `ufr` or
+      # `ufx` would not fail the build.
+      - run: ./result/bin/uf --version
+      - run: ./result/bin/ufr --version
+      - run: ./result/bin/ufx --version
+
+      # `uf info` resolves a JavaScript host, so it is the one command that
+      # says the binary works rather than merely links.
+      - run: ./result/bin/uf info

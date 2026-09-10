@@ -159,8 +159,21 @@ into `~/.local/bin`, with the runtime itself under `$XDG_DATA_HOME/uf`
 first, and it is served from `https://setup.uniflowed.dev/install.sh` if you
 would rather fetch it before running it.
 
-Nix, and building from a checkout, are on
-[the install page](https://docs.uniflowed.dev/guide/install).
+On Nix, the repository is a flake and that is the whole install:
+
+```sh
+nix run github:ubugeeei-prod/uf          # without installing it
+nix profile install github:ubugeeei-prod/uf
+```
+
+It pins the Rust toolchain, fetches Meta's Flow port at the commit uf was built
+against and applies uf's patches to it, so the build is the same everywhere. For
+NixOS, nix-darwin and home-manager there are `nixosModules.default`,
+`darwinModules.default` and `homeManagerModules.default`, all taking
+`programs.uf.enable`, and an `overlays.default` if you would rather have
+`pkgs.uf` and place it yourself. [The install
+page](https://docs.uniflowed.dev/guide/install) has those and the
+build-from-a-checkout path.
 
 uf still needs a JavaScript host — Node.js or Bun — because Vite and your test
 bodies run there. `uf info` prints the one it found.
