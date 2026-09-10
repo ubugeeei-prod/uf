@@ -324,10 +324,7 @@ export component Page() {
   return (
     <main>
       <Headline mood={Mood.Calm} />
-      <p>
-        Edit <code>app/$page.js</code> and this page reloads. There is no second config file
-        to keep in step with this one.
-      </p>
+      <p>Edit app/$page.js and this page reloads.</p>
       <Counter initial={0} />
     </main>
   );
