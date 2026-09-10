@@ -44,7 +44,6 @@ relay
 router
 server
 state
-std
 story
 stylex
 test
