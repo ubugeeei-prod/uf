@@ -508,6 +508,19 @@ mod tests {
     }
 
     #[test]
+    fn a_package_with_no_exports_map_prefers_module_to_main() {
+        let packages = packages(&[Source::new(
+            "vendor/dual/package.json",
+            r#"{ "name": "dual", "main": "./cjs.js", "module": "./esm.js" }"#,
+        )]);
+
+        assert_eq!(
+            packages.resolve("app.js", "dual"),
+            Some(PackageFile::Implied("vendor/dual/esm.js".into()))
+        );
+    }
+
+    #[test]
     fn a_package_with_neither_exports_nor_main_falls_back_to_its_directory() {
         let packages = packages(&[Source::new(
             "vendor/bare/package.json",

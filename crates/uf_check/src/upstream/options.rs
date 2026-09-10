@@ -32,13 +32,17 @@ const REACT_RULES: [ReactRule; 4] = [
 /// How many tokens of a file's header are scanned for a docblock.
 const MAX_HEADER_TOKENS: i32 = 10;
 
-/// The `package.json` field a package with no `exports` map is entered through.
+/// The `package.json` fields a package with no `exports` map is entered through.
 ///
-/// Flow's own default, and Node's. Stated rather than left to
-/// `Options::default()`, whose list is empty — with an empty list `main` is
-/// never read, and a package that has no `exports` map would resolve to
-/// nothing at all.
-const NODE_MAIN_FIELDS: [&str; 1] = ["main"];
+/// Prefer `module` to `main` because uf checks the ESM graph. A legacy dual
+/// package with no `exports` map commonly leaves its CommonJS entry in `main`
+/// and its ESM entry in `module`; checking the CommonJS file is the same kind
+/// of wrong graph as choosing the `require` condition below.
+///
+/// Stated rather than left to `Options::default()`, whose list is empty — with
+/// an empty list neither field is ever read, and a package that has no
+/// `exports` map would resolve to nothing at all.
+const NODE_MAIN_FIELDS: [&str; 2] = ["module", "main"];
 
 /// The `exports` conditions a package subpath is resolved under.
 ///
@@ -169,9 +173,9 @@ mod tests {
         let options = options(&CheckLimits::default());
 
         assert_eq!(&*options.node_package_export_conditions, ["import"]);
-        // Without this the `main` of a package with no `exports` map is never
-        // read, and such a package resolves to nothing.
-        assert_eq!(&*options.node_main_fields, ["main"]);
+        // Without this the entry fields of a package with no `exports` map are
+        // never read, and such a package resolves to nothing.
+        assert_eq!(&*options.node_main_fields, ["module", "main"]);
     }
 
     #[test]
