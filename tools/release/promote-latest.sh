@@ -11,10 +11,9 @@
 # `latest`, which is the right rule and stays: a prerelease must not displace a
 # stable release. These packages have no stable release, so nothing has moved
 # `latest` since the day of the first publish — with `uf@0.0.0-alpha.7` out,
-# `latest` was `0.0.0-alpha.1` on five of the seventeen names and
-# `0.0.0-alpha.2` on the other twelve, so `npm install @uniflowed/ui` gave a
-# person five releases of drift and a package set that did not agree with
-# itself. See ubugeeei-prod/uf#408.
+# `latest` was stuck on older alpha releases across the publish closure, so
+# `npm install @uniflowed/react` gave a person releases of drift and a package
+# set that did not agree with itself. See ubugeeei-prod/uf#408.
 #
 # ## Why this is a person's step and not part of the publish job
 #
@@ -74,12 +73,12 @@ check_only=false
 assume_yes=false
 # One code for the whole run.
 #
-# `npm dist-tag add` on a 2FA account asks for a one-time password per write,
-# and there are seventeen. Interactively npm handles that itself — it keeps the
-# terminal and either prompts or opens a browser — so this is for the case
-# where it cannot: a run with no terminal, and the `--otp` npm's own docs give
-# for exactly that. `UF_NPM_OTP` is the same value from the environment, so a
-# code never has to be a shell argument, where it would land in a history file.
+# `npm dist-tag add` on a 2FA account asks for a one-time password per write.
+# Interactively npm handles that itself — it keeps the terminal and either
+# prompts or opens a browser — so this is for the case where it cannot: a run
+# with no terminal, and the `--otp` npm's own docs give for exactly that.
+# `UF_NPM_OTP` is the same value from the environment, so a code never has to
+# be a shell argument, where it would land in a history file.
 otp="${UF_NPM_OTP:-}"
 for argument in "$@"; do
   case "$argument" in
@@ -268,11 +267,11 @@ failed=0
 failures=""
 while read -r name version <&3; do
   echo "promote-latest: ${name}@${version} -> latest"
-  # Not `set -e`'s business. Seventeen writes with one authentication between
-  # them: a code that expires on the ninth must not throw away the eight that
-  # worked, or the report of which they were. The command is idempotent and the
-  # plan is read from the registry, so the recovery is to run it again — and
-  # the names already moved will not be in the next plan.
+  # Not `set -e`'s business. Many writes can share one authentication between
+  # them: a code that expires mid-run must not throw away the writes that
+  # worked, or the report of which they were. The command is idempotent and
+  # the plan is read from the registry, so the recovery is to run it again —
+  # and the names already moved will not be in the next plan.
   if npm dist-tag add "${name}@${version}" latest ${otp:+--otp="$otp"}; then
     moved=$((moved + 1))
   else

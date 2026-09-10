@@ -2,7 +2,7 @@
 # `promote-latest.sh` against registries that answer differently, without
 # touching npm.
 #
-# The script moves a dist-tag on seventeen published packages, by hand, once
+# The script moves a dist-tag on every package in the publish closure, by hand, once
 # per release, and every mistake in it is visible to everyone who types
 # `npm install @uniflowed/…` afterwards. Four of the ways it could be wrong
 # cannot be seen by running it against the registry as it is today:
@@ -322,7 +322,7 @@ pass "npm refusing a move fails the run"
 #     `done <"$plan"` redirected stdin for the whole loop, and `npm dist-tag
 #     add` on a 2FA account needs stdin: it asks for a one-time password, or
 #     prints a URL and waits. With the plan file there it can do neither, and
-#     `uf@0.0.0-alpha.12` failed on the first of seventeen names having moved
+#     `uf@0.0.0-alpha.12` failed on the first name, having moved
 #     nothing.
 make_registry behind
 : > "${work}/stdin.npm"
@@ -336,7 +336,7 @@ $(cat "${work}/stdin.npm")"
 pass "the plan is read on its own descriptor, so npm keeps stdin"
 
 # 13. One name refusing does not throw away the others, and the summary says
-#     which one it was. Seventeen writes with one authentication between them:
+#     which one it was. Many writes with one authentication between them:
 #     a code that expires on the ninth must not lose the eight that worked.
 : > "${work}/partial.npm"
 if NPM_LOG="${work}/partial.npm" NPM_REFUSES_ONLY=@uniflowed/config PATH="${work}/behind:$PATH" \
@@ -350,8 +350,8 @@ $(cat "${work}/partial.log")"
 grep -q '@uniflowed/config@' "${work}/partial.log" \
   || fail "partial: the failing name was not printed:
 $(cat "${work}/partial.log")"
-# And the sixteen after it still moved, which is the point.
-[ "$(grep -c '^+latest: ' "${work}/partial.log")" -ge 16 ] \
+moved_after_refusal="$(grep -c '^+latest: ' "${work}/partial.log")"
+[ "$moved_after_refusal" = "$((names - 1))" ] \
   || fail "partial: the refusal stopped the rest:
 $(cat "${work}/partial.log")"
 pass "a name that refuses is named, and does not stop the run"
