@@ -1,26 +1,29 @@
-# Implemented, and not on npm yet. One per line.
+# Implemented, and not in the OIDC publish closure yet. One per line.
 #
 # A package here has real code behind it and is not in `published-packages.txt`,
 # which is a gap rather than a decision: `@uniflowed/state` is what this project
-# offers instead of Jotai and it resolves to nothing.
+# offers instead of Jotai, but a release workflow cannot safely send it yet.
 #
 # It is a two-file list rather than one because adding a name to the published
 # list is only half the job, and the other half cannot be done from a checkout.
-# `publish.yml` publishes over OIDC and `npm trust` can only bind a name the
-# registry already has, so a name that has never been published has to be
-# published once, by a person, with an npm session and a 2FA prompt:
+# `publish.yml` publishes over OIDC and npm only lets that workflow publish a
+# name after trusted publishing has been bound. Some names here have never been
+# published and need a first local publish; some already exist on npm but still
+# need `npm trust`; some are waiting because they depend on one of those names.
+# The local bootstrap/trust sequence is still the same:
 #
 #   npm login
 #   sh tools/release/bootstrap-publish.sh
 #   sh tools/release/trust-npm.sh
 #
-# Until that has happened for a name, putting it in `published-packages.txt`
-# makes the publish job fail *after* the names before it have gone out, which
-# half-sends a release. So it waits here, where `tools/ci/publishable.sh` can
-# see it, rather than being remembered.
+# Until that has happened for a name and its internal dependencies, putting it
+# in `published-packages.txt` makes the publish job fail *after* the names
+# before it have gone out, which half-sends a release. So it waits here, where
+# `tools/ci/publishable.sh` can see it, rather than being remembered.
 #
-# Move a name to `published-packages.txt` when it is bound. Nothing else needs
-# to change: the closure check reads that file, and this one is only ever a
+# Move a name to `published-packages.txt` when it is bound and every
+# `@uniflowed/*` dependency it publishes is there too. Nothing else needs to
+# change: the closure check reads that file, and this one is only ever a
 # waiting room.
 #
 # See ubugeeei-prod/uf#210.
@@ -41,5 +44,18 @@
 # answer. `crates/uf_std`'s registry carries the same distinction per subpath,
 # and `uf inspect` reports it.
 
-temporal
+brand
+cell
+effect
+form
+i18n
+immer
+mock
+state
 std
+story
+temporal
+testing
+tui
+ui
+web
