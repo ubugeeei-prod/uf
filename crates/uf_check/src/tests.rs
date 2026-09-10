@@ -1076,6 +1076,62 @@ fn a_subpath_export_still_rejects_a_value_its_type_does_not_admit() {
 }
 
 #[test]
+fn a_package_imports_map_gives_hash_specifiers_the_target_type() {
+    require_checker!();
+
+    let report = batch(&[
+        Source::new(
+            "package.json",
+            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+        ),
+        Source::new("packages/cell/index.js", CELL_INDEX),
+        Source::new(
+            "app.js",
+            "// @flow\nimport { cell } from \"#cell\";\nconst n: number = cell(\"one\");\n",
+        ),
+    ]);
+
+    assert_eq!(
+        inferred(&report),
+        ["incompatible-type"],
+        "`#cell` must resolve through package.json#imports instead of becoming `any`"
+    );
+    assert!(
+        report.untyped_modules.is_empty(),
+        "{:?}",
+        report.untyped_modules
+    );
+}
+
+#[test]
+fn a_package_imports_map_above_the_batch_root_gives_hash_specifiers_the_target_type() {
+    require_checker!();
+
+    let report = batch(&[
+        Source::new(
+            "../package.json",
+            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+        ),
+        Source::new("../packages/cell/index.js", CELL_INDEX),
+        Source::new(
+            "app.js",
+            "// @flow\nimport { cell } from \"#cell\";\nconst n: number = cell(\"one\");\n",
+        ),
+    ]);
+
+    assert_eq!(
+        inferred(&report),
+        ["incompatible-type"],
+        "`#cell` from a parent package scope must keep the target module typed"
+    );
+    assert!(
+        report.untyped_modules.is_empty(),
+        "{:?}",
+        report.untyped_modules
+    );
+}
+
+#[test]
 fn a_path_the_exports_map_does_not_publish_stays_unresolved() {
     require_checker!();
 
