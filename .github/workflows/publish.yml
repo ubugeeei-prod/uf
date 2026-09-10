@@ -73,6 +73,33 @@ jobs:
         with:
           deno-version: v1.x
       - run: deno --version
+      # GitHub-hosted Ubuntu runners install Chromium but do not give it a
+      # usable sandbox under the AppArmor/user-namespace policy in this image.
+      # The same browser test runs sandboxed in CI on Blacksmith; this wrapper
+      # is only for the publish runner, so the release can still prove browser
+      # mode before npm receives the packages.
+      - name: Make Chromium usable on the publish runner
+        run: |
+          set -eu
+          browser=
+          for candidate in chromium google-chrome google-chrome-stable chrome; do
+            if command -v "$candidate" >/dev/null 2>&1; then
+              browser="$(command -v "$candidate")"
+              break
+            fi
+          done
+          if [ -z "$browser" ]; then
+            echo "No Chromium-family browser found" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/uf-browser"
+          wrapper="$RUNNER_TEMP/uf-browser/chromium-no-sandbox"
+          printf '%s\n' '#!/bin/sh' 'exec "$UF_REAL_BROWSER" --no-sandbox "$@"' > "$wrapper"
+          chmod +x "$wrapper"
+          {
+            echo "UF_REAL_BROWSER=$browser"
+            echo "UF_BROWSER=$wrapper"
+          } >> "$GITHUB_ENV"
       - run: cargo test --workspace
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the set that is implemented.

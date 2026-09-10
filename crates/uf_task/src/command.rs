@@ -528,8 +528,17 @@ mod tests {
     #[test]
     fn a_backslash_before_a_newline_joins_the_lines() {
         assert_eq!(
-            words("cargo clippy --workspace \\\n  -- -D warnings"),
-            ["cargo", "clippy", "--workspace", "--", "-D", "warnings"]
+            words("cargo clippy --workspace --all-targets --all-features \\\n  -- -D warnings"),
+            [
+                "cargo",
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--",
+                "-D",
+                "warnings",
+            ]
         );
     }
 
