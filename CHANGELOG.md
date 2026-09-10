@@ -1,5 +1,82 @@
 # Changelog
 
+## uf@0.0.0-alpha.19
+
+_2026-09-10_
+
+### Added
+
+- **test**: the browser as a host, so a component test runs where a component runs (#728)
+- **router, vite, lint**: a slot is a route into a named place, and the layout that receives it (#749)
+- **infra, ci**: a front door for uniflowed.dev, and the redirect it must not break (#747)
+- **router, docs**: the rows a payload arrives in, and the boundary each one resolves (#742)
+- **std, lib, cli, docs, release**: a status per std specifier, and the six that are code (#743)
+- **router, vite, dev**: what left the server, in what order, and what each chunk built (#745)
+- **tui, lib, docs**: a drag that selects the cells it crossed, and the one default preventDefault now has (#741)
+- **ui**: the escape hatch a copy step is for, on ten components rather than one (#740)
+- **lib, rsc**: the ui subpaths that are client modules, and the guard that reads the files (#731)
+- **tui**: a scrolling box that costs its window, not its content (#721)
+- **cli, task**: the command a task names, started rather than handed to `sh` (#725)
+- **cli, test**: a Deno Flow loader that is a transform and a map, not a hook (#720)
+- **rsc**: whose `useState` it is, and which name an import bound (#726)
+- **server, vite, cli**: the targets that keep a process run their schedules too (#724)
+- **server, vite, cli**: the `scheduled()` a cron trigger needs, and the trigger beside it (#719)
+- **ui**: the five that look like a class list and are not (#714)
+- **std**: the six Go standard library modules JavaScript does not have (#711)
+- **upstream, check**: patches the sync applies, and the inference fix one was waiting for (#709)
+- **config, router**: one shell, and the routes a browser cannot render (#706)
+- **cli**: a schedule declared in a route handler, and the build that refuses to ignore it (#712)
+- **server**: a durable route cache, so a restart does not empty it (#704)
+- **router**: show which DOM subtree each boundary owns (#703)
+- **config, router**: a link the browser follows, and the key that says so (#702)
+- **server**: schedules, and the targets that may not hold one (#696)
+
+### Fixed
+
+- **vite**: resolve @uniflowed/react to the React peer in browser modules (#752)
+- **ui**: store toast queue in @uniflowed/state (#753)
+- **check**: prefer module package entry over main (#751)
+- **nix, ci, docs**: the toolchain the flake was missing, the build nothing ran, and the page that never had Nix on it (#738)
+- **cli, deploy**: the schedule an artefact declares and the entry that runs it, checked both ways (#737)
+- **fmt**: a member chain is its own fixed point (#746)
+- **integrations, ci, docs**: the install a `uf check` is worthless without, and the recipes read back against the binary (#739)
+- **config, cli, rm**: the four runtime names that are not hosts, and the key that is (#744)
+- **release**: a package that is never published says so in its manifest (#730)
+- **check, lint**: a library definition is merged, not linted (#732)
+- **term, tui**: `NO_COLOR` takes the colour and leaves the characters (#727)
+- **upstream, check**: the elements before a tuple pattern's spread bind what they were handed (#716)
+- **config**: the refusal names the expression it refused, and its line (#715)
+- **cli**: no cron trigger without a handler to receive it (#717)
+
+### Performance
+
+- **check, upstream**: the set an SSA normal form costs, once instead of once per node (#748)
+- **lint**: one file, one reading — `uf lint` parsed each module three times (#708)
+- **transform**: `json!` deep-copies what it is handed, so stop handing it subtrees (#705)
+- **check**: where the checker's two million allocations go (#713)
+- **lint, transform**: put the profiler in the hot path it was written for (#697)
+
+### Documentation
+
+- **contributing**: the exclusion this repository is waiting for does not exist (#734)
+- the server half is a BFF, and "full-stack" is not what uf is aiming at (#733)
+- **rsc**: the server action and the boundary it crosses (#701)
+- **cli, mcp**: `uf check --json`'s `errors` counts findings `diagnostics` does not hold (#694)
+
+### Internal
+
+- warm Blacksmith caches (#754)
+- exercise React 19.3 defaults (#755)
+- **packages**: move the JavaScript suite beside the code it tests (#729)
+- **server**: the fifth front door, inside the comparison that keeps them one (#723)
+- **packages**: close the allowlists that would publish a co-located test file (#722)
+
+### Other
+
+- Adopt dollar routes and add SSR social example (#757)
+- release: bootstrap pending package names (#756)
+- release: twelve waiting packages are on the published list (#750)
+
 ## uf@0.0.0-alpha.18
 
 _2026-09-08_
