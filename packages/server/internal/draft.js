@@ -113,7 +113,7 @@ export class DraftModeError extends Error {
     super(
       `@uniflowed/server: draftMode().${operation}() ${reason}. ` +
         "It writes a cookie, so it has to be called where a response is being produced: " +
-        'a route handler (`_uf.route.js`) or a `"use server"` action. A middleware that ' +
+        'a route handler (`$route.js`) or a `"use server"` action. A middleware that ' +
         "wants to turn draft mode on should answer with a redirect to one of those.",
     );
     this.name = "DraftModeError";

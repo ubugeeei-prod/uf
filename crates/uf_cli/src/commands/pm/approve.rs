@@ -58,8 +58,8 @@ use compact_str::CompactString;
 use serde_json::{Value, json};
 use uf_config::load_config;
 use uf_pm::builds::{Approvals, Buildable, approvals_for};
-use uf_pm::detect_package_manager;
 use uf_pm::installable;
+use uf_pm::{DetectionOptions, detect_package_manager_with};
 use uf_term::{Cell, Column, KeyValue, Status, Table, Tone};
 
 use crate::support::{plural, project_label};
@@ -84,7 +84,9 @@ pub(crate) fn approve_builds(
     uf_pm::check_operands(names)?;
     let resolved = load_config(cwd)?;
     let root = resolved.root.clone();
-    let (manager, _) = installable(&detect_package_manager(&root));
+    let detection =
+        detect_package_manager_with(&root, &DetectionOptions::from_config(&resolved.config));
+    let (manager, _) = installable(&detection);
     let approvals = approvals_for(manager);
     let already = uf_pm::builds::approved(&root, manager)?;
     let waiting = uf_pm::builds::scan(&root, &already)?;

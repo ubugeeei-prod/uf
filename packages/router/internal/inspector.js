@@ -63,7 +63,7 @@
 //
 // It speaks the first time a path streams and whenever the *shape* of its
 // stream changes, and is silent otherwise. The first time is the interesting
-// one: you have just written the `_uf.loading.js`, or the `await` that made the
+// one: you have just written the `$loading.js`, or the `await` that made the
 // page suspend, and "it streamed, in three parts" is the answer to the question
 // you asked by writing it. Reloading the same page unchanged is not that
 // question, and `./boundaries.js` is right that a map printed on every reload
@@ -113,7 +113,7 @@ const COMPLETE_MARKER = '$RC("';
  *
  * `id` is React's — `"B:0"` — and not one of `./boundaries.js`'s. The two
  * vocabularies are not joinable: React numbers boundaries as it meets them
- * while rendering, `suspenseId` numbers a route's `_uf.loading.js` entries, and
+ * while rendering, `suspenseId` numbers a route's `$loading.js` entries, and
  * a `<Suspense>` a component wrote itself is in the first sequence and not the
  * second. Printing React's id and refusing to translate it is the honest
  * option; the two labels below are what actually identifies the boundary for a

@@ -4,7 +4,7 @@
   "buildFingerprint": "71527ae95b8871ca4467cfe1c007937a061888fad13c7da20eb669bacb59fb0b",
   "modules": [
     {
-      "path": "app/_uf.page.js",
+      "path": "app/$page.js",
       "environment": "server",
       "reachability": "server-only",
       "proximity": "reaches-boundary",
@@ -44,7 +44,7 @@
   ],
   "clientBoundaries": [
     {
-      "importer": "app/_uf.page.js",
+      "importer": "app/$page.js",
       "module": "app/client/Counter.js"
     }
   ],

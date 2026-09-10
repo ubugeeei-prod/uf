@@ -95,7 +95,7 @@ fn scan_only_config() -> UniflowedConfig {
 fn corpus(module: &str, files: usize) -> Vec<SourceFile> {
     (0..files)
         .map(|index| SourceFile {
-            path: format!("app/route{index}/_uf.page.js"),
+            path: format!("app/route{index}/$page.js"),
             source: module.to_string(),
         })
         .collect()

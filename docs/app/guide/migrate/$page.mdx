@@ -101,7 +101,7 @@ bundle and that is what uf builds.
 1. `uf new ../my-app-uf`, then copy `src/` into it.
 2. Delete `react-scripts`. Its `scripts` block goes with it — `uf install`
    refuses a manifest that declares one.
-3. Move the contents of `public/index.html` into `app/_uf.layout.js`. The
+3. Move the contents of `public/index.html` into `app/$layout.js`. The
    `<div id="root">` goes away: uf renders the whole document.
 4. Turn each screen into a route directory under `app/`. uf's file-system
    router is the routing uf builds against; `app.router.enabled: false` makes
@@ -132,7 +132,7 @@ language change is the whole job.
 1. `vite.config.ts` becomes `uf.config.js`. Options uf owns (`dev.port`,
    `build.outDir`) have names; everything else goes under the `vite` key
    unchanged, including `resolve.alias` and `server.warmup`.
-2. `index.html` becomes `app/_uf.layout.js`. Vite runs in `appType: "custom"`
+2. `index.html` becomes `app/$layout.js`. Vite runs in `appType: "custom"`
    under uf: there is no HTML entry to fall back to, and the document comes from
    the layout.
 3. Your entry module becomes `app.js` plus a page under `app/`.
@@ -176,24 +176,24 @@ The conventions line up more closely than the capabilities do:
 
 | Next.js | uf |
 | --- | --- |
-| `app/page.tsx` | `app/_uf.page.js` |
-| `app/layout.tsx` | `app/_uf.layout.js` |
-| `app/[slug]/page.tsx` | `app/[slug]/_uf.page.js` |
+| `app/page.tsx` | `app/$page.js` |
+| `app/layout.tsx` | `app/$layout.js` |
+| `app/[slug]/page.tsx` | `app/[slug]/$page.js` |
 | `app/[...rest]/` | `app/[...rest]/` |
 | `app/(group)/` | `app/(group)/` |
-| `app/api/x/route.ts` | `app/api/x/_uf.route.js` — `Request` in, `Response` out, **`uf dev` only** |
-| `not-found.tsx` | `_uf.not-found.js`, a segment file resolved by the nearest one above the path; a project that declares none gets uf's page inside the root's layouts |
-| `template.tsx` | `_uf.template.js` — a layout that remounts, keyed on the pathname |
+| `app/api/x/route.ts` | `app/api/x/$route.js` — `Request` in, `Response` out, **`uf dev` only** |
+| `not-found.tsx` | `$not-found.js`, a segment file resolved by the nearest one above the path; a project that declares none gets uf's page inside the root's layouts |
+| `template.tsx` | `$template.js` — a layout that remounts, keyed on the pathname |
 | `@slot/` | `@slot/` — a parallel route: the segment's own layout receives it as a prop beside `children`, and the slot's pages are matched against the same URL. No per-slot `loading`, `error` or `template` yet ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
 | `(.)folder/` | **refused by name.** uf has no intercepting routes: a navigation carries where it is going and not where it came from ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
-| `default.tsx` | `_uf.default.js`, directly inside the `@slot` it belongs to. There is no `default` for `children`: a URL that matches no page is a 404 |
-| `middleware.ts` | `_uf.middleware.js`, never called |
+| `default.tsx` | `$default.js`, directly inside the `@slot` it belongs to. There is no `default` for `children`: a URL that matches no page is a 404 |
+| `middleware.ts` | `$middleware.js`, never called |
 | `generateStaticParams` | `generateStaticParams` |
 | `export const metadata` | `metadata` on a page or layout, merged along the path with the page last |
 | `next/link` | `Link` from `@uniflowed/router`, prefetching on intent |
 | `next/image` | `Image` from `@uniflowed/web` — layout-stable markup, no pipeline ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
-| `loading.tsx` | `_uf.loading.js` — a `<Suspense>` boundary per segment, nested; the loader is still awaited before the render ([#373](https://github.com/ubugeeei-prod/uf/issues/373)) |
-| `error.tsx` | `_uf.error.js`, one file for 401, 403 and 500 as cases of `RouteError` |
+| `loading.tsx` | `$loading.js` — a `<Suspense>` boundary per segment, nested; the loader is still awaited before the render ([#373](https://github.com/ubugeeei-prod/uf/issues/373)) |
+| `error.tsx` | `$error.js`, one file for 401, 403 and 500 as cases of `RouteError` |
 
 **Cost.** For a statically exportable site, the same as the Vite path plus the
 route renaming. For anything else, it is not a cost — it is a blocker, and the

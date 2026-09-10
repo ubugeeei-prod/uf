@@ -5,7 +5,7 @@
 // The file-system router, as the build sees it.
 //
 // This mirrors `uf_router` in Rust — the same reserved-name grammar
-// (`_uf.<role>[.<variant>].js`, plus `.mdx` for pages), the same route path
+// (`$<role>[.<variant>].js`, plus `.mdx` for pages), the same route path
 // syntax (`[param]`, `[...rest]`, `(group)`) and the same sort order — and it
 // must keep mirroring it: `uf lint` and `router.js`'s generated types describe
 // the routes this module serves, so the two cannot be allowed to disagree.
@@ -19,15 +19,15 @@ import path from "node:path";
 
 /** The file names the router reserves inside the router root. */
 export const RESERVED = Object.freeze({
-  layout: "_uf.layout",
-  template: "_uf.template",
-  page: "_uf.page",
-  default: "_uf.default",
-  middleware: "_uf.middleware",
-  notFound: "_uf.not-found",
-  error: "_uf.error",
-  loading: "_uf.loading",
-  route: "_uf.route",
+  layout: "$layout",
+  template: "$template",
+  page: "$page",
+  default: "$default",
+  middleware: "$middleware",
+  notFound: "$not-found",
+  error: "$error",
+  loading: "$loading",
+  route: "$route",
 });
 
 /**
@@ -35,7 +35,7 @@ export const RESERVED = Object.freeze({
  *
  * One spelling each, and they are here so `crates/uf_router/tests/
  * reserved_names.rs` can hold this router and `uf_router::RouteSegment` to the
- * same list — the way it already holds the two to the same `_uf.*` roles. A
+ * same list — the way it already holds the two to the same `$*` roles. A
  * spelling one router refuses and the other serves as a URL is exactly the
  * disagreement that made this necessary.
  *
@@ -94,7 +94,7 @@ const MAX_DEPTH = 32;
  *   `<Suspense>` boundaries in scope, root first; `above` is how many of
  *   `layouts` are outside each one
  * @property {ReadonlyArray<{above: number, module: string}>} templates the
- *   `_uf.template.js` wrappers in scope, root first, with the same `above`
+ *   `$template.js` wrappers in scope, root first, with the same `above`
  * @property {ReadonlyArray<Slot>} slots the parallel-route slots in scope,
  *   outermost first
  * @property {boolean} mdx whether the page is MDX content
@@ -107,7 +107,7 @@ const MAX_DEPTH = 32;
  * the segment that holds it, and that segment's own layout receives the
  * rendered slot as a `team` prop beside `children`. The slot's pages are
  * matched against the same URL the page is, so `app/dashboard/@team/members/
- * _uf.page.js` is what `/dashboard/members` puts in the slot — not a second
+ * $page.js` is what `/dashboard/members` puts in the slot — not a second
  * page at that path.
  *
  * `above` is how many of the route's `layouts` are outside the slot, counted
@@ -118,7 +118,7 @@ const MAX_DEPTH = 32;
  * never declared, on every route below it, so {@link scanRoutes} refuses a slot
  * whose segment has no layout of its own.
  *
- * `defaultPage` is the slot's `_uf.default.js`: what it renders when the URL
+ * `defaultPage` is the slot's `$default.js`: what it renders when the URL
  * matches none of its routes. A slot with neither a match nor a default
  * renders nothing, which is what an unaddressed slot on a soft navigation does
  * in Next.js too.
@@ -126,7 +126,7 @@ const MAX_DEPTH = 32;
  * @typedef {object} Slot
  * @property {string} name the slot's name, without the `@`
  * @property {number} above how many of the route's layouts are outside it
- * @property {?string} defaultPage absolute path of `_uf.default.*`, or `null`
+ * @property {?string} defaultPage absolute path of `$default.*`, or `null`
  * @property {boolean} defaultMdx whether that default is MDX content
  * @property {ReadonlyArray<SlotRoute>} routes what the slot may render, by URL
  */
@@ -182,7 +182,7 @@ const MAX_DEPTH = 32;
  * One not-found boundary — the page a path under `path` gets when nothing
  * there matched.
  *
- * A `_uf.not-found.js` is a segment file like `_uf.layout.js`, so a directory
+ * A `$not-found.js` is a segment file like `$layout.js`, so a directory
  * declares the 404 for everything beneath it and the resolver takes the
  * nearest one above the path. `layouts` are the layouts in scope *at that
  * directory*, which is what wraps the boundary when it renders.
@@ -203,7 +203,7 @@ const MAX_DEPTH = 32;
  * The same nearest-ancestor shape as a not-found boundary, and deliberately
  * not the same extensions: an error module is handed an error and a `reset`,
  * which is a component's contract. `.mdx` compiles to a component that takes
- * no such thing, so a `_uf.error.mdx` would be a file the router loads and can
+ * no such thing, so a `$error.mdx` would be a file the router loads and can
  * never hand its arguments to.
  *
  * @typedef {object} ErrorBoundary
@@ -219,8 +219,8 @@ const MAX_DEPTH = 32;
  * Not the nearest-ancestor shape the other two boundaries have, and the
  * difference is the whole of what a fallback is. A not-found or an error
  * boundary is *chosen*: one of them renders, and the resolver picks the
- * nearest above the path. Loading boundaries *nest*: `app/_uf.loading.js` and
- * `app/docs/_uf.loading.js` are two `<Suspense>` elements on one route, one
+ * nearest above the path. Loading boundaries *nest*: `app/$loading.js` and
+ * `app/docs/$loading.js` are two `<Suspense>` elements on one route, one
  * inside the other, and both are in the tree at once. So they accumulate down
  * the walk the way layouts do rather than being matched afterwards, and each
  * route carries the list that applies to it.
@@ -248,7 +248,7 @@ const MAX_DEPTH = 32;
  *
  * A `@slot` directory is a parallel route and is scanned; see {@link Slot}. It
  * throws for the three ways one can be written without being renderable: a
- * slot on a segment with no layout of its own, a `_uf.default.js` that is not
+ * slot on a segment with no layout of its own, a `$default.js` that is not
  * directly inside a slot, and a boundary or a handler inside a slot. Each is a
  * file the router would otherwise never open, which is the failure #267 is
  * about.
@@ -280,13 +280,13 @@ export function scanRoutes(appRoot) {
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
 
-    // A `_uf.default.js` answers one question — what a slot renders when the
+    // A `$default.js` answers one question — what a slot renders when the
     // URL says nothing about it — and this walk is everywhere a slot is not,
     // so one found here is a file nothing would ever open.
     const strayDefault = findModule(directory, RESERVED.default, PAGE_EXTENSIONS);
     if (strayDefault != null) {
       throw new Error(
-        `${strayDefault}: \`_uf.default.js\` is what a \`@slot\` renders when the URL says ` +
+        `${strayDefault}: \`$default.js\` is what a \`@slot\` renders when the URL says ` +
           "nothing about it, and it belongs directly inside the slot directory — one per slot, " +
           "beside that slot's own pages. Nothing would ever render this one. uf has no " +
           "`default` for `children`: a URL that matches no page is a 404.",
@@ -345,8 +345,8 @@ export function scanRoutes(appRoot) {
     }
 
     // A middleware guards this directory and everything below it, whether or
-    // not this directory is itself a route: `app/dashboard/_uf.middleware.js`
-    // with no `_uf.page.js` beside it still guards `/dashboard/settings`.
+    // not this directory is itself a route: `app/dashboard/$middleware.js`
+    // with no `$page.js` beside it still guards `/dashboard/settings`.
     const ownMiddleware = findModule(directory, RESERVED.middleware, MODULE_EXTENSIONS);
     if (ownMiddleware) {
       middleware.push({ path: routeFromSegments(segments).path, module: ownMiddleware });
@@ -377,7 +377,7 @@ export function scanRoutes(appRoot) {
     }
 
     // At every depth, not only the root. This read `if (depth === 0)`, so
-    // `app/guide/_uf.not-found.js` was never looked for and a reader who
+    // `app/guide/$not-found.js` was never looked for and a reader who
     // followed a stale link into the manual was answered by the site's root
     // 404, outside the manual's own layout. See ubugeeei-prod/uf#263.
     const ownNotFound = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS);
@@ -391,7 +391,7 @@ export function scanRoutes(appRoot) {
     }
 
     // `errors` is the boundaries a project declares, not failures that
-    // happened: one entry per directory holding an `_uf.error.js`.
+    // happened: one entry per directory holding an `$error.js`.
     const ownError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS);
     if (ownError) {
       errors.push({
@@ -441,7 +441,7 @@ export function scanRoutes(appRoot) {
   // new project is in until it writes one. See ubugeeei-prod/uf#351.
   //
   // Only when nothing is at `/` already. A `(group)` directory is not a URL
-  // segment, so `app/(marketing)/_uf.not-found.js` is a boundary at `/` too and
+  // segment, so `app/(marketing)/$not-found.js` is a boundary at `/` too and
   // adding a second one there would put a second answer at a path the URL
   // cannot choose between.
   const atRoot = (boundaries) => boundaries.some((boundary) => boundary.path === "/");
@@ -464,7 +464,7 @@ export function scanRoutes(appRoot) {
   // by nearness would hide that.
   //
   // Two boundaries can share a path, because a `(group)` directory is not a URL
-  // segment — `app/_uf.not-found.js` and `app/(marketing)/_uf.not-found.js` are
+  // segment — `app/$not-found.js` and `app/(marketing)/$not-found.js` are
   // both at `/`, and the URL cannot say which tree it is in. The sort is stable
   // and `walk` records a directory's own boundary before descending, so the
   // shallower file wins, which is the one that is the site's own 404 rather
@@ -538,7 +538,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
       if (found != null) {
         throw new Error(
           `${found}: a \`@slot\` renders a page and the layouts inside the slot, and has no ` +
-            `\`${role.slice("_uf.".length)}\` of its own — uf's parallel routes do not carry ` +
+            `\`${role.slice("$".length)}\` of its own — uf's parallel routes do not carry ` +
             "per-slot boundaries yet, so this file would never be opened. Put it outside " +
             `\`${directoryName}\`, where it covers the whole segment. ` +
             "https://github.com/ubugeeei-prod/uf/issues/267",
@@ -562,7 +562,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
     if (!atSlotRoot && findModule(current, RESERVED.default, PAGE_EXTENSIONS) != null) {
       throw new Error(
         `${findModule(current, RESERVED.default, PAGE_EXTENSIONS)}: a \`@slot\` has one ` +
-          `\`_uf.default.js\`, directly inside \`${directoryName}\`, and this one is deeper, so ` +
+          `\`$default.js\`, directly inside \`${directoryName}\`, and this one is deeper, so ` +
           "nothing would ever render it.",
       );
     }
@@ -837,7 +837,7 @@ export const VIRTUAL = Object.freeze({
  *
  * The server's table can hold an absolute path; it is read on the machine that
  * has those files. The browser's cannot, because that table is downloaded:
- * uf's own manual shipped `/home/<user>/…/docs/app/guide/cache/_uf.page.mdx`
+ * uf's own manual shipped `/home/<user>/…/docs/app/guide/cache/$page.mdx`
  * for each of thirty-four routes to every visitor, which publishes the build
  * machine's layout and its user's name for nothing — the browser has no
  * filesystem to resolve them against and reads them only in a message.
@@ -889,7 +889,7 @@ export function routesModuleSource(table, options = {}) {
   };
 
   // Loading modules are deduplicated into a table of their own, for the reason
-  // layouts are: one `app/_uf.loading.js` is the fallback of every route under
+  // layouts are: one `app/$loading.js` is the fallback of every route under
   // it, and fifty copies of the same `import()` would be fifty chunks of the
   // same file.
   //
@@ -912,7 +912,7 @@ export function routesModuleSource(table, options = {}) {
   };
 
   // Templates are deduplicated for the reason layouts are — one
-  // `app/_uf.template.js` wraps every route under it — and are lazy for the
+  // `app/$template.js` wraps every route under it — and are lazy for the
   // reason layouts are too: a template is part of the route's own tree rather
   // than a fallback React has to have in hand at the moment something goes
   // wrong, so it is awaited with the layouts before the first render.

@@ -55,7 +55,7 @@ module. Those are collected separately, and the limit on them is in
 
 ```js
 // @flow
-// app/counter/_uf.page.js
+// app/counter/$page.js
 import * as React from "@uniflowed/react";
 
 import Counter from "./_components/Counter.js";
@@ -119,8 +119,8 @@ the whole of the split uf performs today.
 ## The split is at the route
 
 `uf build` drops a route's page from the *client* route table when no client
-boundary is reachable from that route's page, its layouts, its `_uf.loading.js`
-and `_uf.template.js` modules, or the not-found and error boundaries that cover
+boundary is reachable from that route's page, its layouts, its `$loading.js`
+and `$template.js` modules, or the not-found and error boundaries that cover
 it. Nothing in the browser imports the page, so nothing only the page reached is
 emitted.
 
@@ -152,7 +152,7 @@ project driving Vite itself, without `uf build` or `uf dev`, gets no split.
 The analysis is rerun on every save, and what moved across the client bundle
 since the last scan is reported under a `client bundle` heading. A module that
 entered it is named with the shortest chain of imports that put it there —
-`app/counter/_uf.page.js imports app/counter/_components/Counter.js, which
+`app/counter/$page.js imports app/counter/_components/Counter.js, which
 declares "use client"` — and a module that left is named with no chain, because
 there is none to give. So a page arriving in the browser's bundle is a line in
 the terminal on the save that did it, rather than a number in a bundle report a

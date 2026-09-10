@@ -31,7 +31,7 @@ pub const IGNORED_DIRECTORIES: &[&str] =
 pub const NON_APP_SUFFIXES: &[&str] = &[".bench.js", ".spec.js", ".stories.js", ".test.js"];
 
 /// Reserved router files that act as server entries.
-pub const ROUTER_ENTRY_FILES: &[&str] = &["_uf.layout.js", "_uf.middleware.js", "_uf.page.js"];
+pub const ROUTER_ENTRY_FILES: &[&str] = &["$layout.js", "$middleware.js", "$page.js"];
 
 /// How [`analyze_project`] walks a project.
 #[derive(Debug, Clone, PartialEq, Eq)]

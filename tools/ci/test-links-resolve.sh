@@ -80,9 +80,9 @@ XML
   # The sources. `writtenAt` searches these to name the file a person edits,
   # so what matters is that the href text appears in them.
   printf -- '---\ntitle: State\n---\n\nSee [Effects](/guide/effect#doing-things).\n' \
-    > "$source_dir/guide/state/_uf.page.mdx"
+    > "$source_dir/guide/state/\$page.mdx"
   printf -- '---\ntitle: Effect\n---\n\nNothing here.\n' \
-    > "$source_dir/guide/effect/_uf.page.mdx"
+    > "$source_dir/guide/effect/\$page.mdx"
   printf 'export const pages = [{ href: "/guide/state" }];\n' \
     > "$source_dir/_design/nav.js"
 }
@@ -120,11 +120,11 @@ scratch
 sed 's|/guide/effect#doing-things|/guide/moved|' "$site/guide/state/index.html" \
   > "$site/guide/state/index.html.new"
 mv "$site/guide/state/index.html.new" "$site/guide/state/index.html"
-sed 's|/guide/effect#doing-things|/guide/moved|' "$source_dir/guide/state/_uf.page.mdx" \
-  > "$source_dir/guide/state/_uf.page.mdx.new"
-mv "$source_dir/guide/state/_uf.page.mdx.new" "$source_dir/guide/state/_uf.page.mdx"
+sed 's|/guide/effect#doing-things|/guide/moved|' "$source_dir/guide/state/\$page.mdx" \
+  > "$source_dir/guide/state/\$page.mdx.new"
+mv "$source_dir/guide/state/\$page.mdx.new" "$source_dir/guide/state/\$page.mdx"
 run && fail "accepted the moved route"
-grep -q "_uf.page.mdx:5" "$work/out" \
+grep -q '\$page.mdx:5' "$work/out" \
   || fail "did not name the source file and line the link is written on"
 pass "names the source file and line a bad link is written on"
 
@@ -173,14 +173,14 @@ if run; then
 fi
 pass "rejects a prerendered page missing from the sitemap"
 
-# 7b. Except a page behind a `_uf.middleware.js`. `uf build` leaves a guarded
+# 7b. Except a page behind a `$middleware.js`. `uf build` leaves a guarded
 #     page out of the sitemap on purpose — a guard says the route is not for
 #     everyone and a sitemap is a submission to search engines — so a check
 #     that demanded it would go red for the guard doing its job.
 scratch
 grep -v 'guide/effect' "$site/sitemap.xml" > "$site/sitemap.xml.new"
 mv "$site/sitemap.xml.new" "$site/sitemap.xml"
-printf 'export function middleware() {}\n' > "$source_dir/guide/effect/_uf.middleware.js"
+printf 'export function middleware() {}\n' > "$source_dir/guide/effect/\$middleware.js"
 run || fail "demanded a sitemap entry for a page behind a middleware"
 pass "does not demand a sitemap entry for a guarded page"
 

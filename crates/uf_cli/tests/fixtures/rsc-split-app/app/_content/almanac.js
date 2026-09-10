@@ -4,7 +4,7 @@
 // browser has no use for.
 //
 // A private directory (`_content`) rather than a route, and imported by
-// `app/_uf.page.js` alone. No client boundary is reachable from it, so
+// `app/$page.js` alone. No client boundary is reachable from it, so
 // `crates/uf_rsc` marks it `isolated` and the client route table has no
 // `import()` that reaches it — which is what the build assertion in
 // `crates/uf_cli/tests/vite.rs` looks for. The marker is a string literal

@@ -325,7 +325,7 @@ impl DeployAdapter {
     /// The distinction is load-bearing rather than documentary: it is what
     /// makes `uf build --adapter bun` an error naming an issue instead of a
     /// command that appears to work. Keep it in step with
-    /// `docs/app/reference/cli/_uf.page.mdx`, which is where a reader looks
+    /// `docs/app/reference/cli/$page.mdx`, which is where a reader looks
     /// first.
     ///
     /// "Writes something the platform accepts, in that platform's documented

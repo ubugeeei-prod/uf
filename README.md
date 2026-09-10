@@ -201,9 +201,9 @@ uf new · hello
   hello
   ├─ app
   │  ├─ Counter.js
-  │  ├─ _uf.layout.js
-  │  ├─ _uf.page.js
-  │  ├─ _uf.page.test.js
+  │  ├─ $layout.js
+  │  ├─ $page.js
+  │  ├─ $page.test.js
   │  └─ useCounter.js
   ├─ .gitignore
   ├─ app.js
@@ -279,7 +279,7 @@ whose test bodies run on the host:
 uf test · hello
 ───────────────
 
-  ✓ app/_uf.page.test.js  useCounter > is a hook, so it is only callable from a component or another hook
+  ✓ app/$page.test.js  useCounter > is a hook, so it is only callable from a component or another hook
 
 ✓ 1 passed, 0 failed in 297.6ms
 ```

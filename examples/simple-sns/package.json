@@ -1,0 +1,20 @@
+{
+  "name": "uf-example-simple-sns",
+  "private": true,
+  "type": "module",
+  "description": "A small SSR social app example for uf, React 19.3, RSC, Actions, SQLite, and StyleX.",
+  "scripts": {
+    "dev": "uf dev",
+    "build": "uf build",
+    "test": "uf test ../../tests/library/examples.test.js ../../tests/library/simple-sns-components.test.js"
+  },
+  "dependencies": {
+    "@uniflowed/config": "0.0.0-alpha.18",
+    "@uniflowed/react": "0.0.0-alpha.18",
+    "@uniflowed/router": "0.0.0-alpha.18",
+    "@uniflowed/stylex": "0.0.0-alpha.18",
+    "@uniflowed/vite": "0.0.0-alpha.18",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

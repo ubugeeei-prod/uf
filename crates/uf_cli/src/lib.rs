@@ -141,7 +141,7 @@ fn ask_what_to_run() -> Asked {
 /// a problem — a failing test, a lint error, a file that needs formatting. A
 /// script that wants to tell "uf is unhappy with your code" from "uf never
 /// started" has nothing else to look at, and both answering `1` made the two
-/// indistinguishable. See `docs/app/reference/cli/_uf.page.mdx`.
+/// indistinguishable. See `docs/app/reference/cli/$page.mdx`.
 const COULD_NOT_RUN: u8 = 2;
 
 /// Commands uf used to have, and what to run instead of each.

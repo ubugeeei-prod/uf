@@ -2,7 +2,7 @@
 //
 // Which file the router picks when nothing matched.
 //
-// `_uf.not-found.js` is a segment file — every directory may declare one and a
+// `$not-found.js` is a segment file — every directory may declare one and a
 // path gets the nearest one above it — and it was read at the router root
 // only, so a nested one was never in the table and a reader who followed a
 // stale link into the manual was answered outside it. The bug had two halves
@@ -78,19 +78,19 @@ function errorBoundaries(root: string) {
 
 describe("scanning for not-found boundaries", () => {
   it("finds the one at the router root", () => {
-    const root = appRoot(["_uf.page.js", "_uf.not-found.js"]);
+    const root = appRoot(["$page.js", "$not-found.js"]);
 
-    expect(boundaries(root)).toEqual([{ path: "/", page: "_uf.not-found.js", layouts: [] }]);
+    expect(boundaries(root)).toEqual([{ path: "/", page: "$not-found.js", layouts: [] }]);
   });
 
   it("finds a nested one, which is the whole bug", () => {
-    // `app/guide/_uf.not-found.js` was never looked for: the scan asked for it
+    // `app/guide/$not-found.js` was never looked for: the scan asked for it
     // at `depth === 0` and nowhere else, so this list held one entry.
     const root = appRoot([
-      "_uf.page.js",
-      "_uf.not-found.js",
-      "guide/_uf.page.js",
-      "guide/_uf.not-found.js",
+      "$page.js",
+      "$not-found.js",
+      "guide/$page.js",
+      "guide/$not-found.js",
     ]);
 
     expect(boundaries(root).map((boundary) => boundary.path)).toEqual(["/", "/guide"]);
@@ -100,20 +100,20 @@ describe("scanning for not-found boundaries", () => {
     // Not the layouts of any route: this is what wraps the boundary when it
     // renders, and it is why a nested 404 keeps the manual's sidebar.
     const root = appRoot([
-      "_uf.layout.js",
-      "guide/_uf.layout.js",
-      "guide/_uf.not-found.js",
-      "guide/deep/_uf.page.js",
+      "$layout.js",
+      "guide/$layout.js",
+      "guide/$not-found.js",
+      "guide/deep/$page.js",
     ]);
 
     expect(boundaries(root)).toEqual([
       // The synthesised record: nothing is declared at `/`, so `/nope` has the
       // root's layout to render the framework's page inside. See #351.
-      { path: "/", page: null, layouts: ["_uf.layout.js"] },
+      { path: "/", page: null, layouts: ["$layout.js"] },
       {
         path: "/guide",
-        page: "guide/_uf.not-found.js",
-        layouts: ["_uf.layout.js", "guide/_uf.layout.js"],
+        page: "guide/$not-found.js",
+        layouts: ["$layout.js", "guide/$layout.js"],
       },
     ]);
   });
@@ -121,13 +121,13 @@ describe("scanning for not-found boundaries", () => {
   it("names a boundary by its route path, so a group does not appear in it", () => {
     // `(marketing)` organises files without being a URL segment, exactly as it
     // does for a page — so this boundary answers `/nope`, not `/(marketing)/nope`.
-    const root = appRoot(["(marketing)/_uf.not-found.js", "(marketing)/about/_uf.page.js"]);
+    const root = appRoot(["(marketing)/$not-found.js", "(marketing)/about/$page.js"]);
 
     expect(boundaries(root).map((boundary) => boundary.path)).toEqual(["/"]);
   });
 
   it("finds one under a parameter segment", () => {
-    const root = appRoot(["posts/[slug]/_uf.page.js", "posts/[slug]/_uf.not-found.js"]);
+    const root = appRoot(["posts/[slug]/$page.js", "posts/[slug]/$not-found.js"]);
 
     expect(boundaries(root).map((boundary) => boundary.path)).toEqual(["/", "/posts/:slug"]);
   });
@@ -138,11 +138,11 @@ describe("scanning for not-found boundaries", () => {
     // the sort is stable over a walk that records a directory before
     // descending — so it is the site's own 404 rather than one section's idea
     // of it. Each group owning one needs parallel-route trees (#267).
-    const root = appRoot(["_uf.not-found.js", "(marketing)/_uf.not-found.js"]);
+    const root = appRoot(["$not-found.js", "(marketing)/$not-found.js"]);
 
     expect(boundaries(root).map((boundary) => boundary.page)).toEqual([
-      "_uf.not-found.js",
-      path.join("(marketing)", "_uf.not-found.js"),
+      "$not-found.js",
+      path.join("(marketing)", "$not-found.js"),
     ]);
   });
 
@@ -152,49 +152,49 @@ describe("scanning for not-found boundaries", () => {
     // owns the masthead answered a stale link with a white page saying 404. The
     // record has no page — the framework's component renders — and the root's
     // layouts, which is the whole of the fix. See ubugeeei-prod/uf#351.
-    const root = appRoot(["_uf.layout.js", "_uf.page.js"]);
+    const root = appRoot(["$layout.js", "$page.js"]);
 
-    expect(boundaries(root)).toEqual([{ path: "/", page: null, layouts: ["_uf.layout.js"] }]);
+    expect(boundaries(root)).toEqual([{ path: "/", page: null, layouts: ["$layout.js"] }]);
   });
 
   it("synthesises nothing when the project declares its own at the root", () => {
     // One answer per path. A second record at `/` would be a boundary the URL
     // cannot choose between, which is the problem `(group)` boundaries already
     // have and #267 is about.
-    const root = appRoot(["_uf.not-found.js", "_uf.page.js"]);
+    const root = appRoot(["$not-found.js", "$page.js"]);
 
     expect(boundaries(root).map((boundary) => boundary.path)).toEqual(["/"]);
   });
 
   it("counts a boundary a route group declares as the one at the root", () => {
-    // `app/(marketing)/_uf.not-found.js` is at `/` — a group is not a URL
+    // `app/(marketing)/$not-found.js` is at `/` — a group is not a URL
     // segment — so the project has declared the root's 404 and nothing is
     // synthesised beside it.
-    const root = appRoot(["(marketing)/_uf.not-found.js", "(marketing)/about/_uf.page.js"]);
+    const root = appRoot(["(marketing)/$not-found.js", "(marketing)/about/$page.js"]);
 
     expect(boundaries(root).map((boundary) => boundary.page)).toEqual([
-      path.join("(marketing)", "_uf.not-found.js"),
+      path.join("(marketing)", "$not-found.js"),
     ]);
   });
 });
 
 describe("scanning for error boundaries", () => {
   it("synthesises one at the router root, with the same shape and for the same reason", () => {
-    // `_uf.error.js` had the second half of the same bug: a project that
+    // `$error.js` had the second half of the same bug: a project that
     // declared none got the framework's error page with no layouts around it,
     // so a 500 lost the site as completely as a 404 did.
-    const root = appRoot(["_uf.layout.js", "_uf.page.js"]);
+    const root = appRoot(["$layout.js", "$page.js"]);
 
     expect(errorBoundaries(root)).toEqual([
-      { path: "/", module: null, layouts: ["_uf.layout.js"] },
+      { path: "/", module: null, layouts: ["$layout.js"] },
     ]);
   });
 
   it("leaves a declared root boundary alone", () => {
-    const root = appRoot(["_uf.layout.js", "_uf.error.js", "_uf.page.js"]);
+    const root = appRoot(["$layout.js", "$error.js", "$page.js"]);
 
     expect(errorBoundaries(root)).toEqual([
-      { path: "/", module: "_uf.error.js", layouts: ["_uf.layout.js"] },
+      { path: "/", module: "$error.js", layouts: ["$layout.js"] },
     ]);
   });
 });
@@ -211,7 +211,7 @@ const guideLayout = { metadata: { title: "guide section" } };
 
 /**
  * The record the build synthesises at the router root for a project that
- * declares no `_uf.not-found.js`: the root's layouts, and no page to import.
+ * declares no `$not-found.js`: the root's layouts, and no page to import.
  */
 const synthesisedRoot = {
   path: "/",
@@ -224,7 +224,7 @@ const synthesisedRoot = {
 const rootNotFound = {
   path: "/",
   mdx: false,
-  file: "app/_uf.not-found.js",
+  file: "app/$not-found.js",
   page: () => Promise.resolve({ metadata: { title: "site 404" } }),
   layouts: [() => Promise.resolve(rootLayout)],
 };
@@ -232,7 +232,7 @@ const rootNotFound = {
 const guideNotFound = {
   path: "/guide",
   mdx: false,
-  file: "app/guide/_uf.not-found.js",
+  file: "app/guide/$not-found.js",
   page: () => Promise.resolve({ metadata: { title: "guide 404" } }),
   layouts: [() => Promise.resolve(rootLayout), () => Promise.resolve(guideLayout)],
 };
@@ -300,7 +300,7 @@ describe("resolving an unmatched path", () => {
     // arrives inside the site's own masthead, so the reader can leave. Before
     // it, `resolveNotFound` had no record at all and answered `layouts: []` —
     // a white page with `404` on it and no navigation, which is what every
-    // project got until it wrote `app/_uf.not-found.js`, because `uf create`
+    // project got until it wrote `app/$not-found.js`, because `uf create`
     // scaffolds neither boundary. See ubugeeei-prod/uf#351.
     const resolved = await resolveMatch(
       { routes: [], notFound: [synthesisedRoot], errors: [] },
@@ -329,7 +329,7 @@ describe("resolving an unmatched path", () => {
     const perPost = {
       path: "/posts/:slug",
       mdx: false,
-      file: "app/posts/[slug]/_uf.not-found.js",
+      file: "app/posts/[slug]/$not-found.js",
       page: () => Promise.resolve({ metadata: { title: "no such section" } }),
       layouts: [],
     };
@@ -362,7 +362,7 @@ describe("the framework's pages when a project declares no boundary", () => {
           path: "/",
           params: [],
           mdx: false,
-          file: "app/_uf.page.js",
+          file: "app/$page.js",
           page,
           layouts: [() => Promise.resolve({ default: Masthead })],
           loading: [],
@@ -435,7 +435,7 @@ describe("notFound() thrown from a page", () => {
       path: "/guide/:slug",
       params: [{ name: "slug", catchAll: false }],
       mdx: false,
-      file: "app/guide/[slug]/_uf.page.js",
+      file: "app/guide/[slug]/$page.js",
       page: () => Promise.resolve({ loader: () => notFound() }),
       layouts: [() => Promise.resolve(rootLayout), () => Promise.resolve(guideLayout)],
     };

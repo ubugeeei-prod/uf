@@ -129,9 +129,9 @@ describe("the module the dev server generates", () => {
 
     const tag = auditTag("/", true);
     expect(tag?.attrs?.src).toBe(AUDIT_PUBLIC_PATH);
-    // In the body, because the audit reads a rendered tree and there is
-    // nothing for it to read until the parser has produced one.
-    expect(tag?.injectTo).toBe("body");
+    // In the head, because `uf dev` streams the body and a body injection can
+    // split a React chunk mid-attribute before the rest of the body arrives.
+    expect(tag?.injectTo).toBe("head");
     // Vite's convention for a resolved virtual id.
     expect(AUDIT_RESOLVED_ID.startsWith("\0")).toBe(true);
   });
@@ -161,15 +161,16 @@ describe("the wiring into a development document", () => {
     expect(tags.length).toBe(3);
     // Untouched, and in the order #503 requires: the classic hook script
     // first, the Fast Refresh module second, both at the top of the head.
-    expect(tags[0].attrs).toBe(undefined);
+    expect(tags[0].attrs?.["data-uf-dev-head-preamble"]).toBe("react-devtools");
     expect(tags[0].injectTo).toBe("head-prepend");
     expect(tags[0].children).toContain(DEVTOOLS_HOOK);
     expect(tags[1].injectTo).toBe("head-prepend");
     expect(tags[1].attrs?.type).toBe("module");
-    // And the audit after both, in the body: a module that reads a rendered
-    // tree has nothing to do until the parser has produced one, so it cannot
-    // be what gets between the hook and the renderer.
-    expect(tags[2].injectTo).toBe("body");
+    expect(tags[1].attrs?.["data-uf-dev-head-preamble"]).toBe("react-refresh");
+    // And the audit after both, still in the head: the runtime waits for a
+    // settled DOM, but the injected tag itself stays out of streamed body
+    // chunks so it cannot corrupt markup.
+    expect(tags[2].injectTo).toBe("head");
     expect(tags[2].attrs?.src).toBe(AUDIT_PUBLIC_PATH);
   });
 

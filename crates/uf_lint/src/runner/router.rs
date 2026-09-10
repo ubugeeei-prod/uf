@@ -41,7 +41,7 @@ pub(crate) fn run_router_reserved_files(
 /// The grammar, spelled from the enums that define it.
 ///
 /// It used to be a string literal here, and it was wrong: it listed five roles
-/// while `_uf.not-found` was a sixth the build router had reserved all along,
+/// while `$not-found` was a sixth the build router had reserved all along,
 /// so a file the framework resolves was reported as a name it would not
 /// recognize — and the message told the reader to rename it. A message that
 /// lists what is allowed has to be generated from what is allowed.
@@ -54,7 +54,7 @@ fn grammar() -> String {
         .filter_map(|variant| variant.as_str())
         .collect::<Vec<_>>()
         .join("|");
-    format!("reserved file names are _uf.<{roles}>[.<{variants}>].js")
+    format!("reserved file names are $<{roles}>[.<{variants}>].js")
 }
 
 /// `router/unsupported-segment`: `(.)segment` directories.

@@ -277,11 +277,8 @@ fn collections_math_path_and_dotenv_helpers_are_deterministic() {
     assert_eq!(chunks.len(), 3);
     assert_eq!(clamp(12, 0, 10), 10);
     assert_eq!(lerp(10.0, 20.0, 0.25), 12.5);
-    assert_eq!(join_path(&["app/", "/_uf.page.js"]), "app/_uf.page.js");
-    assert_eq!(
-        normalize_path("app/./server/../_uf.page.js"),
-        "app/_uf.page.js"
-    );
+    assert_eq!(join_path(&["app/", "/$page.js"]), "app/$page.js");
+    assert_eq!(normalize_path("app/./server/../$page.js"), "app/$page.js");
     assert_eq!(env[0].key, "UF_ENV");
     assert_eq!(env[1].value, "flow");
 }
@@ -309,7 +306,7 @@ fn platform_cloud_and_motion_contracts_are_typed() {
     assert!(stream.backpressure);
     assert_eq!(url.host, "setup.uniflowed.dev");
     assert!(wasm.ahead_of_time);
-    assert!(glob.matches("app/_uf.page.js"));
+    assert!(glob.matches("app/$page.js"));
     assert!(motion.respects_reduced_motion);
     assert_eq!(cron.minute, "0");
     assert!(s3.sigv4);

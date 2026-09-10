@@ -1,12 +1,12 @@
 // @flow
 //
-// Parallel routes: `@slot` directories, and the `_uf.default.js` that fills one
+// Parallel routes: `@slot` directories, and the `$default.js` that fills one
 // the URL said nothing about.
 //
 // uf's route tree had exactly one page per URL, so there was no way to render a
 // route somewhere other than where its path said. A directory named `@team` was
 // the second of the two Next.js spellings that fell through to "an ordinary URL
-// segment" — `app/@team/_uf.page.js` served `/@team` — and then, with #472, a
+// segment" — `app/@team/$page.js` served `/@team` — and then, with #472, a
 // name refused by both routers. It is a route now, and this file is what says
 // so: the segment contributes no URL, its pages are matched against the same
 // path the page is, and the layout of the segment that declares it receives the
@@ -65,14 +65,14 @@ function refusal(files: $ReadOnlyArray<string>): ?string {
 
 /** A dashboard with two slots, which is the shape the whole feature is for. */
 const DASHBOARD = [
-  "_uf.layout.js",
-  "dashboard/_uf.layout.js",
-  "dashboard/_uf.page.js",
-  "dashboard/members/_uf.page.js",
-  "dashboard/@team/_uf.default.js",
-  "dashboard/@team/_uf.layout.js",
-  "dashboard/@team/members/_uf.page.js",
-  "dashboard/@analytics/_uf.page.js",
+  "$layout.js",
+  "dashboard/$layout.js",
+  "dashboard/$page.js",
+  "dashboard/members/$page.js",
+  "dashboard/@team/$default.js",
+  "dashboard/@team/$layout.js",
+  "dashboard/@team/members/$page.js",
+  "dashboard/@analytics/$page.js",
 ];
 
 describe("scanning a router root that holds slots", () => {
@@ -86,7 +86,7 @@ describe("scanning a router root that holds slots", () => {
   });
 
   it("matches a slot's pages against the URL the segment is matched against", () => {
-    // `app/dashboard/@team/members/_uf.page.js` is what `/dashboard/members`
+    // `app/dashboard/@team/members/$page.js` is what `/dashboard/members`
     // puts in the `team` slot — the same path, not `/dashboard/@team/members`
     // and not a second route at `/dashboard/members`.
     const root = appRoot(DASHBOARD);
@@ -95,7 +95,7 @@ describe("scanning a router root that holds slots", () => {
 
     expect(team?.routes.map((route) => route.path)).toEqual(["/dashboard/members"]);
     expect(team?.routes[0].layouts.map((file) => path.relative(root, file))).toEqual([
-      path.join("dashboard", "@team", "_uf.layout.js"),
+      path.join("dashboard", "@team", "$layout.js"),
     ]);
   });
 
@@ -128,13 +128,13 @@ describe("scanning a router root that holds slots", () => {
     const [analytics, team] = routes[0].slots;
 
     expect(team.defaultPage == null ? null : path.relative(root, team.defaultPage)).toBe(
-      path.join("dashboard", "@team", "_uf.default.js"),
+      path.join("dashboard", "@team", "$default.js"),
     );
     expect(analytics.defaultPage).toBe(null);
   });
 
   it("gives a project with no slot the empty list it had before", () => {
-    const { routes } = scanRoutes(appRoot(["_uf.layout.js", "_uf.page.js"]));
+    const { routes } = scanRoutes(appRoot(["$layout.js", "$page.js"]));
 
     expect(routes[0].slots).toEqual([]);
   });
@@ -156,11 +156,11 @@ describe("scanning a router root that holds slots", () => {
     // The recursion is the shape of the feature rather than a special case: a
     // slot's own layout may declare slots, measured against the slot's layouts.
     const root = appRoot([
-      "_uf.layout.js",
-      "_uf.page.js",
-      "@aside/_uf.layout.js",
-      "@aside/_uf.page.js",
-      "@aside/@inner/_uf.page.js",
+      "$layout.js",
+      "$page.js",
+      "@aside/$layout.js",
+      "@aside/$page.js",
+      "@aside/@inner/$page.js",
     ]);
 
     const { routes } = scanRoutes(root);
@@ -179,9 +179,9 @@ describe("what a slot may not be written as", () => {
     // an inherited layout would hand a prop to a layout that never declared
     // it, on every route below.
     const message = refusal([
-      "_uf.layout.js",
-      "dashboard/_uf.page.js",
-      "dashboard/@team/_uf.page.js",
+      "$layout.js",
+      "dashboard/$page.js",
+      "dashboard/@team/$page.js",
     ]);
 
     expect(message).not.toBe(null);
@@ -195,9 +195,9 @@ describe("what a slot may not be written as", () => {
     // resolved, one of the two would silently go missing.
     for (const name of LAYOUT_PROP_NAMES) {
       const message = refusal([
-        "_uf.layout.js",
-        "_uf.page.js",
-        path.join(`@${name}`, "_uf.page.js"),
+        "$layout.js",
+        "$page.js",
+        path.join(`@${name}`, "$page.js"),
       ]);
 
       expect(message).not.toBe(null);
@@ -208,21 +208,21 @@ describe("what a slot may not be written as", () => {
 
   it("refuses a default that is not inside a slot", () => {
     // uf has no `default` for `children`: `children` is the page the URL
-    // matched, and a URL that matches no page is a 404. A `_uf.default.js`
+    // matched, and a URL that matches no page is a 404. A `$default.js`
     // outside a slot is a file nothing would ever open.
-    const message = refusal(["_uf.layout.js", "_uf.page.js", "_uf.default.js"]);
+    const message = refusal(["$layout.js", "$page.js", "$default.js"]);
 
     expect(message).not.toBe(null);
-    expect(message ?? "").toContain("_uf.default.js");
+    expect(message ?? "").toContain("$default.js");
     expect(message ?? "").toContain("404");
   });
 
   it("refuses a second default deeper inside a slot", () => {
     const message = refusal([
-      "_uf.layout.js",
-      "_uf.page.js",
-      "@aside/_uf.page.js",
-      "@aside/deep/_uf.default.js",
+      "$layout.js",
+      "$page.js",
+      "@aside/$page.js",
+      "@aside/deep/$default.js",
     ]);
 
     expect(message).not.toBe(null);
@@ -233,12 +233,12 @@ describe("what a slot may not be written as", () => {
     // Per-slot boundaries are the part of parallel routes uf has not built.
     // The refusal is where somebody writing the file finds that out.
     for (const [file, role] of [
-      ["@aside/_uf.loading.js", "loading"],
-      ["@aside/_uf.error.js", "error"],
-      ["@aside/_uf.not-found.js", "not-found"],
-      ["@aside/_uf.template.js", "template"],
+      ["@aside/$loading.js", "loading"],
+      ["@aside/$error.js", "error"],
+      ["@aside/$not-found.js", "not-found"],
+      ["@aside/$template.js", "template"],
     ]) {
-      const message = refusal(["_uf.layout.js", "_uf.page.js", "@aside/_uf.page.js", file]);
+      const message = refusal(["$layout.js", "$page.js", "@aside/$page.js", file]);
 
       expect(message).not.toBe(null);
       expect(message ?? "").toContain(role);
@@ -249,8 +249,8 @@ describe("what a slot may not be written as", () => {
   it("refuses a handler or a guard inside a slot", () => {
     // A slot directory contributes no URL segment, so either would claim the
     // declaring segment's path — which belongs to somebody else.
-    for (const file of ["@aside/_uf.route.js", "@aside/_uf.middleware.js"]) {
-      const message = refusal(["_uf.layout.js", "_uf.page.js", file]);
+    for (const file of ["@aside/$route.js", "@aside/$middleware.js"]) {
+      const message = refusal(["$layout.js", "$page.js", file]);
 
       expect(message).not.toBe(null);
       expect(message ?? "").toContain("@aside");
@@ -260,7 +260,7 @@ describe("what a slot may not be written as", () => {
   it("still refuses an intercepting route", () => {
     // The other half of #267, and it is still a name without a route:
     // interception needs a navigation to carry where it came from.
-    const message = refusal(["_uf.layout.js", "feed/(.)photo/_uf.page.js"]);
+    const message = refusal(["$layout.js", "feed/(.)photo/$page.js"]);
 
     expect(message).not.toBe(null);
     expect(message ?? "").toContain("intercepting route");
@@ -292,7 +292,7 @@ const slot = {
       path: "/dashboard/members",
       params: [],
       mdx: false,
-      file: "app/dashboard/@team/members/_uf.page.js",
+      file: "app/dashboard/@team/members/$page.js",
       page: pageOf("the team members"),
       layouts: [],
       slots: [],
@@ -304,7 +304,7 @@ const page = (routePath: string, text: string) => ({
   path: routePath,
   params: [],
   mdx: false,
-  file: `app${routePath}/_uf.page.js`,
+  file: `app${routePath}/$page.js`,
   page: pageOf(text),
   layouts: [loadFrame],
   loading: [],
@@ -339,7 +339,7 @@ describe("rendering a route that has one", () => {
 
   it("renders the slot's default when the URL says nothing about it", async () => {
     // `/dashboard` matches no route in the slot's table, and the slot has a
-    // `_uf.default.js`. Without one there would be a hole in the page, which
+    // `$default.js`. Without one there would be a hole in the page, which
     // is the reason the file exists.
     const { prerender } = createRenderer({ App: routerView("./app"), ...table });
 

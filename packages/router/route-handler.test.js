@@ -19,7 +19,7 @@ import { Temporal } from "@uniflowed/core/temporal";
 const record = (path, module) => ({
   path,
   params: [],
-  file: `${path}/_uf.route.js`,
+  file: `${path}/$route.js`,
   load: async () => module,
 });
 
@@ -304,7 +304,7 @@ describe("errors", () => {
           {
             path: "/api/lazy",
             params: [],
-            file: "app/api/lazy/_uf.route.js",
+            file: "app/api/lazy/$route.js",
             load: async () => {
               loaded += 1;
               return { GET: () => new Response("ok") };
@@ -331,7 +331,7 @@ describe("the request a handler is inside", () => {
           {
             path: "/api/who",
             params: [],
-            file: "app/api/who/_uf.route.js",
+            file: "app/api/who/$route.js",
             load: async () => ({
               GET: () =>
                 Response.json({

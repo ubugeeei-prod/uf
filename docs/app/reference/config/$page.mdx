@@ -123,12 +123,12 @@ host needs.
 
 Three things can only be answered per request, and under `["ssg"]` each is an
 error naming the route: a page with parameters and no `generateStaticParams`, a
-`_uf.route.js` handler, and anything under a `_uf.middleware.js`.
+`$route.js` handler, and anything under a `$middleware.js`.
 
 A page can also say so for itself:
 
 ```js
-// app/now/_uf.page.js
+// app/now/$page.js
 export const dynamic = "force-dynamic";
 ```
 
@@ -273,7 +273,7 @@ follow:
   documents there is no deployment that runs uf at all. Deploy the output
   directory to any static host, or run `uf preview`, which serves it the way
   one would.
-- a `_uf.route.js` or a `_uf.middleware.js` anywhere in the project is a build
+- a `$route.js` or a `$middleware.js` anywhere in the project is a build
   error, which is the refusal
   [#342](https://github.com/ubugeeei-prod/uf/issues/342) asked for: a guard
   that can never run is a guard that looks enforced and is not.
@@ -324,7 +324,7 @@ deployed to — and a sitemap naming the wrong host is worse for a site than no
 sitemap at all. With it, `uf build` writes:
 
 - **`sitemap.xml`** — one `<loc>` per document the prerender wrote, minus the
-  error document and minus anything under a `_uf.middleware.js`. A route with
+  error document and minus anything under a `$middleware.js`. A route with
   parameters and no `generateStaticParams` prerenders nothing, so it is absent
   by construction: nothing, this build included, knows what its URLs are. There
   is no `lastmod`, `changefreq` or `priority` on any entry — none of the three

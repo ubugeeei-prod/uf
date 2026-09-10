@@ -9,11 +9,11 @@
 //!
 //! Delegating is a complete answer, and it is a *better* answer than dropping
 //! out to npm by hand, because everything uf knows about the project stays in
-//! force: `pm.allowLifecycleScripts` becomes `--ignore-scripts` on the child, a
-//! manifest that declares scripts of its own is refused before anything is
-//! fetched, and `uf.lock` and the content-addressed store are rewritten from
-//! the manifests the manager just changed. Reaching for `npm install` skips all
-//! three.
+//! force: `pm.allowLifecycleScripts` becomes `--ignore-scripts` on the child,
+//! and a manifest that declares scripts of its own is refused before anything
+//! is fetched. Native uf projects also rewrite `uf.lock` and the
+//! content-addressed store; delegated npm, pnpm, Yarn and Bun projects keep the
+//! lockfile they already use.
 //!
 //! # What each one reports
 //!
@@ -42,12 +42,15 @@ use serde_json::Value;
 use uf_config::load_config;
 use uf_pm::delta::LockfileDelta;
 use uf_pm::{
-    DependencyKind, ManagerRunError, Operation, PackageManagerPlan, detect_package_manager,
-    install_workspace, installable, is_polluting_json_key, run_operation,
+    DependencyKind, DetectionOptions, ManagerRunError, Operation, PackageManagerPlan,
+    check_workspace_manifests, detect_package_manager_with, install_workspace, installable,
+    is_polluting_json_key, run_operation_with_detection,
 };
 use uf_term::{Cell, Column, KeyValue, Renderer, Status, Table, Tone, format_duration};
 
-use super::install::{chosen_by, lockfile_label, render_change_counts, render_change_table};
+use super::install::{
+    chosen_by, lockfile_label, render_change_counts, render_change_table, tracks_uf_lock,
+};
 use super::scripts_allowed;
 use crate::support::{plural, project_label};
 use crate::ui::Ui;
@@ -137,7 +140,10 @@ pub(crate) fn query(
     operands: &[String],
 ) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let detection = detect_package_manager(&resolved.root);
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
     let (manager, substituted) = installable(&detection);
 
     let invocation = uf_pm::invocation_for(&resolved.root, manager, operation, operands, true)?;
@@ -161,12 +167,14 @@ pub(crate) fn query(
         renderer.blank(out);
     });
 
-    run_operation(&resolved.root, operation, operands, true).map_err(|error| {
-        failed_hint(
-            error,
-            &format!("{manager_label} reported a problem; its output is above"),
-        )
-    })?;
+    run_operation_with_detection(&resolved.root, &detection, operation, operands, true).map_err(
+        |error| {
+            failed_hint(
+                error,
+                &format!("{manager_label} reported a problem; its output is above"),
+            )
+        },
+    )?;
     Ok(())
 }
 
@@ -212,7 +220,10 @@ pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> 
 
 pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let detection = detect_package_manager(&resolved.root);
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
     let (manager, substituted) = installable(&detection);
     let operands = [package.to_owned()];
 
@@ -239,7 +250,7 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
         renderer.blank(out);
     });
 
-    run_operation(&resolved.root, Operation::Why, &operands, true).map_err(|error| {
+    run_operation_with_detection(&resolved.root, &detection, Operation::Why, &operands, true).map_err(|error| {
         failed_hint(
             error,
             &format!(
@@ -278,10 +289,21 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     let resolved = load_config(cwd)?;
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
 
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
+    let tracks_uf_lock = tracks_uf_lock(&detection);
+
     // The same refusal `uf install` makes, for the same reason and a stronger
     // one: adding a dependency is when a lifecycle script most often arrives,
-    // and this is the guard that runs before anything is fetched.
-    install_workspace(&resolved.root, &resolved.config)?;
+    // and this is the guard that runs before anything is fetched. Delegated
+    // projects get the guard without being forced to grow `uf.lock`.
+    if tracks_uf_lock {
+        install_workspace(&resolved.root, &resolved.config)?;
+    } else {
+        check_workspace_manifests(&resolved.root, &resolved.config)?;
+    }
 
     // Both "before" states have to be read before the manager runs. A manifest
     // read afterwards is the manifest the manager wrote, and a lockfile read
@@ -289,7 +311,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     // changed, every time.
     let manifest_path = resolved.root.join("package.json");
     let manifest_before = dependency_entries(&manifest_path);
-    let (manager, _) = installable(&detect_package_manager(&resolved.root));
+    let (manager, _) = installable(&detection);
     let tree_before = uf_pm::delta::snapshot(&resolved.root, manager);
 
     let project = project_label(&resolved.root).to_string();
@@ -301,8 +323,9 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         renderer.blank(out);
     });
 
-    let outcome = run_operation(
+    let outcome = run_operation_with_detection(
         &resolved.root,
+        &detection,
         request.operation,
         request.operands,
         scripts_allowed(&resolved.root, manager, &plan)?,
@@ -317,16 +340,24 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         )
     })?;
 
-    // The manifests the manager just rewrote are what `uf.lock` and the store
-    // describe, so they are rewritten from them. Without this the lockfile uf
-    // owns would still be describing the project as it was before the command
-    // that was just run.
-    install_workspace(&resolved.root, &resolved.config).with_context(|| {
-        format!(
-            "`{}` succeeded, but uf could not rewrite {} from the manifests it changed",
-            outcome.invocation, resolved.config.pm.lockfile
-        )
-    })?;
+    // The manifests the manager just rewrote are checked again. A native uf
+    // project also rewrites the lock and store it owns; a delegated project
+    // leaves that to npm, pnpm, Yarn or Bun.
+    if tracks_uf_lock {
+        install_workspace(&resolved.root, &resolved.config).with_context(|| {
+            format!(
+                "`{}` succeeded, but uf could not rewrite {} from the manifests it changed",
+                outcome.invocation, resolved.config.pm.lockfile
+            )
+        })?;
+    } else {
+        check_workspace_manifests(&resolved.root, &resolved.config).with_context(|| {
+            format!(
+                "`{}` succeeded, but uf could not re-check the manifests it changed",
+                outcome.invocation
+            )
+        })?;
+    }
 
     let manifest = manifest_changes(&manifest_before, &dependency_entries(&manifest_path));
     let tree_after = uf_pm::delta::snapshot(&resolved.root, manager);

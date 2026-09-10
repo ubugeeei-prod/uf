@@ -41,9 +41,9 @@ Binds loopback on the port from `dev.port`. React Fast Refresh works through
 `component` declarations. Editing a Flow file re-transforms only that module.
 
 It serves the application the same way a deployment does: one middleware runs
-your `_uf.middleware.js`, then a server action, then a route handler, then the
+your `$middleware.js`, then a server action, then a route handler, then the
 renderer — for every method and whatever the client said it would accept. So a
-`_uf.route.js` answers a browser here exactly as it does under `uf start`, and a
+`$route.js` answers a browser here exactly as it does under `uf start`, and a
 `redirect()` from a loader is a 307 with a `Location` rather than a document
 that happens to redirect itself.
 
@@ -120,7 +120,7 @@ Nothing on either path leaves the machine, and a built application has neither.
 
 ### Where each boundary begins and ends
 
-A `_uf.loading.js` and a `_uf.error.js` are decisions about *part of the page*,
+A `$loading.js` and a `$error.js` are decisions about *part of the page*,
 and the part is the one thing you cannot see. A `<Suspense>` renders no element
 of its own and neither does an error boundary, so what one of them owns is a run
 of nodes among the layout's own — a `<nav>` before it, a `<footer>` after it —
@@ -128,16 +128,15 @@ with nothing on the page to tell them apart. Reading the directory tells you a
 boundary exists; it does not tell you which rectangle goes away when it fires.
 
 So under `uf dev` the router marks what it renders. Every boundary's children
-sit between a pair of `<template data-uf-boundary>` elements, which are
-`display: none`, carry no content, and are ordinary siblings of the nodes
-between them:
+sit between a pair of `<span hidden data-uf-boundary>` elements, which carry no
+content and are ordinary siblings of the nodes between them:
 
 ```html
 <div id="uf-root">
   <nav class="masthead">…</nav>
-  <template data-uf-boundary="suspense:0" data-uf-boundary-edge="open"></template>
+  <span hidden data-uf-boundary="suspense:0" data-uf-boundary-edge="open"></span>
   <article class="post">…</article>
-  <template data-uf-boundary="suspense:0" data-uf-boundary-edge="close"></template>
+  <span hidden data-uf-boundary="suspense:0" data-uf-boundary-edge="close"></span>
   <footer class="colophon">…</footer>
 </div>
 ```
@@ -151,7 +150,7 @@ terminal says where it landed:
 ```text
 › 3 boundaries render /docs/:slug
     error (uf's own error page), outside every layout — owns div#uf-root
-    error (app/docs/_uf.error.js), inside 1 layout — owns article.doc, aside.toc
+    error (app/docs/$error.js), inside 1 layout — owns article.doc, aside.toc
     suspense, inside 2 layouts — showing its fallback
 ```
 
@@ -172,7 +171,7 @@ out of the analysis rather than out of the page, so it needs no mark.
 
 ### What actually streamed
 
-A `_uf.loading.js` is a promise about *time*: the shell goes out now and this
+A `$loading.js` is a promise about *time*: the shell goes out now and this
 part of the page follows when it is ready. Whether it kept that promise is the
 one thing a browser makes hard to see — the fallback may have flashed past in
 40 ms, or never rendered at all because the page resolved first, and the
@@ -189,7 +188,7 @@ part of the tree it built:
     +812 ms  B:1 replaced div.toc-loading with nav.toc (chunk 4 of 5, 900 B)
 ```
 
-`p.skeleton` is what your `_uf.loading.js` rendered and `article.post` is what
+`p.skeleton` is what your `$loading.js` rendered and `article.post` is what
 replaced it, both read off the wire rather than out of the route table. `B:0` is
 React's own name for the boundary, printed rather than translated: React numbers
 boundaries as it meets them, uf numbers a route's fallbacks, and a `<Suspense>` a

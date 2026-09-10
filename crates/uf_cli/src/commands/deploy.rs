@@ -510,7 +510,7 @@ const WORKERS_COMPATIBILITY_DATE: &str = "2024-09-23";
 ///   means one order, written once, driven by `tests/library/deploy.test.js`.
 /// * `not_found_handling: "none"`, so a miss comes back as a 404 the Worker
 ///   can fall through, and the 404 a visitor sees is the project's own
-///   `_uf.not-found` rather than Cloudflare's.
+///   `$not-found` rather than Cloudflare's.
 fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -> String {
     let mut config = json!({
         "name": worker_name(root),
@@ -834,12 +834,12 @@ mod tests {
         let declared = vec![
             schedules::DeclaredSchedule {
                 path: "/api/sweep".into(),
-                file: Utf8PathBuf::from("app/api/sweep/_uf.route.js"),
+                file: Utf8PathBuf::from("app/api/sweep/$route.js"),
                 cron: "*/15 * * * *".to_owned(),
             },
             schedules::DeclaredSchedule {
                 path: "/api/digest".into(),
-                file: Utf8PathBuf::from("app/api/digest/_uf.route.js"),
+                file: Utf8PathBuf::from("app/api/digest/$route.js"),
                 cron: "0 6 * * 1".to_owned(),
             },
         ];
@@ -864,7 +864,7 @@ mod tests {
     fn a_target_that_would_not_run_a_schedule_refuses_the_build() {
         let declared = vec![schedules::DeclaredSchedule {
             path: "/api/sweep".into(),
-            file: Utf8PathBuf::from("app/api/sweep/_uf.route.js"),
+            file: Utf8PathBuf::from("app/api/sweep/$route.js"),
             cron: "*/15 * * * *".to_owned(),
         }];
 
@@ -895,7 +895,7 @@ mod tests {
             // not have to go looking for which one.
             assert!(message.contains("/api/sweep"), "{message}");
             assert!(message.contains("*/15 * * * *"), "{message}");
-            assert!(message.contains("_uf.route.js"), "{message}");
+            assert!(message.contains("$route.js"), "{message}");
             assert!(
                 message.contains("issues/531") || message.contains("uf#531"),
                 "{message}"

@@ -149,7 +149,7 @@ function tables() {
     path: "/",
     params: [],
     mdx: false,
-    file: "app/_uf.page.js",
+    file: "app/$page.js",
     page: () => {
       loaded["/"] = (loaded["/"] ?? 0) + 1;
       return Promise.resolve({ default: Home });
@@ -161,7 +161,7 @@ function tables() {
     path: "/other",
     params: [],
     mdx: false,
-    file: "app/other/_uf.page.js",
+    file: "app/other/$page.js",
     page: () => {
       loaded["/other"] = (loaded["/other"] ?? 0) + 1;
       return Promise.resolve({ default: Other });
@@ -190,7 +190,7 @@ function prefetchRoute() {
     path: PREFETCHED,
     params: [],
     mdx: false,
-    file: "app/prefetched/_uf.page.js",
+    file: "app/prefetched/$page.js",
     page: () => {
       loaded[PREFETCHED] = (loaded[PREFETCHED] ?? 0) + 1;
       return other.page();

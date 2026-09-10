@@ -4,7 +4,7 @@ A **second implementation** of the builder contract in `docs/architecture.md`,
 and the evidence that the contract is a contract rather than a description of
 `@uniflowed/vite`.
 
-It has no bundler in it. It walks the router root for `_uf.page.js` files,
+It has no bundler in it. It walks the router root for `$page.js` files,
 writes one paper-thin document per route, and reports what it did in the
 driver's event vocabulary — which is the whole of what uf asks a builder for on
 `uf build`. Nothing it does needs Vite, Rolldown, or a module graph, and that

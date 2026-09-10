@@ -7,7 +7,7 @@ use super::{BundleMove, RscReport, RscUpdate};
 /// A helper a Server Component imports, with nothing client-only in it.
 const CLEAN: &str = "export function greeting() {\n  return \"hello\";\n}\n";
 
-/// The same helper, reaching for a browser global. `_uf.page.js` is a server
+/// The same helper, reaching for a browser global. `$page.js` is a server
 /// entry and imports it, so the graph says the server runs `localStorage`.
 const TOUCHES_THE_BROWSER: &str =
     "export function greeting() {\n  return localStorage.getItem(\"greeting\");\n}\n";
@@ -22,7 +22,7 @@ fn project(helper: &str) -> (tempfile::TempDir, Utf8PathBuf) {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     std::fs::create_dir_all(root.join("app")).unwrap();
     std::fs::write(
-        root.join("app/_uf.page.js"),
+        root.join("app/$page.js"),
         "import { greeting } from \"./greeting.js\";\nexport default function Page() {}\n",
     )
     .unwrap();
@@ -170,7 +170,7 @@ fn project_with_a_component(counter: &str) -> (tempfile::TempDir, Utf8PathBuf) {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     std::fs::create_dir_all(root.join("app")).unwrap();
     std::fs::write(
-        root.join("app/_uf.page.js"),
+        root.join("app/$page.js"),
         "import { Section } from \"./section.js\";\nexport default function Page() {}\n",
     )
     .unwrap();
@@ -226,7 +226,7 @@ fn adding_use_client_reports_the_module_and_everything_above_it() {
         moved(&report),
         [
             "app/Counter.js is now in the client bundle — it declares `\"use client\"`",
-            "app/_uf.page.js is now in the client bundle — app/_uf.page.js imports \
+            "app/$page.js is now in the client bundle — app/$page.js imports \
              app/section.js imports app/Counter.js, which declares `\"use client\"`",
             "app/section.js is now in the client bundle — app/section.js imports \
              app/Counter.js, which declares `\"use client\"`",
@@ -251,7 +251,7 @@ fn removing_use_client_reports_the_modules_leaving_and_then_stays_quiet() {
         moved(&report),
         [
             "app/Counter.js is out of the client bundle",
-            "app/_uf.page.js is out of the client bundle",
+            "app/$page.js is out of the client bundle",
             "app/section.js is out of the client bundle",
         ]
     );
@@ -302,7 +302,7 @@ fn a_large_move_is_counted_in_full_and_listed_in_part() {
     // A chain of pages, each importing the next, ending at the component.
     let depth = super::MAX_MOVES + 5;
     std::fs::write(
-        root.join("app/_uf.page.js"),
+        root.join("app/$page.js"),
         "import { Step } from \"./step-0.js\";\nexport default function Page() {}\n",
     )
     .unwrap();

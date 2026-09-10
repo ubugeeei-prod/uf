@@ -405,7 +405,7 @@ pub enum TuiPerformanceTarget {
     ///
     /// It is also now measured *against Ink*, which is ubugeeei-prod/uf#315
     /// and is `tools/bench/tui/`: one workload written twice, and the numbers
-    /// on `docs/app/guide/tui/_uf.page.mdx` with the hardware, versions and
+    /// on `docs/app/guide/tui/$page.mdx` with the hardware, versions and
     /// variance `ubugeeei-redundancy.md` requires. The short version, and it
     /// is deliberately not all in uf's favour — on the same 80×24 frame,
     /// changing one character costs uf 8 bytes, Ink 1,307 by default and 128

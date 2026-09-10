@@ -33,7 +33,7 @@
 # This check never reads that list. It reads markup, and it cannot tell a
 # sidebar link from a prose one. The two overlap on exactly one question — does
 # `/guide/x` exist — and they answer it about different artifacts: the nav test
-# about `docs/app/guide/x/_uf.page.mdx`, this about whether the build wrote
+# about `docs/app/guide/x/$page.mdx`, this about whether the build wrote
 # something at `/guide/x`. A page can exist and not be built (it is not in the
 # route table), and a route can be served and have no page (an asset, a
 # redirect). Neither check subsumes the other, and neither is worth deleting
@@ -197,7 +197,7 @@ for (const [file, body] of markup) {
 /** The source file behind a built document, when there is one. */
 function pageSource(file) {
   const route = file === "/index.html" ? "" : file.replace(/\/index\.html$/, "").slice(1);
-  for (const name of ["_uf.page.mdx", "_uf.page.js"]) {
+  for (const name of ["$page.mdx", "$page.js"]) {
     const candidate = path.join(sourceRoot, route, name);
     if (fs.existsSync(candidate)) {
       return candidate;
@@ -212,7 +212,7 @@ function pageSource(file) {
 // it, and naming the module is the difference between one fix and thirty
 // identical ones.
 const sharedSources = [];
-for (const name of ["_uf.layout.js", "_uf.not-found.js", "_uf.page.js"]) {
+for (const name of ["$layout.js", "$not-found.js", "$page.js"]) {
   const candidate = path.join(sourceRoot, name);
   if (fs.existsSync(candidate)) {
     sharedSources.push(candidate);
@@ -228,7 +228,7 @@ if (fs.existsSync(designDir)) {
 }
 
 /**
- * Is this route behind a `_uf.middleware.js`?
+ * Is this route behind a `$middleware.js`?
  *
  * `uf build` leaves a guarded page out of `sitemap.xml` deliberately — a guard
  * says the route is not for everyone and a sitemap is a submission to search
@@ -240,7 +240,7 @@ function guarded(route) {
   const segments = route.split("/").filter((segment) => segment !== "");
   for (let depth = segments.length; depth >= 0; depth -= 1) {
     const dir = path.join(sourceRoot, ...segments.slice(0, depth));
-    if (fs.existsSync(path.join(dir, "_uf.middleware.js"))) {
+    if (fs.existsSync(path.join(dir, "$middleware.js"))) {
       return true;
     }
   }
@@ -411,7 +411,7 @@ if (fs.existsSync(sitemapFile)) {
     const route = document === "/index.html" ? "/" : document.slice(0, -"/index.html".length);
     if (guarded(route)) {
       // The build leaves a guarded page out of the sitemap on purpose: a
-      // `_uf.middleware.js` says this route is not for everyone, and a sitemap
+      // `$middleware.js` says this route is not for everyone, and a sitemap
       // is a submission to search engines. This is the same rule, so that a
       // guard added later does not fail this check for doing its job.
       continue;

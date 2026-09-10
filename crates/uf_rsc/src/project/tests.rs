@@ -31,7 +31,7 @@ fn a_missing_root_analyses_to_nothing() {
 fn a_scaffold_shaped_project_resolves_its_boundary_and_action() {
     let (_dir, root) = project(&[
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             "// @flow\nimport Counter from \"./client/Counter.js\";\nimport { refreshGreeting } from \"../server/actions.js\";\n",
         ),
         (
@@ -60,7 +60,7 @@ fn a_scaffold_shaped_project_resolves_its_boundary_and_action() {
 #[test]
 fn ignored_directories_are_not_scanned() {
     let (_dir, root) = project(&[
-        ("app/_uf.page.js", "// @flow\n"),
+        ("app/$page.js", "// @flow\n"),
         ("node_modules/pkg/index.js", "\"use client\";\n"),
         ("dist/bundle.js", "\"use client\";\n"),
     ]);
@@ -78,7 +78,7 @@ fn ignored_directories_are_not_scanned() {
 #[test]
 fn a_nested_repository_is_not_part_of_the_project() {
     let (_dir, root) = project(&[
-        ("app/_uf.page.js", "// @flow\n"),
+        ("app/$page.js", "// @flow\n"),
         (
             "vendor/upstream/actions.js",
             "\"use server\";\nexport async function leak() {}\n",
@@ -98,8 +98,8 @@ fn a_nested_repository_is_not_part_of_the_project() {
 #[test]
 fn test_files_are_not_part_of_the_app_graph() {
     let (_dir, root) = project(&[
-        ("app/_uf.page.js", "// @flow\n"),
-        ("app/_uf.page.test.js", "// @flow\n"),
+        ("app/$page.js", "// @flow\n"),
+        ("app/$page.test.js", "// @flow\n"),
     ]);
     let analysis = analyze_project(&root, &build_id(), &ProjectScanOptions::default()).unwrap();
     assert_eq!(analysis.graph.modules().len(), 1);
@@ -107,7 +107,7 @@ fn test_files_are_not_part_of_the_app_graph() {
 
 #[test]
 fn oversized_modules_are_skipped_rather_than_read() {
-    let (_dir, root) = project(&[("app/_uf.page.js", "// @flow\nconst a = 1;\n")]);
+    let (_dir, root) = project(&[("app/$page.js", "// @flow\nconst a = 1;\n")]);
     let options = ProjectScanOptions {
         max_file_bytes: 4,
         ..ProjectScanOptions::default()
@@ -119,7 +119,7 @@ fn oversized_modules_are_skipped_rather_than_read() {
 #[test]
 fn router_files_become_server_entries() {
     let (_dir, root) = project(&[
-        ("app/_uf.page.js", "import \"./data.js\";\n"),
+        ("app/$page.js", "import \"./data.js\";\n"),
         ("app/data.js", "// @flow\n"),
     ]);
     let analysis = analyze_project(&root, &build_id(), &ProjectScanOptions::default()).unwrap();
@@ -147,7 +147,7 @@ fn extra_entries_are_honoured() {
 #[test]
 fn analysing_the_same_project_twice_gives_the_same_manifest() {
     let (_dir, root) = project(&[
-        ("app/_uf.page.js", "import \"./client/Counter.js\";\n"),
+        ("app/$page.js", "import \"./client/Counter.js\";\n"),
         ("app/client/Counter.js", "\"use client\";\n"),
     ]);
     let first = analyze_project(&root, &build_id(), &ProjectScanOptions::default())
@@ -165,7 +165,7 @@ fn analysing_the_same_project_twice_gives_the_same_manifest() {
 
 #[test]
 fn a_non_utf8_module_is_reported_not_ignored() {
-    let (_dir, root) = project(&[("app/_uf.page.js", "// @flow\n")]);
+    let (_dir, root) = project(&[("app/$page.js", "// @flow\n")]);
     fs::write(root.join("app/broken.js"), [0xff, 0xfe, 0xfd]).unwrap();
     let error = analyze_project(&root, &build_id(), &ProjectScanOptions::default())
         .expect_err("invalid utf-8 must be reported");

@@ -28,7 +28,7 @@ fn no_default_export_component_accepts_named_exports() {
 fn no_default_export_component_covers_reserved_router_modules() {
     let diagnostics = lint_one(
         "react/no-default-export-component",
-        "app/_uf.page.js",
+        "app/$page.js",
         "// @flow\nexport default function Page() { return null; }\n",
     );
 

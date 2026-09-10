@@ -256,7 +256,7 @@ new route to collide with a project's own, and no second spelling of "which
 guard applies here". Every host runs the action dispatcher in the same place:
 below the middleware, above the route handlers. A guard that answers is the
 whole request; a request naming no action is declined outright, so a
-`_uf.route.js` at the same path still gets it.
+`$route.js` at the same path still gets it.
 
 Every answer is one of these, and every refusal carries the same fixed body —
 the status says what a caller may usefully do differently, and nothing says what

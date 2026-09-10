@@ -15,7 +15,7 @@
 // allowed to be a `ReadableStream`, so an event stream is a handler that
 // returns one:
 //
-//   // app/api/progress/_uf.route.js
+//   // app/api/progress/$route.js
 //   // @flow
 //   import { eventStream } from "@uniflowed/server/events";
 //

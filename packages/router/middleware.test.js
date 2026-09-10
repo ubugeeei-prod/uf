@@ -23,7 +23,7 @@ import { cookies, headers } from "@uniflowed/server";
 /** A table entry whose module is given inline. */
 const record = (path, module) => ({
   path,
-  file: `app${path === "/" ? "" : path}/_uf.middleware.js`,
+  file: `app${path === "/" ? "" : path}/$middleware.js`,
   load: async () => module,
 });
 
@@ -235,7 +235,7 @@ describe("composition", () => {
         middleware: [
           {
             path: "/dashboard",
-            file: "app/dashboard/_uf.middleware.js",
+            file: "app/dashboard/$middleware.js",
             load: async () => {
               loaded += 1;
               return { default: () => new Response("no", { status: 401 }) };
@@ -314,9 +314,9 @@ describe("errors", () => {
     );
 
     // The failure mode this whole module exists to stop: a file named
-    // `_uf.middleware.js` that the router quietly ignores.
+    // `$middleware.js` that the router quietly ignores.
     await expect(run(get("/dashboard"))).rejects.toThrow(
-      "app/dashboard/_uf.middleware.js is a middleware but exports no middleware function",
+      "app/dashboard/$middleware.js is a middleware but exports no middleware function",
     );
   });
 

@@ -35,7 +35,7 @@ cd "$repo_root"
 flake="flake.nix"
 lock="flake.lock"
 toolchain_file="rust-toolchain.toml"
-install_doc="docs/app/guide/install/_uf.page.mdx"
+install_doc='docs/app/guide/install/$page.mdx'
 
 errors=0
 fail() {

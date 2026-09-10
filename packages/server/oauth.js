@@ -52,16 +52,16 @@
 //       callbackPath: "/auth/callback",
 //     });
 //
-//     // app/auth/authorize/_uf.route.js
+//     // app/auth/authorize/$route.js
 //     export const GET = auth.authorize;
 //
-//     // app/auth/callback/_uf.route.js
+//     // app/auth/callback/$route.js
 //     export const GET = auth.callback;
 //
-//     // app/auth/refresh/_uf.route.js
+//     // app/auth/refresh/$route.js
 //     export const POST = auth.refresh;
 //
-//     // app/auth/session/_uf.route.js
+//     // app/auth/session/$route.js
 //     export const GET = auth.session;
 //     export const DELETE = auth.session;
 //
@@ -284,7 +284,7 @@ export type AuthOptions = {|
  * The four handlers, and the two ways to read what they established.
  *
  * Each handler is a plain `Request` → `Response`, which is what a
- * `_uf.route.js` exports and what runs unchanged on Node, Bun, Deno and a
+ * `$route.js` exports and what runs unchanged on Node, Bun, Deno and a
  * worker. They are values rather than methods so that
  * `export const GET = auth.authorize` is the whole of mounting one.
  */

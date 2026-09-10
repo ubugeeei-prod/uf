@@ -9,7 +9,7 @@ what uf said and what uf did.
 
 `uf dev` streams a page now instead of collecting it. That was the one place a
 developer would notice streaming and the one place it did not happen, so a slow
-page showed nothing until it was finished and `_uf.loading.js` looked broken.
+page showed nothing until it was finished and `$loading.js` looked broken.
 `uf mcp` serves the read-only commands over a protocol an agent speaks, instead
 of leaving one to shell out and parse `--json`. And `uf build --adapter bun`
 writes a directory `bun server.js` runs — the second host, and it exists
@@ -604,7 +604,7 @@ across a package boundary, which is the first hop of everything else.
 - **create**: the first command a reader types is one word. `uf create app
   my-site` was rejected; a lone argument is the template when it names one and
   the path when it does not (#369)
-- **router**: the nearest `_uf.not-found.js` answers, not the one at the root,
+- **router**: the nearest `$not-found.js` answers, not the one at the root,
   and a page that throws is one route's problem (#354)
 - **vite**: the stylesheet reaches `dist/`, and a React Compiler finding names
   its file. `TransformService` dropped the `css` field, so uf's default styling
@@ -690,7 +690,7 @@ _2026-09-06_
 - **lint**: a rule about what code does no longer reads strings (#227)
 - **lint**: `fetch/no-global-override` is about the assignment, not the name (#236)
 - **react**: a `useX` name is a hook only where the module says React (#237)
-- **router**: `_uf.not-found` is a reserved name, and the linter says so (#224)
+- **router**: `$not-found` is a reserved name, and the linter says so (#224)
 - **fmt**: the container that breaks a JSX arrow body is the one above the
   call (#233)
 - **types**: a shipped package says what it knows — 45 of the 58 `any`s in

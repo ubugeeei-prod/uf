@@ -9,7 +9,7 @@
 //!
 //! # The exit codes
 //!
-//! `docs/app/reference/cli/_uf.page.mdx` documents three, and a script that
+//! `docs/app/reference/cli/$page.mdx` documents three, and a script that
 //! wants to tell "uf disagrees with your code" from "uf never started" has
 //! nothing else to read:
 //!

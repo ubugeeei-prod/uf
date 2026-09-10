@@ -315,9 +315,14 @@ async function* assembled(
   let shape = "unknown";
   // The opening chunk is the only one the hook sees, and every path below
   // reaches exactly one of them. Awaiting here rather than at each `yield`
-  // keeps the four of them from drifting apart.
-  const opening = async (html: string): Promise<string> =>
-    transformHead == null ? html : await transformHead(html);
+  // keeps them from drifting apart. The hook sees only the document opening:
+  // Vite's HTML parser is happy with an open body, but not with a React chunk
+  // that happens to end inside an attribute.
+  const opening = async (html: string, rest: string = ""): Promise<string> => {
+    const split = transformableOpening(html);
+    const transformed = transformHead == null ? split.opening : await transformHead(split.opening);
+    return transformed + split.rest + rest;
+  };
 
   for await (const chunk of chunks) {
     if (shape === "document-open" || shape === "shell-open") {
@@ -337,7 +342,7 @@ async function* assembled(
         continue;
       }
       shape = "shell-open";
-      yield await opening(shell.open + split.head + shell.body + split.rest);
+      yield await opening(shell.open + split.head + shell.body, split.rest);
       held = "";
       continue;
     }
@@ -352,6 +357,10 @@ async function* assembled(
     // `<body` before `</head>` means React wrote no head; give the tags one.
     const body = held.search(/<body[\s>]/i);
     if (body !== -1) {
+      const bodyEnd = held.indexOf(">", body);
+      if (bodyEnd === -1) {
+        continue;
+      }
       shape = "document-open";
       yield await opening(
         ufDoctype(`${held.slice(0, body)}<head>${shell.head}</head>${held.slice(body)}`),
@@ -372,7 +381,7 @@ async function* assembled(
     // still open is over and whatever was left of it is markup like any other.
     const split = hoisted(held);
     shape = "shell-open";
-    yield await opening(shell.open + split.head + shell.body + split.rest);
+    yield await opening(shell.open + split.head + shell.body, split.rest);
   }
   if (shape === "shell-open") {
     yield shell.close;
@@ -382,6 +391,25 @@ async function* assembled(
     // "\ No newline at end of file" in it forever.
     yield "\n";
   }
+}
+
+function transformableOpening(html: string): {| readonly opening: string, readonly rest: string |} {
+  const lower = html.toLowerCase();
+  const headEnd = lower.indexOf("</head>");
+  if (headEnd === -1) {
+    return { opening: html, rest: "" };
+  }
+  const afterHead = headEnd + "</head>".length;
+  const body = lower.indexOf("<body", afterHead);
+  if (body === -1) {
+    return { opening: html.slice(0, afterHead), rest: html.slice(afterHead) };
+  }
+  const bodyEnd = html.indexOf(">", body);
+  if (bodyEnd === -1) {
+    return { opening: html.slice(0, afterHead), rest: html.slice(afterHead) };
+  }
+  const afterBody = bodyEnd + 1;
+  return { opening: html.slice(0, afterBody), rest: html.slice(afterBody) };
 }
 
 /**
@@ -593,22 +621,21 @@ export type RenderOptions = {|
    */
   readonly onError: (error: mixed) => void,
   /**
-   * Rewrite the opening chunk — everything up to and including the head —
-   * before it goes out.
+   * Rewrite the document opening — the head and, when present, the body start
+   * tag — before it goes out.
    *
    * For `uf dev`, and only for it. Vite's `transformIndexHtml` rewrites asset
    * URLs and injects `/@vite/client` and the refresh preamble, and it is a
    * *whole document* hook, so the development server used to collect the page
    * and transform it at the end. That made the one place a developer would
    * notice streaming the one place it did not happen: a slow page showed
-   * nothing until it was finished, and `_uf.loading.js` looked broken.
+   * nothing until it was finished, and `$loading.js` looked broken.
    * See ubugeeei-prod/uf#374.
    *
-   * The hook only ever sees the head, which is what makes this safe. Vite's
-   * injections are string-based against `<head>`, and its dev hook handles a
-   * document that ends mid-`<body>` without complaint — checked against Vite
-   * 8.2.2 before this existed, because "the parse step is the risk" was the
-   * open question on that issue.
+   * The hook never sees application body markup, which is what makes this
+   * safe. Vite's injections are string-based against `<head>` and `<body>`,
+   * and its parser accepts a document that stops after the body start tag.
+   * It does not accept a React chunk that ends in the middle of an attribute.
    *
    * Absent everywhere else. `uf start`, `uf preview` and every deploy adapter
    * have no such hook and stream already.

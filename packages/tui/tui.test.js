@@ -2372,7 +2372,7 @@ describe("the capability precedence matches the CLI's", () => {
 
 describe("the manual is not a screenshot", () => {
   /**
-   * The application `docs/app/guide/tui/_uf.page.mdx` shows, transcribed.
+   * The application `docs/app/guide/tui/$page.mdx` shows, transcribed.
    *
    * The transcription is the weak point and it is deliberate: importing the
    * page's code block needs the docs build, and the alternative to both is a
@@ -2411,7 +2411,7 @@ describe("the manual is not a screenshot", () => {
 
   /** The guide page, read as text. */
   const page = (): string =>
-    fs.readFileSync(path.join(REPO, "docs/app/guide/tui/_uf.page.mdx"), "utf8");
+    fs.readFileSync(path.join(REPO, "docs/app/guide/tui/$page.mdx"), "utf8");
 
   it("draws the frame the guide prints", () => {
     const fence = page().match(/```text\n([\s\S]*?)```/);
@@ -2527,7 +2527,7 @@ describe("the guide's comparison against React Ink", () => {
 
   /** The guide's row for uf, as numbers. */
   const published = (): Array<number> => {
-    const page = fs.readFileSync(path.join(REPO, "docs/app/guide/tui/_uf.page.mdx"), "utf8");
+    const page = fs.readFileSync(path.join(REPO, "docs/app/guide/tui/$page.mdx"), "utf8");
     const row = page.match(/\n\| `@uniflowed\/tui` \|([^\n]*)\|\n/);
     expect(row).not.toBe(null);
     return (row?.[1] ?? "")

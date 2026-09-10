@@ -347,11 +347,11 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
             "// @flow\nimport { routerView } from \"@uniflowed/router\";\n\nexport default routerView(\"./app\");\n",
         ),
         (
-            "app/_uf.layout.js",
+            "app/$layout.js",
             "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Layout(children: React.Node) {\n  return (\n    <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n",
         ),
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
         ),
     ]
@@ -359,7 +359,7 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 
 /// A middleware must run before the path it guards answers.
 ///
-/// `_uf.middleware.js` was a reserved name in the Rust router, a reserved name
+/// `$middleware.js` was a reserved name in the Rust router, a reserved name
 /// in the build's router, a documented file convention, a column in `uf
 /// inspect --json` and a file the dev server invalidated the route table for —
 /// and `routesModuleSource` dropped it, so it was never imported and never
@@ -389,11 +389,11 @@ fn a_middleware_guards_the_path_it_sits_under() {
 
     let mut files = minimal_app();
     files.push((
-        "app/dashboard/_uf.page.js",
+        "app/dashboard/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>secrets</main>;\n}\n",
     ));
     files.push((
-        "app/dashboard/_uf.middleware.js",
+        "app/dashboard/$middleware.js",
         "// @flow\nimport { after } from \"@uniflowed/server\";\n\nconst SECRET_COOKIE_NAME = \"uf-fixture-session\";\n\nexport default function middleware(request: Request): Response | void {\n  after(() => {\n    globalThis.__ufAudited = (globalThis.__ufAudited ?? 0) + 1;\n  });\n  const cookie = request.headers.get(\"cookie\") ?? \"\";\n  if (!cookie.includes(SECRET_COOKIE_NAME)) {\n    return Response.redirect(new URL(\"/sign-in\", request.url), 302);\n  }\n}\n",
     ));
     let project = Project::new(&files);
@@ -531,7 +531,7 @@ fn a_contract_violation_fails_the_build_before_vite_runs() {
     // one is exactly the case that used to succeed — measured on the pinned
     // `main` binary: `rsc diagnostics  1`, `✓ build succeeded`, exit 0.
     files[2] = (
-        "app/_uf.page.js",
+        "app/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport function remember(slug: string): void {\n  localStorage.setItem(\"last-seen\", slug);\n}\n\nexport component Page() {\n  return <main>home</main>;\n}\n",
     );
     let project = Project::new(&files);
@@ -555,7 +555,7 @@ fn a_contract_violation_fails_the_build_before_vite_runs() {
         String::from_utf8_lossy(&output.stderr)
     );
     for expected in [
-        "app/_uf.page.js",
+        "app/$page.js",
         "rsc/client-only-api-in-server",
         "uses client-only `localStorage`",
         "React Server Components contract violation",
@@ -595,11 +595,11 @@ fn a_page_that_throws_fails_its_route_and_not_the_others() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/fine/_uf.page.js",
+        "app/fine/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>this page is fine</main>;\n}\n",
     ));
     files.push((
-        "app/broken/_uf.page.js",
+        "app/broken/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  throw new Error(\"this page throws on purpose\");\n}\n",
     ));
     let project = Project::new(&files);
@@ -665,7 +665,7 @@ fn a_not_found_boundary_that_throws_fails_the_build_and_writes_no_file() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/_uf.not-found.js",
+        "app/$not-found.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport default component NotFound() {\n  throw new Error(\"the 404 boundary throws on purpose\");\n}\n",
     ));
     let project = Project::new(&files);
@@ -740,7 +740,7 @@ export default routerView("./app");
 "#,
         ),
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             r#"// @flow
 import { greeting } from "./greeting.js";
 
@@ -765,7 +765,7 @@ export function greeting(): string {
 }
 "#;
 
-/// The same helper, reaching for a browser global. `_uf.page.js` is a server
+/// The same helper, reaching for a browser global. `$page.js` is a server
 /// entry and this module is reachable from it, so the graph says the server
 /// runs `localStorage` — which it does not have.
 const HELPER_THAT_TOUCHES_THE_BROWSER: &str = r#"// @flow
@@ -860,7 +860,7 @@ fn said_contains(said: &Mutex<String>, needle: &str) -> bool {
 /// `target/` for the reason [`project_with_a_throwing_page`] gives.
 ///
 /// `/dashboard/settings` is the interesting one: its own directory declares no
-/// middleware, and `app/dashboard/_uf.middleware.js` guards it all the same.
+/// middleware, and `app/dashboard/$middleware.js` guards it all the same.
 fn project_with_a_guarded_page() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uf-tests/guarded-page");
     fs::remove_dir_all(&root).ok();
@@ -891,7 +891,7 @@ export default routerView("./app");
 "#,
         ),
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             r#"// @flow
 export default component Home() {
   return <h1>the home page</h1>;
@@ -899,13 +899,13 @@ export default component Home() {
 "#,
         ),
         (
-            "app/dashboard/_uf.middleware.js",
+            "app/dashboard/$middleware.js",
             r#"// @flow
 export default function middleware(): void {}
 "#,
         ),
         (
-            "app/dashboard/_uf.page.js",
+            "app/dashboard/$page.js",
             r#"// @flow
 export default component Dashboard() {
   return <h1>the dashboard</h1>;
@@ -913,7 +913,7 @@ export default component Dashboard() {
 "#,
         ),
         (
-            "app/dashboard/settings/_uf.page.js",
+            "app/dashboard/settings/$page.js",
             r#"// @flow
 export default component Settings() {
   return <h1>dashboard settings</h1>;
@@ -930,7 +930,7 @@ export default component Settings() {
 
 /// A route that is guarded *and* prerendered is named by the build.
 ///
-/// `dist/dashboard/index.html` is a file. `app/dashboard/_uf.middleware.js` is
+/// `dist/dashboard/index.html` is a file. `app/dashboard/$middleware.js` is
 /// code that runs on a server, per request. A host that serves the file
 /// answers without the guard, and the build said nothing about it at all —
 /// which is #260's failure mode, an authorisation check that looks enforced
@@ -960,7 +960,7 @@ fn a_guarded_route_that_is_prerendered_is_reported() {
         "guards",
         "/dashboard",
         "/dashboard/settings",
-        "app/dashboard/_uf.middleware.js",
+        "app/dashboard/$middleware.js",
         "without running the middleware that guards them",
     ] {
         assert!(
@@ -985,7 +985,7 @@ fn a_guarded_route_that_is_prerendered_is_reported() {
     );
     assert_eq!(
         reported[1]["middleware"],
-        serde_json::json!(["app/dashboard/_uf.middleware.js"]),
+        serde_json::json!(["app/dashboard/$middleware.js"]),
         "a route below the guard is guarded by it: {reported:#?}"
     );
     assert_eq!(
@@ -1462,7 +1462,7 @@ fn assert_page(server: &mut Server, port: u16, said: &Mutex<String>, body: &str)
     );
 
     // A missing page *inside* the manual is answered by the manual's own
-    // boundary, inside the manual's layout. `_uf.not-found.js` was read at the
+    // boundary, inside the manual's layout. `$not-found.js` was read at the
     // router root only, so this used to be the site's root 404 with the
     // sidebar and the prose column gone. See ubugeeei-prod/uf#263.
     let in_guide = get(server, port, "/guide/definitely-not-a-page/", said);
@@ -1472,11 +1472,11 @@ fn assert_page(server: &mut Server, port: u16, said: &Mutex<String>, body: &str)
     );
     assert!(
         in_guide.contains("There is no such page in the manual."),
-        "`app/guide/_uf.not-found.js` did not answer a path under /guide:\n{in_guide}"
+        "`app/guide/$not-found.js` did not answer a path under /guide:\n{in_guide}"
     );
     assert!(
         in_guide.contains("class=\"manual\""),
-        "the guide's 404 rendered outside `app/guide/_uf.layout.js`:\n{in_guide}"
+        "the guide's 404 rendered outside `app/guide/$layout.js`:\n{in_guide}"
     );
 
     // And the nearest-ancestor rule the other way: `/reference` declares no
@@ -1549,7 +1549,7 @@ fn dev_resolves_uniflowed_react_to_the_react_peer() {
         "\"use client\";\n// @flow\nimport { createContext, useState } from \"@uniflowed/react\";\n\nconst CounterContext = createContext(0);\n\nexport component Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <CounterContext.Provider value={count}>\n      <button type=\"button\" onClick={() => setCount(count + 1)}>\n        {count}\n      </button>\n    </CounterContext.Provider>\n  );\n}\n",
     ));
     files[2] = (
-        "app/_uf.page.js",
+        "app/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
     );
     let project = Project::new(&files);
@@ -1631,7 +1631,7 @@ fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body:
     // And a page that suspends arrives in two pieces. `uf dev` used to collect
     // the whole document, because `transformIndexHtml` is a whole-document
     // hook — so the one server a developer actually watches was the one that
-    // did not stream, and `_uf.loading.js` looked broken. It transforms only
+    // did not stream, and `$loading.js` looked broken. It transforms only
     // the head now, which is all Vite's injections need. ubugeeei-prod/uf#374.
     //
     // The same `streamed` `uf preview` and `uf start` are held to, so the three
@@ -1653,7 +1653,7 @@ fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body:
         health.starts_with("HTTP/1.1 200") && health.contains("\"status\":\"ok\""),
         "{}",
         context(
-            "did not reach `app/api/health/_uf.route.js` for a request that looks like a \
+            "did not reach `app/api/health/$route.js` for a request that looks like a \
              navigation; a route handler has to answer a browser too",
             &health
         )
@@ -1813,7 +1813,7 @@ fn dev_rereads_an_env_file_that_changed_under_it() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/api/env/_uf.route.js",
+        "app/api/env/$route.js",
         "// @flow\n\n\
          export function GET(): Response {\n  \
          return Response.json({ greeting: String(process.env.UF_WATCHED_GREETING) });\n\
@@ -2816,7 +2816,7 @@ fn the_bun_adapter_writes_a_directory_bun_serves_from_an_empty_one() {
 /// cloud credentials and no socket. What is established here is that the
 /// directory is complete, that its shape is the platform's documented one, and
 /// that the application inside it answers. Deploying it is a step nobody has
-/// taken, and `docs/app/reference/cli/_uf.page.mdx` says so in those words.
+/// taken, and `docs/app/reference/cli/$page.mdx` says so in those words.
 #[test]
 fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
     if !fixture_ready() {
@@ -2888,13 +2888,13 @@ fn scheduled_app() -> Vec<(&'static str, &'static str)> {
              export default routerView(\"./app\");\n",
         ),
         (
-            "app/_uf.layout.js",
+            "app/$layout.js",
             "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
              export component Layout(children: React.Node) {\n  return (\n    \
              <html lang=\"en\">\n      <body>{children}</body>\n    </html>\n  );\n}\n",
         ),
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
              export default component Home() {\n  return <h1>scheduled</h1>;\n}\n",
         ),
@@ -2902,7 +2902,7 @@ fn scheduled_app() -> Vec<(&'static str, &'static str)> {
         // rather than a call, because `uf build` reads this without running
         // the project.
         (
-            "app/api/sweep/_uf.route.js",
+            "app/api/sweep/$route.js",
             "// @flow\n\nexport const schedule: string = \"*/15 * * * *\";\n\n\
              export function GET(): Response {\n  \
              return Response.json({ swept: true });\n}\n",
@@ -3023,7 +3023,7 @@ fn a_declared_schedule_reaches_both_halves_of_the_artefact() {
         String::from_utf8_lossy(&refused.stdout),
         String::from_utf8_lossy(&refused.stderr)
     );
-    for expected in ["serverless", "/api/sweep", "*/15 * * * *", "_uf.route.js"] {
+    for expected in ["serverless", "/api/sweep", "*/15 * * * *", "$route.js"] {
         assert!(said.contains(expected), "missing {expected} in:\n{said}");
     }
 }
@@ -3042,7 +3042,7 @@ fn a_declared_schedule_reaches_both_halves_of_the_artefact() {
 /// changing semantics.
 ///
 /// Four findings, from two different places. `/api/health` is a
-/// `_uf.route.js`, which has no page and therefore appears in no `Route` at
+/// `$route.js`, which has no page and therefore appears in no `Route` at
 /// all — the route table alone would have called this project static. The
 /// three parameterised routes are in the table and have no prerendered
 /// document, which is a fact only the prerender has.
@@ -3079,7 +3079,7 @@ fn the_static_adapter_refuses_a_project_a_static_host_cannot_serve() {
     for expected in [
         // The handler: what, where, and why a file is not it.
         "/api/health",
-        "app/api/health/_uf.route.js",
+        "app/api/health/$route.js",
         "a route handler answers a request",
         // Every parameterised route, not the first one: a reader fixing this
         // wants the list rather than one round trip per route.
@@ -3568,7 +3568,7 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
     //
     //    `id` is the command's own, because the fixture keeps a resolved
     //    promise per id and a second request for the same one would answer
-    //    without waiting; see `app/slow/[id]/_uf.page.js`.
+    //    without waiting; see `app/slow/[id]/$page.js`.
     //
     //    It is the command with every non-alphanumeric character replaced
     //    rather than the command itself, because `command` is a label as much
@@ -3612,7 +3612,7 @@ fn streamed(port: u16, slow_id: &str) -> Result<(), (String, String)> {
     }
     let Some(shell) = slow.first_at("slow: waiting") else {
         return Err((
-            "never sent the `_uf.loading.js` fallback".to_owned(),
+            "never sent the `$loading.js` fallback".to_owned(),
             slow.evidence(),
         ));
     };
@@ -3637,7 +3637,7 @@ fn streamed(port: u16, slow_id: &str) -> Result<(), (String, String)> {
     Ok(())
 }
 
-/// How long `app/slow/[id]/_uf.page.js` waits before it renders.
+/// How long `app/slow/[id]/$page.js` waits before it renders.
 const SUSPENDING_ROUTE_DELAY: Duration = Duration::from_millis(500);
 
 /// How much of that gap has to survive for the response to have been streamed.
@@ -4263,7 +4263,7 @@ export default routerView("./app");
 "#,
     );
     write(
-        "app/_uf.layout.js",
+        "app/$layout.js",
         r#"// @flow
 import * as React from "@uniflowed/react";
 
@@ -4280,7 +4280,7 @@ export component Layout(children: React.Node) {
 "#,
     );
     write(
-        "app/_uf.page.js",
+        "app/$page.js",
         r#"// @flow
 import * as React from "@uniflowed/react";
 
@@ -4290,7 +4290,7 @@ export default component Home() {
 "#,
     );
     write(
-        "app/api/_uf.route.js",
+        "app/api/$route.js",
         r#"// @flow
 import { reading } from "fake-native";
 
@@ -4899,7 +4899,7 @@ fn compiling_on_bun_refuses_a_permission_set_it_cannot_enforce() {
 fn project_reading_the_environment() -> Project {
     let mut files = minimal_app();
     files.push((
-        "app/_uf.page.js",
+        "app/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\n\
          import Reader from \"./_components/Reader.js\";\n\n\
          const server =\n  \
@@ -4932,7 +4932,7 @@ fn project_reading_the_environment() -> Project {
          }\n",
     ));
     files.push((
-        "app/api/env/_uf.route.js",
+        "app/api/env/$route.js",
         "// @flow\n\n\
          export function GET(): Response {\n  \
          return Response.json({ server: String(process.env.UF_SERVER_VALUE) });\n\
@@ -5098,7 +5098,7 @@ fn a_build_ships_no_devtools_hook() {
         "\"use client\";\n// @flow\nimport * as React from \"@uniflowed/react\";\nimport { useState } from \"@uniflowed/react\";\n\nexport component Counter() {\n  const [count, setCount] = useState(0);\n  return (\n    <button type=\"button\" onClick={() => setCount(count + 1)}>\n      {count}\n    </button>\n  );\n}\n",
     ));
     files[2] = (
-        "app/_uf.page.js",
+        "app/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      home\n      <Counter />\n    </main>\n  );\n}\n",
     );
     let project = Project::new(&files);
@@ -5472,8 +5472,8 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
             .unwrap()
             .to_owned()
     };
-    assert_eq!(proximity("app/counter/_uf.page.js"), "reaches-boundary");
-    assert_eq!(proximity("app/_uf.page.js"), "isolated");
+    assert_eq!(proximity("app/counter/$page.js"), "reaches-boundary");
+    assert_eq!(proximity("app/$page.js"), "isolated");
     assert_eq!(proximity("app/_content/almanac.js"), "isolated");
 }
 
@@ -5933,7 +5933,7 @@ fn paper_builder_root() -> PathBuf {
 /// A page with parameters and no `generateStaticParams`, which is the one
 /// route shape a prerender cannot produce a file for.
 const UNPRERENDERABLE_PAGE: (&str, &str) = (
-    "app/posts/[slug]/_uf.page.js",
+    "app/posts/[slug]/$page.js",
     "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport default component Post(params: { readonly slug: string }) {\n  return <h1>{params.slug}</h1>;\n}\n",
 );
 
@@ -6085,7 +6085,7 @@ fn a_route_that_reads_the_request_fails_a_csr_build() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/orders/_uf.page.js",
+        "app/orders/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { cookies } from \"@uniflowed/server\";\n\nexport component Orders() {\n  return <main>{cookies().get(\"who\")?.value ?? \"nobody\"}</main>;\n}\n",
     ));
     let project = Project::new(&files);
@@ -6200,11 +6200,11 @@ fn a_static_build_refuses_the_middleware_it_could_never_run() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/dashboard/_uf.page.js",
+        "app/dashboard/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>secrets</main>;\n}\n",
     ));
     files.push((
-        "app/dashboard/_uf.middleware.js",
+        "app/dashboard/$middleware.js",
         "// @flow\n\nexport default function middleware(request: Request): Response | void {\n  if (!request.headers.has(\"cookie\")) {\n    return Response.redirect(new URL(\"/\", request.url), 302);\n  }\n}\n",
     ));
     let project = Project::new(&files);
@@ -6295,7 +6295,7 @@ fn a_page_that_forces_dynamic_is_left_to_the_server() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/now/_uf.page.js",
+        "app/now/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-dynamic\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
     ));
     let project = Project::new(&files);
@@ -6318,7 +6318,7 @@ fn a_dynamic_value_uf_does_not_implement_is_named() {
     }
     let mut files = minimal_app();
     files.push((
-        "app/now/_uf.page.js",
+        "app/now/$page.js",
         "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport const dynamic = \"force-static\";\n\nexport component Page() {\n  return <main>now</main>;\n}\n",
     ));
     let project = Project::new(&files);

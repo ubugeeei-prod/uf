@@ -70,20 +70,20 @@ export const auth = createAuth({
 });
 ```
 
-Each handler is a plain `Request` → `Response`, which is what a `_uf.route.js`
+Each handler is a plain `Request` → `Response`, which is what a `$route.js`
 exports and what runs unchanged on Node, Bun, Deno and a worker:
 
 ```js
-// app/auth/authorize/_uf.route.js
+// app/auth/authorize/$route.js
 export const GET = auth.authorize;
 
-// app/auth/callback/_uf.route.js
+// app/auth/callback/$route.js
 export const GET = auth.callback;
 
-// app/auth/refresh/_uf.route.js
+// app/auth/refresh/$route.js
 export const POST = auth.refresh;
 
-// app/auth/session/_uf.route.js
+// app/auth/session/$route.js
 export const GET = auth.session;
 export const DELETE = auth.session;
 ```

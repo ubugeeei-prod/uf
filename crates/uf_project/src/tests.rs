@@ -18,7 +18,7 @@ fn creates_zero_config_react_flow_app() {
     assert_eq!(report.files.len(), 9);
     assert!(root.join("app.js").exists());
     assert!(root.join("uf.config.js").exists());
-    assert!(root.join("app/_uf.page.js").exists());
+    assert!(root.join("app/$page.js").exists());
     assert!(root.join("app/Counter.js").exists());
 
     let package = fs::read_to_string(root.join("package.json")).unwrap();
@@ -50,7 +50,7 @@ fn creates_zero_config_react_flow_app() {
         }
     }
 
-    let page = fs::read_to_string(root.join("app/_uf.page.js")).unwrap();
+    let page = fs::read_to_string(root.join("app/$page.js")).unwrap();
     assert!(page.contains("component Page()"));
     assert!(page.contains("enum Mood"));
     assert!(page.contains("match (mood)"));
@@ -933,6 +933,7 @@ fn a_name_nobody_would_type_is_still_discovered_whole() {
     // As deep as the filesystem will take it, then a file in the deepest
     // directory that took. `PATH_MAX` is 1024 on macOS and 4096 on Linux, so
     // the loop finds the limit rather than assuming one.
+    let mut directories = vec![root.join("src")];
     let mut deepest = root.join("src");
     loop {
         let next = deepest.join("d".repeat(60));
@@ -940,10 +941,16 @@ fn a_name_nobody_would_type_is_still_discovered_whole() {
             break;
         }
         deepest = next;
+        directories.push(deepest.clone());
     }
-    let long = (1..=60)
+    let long = directories
+        .iter()
         .rev()
-        .map(|length| deepest.join(format!("{}.js", "n".repeat(length))))
+        .flat_map(|directory| {
+            (1..=60)
+                .rev()
+                .map(|length| directory.join(format!("{}.js", "n".repeat(length))))
+        })
         .find(|path| fs::write(path, "// @flow\n").is_ok())
         .expect("a file at the length limit");
     let long = long

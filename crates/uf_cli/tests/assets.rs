@@ -169,7 +169,7 @@ export default routerView("./app");
 "#,
         ),
         (
-            "app/_uf.layout.js",
+            "app/$layout.js",
             r#"// @flow
 import * as React from "@uniflowed/react";
 
@@ -183,7 +183,7 @@ export component Layout(children: React.Node) {
 "#,
         ),
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             r#"// @flow
 import * as React from "@uniflowed/react";
 import { Font, Image } from "@uniflowed/web";
@@ -581,7 +581,7 @@ export default routerView("./app");
 "#,
         ),
         (
-            "app/_uf.layout.js",
+            "app/$layout.js",
             r#"// @flow
 import * as React from "@uniflowed/react";
 
@@ -595,7 +595,7 @@ export component Layout(children: React.Node) {
 "#,
         ),
         (
-            "app/_uf.page.js",
+            "app/$page.js",
             r#"// @flow
 import * as React from "@uniflowed/react";
 import { Icon, IconSprite, OgImage } from "@uniflowed/web";

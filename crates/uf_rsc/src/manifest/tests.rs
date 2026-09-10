@@ -5,7 +5,7 @@ use crate::graph::{EntryKind, RscGraphBuilder};
 fn fixture() -> (RscGraph, ServerActionRegistry) {
     let mut builder = RscGraphBuilder::new();
     builder.add_source(
-        "app/_uf.page.js",
+        "app/$page.js",
         "// @flow\nimport Counter from \"./client/Counter.js\";\nimport { refresh } from \"../server/actions.js\";\nexport default function Page() {}\n",
     );
     builder.add_source(
@@ -16,7 +16,7 @@ fn fixture() -> (RscGraph, ServerActionRegistry) {
         "server/actions.js",
         "\"use server\";\n// @flow\nexport async function refresh() {}\n",
     );
-    builder.add_entry("app/_uf.page.js", EntryKind::Server);
+    builder.add_entry("app/$page.js", EntryKind::Server);
     let graph = builder.build();
     let build_id = BuildId::new("fixture-build-id").expect("valid build id");
     let registry = ServerActionRegistry::from_graph(&graph, &build_id);

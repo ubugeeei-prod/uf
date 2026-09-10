@@ -362,7 +362,7 @@ describe("reading rows out of a document", () => {
  *
  * The page renders a `<Suspense>` of its own around each deferred value, which
  * is what "a boundary that resolves on its own" means here: neither wraps the
- * other, and neither is the route's `_uf.loading.js`.
+ * other, and neither is the route's `$loading.js`.
  */
 function deferringTable(slow: Promise<string>, quick: Promise<string>) {
   component Deferred(value: Promise<string>) {
@@ -388,7 +388,7 @@ function deferringTable(slow: Promise<string>, quick: Promise<string>) {
         path: "/deferred",
         params: [],
         mdx: false,
-        file: "app/deferred/_uf.page.js",
+        file: "app/deferred/$page.js",
         page: () =>
           Promise.resolve({
             default: DataPage,
@@ -524,7 +524,7 @@ describe("streaming a payload", () => {
           path: "/plain",
           params: [],
           mdx: false,
-          file: "app/plain/_uf.page.js",
+          file: "app/plain/$page.js",
           page: () => Promise.resolve({ default: Page, loader: () => "the page is here" }),
           layouts: [],
           loading: [],
@@ -572,7 +572,7 @@ describe("the browser applying a payload", () => {
           path: "/deferred",
           params: [],
           mdx: false,
-          file: "app/deferred/_uf.page.js",
+          file: "app/deferred/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,
@@ -647,7 +647,7 @@ describe("the browser applying a payload", () => {
           path: "/late",
           params: [],
           mdx: false,
-          file: "app/late/_uf.page.js",
+          file: "app/late/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,

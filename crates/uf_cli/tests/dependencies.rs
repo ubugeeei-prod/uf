@@ -53,6 +53,20 @@ fn project(dir: &Path, vendored: &[(&str, &str)]) {
     }
 }
 
+/// The same fixture, but opting into uf's native lock explicitly.
+fn native_project(dir: &Path, vendored: &[(&str, &str)]) {
+    project(dir, vendored);
+    fs::write(
+        dir.join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\
+         export default defineConfig({\n  \
+           app: { router: { enabled: false } },\n  \
+           pm: { packageManager: \"uf\" },\n\
+         });\n",
+    )
+    .unwrap();
+}
+
 /// Run `uf` in `dir`, returning `(stdout, stderr, success)`.
 fn run(dir: &Path, args: &[&str]) -> (String, String, bool) {
     let output = uf()
@@ -103,9 +117,10 @@ fn locked<'a>(lock: &'a Value, path: &str) -> &'a Value {
         .unwrap_or_else(|| panic!("uf.lock has no package at {path:?}:\n{lock:#}"))
 }
 
-/// The whole of what `uf add` is for: three files, all four written.
+/// The whole of what `uf add` is for: the manifest, the manager lockfile and
+/// the tree, without forcing a uf-native lockfile into an npm project.
 #[test]
-fn add_writes_the_manifest_the_lockfile_and_the_tree() {
+fn add_writes_the_manifest_the_manager_lockfile_and_the_tree() {
     let dir = tempfile::tempdir().unwrap();
     project(dir.path(), &[("tiny", "1.2.3")]);
 
@@ -131,23 +146,21 @@ fn add_writes_the_manifest_the_lockfile_and_the_tree() {
         "node_modules/tiny does not resolve"
     );
 
-    // And uf's own lockfile, rewritten from the manifest npm just changed.
-    // Without this step `uf.lock` would still describe the project as it was
-    // before the command that was just run.
-    let uf_lock = json(dir.path(), "uf.lock");
-    assert_eq!(
-        locked(&uf_lock, ".")["dependencies"]["tiny"],
-        "file:vendor/tiny"
-    );
-    assert_eq!(locked(&uf_lock, "vendor/tiny")["version"], "1.2.3");
     assert!(
-        dir.path().join(".uf/store/manifest.json").is_file(),
-        "the content-addressed store was not written"
+        !dir.path().join("uf.lock").exists(),
+        "uf.lock was written even though npm is the package manager"
+    );
+    assert!(
+        !dir.path().join(".uf/store/manifest.json").exists(),
+        "uf's native store was written even though npm is the package manager"
     );
 
     // The report says which manager, what named it, and what it ran.
     assert_eq!(row(&stdout, "manager"), "manager    npm");
-    assert!(row(&stdout, "chosen by").contains("uf.lock"), "{stdout}");
+    assert_eq!(
+        row(&stdout, "chosen by"),
+        "chosen by  no lockfile or packageManager field"
+    );
     assert_eq!(
         row(&stdout, "command"),
         "command    npm install --ignore-scripts ./vendor/tiny"
@@ -251,7 +264,6 @@ fn adding_the_same_package_twice_changes_nothing_the_second_time() {
     let first = ok(dir.path(), &["add", "./vendor/tiny"]);
     let manifest = fs::read_to_string(dir.path().join("package.json")).unwrap();
     let lock = fs::read_to_string(dir.path().join("package-lock.json")).unwrap();
-    let uf_lock = fs::read_to_string(dir.path().join("uf.lock")).unwrap();
 
     let second = ok(dir.path(), &["add", "./vendor/tiny"]);
 
@@ -269,9 +281,9 @@ fn adding_the_same_package_twice_changes_nothing_the_second_time() {
         lock,
         fs::read_to_string(dir.path().join("package-lock.json")).unwrap()
     );
-    assert_eq!(
-        uf_lock,
-        fs::read_to_string(dir.path().join("uf.lock")).unwrap()
+    assert!(
+        !dir.path().join("uf.lock").exists(),
+        "a repeated npm-backed add must not create uf.lock"
     );
 }
 
@@ -305,8 +317,10 @@ fn remove_takes_it_out_of_the_manifest_the_lockfile_and_the_tree() {
         "still in node_modules"
     );
 
-    let uf_lock = json(dir.path(), "uf.lock");
-    assert!(locked(&uf_lock, ".")["dependencies"]["tiny"].is_null());
+    assert!(
+        !dir.path().join("uf.lock").exists(),
+        "npm-backed remove must not create uf.lock"
+    );
 
     assert!(
         stdout.contains("1 package taken out of dependencies"),
@@ -348,8 +362,8 @@ fn why_answers_from_the_manager_and_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     project(dir.path(), &[("tiny", "1.2.3")]);
     ok(dir.path(), &["add", "./vendor/tiny"]);
-    let before = fs::read_to_string(dir.path().join("uf.lock")).unwrap();
-    fs::remove_dir_all(dir.path().join(".uf")).unwrap();
+    let before = fs::read_to_string(dir.path().join("package-lock.json")).unwrap();
+    let _ = fs::remove_dir_all(dir.path().join(".uf"));
 
     let stdout = ok(dir.path(), &["why", "tiny"]);
 
@@ -364,7 +378,7 @@ fn why_answers_from_the_manager_and_writes_nothing() {
     // Asking why a package is installed must not install anything.
     assert_eq!(
         before,
-        fs::read_to_string(dir.path().join("uf.lock")).unwrap()
+        fs::read_to_string(dir.path().join("package-lock.json")).unwrap()
     );
     assert!(
         !dir.path().join(".uf").exists(),
@@ -439,7 +453,8 @@ fn a_frozen_install_refuses_a_lockfile_the_manifest_has_moved_past() {
     ok(dir.path(), &["install", "--frozen-lockfile"]);
 }
 
-/// A `uf.lock` the workspace has moved past is the same failure, found first.
+/// A `uf.lock` the workspace has moved past is the same failure, found first
+/// when the project explicitly opts into uf's native lock.
 ///
 /// `uf install --frozen-lockfile` promises to change nothing; `uf.lock` is
 /// derived from the manifests, so one that comes out different is drift and not
@@ -448,7 +463,7 @@ fn a_frozen_install_refuses_a_lockfile_the_manifest_has_moved_past() {
 #[test]
 fn a_frozen_install_refuses_a_uf_lock_the_manifests_have_moved_past() {
     let dir = tempfile::tempdir().unwrap();
-    project(dir.path(), &[("tiny", "1.2.3")]);
+    native_project(dir.path(), &[("tiny", "1.2.3")]);
     ok(dir.path(), &["add", "./vendor/tiny"]);
 
     let stale = fs::read_to_string(dir.path().join("uf.lock"))
@@ -521,7 +536,8 @@ fn a_manifest_that_declares_scripts_stops_an_add_before_anything_is_fetched() {
     assert!(!dir.path().join("package-lock.json").exists());
 }
 
-/// A workspace member's manifest is still locked after a root `uf add`.
+/// A workspace member's manifest is still locked after a root `uf add`, when
+/// the project explicitly uses uf's native lock.
 ///
 /// `install_workspace` discovers every `package.json` the project owns, and the
 /// rewrite that follows the manager has to be the same discovery — an `uf add`
@@ -530,7 +546,7 @@ fn a_manifest_that_declares_scripts_stops_an_add_before_anything_is_fetched() {
 #[test]
 fn a_workspace_member_is_still_locked_after_an_add() {
     let dir = tempfile::tempdir().unwrap();
-    project(dir.path(), &[("tiny", "1.2.3")]);
+    native_project(dir.path(), &[("tiny", "1.2.3")]);
     let member = dir.path().join("packages/ui");
     fs::create_dir_all(&member).unwrap();
     fs::write(

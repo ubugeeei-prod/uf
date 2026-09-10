@@ -1,10 +1,10 @@
 //! The reserved-name grammar, against the router that actually runs.
 //!
 //! `crates/uf_router/src/reserved.rs` calls itself the single source of truth
-//! for `_uf.<role>[.<variant>]`, and `packages/vite/internal/routes.js` is the
+//! for `$<role>[.<variant>]`, and `packages/vite/internal/routes.js` is the
 //! file-system router the build runs, with a `RESERVED` table of its own and a
 //! comment saying the two "cannot be allowed to disagree". Nothing compared
-//! them, and they disagreed: `_uf.not-found` was in the JavaScript table and
+//! them, and they disagreed: `$not-found` was in the JavaScript table and
 //! not in the Rust enum, so `uf lint`'s `router/reserved-files` reported the
 //! file name uf's own documentation site uses for its 404 page as one the
 //! router would not recognize — and told the reader to rename it.
@@ -40,12 +40,12 @@ use uf_router::{LAYOUT_PROP_NAMES, ReservedRole, RouteSegment, classify_route_se
 /// forgetting.
 const NOT_THE_ROUTERS: &[ReservedRole] = &[ReservedRole::Story];
 
-/// The `_uf.*` names `packages/vite/internal/routes.js` reserves.
+/// The `$*` names `packages/vite/internal/routes.js` reserves.
 ///
 /// Read out of the source rather than duplicated, because a copy here would be
 /// a fourth spelling of the grammar and this file exists to stop the third.
-/// The table is a frozen object literal of `key: "_uf.name"` pairs, so the
-/// names are every `"_uf.…"` string inside it — no JavaScript parser needed,
+/// The table is a frozen object literal of `key: "$name"` pairs, so the
+/// names are every `"$…"` string inside it — no JavaScript parser needed,
 /// and a table that stops having that shape fails loudly below rather than
 /// quietly matching nothing.
 fn build_router_source() -> String {
@@ -68,8 +68,8 @@ fn build_router_names() -> BTreeSet<String> {
 
     let names: BTreeSet<String> = table
         .split('"')
-        .filter(|value| value.starts_with("_uf."))
-        .map(|value| value["_uf.".len()..].to_owned())
+        .filter(|value| value.starts_with("$"))
+        .map(|value| value["$".len()..].to_owned())
         .collect();
 
     assert!(
@@ -87,7 +87,7 @@ fn every_name_the_build_router_reserves_is_a_role() {
     for name in build_router_names() {
         assert!(
             roles.contains(name.as_str()),
-            "`packages/vite/internal/routes.js` reserves `_uf.{name}` and `ReservedRole` has no \
+            "`packages/vite/internal/routes.js` reserves `${name}` and `ReservedRole` has no \
              such role, so `uf lint` rejects a file the router resolves"
         );
     }

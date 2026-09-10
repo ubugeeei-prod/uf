@@ -35,7 +35,7 @@
 // so that is what `settle` is handed — which means an `after()` callback on
 // this target begins when the response has been *decided* rather than when its
 // last byte is out. For a streamed document those are a document apart. It is
-// written down here, in `docs/app/reference/cli/_uf.page.mdx`, and it is the
+// written down here, in `docs/app/reference/cli/$page.mdx`, and it is the
 // one behavioural difference between this target and the other three.
 //
 // `beginRequest` is passed in rather than imported, for the reason `./node.js`
@@ -148,7 +148,7 @@ export type WorkerHandlerOptions = {|
  * A `404` from the assets binding means "no such asset", not "the site has no
  * such page": `wrangler.json` sets `"not_found_handling": "none"` so that the
  * miss falls through to here, and the 404 a visitor sees is the project's own
- * `_uf.not-found` rendered by the application. Any other status is the asset's
+ * `$not-found` rendered by the application. Any other status is the asset's
  * answer and is returned as it stands.
  *
  * Except a **document** answering a **draft** request, which is

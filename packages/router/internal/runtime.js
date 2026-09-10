@@ -126,7 +126,7 @@ type PageRenderProps = {|
  * segment that declares `@team` is handed a `team` prop beside `children`, and
  * the names are the project's rather than this file's. Every extra prop is a
  * `React.Node` — a rendered slot, or `null` when the URL addressed neither the
- * slot's routes nor a `_uf.default.js`.
+ * slot's routes nor a `$default.js`.
  *
  * The exactness is not lost so much as moved: what a layout may be *given* is
  * open, and what it *declares* is still its own exact props type, which is
@@ -447,14 +447,14 @@ export type RouteRecord = {|
   /**
    * The `<Suspense>` boundaries this route renders inside, root first.
    *
-   * Optional because a table written before `_uf.loading.js` existed — a
+   * Optional because a table written before `$loading.js` existed — a
    * hand-written one in a test, a server bundle built by an older `uf` —
    * is still a table this router can render, and a route with no boundary is
    * exactly what it had before.
    */
   readonly loading?: $ReadOnlyArray<LoadingRecord>,
   /**
-   * The `_uf.template.js` wrappers this route renders inside, root first.
+   * The `$template.js` wrappers this route renders inside, root first.
    *
    * Optional for the reason `loading` is: a table written before templates
    * existed is still a table this router can render, and a route with no
@@ -474,10 +474,10 @@ export type RouteRecord = {|
  * One parallel-route slot, as the route table carries it.
  *
  * A slot is a second thing a layout renders. `app/dashboard/@team/` gives
- * `app/dashboard/_uf.layout.js` a `team` prop beside `children`, and the slot's
+ * `app/dashboard/$layout.js` a `team` prop beside `children`, and the slot's
  * pages are matched against the same URL the page is: `/dashboard/members`
- * renders `app/dashboard/members/_uf.page.js` as `children` and
- * `app/dashboard/@team/members/_uf.page.js` as `team`, at once, each inside its
+ * renders `app/dashboard/members/$page.js` as `children` and
+ * `app/dashboard/@team/members/$page.js` as `team`, at once, each inside its
  * own layouts.
  *
  * A slot never adds a URL — the directory contributes no path segment — so
@@ -494,7 +494,7 @@ export type SlotRecord = {|
   readonly name: string,
   readonly above: number,
   /**
-   * `_uf.default.js`: what this slot renders when the URL matches none of its
+   * `$default.js`: what this slot renders when the URL matches none of its
    * routes.
    *
    * `null` for a slot that declares none, and then the slot renders nothing at
@@ -539,7 +539,7 @@ export type SlotRouteRecord = {|
 |};
 
 /**
- * One `_uf.template.js`, as the route table carries it.
+ * One `$template.js`, as the route table carries it.
  *
  * The same shape as [`LoadingRecord`] and the same `above`, because it answers
  * the same question — where in the stack of layouts this thing sits — and
@@ -551,7 +551,7 @@ export type TemplateRecord = {|
 |};
 
 /**
- * One `_uf.loading.js`, as the route table carries it.
+ * One `$loading.js`, as the route table carries it.
  *
  * `above` is how many of the route's `layouts` are outside the boundary, which
  * is the same number `ResolvedRoute["errorBoundary"].above` means and is
@@ -567,7 +567,7 @@ export type LoadingRecord = {|
  * One not-found boundary: the page for a path under `path` that matched
  * nothing.
  *
- * `_uf.not-found.js` is a segment file, so `path` is the route path of the
+ * `$not-found.js` is a segment file, so `path` is the route path of the
  * directory that declares it and `layouts` are the layouts in scope *there* —
  * which is what the boundary renders inside. A project with one at the router
  * root has one of these; a project whose manual answers its own 404 has two.
@@ -578,7 +578,7 @@ export type NotFoundBoundary = {|
   readonly file: string,
   /**
    * The page this boundary renders — `null` for the one the build synthesises
-   * at the router root when a project declares no `_uf.not-found.js` there.
+   * at the router root when a project declares no `$not-found.js` there.
    *
    * A project that had declared none used to get `layouts: []` along with the
    * framework's page: not the nearest-ancestor rule failing, but the fallback
@@ -633,8 +633,8 @@ export type RouteMatch = {|
  * `unauthorized()` are not different *kinds* of file to write; they are
  * different sentences an error page says, and `match` over this is where a
  * page says all three and the checker confirms it covered them. Deciding it
- * the other way — `_uf.forbidden.js` and `_uf.unauthorized.js` beside
- * `_uf.error.js`, which is what Next.js does — is three files per segment to
+ * the other way — `$forbidden.js` and `$unauthorized.js` beside
+ * `$error.js`, which is what Next.js does — is three files per segment to
  * express one thing, and nothing would check that any of them handled the
  * case it was named for.
  *
@@ -680,7 +680,7 @@ export type ResolvedRoute = {|
    * to a question the router asked, so it says so.
    *
    * Set only by a streaming render of a route that declares a
-   * `_uf.loading.js` and generates no metadata from its data — the two
+   * `$loading.js` and generates no metadata from its data — the two
    * conditions under which deferring buys anything and costs nothing that was
    * not already spent. [`resolveRoute`] is where that is decided and argued.
    */
@@ -707,7 +707,7 @@ export type ResolvedRoute = {|
    * The boundary that would catch a throw while rendering this route.
    *
    * Always present, because every route has an answer for a throw: `module`
-   * is `null` when the project declares no `_uf.error.js` above the path, and
+   * is `null` when the project declares no `$error.js` above the path, and
    * the framework's own error page renders instead. `above` is how many of
    * `layouts` are outside the boundary — the ones that stay mounted, which is
    * what "the rest of the document is still interactive" means.
@@ -722,14 +722,14 @@ export type ResolvedRoute = {|
    * Imported rather than lazy: React decides to render a fallback
    * synchronously, during the render that suspended, so a module that is still
    * being fetched is a module that is not there at the only moment it is
-   * wanted. Empty for a route with no `_uf.loading.js` above it, which is the
+   * wanted. Empty for a route with no `$loading.js` above it, which is the
    * ordinary case and renders exactly the tree it did before.
    */
   readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
   /**
    * The templates around this route, root first, already imported.
    *
-   * Empty for a route with no `_uf.template.js` above it, which is the
+   * Empty for a route with no `$template.js` above it, which is the
    * ordinary case and renders exactly the tree it did before templates
    * existed. Empty too on a resolution that *is* a boundary — a not-found or
    * an error page — for the reason its `loading` is: those are matched rather
@@ -755,7 +755,7 @@ export type ResolvedRoute = {|
  * One slot, matched against the URL and imported.
  *
  * `page` is `null` for a slot the URL addressed and that declares no
- * `_uf.default.js`, and the layout receives `null` rather than nothing at all:
+ * `$default.js`, and the layout receives `null` rather than nothing at all:
  * a layout that declares a slot always gets that prop, so a project can write
  * `{team ?? <Empty />}` and mean it.
  *
@@ -1026,7 +1026,7 @@ function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>
 /**
  * The nearest boundary above `pathname`, or `null` when none covers it.
  *
- * The one rule both `_uf.not-found.js` and `_uf.error.js` are resolved by, and
+ * The one rule both `$not-found.js` and `$error.js` are resolved by, and
  * the same one layouts already follow: nearest means the longest path that
  * covers the URL. It is decided here rather than by the table's order — the
  * table is sorted by path so the generated module is stable, and a resolver
@@ -1235,7 +1235,7 @@ async function resolveRoute(
   // on its loader could not, because this function awaited the loader before it
   // returned and by the time React saw the tree the data was already in hand.
   // The fallback beside such a page showed for zero milliseconds, which made
-  // `_uf.loading.js` useful for the one case a page usually is not slow for.
+  // `$loading.js` useful for the one case a page usually is not slow for.
   //
   // Two things stand in the way of simply not awaiting, and both are about the
   // document rather than about the route. Metadata goes in the head and the
@@ -1338,7 +1338,7 @@ async function resolveSlot(
 
   const matched = matchIn(record.routes, pathname);
   if (matched == null) {
-    // The URL says nothing about this slot. `_uf.default.js` is what it says
+    // The URL says nothing about this slot. `$default.js` is what it says
     // instead, and a slot that declares none renders nothing at all.
     const load = record.defaultPage;
     if (load == null) {
@@ -1669,13 +1669,13 @@ async function resolveError(
  * Taking the matched route's layouts was the other candidate and it is wrong
  * in both directions: for an unmatched URL there is no matched route to take
  * them from, and for `notFound()` thrown from a page they would keep the
- * layouts *below* the boundary — so `app/guide/[slug]/_uf.layout.js` would
- * wrap a 404 that `app/guide/_uf.not-found.js` answered, which is the layout
+ * layouts *below* the boundary — so `app/guide/[slug]/$layout.js` would
+ * wrap a 404 that `app/guide/$not-found.js` answered, which is the layout
  * of the page that just said it does not exist.
  *
  * # The record with no page
  *
- * A project that declares no `_uf.not-found.js` anywhere still has a record —
+ * A project that declares no `$not-found.js` anywhere still has a record —
  * the one the build synthesises for the router root — and it names the root's
  * layouts and no module. Before that record existed this function answered
  * with `layouts: []`, so a site whose root layout owns the masthead, the
@@ -1828,7 +1828,7 @@ function errorTitle(error: RouteError): string {
 }
 
 /**
- * The framework's error page, for a project that declares no `_uf.error.js`.
+ * The framework's error page, for a project that declares no `$error.js`.
  *
  * It says which of the three happened and offers the reset, and it does *not*
  * print the thrown error: on the server that message is written for whoever
@@ -1995,7 +1995,7 @@ class RouteErrorBoundary extends React.Component<RouteErrorBoundaryProps, RouteE
 //
 // The cost is real and worth stating rather than discovering. Inside a
 // transition the commit is synchronous, so a route that suspends *while
-// rendering* shows its `_uf.loading.js` fallback instead of leaving the
+// rendering* shows its `$loading.js` fallback instead of leaving the
 // previous page up until it resolves. Its modules and its loader are already
 // finished by this point — `resolveMatch` awaited both — so what is left is a
 // component suspending on something else, and it degrades to the fallback the
@@ -2559,7 +2559,7 @@ const BOUNDARY_MARKS: boolean = import.meta.hot != null;
  * # Where the error boundaries go
  *
  * Two, and they are not the same thing twice. The inner one is the project's
- * `_uf.error.js`, placed at the depth the file sits at, so the layouts above
+ * `$error.js`, placed at the depth the file sits at, so the layouts above
  * it stay mounted and interactive while the subtree below is replaced — that
  * placement *is* the feature. The outer one has no module and so renders the
  * framework's page; it is what stands between a throw in a root layout, or in
@@ -2573,7 +2573,7 @@ const BOUNDARY_MARKS: boolean = import.meta.hot != null;
  * everything under it, which is what makes the shell arrive first: a renderer
  * streaming this tree can send every layout down to the boundary, and the
  * fallback, before whatever the page is waiting for has resolved. A segment
- * with no `_uf.loading.js` contributes no boundary at all — it is not wrapped
+ * with no `$loading.js` contributes no boundary at all — it is not wrapped
  * in a `<Suspense fallback={null}>` on the way past — so a project that
  * declares none renders the tree it rendered before this existed, and a page
  * that suspends without a boundary above it still fails the way React says it
@@ -2645,7 +2645,7 @@ export component RouteView() {
     // Placed on `above` alone, and not on there being a module: a `null` one is
     // the framework's own error page, and where it renders is exactly the
     // question ubugeeei-prod/uf#351 asks. A project that declares no
-    // `_uf.error.js` has the record the build synthesises for the router root,
+    // `$error.js` has the record the build synthesises for the router root,
     // whose `above` is the root's layouts — so the framework's page appears
     // inside the masthead rather than in place of the document. A table with no
     // record at all answers 0, which puts this boundary outside every layout,
@@ -2767,7 +2767,7 @@ component AwaitedPage(loader: Promise<mixed>) {
  * inner-html` is about markup that came from somewhere and has to be sanitized
  * before a browser parses it as HTML; this is `JSON.stringify`'s output with
  * `<` escaped, in an element the browser never parses as HTML and never runs.
- * `docs/app/_uf.layout.js` carries the same suppression for the same reason.
+ * `docs/app/$layout.js` carries the same suppression for the same reason.
  *
  * # And the rows the model deferred
  *
@@ -2781,7 +2781,7 @@ component AwaitedPage(loader: Promise<mixed>) {
  * reading them back.
  *
  * The boundaries sit after the page rather than before it, where the data
- * element already was. A page that suspends with no `_uf.loading.js` above it
+ * element already was. A page that suspends with no `$loading.js` above it
  * holds the whole shell — that is React's rule and uf does not work around it
  * — so the position buys nothing either way, and "the scripts are where the
  * script was" is worth more than a rearrangement that is not.
@@ -2805,7 +2805,7 @@ component AwaitedPage(loader: Promise<mixed>) {
  * rows rather than one each — the boundaries inside it still resolve
  * independently, since each is its own.
  *
- * The same rule catches a route whose `_uf.loading.js` sits above no layout:
+ * The same rule catches a route whose `$loading.js` sits above no layout:
  * `RouteView` puts that boundary in the same position, and it does not stream
  * either. That is a bug this file did not introduce and does not fix; it is
  * written down in ubugeeei-prod/uf#519 rather than left to be rediscovered.
@@ -2969,7 +2969,7 @@ function insideTemplates(element: React.Node, resolved: ResolvedRoute, depth: nu
     }
     const Template = templateComponent(entry.module);
     // Keyed on the pathname, which is the whole difference between this file
-    // and `_uf.layout.js`: React throws the subtree away and builds it again
+    // and `$layout.js`: React throws the subtree away and builds it again
     // whenever the key changes, and a navigation that changes only the query
     // string leaves it alone.
     out = (
@@ -2987,7 +2987,7 @@ function insideTemplates(element: React.Node, resolved: ResolvedRoute, depth: nu
  * One object per layout rather than one lookup per slot, so the common case —
  * a project with no slots at all — allocates nothing and spreads nothing.
  *
- * A slot the URL addressed and that has no `_uf.default.js` is `null` rather
+ * A slot the URL addressed and that has no `$default.js` is `null` rather
  * than absent: a layout that declares `team` receives `team` on every route,
  * so `{team ?? <Empty />}` is a thing a project can write and rely on.
  */
@@ -3184,7 +3184,7 @@ function jsonLdText(entry: JsonLd): string {
  * One JSON-LD object, as the element that carries it.
  *
  * A function rather than an element written inline, because the suppression
- * needs a line of its own; `docs/app/_uf.layout.js` has the same shape for the
+ * needs a line of its own; `docs/app/$layout.js` has the same shape for the
  * same reason. `security/no-dangerously-set-inner-html` is about markup that
  * came from somewhere and has to be sanitized before a browser parses it as
  * HTML, and its escape hatch is a `@uniflowed/markdown` sanitizer — the right

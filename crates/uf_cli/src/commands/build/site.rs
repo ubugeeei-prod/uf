@@ -24,7 +24,7 @@
 //!   written from the router-root not-found boundary and reported as `/404`;
 //!   it is a document, it is served, and it is not a page. Submitting it would
 //!   be asking a crawler to index the error page.
-//! * **anything behind a `_uf.middleware.js`.** A guard is a statement that
+//! * **anything behind a `$middleware.js`.** A guard is a statement that
 //!   this route is not for everyone, and a sitemap is a submission to search
 //!   engines — the two cannot both be honoured. [`super::guards`] already
 //!   computes which prerendered documents sit under a guard, for its own

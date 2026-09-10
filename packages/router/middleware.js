@@ -2,13 +2,13 @@
 //
 // Middleware: what runs before a path answers, whatever answers it.
 //
-// `app/dashboard/_uf.middleware.js` guards `/dashboard` and everything under
+// `app/dashboard/$middleware.js` guards `/dashboard` and everything under
 // it — the pages, the route handlers, and the paths under it that match
 // nothing at all. There is no `matcher` to write because the directory the
 // file sits in *is* the matcher, which is the same composition rule layouts
 // already use and the reason uf does not inherit Next's regular expressions.
 //
-//   // app/dashboard/_uf.middleware.js
+//   // app/dashboard/$middleware.js
 //   // @flow
 //   import { cookies } from "@uniflowed/server";
 //
@@ -167,7 +167,7 @@ export function createMiddlewareRunner(options: {|
  *
  * `default` or `middleware`, the same two spellings a page offers for its
  * component. Anything else is an authoring mistake and throws rather than
- * being skipped: a file named `_uf.middleware.js` that the router quietly
+ * being skipped: a file named `$middleware.js` that the router quietly
  * ignored is the bug this whole module exists to stop happening.
  */
 function pick(module: MiddlewareModule, file: string): Middleware {

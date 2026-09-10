@@ -202,6 +202,22 @@ pub fn run_operation(
     allow_scripts: bool,
 ) -> Result<ManagerRun, ManagerRunError> {
     let detection = detect_package_manager(root);
+    run_operation_with_detection(root, &detection, operation, operands, allow_scripts)
+}
+
+/// Run one package-manager operation with a detection the caller already made.
+///
+/// Use this when the caller loaded `uf.config.js` and therefore knows about
+/// `pm.packageManager`; re-detecting from files alone would ignore that
+/// override and could report or run a different manager from the one the
+/// command preflighted.
+pub fn run_operation_with_detection(
+    root: &Utf8Path,
+    detection: &Detection,
+    operation: Operation<'_>,
+    operands: &[String],
+    allow_scripts: bool,
+) -> Result<ManagerRun, ManagerRunError> {
     let (manager, substituted) = installable(&detection);
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
@@ -225,7 +241,7 @@ pub fn run_operation(
     Ok(ManagerRun {
         manager,
         invocation,
-        source: detection.source,
+        source: detection.source.clone(),
         substituted,
         root: root.to_path_buf(),
         watch: None,
@@ -423,9 +439,20 @@ pub fn run_watched(
     observer: &mut dyn InstallObserver,
 ) -> Result<ManagerRun, ManagerRunError> {
     let detection = detect_package_manager(root);
+    run_watched_with_detection(root, &detection, operation, allow_scripts, observer)
+}
+
+/// Run an install-shaped operation with a detection the caller already made.
+pub fn run_watched_with_detection(
+    root: &Utf8Path,
+    detection: &Detection,
+    operation: Operation<'_>,
+    allow_scripts: bool,
+    observer: &mut dyn InstallObserver,
+) -> Result<ManagerRun, ManagerRunError> {
     let (manager, substituted) = installable(&detection);
     let Some(reader) = Reader::for_manager(manager) else {
-        return run_operation(root, operation, &[], allow_scripts);
+        return run_operation_with_detection(root, detection, operation, &[], allow_scripts);
     };
     let mut invocation = invocation_for(root, manager, operation, &[], allow_scripts)?;
     // Asked for so that there is something to narrate: npm prints nothing at
@@ -499,7 +526,7 @@ pub fn run_watched(
     Ok(ManagerRun {
         manager,
         invocation,
-        source: detection.source,
+        source: detection.source.clone(),
         substituted,
         root: root.to_path_buf(),
         watch: Some(watch),

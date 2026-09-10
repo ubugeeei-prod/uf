@@ -18,14 +18,14 @@ Eight names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
-| `_uf.page.js` | The page at this path. Its default export is a component. |
-| `_uf.layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
-| `_uf.template.js` | The same wrapper, rebuilt on every navigation instead of persisting. |
-| `_uf.not-found.js` | Rendered when nothing under this path matches. |
-| `_uf.error.js` | Rendered when something under this path throws. |
-| `_uf.loading.js` | Rendered while something under this path is still resolving. |
-| `_uf.middleware.js` | Runs before anything under this path answers — auth, redirects, logging. |
-| `_uf.route.js` | Answers a request instead of rendering a page. |
+| `$page.js` | The page at this path. Its default export is a component. |
+| `$layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
+| `$template.js` | The same wrapper, rebuilt on every navigation instead of persisting. |
+| `$not-found.js` | Rendered when nothing under this path matches. |
+| `$error.js` | Rendered when something under this path throws. |
+| `$loading.js` | Rendered while something under this path is still resolving. |
+| `$middleware.js` | Runs before anything under this path answers — auth, redirects, logging. |
+| `$route.js` | Answers a request instead of rendering a page. |
 
 A page, a layout and a not-found may be `.mdx` instead of `.js`. A directory whose name starts with
 `_` is not a route, which is where shared components belong — this site keeps
@@ -47,17 +47,17 @@ Both read the same grammar the build discovers routes with — see
 A directory is a path segment:
 
 ```
-app/_uf.page.js              →  /
-app/guide/_uf.page.mdx       →  /guide
-app/guide/install/_uf.page.mdx  →  /guide/install
+app/$page.js              →  /
+app/guide/$page.mdx       →  /guide
+app/guide/install/$page.mdx  →  /guide/install
 ```
 
 A segment in brackets is a parameter, and a segment in brackets with a spread
 captures the rest:
 
 ```
-app/posts/[slug]/_uf.page.js      →  /posts/anything
-app/docs/[...path]/_uf.page.js    →  /docs/a/b/c
+app/posts/[slug]/$page.js      →  /posts/anything
+app/docs/[...path]/$page.js    →  /docs/a/b/c
 ```
 
 A directory named `@team` is a [parallel-route slot](#parallel-routes): it is
@@ -74,8 +74,8 @@ name, by `uf build`, by `uf dev` and by `uf lint`.
 It is refused rather than ignored, and the difference is the point. Until
 [#267](https://github.com/ubugeeei-prod/uf/issues/267) neither this name nor
 `@team` meant anything to the router, so both fell through to "an ordinary URL
-segment": `app/@team/_uf.page.js` served `/@team`,
-`app/feed/(.)photo/_uf.page.js` served `/feed/(.)photo` — a `(group)` is a
+segment": `app/@team/$page.js` served `/@team`,
+`app/feed/(.)photo/$page.js` served `/feed/(.)photo` — a `(group)` is a
 segment that *ends* in `)`, which `(.)photo` does not — and both went into the
 generated `RoutePath`, so `route("/@team", …)` type checked. A person migrating
 from Next.js got a project that looked like it worked.
@@ -83,7 +83,7 @@ from Next.js got a project that looked like it worked.
 A `(group)` is untouched: it ends in `)` and always did.
 
 "The rest" is the whole rest, so a spread is the last routing directory on the
-way to a page. `app/docs/[...path]/edit/_uf.page.js` would be a page no URL can
+way to a page. `app/docs/[...path]/edit/$page.js` would be a page no URL can
 reach — `[...path]` has already taken every segment, and there is none left to
 be `edit` — so `uf build` and `uf dev` refuse it by name rather than serving a
 route that never answers. A `(group)` below a spread is fine: it is not a
@@ -103,7 +103,7 @@ export default component Post(params: {| +slug: string |}) {
 ## Layouts nest
 
 Every layout on the path wraps the page, outermost first. This site has two: the
-root layout renders the document and the masthead, and `app/guide/_uf.layout.js`
+root layout renders the document and the masthead, and `app/guide/$layout.js`
 adds the sidebar and the prose column. `/reference` re-exports the second one
 rather than copying it.
 
@@ -112,13 +112,13 @@ scroll position and state in a sidebar survive navigation.
 
 ## Templates remount
 
-`_uf.template.js` is the same wrapper with the opposite answer to the same
+`$template.js` is the same wrapper with the opposite answer to the same
 question. A layout persists; a template is thrown away and built again on every
 navigation.
 
 ```js
 // @flow
-// app/guide/_uf.template.js
+// app/guide/$template.js
 import * as React from "react";
 
 export default component Template(children: React.Node) {
@@ -134,14 +134,14 @@ a remount means "this segment and what is under it" and never the frame around
 it:
 
 ```
-app/guide/_uf.layout.js     the sidebar — mounted once
-app/guide/_uf.template.js   rebuilt on every navigation under /guide
-app/guide/[slug]/_uf.page.js
+app/guide/$layout.js     the sidebar — mounted once
+app/guide/$template.js   rebuilt on every navigation under /guide
+app/guide/[slug]/$page.js
 ```
 
 That is what an enter animation needs, and what a `useEffect` that should run
 per page needs. Persistence is the right default and stays the default: a
-segment with no `_uf.template.js` gets no wrapper at all.
+segment with no `$template.js` gets no wrapper at all.
 
 The key is the **pathname**, so a navigation that changes only the query string
 does not remount. A filter written into the URL keeps the page it filters.
@@ -152,18 +152,18 @@ A directory whose name starts with `@` is a **slot**: a second thing a layout
 renders, beside its `children`.
 
 ```
-app/dashboard/_uf.layout.js            the frame, which renders both
-app/dashboard/_uf.page.js              →  /dashboard          as `children`
-app/dashboard/members/_uf.page.js      →  /dashboard/members  as `children`
-app/dashboard/@team/_uf.default.js     the team slot when the URL says nothing
-app/dashboard/@team/members/_uf.page.js  /dashboard/members   as `team`
+app/dashboard/$layout.js            the frame, which renders both
+app/dashboard/$page.js              →  /dashboard          as `children`
+app/dashboard/members/$page.js      →  /dashboard/members  as `children`
+app/dashboard/@team/$default.js     the team slot when the URL says nothing
+app/dashboard/@team/members/$page.js  /dashboard/members   as `team`
 ```
 
 The layout receives the slot under the directory's name without its `@`:
 
 ```js
 // @flow
-// app/dashboard/_uf.layout.js
+// app/dashboard/$layout.js
 import * as React from "react";
 
 export default component Dashboard(children: React.Node, team: React.Node) {
@@ -178,13 +178,13 @@ export default component Dashboard(children: React.Node, team: React.Node) {
 
 **A slot adds no URL.** `@team` contributes nothing to the path, the way a
 `(group)` does not, and the slot's pages are matched against the *same* URL the
-page is — so `/dashboard/members` renders `app/dashboard/members/_uf.page.js`
-as `children` and `app/dashboard/@team/members/_uf.page.js` as `team`, at once,
+page is — so `/dashboard/members` renders `app/dashboard/members/$page.js`
+as `children` and `app/dashboard/@team/members/$page.js` as `team`, at once,
 each inside its own layouts. A URL no ordinary page matches is a 404 whatever
 the slots hold, which is why uf has no `default` for `children` the way Next.js
 does.
 
-`_uf.default.js` is what a slot renders when the URL matches none of *its*
+`$default.js` is what a slot renders when the URL matches none of *its*
 routes. A slot with none renders nothing, and the layout is handed `null` — so
 `{team ?? <Empty />}` is a thing you can write and rely on.
 
@@ -195,10 +195,10 @@ Four rules, each refused by name rather than by silence:
 - a slot may not be named `children` or `params`, which are the props every
   layout already receives — `@children` is the tempting one, because `children`
   is what Next.js calls the page, and here the page always is `children`;
-- `_uf.default.js` belongs directly inside a slot directory, and nowhere else;
-- a slot holds pages, layouts, nested slots and one default — a `_uf.loading.js`,
-  `_uf.error.js`, `_uf.not-found.js`, `_uf.template.js`, `_uf.route.js` or
-  `_uf.middleware.js` inside one is refused, because uf's slots do not carry
+- `$default.js` belongs directly inside a slot directory, and nowhere else;
+- a slot holds pages, layouts, nested slots and one default — a `$loading.js`,
+  `$error.js`, `$not-found.js`, `$template.js`, `$route.js` or
+  `$middleware.js` inside one is refused, because uf's slots do not carry
   boundaries of their own yet
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
 
@@ -209,16 +209,16 @@ names.
 
 ## Not found nests too
 
-`_uf.not-found.js` is a segment file like `_uf.layout.js`: any directory may
+`$not-found.js` is a segment file like `$layout.js`: any directory may
 declare one, and a path that matches nothing gets the nearest one above it,
 inside that directory's layouts.
 
 ```
-app/_uf.not-found.js            →  answers /anything
-app/guide/_uf.not-found.js      →  answers /guide/anything
+app/$not-found.js            →  answers /anything
+app/guide/$not-found.js      →  answers /guide/anything
 ```
 
-This site has both. `/guide/nope` renders `app/guide/_uf.not-found.js` with the
+This site has both. `/guide/nope` renders `app/guide/$not-found.js` with the
 manual's sidebar and prose column still around it, so a reader who followed a
 stale link keeps the table of contents. `/reference/nope` has no boundary of its
 own and falls back to the root one, which is the same nearest-ancestor rule
@@ -229,18 +229,18 @@ above the path being rendered, not the root one.
 
 A project that declares none anywhere still gets a usable 404: uf's own page
 renders inside the router root's layouts, so the masthead and the stylesheet are
-there and the reader can leave. Writing `app/_uf.not-found.js` replaces the page;
+there and the reader can leave. Writing `app/$not-found.js` replaces the page;
 it is not what makes the site appear around it.
 
 ## When a page throws
 
-`_uf.error.js` is the other boundary, resolved by the same nearest-ancestor
+`$error.js` is the other boundary, resolved by the same nearest-ancestor
 rule. It renders in place of the subtree below it, and everything above stays
 mounted: the layouts, the navigation, whatever state they hold.
 
 ```js
 // @flow
-// app/guide/_uf.error.js
+// app/guide/$error.js
 import type { RouteError } from "@uniflowed/router";
 
 export default component Error(error: RouteError, reset: () => void) {
@@ -261,7 +261,7 @@ export default component Error(error: RouteError, reset: () => void) {
 
 One file, not three. `unauthorized()` and `forbidden()` are thrown the way
 `notFound()` is, and they arrive here as cases of one `RouteError` rather than
-as `_uf.unauthorized.js` and `_uf.forbidden.js` — so `match` says all three in
+as `$unauthorized.js` and `$forbidden.js` — so `match` says all three in
 the place a reader looks for the answer, and Flow says which one you forgot.
 The statuses are 401, 403 and 500.
 
@@ -269,7 +269,7 @@ The statuses are 401, 403 and 500.
 loader's, it re-runs the resolution; when it was the browser rendering, it
 mounts the page again.
 
-A project that declares no `_uf.error.js` still does not lose the document: uf
+A project that declares no `$error.js` still does not lose the document: uf
 renders its own page, inside the router root's layouts for the same reason the
 404 is. What it does not do is show the exception — that text is written for
 whoever deployed the application, so it goes to `uf dev`'s terminal instead, and
@@ -281,13 +281,13 @@ write an error page into `dist/`.
 
 ## While a page is still resolving
 
-`_uf.loading.js` is a `<Suspense>` boundary around this segment's page and
+`$loading.js` is a `<Suspense>` boundary around this segment's page and
 everything under it. Its default export is a component that takes no props —
 there is nothing to hand it, because what it stands in for has not happened yet.
 
 ```js
 // @flow
-// app/guide/_uf.loading.js
+// app/guide/$loading.js
 export default component Loading() {
   return <p aria-busy="true">Loading…</p>;
 }
@@ -295,8 +295,8 @@ export default component Loading() {
 
 It is not resolved by the nearest-ancestor rule the other two boundaries use,
 and the difference is what a fallback is. A not-found or an error boundary is
-*chosen*: one of them renders. Loading boundaries **nest** — `app/_uf.loading.js`
-and `app/guide/_uf.loading.js` are two boundaries on one route, one inside the
+*chosen*: one of them renders. Loading boundaries **nest** — `app/$loading.js`
+and `app/guide/$loading.js` are two boundaries on one route, one inside the
 other — so a route carries every one declared above it, and the deepest is
 closest to the page.
 
@@ -306,10 +306,10 @@ the fallback while the page is still resolving, and the page replaces the
 fallback when it is ready. That is the whole reason the renderer streams.
 
 ```
-app/_uf.layout.js          the masthead — sent immediately
-app/guide/_uf.layout.js    the sidebar — sent immediately
-app/guide/_uf.loading.js   the fallback — sent immediately
-app/guide/[slug]/_uf.page.js   arrives when it resolves
+app/$layout.js          the masthead — sent immediately
+app/guide/$layout.js    the sidebar — sent immediately
+app/guide/$loading.js   the fallback — sent immediately
+app/guide/[slug]/$page.js   arrives when it resolves
 ```
 
 `uf build` writes the resolved page rather than the fallback. A prerendered file
@@ -317,11 +317,11 @@ has nothing to wait for, so it contains the finished document — which is what
 makes it readable by a crawler and by `curl` rather than only by a browser
 running scripts.
 
-A segment with no `_uf.loading.js` gets no boundary at all. uf does not insert an
+A segment with no `$loading.js` gets no boundary at all. uf does not insert an
 invisible one: a page that suspends with nothing above it fails the way React
 says it should, rather than rendering as a blank document.
 
-A page's `loader` streams too. When a route declares a `_uf.loading.js`, the
+A page's `loader` streams too. When a route declares a `$loading.js`, the
 server hands the page the loader's promise rather than its value and unwraps it
 inside the innermost boundary — so the layouts and the fallback go out while the
 loader is still running, which is what the fallback beside a slow loader was
@@ -336,7 +336,7 @@ Two rules come with that, and both are worth knowing rather than discovering:
   with the shell, so `notFound()` and `redirect()` thrown from a loader that was
   deferred arrive at the error boundary rather than at the 404 page, and the
   document is a 200. Nothing can undo bytes that have already been sent. A route
-  whose loader decides the response should not declare a `_uf.loading.js`.
+  whose loader decides the response should not declare a `$loading.js`.
 
 `uf build` never defers: a file being written to disk has no first paint to
 improve, so `prerender` resolves the loader and writes the finished page.
@@ -346,7 +346,7 @@ HTML transform takes a whole one —
 [#374](https://github.com/ubugeeei-prod/uf/issues/374). `uf start`, `uf preview`
 and the deploy adapters stream.
 
-What none of this covers is a route handler. `_uf.route.js` answers a request
+What none of this covers is a route handler. `$route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting
 to see — "Route handlers", below, says why.
 
@@ -633,7 +633,7 @@ the manual differently from an arrival anywhere else. The name reaches CSS as
 an attribute on the document element, set for as long as the transition runs:
 
 ```js
-// app/guide/_uf.layout.js
+// app/guide/$layout.js
 export const viewTransition = "manual";
 ```
 
@@ -664,7 +664,7 @@ prerendered document says nothing about one.
 
 ## Middleware
 
-`app/dashboard/_uf.middleware.js` runs before anything under `/dashboard`
+`app/dashboard/$middleware.js` runs before anything under `/dashboard`
 answers — the pages, the route handlers, and the paths under it that match
 nothing at all:
 
@@ -687,13 +687,13 @@ logger.
 
 There is no `matcher` to write. The directory the file sits in is the path it
 guards, and middleware composes down the tree exactly the way layouts do: a
-root `app/_uf.middleware.js` runs for every request, then the one in
+root `app/$middleware.js` runs for every request, then the one in
 `app/dashboard/`, then the one in `app/dashboard/admin/`. Root first, and the
 first one to return a `Response` wins.
 
 A middleware runs inside the request, so `cookies()`, `headers()` and `after()`
 work without anything being threaded through. Its own path parameters arrive as
-`context.params` — `app/[org]/_uf.middleware.js` guarding `/acme/settings` gets
+`context.params` — `app/[org]/$middleware.js` guarding `/acme/settings` gets
 `{ org: "acme" }`, which is what a tenant check needs.
 
 A middleware module never reaches the browser. It is loaded from the server
@@ -718,7 +718,7 @@ serve that bundle and run middleware for every request they answer, exactly as
 
 ## Route handlers
 
-A path can answer a request instead of rendering. `app/api/users/[id]/_uf.route.js`
+A path can answer a request instead of rendering. `app/api/users/[id]/$route.js`
 serves `/api/users/42`:
 
 ```js
@@ -780,7 +780,7 @@ the page all see the same answer — and neither the route cache nor the
 prerendered document in `dist/` is allowed to answer it.
 
 ```js
-// app/api/preview/_uf.route.js
+// app/api/preview/$route.js
 // @flow
 import { draftMode } from "@uniflowed/server";
 
@@ -833,7 +833,7 @@ prefetch it or cache it, and every layer between the browser and the handler
 has to treat a search as a mutation.
 
 ```js
-// app/api/search/_uf.route.js
+// app/api/search/$route.js
 // @flow
 export async function QUERY(request: Request): Promise<Response> {
   const filters = await request.json();
@@ -878,7 +878,7 @@ A handler returns a `Response`, and a `Response` body may be a stream — so
 server-sent events need nothing new from the router:
 
 ```js
-// app/api/progress/_uf.route.js
+// app/api/progress/$route.js
 // @flow
 import { eventStream } from "@uniflowed/server/events";
 
@@ -902,7 +902,7 @@ what a deployment restarting looks like.
 A WebSocket is a `GET` with `Upgrade: websocket` on it, so it is a handler too:
 
 ```js
-// app/api/room/[id]/_uf.route.js
+// app/api/room/[id]/$route.js
 // @flow
 import { upgradeWebSocket } from "@uniflowed/server/socket";
 
@@ -998,7 +998,7 @@ A route handler can say when it should run without being asked, so that
 `uf build` can tell a platform's own scheduler about it:
 
 ```js
-// app/api/sweep/_uf.route.js
+// app/api/sweep/$route.js
 // @flow
 export const schedule = "*/15 * * * *";
 
@@ -1033,7 +1033,7 @@ expression and which file:
 error: the `node` adapter would not run the 1 schedule(s) this project
 declares, so this build would produce a deployment whose scheduled work never
 happens:
-    /api/sweep — `*/15 * * * *`, in app/api/sweep/_uf.route.js
+    /api/sweep — `*/15 * * * *`, in app/api/sweep/$route.js
 ```
 
 `node`, `bun` and `container` run it too, and differently: they keep a process,
@@ -1078,7 +1078,7 @@ say so.
 A page with parameters is prerendered only if it enumerates them:
 
 ```js
-// app/posts/[slug]/_uf.page.js
+// app/posts/[slug]/$page.js
 export function generateStaticParams(): $ReadOnlyArray<{ readonly slug: string }> {
   return [{ slug: "hello-world" }, { slug: "second-post" }];
 }
@@ -1091,7 +1091,7 @@ A page with **no** parameters is prerendered by default, and says otherwise for
 itself:
 
 ```js
-// app/now/_uf.page.js
+// app/now/$page.js
 export const dynamic = "force-dynamic";
 ```
 

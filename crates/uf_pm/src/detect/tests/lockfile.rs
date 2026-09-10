@@ -177,7 +177,7 @@ fn side_by_side_lockfiles_report_ambiguity_without_silently_picking() {
 }
 
 #[test]
-fn uf_lock_outranks_every_other_lockfile() {
+fn package_manager_lockfiles_outrank_uf_lock() {
     let (_guard, root) = temp_root();
     for lockfile in Lockfile::ALL {
         write(&root.join(lockfile.file_name()), "");
@@ -185,7 +185,14 @@ fn uf_lock_outranks_every_other_lockfile() {
 
     let detection = detect_within(&root, &root);
 
-    assert_eq!(detection.package_manager, PackageManager::Uf);
+    assert_eq!(detection.package_manager, PackageManager::Bun);
     assert!(detection.is_ambiguous());
     assert_eq!(detection.alternatives.len(), Lockfile::ALL.len() - 1);
+    assert_eq!(
+        detection
+            .alternatives
+            .last()
+            .map(|candidate| candidate.package_manager),
+        Some(PackageManager::Uf)
+    );
 }

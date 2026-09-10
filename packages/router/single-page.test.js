@@ -101,7 +101,7 @@ function tables() {
     path: "/",
     params: [],
     mdx: false,
-    file: "app/_uf.page.js",
+    file: "app/$page.js",
     page: () => Promise.resolve({ default: Home }),
     layouts: [],
     loading: [],
@@ -110,7 +110,7 @@ function tables() {
     path: "/away",
     params: [],
     mdx: false,
-    file: "app/away/_uf.page.js",
+    file: "app/away/$page.js",
     // A loader that redirects, which on a server is a 307 before a byte is
     // written and here has to become the browser's own navigation. It is an
     // export of the page *module*, the way a project writes one, rather than a
@@ -123,7 +123,7 @@ function tables() {
     {
       path: "/",
       mdx: false,
-      file: "app/_uf.not-found.js",
+      file: "app/$not-found.js",
       page: () => Promise.resolve({ default: Missing }),
       layouts: [],
     },

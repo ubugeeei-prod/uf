@@ -40,7 +40,7 @@ pub enum YarnEdition {
 }
 
 impl PackageManager {
-    /// Every package manager uf can drive, in detection precedence order.
+    /// Every package manager uf can drive, in stable display/test order.
     pub const ALL: [Self; 6] = [
         Self::Uf,
         Self::Bun,
@@ -138,6 +138,11 @@ impl TryFrom<CompactString> for PackageManager {
 }
 
 /// Lockfile uf recognises, in detection precedence order.
+///
+/// `uf.lock` is last on purpose. It records uf's native resolver state, but a
+/// project that already has npm, pnpm, Yarn or Bun evidence must keep using the
+/// package manager it chose even if an older uf run left a native lock beside
+/// it. Pin `pm.packageManager: "uf"` when that lockfile is the desired driver.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Lockfile {
@@ -158,15 +163,15 @@ pub enum Lockfile {
 }
 
 impl Lockfile {
-    /// Every recognised lockfile, in precedence order.
+    /// Every recognised lockfile, in detection precedence order.
     pub const ALL: [Self; 7] = [
-        Self::UfLock,
         Self::BunLock,
         Self::BunLockb,
         Self::PnpmLock,
         Self::YarnLock,
         Self::PackageLock,
         Self::NpmShrinkwrap,
+        Self::UfLock,
     ];
 
     /// File name on disk.

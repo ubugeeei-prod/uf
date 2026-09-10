@@ -64,7 +64,7 @@ fn lints_hundreds_of_files_in_parallel_without_exhausting_the_parser_stack() {
     let config = UniflowedConfig::default();
     let files = (0..800)
         .map(|index| SourceFile {
-            path: format!("app/route{index}/_uf.page.js"),
+            path: format!("app/route{index}/$page.js"),
             source: format!(
                 "// @flow\ncomponent Page{index}() renders React.Node {{\n  return <main>hello</main>;\n}}\n"
             ),

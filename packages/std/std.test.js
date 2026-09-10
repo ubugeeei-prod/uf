@@ -933,7 +933,7 @@ describe("what ships is one list in three places", () => {
   });
 
   it("is the same six the reference page's table names", () => {
-    const page = fs.readFileSync(path.join(REPO, "docs/app/reference/std/_uf.page.mdx"), "utf8");
+    const page = fs.readFileSync(path.join(REPO, "docs/app/reference/std/$page.mdx"), "utf8");
     const start = page.indexOf("## What ships today");
     expect(start).toBeGreaterThan(-1);
     // To the next heading: the page names these specifiers again further down,

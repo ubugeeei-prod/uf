@@ -23,8 +23,8 @@
 //!
 //! # What counts
 //!
-//! * a `_uf.route.js`, which answers a request rather than rendering, and a
-//!   `_uf.middleware.js`, which runs before one is answered. Neither has a
+//! * a `$route.js`, which answers a request rather than rendering, and a
+//!   `$middleware.js`, which runs before one is answered. Neither has a
 //!   process to run in;
 //! * any module the application reaches that imports a **server-only package**
 //!   — `@uniflowed/server`, `@uniflowed/db`, `server-only` — or is named

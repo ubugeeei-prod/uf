@@ -7,10 +7,10 @@ fn discovers_root_and_dynamic_routes() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/users/[id]")).unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/users/[id]/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/users/[id]/_uf.middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/users/[id]/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/users/[id]/$middleware.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
 
@@ -22,7 +22,7 @@ fn discovers_root_and_dynamic_routes() {
     assert!(routes[1].has_own_middleware());
     assert_eq!(
         routes[1].middleware,
-        vec![root.join("app/users/[id]/_uf.middleware.js")]
+        vec![root.join("app/users/[id]/$middleware.js")]
     );
 }
 
@@ -31,7 +31,7 @@ fn generates_router_flow_with_params() {
     let route = Route {
         path: "/users/:id".into(),
         directory: "app/users/[id]".into(),
-        page: "app/users/[id]/_uf.page.js".into(),
+        page: "app/users/[id]/$page.js".into(),
         params: vec![RouteParam {
             name: "id".into(),
             kind: RouteParamKind::Single,
@@ -59,7 +59,7 @@ fn generated_router_types_are_exact() {
     let source = generate_router_flow(&[Route {
         path: "/users/:id".into(),
         directory: Utf8PathBuf::from("app/users/[id]"),
-        page: Utf8PathBuf::from("app/users/[id]/_uf.page.js"),
+        page: Utf8PathBuf::from("app/users/[id]/$page.js"),
         params: vec![RouteParam {
             name: "id".into(),
             kind: RouteParamKind::Single,
@@ -129,7 +129,7 @@ fn a_route_without_parameters_takes_no_second_argument() {
         Route {
             path: "/".into(),
             directory: Utf8PathBuf::from("app"),
-            page: Utf8PathBuf::from("app/_uf.page.js"),
+            page: Utf8PathBuf::from("app/$page.js"),
             params: Vec::new(),
             has_layout: false,
             middleware: Vec::new(),
@@ -137,7 +137,7 @@ fn a_route_without_parameters_takes_no_second_argument() {
         Route {
             path: "/docs/:slug*".into(),
             directory: Utf8PathBuf::from("app/docs/[...slug]"),
-            page: Utf8PathBuf::from("app/docs/[...slug]/_uf.page.js"),
+            page: Utf8PathBuf::from("app/docs/[...slug]/$page.js"),
             params: vec![RouteParam {
                 name: "slug".into(),
                 kind: RouteParamKind::CatchAll,
@@ -176,7 +176,7 @@ fn the_generated_link_builder_has_a_runtime_behind_it() {
     let source = generate_router_flow(&[Route {
         path: "/posts/:id".into(),
         directory: Utf8PathBuf::from("app/posts/[id]"),
-        page: Utf8PathBuf::from("app/posts/[id]/_uf.page.js"),
+        page: Utf8PathBuf::from("app/posts/[id]/$page.js"),
         params: vec![RouteParam {
             name: "id".into(),
             kind: RouteParamKind::Single,
@@ -201,13 +201,13 @@ fn the_generated_link_builder_has_a_runtime_behind_it() {
 
 #[test]
 fn a_route_handler_is_a_reserved_file_rather_than_a_violation() {
-    // `_uf.route.js` answers a request instead of rendering a page. It was
+    // `$route.js` answers a request instead of rendering a page. It was
     // an unknown name until route handlers existed, and the two tests that
-    // used it as their example of an invalid one now use `_uf.handler.js`.
+    // used it as their example of an invalid one now use `$handler.js`.
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/api")).unwrap();
-    fs::write(root.join("app/api/_uf.route.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/api/$route.js"), "// @flow\n").unwrap();
 
     let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
     assert!(violations.is_empty(), "{violations:?}");
@@ -221,12 +221,12 @@ fn finds_invalid_reserved_files() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app")).unwrap();
-    fs::write(root.join("app/_uf.handler.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$handler.js"), "// @flow\n").unwrap();
 
     let violations = find_reserved_file_violations(&root, &UniflowedConfig::default()).unwrap();
 
     assert_eq!(violations.len(), 1);
-    assert_eq!(violations[0].path.file_name(), Some("_uf.handler.js"));
+    assert_eq!(violations[0].path.file_name(), Some("$handler.js"));
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn writes_router_manifest() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app")).unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
 
     let manifest = write_router_manifest(&root, &UniflowedConfig::default())
         .unwrap()
@@ -258,12 +258,12 @@ fn a_manifest_with_many_routes_is_written_formatted() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app")).unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
     // Enough that the union cannot fit on one line at any sane width.
     for index in 0..40 {
         let directory = root.join(format!("app/section-number-{index}"));
         fs::create_dir_all(&directory).unwrap();
-        fs::write(directory.join("_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(directory.join("$page.js"), "// @flow\n").unwrap();
     }
 
     let config = UniflowedConfig::default();
@@ -297,7 +297,7 @@ fn the_generated_router_is_already_formatted() {
         Route {
             path: "/".into(),
             directory: Utf8PathBuf::from("app"),
-            page: Utf8PathBuf::from("app/_uf.page.js"),
+            page: Utf8PathBuf::from("app/$page.js"),
             params: Vec::new(),
             has_layout: true,
             middleware: Vec::new(),
@@ -305,7 +305,7 @@ fn the_generated_router_is_already_formatted() {
         Route {
             path: "/posts/:id".into(),
             directory: Utf8PathBuf::from("app/posts/[id]"),
-            page: Utf8PathBuf::from("app/posts/[id]/_uf.page.js"),
+            page: Utf8PathBuf::from("app/posts/[id]/$page.js"),
             params: vec![RouteParam {
                 name: "id".into(),
                 kind: RouteParamKind::Single,
@@ -343,7 +343,7 @@ fn an_empty_generated_router_is_already_formatted() {
 /// `packages/vite/internal/routes.js` implements for the table the build runs.
 /// Route discovery answered the narrower question — "does *this* directory
 /// declare one" — so `/dashboard/settings` looked unguarded to every caller in
-/// Rust while the build's own router had `app/dashboard/_uf.middleware.js` on
+/// Rust while the build's own router had `app/dashboard/$middleware.js` on
 /// it. `uf build` asks this to decide which prerendered files a guard never
 /// sees, and the narrow answer would have told it none of them.
 #[test]
@@ -352,15 +352,11 @@ fn a_middleware_guards_every_route_beneath_it() {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/dashboard/settings")).unwrap();
     fs::create_dir_all(root.join("app/about")).unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/about/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/_uf.middleware.js"), "// @flow\n").unwrap();
-    fs::write(
-        root.join("app/dashboard/settings/_uf.page.js"),
-        "// @flow\n",
-    )
-    .unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/about/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/$middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/settings/$page.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
     let guarded = |path: &str| {
@@ -375,7 +371,7 @@ fn a_middleware_guards_every_route_beneath_it() {
     assert!(guarded("/dashboard").has_own_middleware());
     assert_eq!(
         guarded("/dashboard/settings").middleware,
-        vec![root.join("app/dashboard/_uf.middleware.js")],
+        vec![root.join("app/dashboard/$middleware.js")],
         "the guard is inherited, and the route below it is the one nobody \
          would notice was unguarded"
     );
@@ -392,24 +388,21 @@ fn guards_compose_outermost_first() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/admin/users")).unwrap();
-    fs::write(root.join("app/_uf.middleware.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/admin/_uf.middleware.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/admin/users/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/admin/$middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/admin/users/$page.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
 
     assert_eq!(routes[0].path, "/");
-    assert_eq!(
-        routes[0].middleware,
-        vec![root.join("app/_uf.middleware.js")]
-    );
+    assert_eq!(routes[0].middleware, vec![root.join("app/$middleware.js")]);
     assert_eq!(routes[1].path, "/admin/users");
     assert_eq!(
         routes[1].middleware,
         vec![
-            root.join("app/_uf.middleware.js"),
-            root.join("app/admin/_uf.middleware.js"),
+            root.join("app/$middleware.js"),
+            root.join("app/admin/$middleware.js"),
         ]
     );
 }
@@ -421,7 +414,7 @@ fn a_route_recognises_the_urls_it_serves() {
     let route = |path: &str| Route {
         path: path.into(),
         directory: Utf8PathBuf::from("app"),
-        page: Utf8PathBuf::from("app/_uf.page.js"),
+        page: Utf8PathBuf::from("app/$page.js"),
         params: Vec::new(),
         has_layout: false,
         middleware: Vec::new(),
@@ -457,7 +450,7 @@ fn route_specificity_scores_the_way_the_runtime_does() {
     let route = |path: &str| Route {
         path: path.into(),
         directory: Utf8PathBuf::from("app"),
-        page: Utf8PathBuf::from("app/_uf.page.js"),
+        page: Utf8PathBuf::from("app/$page.js"),
         params: Vec::new(),
         has_layout: false,
         middleware: Vec::new(),
@@ -488,11 +481,7 @@ fn a_catch_all_with_a_directory_below_it_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/docs/[...slug]/edit")).unwrap();
-    fs::write(
-        root.join("app/docs/[...slug]/edit/_uf.page.js"),
-        "// @flow\n",
-    )
-    .unwrap();
+    fs::write(root.join("app/docs/[...slug]/edit/$page.js"), "// @flow\n").unwrap();
 
     let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
 
@@ -501,7 +490,7 @@ fn a_catch_all_with_a_directory_below_it_is_refused() {
     // proves it: a refusal that only says "invalid route" is a refusal the
     // reader has to reproduce before they can act on it.
     assert!(
-        message.contains("app/docs/[...slug]/edit/_uf.page.js"),
+        message.contains("app/docs/[...slug]/edit/$page.js"),
         "{message}"
     );
     assert!(message.contains("[...slug]"), "{message}");
@@ -516,9 +505,9 @@ fn a_terminal_catch_all_is_discovered() {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/docs/[...slug]")).unwrap();
     fs::create_dir_all(root.join("app/files/[...path]/(internal)")).unwrap();
-    fs::write(root.join("app/docs/[...slug]/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/docs/[...slug]/$page.js"), "// @flow\n").unwrap();
     fs::write(
-        root.join("app/files/[...path]/(internal)/_uf.page.js"),
+        root.join("app/files/[...path]/(internal)/$page.js"),
         "// @flow\n",
     )
     .unwrap();
@@ -601,7 +590,7 @@ fn a_page_is_a_route_in_every_spelling_the_build_accepts() {
         let root = camino::Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
         let app = root.join("app/guide");
         std::fs::create_dir_all(&app).expect("a directory");
-        std::fs::write(app.join(format!("_uf.page{extension}")), "// @flow\n").expect("a page");
+        std::fs::write(app.join(format!("$page{extension}")), "// @flow\n").expect("a page");
 
         let routes =
             discover_routes(root, &uf_config::UniflowedConfig::default()).expect("discovery");
@@ -612,7 +601,7 @@ fn a_page_is_a_route_in_every_spelling_the_build_accepts() {
                 .map(|route| route.path.as_str())
                 .collect::<Vec<_>>(),
             vec!["/guide"],
-            "a `_uf.page{extension}` was not a route"
+            "a `$page{extension}` was not a route"
         );
     }
 }
@@ -621,7 +610,7 @@ fn a_page_is_a_route_in_every_spelling_the_build_accepts() {
 /// one the build renders.
 ///
 /// The walk that finds pages is over *files*, so `app/guide/` with both
-/// `_uf.page.js` and `_uf.page.mdx` in it reached the route builder twice and
+/// `$page.js` and `$page.mdx` in it reached the route builder twice and
 /// produced two `/guide` routes — while `packages/vite/internal/routes.js`
 /// asks `findModule` once and renders exactly one of them. The generated
 /// `RoutePath` carried the same string twice, `uf build`'s summary counted the
@@ -647,7 +636,7 @@ fn a_directory_with_two_page_spellings_is_one_route() {
         let app = root.join("app/guide");
         std::fs::create_dir_all(&app).expect("a directory");
         for extension in &spellings {
-            std::fs::write(app.join(format!("_uf.page{extension}")), "// @flow\n").expect("a page");
+            std::fs::write(app.join(format!("$page{extension}")), "// @flow\n").expect("a page");
         }
 
         let routes =
@@ -663,7 +652,7 @@ fn a_directory_with_two_page_spellings_is_one_route() {
         );
         assert_eq!(
             routes[0].page.file_name(),
-            Some(format!("_uf.page{}", spellings[0]).as_str()),
+            Some(format!("$page{}", spellings[0]).as_str()),
             "{spellings:?} resolved to a page the build router would not have loaded"
         );
     }
@@ -677,10 +666,10 @@ fn a_layout_and_a_middleware_are_found_in_either_spelling() {
         let root = camino::Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
         let app = root.join("app/guide");
         std::fs::create_dir_all(&app).expect("a directory");
-        std::fs::write(app.join("_uf.page.js"), "// @flow\n").expect("a page");
-        std::fs::write(app.join(format!("_uf.layout{extension}")), "// @flow\n").expect("a layout");
+        std::fs::write(app.join("$page.js"), "// @flow\n").expect("a page");
+        std::fs::write(app.join(format!("$layout{extension}")), "// @flow\n").expect("a layout");
         std::fs::write(
-            root.join(format!("app/_uf.middleware{extension}")),
+            root.join(format!("app/$middleware{extension}")),
             "// @flow\n",
         )
         .expect("a middleware");
@@ -688,11 +677,11 @@ fn a_layout_and_a_middleware_are_found_in_either_spelling() {
         let routes =
             discover_routes(root, &uf_config::UniflowedConfig::default()).expect("discovery");
 
-        assert!(routes[0].has_layout, "a `_uf.layout{extension}` was missed");
+        assert!(routes[0].has_layout, "a `$layout{extension}` was missed");
         assert_eq!(
             routes[0].middleware.len(),
             1,
-            "a `_uf.middleware{extension}` was missed"
+            "a `$middleware{extension}` was missed"
         );
     }
 }
@@ -712,11 +701,11 @@ fn a_parallel_route_slot_contributes_no_url() {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/dashboard/@team/members")).unwrap();
     fs::create_dir_all(root.join("app/dashboard/members")).unwrap();
-    fs::write(root.join("app/dashboard/_uf.layout.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/members/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/members/$page.js"), "// @flow\n").unwrap();
     fs::write(
-        root.join("app/dashboard/@team/members/_uf.page.js"),
+        root.join("app/dashboard/@team/members/$page.js"),
         "// @flow\n",
     )
     .unwrap();
@@ -750,9 +739,9 @@ fn a_slot_on_a_segment_with_no_layout_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/dashboard/@team")).unwrap();
-    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/@team/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/@team/$page.js"), "// @flow\n").unwrap();
 
     let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
 
@@ -763,7 +752,7 @@ fn a_slot_on_a_segment_with_no_layout_is_refused() {
     assert!(message.contains("no layout of its own"), "{message}");
 }
 
-/// A `_uf.default.js` outside a slot is a file the router never opens.
+/// A `$default.js` outside a slot is a file the router never opens.
 ///
 /// uf has no `default` for `children` the way Next.js does: `children` is the
 /// page the URL matched, and a URL that matches no page is a 404.
@@ -772,14 +761,14 @@ fn a_default_outside_a_slot_is_refused() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app")).unwrap();
-    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/_uf.default.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$default.js"), "// @flow\n").unwrap();
 
     let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
 
     let message = error.to_string();
-    assert!(message.contains("_uf.default.js"), "{message}");
+    assert!(message.contains("$default.js"), "{message}");
     assert!(message.contains("404"), "{message}");
 }
 
@@ -790,10 +779,10 @@ fn a_slot_with_a_default_and_a_layout_is_discovered() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/@team")).unwrap();
-    fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/@team/_uf.default.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/@team/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/$default.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/$page.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
 
@@ -815,9 +804,9 @@ fn a_slot_named_after_a_layout_prop_is_refused() {
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         let slot = format!("app/@{name}");
         fs::create_dir_all(root.join(&slot)).unwrap();
-        fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-        fs::write(root.join(&slot).join("_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+        fs::write(root.join(&slot).join("$page.js"), "// @flow\n").unwrap();
 
         let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
 
@@ -836,19 +825,19 @@ fn a_slot_named_after_a_layout_prop_is_refused() {
 #[test]
 fn a_boundary_or_a_handler_inside_a_slot_is_refused() {
     for (name, expected) in [
-        ("_uf.loading.js", "loading"),
-        ("_uf.error.js", "error"),
-        ("_uf.not-found.js", "not-found"),
-        ("_uf.template.js", "template"),
-        ("_uf.route.js", "@team"),
-        ("_uf.middleware.js", "@team"),
+        ("$loading.js", "loading"),
+        ("$error.js", "error"),
+        ("$not-found.js", "not-found"),
+        ("$template.js", "template"),
+        ("$route.js", "@team"),
+        ("$middleware.js", "@team"),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app/@team")).unwrap();
-        fs::write(root.join("app/_uf.layout.js"), "// @flow\n").unwrap();
-        fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-        fs::write(root.join("app/@team/_uf.page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/@team/$page.js"), "// @flow\n").unwrap();
         fs::write(root.join("app/@team").join(name), "// @flow\n").unwrap();
 
         let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
@@ -866,7 +855,7 @@ fn an_intercepting_route_is_refused() {
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
         fs::create_dir_all(root.join("app/feed").join(segment)).unwrap();
         fs::write(
-            root.join("app/feed").join(segment).join("_uf.page.js"),
+            root.join("app/feed").join(segment).join("$page.js"),
             "// @flow\n",
         )
         .unwrap();
@@ -891,7 +880,7 @@ fn a_route_group_is_still_discovered() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/(marketing)/about")).unwrap();
-    fs::write(root.join("app/(marketing)/about/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/(marketing)/about/$page.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
 
@@ -911,7 +900,7 @@ fn a_slot_inside_a_private_directory_is_left_alone() {
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/_drafts/@team")).unwrap();
     fs::write(root.join("app/_drafts/@team/notes.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
 
@@ -930,7 +919,7 @@ fn a_refused_directory_never_reaches_the_generated_types() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/feed/(.)photo")).unwrap();
-    fs::write(root.join("app/feed/(.)photo/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/feed/(.)photo/$page.js"), "// @flow\n").unwrap();
 
     let error = write_router_manifest(&root, &UniflowedConfig::default()).unwrap_err();
 
@@ -957,9 +946,9 @@ fn discovers_the_route_handlers_and_middleware_the_route_table_does_not_carry() 
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/api/health")).unwrap();
     fs::create_dir_all(root.join("app/dashboard")).unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/api/health/_uf.route.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/dashboard/_uf.middleware.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/api/health/$route.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/dashboard/$middleware.js"), "// @flow\n").unwrap();
 
     let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
     assert_eq!(routes.len(), 1, "only `/` has a page");
@@ -970,7 +959,7 @@ fn discovers_the_route_handlers_and_middleware_the_route_table_does_not_carry() 
     assert_eq!(modules.len(), 2);
     assert_eq!(modules[0].path, "/api/health");
     assert_eq!(modules[0].kind, ServerModuleKind::RouteHandler);
-    assert_eq!(modules[0].file, root.join("app/api/health/_uf.route.js"));
+    assert_eq!(modules[0].file, root.join("app/api/health/$route.js"));
     assert_eq!(modules[1].path, "/dashboard");
     assert_eq!(modules[1].kind, ServerModuleKind::Middleware);
 }
@@ -985,13 +974,13 @@ fn a_directory_with_two_spellings_of_a_handler_is_one_handler() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/api")).unwrap();
-    fs::write(root.join("app/api/_uf.route.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/api/_uf.route.jsx"), "// @flow\n").unwrap();
+    fs::write(root.join("app/api/$route.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/api/$route.jsx"), "// @flow\n").unwrap();
 
     let modules = discover_server_modules(&root, &UniflowedConfig::default()).unwrap();
 
     assert_eq!(modules.len(), 1);
-    assert_eq!(modules[0].file, root.join("app/api/_uf.route.js"));
+    assert_eq!(modules[0].file, root.join("app/api/$route.js"));
 }
 
 /// A project with neither is a project a static host can serve, and says so
@@ -1001,8 +990,8 @@ fn a_project_with_no_server_modules_reports_none() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::create_dir_all(root.join("app/guide")).unwrap();
-    fs::write(root.join("app/_uf.page.js"), "// @flow\n").unwrap();
-    fs::write(root.join("app/guide/_uf.page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/guide/$page.js"), "// @flow\n").unwrap();
 
     assert!(
         discover_server_modules(&root, &UniflowedConfig::default())

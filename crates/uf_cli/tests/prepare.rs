@@ -418,7 +418,7 @@ fn with_a_server_action(root: &Path) {
         "// @flow\n\"use server\";\n\nexport async function createUser(name: string, age: number): Promise<string> {\n  return `${name}:${String(age)}`;\n}\n\nexport async function deleteUser(id: string): Promise<void> {}\n",
     )
     .expect("an action module");
-    let page = root.join("app/_uf.page.js");
+    let page = root.join("app/$page.js");
     let source = fs::read_to_string(&page).expect("the scaffolded page");
     fs::write(
         &page,

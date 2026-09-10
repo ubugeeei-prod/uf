@@ -24,7 +24,7 @@ function record(routePath: string) {
     path: routePath,
     params: [],
     mdx: false,
-    file: `app${routePath}/_uf.page.js`,
+    file: `app${routePath}/$page.js`,
     layouts: [],
   };
 }

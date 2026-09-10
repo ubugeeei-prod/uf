@@ -1,6 +1,6 @@
 // @flow
 //
-// `_uf.loading.js` and a renderer that streams.
+// `$loading.js` and a renderer that streams.
 //
 // Before this the renderer was `renderToString`: the whole tree had to resolve
 // before a byte left, there was no boundary to fall back to, and the route
@@ -8,7 +8,7 @@
 // read it. See ubugeeei-prod/uf#254.
 //
 // The claim being tested is one sentence — a page that awaits, with a
-// `_uf.loading.js` beside it, sends its layouts and the fallback before the
+// `$loading.js` beside it, sends its layouts and the fallback before the
 // await resolves, and `uf build` still writes a complete document for the same
 // route — and it takes four sections: the scanner finds the file, the route
 // table carries it, `RouteView` puts a `<Suspense>` where it belongs, and the
@@ -77,19 +77,19 @@ const assets = { scripts: [], styles: [], preloads: [] };
 // The reserved name
 // ---------------------------------------------------------------------------
 
-describe("scanning for `_uf.loading.js`", () => {
+describe("scanning for `$loading.js`", () => {
   it("reserves the name", () => {
     // The other half of this is `every_name_the_build_router_reserves_is_a_role`
     // in `crates/uf_router/tests/reserved_names.rs`, which fails if `loading`
     // is a role here and not in `ReservedRole`, or the other way round.
-    expect(RESERVED.loading).toBe("_uf.loading");
+    expect(RESERVED.loading).toBe("$loading");
   });
 
   it("gives a route the boundary declared in its own segment", () => {
     const root = appRoot({
-      "_uf.layout.js": "export default function Layout() {}",
-      "slow/_uf.page.js": "export default function Page() {}",
-      "slow/_uf.loading.js": "export default function Loading() {}",
+      "$layout.js": "export default function Layout() {}",
+      "slow/$page.js": "export default function Page() {}",
+      "slow/$loading.js": "export default function Loading() {}",
     });
 
     const { routes } = scanRoutes(root);
@@ -99,16 +99,16 @@ describe("scanning for `_uf.loading.js`", () => {
     // One layout is in scope at `slow/` — the root's — and it is outside the
     // boundary. That is what makes the layout part of the shell.
     expect(routes[0].loading[0].above).toBe(1);
-    expect(routes[0].loading[0].module).toBe(path.join(root, "slow", "_uf.loading.js"));
+    expect(routes[0].loading[0].module).toBe(path.join(root, "slow", "$loading.js"));
   });
 
   it("counts a segment's own layout as outside its own fallback", () => {
     // The fallback shows *inside* the frame the segment draws, so a segment
     // that declares both a layout and a loading file has the layout above.
     const root = appRoot({
-      "slow/_uf.layout.js": "export default function Layout() {}",
-      "slow/_uf.loading.js": "export default function Loading() {}",
-      "slow/_uf.page.js": "export default function Page() {}",
+      "slow/$layout.js": "export default function Layout() {}",
+      "slow/$loading.js": "export default function Loading() {}",
+      "slow/$page.js": "export default function Page() {}",
     });
 
     const { routes } = scanRoutes(root);
@@ -119,11 +119,11 @@ describe("scanning for `_uf.loading.js`", () => {
 
   it("nests the boundaries a route inherits, outermost first", () => {
     const root = appRoot({
-      "_uf.layout.js": "export default function Layout() {}",
-      "_uf.loading.js": "export default function Loading() {}",
-      "docs/_uf.layout.js": "export default function Layout() {}",
-      "docs/_uf.loading.js": "export default function Loading() {}",
-      "docs/deep/_uf.page.js": "export default function Page() {}",
+      "$layout.js": "export default function Layout() {}",
+      "$loading.js": "export default function Loading() {}",
+      "docs/$layout.js": "export default function Layout() {}",
+      "docs/$loading.js": "export default function Loading() {}",
+      "docs/deep/$page.js": "export default function Page() {}",
     });
 
     const { routes } = scanRoutes(root);
@@ -133,25 +133,25 @@ describe("scanning for `_uf.loading.js`", () => {
 
   it("gives a route with no loading file above it none", () => {
     const root = appRoot({
-      "_uf.page.js": "export default function Page() {}",
+      "$page.js": "export default function Page() {}",
     });
 
     expect(scanRoutes(root).routes[0].loading).toEqual([]);
   });
 
   it("puts the modules in the generated table, deduplicated", () => {
-    // One `app/_uf.loading.js` is the fallback of every route under it. Fifty
+    // One `app/$loading.js` is the fallback of every route under it. Fifty
     // routes must not be fifty imports of the same file.
     const root = appRoot({
-      "_uf.loading.js": "export default function Loading() {}",
-      "a/_uf.page.js": "export default function Page() {}",
-      "b/_uf.page.js": "export default function Page() {}",
+      "$loading.js": "export default function Loading() {}",
+      "a/$page.js": "export default function Page() {}",
+      "b/$page.js": "export default function Page() {}",
     });
 
     const source = routesModuleSource(scanRoutes(root));
 
     expect(source).toContain("loading: [{ above: 0, module: loading0 }]");
-    expect(source.split("_uf.loading.js").length - 1).toBe(1);
+    expect(source.split("$loading.js").length - 1).toBe(1);
   });
 });
 
@@ -190,7 +190,7 @@ function suspendingTable(waited: Promise<string>, options?: {| readonly loading?
         path: "/slow",
         params: [],
         mdx: false,
-        file: "app/slow/_uf.page.js",
+        file: "app/slow/$page.js",
         page: () => Promise.resolve({ default: SlowPage }),
         layouts: [() => Promise.resolve({ default: SiteLayout })],
         loading:
@@ -467,7 +467,7 @@ function loaderTable(
         path: "/slow",
         params: [],
         mdx: false,
-        file: "app/slow/_uf.page.js",
+        file: "app/slow/$page.js",
         page: () => Promise.resolve(page),
         layouts: [() => Promise.resolve({ default: SiteLayout })],
         loading:
@@ -485,7 +485,7 @@ describe("rendering a route whose loader is slow", () => {
   it("sends the layout and the fallback before the loader resolves", async () => {
     // The bug, in one assertion. `resolveMatch` awaited the loader, so
     // `renderer.render` did not resolve until the loader had — and every route's
-    // time to first byte was its slowest loader however many `_uf.loading.js`
+    // time to first byte was its slowest loader however many `$loading.js`
     // files were beside it.
     const waited = deferred();
     const renderer = createRenderer({
@@ -641,7 +641,7 @@ describe("hydrating a route whose loader answered on the server", () => {
           path: "/slow",
           params: [],
           mdx: false,
-          file: "app/slow/_uf.page.js",
+          file: "app/slow/$page.js",
           page: () =>
             Promise.resolve({
               default: DataPage,
@@ -802,10 +802,14 @@ describe("hoisting head elements into the shell's own head", () => {
   }
 
   /** The document those chunks assemble into. */
-  async function documentOf(chunks: $ReadOnlyArray<string>): Promise<string> {
+  async function documentOf(
+    chunks: $ReadOnlyArray<string>,
+    transformHead?: (html: string) => Promise<string>,
+  ): Promise<string> {
     const body = await renderWithReadableStream(writing(chunks), <p>unused</p>, {
       shell,
       onError: () => {},
+      transformHead,
     });
     return body.text();
   }
@@ -853,6 +857,39 @@ describe("hoisting head elements into the shell's own head", () => {
     expect(html).toBe(
       "<!doctype html><html><head><title>only this</title></head><body></body></html>",
     );
+  });
+
+  it("keeps streamed body markup out of the dev head transform", async () => {
+    const seen = [];
+    const html = await documentOf(
+      ['<title>a page</title><label><input autoComplete="', 'username"/></label>'],
+      async (chunk) => {
+        seen.push(chunk);
+        return chunk.replace("</head>", '<script type="module" src="/dev.js"></script></head>');
+      },
+    );
+
+    expect(seen).toEqual(["<!doctype html><html><head><title>a page</title></head><body>"]);
+    expect(html).toContain('<script type="module" src="/dev.js"></script></head>');
+    expect(html).toContain('<input autoComplete="username"/>');
+  });
+
+  it("keeps a document app's streamed body out of the dev head transform", async () => {
+    const seen = [];
+    const html = await documentOf(
+      [
+        '<html><head><title>a page</title></head><body><label><input autoComplete="',
+        'username"/></label></body></html>',
+      ],
+      async (chunk) => {
+        seen.push(chunk);
+        return chunk.replace("</head>", '<script type="module" src="/dev.js"></script></head>');
+      },
+    );
+
+    expect(seen).toEqual(["<!doctype html>\n<html><head><title>a page</title></head><body>"]);
+    expect(html).toContain('<script type="module" src="/dev.js"></script></head>');
+    expect(html).toContain('<input autoComplete="username"/>');
   });
 });
 
@@ -931,7 +968,7 @@ function tableOf(Page: React.ComponentType<empty>, layouts: $ReadOnlyArray<mixed
         path: "/",
         params: [],
         mdx: false,
-        file: "app/_uf.page.js",
+        file: "app/$page.js",
         page: () => Promise.resolve({ default: Page }),
         layouts: layouts.map((layout) => () => Promise.resolve({ default: layout })),
         loading: [],

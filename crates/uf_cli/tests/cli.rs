@@ -1247,7 +1247,7 @@ fn creates_react_app_from_cli() {
 
     assert!(app.join("app.js").exists());
     assert!(app.join("uf.config.js").exists());
-    assert!(app.join("app/_uf.page.js").exists());
+    assert!(app.join("app/$page.js").exists());
     assert!(app.join("app/Counter.js").exists());
     assert!(app.join("app/useCounter.js").exists());
 
@@ -1288,7 +1288,7 @@ fn a_single_argument_that_is_not_a_template_is_the_path() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(app.join("uf.config.js").exists(), "it scaffolded nothing");
-    assert!(app.join("app/_uf.page.js").exists());
+    assert!(app.join("app/$page.js").exists());
 }
 
 /// And a single argument that *is* a template still is one.
@@ -1832,7 +1832,7 @@ fn the_files_a_scaffolded_route_is() {
         "uf routes add:\n{stdout}{}",
         String::from_utf8_lossy(&added.stderr)
     );
-    for name in ["_uf.page.js", "_uf.layout.js", "_uf.middleware.js"] {
+    for name in ["$page.js", "$layout.js", "$middleware.js"] {
         assert!(
             app.join("app/articles/[slug]").join(name).is_file(),
             "{name} was reported but not written:\n{stdout}"

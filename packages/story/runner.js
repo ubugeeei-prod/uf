@@ -8,7 +8,7 @@
 //
 //   import { describe, it } from "@uniflowed/test";
 //   import { describeStories, storyTest } from "@uniflowed/story/runner";
-//   import { stories } from "./_uf.story.js";
+//   import { stories } from "./$story.js";
 //
 //   it("renders every Button story", storyTest(findStory(stories, "Primary")));
 //   describe("Button", () => {

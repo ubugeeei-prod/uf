@@ -1,9 +1,9 @@
-//! The names `uf` reserves inside the router root: the `_uf.*` files, and the
+//! The names `uf` reserves inside the router root: the `$*` files, and the
 //! directory spellings that are not ordinary URL segments.
 //!
-//! `uf` reserves the `_uf.` prefix inside the router root so a project cannot
+//! `uf` reserves the `$` prefix inside the router root so a project cannot
 //! accidentally shadow a framework file. A reserved name is
-//! `_uf.<role>[.<variant>].js`, where the role is what the file does and the
+//! `$<role>[.<variant>].js`, where the role is what the file does and the
 //! variant narrows which build it applies to.
 //!
 //! This is the single source of truth for that grammar. `uf create` generates
@@ -21,7 +21,7 @@
 //! It drifted again anyway, in the direction this module could not see.
 //! `packages/vite/internal/routes.js` is the router the build actually runs,
 //! it keeps its own `RESERVED` table, and its comment says the two "cannot be
-//! allowed to disagree" — while `_uf.not-found` was in that table and not in
+//! allowed to disagree" — while `$not-found` was in that table and not in
 //! this enum, so `uf lint` rejected the file name uf's own documentation site
 //! uses for its 404 page. `every_name_the_build_router_reserves_is_a_role`
 //! reads that table now, which is the part that was missing: a rule that both
@@ -110,7 +110,7 @@ pub enum ReservedRole {
     /// Only inside a slot. Next.js also reads a `default.js` beside an
     /// ordinary page, for the `children` slot on a hard navigation; uf's
     /// `children` is the page the URL matched and there is no case where it is
-    /// missing, so a `_uf.default.js` outside a slot would be a file the
+    /// missing, so a `$default.js` outside a slot would be a file the
     /// router never reaches. `discover_routes` refuses it rather than leaving
     /// it there to be wondered about.
     Default,
@@ -139,7 +139,7 @@ pub enum ReservedRole {
     Error,
     /// Renders while the subtree under it has not resolved.
     ///
-    /// A segment's `_uf.loading.js` is the fallback of a `<Suspense>` around
+    /// A segment's `$loading.js` is the fallback of a `<Suspense>` around
     /// that segment's page and everything below it, which is what lets the
     /// renderer send the layouts around it before the page's data is in hand.
     ///
@@ -304,7 +304,7 @@ impl FromStr for ReservedVariant {
     }
 }
 
-/// A recognized `_uf.*` file.
+/// A recognized `$*` file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReservedFile {
     /// What the file does.
@@ -318,8 +318,8 @@ impl ReservedFile {
     #[must_use]
     pub fn file_name(self) -> String {
         match self.variant.as_str() {
-            Some(variant) => format!("_uf.{}.{variant}.js", self.role.as_str()),
-            None => format!("_uf.{}.js", self.role.as_str()),
+            Some(variant) => format!("${}.{variant}.js", self.role.as_str()),
+            None => format!("${}.js", self.role.as_str()),
         }
     }
 }
@@ -327,7 +327,7 @@ impl ReservedFile {
 /// How a file name relates to the reserved grammar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReservedName {
-    /// The name does not use the `_uf.` prefix, so the project owns it.
+    /// The name does not use the `$` prefix, so the project owns it.
     NotReserved,
     /// A name `uf` defines.
     Recognized(ReservedFile),
@@ -391,14 +391,14 @@ impl ReservedRole {
 /// different answer than the router did.
 ///
 /// Every extension the build's own router accepts is a spelling of the same
-/// name — `.js`, `.jsx` and `.mdx` — so `_uf.page.mdx` is a page and not a
+/// name — `.js`, `.jsx` and `.mdx` — so `$page.mdx` is a page and not a
 /// misspelling of one. Reading only `.js` here made `router/reserved-files`
 /// report every `.mdx` page in a documentation site as a name uf does not
 /// define, which is the same drift as ubugeeei-prod/uf#437 in the rule that
 /// exists to catch drift.
 #[must_use]
 pub fn classify_reserved_file(file_name: &str) -> ReservedName {
-    let Some(rest) = file_name.strip_prefix("_uf.") else {
+    let Some(rest) = file_name.strip_prefix("$") else {
         return ReservedName::NotReserved;
     };
     let Some((rest, extension)) = crate::PAGE_EXTENSIONS.iter().find_map(|extension| {
@@ -413,7 +413,7 @@ pub fn classify_reserved_file(file_name: &str) -> ReservedName {
         return ReservedName::Unknown;
     };
     // Which extensions a role may be written in is the role's own fact.
-    // `_uf.layout.mdx` reads as a layout and is not one — a layout is a
+    // `$layout.mdx` reads as a layout and is not one — a layout is a
     // component and Markdown cannot be one — so the build's router would never
     // find it and `router/reserved-files` would never say why. Naming it
     // unknown is what makes that file's silence audible.
@@ -428,7 +428,7 @@ pub fn classify_reserved_file(file_name: &str) -> ReservedName {
         },
     };
     if segments.next().is_some() {
-        // `_uf.page.native.test.js` and friends: one variant, not a stack of them.
+        // `$page.native.test.js` and friends: one variant, not a stack of them.
         return ReservedName::Unknown;
     }
 
@@ -461,7 +461,7 @@ pub enum RouteSegment<'a> {
     /// `team` prop beside `children`, and the two are matched against the same
     /// URL independently. So the directory contributes no URL segment, exactly
     /// as a [`Group`](RouteSegment::Group) does — `app/dashboard/@team/
-    /// members/_uf.page.js` is what `/dashboard/members` puts in the `team`
+    /// members/$page.js` is what `/dashboard/members` puts in the `team`
     /// slot, and it is not a second page at that path.
     ///
     /// A URL is free to address one slot and not another, which is what
@@ -619,9 +619,9 @@ mod tests {
         // The grammar is the toolchain's, not the router's: `@uniflowed/story`
         // names its files by it, and `uf lint` has to recognise them or a
         // package cannot use the convention the repository asked it to use.
-        assert_eq!(recognized("_uf.story.js").role, ReservedRole::Story);
+        assert_eq!(recognized("$story.js").role, ReservedRole::Story);
         assert_eq!(
-            recognized("_uf.story.native.js").variant,
+            recognized("$story.native.js").variant,
             ReservedVariant::Native
         );
         assert!(
@@ -636,9 +636,9 @@ mod tests {
         // `packages/vite/internal/routes.js` has reserved this name since the
         // router was written; this enum did not, so `uf lint` told the site to
         // rename a file the router resolves. See `tests/reserved_names.rs`.
-        assert_eq!(recognized("_uf.not-found.js").role, ReservedRole::NotFound);
+        assert_eq!(recognized("$not-found.js").role, ReservedRole::NotFound);
         assert_eq!(
-            recognized("_uf.not-found.web.js").variant,
+            recognized("$not-found.web.js").variant,
             ReservedVariant::Web
         );
         assert!(
@@ -650,22 +650,18 @@ mod tests {
     #[test]
     fn an_error_file_is_reserved_and_is_not_part_of_a_route() {
         // One role for 401, 403 and 500, not three files per segment; see
-        // `ReservedRole::Error`. `_uf.forbidden.js` and `_uf.unauthorized.js`
+        // `ReservedRole::Error`. `$forbidden.js` and `$unauthorized.js`
         // are therefore names uf does not define, and the linter says so.
-        assert_eq!(recognized("_uf.error.js").role, ReservedRole::Error);
+        assert_eq!(recognized("$error.js").role, ReservedRole::Error);
         assert_eq!(
-            recognized("_uf.error.native.js").variant,
+            recognized("$error.native.js").variant,
             ReservedVariant::Native
         );
         assert!(
             !ReservedRole::route_parts().contains(&ReservedRole::Error),
             "an error boundary renders instead of a route, not as part of one"
         );
-        for name in [
-            "_uf.forbidden.js",
-            "_uf.unauthorized.js",
-            "_uf.global-error.js",
-        ] {
+        for name in ["$forbidden.js", "$unauthorized.js", "$global-error.js"] {
             assert!(
                 classify_reserved_file(name).is_unknown(),
                 "{name} should be unknown"
@@ -676,18 +672,15 @@ mod tests {
     #[test]
     fn a_loading_file_is_reserved_and_is_not_part_of_a_route() {
         // The fallback of the `<Suspense>` the router puts around a segment.
-        // `_uf.loader.js` is not this file and never was — a loader is an
+        // `$loader.js` is not this file and never was — a loader is an
         // export of a page module — so the near-miss stays unknown.
-        assert_eq!(recognized("_uf.loading.js").role, ReservedRole::Loading);
-        assert_eq!(
-            recognized("_uf.loading.web.js").variant,
-            ReservedVariant::Web
-        );
+        assert_eq!(recognized("$loading.js").role, ReservedRole::Loading);
+        assert_eq!(recognized("$loading.web.js").variant, ReservedVariant::Web);
         assert!(
             !ReservedRole::route_parts().contains(&ReservedRole::Loading),
             "a fallback renders while the route is not there, so no route is built from one"
         );
-        assert!(classify_reserved_file("_uf.loader.js").is_unknown());
+        assert!(classify_reserved_file("$loader.js").is_unknown());
     }
 
     #[test]
@@ -713,9 +706,9 @@ mod tests {
         // The third of the three features ubugeeei-prod/uf#267 asked for, and
         // the cheapest: a reserved role, a table that nests the way layouts
         // already do, and a `key` on the element in `RouteView`.
-        assert_eq!(recognized("_uf.template.js").role, ReservedRole::Template);
+        assert_eq!(recognized("$template.js").role, ReservedRole::Template);
         assert_eq!(
-            recognized("_uf.template.native.js").variant,
+            recognized("$template.native.js").variant,
             ReservedVariant::Native
         );
         assert!(
@@ -727,21 +720,21 @@ mod tests {
     #[test]
     fn the_three_router_roles_are_recognized() {
         assert_eq!(
-            recognized("_uf.layout.js"),
+            recognized("$layout.js"),
             ReservedFile {
                 role: ReservedRole::Layout,
                 variant: ReservedVariant::Default
             }
         );
         assert_eq!(
-            recognized("_uf.page.js"),
+            recognized("$page.js"),
             ReservedFile {
                 role: ReservedRole::Page,
                 variant: ReservedVariant::Default
             }
         );
         assert_eq!(
-            recognized("_uf.middleware.js"),
+            recognized("$middleware.js"),
             ReservedFile {
                 role: ReservedRole::Middleware,
                 variant: ReservedVariant::Default
@@ -752,10 +745,10 @@ mod tests {
     #[test]
     fn platform_variants_are_recognized() {
         for (name, variant) in [
-            ("_uf.page.native.js", ReservedVariant::Native),
-            ("_uf.page.ios.js", ReservedVariant::Ios),
-            ("_uf.page.android.js", ReservedVariant::Android),
-            ("_uf.page.web.js", ReservedVariant::Web),
+            ("$page.native.js", ReservedVariant::Native),
+            ("$page.ios.js", ReservedVariant::Ios),
+            ("$page.android.js", ReservedVariant::Android),
+            ("$page.web.js", ReservedVariant::Web),
         ] {
             assert_eq!(recognized(name).variant, variant, "{name}");
             assert_eq!(recognized(name).role, ReservedRole::Page, "{name}");
@@ -764,14 +757,8 @@ mod tests {
 
     #[test]
     fn colocated_tests_are_recognized() {
-        assert_eq!(
-            recognized("_uf.page.test.js").variant,
-            ReservedVariant::Test
-        );
-        assert_eq!(
-            recognized("_uf.layout.test.js").variant,
-            ReservedVariant::Test
-        );
+        assert_eq!(recognized("$page.test.js").variant, ReservedVariant::Test);
+        assert_eq!(recognized("$layout.test.js").variant, ReservedVariant::Test);
     }
 
     #[test]
@@ -797,13 +784,7 @@ mod tests {
 
     #[test]
     fn an_unknown_role_is_rejected() {
-        for name in [
-            "_uf.handler.js",
-            "_uf.loader.js",
-            "_uf.js",
-            "_uf.page",
-            "_uf.PAGE.js",
-        ] {
+        for name in ["$handler.js", "$loader.js", "$js", "$page", "$PAGE.js"] {
             assert!(
                 classify_reserved_file(name).is_unknown(),
                 "{name} should be unknown"
@@ -813,11 +794,7 @@ mod tests {
 
     #[test]
     fn an_unknown_variant_is_rejected() {
-        for name in [
-            "_uf.page.server.js",
-            "_uf.page.windows.js",
-            "_uf.page.NATIVE.js",
-        ] {
+        for name in ["$page.server.js", "$page.windows.js", "$page.NATIVE.js"] {
             assert!(
                 classify_reserved_file(name).is_unknown(),
                 "{name} should be unknown"
@@ -827,13 +804,13 @@ mod tests {
 
     #[test]
     fn variants_do_not_stack() {
-        assert!(classify_reserved_file("_uf.page.native.test.js").is_unknown());
-        assert!(classify_reserved_file("_uf.page.ios.android.js").is_unknown());
+        assert!(classify_reserved_file("$page.native.test.js").is_unknown());
+        assert!(classify_reserved_file("$page.ios.android.js").is_unknown());
     }
 
     #[test]
     fn a_reserved_prefix_in_an_extension_nothing_runs_is_rejected() {
-        for name in ["_uf.page.ts", "_uf.page.js.flow", "_uf.page", "_uf.pagejs"] {
+        for name in ["$page.ts", "$page.js.flow", "$page", "$pagejs"] {
             assert!(
                 classify_reserved_file(name).is_unknown(),
                 "{name} should be unknown"
@@ -846,7 +823,7 @@ mod tests {
     /// define.
     #[test]
     fn a_page_is_reserved_in_every_extension_the_build_runs() {
-        for name in ["_uf.page.js", "_uf.page.jsx", "_uf.page.mdx"] {
+        for name in ["$page.js", "$page.jsx", "$page.mdx"] {
             assert!(
                 !classify_reserved_file(name).is_unknown(),
                 "{name} should be a page"
@@ -854,25 +831,25 @@ mod tests {
         }
     }
 
-    /// And a role that cannot be Markdown is not, because a `_uf.layout.mdx`
+    /// And a role that cannot be Markdown is not, because a `$layout.mdx`
     /// the build would never load should be reported rather than accepted into
     /// a silence.
     #[test]
     fn only_a_page_may_be_markdown() {
-        for name in ["_uf.layout.mdx", "_uf.middleware.mdx", "_uf.route.mdx"] {
+        for name in ["$layout.mdx", "$middleware.mdx", "$route.mdx"] {
             assert!(
                 classify_reserved_file(name).is_unknown(),
                 "{name} is not something the build can load"
             );
         }
-        for name in ["_uf.layout.jsx", "_uf.middleware.jsx", "_uf.route.jsx"] {
+        for name in ["$layout.jsx", "$middleware.jsx", "$route.jsx"] {
             assert!(
                 !classify_reserved_file(name).is_unknown(),
                 "{name} is a module the build loads"
             );
         }
         // A `not-found` is a page, so it may be.
-        assert!(!classify_reserved_file("_uf.not-found.mdx").is_unknown());
+        assert!(!classify_reserved_file("$not-found.mdx").is_unknown());
     }
 
     #[test]
@@ -917,12 +894,12 @@ mod tests {
         // What a slot renders when the URL addresses the other one. A page in
         // every way but the path that leads to it, which is why it takes the
         // page extensions and is not one of `route_parts`.
-        assert_eq!(recognized("_uf.default.js").role, ReservedRole::Default);
+        assert_eq!(recognized("$default.js").role, ReservedRole::Default);
         assert_eq!(
-            recognized("_uf.default.native.js").variant,
+            recognized("$default.native.js").variant,
             ReservedVariant::Native
         );
-        assert!(!classify_reserved_file("_uf.default.mdx").is_unknown());
+        assert!(!classify_reserved_file("$default.mdx").is_unknown());
         assert!(
             !ReservedRole::route_parts().contains(&ReservedRole::Default),
             "a default stands in for a slot's page rather than composing a route"
@@ -1011,7 +988,7 @@ mod tests {
 
     #[test]
     fn classification_does_not_panic_on_odd_input() {
-        for name in ["", "_uf.", "_uf..js", "_uf....js", "_uf.\u{1f600}.js"] {
+        for name in ["", "$", "$.js", "$...js", "$\u{1f600}.js"] {
             let _ = classify_reserved_file(name);
         }
     }

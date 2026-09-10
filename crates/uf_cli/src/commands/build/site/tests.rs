@@ -27,7 +27,7 @@ fn guarded(url: &str) -> UnguardedPage {
     UnguardedPage {
         url: url.to_owned(),
         file: format!("dist{url}/index.html"),
-        middleware: vec![String::from("app/_uf.middleware.js")],
+        middleware: vec![String::from("app/$middleware.js")],
     }
 }
 
@@ -100,7 +100,7 @@ fn the_error_document_is_not_a_page() {
 #[test]
 fn a_guarded_route_is_not_advertised() {
     // The route is prerendered — the file is in `dist/` and a static host will
-    // serve it — but a `_uf.middleware.js` says it is not for everyone, and a
+    // serve it — but a `$middleware.js` says it is not for everyone, and a
     // sitemap is a submission to search engines.
     let pages = [page("/", 200), page("/dashboard", 200)];
 

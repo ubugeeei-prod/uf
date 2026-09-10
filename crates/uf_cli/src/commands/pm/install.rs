@@ -38,9 +38,10 @@ use uf_bundle::ByteSize;
 use uf_config::load_config;
 use uf_pm::delta::{ChangeKind, LockfileDelta};
 use uf_pm::{
-    DetectionSource, InstallObserver, InstallWatch, LockfileSnapshot, ManagerStream, Operation,
-    PackageManagerPlan, PhaseProgress, PhaseState, detect_package_manager, install_workspace,
-    installable, run_watched,
+    Detection, DetectionOptions, DetectionSource, InstallObserver, InstallWatch, LockfileSnapshot,
+    ManagerStream, Operation, PackageManager, PackageManagerPlan, PhaseProgress, PhaseState,
+    check_workspace_manifests, detect_package_manager_with, install_workspace, installable,
+    run_watched_with_detection,
 };
 use uf_term::{
     Align, Capabilities, Cell, Column, GlyphSet, KeyValue, Live, Phase, PhaseTimer, Renderer,
@@ -177,19 +178,33 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     // the way it was when uf planned the install itself. `--ignore-scripts`
     // inside `run_watched` covers the dependencies; this covers the project.
     //
-    // `uf.lock` is a pure function of those manifests, so writing it here is
-    // deterministic — but a frozen install promises to change nothing, and a
-    // `uf.lock` that comes out different is the workspace having drifted from
-    // it. `guard_uf_lock` puts the old one back and says so.
-    let guard = UfLockGuard::read(&resolved.root, &resolved.config, frozen);
-    let workspace = install_workspace(&resolved.root, &resolved.config)?;
-    guard.check()?;
-    let plan_file = write_plan(&resolved, &plan, &workspace)?;
-
     // Which manager is about to run has to be settled here rather than left to
     // the runner, because the lockfile it is about to rewrite must be read
     // first: a "before" state read afterwards is the "after" state.
-    let (manager, _) = installable(&detect_package_manager(&resolved.root));
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
+    let (manager, _) = installable(&detection);
+    let tracks_uf_lock = tracks_uf_lock(&detection);
+    let guard = UfLockGuard::read(&resolved.root, &resolved.config, frozen && tracks_uf_lock);
+    let workspace = if tracks_uf_lock {
+        Some(install_workspace(&resolved.root, &resolved.config)?)
+    } else {
+        None
+    };
+    let workspace_packages = match &workspace {
+        Some(workspace) => workspace.packages.len(),
+        None => check_workspace_manifests(&resolved.root, &resolved.config)?.len(),
+    };
+    guard.check()?;
+    let plan_file = write_plan(
+        &resolved,
+        &plan,
+        manager,
+        workspace.as_ref(),
+        workspace_packages,
+    )?;
     let before = uf_pm::delta::snapshot(&resolved.root, manager);
 
     // Dependency confusion, checked before the manager is allowed to install
@@ -222,8 +237,9 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     let manager_label = manager.to_string();
     let (outcome, echoed) = {
         let mut screen = Screen::new(ui, &project, &manager_label);
-        let run = run_watched(
+        let run = run_watched_with_detection(
             &resolved.root,
+            &detection,
             operation,
             scripts_allowed(&resolved.root, manager, &plan)?,
             &mut screen,
@@ -277,11 +293,11 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
 ///
 /// This is what `uf upgrade` did, and all it did: read the workspace, resolve
 /// it, and write the package-resolver and runtime-manager plan to a file
-/// (ubugeeei-prod/uf#424). `uf install` already does the first two on the way
-/// to installing — `install_workspace` above is the same call — so folding the
-/// third in costs one file write and lets the name go. There is no command
-/// left that means "the first half of an install", because there was never a
-/// reason to have one.
+/// (ubugeeei-prod/uf#424). `uf install` already checks the workspace on the way
+/// to installing, and for native uf projects that is the same resolution that
+/// writes `uf.lock`; folding the third step in costs one file write and lets
+/// the name go. There is no command left that means "the first half of an
+/// install", because there was never a reason to have one.
 ///
 /// The file is a record rather than an input: nothing in uf reads it back, and
 /// a run that cannot write it is not a run that failed to install anything.
@@ -295,23 +311,43 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
 fn write_plan(
     resolved: &uf_config::ResolvedConfig,
     plan: &PackageManagerPlan,
-    workspace: &uf_pm::PackageManagerApplyReport,
+    manager: PackageManager,
+    workspace: Option<&uf_pm::PackageManagerApplyReport>,
+    workspace_packages: usize,
 ) -> Result<Utf8PathBuf> {
     let runtime = uf_rm::RuntimeManagerPlan::infer_from_config(&resolved.config);
     let state_dir = resolved.root.join(".uf");
     std::fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
     let path = state_dir.join("install.json");
+    let lockfile = workspace
+        .map(|workspace| workspace.lockfile.clone())
+        .unwrap_or_else(|| resolved.root.join(manager.lockfile().file_name()));
+    let mut package_manager = serde_json::Map::new();
+    package_manager.insert("manager".to_owned(), serde_json::json!(manager));
+    package_manager.insert(
+        "resolver".to_owned(),
+        match workspace {
+            Some(_) => serde_json::json!(plan.resolver),
+            None => serde_json::json!("delegated"),
+        },
+    );
+    package_manager.insert("lockfile".to_owned(), serde_json::json!(lockfile.as_str()));
+    package_manager.insert("packages".to_owned(), serde_json::json!(workspace_packages));
+    if let Some(workspace) = workspace {
+        package_manager.insert(
+            "storeManifest".to_owned(),
+            serde_json::json!(workspace.store_manifest.as_str()),
+        );
+        package_manager.insert(
+            "storeEntries".to_owned(),
+            serde_json::json!(workspace.store_entries.len()),
+        );
+    }
     crate::support::write_json_file(
         &path,
         &serde_json::json!({
             "version": 1,
-            "packageManager": {
-                "resolver": plan.resolver,
-                "lockfile": workspace.lockfile.as_str(),
-                "storeManifest": workspace.store_manifest.as_str(),
-                "packages": workspace.packages.len(),
-                "storeEntries": workspace.store_entries.len(),
-            },
+            "packageManager": package_manager,
             "runtimeManager": {
                 "engine": runtime.engine,
                 "acquisition": runtime.acquisition,
@@ -320,6 +356,18 @@ fn write_plan(
         }),
     )?;
     Ok(path)
+}
+
+/// Whether this run owns `uf.lock`.
+///
+/// Auto-detection must be friendly to existing package managers: a project with
+/// `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` or Bun's lockfile keeps
+/// that manager, and a project with no evidence falls back to npm without
+/// growing a native lockfile. A native lock is written only when the project
+/// explicitly asks for uf, or when `uf.lock` is the only on-disk evidence.
+pub(super) fn tracks_uf_lock(detection: &Detection) -> bool {
+    detection.package_manager == PackageManager::Uf
+        && !matches!(detection.source, DetectionSource::Default)
 }
 
 /// `uf.lock` as it stood before `install_workspace` rewrote it.

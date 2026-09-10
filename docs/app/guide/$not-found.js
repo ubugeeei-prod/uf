@@ -4,9 +4,9 @@
 //
 // A page under `/guide` that does not exist is still a question about the
 // manual, so the answer belongs inside the manual: this renders in
-// `app/guide/_uf.layout.js`, with the sidebar and the prose column, and the
+// `app/guide/$layout.js`, with the sidebar and the prose column, and the
 // reader keeps the table of contents they were navigating. The site's root
-// `_uf.not-found.js` answers everything else, and `/reference` has none of its
+// `$not-found.js` answers everything else, and `/reference` has none of its
 // own — so it falls back to the root one, which is the rule working rather
 // than a gap.
 //

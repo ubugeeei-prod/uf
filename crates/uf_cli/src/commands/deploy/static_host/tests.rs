@@ -14,7 +14,7 @@ fn page(path: &str, params: &[&str]) -> Route {
     let directory = root().join(format!("app{path}"));
     Route {
         path: CompactString::from(path),
-        page: directory.join("_uf.page.js"),
+        page: directory.join("$page.js"),
         directory,
         params: params
             .iter()
@@ -55,7 +55,7 @@ fn a_site_that_is_only_documents_is_servable() {
 fn a_route_handler_is_named_with_its_file() {
     let modules = [ServerModule {
         path: CompactString::from("/api/health"),
-        file: root().join("app/api/health/_uf.route.js"),
+        file: root().join("app/api/health/$route.js"),
         kind: ServerModuleKind::RouteHandler,
     }];
 
@@ -63,7 +63,7 @@ fn a_route_handler_is_named_with_its_file() {
 
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].subject, "/api/health");
-    assert_eq!(found[0].file, "app/api/health/_uf.route.js");
+    assert_eq!(found[0].file, "app/api/health/$route.js");
     assert_eq!(found[0].reason, Reason::RouteHandler);
 }
 
@@ -103,7 +103,7 @@ fn a_parameterised_route_the_prerender_reached_is_servable() {
 fn a_middleware_over_an_empty_subtree_is_still_a_refusal() {
     let modules = [ServerModule {
         path: CompactString::from("/dashboard"),
-        file: root().join("app/dashboard/_uf.middleware.js"),
+        file: root().join("app/dashboard/$middleware.js"),
         kind: ServerModuleKind::Middleware,
     }];
 
@@ -136,7 +136,7 @@ fn a_server_action_is_named_by_its_export() {
 fn the_refusal_names_every_finding_and_an_alternative() {
     let modules = [ServerModule {
         path: CompactString::from("/api/health"),
-        file: root().join("app/api/health/_uf.route.js"),
+        file: root().join("app/api/health/$route.js"),
         kind: ServerModuleKind::RouteHandler,
     }];
     let routes = [page("/", &[]), page("/posts/:slug", &["slug"])];
@@ -151,7 +151,7 @@ fn the_refusal_names_every_finding_and_an_alternative() {
 
     assert!(message.contains("/api/health"), "{message}");
     assert!(
-        message.contains("app/api/health/_uf.route.js"),
+        message.contains("app/api/health/$route.js"),
         "the file, not just the URL: {message}"
     );
     assert!(message.contains("/posts/:slug"), "{message}");

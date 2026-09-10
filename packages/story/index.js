@@ -17,7 +17,7 @@
 // they are declared as data, the same declaration serves the assertion and
 // the picture.
 //
-//   // src/components/_uf.story.js
+//   // src/components/$story.js
 //   export const stories = defineStories({
 //     title: "Button",
 //     component: Button,
@@ -63,7 +63,7 @@
 // - `story.js` — **declaring**: `defineStories`, what a story inherits from
 //   its set, and where the `Props` type parameter is checked and why it is
 //   then erased. Pure data; declaring a story runs nothing.
-// - `collect.js` — **finding**: `_uf.story.js`, the repository's own reserved
+// - `collect.js` — **finding**: `$story.js`, the repository's own reserved
 //   name grammar, the walk, and what makes a story file valid.
 // - `render.js` — **rendering one**: the mock lifetime, the decorators, the
 //   mount, and the markup. Everything here is about *time*.
@@ -84,7 +84,7 @@
 // props on the set and a partial override per story, with per-story and
 // per-set decorators, mocks and play functions; names defaulting to the
 // declaration key; stable `title--name` ids. Collecting them: the
-// `_uf.story.js` reserved name with the router's variant vocabulary, a
+// `$story.js` reserved name with the router's variant vocabulary, a
 // bounded walk that skips `node_modules` and symlinks, loading every story
 // set a file exports, and rejecting two stories that share an id. Rendering
 // one into `@uniflowed/react-testing`'s DOM, with the story's handlers
@@ -94,12 +94,12 @@
 // path and the original error. `renderStoryToHtml` for something that is not
 // a test. One `it` per story through `@uniflowed/story/runner`.
 //
-// **Experimental.** The `_uf.story.js` name itself. It follows uf's reserved
-// grammar — `_uf.<role>[.<variant>].js` — but `story` is not yet one of the
+// **Experimental.** The `$story.js` name itself. It follows uf's reserved
+// grammar — `$<role>[.<variant>].js` — but `story` is not yet one of the
 // roles `crates/uf_router/src/reserved.rs` defines, and that file is the
 // grammar's single source of truth for `uf create`, the router and the
 // linter. Until a `story` role is added there, **`uf lint` reports
-// `router/reserved-files` on every `_uf.story.js`**: the name is right and
+// `router/reserved-files` on every `$story.js`**: the name is right and
 // the linter has not been told. The alternative was to invent a second
 // convention (`*.stories.js`) that no uf tool knows about, which is worse.
 //
@@ -128,7 +128,7 @@
 // remote catalogues, and no story-level snapshot testing —
 // `@uniflowed/test`'s snapshots work on the string `renderStoryToHtml`
 // returns. Only the default variant of the reserved name is rendered:
-// `_uf.story.native.js` is recognised and skipped, because a React Native
+// `$story.native.js` is recognised and skipped, because a React Native
 // renderer does not exist here either. Nothing renders a story through RSC or
 // server rendering; a story mounts on the client, which is what
 // `@uniflowed/react-testing` provides.

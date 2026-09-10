@@ -2,7 +2,8 @@
 //! Native package manager for `uf install`, `uf add`, `uf remove`, `uf update`,
 //! `uf why`, and `@uniflowed/pm`.
 //!
-//! The crate has two halves. [`install_workspace`] and [`PackageManagerPlan`]
+//! The crate has two halves. [`check_workspace_manifests`],
+//! [`install_workspace`] and [`PackageManagerPlan`]
 //! describe uf's own resolver: `uf.lock` plus the content-addressed `.uf/store`.
 //! [`detect_package_manager`] and [`command_for`] let uf *interoperate* with a
 //! repository that already uses npm, pnpm, yarn, or bun, driving that manager
@@ -60,7 +61,8 @@ pub use crate::ranges::{Level, Prefix, Range};
 pub use crate::registry::{MAX_PACKUMENT_BYTES, Packument, RegistryError, RegistryRouting, Route};
 pub use crate::run::{
     InstallObserver, ManagerRun, ManagerRunError, ManagerStream, check_operands, installable,
-    invocation_for, run_install, run_install_watched, run_operation, run_watched,
+    invocation_for, run_install, run_install_watched, run_operation, run_operation_with_detection,
+    run_watched, run_watched_with_detection,
 };
 
 /// JSON object keys that must never be treated as data.
@@ -242,11 +244,17 @@ impl PackageManagerPlan {
     }
 }
 
-/// Install the workspace deterministically without running npm lifecycle scripts.
-pub fn install_workspace(
+/// Check the package manifests uf owns without writing uf's lockfile.
+///
+/// This is the validation half of [`install_workspace`]. Delegated projects
+/// still get uf's safety checks, but a repository that already carries
+/// `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` or Bun's lockfile must
+/// not be forced to grow `uf.lock` just because `uf install` orchestrated the
+/// run.
+pub fn check_workspace_manifests(
     root: &Utf8Path,
     config: &UniflowedConfig,
-) -> Result<PackageManagerApplyReport, PackageManagerError> {
+) -> Result<Vec<LockedPackage>, PackageManagerError> {
     let plan = PackageManagerPlan::infer_from_config(config);
     let manifests = discover_package_manifests(root)?;
     let mut packages = Vec::with_capacity(manifests.len());
@@ -271,6 +279,16 @@ pub fn install_workspace(
     }
 
     packages.sort_by(|a, b| a.path.cmp(&b.path).then(a.name.cmp(&b.name)));
+    Ok(packages)
+}
+
+/// Install the workspace deterministically without running npm lifecycle scripts.
+pub fn install_workspace(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+) -> Result<PackageManagerApplyReport, PackageManagerError> {
+    let plan = PackageManagerPlan::infer_from_config(config);
+    let packages = check_workspace_manifests(root, config)?;
 
     let store_dir = root.join(plan.store.directory.as_str());
     fs::create_dir_all(&store_dir).map_err(|source| PackageManagerError::Write {

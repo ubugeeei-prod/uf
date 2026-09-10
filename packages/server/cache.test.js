@@ -714,7 +714,7 @@ describe("the route cache", () => {
           {
             path: "/api/preview",
             params: [],
-            file: "app/api/preview/_uf.route.js",
+            file: "app/api/preview/$route.js",
             load: async () => ({
               GET: () => {
                 draftMode().enable();

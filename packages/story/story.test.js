@@ -7,7 +7,7 @@
 // asserted on, the setup it declares actually reaches it, and a play function
 // fails when the component is broken.
 //
-// The collection tests write real `_uf.story.js` files into a temporary
+// The collection tests write real `$story.js` files into a temporary
 // directory and import them. A fixture built by calling `defineStories`
 // in-process would prove the walk finds a path and nothing about whether the
 // file at the end of it loads — which is the half that breaks.
@@ -319,24 +319,24 @@ describe("findStory", () => {
 
 describe("the reserved story file name", () => {
   it("accepts the name and the router's variants", () => {
-    expect(STORY_FILE).toBe("_uf.story.js");
+    expect(STORY_FILE).toBe("$story.js");
     expect(classifyStoryFile(STORY_FILE)).toBe("default");
-    expect(classifyStoryFile("_uf.story.native.js")).toBe("native");
-    expect(classifyStoryFile("_uf.story.ios.js")).toBe("ios");
-    expect(classifyStoryFile("_uf.story.android.js")).toBe("android");
-    expect(classifyStoryFile("_uf.story.web.js")).toBe("web");
-    expect(classifyStoryFile("_uf.story.test.js")).toBe("test");
+    expect(classifyStoryFile("$story.native.js")).toBe("native");
+    expect(classifyStoryFile("$story.ios.js")).toBe("ios");
+    expect(classifyStoryFile("$story.android.js")).toBe("android");
+    expect(classifyStoryFile("$story.web.js")).toBe("web");
+    expect(classifyStoryFile("$story.test.js")).toBe("test");
   });
 
   it("rejects names uf does not define", () => {
     for (const name of [
-      "_uf.stories.js",
-      "_uf.story.server.js",
-      "_uf.story.native.test.js",
-      "_uf.story.jsx",
-      "_uf.story",
-      "_uf.STORY.js",
-      "_uf.page.js",
+      "$stories.js",
+      "$story.server.js",
+      "$story.native.test.js",
+      "$story.jsx",
+      "$story",
+      "$STORY.js",
+      "$page.js",
     ]) {
       expect(classifyStoryFile(name)).toBe(null);
     }
@@ -349,33 +349,33 @@ describe("the reserved story file name", () => {
   });
 
   it("treats only the default variant as the file a renderer mounts", () => {
-    expect(isStoryEntry("_uf.story.js")).toBe(true);
-    expect(isStoryEntry("_uf.story.native.js")).toBe(false);
+    expect(isStoryEntry("$story.js")).toBe(true);
+    expect(isStoryEntry("$story.native.js")).toBe(false);
   });
 });
 
 describe("findStoryFiles", () => {
   it("walks a tree and returns story files in a stable order", async () => {
     await withProject(async (root) => {
-      write(root, "src/z/_uf.story.js", storyFile("Z", ["Only"]));
-      write(root, "src/a/_uf.story.js", storyFile("A", ["Only"]));
+      write(root, "src/z/$story.js", storyFile("Z", ["Only"]));
+      write(root, "src/a/$story.js", storyFile("A", ["Only"]));
       write(root, "src/a/Component.js", "// @flow\n");
 
       const found = await findStoryFiles(root);
 
       expect(found.map((file) => path.relative(root, file))).toEqual([
-        path.join("src", "a", "_uf.story.js"),
-        path.join("src", "z", "_uf.story.js"),
+        path.join("src", "a", "$story.js"),
+        path.join("src", "z", "$story.js"),
       ]);
     });
   });
 
   it("leaves ignored directories, the variants and symlinks alone", async () => {
     await withProject(async (root) => {
-      write(root, "src/_uf.story.js", storyFile("Kept", ["Only"]));
-      write(root, "src/_uf.story.native.js", storyFile("Native", ["Only"]));
-      write(root, "node_modules/other/_uf.story.js", storyFile("Vendored", ["Only"]));
-      write(root, "dist/_uf.story.js", storyFile("Built", ["Only"]));
+      write(root, "src/$story.js", storyFile("Kept", ["Only"]));
+      write(root, "src/$story.native.js", storyFile("Native", ["Only"]));
+      write(root, "node_modules/other/$story.js", storyFile("Vendored", ["Only"]));
+      write(root, "dist/$story.js", storyFile("Built", ["Only"]));
       // A link to a directory that does hold a story file, so following it
       // would report the same story twice under two paths.
       fs.symlinkSync(path.join(root, "src"), path.join(root, "linked"), "dir");
@@ -383,20 +383,20 @@ describe("findStoryFiles", () => {
       const found = await findStoryFiles(root);
 
       expect(found.map((file) => path.relative(root, file))).toEqual([
-        path.join("src", "_uf.story.js"),
+        path.join("src", "$story.js"),
       ]);
     });
   });
 
   it("stops at the depth it was given", async () => {
     await withProject(async (root) => {
-      write(root, "a/_uf.story.js", storyFile("Shallow", ["Only"]));
-      write(root, "a/b/c/_uf.story.js", storyFile("Deep", ["Only"]));
+      write(root, "a/$story.js", storyFile("Shallow", ["Only"]));
+      write(root, "a/b/c/$story.js", storyFile("Deep", ["Only"]));
 
       const found = await findStoryFiles(root, { maxDepth: 1 });
 
       expect(found.map((file) => path.relative(root, file))).toEqual([
-        path.join("a", "_uf.story.js"),
+        path.join("a", "$story.js"),
       ]);
     });
   });
@@ -407,7 +407,7 @@ describe("loadStoryFile", () => {
     await withProject(async (root) => {
       const file = write(
         root,
-        "_uf.story.js",
+        "$story.js",
         [
           "// @flow",
           'import { defineStories } from "@uniflowed/story";',
@@ -432,7 +432,7 @@ describe("loadStoryFile", () => {
 
   it("refuses a story file that exports no set", async () => {
     await withProject(async (root) => {
-      const file = write(root, "_uf.story.js", "// @flow\nexport const nothing: number = 1;\n");
+      const file = write(root, "$story.js", "// @flow\nexport const nothing: number = 1;\n");
 
       await expect(loadStoryFile(file)).rejects.toThrow("exports no story set");
     });
@@ -442,8 +442,8 @@ describe("loadStoryFile", () => {
 describe("collectStories", () => {
   it("indexes every story a project declares", async () => {
     await withProject(async (root) => {
-      write(root, "src/badge/_uf.story.js", storyFile("Badge", ["Neutral", "Warning"]));
-      write(root, "src/card/_uf.story.js", storyFile("Card", ["Only"]));
+      write(root, "src/badge/$story.js", storyFile("Badge", ["Neutral", "Warning"]));
+      write(root, "src/card/$story.js", storyFile("Card", ["Only"]));
 
       const index = await collectStories(root);
 
@@ -461,7 +461,7 @@ describe("collectStories", () => {
 
   it("renders a story it collected without knowing where it came from", async () => {
     await withProject(async (root) => {
-      write(root, "src/_uf.story.js", storyFile("Collected", ["Only"]));
+      write(root, "src/$story.js", storyFile("Collected", ["Only"]));
 
       const index = await collectStories(root);
       const story = index.get("collected--only");
@@ -475,8 +475,8 @@ describe("collectStories", () => {
 
   it("refuses two stories that share an id", async () => {
     await withProject(async (root) => {
-      write(root, "one/_uf.story.js", storyFile("Badge", ["Only"]));
-      write(root, "two/_uf.story.js", storyFile("Badge", ["Only"]));
+      write(root, "one/$story.js", storyFile("Badge", ["Only"]));
+      write(root, "two/$story.js", storyFile("Badge", ["Only"]));
 
       const files = await findStoryFiles(root);
 

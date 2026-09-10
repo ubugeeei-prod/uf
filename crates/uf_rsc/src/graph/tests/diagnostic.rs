@@ -203,17 +203,17 @@ fn diagnostics_are_ordered_deterministically() {
 /// This is ubugeeei-prod/uf#348: `rsc/client-only-api-in-server` matches
 /// identifiers against two sorted name lists, so a Server Component calling
 /// `useState` is caught and one calling a hook *built on* `useState` is
-/// invisible. `docs/app/_uf.layout.js` is that module in this repository. The
+/// invisible. `docs/app/$layout.js` is that module in this repository. The
 /// graph cannot decide it — the answer is in another module's body — and
 /// deciding it wrongly is worse than saying so, so it says so.
 #[test]
 fn a_hook_the_name_lists_do_not_know_is_an_unanswered_question() {
     let mut builder = RscGraphBuilder::new();
     builder.add_source(
-        "app/_uf.layout.js",
+        "app/$layout.js",
         "function Masthead() { const { pathname } = useRoute(); }",
     );
-    builder.add_entry("app/_uf.layout.js", EntryKind::Server);
+    builder.add_entry("app/$layout.js", EntryKind::Server);
     let graph = builder.build();
 
     let diagnostic = graph

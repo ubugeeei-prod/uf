@@ -1,6 +1,6 @@
 // @flow
 //
-// `_uf.error.js`: what renders when a route does not.
+// `$error.js`: what renders when a route does not.
 //
 // Before this there was no error boundary anywhere in uf. A component that
 // threw took the whole response with it, `hydrateRoot` had nothing above it so
@@ -74,19 +74,19 @@ function boundaries(root: string) {
 describe("scanning for error boundaries", () => {
   it("finds one at every depth, with the layouts of its own directory", () => {
     const root = appRoot([
-      "_uf.layout.js",
-      "_uf.error.js",
-      "guide/_uf.layout.js",
-      "guide/_uf.error.js",
-      "guide/deep/_uf.page.js",
+      "$layout.js",
+      "$error.js",
+      "guide/$layout.js",
+      "guide/$error.js",
+      "guide/deep/$page.js",
     ]);
 
     expect(boundaries(root)).toEqual([
-      { path: "/", module: "_uf.error.js", layouts: ["_uf.layout.js"] },
+      { path: "/", module: "$error.js", layouts: ["$layout.js"] },
       {
         path: "/guide",
-        module: path.join("guide", "_uf.error.js"),
-        layouts: ["_uf.layout.js", path.join("guide", "_uf.layout.js")],
+        module: path.join("guide", "$error.js"),
+        layouts: ["$layout.js", path.join("guide", "$layout.js")],
       },
     ]);
   });
@@ -95,7 +95,7 @@ describe("scanning for error boundaries", () => {
     // A page may be content. A boundary is handed two arguments, which is a
     // component's contract and not a document's, so `.mdx` is not one of its
     // extensions and the file is simply not a boundary.
-    const root = appRoot(["_uf.error.mdx"]);
+    const root = appRoot(["$error.mdx"]);
 
     // The synthesised record, with no module: which is the scan saying the
     // project declared none, and is exactly the claim this test makes.
@@ -103,9 +103,9 @@ describe("scanning for error boundaries", () => {
   });
 
   it("synthesises one at the router root for a project that declares none", () => {
-    const root = appRoot(["_uf.layout.js", "_uf.page.js"]);
+    const root = appRoot(["$layout.js", "$page.js"]);
 
-    expect(boundaries(root)).toEqual([{ path: "/", module: null, layouts: ["_uf.layout.js"] }]);
+    expect(boundaries(root)).toEqual([{ path: "/", module: null, layouts: ["$layout.js"] }]);
   });
 });
 
@@ -126,14 +126,14 @@ component GuideError(error, reset) {
 
 const rootBoundary = {
   path: "/",
-  file: "app/_uf.error.js",
+  file: "app/$error.js",
   module: () => Promise.resolve({ default: SiteError, metadata: { title: "site broke" } }),
   layouts: [loadRootLayout],
 };
 
 const guideBoundary = {
   path: "/guide",
-  file: "app/guide/_uf.error.js",
+  file: "app/guide/$error.js",
   module: () => Promise.resolve({ default: GuideError, metadata: { title: "guide broke" } }),
   layouts: [loadRootLayout, loadGuideLayout],
 };
@@ -143,7 +143,7 @@ const throwingRoute = (thrower: () => mixed) => ({
   path: "/guide/broken",
   params: [],
   mdx: false,
-  file: "app/guide/broken/_uf.page.js",
+  file: "app/guide/broken/$page.js",
   page: () => Promise.resolve({ loader: thrower }),
   layouts: [loadRootLayout, loadGuideLayout],
 });
@@ -230,7 +230,7 @@ describe("a loader that throws", () => {
         {
           path: "/",
           mdx: false,
-          file: "app/_uf.not-found.js",
+          file: "app/$not-found.js",
           page: () => Promise.resolve({ metadata: { title: "no such page" } }),
           layouts: [],
         },
@@ -247,7 +247,7 @@ describe("a loader that throws", () => {
 
 describe("forbidden() and unauthorized()", () => {
   it("are the same boundary with a different status and no exception", async () => {
-    // The reason there is one `_uf.error.js` and not three files: these differ
+    // The reason there is one `$error.js` and not three files: these differ
     // from a throw by a status and a sentence, which a union expresses and a
     // file convention repeats.
     const forbiddenRoute = await resolveMatch(
@@ -280,7 +280,7 @@ describe("the boundary a route would be caught by", () => {
       path: "/guide/ok",
       params: [],
       mdx: false,
-      file: "app/guide/ok/_uf.page.js",
+      file: "app/guide/ok/$page.js",
       page: () => Promise.resolve({ default: () => null }),
       layouts: [loadRootLayout, loadGuideLayout],
     };
@@ -290,7 +290,7 @@ describe("the boundary a route would be caught by", () => {
       "/guide/ok",
     );
 
-    // `app/guide/_uf.error.js` sits under both layouts, so both survive a
+    // `app/guide/$error.js` sits under both layouts, so both survive a
     // throw in the page and only the page is replaced.
     expect(resolved.errorBoundary.above).toBe(2);
     expect(resolved.errorBoundary.module).not.toBe(null);
@@ -301,7 +301,7 @@ describe("the boundary a route would be caught by", () => {
       path: "/guide/ok",
       params: [],
       mdx: false,
-      file: "app/guide/ok/_uf.page.js",
+      file: "app/guide/ok/$page.js",
       page: () => Promise.resolve({ default: () => null }),
       layouts: [loadRootLayout, loadGuideLayout],
     };
@@ -324,7 +324,7 @@ describe("the boundary a route would be caught by", () => {
       path: "/guide/ok",
       params: [],
       mdx: false,
-      file: "app/guide/ok/_uf.page.js",
+      file: "app/guide/ok/$page.js",
       page: () => Promise.resolve({ default: () => null }),
       layouts: [],
     };
@@ -367,7 +367,7 @@ describe("rendering on the server", () => {
           path: "/broken",
           params: [],
           mdx: false,
-          file: "app/broken/_uf.page.js",
+          file: "app/broken/$page.js",
           page: () => Promise.resolve({ default: Boom }),
           layouts: [() => Promise.resolve({ default: SiteLayout })],
         },
@@ -376,7 +376,7 @@ describe("rendering on the server", () => {
       errors: [
         {
           path: "/",
-          file: "app/_uf.error.js",
+          file: "app/$error.js",
           module: () => Promise.resolve({ default: SiteError }),
           layouts: [() => Promise.resolve({ default: SiteLayout })],
         },
@@ -404,7 +404,7 @@ describe("rendering on the server", () => {
           path: "/broken",
           params: [],
           mdx: false,
-          file: "app/broken/_uf.page.js",
+          file: "app/broken/$page.js",
           page: () => Promise.resolve({ default: Boom }),
           layouts: [],
         },
@@ -428,7 +428,7 @@ describe("rendering on the server", () => {
           path: "/",
           params: [],
           mdx: false,
-          file: "app/_uf.page.js",
+          file: "app/$page.js",
           page: () => Promise.resolve({ default: SiteError }),
           layouts: [],
         },
@@ -451,7 +451,7 @@ describe("rendering on the server", () => {
           path: "/secret",
           params: [],
           mdx: false,
-          file: "app/secret/_uf.page.js",
+          file: "app/secret/$page.js",
           page: () => Promise.resolve({ loader: () => forbidden() }),
           layouts: [],
         },
@@ -512,7 +512,7 @@ describe("rendering in the browser", () => {
             path: "/broken",
             params: [],
             mdx: false,
-            file: "app/broken/_uf.page.js",
+            file: "app/broken/$page.js",
             page: () => Promise.resolve({ default: Boom }),
             layouts: [() => Promise.resolve({ default: SiteLayout })],
           },
@@ -521,7 +521,7 @@ describe("rendering in the browser", () => {
         errors: [
           {
             path: "/",
-            file: "app/_uf.error.js",
+            file: "app/$error.js",
             module: () => Promise.resolve({ default: SiteError }),
             layouts: [() => Promise.resolve({ default: SiteLayout })],
           },
@@ -564,7 +564,7 @@ describe("rendering in the browser", () => {
             path: "/flaky",
             params: [],
             mdx: false,
-            file: "app/flaky/_uf.page.js",
+            file: "app/flaky/$page.js",
             page: () => Promise.resolve({ default: Flaky }),
             layouts: [],
           },
@@ -573,7 +573,7 @@ describe("rendering in the browser", () => {
         errors: [
           {
             path: "/",
-            file: "app/_uf.error.js",
+            file: "app/$error.js",
             module: () => Promise.resolve({ default: Retry }),
             layouts: [],
           },
