@@ -21,17 +21,15 @@
 // hydrates a real server-rendered document through `@uniflowed/router/client`
 // with the flag on and asks what a double invocation actually does to it.
 //
-// One thing that turned up while writing those cases is worth having in the
-// file rather than in a pull request nobody will find again: **React does not
-// double-invoke effects on a root that hydrated.** The render is doubled and
-// the state initialiser is doubled, but the mount/unmount/mount pass is skipped
-// for the hydration commit, because the DOM it would tear down is the server's
-// markup. So in a framework that server-renders, "Strict Mode finds the effect
-// you forgot to clean up" is true of every mount *after* the first paint —
-// every navigation, every conditional branch, every list row — and is not true
-// of the page load itself. Both are asserted below, because a reader who
-// expects the second one and does not see it will conclude the flag is not
-// working.
+// One thing that changed under React 19.3 is worth having in the file rather
+// than in a pull request nobody will find again: **React now double-invokes
+// effects even on a root that hydrated.** The render is doubled, the state
+// initialiser is doubled, and the mount/unmount/mount pass runs for the
+// hydration commit. So in a framework that server-renders, Strict Mode's effect
+// cleanup check now reaches both the first page load and every mount after it:
+// every navigation, every conditional branch, every list row. Both are asserted
+// below, because the boundary between the first hydrated mount and later client
+// mounts is where React's development semantics have shifted.
 //
 // Turning it on found two real bugs, and both are fixed rather than described.
 // `@uniflowed/web/vitals` reported TTFB from the collector Strict Mode throws
@@ -318,7 +316,7 @@ describe("the router, hydrated under Strict Mode", () => {
     expect(effectLog).toEqual(["home:setup"]);
   });
 
-  it("renders a hydrated page twice, and mounts its effects once", async () => {
+  it("renders a hydrated page twice, and probes its effects", async () => {
     // Both halves of what React actually does, because only one of them is the
     // half people expect.
     //
@@ -326,19 +324,15 @@ describe("the router, hydrated under Strict Mode", () => {
     // two, so the impure component and the state initialiser with a side effect
     // in it are caught on the first page load, which is the point.
     //
-    // The effects are not. React skips the mount/unmount/mount pass for a root
-    // that hydrated, because the DOM it would tear down and rebuild is the
-    // server's markup and rebuilding it is the thing hydration exists to avoid.
-    // So the effect check arrives on the next mount rather than on this one —
-    // which is the case below, and is worth stating here because "Strict Mode
-    // finds an effect that was never cleaned up" is the sentence everybody
-    // knows and it is not true of a page's first load in a framework that
-    // server-renders.
+    // The effects now are too. React 19.3 runs the same
+    // mount/unmount/mount probe for the hydration commit that it runs for
+    // later client mounts, so a leaky first page load is no longer outside the
+    // development check.
     await serve("/");
     await hydrateHere(true);
 
     expect(initialiserRuns).toBe(3);
-    expect(effectLog).toEqual(["home:setup"]);
+    expect(effectLog).toEqual(["home:setup", "home:cleanup", "home:setup"]);
   });
 
   it("mounts an effect twice for anything that mounts after hydration", async () => {
