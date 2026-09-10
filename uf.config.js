@@ -600,6 +600,7 @@ export default defineConfig({
     // one, so a name that has never been published is published once by a
     // person and is the workflow's from then on.
     "release:bootstrap": "tools/release/bootstrap-publish.sh",
+    "release:bootstrap:test": "tools/release/test-bootstrap-publish.sh",
     "release:manifest": "tools/release/build-manifest.sh",
     "release:package": "tools/release/package-binaries.sh",
     "release:bump": "tools/release/bump-version.sh",
@@ -893,6 +894,7 @@ export default defineConfig({
         "release:closure",
         "publishable",
         "publishable:test",
+        "release:bootstrap:test",
         "release:trust:test",
         "release:promote:test",
         "release:bump:test",

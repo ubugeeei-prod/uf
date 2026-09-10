@@ -14,9 +14,10 @@
 #   npm login
 #   tools/release/bootstrap-publish.sh
 #
-# It publishes only what is missing. A name that is already on the registry is
-# left alone whatever version it is at — moving an existing package to a new
-# version is the release workflow's job, not this one's.
+# It publishes only what is missing from either release manifest. A name that
+# is already on the registry is left alone whatever version it is at — moving
+# an existing package to a new version is the release workflow's job, not this
+# one's.
 #
 # Every publish is shown before anything is sent, and nothing is sent without
 # an answer. `--yes` skips the question for a non-interactive run.
@@ -40,7 +41,6 @@ if [ -z "$who" ]; then
   exit 1
 fi
 
-list="tools/release/published-packages.txt"
 version="$(node -p "require('./packages/core/package.json').version")"
 
 # The dist-tag a prerelease goes to, so `latest` is not moved by one. The same
@@ -53,8 +53,29 @@ case "$version" in
   *-rc*) tag=rc ;;
 esac
 
+check_release_manifests() {
+  for manifest in \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt
+  do
+    [ -r "$manifest" ] || {
+      echo "bootstrap-publish: cannot read ${manifest}" >&2
+      exit 1
+    }
+  done
+}
+
+release_packages() {
+  grep -h -vE '^[[:space:]]*(#|$)' \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt |
+    awk '!seen[$0]++'
+}
+
+check_release_manifests
+
 missing=""
-for package in $(grep -vE '^[[:space:]]*(#|$)' "$list"); do
+for package in $(release_packages); do
   name="@uniflowed/${package}"
   if npm view "$name" name >/dev/null 2>&1; then
     printf '  on npm      %s\n' "$name"

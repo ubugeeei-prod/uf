@@ -25,7 +25,11 @@
 #
 # See ubugeeei-prod/uf#210.
 #
-# One name is here by decision rather than because the check found it.
+# Two names are here by decision rather than because the check found them.
+# `@uniflowed/temporal` is a package with a real implemented front door and one
+# native-runtime calendar seam; the package should be installable, and
+# `withCalendar` remains the explicit boundary.
+#
 # `tools/ci/publishable.sh` asks whether a package calls
 # `nativeRuntimeRequired` *anywhere* and excuses it if it does, and
 # `@uniflowed/std` does: its root `index.js` is a declaration surface whose
@@ -37,4 +41,5 @@
 # answer. `crates/uf_std`'s registry carries the same distinction per subpath,
 # and `uf inspect` reports it.
 
+temporal
 std

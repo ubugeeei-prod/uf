@@ -74,7 +74,28 @@ if [ -z "$who" ]; then
 fi
 echo "trust-npm: configuring as ${who}, for ${repository} (${workflow})"
 
-first="$(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt | head -1)"
+check_release_manifests() {
+  for manifest in \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt
+  do
+    [ -r "$manifest" ] || {
+      echo "trust-npm: cannot read ${manifest}" >&2
+      exit 1
+    }
+  done
+}
+
+release_packages() {
+  grep -h -vE '^[[:space:]]*(#|$)' \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt |
+    awk '!seen[$0]++'
+}
+
+check_release_manifests
+
+first="$(release_packages | head -1)"
 
 # What this npm calls "may publish".
 #
@@ -171,7 +192,7 @@ is_published() {
 # configuration is this repository's workflow, so the one that says so is
 # asked for and checked. `set -eu` would stop the run on the first of these,
 # which is what it did.
-for package in $(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt); do
+for package in $(release_packages); do
   name="@uniflowed/${package}"
 
   # Nothing to bind yet. `npm trust` binds a name the registry has; it does
@@ -252,6 +273,6 @@ fi
 echo
 echo "Done. A 'uf@*' tag now publishes these over OIDC, with no token anywhere."
 echo
-echo "Run this again after adding a name to published-packages.txt. The publish"
+echo "Run this again after adding a name to either release manifest. The publish"
 echo "job cannot check the bindings itself — it authenticates as a workflow and"
 echo "'npm trust list' reads them as you — so an unbound name fails mid-release."

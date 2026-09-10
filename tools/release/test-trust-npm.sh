@@ -25,12 +25,29 @@ script="tools/release/trust-npm.sh"
 work="$(mktemp -d "${TMPDIR:-/tmp}/uf-test-trust-npm.XXXXXX")"
 trap 'rm -rf "$work"' EXIT INT TERM
 
-names="$(grep -cvE '^[[:space:]]*(#|$)' tools/release/published-packages.txt)"
-
 fail() {
   echo "test-trust-npm: FAIL: $*" >&2
   exit 1
 }
+
+check_release_manifests() {
+  for manifest in \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt
+  do
+    [ -r "$manifest" ] || fail "cannot read ${manifest}"
+  done
+}
+
+release_packages() {
+  grep -h -vE '^[[:space:]]*(#|$)' \
+    tools/release/published-packages.txt \
+    tools/release/pending-packages.txt |
+    awk '!seen[$0]++'
+}
+
+check_release_manifests
+names="$(release_packages | wc -l | tr -d ' ')"
 
 pass() {
   echo "  ok  $*"
