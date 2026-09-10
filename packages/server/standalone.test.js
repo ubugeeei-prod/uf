@@ -502,9 +502,9 @@ describe("a render that fails after the shell", () => {
   /** One request whose render fails, with whatever reached stderr. */
   async function failing(error: Error) {
     const said = [];
-    const write = process.stderr.write;
-    // eslint-disable-next-line no-undef
-    (process.stderr: $FlowFixMe).write = (chunk) => {
+    const stderr: $FlowFixMe = process.stderr;
+    const write = stderr.write;
+    stderr.write = (chunk) => {
       said.push(String(chunk));
       return true;
     };
@@ -523,8 +523,7 @@ describe("a render that fails after the shell", () => {
       });
       await handle({ method: "GET", url: "/late", headers: { host: "example.test" } }, response);
     } finally {
-      // eslint-disable-next-line no-undef
-      (process.stderr: $FlowFixMe).write = write;
+      stderr.write = write;
     }
     return { response, said: said.join("") };
   }
