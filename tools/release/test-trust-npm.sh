@@ -25,7 +25,12 @@ script="tools/release/trust-npm.sh"
 work="$(mktemp -d "${TMPDIR:-/tmp}/uf-test-trust-npm.XXXXXX")"
 trap 'rm -rf "$work"' EXIT INT TERM
 
-names="$(grep -cvE '^[[:space:]]*(#|$)' tools/release/published-packages.txt)"
+names="$(grep -h -vE '^[[:space:]]*(#|$)' \
+  tools/release/published-packages.txt \
+  tools/release/pending-packages.txt |
+  awk '!seen[$0]++' |
+  wc -l |
+  tr -d ' ')"
 
 fail() {
   echo "test-trust-npm: FAIL: $*" >&2

@@ -22,12 +22,10 @@
 // caller who never mentions a calendar never reaches it: everything in
 // `Temporal` below is ISO 8601, which is what a timestamp on a page is.
 //
-// That is also why this package is not on npm yet. `tools/ci/publishable.sh`
-// classifies a package by whether it can run without the binary, and this one
-// half can; the half that cannot is the reason the name waits for the runtime
-// rather than shipping a version of itself that would throw. Until then
-// `@uniflowed/core/temporal` is the specifier that installs, and it is the same
-// object.
+// That is also why this package is on the release bootstrap's pending list
+// rather than private. The useful Temporal surface is implemented and should
+// have its own installable name; the one non-ISO calendar seam remains an
+// explicit native-runtime boundary instead of pretending to work.
 
 import { nativeRuntimeRequired } from "@uniflowed/core/native";
 import { Temporal as implementation, isLite } from "@uniflowed/core/temporal";
