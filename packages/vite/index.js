@@ -355,7 +355,10 @@ function flowPlugin({
       ensureService();
     },
 
-    resolveId(id) {
+    resolveId(id, importer, resolveOptions) {
+      if (id === "@uniflowed/react" && !isSsr(this, resolveOptions)) {
+        return this.resolve("react", importer, { ...resolveOptions, skipSelf: true });
+      }
       if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
       if (id === AUDIT_PUBLIC_PATH) return AUDIT_RESOLVED_ID;
       if (VIRTUAL_IDS.has(id)) return resolved(id);
