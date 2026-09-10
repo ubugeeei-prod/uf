@@ -282,6 +282,110 @@ fn a_version_that_is_not_exact_is_refused() {
     assert_eq!(pins[0].tool, Tool::Node, "runtimes are listed first");
 }
 
+/// package.json has a standard `engines` field for the same tool pins. uf's
+/// config remains the explicit override, but an exact manifest engine is
+/// enough for `uf env install`.
+#[test]
+fn package_json_engines_can_pin_the_project_toolchain() {
+    use uf_config::UniflowedConfig;
+
+    let (_guard, root) = temp();
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("package.json"),
+        r#"{
+          "engines": {
+            "node": "24.14.0",
+            "pnpm": "9.15.0",
+            "npm": ">=10",
+            "cargo": "1.0.0"
+          }
+        }"#,
+    )
+    .unwrap();
+
+    let platform = Platform {
+        os: Os::Darwin,
+        arch: Arch::Arm64,
+    };
+    let pins = project::declared_for_project(&project, &UniflowedConfig::default(), platform)
+        .expect("exact known engines become pins");
+
+    assert_eq!(pins.len(), 2);
+    assert_eq!(pins[0].tool, Tool::Node, "runtimes are listed first");
+    assert_eq!(pins[0].version, "24.14.0");
+    assert_eq!(pins[1].tool, Tool::Pnpm);
+    assert_eq!(pins[1].version, "9.15.0");
+}
+
+/// Compatibility expressions in package.json are useful for package managers,
+/// but they are not store-safe pins.
+#[test]
+fn package_json_engines_ignore_non_exact_versions() {
+    use uf_config::UniflowedConfig;
+
+    let (_guard, root) = temp();
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("package.json"),
+        r#"{
+          "engines": {
+            "node": "24.x",
+            "pnpm": "24 || 25",
+            "bun": "1.2.19 - 1.2.20",
+            "deno": "1/../../escape",
+            "npm": "10.9",
+            "yarn": "4.9.2+sha.20260910"
+          }
+        }"#,
+    )
+    .unwrap();
+
+    let platform = Platform {
+        os: Os::Darwin,
+        arch: Arch::Arm64,
+    };
+    let pins = project::declared_for_project(&project, &UniflowedConfig::default(), platform)
+        .expect("manifest ranges are ignored rather than refused");
+
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].tool, Tool::Yarn);
+    assert_eq!(pins[0].version, "4.9.2+sha.20260910");
+}
+
+/// `env.toolchain` is the uf-specific escape hatch and wins over the standard
+/// manifest field when both name the same tool.
+#[test]
+fn config_toolchain_overrides_package_json_engines() {
+    use uf_config::UniflowedConfig;
+
+    let (_guard, root) = temp();
+    let project = root.join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(
+        project.join("package.json"),
+        r#"{ "engines": { "node": "22.9.0", "bun": "1.2.19" } }"#,
+    )
+    .unwrap();
+
+    let platform = Platform {
+        os: Os::Darwin,
+        arch: Arch::Arm64,
+    };
+    let mut config = UniflowedConfig::default();
+    config.env.toolchain.insert("node".into(), "24.14.0".into());
+    let pins = project::declared_for_project(&project, &config, platform)
+        .expect("config and engines merge");
+
+    assert_eq!(pins.len(), 2);
+    assert_eq!(pins[0].tool, Tool::Node);
+    assert_eq!(pins[0].version, "24.14.0");
+    assert_eq!(pins[1].tool, Tool::Bun);
+    assert_eq!(pins[1].version, "1.2.19");
+}
+
 /// Each publisher's URL is built the way that publisher names its files.
 #[test]
 fn a_source_is_where_its_publisher_puts_it() {

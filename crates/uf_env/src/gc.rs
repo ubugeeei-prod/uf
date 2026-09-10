@@ -74,7 +74,7 @@ pub fn plan(store: &Store, roots: &Roots) -> Result<Plan, EnvError> {
         // A half-finished unpack from an interrupted install. Nothing links
         // it and nothing ever will, because the next install stages a fresh
         // one; leaving it would be a leak that only ever grows.
-        if entry.starts_with(".staging-") || !reachable.binary_search(&entry).is_ok() {
+        if entry.starts_with(".staging-") || reachable.binary_search(&entry).is_err() {
             plan.unreachable.push(entry);
         }
     }

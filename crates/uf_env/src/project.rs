@@ -31,6 +31,7 @@
 use std::fs;
 
 use camino::{Utf8Path, Utf8PathBuf};
+use compact_str::CompactString;
 use sha2::{Digest, Sha256};
 use uf_config::UniflowedConfig;
 
@@ -124,13 +125,47 @@ impl Envs {
 /// are refusals rather than warnings: a typo that silently installs nothing
 /// is a project that thinks it pinned its runtime and did not.
 pub fn declared(config: &UniflowedConfig, platform: Platform) -> Result<Vec<Pin>, EnvError> {
+    declared_from(config.env.toolchain.iter(), platform)
+}
+
+/// What a repository asks for through uf's config and standard manifest fields.
+///
+/// `env.toolchain` is the explicit uf answer and wins when both places name the
+/// same tool. A package manifest's `engines` object is the standard spelling,
+/// so exact versions there are used as the fallback instead of forcing a
+/// second uf-only declaration.
+///
+/// # Errors
+///
+/// When uf's config names a tool uf installs with a version that is not exact,
+/// or when the manifest cannot be read as JSON. Non-exact manifest engines are
+/// ignored because `engines` commonly carries compatibility ranges.
+pub fn declared_for_project(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    platform: Platform,
+) -> Result<Vec<Pin>, EnvError> {
+    let manifest = root.join("package.json");
+    let engines = engines(&manifest)?;
+    let merged = engines
+        .iter()
+        .filter(|(name, _)| !config.env.toolchain.contains_key(name))
+        .map(|(name, version)| (name, version))
+        .chain(config.env.toolchain.iter());
+    declared_from(merged, platform)
+}
+
+fn declared_from<'a>(
+    entries: impl Iterator<Item = (&'a CompactString, &'a CompactString)>,
+    platform: Platform,
+) -> Result<Vec<Pin>, EnvError> {
     let mut pins = Vec::new();
-    for (name, version) in &config.env.toolchain {
+    for (name, version) in entries {
         let tool = Tool::parse(name).ok_or_else(|| EnvError::UnknownTool {
             name: name.to_string(),
         })?;
         let version = version.trim();
-        if version.is_empty() || !version.starts_with(|c: char| c.is_ascii_digit()) {
+        if !is_exact_version(version) {
             return Err(EnvError::NotAnExactVersion {
                 tool: tool.name(),
                 version: version.to_owned(),
@@ -144,6 +179,89 @@ pub fn declared(config: &UniflowedConfig, platform: Platform) -> Result<Vec<Pin>
     }
     pins.sort();
     Ok(pins)
+}
+
+fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvError> {
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(source) => {
+            return Err(EnvError::Read {
+                path: path.to_path_buf(),
+                source,
+            });
+        }
+    };
+    let value = serde_json::from_str::<serde_json::Value>(&source).map_err(|source| {
+        EnvError::ManifestJson {
+            path: path.to_path_buf(),
+            source,
+        }
+    })?;
+
+    let Some(engines) = value.get("engines").and_then(serde_json::Value::as_object) else {
+        return Ok(Vec::new());
+    };
+
+    Ok(engines
+        .iter()
+        .filter_map(|(name, version)| {
+            let version = version.as_str()?.trim();
+            if !is_exact_version(version) {
+                return None;
+            }
+            Tool::parse(name).map(|tool| (tool.name().into(), version.into()))
+        })
+        .collect())
+}
+
+fn is_exact_version(version: &str) -> bool {
+    let Some(separator) = version.find(['-', '+']) else {
+        return is_version_core(version);
+    };
+    is_version_core(&version[..separator]) && is_version_suffix(&version[separator..])
+}
+
+fn is_version_core(version: &str) -> bool {
+    let mut parts = version.split('.');
+    let Some(major) = parts.next() else {
+        return false;
+    };
+    let Some(minor) = parts.next() else {
+        return false;
+    };
+    let Some(patch) = parts.next() else {
+        return false;
+    };
+    parts.next().is_none() && [major, minor, patch].into_iter().all(is_digits)
+}
+
+fn is_version_suffix(suffix: &str) -> bool {
+    if let Some(rest) = suffix.strip_prefix('-') {
+        let Some((pre, build)) = rest.split_once('+') else {
+            return is_version_identifiers(rest);
+        };
+        return is_version_identifiers(pre) && is_version_identifiers(build);
+    }
+
+    let Some(build) = suffix.strip_prefix('+') else {
+        return false;
+    };
+    is_version_identifiers(build)
+}
+
+fn is_version_identifiers(value: &str) -> bool {
+    !value.is_empty()
+        && value.split('.').all(|identifier| {
+            !identifier.is_empty()
+                && identifier
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+}
+
+fn is_digits(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
 /// Move what an older uf left in `.uniflowed/`, and remove the rest.

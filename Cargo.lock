@@ -3672,6 +3672,7 @@ name = "uf_env"
 version = "0.0.0-alpha.19"
 dependencies = [
  "camino",
+ "compact_str",
  "serde",
  "serde_json",
  "sha2",
