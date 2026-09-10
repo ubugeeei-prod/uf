@@ -136,7 +136,7 @@ export default defineConfig({
     // --- Rust ----------------------------------------------------------
     "rust:fmt": "cargo fmt --all",
     "rust:fmt:check": "cargo fmt --all -- --check",
-    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
+    "rust:clippy": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
     "rust:test": "cargo test --workspace",
     "rust:bench": "cargo bench --workspace --no-run",
     "rust:metadata": "cargo metadata --format-version 1 --locked",

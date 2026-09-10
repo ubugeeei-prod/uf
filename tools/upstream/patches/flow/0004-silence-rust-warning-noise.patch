@@ -1,0 +1,118 @@
+Subject: silence Flow Rust warning noise in uf builds
+
+Issue: ubugeeei-prod/uf#759
+Upstream: not filed with facebook/flow yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+uf's CI and release jobs surface Rust annotations from the vendored Flow port.
+These warnings are not behavior changes, but they make warning-as-error work
+harder to read and made the release log look broken in places where the actual
+failure was elsewhere.
+
+This keeps the upstream checkout quiet on the current Rust toolchain:
+
+* name Flow's `fbcode_build` cfg in `flow_config`, matching neighboring Flow
+  crates that already declare it;
+* make double-reference dereferences explicit, instead of calling `Deref` or
+  `Clone` on the outer reference;
+* spell the normalizer context lifetime the same way the stored reference is
+  declared;
+* remove one unnecessary block expression.
+
+No Flow semantics change here; the patch only makes the existing intent
+unambiguous to rustc and clippy.
+
+diff --git a/rust_port/crates/flow_config/Cargo.toml b/rust_port/crates/flow_config/Cargo.toml
+index 8b171fe27..d504bef8f 100644
+--- a/rust_port/crates/flow_config/Cargo.toml
++++ b/rust_port/crates/flow_config/Cargo.toml
+@@ -18,3 +18,6 @@ libc = "0.2.186"
+ regex = "1.13.1"
+ serde_json = { version = "1.0.151", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
+ starlark_map = "0.14.2"
++
++[lints.rust]
++unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fbcode_build)"] }
+diff --git a/rust_port/crates/flow_typing_statement/src/statement.rs b/rust_port/crates/flow_typing_statement/src/statement.rs
+index c20d52a97..0b25ac1f5 100644
+--- a/rust_port/crates/flow_typing_statement/src/statement.rs
++++ b/rust_port/crates/flow_typing_statement/src/statement.rs
+@@ -3757,9 +3757,7 @@ fn statement_<'a>(
+                 .as_ref()
+                 .map(|spec| {
+                     let export_kind = statement::ExportKind::ExportValue;
+-                    let source_ref = source
+-                        .as_ref()
+-                        .map(|(sm, sl, slit)| (sm, sl.dupe(), slit.clone()));
++                    let source_ref = source.as_ref().map(|(sm, sl, slit)| (sm, sl.dupe(), *slit));
+                     export_specifiers(cx, source_ref, export_kind, spec)
+                 })
+                 .transpose()?;
+@@ -3968,9 +3966,7 @@ fn statement_<'a>(
+                 .specifiers
+                 .as_ref()
+                 .map(|spec| {
+-                    let source_ref = source
+-                        .as_ref()
+-                        .map(|(sm, sl, slit)| (sm, sl.dupe(), slit.clone()));
++                    let source_ref = source.as_ref().map(|(sm, sl, slit)| (sm, sl.dupe(), *slit));
+                     export_specifiers(cx, source_ref, inner.export_kind, spec)
+                 })
+                 .transpose()?;
+@@ -20013,7 +20009,7 @@ pub fn mk_func_sig<'a>(
+                     VirtualReasonDesc::RType(FlowSmolStr::new("Promise")),
+                     ret_reason.loc().dupe(),
+                 );
+-                { FlowJs::get_builtin_typeapp(cx, &promise_reason, None, "Promise", vec![void_t]) }
++                FlowJs::get_builtin_typeapp(cx, &promise_reason, None, "Promise", vec![void_t])
+             } else {
+                 void_t
+             };
+diff --git a/rust_port/crates/flow_typing_statement/src/switch_to_match.rs b/rust_port/crates/flow_typing_statement/src/switch_to_match.rs
+index 16934b3cb..d7fba6ef5 100644
+--- a/rust_port/crates/flow_typing_statement/src/switch_to_match.rs
++++ b/rust_port/crates/flow_typing_statement/src/switch_to_match.rs
+@@ -280,7 +280,7 @@ fn convert_switch_inner<M: Dupe>(
+                 }
+             } else {
+                 let last_stmt = &body_stmts_vec[body_stmts_vec.len() - 1];
+-                match last_stmt.deref().deref() {
++                match (*last_stmt).deref() {
+                     // `return expr;`
+                     statement::StatementInner::Return { inner, .. }
+                         if inner.argument.is_some() && body_stmts_vec.len() == 1 =>
+@@ -303,7 +303,7 @@ fn convert_switch_inner<M: Dupe>(
+                             && let statement::StatementInner::Expression {
+                                 inner: expr_stmt,
+                                 ..
+-                            } = assignment_stmt.deref().deref()
++                            } = (*assignment_stmt).deref()
+                             && let expression::ExpressionInner::Assignment {
+                                 inner: assign,
+                                 ..
+diff --git a/rust_port/crates/flow_typing_ty_normalizer/src/env.rs b/rust_port/crates/flow_typing_ty_normalizer/src/env.rs
+index d2b3a9ff3..2e80196a9 100644
+--- a/rust_port/crates/flow_typing_ty_normalizer/src/env.rs
++++ b/rust_port/crates/flow_typing_ty_normalizer/src/env.rs
+@@ -200,7 +200,7 @@ impl<'a, 'cx> Env<'a, 'cx> {
+         CACHED.with(|c| c.clone())
+     }
+ 
+-    pub fn get_cx(&self) -> &'cx Context {
++    pub fn get_cx(&self) -> &'a Context<'cx> {
+         self.genv.cx
+     }
+ 
+diff --git a/rust_port/crates/flow_typing_utils/src/members.rs b/rust_port/crates/flow_typing_utils/src/members.rs
+index c7d49cc08..6d9a7aeed 100644
+--- a/rust_port/crates/flow_typing_utils/src/members.rs
++++ b/rust_port/crates/flow_typing_utils/src/members.rs
+@@ -1132,7 +1132,7 @@ pub fn extract_members<'cx>(
+                     // every type in the intersection
+                     let members: Vec<_> = rep
+                         .members_iter()
+-                        .filter(|t| match t.deref().deref() {
++                        .filter(|t| match (*t).deref() {
+                             TypeInner::DefT(_, d) => {
+                                 !matches!(d.deref(), DefTInner::NullT | DefTInner::VoidT)
+                             }

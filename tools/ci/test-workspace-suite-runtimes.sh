@@ -170,7 +170,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - run: cargo clippy --workspace
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 YAML
 expect 1 "a check that checks nothing has stopped being a check"
 names "stopped checking anything"

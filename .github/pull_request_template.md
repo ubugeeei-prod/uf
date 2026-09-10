@@ -12,7 +12,7 @@ tools/upstream/sync.sh
 Pinned release toolchain (1.98.0):
 
 - [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings`
+- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 - [ ] `cargo test --workspace`
 - [ ] `cargo bench --workspace --no-run`
 

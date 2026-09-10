@@ -303,7 +303,7 @@ fn a_program_written_as_a_path_is_resolved_before_it_is_spawned() {
 #[test]
 fn a_program_written_as_a_name_is_left_to_the_path() {
     let uf_task::Command::Direct(direct) =
-        uf_task::parse("cargo clippy --workspace -- -D warnings")
+        uf_task::parse("cargo clippy --workspace --all-targets --all-features -- -D warnings")
     else {
         panic!("a program and its arguments");
     };
@@ -312,7 +312,15 @@ fn a_program_written_as_a_name_is_left_to_the_path() {
     assert_eq!(process.get_program(), "cargo");
     assert_eq!(
         process.get_args().collect::<Vec<_>>(),
-        ["clippy", "--workspace", "--", "-D", "warnings"]
+        [
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ]
     );
 }
 
