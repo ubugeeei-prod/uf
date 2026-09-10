@@ -92,16 +92,18 @@
 //
 // `toast("Saved")` is called from an event handler, from a `catch`, from a
 // Server Action's error path — none of which have a component to put state in.
-// So the queue is a store in this module, read through `useSyncExternalStore`,
-// which is what `ubugeeei-redundancy.md` requires of an external store: cached
-// immutable snapshots, and a server snapshot consistent with them. Nothing here
-// is a mutable array a render reads.
+// So the queue is an atom in `@uniflowed/state`, declared at module scope and
+// written by the four module functions below. The live region reads it through
+// React's external-store hook via `read` and `subscribe`, deliberately against
+// the default store: a function in a module has no context with which to find a
+// scoped store, and letting a nearby `<Provider>` redirect the region would
+// split `toast()` from the place that displays it.
 //
-// Three properties are what that hook is actually asking for, and the store
-// below has those three and nothing more:
+// Three properties are what the hook is actually asking for, and the atom gives
+// this module those three without a second store implementation:
 //
 // - *An immutable snapshot whose reference changes only on a write.* The
-//   getter hands back the array it is holding rather than building one, and a
+//   atom holds the array itself rather than building one on every read, and a
 //   write that computes the value already there is dropped rather than
 //   announced. A getter that returns a fresh `[]` is a new identity every time
 //   React asks, which renders, which asks again — the infinite loop React
@@ -117,38 +119,10 @@
 // of notifications. A queue something could scope to a subtree would leave a
 // region showing an empty stack while `toast()` filled up a store it had no
 // way to find.
-//
-// # Why this is not an atom in `@uniflowed/state`
-//
-// It was one, and it should be one again. A queue read through
-// `useSyncExternalStore` is exactly what an atom is for, `@uniflowed/state` is
-// what this project offers instead of Jotai, and the version of this file that
-// imported `atom`, `read`, `subscribe` and `write` was not making a mistake.
-//
-// It cannot ship that way today. `@uniflowed/ui` is published to npm and
-// `@uniflowed/state` is not: its name has never been bound, binding it takes a
-// person with an `npm login` session and a 2FA prompt, and that is
-// ubugeeei-prod/uf#210. Until it happens the package waits in
-// `tools/release/pending-packages.txt`. A published package whose dependency
-// is missing installs as nothing — `ETARGET` on the first thing a user types —
-// so `tools/release/verify-npm.sh` refuses to release `@uniflowed/ui` while it
-// declares that dependency, and it is right to refuse.
-//
-// So the store below is the shippable design rather than the better one. It is
-// a second implementation of something this repository already has, written
-// out by hand because the first one cannot be installed. When #210 binds the
-// name and `state` moves into `published-packages.txt`, this goes back to an
-// atom and this section goes with it.
-//
-// This is the first `useSyncExternalStore` in this package, and `index.js` says
-// the package deliberately does not use one. That sentence is about reading
-// *layout* during a render, which is what the DOM-measuring components here
-// avoid by writing what they measured into state from an effect. A queue that
-// lives outside React is the case the API is for, and `index.js` now says both
-// things.
 
 "use client";
 
+import { atom, read, subscribe, write } from "@uniflowed/state";
 import * as React from "@uniflowed/react";
 import {
   createContext,
@@ -215,15 +189,16 @@ const DEFAULT_DURATION = 5000;
 const NONE: $ReadOnlyArray<Notification> = Object.freeze([]);
 
 /**
- * The queue, and what is watching it.
+ * The queue atom.
  *
  * Module scope is the requirement rather than a convenience: `toast()` has
- * nowhere else to put this. It costs a server nothing — importing this file
- * allocates one frozen array and one empty `Set` and starts no work, and
- * nothing on a server calls `toast()`, because this module is `"use client"`.
+ * nowhere else to put this. It costs a server little — importing this file
+ * declares one atom over one frozen array and starts no work, and nothing on a
+ * server calls `toast()`, because this module is `"use client"`.
  */
-let queue: $ReadOnlyArray<Notification> = NONE;
-const watchers: Set<() => void> = new Set();
+const queueAtom = atom<$ReadOnlyArray<Notification>>(NONE, {
+  debugLabel: "ui.toastQueue",
+});
 
 /**
  * Replace the queue, and wake what is watching it.
@@ -244,16 +219,12 @@ const watchers: Set<() => void> = new Set();
 function writeQueue(
   change: (current: $ReadOnlyArray<Notification>) => $ReadOnlyArray<Notification>,
 ): void {
-  const next = change(queue);
-  if (next === queue) {
+  const current = read(queueAtom);
+  const next = change(current);
+  if (next === current) {
     return;
   }
-  queue = next;
-  for (const watcher of Array.from(watchers)) {
-    if (watchers.has(watcher)) {
-      watcher();
-    }
-  }
+  write(queueAtom, next);
 }
 
 /** Ids are this module's, because `useId` needs a component and `toast()` is not one. */
@@ -330,10 +301,7 @@ export function dismissAllToasts(): void {
 
 /** Module-level and therefore stable, which is what stops React re-subscribing. */
 function subscribeToQueue(listener: () => void): () => void {
-  watchers.add(listener);
-  return () => {
-    watchers.delete(listener);
-  };
+  return subscribe(queueAtom, listener);
 }
 
 /**
@@ -346,7 +314,7 @@ function subscribeToQueue(listener: () => void): () => void {
  * `"use client"`.
  */
 function readQueue(): $ReadOnlyArray<Notification> {
-  return queue;
+  return read(queueAtom);
 }
 
 const NotificationContext: React.Context<Notification | null> = createContext(null);

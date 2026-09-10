@@ -60,7 +60,8 @@
   "dependencies": {
     "@uniflowed/core": "0.0.0-alpha.18",
     "@uniflowed/hooks": "0.0.0-alpha.18",
-    "@uniflowed/react": "0.0.0-alpha.18"
+    "@uniflowed/react": "0.0.0-alpha.18",
+    "@uniflowed/state": "0.0.0-alpha.18"
   },
   "peerDependencies": {
     "react": ">=19"
