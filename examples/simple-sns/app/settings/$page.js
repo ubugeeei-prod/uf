@@ -17,15 +17,15 @@ export function loader(): SettingsPageData {
   return { settings: settingsData() };
 }
 
-component SettingsPanel(data: Promise<Settings>) renders React.Node {
+component SettingsPanel(data: Promise<Settings>) {
   return <SettingsClient initial={use(data)} />;
 }
 
-component Skeleton() renders React.Node {
+component Skeleton() {
   return <div {...props(styles.skeleton)} />;
 }
 
-export default component SettingsPage(data: SettingsPageData) renders React.Node {
+export default component SettingsPage(data: SettingsPageData) {
   return (
     <SocialFrame active="settings">
       <Suspense fallback={<Skeleton />}>

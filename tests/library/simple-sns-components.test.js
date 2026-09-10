@@ -5,20 +5,30 @@
 // pieces a reader can touch still behave like a product UI.
 
 import * as React from "@uniflowed/react";
-import { afterEach, describe, expect, it } from "@uniflowed/test";
+import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 
-import { AuthClient } from "../../examples/simple-sns/app/auth-client.js";
-import { DirectMessagesClient } from "../../examples/simple-sns/app/messages/direct-messages-client.js";
-import { SettingsClient } from "../../examples/simple-sns/app/settings/settings-client.js";
-import { TimelineClient } from "../../examples/simple-sns/app/timeline-client.js";
+import typeof * as SocialActions from "../../examples/simple-sns/app/social-actions.js";
+import {
+  type FormState,
+  type Message,
+  type Post,
+  type Settings,
+  type User,
+} from "../../examples/simple-sns/app/social-model.js";
+
+const ACTIONS = "../../examples/simple-sns/app/social-actions.js";
 
 afterEach(() => {
   cleanup();
+  uft.unmock(ACTIONS);
+  uft.resetModules();
 });
 
 describe("the Simple SNS client components", () => {
-  it("renders the signup form as a real account screen", () => {
+  it("renders the signup form as a real account screen", async () => {
+    const { AuthClient } = await components();
+
     render(<AuthClient mode="signup" />);
 
     expect(screen.getByRole("heading", { name: "Reserve a demo profile" })).toBeInTheDocument();
@@ -29,6 +39,8 @@ describe("the Simple SNS client components", () => {
   });
 
   it("filters timeline posts by topic and search text", async () => {
+    const { TimelineClient } = await components();
+
     render(<TimelineClient initialPosts={posts()} viewer={viewer()} />);
 
     expect(screen.getByText("Release train is ready")).toBeInTheDocument();
@@ -45,6 +57,8 @@ describe("the Simple SNS client components", () => {
   });
 
   it("switches direct-message threads without leaving the messages surface", async () => {
+    const { DirectMessagesClient } = await components();
+
     render(<DirectMessagesClient threads={threads()} initialMessages={messages()} />);
 
     expect(screen.getByText("Can the settings surface use the same pattern?")).toBeInTheDocument();
@@ -55,7 +69,9 @@ describe("the Simple SNS client components", () => {
     expect(screen.queryByText("Can the settings surface use the same pattern?")).toBe(null);
   });
 
-  it("renders settings with the persisted profile values", () => {
+  it("renders settings with the persisted profile values", async () => {
+    const { SettingsClient } = await components();
+
     render(<SettingsClient initial={settings()} />);
 
     expect(screen.getByRole("heading", { name: "Mika Tan" })).toBeInTheDocument();
@@ -66,6 +82,45 @@ describe("the Simple SNS client components", () => {
     expect(screen.getByLabelText("Quiet mode")).not.toBeChecked();
   });
 });
+
+async function components() {
+  await uft.mock<SocialActions>(ACTIONS, actionMocks);
+  const [auth, messages, settingsModule, timeline] = await Promise.all([
+    import("../../examples/simple-sns/app/auth-client.js"),
+    import("../../examples/simple-sns/app/messages/direct-messages-client.js"),
+    import("../../examples/simple-sns/app/settings/settings-client.js"),
+    import("../../examples/simple-sns/app/timeline-client.js"),
+  ]);
+  return {
+    AuthClient: auth.AuthClient,
+    DirectMessagesClient: messages.DirectMessagesClient,
+    SettingsClient: settingsModule.SettingsClient,
+    TimelineClient: timeline.TimelineClient,
+  };
+}
+
+function actionMocks(): Partial<SocialActions> {
+  return {
+    createPost: async (previous: FormState<Post>, _form: FormData): Promise<FormState<Post>> =>
+      previous,
+    likePost: async (id: string): Promise<{| readonly id: string, readonly likes: number |}> => ({
+      id,
+      likes: 1,
+    }),
+    sendMessage: async (
+      previous: FormState<Message>,
+      _form: FormData,
+    ): Promise<FormState<Message>> => previous,
+    signIn: async (previous: FormState<User>, _form: FormData): Promise<FormState<User>> =>
+      previous,
+    signUp: async (previous: FormState<User>, _form: FormData): Promise<FormState<User>> =>
+      previous,
+    updateSettings: async (
+      previous: FormState<Settings>,
+      _form: FormData,
+    ): Promise<FormState<Settings>> => previous,
+  };
+}
 
 function viewer() {
   return {

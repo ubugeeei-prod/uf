@@ -9,7 +9,7 @@ import { props, stylex } from "@uniflowed/stylex";
 import { updateSettings } from "../social-actions.js";
 import { type FormState, type Settings, profileInitials } from "../social-model.js";
 
-component SaveButton() renders React.Node {
+component SaveButton() {
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={pending} {...props(styles.button)}>
@@ -18,7 +18,7 @@ component SaveButton() renders React.Node {
   );
 }
 
-export component SettingsClient(initial: Settings) renders React.Node {
+export component SettingsClient(initial: Settings) {
   const [state, action] = useActionState<FormState<Settings>, FormData>(updateSettings, {
     status: "idle",
     message: "",

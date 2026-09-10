@@ -22,12 +22,12 @@ export function loader(): MessagesPageData {
   return { messages: messagesData() };
 }
 
-component Messages(data: Promise<MessagesData>) renders React.Node {
+component Messages(data: Promise<MessagesData>) {
   const value = use(data);
   return <DirectMessagesClient threads={value.threads} initialMessages={value.messages} />;
 }
 
-component Skeleton() renders React.Node {
+component Skeleton() {
   return (
     <div {...props(styles.skeleton)}>
       <span />
@@ -37,7 +37,7 @@ component Skeleton() renders React.Node {
   );
 }
 
-export default component MessagesPage(data: MessagesPageData) renders React.Node {
+export default component MessagesPage(data: MessagesPageData) {
   return (
     <SocialFrame active="messages">
       <Suspense fallback={<Skeleton />}>

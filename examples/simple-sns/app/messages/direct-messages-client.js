@@ -19,7 +19,7 @@ import {
 
 const EMPTY_MESSAGE_STATE: FormState<Message> = { status: "idle", message: "" };
 
-component SendButton() renders React.Node {
+component SendButton() {
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={pending} {...props(styles.button)}>
@@ -28,11 +28,7 @@ component SendButton() renders React.Node {
   );
 }
 
-component ThreadButton(
-  thread: MessageThread,
-  selected: boolean,
-  onSelect: (string) => void,
-) renders React.Node {
+component ThreadButton(thread: MessageThread, selected: boolean, onSelect: (string) => void) {
   return (
     <button
       type="button"
@@ -49,7 +45,7 @@ component ThreadButton(
   );
 }
 
-component Bubble(message: Message) renders React.Node {
+component Bubble(message: Message) {
   const mine = message.author === "me";
   return (
     <div {...props(styles.bubbleRow, mine && styles.bubbleRowMine)}>
@@ -66,7 +62,7 @@ component Bubble(message: Message) renders React.Node {
 export component DirectMessagesClient(
   threads: $ReadOnlyArray<MessageThread>,
   initialMessages: $ReadOnlyArray<Message>,
-) renders React.Node {
+) {
   const firstThread = threads[0]?.id ?? "";
   const [selectedThreadId, setSelectedThreadId] = useState<string>(firstThread);
   const [state, action] = useActionState<FormState<Message>, FormData>(

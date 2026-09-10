@@ -22,12 +22,12 @@ export function loader(): HomeData {
   return { timeline: timelineData() };
 }
 
-component Feed(data: Promise<TimelineData>) renders React.Node {
+component Feed(data: Promise<TimelineData>) {
   const value = use(data);
   return <TimelineClient initialPosts={value.posts} viewer={value.viewer} />;
 }
 
-component Stats(data: Promise<TimelineData>) renders React.Node {
+component Stats(data: Promise<TimelineData>) {
   const value = use(data).stats;
   return (
     <section {...props(styles.stats)} aria-label="Timeline summary">
@@ -54,7 +54,7 @@ component Stats(data: Promise<TimelineData>) renders React.Node {
   );
 }
 
-component Skeleton() renders React.Node {
+component Skeleton() {
   return (
     <div {...props(styles.skeleton)}>
       <span />
@@ -64,7 +64,7 @@ component Skeleton() renders React.Node {
   );
 }
 
-export default component Home(data: HomeData) renders React.Node {
+export default component Home(data: HomeData) {
   return (
     <SocialFrame
       active="timeline"

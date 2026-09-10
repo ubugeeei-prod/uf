@@ -13,7 +13,7 @@ type AuthMode = "login" | "signup";
 
 const EMPTY_USER_STATE: FormState<User> = { status: "idle", message: "" };
 
-component Submit(mode: AuthMode) renders React.Node {
+component Submit(mode: AuthMode) {
   const { pending } = useFormStatus();
   const label = match (mode) {
     "login" => "Log in",
@@ -26,7 +26,7 @@ component Submit(mode: AuthMode) renders React.Node {
   );
 }
 
-export component AuthClient(mode: AuthMode) renders React.Node {
+export component AuthClient(mode: AuthMode) {
   const action = mode === "login" ? signIn : signUp;
   const [state, submit] = useActionState<FormState<User>, FormData>(action, EMPTY_USER_STATE);
   const heading = match (mode) {

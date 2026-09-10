@@ -28,7 +28,7 @@ import {
 
 const EMPTY_POST_STATE: FormState<Post> = { status: "idle", message: "" };
 
-component SubmitPost() renders React.Node {
+component SubmitPost() {
   const { pending } = useFormStatus();
   return (
     <button type="submit" disabled={pending} {...props(styles.primaryButton)}>
@@ -37,7 +37,7 @@ component SubmitPost() renders React.Node {
   );
 }
 
-component LikeButton(post: Post) renders React.Node {
+component LikeButton(post: Post) {
   const [optimistic, addLike] = useOptimistic<
     {| readonly likes: number, readonly liked: boolean |},
     void,
@@ -63,7 +63,7 @@ component LikeButton(post: Post) renders React.Node {
   );
 }
 
-component PostCard(post: Post) renders React.Node {
+component PostCard(post: Post) {
   return (
     <article {...props(styles.postCard)} style={{ borderLeftColor: topicAccent(post.topic) }}>
       <header {...props(styles.postHeader)}>
@@ -86,11 +86,7 @@ component PostCard(post: Post) renders React.Node {
   );
 }
 
-component Composer(
-  viewer: User,
-  onOptimistic: (Post) => void,
-  onCommitted: (Post) => void,
-) renders React.Node {
+component Composer(viewer: User, onOptimistic: (Post) => void, onCommitted: (Post) => void) {
   const [state, action] = useActionState<FormState<Post>, FormData>(createPost, EMPTY_POST_STATE);
 
   React.useEffect(() => {
@@ -147,10 +143,7 @@ component Composer(
   );
 }
 
-export component TimelineClient(
-  initialPosts: $ReadOnlyArray<Post>,
-  viewer: User,
-) renders React.Node {
+export component TimelineClient(initialPosts: $ReadOnlyArray<Post>, viewer: User) {
   const [topic, setTopic] = useState<Topic | "all">("all");
   const [query, setQuery] = useState<string>("");
   const [committedPosts, setCommittedPosts] = useState<Array<Post>>(() => Array.from(initialPosts));

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     "A uf SSR example social app with React 19.3, RSC, Server Actions, SQLite, and StyleX.",
 };
 
-export component Layout(children: React.Node) renders React.Node {
+export component Layout(children: React.Node) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head suppressHydrationWarning>

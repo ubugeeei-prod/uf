@@ -7,7 +7,7 @@ import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
 
 import { type View, pageTitle, viewHref, viewLabel } from "./social-model.js";
 
-export component NavItem(view: View, active: boolean = false) renders React.Node {
+export component NavItem(view: View, active: boolean = false) {
   return (
     <Link
       to={viewHref(view)}
@@ -19,7 +19,7 @@ export component NavItem(view: View, active: boolean = false) renders React.Node
   );
 }
 
-component PrimaryNav(kind: "top" | "tab" = "top", children: renders* NavItem) renders React.Node {
+component PrimaryNav(kind: "top" | "tab" = "top", children: renders* NavItem) {
   return (
     <nav
       aria-label={kind === "top" ? "Primary navigation" : "Primary tabs"}
@@ -30,11 +30,7 @@ component PrimaryNav(kind: "top" | "tab" = "top", children: renders* NavItem) re
   );
 }
 
-export component SocialFrame(
-  active: View,
-  children: React.Node,
-  aside?: React.Node,
-) renders React.Node {
+export component SocialFrame(active: View, children: React.Node, aside?: React.Node) {
   return (
     <main {...props(styles.shell)}>
       <header {...props(styles.header)}>

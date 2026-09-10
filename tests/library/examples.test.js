@@ -101,6 +101,7 @@ describe("the Simple SNS example", () => {
     ]) {
       expect(sources).toContain(required);
     }
+    expect(sources).not.toContain("renders React.Node");
   });
 
   it("keeps client boundaries intentional and colocated", () => {
