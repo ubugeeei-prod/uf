@@ -98,6 +98,7 @@ pub(super) enum PackageFile {
 }
 
 /// One package: where its manifest is, and what the manifest says.
+#[derive(Clone)]
 struct Package {
     /// The manifest's own path in the batch.
     ///
@@ -124,6 +125,13 @@ struct Installed {
 /// Every package the batch declares, indexed so that a specifier can be
 /// resolved from the file that wrote it.
 pub(super) struct WorkspacePackages {
+    /// Every manifest by package scope, deepest first.
+    ///
+    /// `package.json#imports` is not reached through a package name. A
+    /// `#internal/foo` specifier belongs to the nearest parent package scope
+    /// of the file that wrote it, even when that manifest has no `name`, so it
+    /// needs a scope index separate from `project` and `installed`.
+    scopes: Vec<Package>,
     /// Manifests outside any `node_modules`, by the name they publish.
     ///
     /// The project's own packages. Visible from every file in the batch: a
@@ -158,6 +166,7 @@ impl WorkspacePackages {
     /// is the name a specifier reaches it by; two copies at one path are the
     /// same collision and the first still wins.
     pub(super) fn new(sources: &[Source<'_>], options: &Options) -> Self {
+        let mut scopes: Vec<Package> = Vec::new();
         let mut project: HashMap<CompactString, Package> = HashMap::new();
         let mut installed: HashMap<CompactString, Vec<Installed>> = HashMap::new();
         for source in sources.iter().filter(|source| is_manifest(source.path)) {
@@ -168,6 +177,7 @@ impl WorkspacePackages {
                 manifest_path: source.path.to_compact_string(),
                 manifest,
             };
+            scopes.push(package.clone());
             match installed_at(source.path) {
                 Some((enclosing, name)) => installed
                     .entry(name.to_compact_string())
@@ -186,6 +196,7 @@ impl WorkspacePackages {
                 }
             }
         }
+        scopes.sort_by_key(|package| std::cmp::Reverse(scope_specificity(&package.manifest_path)));
         // Deepest first, so the climb is a linear scan that stops at the first
         // copy the importer can see. Ties keep batch order, which only a
         // duplicated path can produce.
@@ -196,6 +207,7 @@ impl WorkspacePackages {
         }
 
         Self {
+            scopes,
             project,
             installed,
             conditions: options
@@ -221,10 +233,19 @@ impl WorkspacePackages {
         self.project.get(name)
     }
 
+    fn scope(&self, importer: &str) -> Option<&Package> {
+        self.scopes
+            .iter()
+            .find(|package| scope_encloses(package.manifest_path.as_str(), importer))
+    }
+
     /// The file `specifier` names when it is written in `importer`, or [`None`]
     /// when no package the importer can see publishes it — or publishes that
     /// subpath of it.
     pub(super) fn resolve(&self, importer: &str, specifier: &str) -> Option<PackageFile> {
+        if specifier.starts_with('#') {
+            return self.resolve_import(importer, specifier);
+        }
         let (name, subpath) = split(specifier)?;
         let package = self.lookup(importer, name)?;
 
@@ -256,6 +277,23 @@ impl WorkspacePackages {
         }
     }
 
+    fn resolve_import(&self, importer: &str, specifier: &str) -> Option<PackageFile> {
+        let package = self.scope(importer)?;
+        let imports = package.manifest.imports()?;
+        let target = imports.resolve_package(specifier, &self.conditions)?;
+
+        if resolve::is_relative(target.as_str()) {
+            return resolve::join(&package.manifest_path, target.as_str()).map(PackageFile::Exact);
+        }
+
+        // Node's `imports` can point at another package. Reuse the ordinary
+        // package resolver for that half, while leaving recursive `#` aliases
+        // unresolved until there is a concrete need for them.
+        (!target.starts_with('#'))
+            .then(|| self.resolve(package.manifest_path.as_str(), target.as_str()))
+            .flatten()
+    }
+
     /// The manifest that publishes `specifier`'s package, if the batch holds
     /// one.
     ///
@@ -266,6 +304,9 @@ impl WorkspacePackages {
     /// package's file into a batch has to pull the manifest that named it in
     /// alongside. See [`super::closure`].
     pub(super) fn manifest_of(&self, importer: &str, specifier: &str) -> Option<&str> {
+        if specifier.starts_with('#') {
+            return Some(self.scope(importer)?.manifest_path.as_str());
+        }
         let (name, _) = split(specifier)?;
         Some(self.lookup(importer, name)?.manifest_path.as_str())
     }
@@ -294,6 +335,37 @@ fn installed_at(manifest_path: &str) -> Option<(&str, &str)> {
     Some((enclosing.strip_suffix('/').unwrap_or(enclosing), name))
 }
 
+fn scope_directory(manifest_path: &str) -> &str {
+    manifest_path
+        .strip_suffix(MANIFEST)
+        .and_then(|path| path.strip_suffix('/'))
+        .unwrap_or("")
+}
+
+fn scope_encloses(manifest_path: &str, importer: &str) -> bool {
+    let scope = scope_directory(manifest_path);
+    if scope.is_empty() {
+        return leading_parent_segments(importer) == 0;
+    }
+    if is_above_root(scope) {
+        return leading_parent_segments(importer) <= scope.split('/').count();
+    }
+    path_encloses(scope, importer)
+}
+
+fn scope_specificity(manifest_path: &str) -> isize {
+    let scope = scope_directory(manifest_path);
+    if scope.is_empty() {
+        return 0;
+    }
+    let segments = scope.split('/').count() as isize;
+    if is_above_root(scope) {
+        -segments
+    } else {
+        segments
+    }
+}
+
 /// Whether a file at `importer` is inside `enclosing`, so that Node's climb
 /// from it reaches that directory's `node_modules`.
 ///
@@ -315,6 +387,22 @@ fn encloses(enclosing: &str, importer: &str) -> bool {
 /// Whether a base names a directory above the batch root.
 fn is_above_root(enclosing: &str) -> bool {
     !enclosing.is_empty() && enclosing.split('/').all(|segment| segment == "..")
+}
+
+fn leading_parent_segments(path: &str) -> usize {
+    path.split('/')
+        .take_while(|segment| *segment == "..")
+        .count()
+}
+
+fn path_encloses(scope: &str, importer: &str) -> bool {
+    let mut importer_segments = importer.split('/');
+    for scope_segment in scope.split('/') {
+        if Some(scope_segment) != importer_segments.next() {
+            return false;
+        }
+    }
+    importer_segments.next().is_some()
 }
 
 /// How specific a base is, so the nearest copy answers first.
@@ -546,6 +634,101 @@ mod tests {
             packages.resolve("app.js", "legacy/lib/util"),
             Some(PackageFile::Implied("vendor/legacy/lib/util".into()))
         );
+    }
+
+    #[test]
+    fn a_package_imports_map_resolves_a_hash_specifier_from_its_scope() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+        )]);
+
+        assert_eq!(exact(&packages, "#cell"), "packages/cell/index.js");
+    }
+
+    #[test]
+    fn a_package_imports_map_above_the_batch_root_is_visible() {
+        let packages = packages(&[Source::new(
+            "../package.json",
+            r##"{ "imports": { "#cell": "./packages/cell/index.js" } }"##,
+        )]);
+
+        assert_eq!(exact(&packages, "#cell"), "../packages/cell/index.js");
+    }
+
+    #[test]
+    fn a_nearer_package_scope_wins_over_one_above_the_batch_root() {
+        let packages = packages(&[
+            Source::new(
+                "../package.json",
+                r##"{ "imports": { "#mode": "./above.js" } }"##,
+            ),
+            Source::new(
+                "package.json",
+                r##"{ "imports": { "#mode": "./root.js" } }"##,
+            ),
+        ]);
+
+        assert_eq!(exact(&packages, "#mode"), "root.js");
+    }
+
+    #[test]
+    fn a_parent_package_scope_answers_files_above_the_batch_root() {
+        let packages = packages(&[
+            Source::new(
+                "package.json",
+                r##"{ "imports": { "#mode": "./root.js" } }"##,
+            ),
+            Source::new(
+                "../package.json",
+                r##"{ "imports": { "#mode": "./parent.js" } }"##,
+            ),
+        ]);
+
+        assert_eq!(exact_from(&packages, "../app.js", "#mode"), "../parent.js");
+    }
+
+    #[test]
+    fn a_grandparent_package_scope_beats_parent_for_grandparent_files() {
+        let packages = packages(&[
+            Source::new(
+                "package.json",
+                r##"{ "imports": { "#mode": "./root.js" } }"##,
+            ),
+            Source::new(
+                "../package.json",
+                r##"{ "imports": { "#mode": "./parent.js" } }"##,
+            ),
+            Source::new(
+                "../../package.json",
+                r##"{ "imports": { "#mode": "./grandparent.js" } }"##,
+            ),
+        ]);
+
+        assert_eq!(
+            exact_from(&packages, "../../app.js", "#mode"),
+            "../../grandparent.js"
+        );
+    }
+
+    #[test]
+    fn the_nearest_package_scope_answers_a_hash_specifier() {
+        let packages = packages(&[
+            Source::new(
+                "package.json",
+                r##"{ "imports": { "#mode": "./root.js" } }"##,
+            ),
+            Source::new(
+                "packages/app/package.json",
+                r##"{ "name": "app", "imports": { "#mode": "./local.js" } }"##,
+            ),
+        ]);
+
+        assert_eq!(
+            exact_from(&packages, "packages/app/index.js", "#mode"),
+            "packages/app/local.js"
+        );
+        assert_eq!(exact_from(&packages, "other.js", "#mode"), "root.js");
     }
 
     #[test]

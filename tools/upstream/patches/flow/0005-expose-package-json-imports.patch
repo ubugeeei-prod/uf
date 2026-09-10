@@ -1,0 +1,118 @@
+Subject: expose package.json imports in the Flow Rust port
+
+Issue: ubugeeei-prod/uf#736
+Upstream: not filed with facebook/flow yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+`package.json#imports` is the standard map for package-private `#...`
+specifier aliases. uf needs to read it when resolving the module graph it hands
+to Flow; otherwise a local `#internal/foo` import falls through as an untyped
+bare package named `#internal`.
+
+The existing `PackageExports` resolver already has the exact condition and
+wildcard machinery `imports` needs. This patch stores an object-form imports
+map on `PackageJson` and deliberately skips `exports`' conditional-main sugar,
+because an `imports` object is keyed by `#...`, not by `"."` subpaths.
+
+diff --git a/rust_port/crates/flow_parser_utils/src/package_exports.rs b/rust_port/crates/flow_parser_utils/src/package_exports.rs
+index 200b7026f0..a9c6341c23 100644
+--- a/rust_port/crates/flow_parser_utils/src/package_exports.rs
++++ b/rust_port/crates/flow_parser_utils/src/package_exports.rs
+@@ -80,6 +80,15 @@ impl PackageExports {
+             _ => None,
+         }
+     }
++
++    pub fn parse_imports(expr: &ast::expression::Expression<Loc, Loc>) -> Option<Self> {
++        match expr.deref() {
++            ExpressionInner::Object { inner, .. } => {
++                Some(parse_package_exports_obj(&inner.properties))
++            }
++            _ => None,
++        }
++    }
+ }
+ 
+ fn pattern_key_compare(a: &str, b: &str) -> std::cmp::Ordering {
+diff --git a/rust_port/crates/flow_parser_utils/src/package_json.rs b/rust_port/crates/flow_parser_utils/src/package_json.rs
+index f9b72b767d..6f00486e09 100644
+--- a/rust_port/crates/flow_parser_utils/src/package_json.rs
++++ b/rust_port/crates/flow_parser_utils/src/package_json.rs
+@@ -23,6 +23,7 @@ use crate::package_exports::PackageExports;
+ //   types: string option;
+ //   haste_commonjs: bool;
+ //   exports: Package_exports.t option;
++//   imports: Package_exports.t option;
+ // }
+ #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+ pub struct PackageJson {
+@@ -31,6 +32,8 @@ pub struct PackageJson {
+     types: Option<FlowSmolStr>,
+     haste_commonjs: bool,
+     exports: Option<PackageExports>,
++    #[serde(default)]
++    imports: Option<PackageExports>,
+ }
+ 
+ impl PackageJson {
+@@ -42,11 +45,12 @@ impl PackageJson {
+             types: None,
+             haste_commonjs: false,
+             exports: None,
++            imports: None,
+         }
+     }
+ 
+     // let create ~name ~main ~types ~haste_commonjs ~exports =
+-    //   { name; main; types; haste_commonjs; exports }
++    //   { name; main; types; haste_commonjs; exports; imports = None }
+     pub fn create(
+         name: Option<FlowSmolStr>,
+         main: Option<FlowSmolStr>,
+@@ -60,6 +64,7 @@ impl PackageJson {
+             types,
+             haste_commonjs,
+             exports,
++            imports: None,
+         }
+     }
+ 
+@@ -84,6 +89,10 @@ impl PackageJson {
+         self.exports.as_ref()
+     }
+ 
++    pub fn imports(&self) -> Option<&PackageExports> {
++        self.imports.as_ref()
++    }
++
+     pub fn parse(node_main_fields: &[FlowSmolStr], object: &Object<Loc, Loc>) -> Self {
+         let mut prop_map = HashMap::new();
+         for property in object.properties.iter() {
+@@ -102,12 +111,14 @@ impl PackageJson {
+         };
+         let haste_commonjs = bool_opt(prop_map.get("haste_commonjs")).unwrap_or(false);
+         let exports = package_exports_opt(prop_map.get("exports"));
++        let imports = package_imports_opt(prop_map.get("imports"));
+         Self {
+             name,
+             main,
+             types,
+             haste_commonjs,
+             exports,
++            imports,
+         }
+     }
+ }
+@@ -138,6 +149,12 @@ fn package_exports_opt(
+     expr.and_then(PackageExports::parse)
+ }
+ 
++fn package_imports_opt(
++    expr: Option<&ast::expression::Expression<Loc, Loc>>,
++) -> Option<PackageExports> {
++    expr.and_then(PackageExports::parse_imports)
++}
++
+ /// Given a list of JSON properties, loosely extract the properties and turn it into a
+ /// [Expression.t SMap.t]. We aren't looking to validate the file, and don't currently
+ /// care about any non-literal properties, so we skip over everything else.
