@@ -68,9 +68,7 @@ describe("scanning for templates", () => {
       "guide/$page.js",
     ]);
 
-    expect(templatesOf(root)).toEqual([
-      { above: 2, module: path.join("guide", "$template.js") },
-    ]);
+    expect(templatesOf(root)).toEqual([{ above: 2, module: path.join("guide", "$template.js") }]);
   });
 
   it("nests them the way layouts nest, root first", () => {

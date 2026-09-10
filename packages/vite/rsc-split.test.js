@@ -244,9 +244,7 @@ describe("the client route table", () => {
     const source = routesModuleSource(scanRoutes(path.join(root, "app")));
 
     expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
-    expect(source).toContain(
-      `import(${JSON.stringify(path.join(root, "app/counter/$page.js"))})`,
-    );
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/counter/$page.js"))})`);
   });
 
   it("states each route's file relative to the project when asked", () => {

@@ -225,9 +225,9 @@ fn adding_use_client_reports_the_module_and_everything_above_it() {
     assert_eq!(
         moved(&report),
         [
-            "app/Counter.js is now in the client bundle — it declares `\"use client\"`",
             "app/$page.js is now in the client bundle — app/$page.js imports \
              app/section.js imports app/Counter.js, which declares `\"use client\"`",
+            "app/Counter.js is now in the client bundle — it declares `\"use client\"`",
             "app/section.js is now in the client bundle — app/section.js imports \
              app/Counter.js, which declares `\"use client\"`",
         ]
@@ -250,8 +250,8 @@ fn removing_use_client_reports_the_modules_leaving_and_then_stays_quiet() {
     assert_eq!(
         moved(&report),
         [
-            "app/Counter.js is out of the client bundle",
             "app/$page.js is out of the client bundle",
+            "app/Counter.js is out of the client bundle",
             "app/section.js is out of the client bundle",
         ]
     );

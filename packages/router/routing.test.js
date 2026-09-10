@@ -86,12 +86,7 @@ describe("scanning for not-found boundaries", () => {
   it("finds a nested one, which is the whole bug", () => {
     // `app/guide/$not-found.js` was never looked for: the scan asked for it
     // at `depth === 0` and nowhere else, so this list held one entry.
-    const root = appRoot([
-      "$page.js",
-      "$not-found.js",
-      "guide/$page.js",
-      "guide/$not-found.js",
-    ]);
+    const root = appRoot(["$page.js", "$not-found.js", "guide/$page.js", "guide/$not-found.js"]);
 
     expect(boundaries(root).map((boundary) => boundary.path)).toEqual(["/", "/guide"]);
   });
@@ -185,9 +180,7 @@ describe("scanning for error boundaries", () => {
     // so a 500 lost the site as completely as a 404 did.
     const root = appRoot(["$layout.js", "$page.js"]);
 
-    expect(errorBoundaries(root)).toEqual([
-      { path: "/", module: null, layouts: ["$layout.js"] },
-    ]);
+    expect(errorBoundaries(root)).toEqual([{ path: "/", module: null, layouts: ["$layout.js"] }]);
   });
 
   it("leaves a declared root boundary alone", () => {

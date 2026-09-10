@@ -178,11 +178,7 @@ describe("what a slot may not be written as", () => {
     // A slot *is* a prop the segment's own layout receives. Rendering it into
     // an inherited layout would hand a prop to a layout that never declared
     // it, on every route below.
-    const message = refusal([
-      "$layout.js",
-      "dashboard/$page.js",
-      "dashboard/@team/$page.js",
-    ]);
+    const message = refusal(["$layout.js", "dashboard/$page.js", "dashboard/@team/$page.js"]);
 
     expect(message).not.toBe(null);
     expect(message ?? "").toContain("@team");
@@ -194,11 +190,7 @@ describe("what a slot may not be written as", () => {
     // Next.js calls its implicit slot. Whichever way the collision were
     // resolved, one of the two would silently go missing.
     for (const name of LAYOUT_PROP_NAMES) {
-      const message = refusal([
-        "$layout.js",
-        "$page.js",
-        path.join(`@${name}`, "$page.js"),
-      ]);
+      const message = refusal(["$layout.js", "$page.js", path.join(`@${name}`, "$page.js")]);
 
       expect(message).not.toBe(null);
       expect(message ?? "").toContain(name);

@@ -395,9 +395,7 @@ describe("findStoryFiles", () => {
 
       const found = await findStoryFiles(root, { maxDepth: 1 });
 
-      expect(found.map((file) => path.relative(root, file))).toEqual([
-        path.join("a", "$story.js"),
-      ]);
+      expect(found.map((file) => path.relative(root, file))).toEqual([path.join("a", "$story.js")]);
     });
   });
 });
