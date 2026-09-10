@@ -41,11 +41,4 @@ export default defineConfig({
       jsHosts: ["node"],
     },
   },
-  tasks: {
-    dev: { command: "uf dev" },
-    build: { command: "uf build" },
-    test: {
-      command: "uf test ../../tests/library/examples.test.js ../../tests/library/simple-sns-components.test.js",
-    },
-  },
 });
