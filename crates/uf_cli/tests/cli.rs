@@ -105,6 +105,11 @@ fn install_has_a_one_letter_alias() {
     // followed by one of `uf_term::push_duration`'s four units — rather than
     // by dropping the lines that hold them, so the timings and the verdict are
     // still compared for everything except how long they took.
+    //
+    // The chosen package-manager source differs for the same reason: the long
+    // run creates `package-lock.json`, and the alias run quite rightly detects
+    // it. The manager and command still have to match; the provenance line is
+    // not the alias contract.
     let rendered = |output: &[u8]| {
         let text = String::from_utf8_lossy(output).into_owned();
         let lines = text.lines().map(str::to_owned).collect::<Vec<_>>();
@@ -128,7 +133,13 @@ fn install_has_a_one_letter_alias() {
         lines[..=banner + 1]
             .iter()
             .chain(&lines[table..])
-            .map(|line| without_durations(line))
+            .map(|line| {
+                if line.trim_start().starts_with("chosen by ") {
+                    "  chosen by  <source>".to_owned()
+                } else {
+                    without_durations(line)
+                }
+            })
             .collect::<Vec<_>>()
     };
     assert_eq!(rendered(&short.stdout), rendered(&long.stdout));
