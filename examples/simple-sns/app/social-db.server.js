@@ -19,24 +19,40 @@ import {
   type User,
 } from "./social-model.js";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
+const HERE = path.dirname(fileURLToPath(String(import.meta.url)));
 const APP_ROOT = path.resolve(HERE, "..");
 const DB_PATH = process.env.UF_SIMPLE_SNS_DB ?? path.join(APP_ROOT, ".uf", "simple-sns.sqlite");
 
-let instance: DatabaseSync | null = null;
+type SqliteValue = string | number | boolean | null;
+type SqliteRow = { readonly [string]: SqliteValue | void, ... };
+type SqliteStatement = {|
+  all: (...params: Array<SqliteValue>) => Array<SqliteRow>,
+  get: (...params: Array<SqliteValue>) => SqliteRow | void,
+  run: (...params: Array<SqliteValue>) => mixed,
+|};
+type SqliteDatabase = {|
+  exec: (source: string) => void,
+  prepare: (source: string) => SqliteStatement,
+|};
 
-function database(): DatabaseSync {
-  if (instance == null) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    instance = new DatabaseSync(DB_PATH);
-    instance.exec("PRAGMA foreign_keys = ON");
-    migrate(instance);
-    seed(instance);
+const Database: Class<SqliteDatabase> = DatabaseSync;
+let instance: SqliteDatabase | null = null;
+
+function database(): SqliteDatabase {
+  const current = instance;
+  if (current != null) {
+    return current;
   }
-  return instance;
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  const next = new Database(DB_PATH);
+  next.exec("PRAGMA foreign_keys = ON");
+  migrate(next);
+  seed(next);
+  instance = next;
+  return next;
 }
 
-function migrate(db: DatabaseSync) {
+function migrate(db: SqliteDatabase) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -86,7 +102,7 @@ function migrate(db: DatabaseSync) {
   `);
 }
 
-function seed(db: DatabaseSync) {
+function seed(db: SqliteDatabase) {
   db.exec(`
     INSERT OR IGNORE INTO users (id, name, handle, avatar, bio) VALUES
       ('u-mika', 'Mika Tan', 'mika', 'MT', 'Builds product loops and keeps the release train boring.'),
@@ -167,59 +183,103 @@ function seed(db: DatabaseSync) {
   `);
 }
 
-function asUser(row: any): User {
-  return {
-    id: String(row.id),
-    name: String(row.name),
-    handle: String(row.handle),
-    avatar: String(row.avatar),
-    bio: String(row.bio),
+function text(row: SqliteRow, key: string): string {
+  return String(row[key] ?? "");
+}
+
+function number(row: SqliteRow, key: string): number {
+  return Number(row[key] ?? 0);
+}
+
+function bool(row: SqliteRow, key: string): boolean {
+  return number(row, key) === 1;
+}
+
+function topic(value: SqliteValue | void): Topic {
+  return match (String(value ?? "")) {
+    "release" => "release",
+    "runtime" => "runtime",
+    "design" => "design",
+    "community" => "community",
+    _ => "community",
   };
 }
 
-function asPost(row: any): Post {
+function messageAuthor(value: SqliteValue | void): "me" | "them" {
+  return match (String(value ?? "")) {
+    "me" => "me",
+    _ => "them",
+  };
+}
+
+function delivery(value: SqliteValue | void): "sent" | "delivered" | "read" {
+  return match (String(value ?? "")) {
+    "sent" => "sent",
+    "delivered" => "delivered",
+    _ => "read",
+  };
+}
+
+function requireRow(row: SqliteRow | void, label: string): SqliteRow {
+  if (row == null) {
+    throw new Error(`${label} was not found`);
+  }
+  return row;
+}
+
+function asUser(row: SqliteRow): User {
   return {
-    id: String(row.id),
+    id: text(row, "id"),
+    name: text(row, "name"),
+    handle: text(row, "handle"),
+    avatar: text(row, "avatar"),
+    bio: text(row, "bio"),
+  };
+}
+
+function asPost(row: SqliteRow): Post {
+  return {
+    id: text(row, "id"),
     author: {
-      id: String(row.author_id),
-      name: String(row.name),
-      handle: String(row.handle),
-      avatar: String(row.avatar),
-      bio: String(row.bio),
+      id: text(row, "author_id"),
+      name: text(row, "name"),
+      handle: text(row, "handle"),
+      avatar: text(row, "avatar"),
+      bio: text(row, "bio"),
     },
-    body: String(row.body),
-    topic: (String(row.topic): any),
-    likes: Number(row.likes),
-    replies: Number(row.replies),
-    createdAt: String(row.created_at),
-    liked: Number(row.liked) === 1,
+    body: text(row, "body"),
+    topic: topic(row.topic),
+    likes: number(row, "likes"),
+    replies: number(row, "replies"),
+    createdAt: text(row, "created_at"),
+    liked: bool(row, "liked"),
   };
 }
 
-function asThread(row: any): MessageThread {
+function asThread(row: SqliteRow): MessageThread {
   return {
-    id: String(row.id),
-    name: String(row.name),
-    handle: String(row.handle),
-    unread: Number(row.unread),
-    lastMessage: String(row.last_message),
+    id: text(row, "id"),
+    name: text(row, "name"),
+    handle: text(row, "handle"),
+    unread: number(row, "unread"),
+    lastMessage: text(row, "last_message"),
   };
 }
 
-function asMessage(row: any): Message {
+function asMessage(row: SqliteRow): Message {
   return {
-    id: String(row.id),
-    threadId: String(row.thread_id),
-    author: (String(row.author): any),
-    body: String(row.body),
-    sentAt: String(row.sent_at),
-    delivery: (String(row.delivery): any),
+    id: text(row, "id"),
+    threadId: text(row, "thread_id"),
+    author: messageAuthor(row.author),
+    body: text(row, "body"),
+    sentAt: text(row, "sent_at"),
+    delivery: delivery(row.delivery),
   };
 }
 
 export async function getViewer(): Promise<User> {
   const row = database().prepare("SELECT * FROM users WHERE id = ?").get("u-mika");
-  return asUser(row);
+  return asUser(requireRow(row, "viewer"));
 }
 
 export async function listPosts(): Promise<Array<Post>> {
@@ -260,14 +320,17 @@ export async function listMessages(threadId: string): Promise<Array<Message>> {
 }
 
 export async function getSettings(): Promise<Settings> {
-  const row = database().prepare("SELECT * FROM settings WHERE id = ?").get("viewer");
+  const row = requireRow(
+    database().prepare("SELECT * FROM settings WHERE id = ?").get("viewer"),
+    "settings",
+  );
   return {
-    displayName: String(row.display_name),
-    handle: String(row.handle),
-    bio: String(row.bio),
-    email: String(row.email),
-    digest: Number(row.digest) === 1,
-    quietMode: Number(row.quiet_mode) === 1,
+    displayName: text(row, "display_name"),
+    handle: text(row, "handle"),
+    bio: text(row, "bio"),
+    email: text(row, "email"),
+    digest: bool(row, "digest"),
+    quietMode: bool(row, "quiet_mode"),
   };
 }
 
@@ -294,7 +357,7 @@ export async function insertPost(body: string, topic: Topic): Promise<Post> {
 export async function likePostById(id: string): Promise<number> {
   database().prepare("UPDATE posts SET likes = likes + 1, liked = 1 WHERE id = ?").run(id);
   const row = database().prepare("SELECT likes FROM posts WHERE id = ?").get(id);
-  return row == null ? 0 : Number(row.likes);
+  return row == null ? 0 : number(row, "likes");
 }
 
 export async function insertMessage(threadId: string, body: string): Promise<Message> {

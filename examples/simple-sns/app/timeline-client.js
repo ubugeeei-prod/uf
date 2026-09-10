@@ -28,6 +28,28 @@ import {
 
 const EMPTY_POST_STATE: FormState<Post> = { status: "idle", message: "" };
 
+type TopicFilter = Topic | "all";
+
+function topicFromValue(value: FormDataEntryValue | null): Topic {
+  return match (String(value ?? "community")) {
+    "release" => "release",
+    "runtime" => "runtime",
+    "design" => "design",
+    "community" => "community",
+    _ => "community",
+  };
+}
+
+function topicFilter(value: string): TopicFilter {
+  return match (value) {
+    "release" => "release",
+    "runtime" => "runtime",
+    "design" => "design",
+    "community" => "community",
+    _ => "all",
+  };
+}
+
 component SubmitPost() {
   const { pending } = useFormStatus();
   return (
@@ -101,7 +123,7 @@ component Composer(viewer: User, onOptimistic: (Post) => void, onCommitted: (Pos
       suppressHydrationWarning
       action={(formData) => {
         const body = String(formData.get("body") ?? "");
-        const topic = (String(formData.get("topic") ?? "community"): any);
+        const topic = topicFromValue(formData.get("topic"));
         if (body.trim().length > 0) {
           onOptimistic(optimisticPost(body, topic, viewer, new Date()));
         }
@@ -144,21 +166,18 @@ component Composer(viewer: User, onOptimistic: (Post) => void, onCommitted: (Pos
 }
 
 export component TimelineClient(initialPosts: $ReadOnlyArray<Post>, viewer: User) {
-  const [topic, setTopic] = useState<Topic | "all">("all");
+  const [topic, setTopic] = useState<TopicFilter>("all");
   const [query, setQuery] = useState<string>("");
   const [committedPosts, setCommittedPosts] = useState<Array<Post>>(() => Array.from(initialPosts));
   const [posts, addOptimisticPost] = useOptimistic<Array<Post>, Post>(
     committedPosts,
     (current, draft) => [draft, ...current.filter((post) => post.id !== draft.id)],
   );
-  const commitPost = React.useCallback(
-    (post: Post) => {
-      setCommittedPosts((current) =>
-        current.some((item) => item.id === post.id) ? current : [post, ...current],
-      );
-    },
-    [setCommittedPosts],
-  );
+  function commitPost(post: Post) {
+    setCommittedPosts((current) =>
+      current.some((item) => item.id === post.id) ? current : [post, ...current],
+    );
+  }
   const filtered = useMemo(() => visiblePosts(posts, topic, query), [posts, topic, query]);
 
   return (
@@ -168,7 +187,7 @@ export component TimelineClient(initialPosts: $ReadOnlyArray<Post>, viewer: User
         <select
           aria-label="Filter by topic"
           value={topic}
-          onChange={(event) => setTopic((event.currentTarget.value: any))}
+          onChange={(event) => setTopic(topicFilter(event.currentTarget.value))}
           {...props(styles.select)}
         >
           <option value="all">All topics</option>

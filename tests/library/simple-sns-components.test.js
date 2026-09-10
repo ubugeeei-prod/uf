@@ -12,6 +12,7 @@ import typeof * as SocialActions from "../../examples/simple-sns/app/social-acti
 import {
   type FormState,
   type Message,
+  type MessageThread,
   type Post,
   type Settings,
   type User,
@@ -46,13 +47,13 @@ describe("the Simple SNS client components", () => {
     expect(screen.getByText("Release train is ready")).toBeInTheDocument();
     expect(screen.getByText("Runtime graph changed")).toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Filter by topic" }), [
+    await userEvent.selectOptions(html(screen.getByRole("combobox", { name: "Filter by topic" })), [
       "runtime",
     ]);
     expect(screen.queryByText("Release train is ready")).toBe(null);
     expect(screen.getByText("Runtime graph changed")).toBeInTheDocument();
 
-    await userEvent.type(screen.getByRole("textbox", { name: "Search timeline" }), "nobody");
+    await userEvent.type(html(screen.getByRole("textbox", { name: "Search timeline" })), "nobody");
     expect(screen.queryByText("Runtime graph changed")).toBe(null);
   });
 
@@ -64,7 +65,7 @@ describe("the Simple SNS client components", () => {
     expect(screen.getByText("Can the settings surface use the same pattern?")).toBeInTheDocument();
     expect(screen.queryByText("SQLite fixture is ready.")).toBe(null);
 
-    await userEvent.click(screen.getByRole("button", { name: /Sora Lin/ }));
+    await userEvent.click(html(screen.getByRole("button", { name: /Sora Lin/ })));
     expect(screen.getByText("SQLite fixture is ready.")).toBeInTheDocument();
     expect(screen.queryByText("Can the settings surface use the same pattern?")).toBe(null);
   });
@@ -122,7 +123,14 @@ function actionMocks(): Partial<SocialActions> {
   };
 }
 
-function viewer() {
+function html(element: Element): HTMLElement {
+  if (!(element instanceof HTMLElement)) {
+    throw new Error("expected test query to return an HTMLElement");
+  }
+  return element;
+}
+
+function viewer(): User {
   return {
     id: "u-mika",
     name: "Mika Tan",
@@ -132,7 +140,7 @@ function viewer() {
   };
 }
 
-function posts() {
+function posts(): Array<Post> {
   const user = viewer();
   return [
     {
@@ -158,7 +166,7 @@ function posts() {
   ];
 }
 
-function threads() {
+function threads(): Array<MessageThread> {
   return [
     {
       id: "thread-ren",
@@ -177,7 +185,7 @@ function threads() {
   ];
 }
 
-function messages() {
+function messages(): Array<Message> {
   return [
     {
       id: "m-ren-1",
@@ -198,7 +206,7 @@ function messages() {
   ];
 }
 
-function settings() {
+function settings(): Settings {
   return {
     displayName: "Mika Tan",
     handle: "mika",

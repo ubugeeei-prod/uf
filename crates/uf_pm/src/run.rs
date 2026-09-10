@@ -218,7 +218,7 @@ pub fn run_operation_with_detection(
     operands: &[String],
     allow_scripts: bool,
 ) -> Result<ManagerRun, ManagerRunError> {
-    let (manager, substituted) = installable(&detection);
+    let (manager, substituted) = installable(detection);
     let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
 
     let status = Command::new(invocation.program)
@@ -450,7 +450,7 @@ pub fn run_watched_with_detection(
     allow_scripts: bool,
     observer: &mut dyn InstallObserver,
 ) -> Result<ManagerRun, ManagerRunError> {
-    let (manager, substituted) = installable(&detection);
+    let (manager, substituted) = installable(detection);
     let Some(reader) = Reader::for_manager(manager) else {
         return run_operation_with_detection(root, detection, operation, &[], allow_scripts);
     };
