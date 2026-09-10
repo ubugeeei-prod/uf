@@ -124,8 +124,8 @@ fn app_package_json(name: &str) -> String {
     "@uniflowed/react": "{uf}",
     "@uniflowed/router": "{uf}",
     "@uniflowed/vite": "{uf}",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   }},
   "devDependencies": {{
     "@uniflowed/test": "{uf}"

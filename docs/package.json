@@ -10,7 +10,7 @@
     "@uniflowed/router": "0.0.0-alpha.18",
     "@uniflowed/vite": "0.0.0-alpha.18",
     "@uniflowed/web": "0.0.0-alpha.18",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   }
 }
