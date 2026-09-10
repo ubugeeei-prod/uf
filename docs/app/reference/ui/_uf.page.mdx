@@ -463,19 +463,11 @@ enough time to decide.
 
 `toast("Saved")` is called from an event handler, from a `catch`, from a Server
 Action's error path — none of which have a component to put state in. So the
-queue lives outside React, as a store at module scope in `toast.js` read
-through `useSyncExternalStore`, and one page has one set of notifications:
-a function in a module has no context with which to find a scoped store, so
-there is nothing to scope.
-
-That store would be an atom in `@uniflowed/state` — a queue is what atoms are
-for — and it was one. `@uniflowed/ui` is published to npm and
-`@uniflowed/state` is not yet: binding a name that has never been published
-takes a person with an `npm login` session and a 2FA prompt, which is
-[uf#210](https://github.com/ubugeeei-prod/uf/issues/210). A published package
-whose dependency is missing installs as nothing, so `@uniflowed/ui` carries its
-own queue until that name exists, and goes back to `@uniflowed/state` when it
-does.
+queue lives outside React as an atom in `@uniflowed/state`, declared at module
+scope in `toast.js` and read through React's external-store hook. One page has
+one set of notifications: a function in a module has no context with which to
+find a scoped store, so `Toast.Region` reads the same default store that
+`toast()` writes.
 
 The queue is what makes the fiddly parts ordinary. `limit` notifications are
 shown and the rest wait behind them, oldest first — and a waiting one's
