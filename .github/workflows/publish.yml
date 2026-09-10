@@ -27,7 +27,11 @@ jobs:
   npm:
     name: Trusted npm Publish
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # This job checks out the release tag and then runs the full workspace test
+    # suite before npm gets a package. A cold GitHub-hosted runner can still be
+    # running healthy tests after twenty minutes, so give the guardrail enough
+    # room for the release check it is meant to be.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,6 +44,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: nightly-2026-08-01
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          cache-on-failure: true
+          key: publish-${{ inputs.version || github.ref_name }}-${{ runner.os }}-${{ runner.arch }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
