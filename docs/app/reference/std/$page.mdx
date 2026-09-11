@@ -34,7 +34,7 @@ try {
 
 ## What ships today
 
-Seven modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
+Eight modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
 brings in a hex codec and nothing else.
 
 | Import | Go's name | What it is |
@@ -45,10 +45,11 @@ brings in a hex codec and nothing else.
 | `@uniflowed/std/bytes` | `bytes` | Searching, splitting and joining `Uint8Array`, plus `Builder` |
 | `@uniflowed/std/heap` | `container/heap` | A binary heap with a comparator |
 | `@uniflowed/std/hex` | `encoding/hex` | `encode`, `decode`, `isValid`, `dump` |
+| `@uniflowed/std/base32` | `encoding/base32` | RFC 4648 base32 for byte strings and human-entered secrets |
 | `@uniflowed/std/slices` | `sort.Search`, `slices.BinarySearch` | Lower-bound search and insertion points for sorted arrays |
 
 The root `@uniflowed/std` is unchanged: it is a declaration surface whose
-functions raise `NativeRuntimeRequiredError`, and it is not what these seven are.
+functions raise `NativeRuntimeRequiredError`, and it is not what these eight are.
 Everything above runs.
 
 ## The types are the point
@@ -95,8 +96,8 @@ Everything here is pure Flow over the web platform: `Uint8Array`,
 
 | Host | Status | How that was established |
 | --- | --- | --- |
-| Node.js | **runs** | The suite: 61 assertions over all six modules, in `packages/std/std.test.js` |
-| Bun 1.3.13 | **runs** | Eighteen smoke assertions over all six, by hand, through `@uniflowed/host/bun-preload` |
+| Node.js | **runs** | `packages/std/std.test.js`, over every shipped module |
+| Bun 1.3.13 | **runs** | Eighteen smoke assertions over the first six, by hand, through `@uniflowed/host/bun-preload` |
 | Deno | expected | Not run. Inference from the API surface, below |
 | Edge / workers | expected | Not run. Same |
 
@@ -113,7 +114,7 @@ not a test.
 ## Why this is JavaScript and not Rust
 
 uf is a native toolchain, so "should this be native" is a fair question for
-every module. It was measured rather than guessed, and the answer for these six
+every module. It was measured rather than guessed, and the answer for these modules
 is no.
 
 The comparison is against Node's own C++ implementations of the same
@@ -214,8 +215,8 @@ on them rather than replacing them.
 
 ### Missing, and worth having
 
-The six at the top of this page are the first tranche. The next one, roughly in
-order of value:
+The first six at the top of this page are tranche 1. `slices` and `base32` are
+the first next-tranche pieces. What remains, roughly in order of value:
 
 | Go | What it would be |
 | --- | --- |
@@ -224,8 +225,6 @@ order of value:
 | `encoding/csv` | RFC 4180, reading and writing. Every hand-rolled `split(",")` is wrong on quoted fields |
 | `encoding/binary` | `getUint16`/`putUint32`/… over a cursor, and **varint**, which `DataView` does not have |
 | `hash/crc32`, `hash/fnv`, `hash/adler32` | WebCrypto has none of them. The strongest native candidate on this list, because CRC32 has a hardware instruction — so measure it before writing the JavaScript |
-| `slices.BinarySearch`, `sort.Search` | Binary search with a comparator: four lines that are wrong in half the places they are written |
-| `encoding/base32` | `atob` covers base64 and nothing covers base32, which is what TOTP secrets are in |
 | `container/list` | A doubly linked list, for LRU caches and anything that splices from the middle |
 | `time` durations and tickers | A `Duration` with the arithmetic, `Ticker`, `Timer`, `AfterFunc`, and the leak-free cancellation `context` already had to solve once |
 | `path/filepath` | `join`, `clean`, `rel`, `ext`, `base`, `dir`, and a real glob matcher |

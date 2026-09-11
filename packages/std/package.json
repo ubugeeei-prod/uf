@@ -13,6 +13,7 @@
   },
   "exports": {
     ".": "./index.js",
+    "./base32": "./base32.js",
     "./bytes": "./bytes.js",
     "./context": "./context.js",
     "./errors": "./errors.js",
@@ -23,6 +24,7 @@
     "./package.json": "./package.json"
   },
   "files": [
+    "base32.js",
     "bytes.js",
     "context.js",
     "errors.js",

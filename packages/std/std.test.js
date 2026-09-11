@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Seven modules, and what is asserted here is the property that makes each one
+// Eight modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -38,6 +38,14 @@ import {
   trimPrefix,
   trimSuffix,
 } from "@uniflowed/std/bytes";
+import {
+  InvalidBase32Error,
+  decode as decodeBase32,
+  decodedLength as decodedBase32Length,
+  encode as encodeBase32,
+  encodedLength as encodedBase32Length,
+  isValid as isValidBase32,
+} from "@uniflowed/std/base32";
 import {
   CANCELLED,
   DEADLINE_EXCEEDED,
@@ -881,6 +889,54 @@ describe("hex", () => {
   });
 });
 
+describe("base32", () => {
+  it("round-trips the RFC 4648 test vectors", () => {
+    const vectors = [
+      ["", ""],
+      ["f", "MY======"],
+      ["fo", "MZXQ===="],
+      ["foo", "MZXW6==="],
+      ["foob", "MZXW6YQ="],
+      ["fooba", "MZXW6YTB"],
+      ["foobar", "MZXW6YTBOI======"],
+    ];
+    for (const [plain, encoded] of vectors) {
+      const bytes = fromUtf8(plain);
+      expect(encodeBase32(bytes)).toBe(encoded);
+      expect(toUtf8(decodeBase32(encoded))).toBe(plain);
+    }
+  });
+
+  it("encodes without padding when a caller asks for the TOTP shape", () => {
+    expect(encodeBase32(fromUtf8("foobar"), { padding: "omit" })).toBe("MZXW6YTBOI");
+    expect(encodedBase32Length(6, { padding: "omit" })).toBe(10);
+    expect(encodedBase32Length(6)).toBe(16);
+    expect(decodedBase32Length(10)).toBe(6);
+  });
+
+  it("accepts unpadded lowercase input", () => {
+    expect(toUtf8(decodeBase32("mzxw6ytboi"))).toBe("foobar");
+    expect(isValidBase32("mzxw6ytboi")).toBe(true);
+  });
+
+  it("names invalid characters and padding by offset", () => {
+    expect(() => decodeBase32("M!======")).toThrow(InvalidBase32Error);
+    let offset = -1;
+    try {
+      decodeBase32("M!======");
+    } catch (failure) {
+      expect(failure).toBeInstanceOf(InvalidBase32Error);
+      if (failure instanceof InvalidBase32Error) {
+        offset = failure.offset;
+      }
+    }
+    expect(offset).toBe(1);
+
+    expect(() => decodeBase32("MZX=6===")).toThrow(InvalidBase32Error);
+    expect(isValidBase32("MZ======")).toBe(false);
+  });
+});
+
 describe("slices", () => {
   it("finds the first true index of a monotone predicate", () => {
     expect(search(8, (index) => index >= 5)).toBe(5);
@@ -938,7 +994,7 @@ describe("what ships is one list in three places", () => {
   // what a program can import, and `docs/app/reference/std` is what a reader is
   // told. Three copies of one fact, and until ubugeeei-prod/uf#710 nothing
   // compared any two of them: the registry named forty-four subpaths, none of
-  // which existed, and none of the six that do.
+  // which existed, and none of the shipped modules that do.
   //
   // The Rust side of the check is in `crates/uf_lib` — it parses each module
   // with uf's own Flow parser and holds the export lists name for name, which
@@ -984,7 +1040,7 @@ describe("what ships is one list in three places", () => {
     const table = page.slice(start, end === -1 ? page.length : end);
 
     const documented = [];
-    for (const match of table.matchAll(/`(@uniflowed\/std\/[a-z-]+)`/g)) {
+    for (const match of table.matchAll(/`(@uniflowed\/std\/[a-z0-9-]+)`/g)) {
       if (!documented.includes(match[1])) documented.push(match[1]);
     }
     expect(documented.sort()).toEqual(ships());
