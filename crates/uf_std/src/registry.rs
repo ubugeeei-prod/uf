@@ -381,6 +381,21 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Data,
             &["adler32", "crc32", "fnv1a32", "fnv1a64"],
         ),
+        StdModule::ships(
+            "@uniflowed/std/time",
+            StdCategory::Platform,
+            &[
+                "Duration",
+                "Ticker",
+                "Timer",
+                "after",
+                "afterFunc",
+                "hours",
+                "milliseconds",
+                "minutes",
+                "seconds",
+            ],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------

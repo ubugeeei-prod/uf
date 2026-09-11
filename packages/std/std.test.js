@@ -87,6 +87,16 @@ import {
 } from "@uniflowed/std/path";
 import { binarySearch, binarySearchBy, search } from "@uniflowed/std/slices";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
+import {
+  Ticker,
+  Timer,
+  after,
+  afterFunc,
+  hours,
+  milliseconds,
+  minutes,
+  seconds,
+} from "@uniflowed/std/time";
 
 import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 
@@ -1339,6 +1349,84 @@ describe("hash", () => {
     expect(() => adler32("x", 0x1_0000_0000)).toThrow(RangeError);
     expect(() => fnv1a32("x", 0x1_0000_0000)).toThrow(RangeError);
     expect(() => fnv1a64("x", -1n)).toThrow(RangeError);
+  });
+});
+
+describe("time", () => {
+  it("does duration arithmetic without involving a clock", () => {
+    expect(seconds(2).milliseconds()).toBe(2_000);
+    expect(minutes(1).add(seconds(30)).seconds()).toBe(90);
+    expect(hours(1).sub(minutes(30)).milliseconds()).toBe(1_800_000);
+    expect(milliseconds(250).mul(4).compare(seconds(1))).toBe(0);
+    expect(seconds(-2).abs().milliseconds()).toBe(2_000);
+    expect(seconds(3).div(2).toString()).toBe("1500ms");
+    expect(() => seconds(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+  });
+
+  it("resolves after a duration", async () => {
+    let done = false;
+    const waited = after(milliseconds(5)).then(() => {
+      done = true;
+    });
+
+    expect(done).toBe(false);
+    await waited;
+    expect(done).toBe(true);
+  });
+
+  it("stops a timer and releases anyone waiting on it", async () => {
+    let ran = false;
+    const timer = afterFunc(seconds(1), () => {
+      ran = true;
+    });
+    const done = timer.done();
+
+    expect(timer.active()).toBe(true);
+    expect(timer.stop()).toBe(true);
+    expect(await done).toBe(false);
+    expect(ran).toBe(false);
+    expect(timer.stop()).toBe(false);
+  });
+
+  it("can reset a timer before it fires", async () => {
+    let count = 0;
+    const timer = new Timer(seconds(1), () => {
+      count += 1;
+    });
+
+    timer.reset(milliseconds(5));
+    expect(await timer.done()).toBe(true);
+    expect(count).toBe(1);
+    expect(timer.active()).toBe(false);
+  });
+
+  it("keeps an active timer alive when reset receives an invalid delay", async () => {
+    let count = 0;
+    const timer = new Timer(milliseconds(5), () => {
+      count += 1;
+    });
+
+    expect(() => timer.reset(milliseconds(2_147_483_648))).toThrow(RangeError);
+    expect(await timer.done()).toBe(true);
+    expect(count).toBe(1);
+  });
+
+  it("ticks until stopped and resolves pending waits on stop", async () => {
+    const ticker = new Ticker(milliseconds(5));
+    const first = await ticker.tick();
+
+    expect(typeof first).toBe("number");
+
+    const waiting = ticker.tick();
+    ticker.stop();
+    expect(await waiting).toBe(null);
+    expect(await ticker.tick()).toBe(null);
+    expect(ticker.stopped()).toBe(true);
+  });
+
+  it("rejects timer delays the host would clamp", () => {
+    expect(() => new Timer(milliseconds(2_147_483_648))).toThrow(RangeError);
+    expect(() => new Ticker(milliseconds(0))).toThrow(RangeError);
   });
 });
 

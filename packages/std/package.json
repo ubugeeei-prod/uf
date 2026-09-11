@@ -27,6 +27,7 @@
     "./path": "./path.js",
     "./slices": "./slices.js",
     "./sync": "./sync.js",
+    "./time": "./time.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -45,6 +46,7 @@
     "path.js",
     "slices.js",
     "sync.js",
+    "time.js",
     "!*.test.js"
   ],
   "dependencies": {
