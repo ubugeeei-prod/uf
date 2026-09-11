@@ -18,6 +18,7 @@
     "./errors": "./errors.js",
     "./heap": "./heap.js",
     "./hex": "./hex.js",
+    "./slices": "./slices.js",
     "./sync": "./sync.js",
     "./package.json": "./package.json"
   },
@@ -28,6 +29,7 @@
     "heap.js",
     "hex.js",
     "index.js",
+    "slices.js",
     "sync.js",
     "!*.test.js"
   ],

@@ -34,7 +34,7 @@ try {
 
 ## What ships today
 
-Six modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
+Seven modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
 brings in a hex codec and nothing else.
 
 | Import | Go's name | What it is |
@@ -45,9 +45,10 @@ brings in a hex codec and nothing else.
 | `@uniflowed/std/bytes` | `bytes` | Searching, splitting and joining `Uint8Array`, plus `Builder` |
 | `@uniflowed/std/heap` | `container/heap` | A binary heap with a comparator |
 | `@uniflowed/std/hex` | `encoding/hex` | `encode`, `decode`, `isValid`, `dump` |
+| `@uniflowed/std/slices` | `sort.Search`, `slices.BinarySearch` | Lower-bound search and insertion points for sorted arrays |
 
 The root `@uniflowed/std` is unchanged: it is a declaration surface whose
-functions raise `NativeRuntimeRequiredError`, and it is not what these six are.
+functions raise `NativeRuntimeRequiredError`, and it is not what these seven are.
 Everything above runs.
 
 ## The types are the point
