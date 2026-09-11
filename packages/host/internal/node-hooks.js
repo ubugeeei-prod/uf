@@ -85,6 +85,7 @@ export async function initialize(data) {
 export async function load(url, context, nextLoad) {
   if (!url.startsWith("file:")) return nextLoad(url, context);
   const filename = fileURLToPath(url);
+  if (isCompiledConfig(filename)) return nextLoad(url, context);
   if (!isFlowModule(filename)) return nextLoad(url, context);
 
   const source = readFileSync(filename, "utf8");
@@ -94,6 +95,10 @@ export async function load(url, context, nextLoad) {
   // package.json forgot `"type": "module"` still runs, rather than failing on
   // an `import` in what Node would have guessed was CommonJS.
   return { format: "module", source: code, shortCircuit: true };
+}
+
+function isCompiledConfig(filename) {
+  return filename.includes(`${path.sep}.uf${path.sep}config${path.sep}uf.config.`);
 }
 
 /**
@@ -164,18 +169,24 @@ async function cachedTransform(source, filename) {
     }
   }
 
+  const configBootstrap = process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1";
   const out = await transformFlow(source, filename, {
     root,
     development: true,
     sourceMap: true,
     inSourceTests: inSourceTests(),
+    configBootstrap,
   });
   if (out == null) return null;
   const output = out.map
     ? `${out.code}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(out.map).toString("base64")}\n`
     : out.code;
 
-  const written = cacheEntryFor(sharedService(root).identity, source, filename);
+  const written = cacheEntryFor(
+    sharedService(root, { configBootstrap }).identity,
+    source,
+    filename,
+  );
   if (written) {
     // Tolerant: a cache that cannot be written is a slower run, not a
     // failed one — a read-only checkout still works.

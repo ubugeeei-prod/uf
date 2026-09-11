@@ -49,11 +49,13 @@
 
 use anyhow::{Result, bail};
 use camino::Utf8Path;
-use uf_config::{Prerender, RenderingPlan, load_config};
+use uf_config::{Prerender, RenderingPlan};
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
-use crate::commands::vite::{Driver, Event, LogLevel, render_error, render_log, resolve_host};
+use crate::commands::vite::{
+    Driver, Event, LogLevel, load_project_config, render_error, render_log, resolve_host,
+};
 use crate::support::{PRODUCTION, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
 
@@ -96,7 +98,7 @@ pub(crate) fn start(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs) -> Result<()> 
 }
 
 fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<()> {
-    let resolved = load_config(cwd)?;
+    let resolved = load_project_config(cwd, args.mode.as_deref(), PRODUCTION)?;
     let root = resolved.root.clone();
 
     // The same rule `uf dev --host` enforces, and only for `preview`, because

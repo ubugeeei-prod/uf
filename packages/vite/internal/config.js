@@ -72,7 +72,7 @@ export async function loadUfConfig(root) {
   }
 
   const compiled = await compileConfig(source, file, root);
-  const module = await import(pathToFileURL(compiled).href);
+  const module = await importConfigModule(compiled);
   const config = module.default;
   if (config == null || typeof config !== "object") {
     throw new Error(
@@ -80,6 +80,20 @@ export async function loadUfConfig(root) {
     );
   }
   return { config, file };
+}
+
+async function importConfigModule(compiled) {
+  const previous = process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+  process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
+  try {
+    return await import(pathToFileURL(compiled).href);
+  } finally {
+    if (previous == null) {
+      delete process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+    } else {
+      process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG = previous;
+    }
+  }
 }
 
 /**
@@ -93,8 +107,14 @@ async function compileConfig(source, file, root) {
   const directory = path.join(root, COMPILED_DIR);
   const target = path.join(directory, `uf.config.${hash}.mjs`);
 
-  const out = await transformFlow(source, file, { root, sourceMap: false });
-  const code = rewriteRelativeImports(out?.code ?? source, path.dirname(file));
+  const out = await transformFlow(source, file, {
+    root,
+    sourceMap: false,
+    configBootstrap: true,
+  });
+  const code = rewriteConfigImports(
+    rewriteRelativeImports(out?.code ?? source, path.dirname(file)),
+  );
   // Atomically, because two `uf` commands in one project write this same path
   // at the same time — the hash is of the source, so they agree on the name —
   // and `writeFileSync` truncates before it writes. A reader that caught it
@@ -122,6 +142,13 @@ export function rewriteRelativeImports(code, baseDirectory) {
   return code.replace(
     /((?:\bfrom\s*|\bimport\s*\(?\s*)["'])(\.\.?\/[^"']*)(["'])/g,
     (_, head, specifier, tail) => `${head}${absolute(specifier)}${tail}`,
+  );
+}
+
+function rewriteConfigImports(code) {
+  return code.replace(
+    /^\s*import\s*\{\s*defineConfig\s*\}\s*from\s*["']@uniflowed\/config["'];?\n?/gm,
+    "function defineConfig(config) {\n  return config;\n}\n",
   );
 }
 

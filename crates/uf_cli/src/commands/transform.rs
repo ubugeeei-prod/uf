@@ -36,7 +36,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use anyhow::{Context, Result};
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
-use uf_config::load_config;
+use uf_config::{UniflowedConfig, load_config};
 use uf_transform::{
     CompilerDiagnostic, ReactCompilerMode, TransformError, TransformOptions, is_flow_module,
     transform,
@@ -157,8 +157,15 @@ const TRANSFORM_CACHE: [&str; 3] = [".uf", "cache", "transform"];
 
 /// Serve transform requests until stdin closes.
 pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
-    let resolved = load_config(cwd)?;
-    let project = ProjectTransform::from_config(&resolved.config);
+    // The config loader itself reaches `uf transform` before the config can be
+    // evaluated. That bootstrap transform must not recursively ask the static
+    // config loader to read the file it is currently compiling.
+    let config = if std::env::var_os("UF_TRANSFORM_BOOTSTRAP_CONFIG").is_some() {
+        UniflowedConfig::default()
+    } else {
+        load_config(cwd)?.config
+    };
+    let project = ProjectTransform::from_config(&config);
 
     // A host starts this process only when it has something to compile, and
     // compiling is the only thing that adds to the cache — so a sweep here

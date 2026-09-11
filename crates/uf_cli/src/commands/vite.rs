@@ -28,10 +28,14 @@ use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
 use uf_config::env_files::ProjectEnv;
-use uf_config::{CapabilityJsHost, UniflowedConfig};
+use uf_config::{
+    CapabilityJsHost, ConfigError, ResolvedConfig, UniflowedConfig, discover_config, discover_root,
+    load_config, parse_config_projection,
+};
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Status, Tone};
 
-use crate::commands::builder::Builder;
+use crate::commands::builder::{self, Builder};
+use crate::support::project_env;
 use crate::ui::Ui;
 
 /// A JavaScript host that can run the driver.
@@ -387,6 +391,86 @@ const STOP_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// How often to ask whether it has gone.
 const STOP_POLL: std::time::Duration = std::time::Duration::from_millis(20);
+
+/// Load config for a command that is allowed to start the JavaScript builder.
+///
+/// The fast path stays static: a literal `uf.config.js` is still read by Rust
+/// alone, which keeps no-host commands cheap and preserves the long-standing
+/// test fixtures that use `defineConfig` as a shape rather than importing it.
+/// When the static reader hits actual JavaScript, bootstrap with the default
+/// host and builder, ask the builder driver to evaluate the module, and feed
+/// the JSON projection through the same `uf_config` validation.
+pub(crate) fn load_project_config(
+    cwd: &Utf8Path,
+    requested_mode: Option<&str>,
+    default_mode: &str,
+) -> Result<ResolvedConfig> {
+    match load_config(cwd) {
+        Ok(resolved) => Ok(resolved),
+        Err(error @ (ConfigError::UnsupportedExpression { .. } | ConfigError::Parse { .. })) => {
+            load_evaluated_config(cwd, requested_mode, default_mode).with_context(|| {
+                format!(
+                    "failed to evaluate uf.config.js after the static loader could not read it: \
+                     {error}"
+                )
+            })
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn load_evaluated_config(
+    cwd: &Utf8Path,
+    requested_mode: Option<&str>,
+    default_mode: &str,
+) -> Result<ResolvedConfig> {
+    let root = discover_root(cwd);
+    let config_path = discover_config(&root);
+    let mut resolved = ResolvedConfig {
+        root,
+        config_path,
+        config: UniflowedConfig::default(),
+    };
+    let Some(path) = resolved.config_path.clone() else {
+        return Ok(resolved);
+    };
+
+    let host = resolve_host(&resolved.config)?;
+    let builder = builder::resolve(&resolved.root, &resolved.config)?;
+    let env = project_env(&resolved, requested_mode, default_mode)?;
+    let mut driver = Driver::spawn(&host, &builder, &resolved.root, "config", &[], &env, &[])?;
+    let mut projection = None;
+    while let Some(event) = driver.next_event()? {
+        match event {
+            Event::Config { config } => projection = Some(config),
+            Event::Error(error) => {
+                driver.stop();
+                bail!("{}", error.message);
+            }
+            Event::Log {
+                level: LogLevel::Error,
+                message,
+            } => bail!("{message}"),
+            Event::ConfigLoaded { .. }
+            | Event::Phase { .. }
+            | Event::Log { .. }
+            | Event::Listening { .. }
+            | Event::Page { .. }
+            | Event::PageFailed { .. }
+            | Event::SourceChanged
+            | Event::Rendering { .. }
+            | Event::EnvChanged { .. }
+            | Event::Diagnostic(_)
+            | Event::RscSplit { .. }
+            | Event::Done { .. } => {}
+        }
+    }
+    driver.finish("uf config")?;
+
+    let projection = projection.ok_or_else(|| anyhow!("the builder did not report config"))?;
+    resolved.config = parse_config_projection(&path, projection)?;
+    Ok(resolved)
+}
 
 /// Everything a second Vite run of one build needs to find.
 ///

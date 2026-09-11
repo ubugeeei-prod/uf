@@ -44,6 +44,31 @@ fn run(root: &Path, args: &[&str]) -> Run {
     }
 }
 
+#[test]
+fn config_module_constants_can_define_tasks() {
+    if !support::host_ready() {
+        return;
+    }
+    let project = support::Project::new(&[]);
+    project.write(
+        "uf.config.js",
+        r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+const output = "ran.txt";
+const tasks = {
+  hello: { command: `echo hi >> ${output}` },
+};
+
+export default defineConfig({ tasks });
+"#,
+    );
+
+    let run = run(project.path(), &["hello"]);
+    assert!(run.ok, "stdout:\n{}\nstderr:\n{}", run.stdout, run.stderr);
+    assert_eq!(lines(project.path(), "ran.txt"), vec!["hi"]);
+}
+
 fn lines(root: &Path, name: &str) -> Vec<String> {
     fs::read_to_string(root.join(name))
         .unwrap_or_default()

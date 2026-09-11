@@ -277,6 +277,8 @@ export class TransformService {
    * @param {object} [options]
    * @param {string} [options.command] the `uf` binary; `ufBinary()` by default
    * @param {string} [options.root] project root, so `uf.config.js` is found
+   * @param {boolean} [options.configBootstrap] transform code that is needed
+   *   before `uf.config.js` can be evaluated
    */
   constructor(options = {}) {
     const command = options.command ?? ufBinary();
@@ -289,8 +291,15 @@ export class TransformService {
     // binary earlier and wrote under that would file build B's output under
     // build A's name, which is the original defect with a smaller window.
     this.#identity = ufBinaryIdentity(command);
+    const env = { ...process.env };
+    if (options.configBootstrap === true) {
+      env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
+    } else {
+      delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+    }
     this.#child = spawn(command, ["--cwd", root, "transform"], {
       stdio: ["pipe", "pipe", "inherit"],
+      env,
     });
 
     createInterface({ input: this.#child.stdout }).on("line", (line) => {
@@ -448,6 +457,7 @@ export class TransformService {
 }
 
 let shared = null;
+let sharedForConfigBootstrap = null;
 
 /**
  * The process-wide service, started on first use.
@@ -455,8 +465,18 @@ let shared = null;
  * The loader hooks and the config loader share one process per host rather
  * than one per module; it lives as long as the host does.
  */
-export function sharedService(root) {
-  shared ??= new TransformService({ root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd() });
+export function sharedService(root, options = {}) {
+  const entry = options.configBootstrap === true ? "bootstrap" : "project";
+  if (entry === "bootstrap") {
+    sharedForConfigBootstrap ??= new TransformService({
+      root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd(),
+      configBootstrap: true,
+    });
+    return sharedForConfigBootstrap;
+  }
+  shared ??= new TransformService({
+    root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd(),
+  });
   return shared;
 }
 
@@ -467,5 +487,7 @@ export function sharedService(root) {
  * transform comes back as `null`.
  */
 export function transformFlow(code, filename, options = {}) {
-  return sharedService(options.root).transform(filename, code, options);
+  return sharedService(options.root, {
+    configBootstrap: options.configBootstrap === true,
+  }).transform(filename, code, options);
 }

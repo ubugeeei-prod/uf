@@ -51,6 +51,7 @@ Bun.plugin({
         development: true,
         sourceMap: false,
         inSourceTests: inSourceTests(),
+        configBootstrap: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1",
       });
       if (out == null) return declined(args.path, source);
 
