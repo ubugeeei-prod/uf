@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Twelve modules, and what is asserted here is the property that makes each one
+// Thirteen modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -71,6 +71,7 @@ import {
 } from "@uniflowed/std/context";
 import { InvalidCsvError, parse as parseCsv, stringify as stringifyCsv } from "@uniflowed/std/csv";
 import { as, chain, is, join as joinErrors, unwrap, wrap } from "@uniflowed/std/errors";
+import { GlobPattern, glob, matchGlob } from "@uniflowed/std/glob";
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
 import { Element, List } from "@uniflowed/std/list";
@@ -1255,6 +1256,44 @@ describe("path", () => {
     expect(isAbsolute("app/routes")).toBe(false);
     expect(() => relative("/app", "app")).toThrow(RangeError);
     expect(() => relative("../a", "b")).toThrow(RangeError);
+  });
+});
+
+describe("glob", () => {
+  it("matches slash paths without asking a host file system", () => {
+    const routes = glob("routes/**/*.flow.js");
+
+    expect(routes).toBeInstanceOf(GlobPattern);
+    expect(routes.match("routes/index.flow.js")).toBe(true);
+    expect(routes.match("routes/admin/users.flow.js")).toBe(true);
+    expect(routes.match("routes/admin/users.js")).toBe(false);
+    expect(routes.match("/routes/index.flow.js")).toBe(false);
+  });
+
+  it("keeps wildcards inside a segment unless ** owns the segment", () => {
+    expect(matchGlob("src/*.js", "src/app.js")).toBe(true);
+    expect(matchGlob("src/*.js", "src/routes/app.js")).toBe(false);
+    expect(matchGlob("src/**/app.js", "src/app.js")).toBe(true);
+    expect(matchGlob("src/**/app.js", "src/routes/admin/app.js")).toBe(true);
+  });
+
+  it("does not recurse for deep ** matches or regex-backtrack on starry segments", () => {
+    const deep = Array.from({ length: 2_000 }, (_value, index) => `d${String(index)}`).join("/");
+    const separatedStars = Array.from({ length: 80 }, () => "*a").join("");
+
+    expect(matchGlob("root/**/file.js", `root/${deep}/file.js`)).toBe(true);
+    expect(matchGlob(`${separatedStars}z`, "a".repeat(80))).toBe(false);
+  });
+
+  it("supports single-character wildcards, classes and escaped specials", () => {
+    expect(matchGlob("pages/[a-c]?/[!x].js", "pages/b1/y.js")).toBe(true);
+    expect(matchGlob("pages/[a-c]?/[!x].js", "pages/d1/y.js")).toBe(false);
+    expect(matchGlob("assets/\\*.js", "assets/*.js")).toBe(true);
+  });
+
+  it("rejects malformed patterns when they are compiled", () => {
+    expect(() => glob("src/[.js")).toThrow(SyntaxError);
+    expect(() => matchGlob("src/[z-a].js", "src/x.js")).toThrow(SyntaxError);
   });
 });
 

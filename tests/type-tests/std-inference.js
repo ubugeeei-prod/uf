@@ -34,6 +34,7 @@ import { Builder, compare, equal, split } from "../../packages/std/bytes.js";
 import { background, key, withCancel, withTimeout, withValue } from "../../packages/std/context.js";
 import { parse as parseCsv, stringify as stringifyCsv } from "../../packages/std/csv.js";
 import { as, is, join, wrap } from "../../packages/std/errors.js";
+import { GlobPattern, glob, matchGlob } from "../../packages/std/glob.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
 import { List } from "../../packages/std/list.js";
@@ -240,6 +241,17 @@ export const pathAbsoluteAnswersBoolean: string = pathIsAbsolute("/app");
 // expect: 1 is incompatible with string
 export const pathJoinTakesText: mixed = joinPath("app", 1);
 
+// --- glob -------------------------------------------------------------------
+
+const javascriptFiles = glob("src/**/*.js");
+const compiledGlob: GlobPattern = javascriptFiles;
+
+// expect: boolean is incompatible with string
+export const globAnswersBoolean: string = javascriptFiles.match("src/index.js");
+
+// expect: 1 is incompatible with string
+export const globPatternNeedsText: mixed = glob(1);
+
 // --- what is *not* an error -------------------------------------------------
 //
 // Without these the fixture would pass just as happily on a package whose every
@@ -285,3 +297,5 @@ export const binarySearchByResult: { readonly index: number, readonly found: boo
 export const pathJoinText: string = joinPath("app", "routes", "..", "assets");
 export const pathRelativeText: string = relativePath("app/routes", "app/assets");
 export const pathAbsoluteBoolean: boolean = pathIsAbsolute("/app");
+export const globPattern: GlobPattern = compiledGlob;
+export const globMatchBoolean: boolean = matchGlob(compiledGlob, "src/index.js");

@@ -371,6 +371,11 @@ pub fn std_modules() -> StdModuleList {
                 "relative",
             ],
         ),
+        StdModule::ships(
+            "@uniflowed/std/glob",
+            StdCategory::FileSystem,
+            &["GlobPattern", "glob", "matchGlob"],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
@@ -480,12 +485,6 @@ pub fn std_modules() -> StdModuleList {
             "@uniflowed/std/wasm",
             StdCategory::Platform,
             &["compileWasm", "instantiateWasm", "WasmModule"],
-        ),
-        // The other half of `path/filepath`.
-        StdModule::planned(
-            "@uniflowed/std/glob",
-            StdCategory::FileSystem,
-            &["glob", "matchGlob", "GlobPattern"],
         ),
         StdModule::planned(
             "@uniflowed/std/cron",

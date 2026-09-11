@@ -34,7 +34,7 @@ try {
 
 ## What ships today
 
-Twelve modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
+Thirteen modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
 brings in a hex codec and nothing else.
 
 | Import | Go's name | What it is |
@@ -51,9 +51,10 @@ brings in a hex codec and nothing else.
 | `@uniflowed/std/csv` | `encoding/csv` | RFC 4180 parsing and writing without `split(",")` bugs |
 | `@uniflowed/std/binary` | `encoding/binary` | Checked `DataView` cursor reads and writes, plus Go-compatible varints |
 | `@uniflowed/std/path` | `path/filepath` | Host-independent slash-path cleanup, joining and relative paths |
+| `@uniflowed/std/glob` | `path/filepath` | Slash-path glob matching with `*`, `?`, character classes and recursive `**` |
 
 The root `@uniflowed/std` is unchanged: it is a declaration surface whose
-functions raise `NativeRuntimeRequiredError`, and it is not what these twelve are.
+functions raise `NativeRuntimeRequiredError`, and it is not what these thirteen are.
 Everything above runs.
 
 ## The types are the point
@@ -220,7 +221,7 @@ on them rather than replacing them.
 ### Missing, and worth having
 
 The first six at the top of this page are tranche 1. `slices`, `base32`, `list`,
-`csv`, `binary` and `path` are the first next-tranche pieces. What remains,
+`csv`, `binary`, `path` and `glob` are the first next-tranche pieces. What remains,
 roughly in order of value:
 
 | Go | What it would be |
@@ -229,7 +230,6 @@ roughly in order of value:
 | `bufio` | A buffered reader, and `Scanner` with line, word and custom split functions |
 | `hash/crc32`, `hash/fnv`, `hash/adler32` | WebCrypto has none of them. The strongest native candidate on this list, because CRC32 has a hardware instruction — so measure it before writing the JavaScript |
 | `time` durations and tickers | A `Duration` with the arithmetic, `Ticker`, `Timer`, `AfterFunc`, and the leak-free cancellation `context` already had to solve once |
-| `path/filepath` glob matching | `glob`, `match`, and the `**`/character-class rules deliberately left out of slash-path cleanup |
 | `archive/zip`, `archive/tar` | Reading, at least. The compression half is `DecompressionStream`; the container format is not |
 | `net/textproto` | MIME header parsing and `multipart/form-data` beyond what `FormData` gives |
 
