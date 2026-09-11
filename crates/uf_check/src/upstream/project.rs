@@ -26,8 +26,8 @@
 //! | relative, names a source in the batch | that module's signature, as a typed module |
 //! | relative, names a source that cannot contribute a signature | an unchecked module, recorded |
 //! | relative, names nothing in the batch | an unchecked module, recorded |
-//! | bare, published by a `package.json` in the batch | that module's signature, as a typed module |
 //! | bare, declared by Flow's libdefs | that `declare module` block |
+//! | bare, published by a `package.json` in the batch | that module's signature, as a typed module |
 //! | bare, anything else | an unchecked module, recorded |
 //!
 //! A bare specifier is never resolved against the batch's *paths*, even when a
@@ -38,10 +38,11 @@
 //!
 //! # What is not resolved
 //!
-//! * **A package with no manifest in the batch.** `react` and everything else
+//! * **A package with no declaration and no manifest in the batch.** Anything
 //!   under `node_modules` is not a source `uf check` collects, so it stays
-//!   unchecked unless Flow's own library definitions declare it — and stays in
-//!   [`crate::CheckReport::untyped_modules`] when they do not.
+//!   unchecked unless Flow's own or the project's library definitions declare
+//!   it — and stays in [`crate::CheckReport::untyped_modules`] when they do
+//!   not.
 //! * **A directory's `package.json` `main`.** A *relative* specifier naming a
 //!   directory finds `./internal/index.js` and nothing else; only a specifier
 //!   that names a package goes through that package's manifest.
@@ -407,13 +408,11 @@ impl ProjectModules {
 
     /// What `specifier`, imported from `importer`, resolves to.
     ///
-    /// A file in the batch outranks a `declare module`, which is upstream's own
-    /// order: `check_service`'s `dep_module_t` only reaches for
-    /// `typed_builtin_module_opt` once the module system has failed to resolve
-    /// the specifier to a file. A workspace package that this project actually
-    /// contains is the module the runtime loads, so it is the module the
-    /// checker must type — a libdef that happened to share its name would be a
-    /// description of something else.
+    /// A bare package declared by Flow's or the project's library definitions
+    /// wins before the batch's package manifests. That is what makes a
+    /// hand-written `flow-typed/` libdef a description of an untyped
+    /// dependency rather than a hint that can be shadowed by a vendored copy
+    /// whose `package.json` publishes the same name.
     fn resolve(
         self: &Rc<Self>,
         cx: &Context<'static>,
@@ -441,15 +440,15 @@ impl ProjectModules {
             }
             return self.unchecked(cx, name);
         }
+        if let Some(module) = typed_builtin_module(cx, specifier) {
+            return ResolvedRequire::TypedModule(module);
+        }
         if let Some(index) = self.resolve_package(importer, name)
             && let Some(signature) = self.signature(index)
         {
             return ResolvedRequire::TypedModule(self.module_thunk(index, &signature));
         }
-        match typed_builtin_module(cx, specifier) {
-            Some(module) => ResolvedRequire::TypedModule(module),
-            None => self.unchecked(cx, name),
-        }
+        self.unchecked(cx, name)
     }
 
     /// The batch's source for a package specifier, through the manifest that

@@ -37,6 +37,7 @@ use compact_str::CompactString;
 use uf_profiler::profile_span;
 
 use super::project::ProjectModules;
+use super::resolve;
 use crate::cache::{CachedRequire, Digest, Fields, hex};
 
 /// What a check needs to know about one file before it checks anything.
@@ -206,16 +207,19 @@ impl<'a> Graph<'a> {
 
 /// What one specifier resolves to, by [`ProjectModules::resolve`]'s own order.
 ///
-/// A file in the batch outranks a `declare module`, and a file in the batch
-/// that cannot contribute a signature is not a resolution at all — both are
-/// upstream's rules, mirrored here rather than reimplemented, and the mirror is
-/// what a test would break if `project`'s order ever changed.
+/// A bare `declare module` outranks the package manifests in the batch, while
+/// relative modules still resolve to the batch before asset declarations. The
+/// order mirrors [`ProjectModules::resolve`] rather than reimplementing a
+/// separate answer to what one specifier means.
 fn resolve(
     modules: &ProjectModules,
     facts: &[ModuleFacts],
     importer: &str,
     require: &CachedRequire,
 ) -> Resolution {
+    if !resolve::is_relative(&require.specifier) && require.declared {
+        return Resolution::Declared;
+    }
     match modules.locate(importer, &require.specifier) {
         // Whether the target has a signature is read from the batch's facts
         // rather than asked of `ProjectModules`, which would pack one to find

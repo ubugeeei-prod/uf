@@ -45,11 +45,10 @@
 //! own library definitions do not describe. The second half of that matters as
 //! much as the first, because it is what the caller is expected to do about it:
 //! `uf check` reads `node_modules` for a bare specifier left here and adds what
-//! it finds to the batch. A file in the batch outranks a `declare module` —
-//! [`super::project::ProjectModules::resolve`] says why — so offering it
-//! `react` would replace Flow's own description of React with whatever
-//! JavaScript happens to be installed, and the answer would get worse rather
-//! than better. A package Flow describes is Flow's to describe.
+//! it finds to the batch. A package Flow describes is Flow's to describe: the
+//! walk must not add `react`, or a package a project's `flow-typed/` declares,
+//! because doing so would replace the declaration with whatever JavaScript
+//! happens to be installed and make the answer worse rather than better.
 
 use std::collections::BTreeSet;
 
@@ -115,8 +114,12 @@ pub(super) fn closure(
     while let Some(module) = frontier.pop() {
         let source = available[module];
         for specifier in requires(&source, options) {
-            let resolved = if resolve::is_relative(&specifier) {
+            let declared = declared(&specifier);
+            let relative = resolve::is_relative(&specifier);
+            let resolved = if relative {
                 index.resolve(source.path, &specifier)
+            } else if declared {
+                None
             } else {
                 // The manifest first, and whether or not the file it names is
                 // in the batch: a package that publishes a subpath this batch
@@ -136,7 +139,7 @@ pub(super) fn closure(
             };
             match resolved {
                 Some(target) => reach(target, &mut seen, &mut frontier),
-                None if !declared(&specifier) => {
+                None if !declared => {
                     unresolved.insert(UnresolvedImport {
                         specifier,
                         importer: source.path.to_compact_string(),
@@ -329,9 +332,8 @@ mod tests {
 
     #[test]
     fn a_specifier_a_libdef_declares_is_not_left_for_the_caller() {
-        // A file in the batch outranks a `declare module`, so a caller that
-        // went and found `react` on disk would replace Flow's description of
-        // it with whatever is installed.
+        // A caller that went and found `react` on disk would replace Flow's
+        // description of it with whatever is installed.
         let available = [Source::new("app.js", "import 'react';\nimport 'nope';\n")];
         let found = closure(
             &["app.js"],
@@ -347,6 +349,30 @@ mod tests {
                 importer: "app.js".into(),
             }]
         );
+    }
+
+    #[test]
+    fn a_declared_package_is_not_shadowed_by_a_manifest_in_the_batch() {
+        // `flow-typed` is how a project describes an untyped package. A
+        // vendored copy or workspace wrapper with the same package name must
+        // not change what a bare import means once the declaration exists.
+        let available = [
+            Source::new("app.js", "import 'editor-pkg';\n"),
+            Source::new("vendor/editor-pkg/index.js", "export const anything = 1;\n"),
+            Source::new(
+                "vendor/editor-pkg/package.json",
+                r#"{ "name": "editor-pkg", "main": "index.js" }"#,
+            ),
+        ];
+        let found = closure(
+            &["app.js"],
+            &available,
+            &options::options(&CheckLimits::default()),
+            &|specifier| specifier == "editor-pkg",
+        );
+
+        assert_eq!(found.reached, [0]);
+        assert!(found.unresolved.is_empty());
     }
 
     #[test]

@@ -57,6 +57,16 @@ fn codes(sources: &[Source<'_>], libs: &[Source<'_>]) -> Vec<String> {
         .collect()
 }
 
+fn inferred_codes(sources: &[Source<'_>], libs: &[Source<'_>]) -> Vec<String> {
+    check_sources(sources, libs, &limits())
+        .expect("the checker runs")
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic.kind != uf_check::DiagnosticKind::Parse)
+        .map(|diagnostic| diagnostic.code.unwrap_or("<none>").to_owned())
+        .collect()
+}
+
 #[test]
 fn a_type_a_libdef_declares_is_a_type_and_not_an_any_typed_value() {
     let sources = [Source::new("src/Edge.js", USES_A_LIBDEF_TYPE)];
@@ -108,6 +118,42 @@ fn a_module_a_libdef_declares_is_not_reported_as_untyped() {
         "a module the project declared is not a hole: {:?}",
         with.untyped_modules
     );
+}
+
+#[test]
+fn a_libdef_declare_module_wins_over_a_project_manifest_with_the_same_name() {
+    // A vendored package or wrapper can publish the same name a libdef
+    // declares. In that case the declaration is the type surface the project
+    // asked for; the manifest should not shadow it and turn namespace members
+    // back into missing properties or any-typed values.
+    let sources = [
+        Source::new(
+            "src/probe.js",
+            "// @flow\nimport * as Editor from \"editor-pkg\";\n\
+             export const provider: Editor.languages.FoldingRangeProvider = { kind: \"x\" };\n",
+        ),
+        Source::new(
+            "vendor/editor-pkg/index.js",
+            "// @flow\nexport const anything: string = \"runtime\";\n",
+        ),
+        Source::new(
+            "vendor/editor-pkg/package.json",
+            r#"{ "name": "editor-pkg", "main": "index.js" }"#,
+        ),
+    ];
+    let libs = [Source::new(
+        "flow-typed/editor.js",
+        "// @flow\ndeclare module \"editor-pkg\" {\n  declare export namespace languages {\n    declare type FoldingRangeProvider = { kind: string };\n  }\n}\n",
+    )];
+
+    let without = inferred_codes(&sources, &[]);
+    assert!(
+        without.iter().any(|code| code == "prop-missing")
+            && without.iter().any(|code| code == "value-as-type"),
+        "the fixture must reproduce the manifest shadow before the libdef wins: {without:?}"
+    );
+
+    assert_eq!(inferred_codes(&sources, &libs), Vec::<String>::new());
 }
 
 #[test]
