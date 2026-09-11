@@ -13,6 +13,7 @@ use uf_task::{Concurrency, Plan, PlanError, RunOptions, ScheduledTask, TaskCache
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
 use crate::cli::CreateCommand;
+use crate::commands::vite::load_project_config;
 use crate::commands::{create, pm, test};
 use crate::suggest::closest;
 use crate::support::{DEVELOPMENT, plural, project_env, project_label};
@@ -36,7 +37,7 @@ pub(crate) fn run_task(
     args: &[String],
     options: RunArgs,
 ) -> Result<()> {
-    let resolved = load_config(cwd)?;
+    let resolved = load_project_config(cwd, requested_mode, DEVELOPMENT)?;
     // A task is project code with a shell in front of it, so it reads the
     // project's `.env` files like everything else uf runs. `development` is the
     // default because a task is something a person runs at a terminal; a task
@@ -564,7 +565,7 @@ fn elide(text: &str, width: usize) -> String {
 /// have to read the config to use. This is the answer to "what can I run here",
 /// and it is the same list the unknown-task error points at.
 pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let resolved = load_config(cwd)?;
+    let resolved = load_project_config(cwd, None, DEVELOPMENT)?;
     let tasks = &resolved.config.tasks;
 
     if tasks.is_empty() {

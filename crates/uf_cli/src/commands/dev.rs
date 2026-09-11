@@ -37,7 +37,7 @@ use uf_term::{KeyValue, Status, Tone};
 use crate::commands::builder;
 use crate::commands::lint::identifier_span;
 use crate::commands::vite::{
-    Driver, Event, render_diagnostic, render_error, render_log, resolve_host,
+    Driver, Event, load_project_config, render_diagnostic, render_error, render_log, resolve_host,
 };
 use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label, relative_to};
 use crate::ui::Ui;
@@ -58,7 +58,7 @@ pub(crate) struct DevArgs {
 
 /// Start the dev server and render its events until it exits.
 pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
-    let resolved = load_config(cwd)?;
+    let resolved = load_project_config(cwd, args.mode.as_deref(), DEVELOPMENT)?;
     let root = resolved.root.clone();
 
     // Exposing the server needs an allowlist; see docs/security.md. Vite

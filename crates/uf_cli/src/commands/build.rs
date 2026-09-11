@@ -30,7 +30,7 @@ use uf_bundle::{
 };
 use uf_config::{
     DeployAdapter, FrameworkPreset, LibraryPlan, Navigation, Prerender, RenderingPlan,
-    RuntimeTarget, UniflowedConfig, load_config,
+    RuntimeTarget, UniflowedConfig,
 };
 use uf_router::{
     Route, RouteTarget, discover_routes_for_target, discover_server_modules_for_target,
@@ -49,7 +49,9 @@ use crate::commands::builder;
 use crate::commands::compile;
 use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
-use crate::commands::vite::{Driver, Event, LinkContext, render_error, render_log, resolve_host};
+use crate::commands::vite::{
+    Driver, Event, LinkContext, load_project_config, render_error, render_log, resolve_host,
+};
 use crate::support::{
     PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
 };
@@ -140,7 +142,9 @@ pub(crate) fn build(
     let mut progress = ui.progress();
 
     progress.draw("loading configuration");
-    let resolved = timer.measure("config", || load_config(cwd))?;
+    let resolved = timer.measure("config", || {
+        load_project_config(cwd, requested_mode, PRODUCTION)
+    })?;
 
     // Which of the two builds this is, decided once. A project whose
     // `app.router.enabled` is false is a library, and everything below this
