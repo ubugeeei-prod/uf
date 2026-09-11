@@ -220,6 +220,27 @@ fn files_globs_cover_manifest_exports() {
 }
 
 #[test]
+fn files_globs_are_root_relative_and_directory_matches_include_children() {
+    let (_dir, root) = project(
+        r#"{
+  "name": "lib",
+  "exports": {
+    ".": "./index.js",
+    "./private": "./internal/private.js",
+    "./deep": "./dist/sub/index.js"
+  },
+  "files": ["*.js", "dist/*", "!*.test.js"]
+}"#,
+    );
+
+    let found = unpublished_exports(&root);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("./internal/private.js"), "{found:?}");
+    assert!(!found[0].contains("./index.js"), "{found:?}");
+    assert!(!found[0].contains("./dist/sub/index.js"), "{found:?}");
+}
+
+#[test]
 fn package_json_exports_are_always_publishable() {
     let (_dir, root) = project(
         r#"{
@@ -236,7 +257,49 @@ fn package_json_exports_are_always_publishable() {
 }
 
 #[test]
-fn a_manifest_with_no_files_warns_for_exported_targets() {
+fn npm_always_published_manifest_targets_are_not_reported() {
+    let (_dir, root) = project(
+        r#"{
+  "name": "lib",
+  "main": "./dist/index.js",
+  "bin": {
+    "lib": "./dist/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./dist/cli.js"
+  },
+  "files": ["index.js", "!*.test.js"]
+}"#,
+    );
+
+    assert!(unpublished_exports(&root).is_empty());
+}
+
+#[test]
+fn root_metadata_files_are_always_publishable_but_nested_ones_are_not() {
+    let (_dir, root) = project(
+        r#"{
+  "name": "lib",
+  "exports": {
+    ".": "./index.js",
+    "./readme": "./README.md",
+    "./license": "./LICENSE.txt",
+    "./nested-license": "./docs/LICENSE.txt"
+  },
+  "files": ["index.js", "!*.test.js"]
+}"#,
+    );
+
+    let found = unpublished_exports(&root);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("./docs/LICENSE.txt"), "{found:?}");
+    assert!(!found[0].contains("./README.md"), "{found:?}");
+    assert!(!found[0].contains("./LICENSE.txt"), "{found:?}");
+}
+
+#[test]
+fn a_manifest_with_no_files_has_no_files_allowlist_warning() {
     let (_dir, root) = project(
         r#"{
   "name": "lib",
@@ -244,8 +307,5 @@ fn a_manifest_with_no_files_warns_for_exported_targets() {
 }"#,
     );
 
-    let found = unpublished_exports(&root);
-    assert_eq!(found.len(), 1, "{found:?}");
-    assert!(found[0].contains("./index.js"), "{found:?}");
-    assert!(found[0].contains("./dist/index.js"), "{found:?}");
+    assert!(unpublished_exports(&root).is_empty());
 }

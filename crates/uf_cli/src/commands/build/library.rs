@@ -448,16 +448,14 @@ fn unpublished_exports(root: &Utf8Path) -> Vec<String> {
         return Vec::new();
     };
 
-    let files = manifest
-        .get("files")
-        .and_then(serde_json::Value::as_array)
-        .map(|entries| {
-            entries
-                .iter()
-                .filter_map(serde_json::Value::as_str)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+    let Some(files) = manifest.get("files").and_then(serde_json::Value::as_array) else {
+        return Vec::new();
+    };
+    let files = files
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .collect::<Vec<_>>();
+    let always_published = always_published_targets(&manifest);
 
     let mut missing = Vec::new();
     let mut targets = Vec::new();
@@ -466,7 +464,7 @@ fn unpublished_exports(root: &Utf8Path) -> Vec<String> {
         let Some(relative) = export_target(&target) else {
             continue;
         };
-        if npm_always_publishes(relative) || files_publish(relative, &files) {
+        if always_published.contains(relative) || files_publish(relative, &files) {
             continue;
         }
         missing.push(target);
@@ -483,26 +481,83 @@ fn unpublished_exports(root: &Utf8Path) -> Vec<String> {
     )]
 }
 
+/// A relative target out of `exports`, or nothing for package specifiers.
 fn export_target(target: &str) -> Option<&str> {
     target.strip_prefix("./")
 }
 
-fn npm_always_publishes(path: &str) -> bool {
-    path == "package.json"
-        || path.eq_ignore_ascii_case("readme")
-        || path
-            .rsplit('/')
-            .next()
-            .is_some_and(|name| name.eq_ignore_ascii_case("license"))
+/// Targets npm publishes even when `files` does not name them.
+fn always_published_targets(manifest: &serde_json::Value) -> BTreeSet<String> {
+    let mut targets = BTreeSet::from([String::from("package.json")]);
+
+    if let Some(main) = manifest.get("main").and_then(serde_json::Value::as_str) {
+        if let Some(target) = manifest_path(main) {
+            targets.insert(target);
+        }
+    }
+    if let Some(bin) = manifest.get("bin") {
+        match bin {
+            serde_json::Value::String(path) => {
+                if let Some(target) = manifest_path(path) {
+                    targets.insert(target);
+                }
+            }
+            serde_json::Value::Object(commands) => {
+                for path in commands.values().filter_map(serde_json::Value::as_str) {
+                    if let Some(target) = manifest_path(path) {
+                        targets.insert(target);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    targets
 }
 
+/// A manifest path in the same relative spelling `exports` targets use here.
+fn manifest_path(path: &str) -> Option<String> {
+    let path = path.trim().trim_start_matches("./").trim_start_matches('/');
+    if path.is_empty() || path.starts_with("../") {
+        return None;
+    }
+    Some(path.to_string())
+}
+
+/// Whether `path` is a root metadata file npm publishes regardless of `files`.
+fn is_always_published_root_file(path: &str) -> bool {
+    if path.contains('/') {
+        return false;
+    }
+    let lower = path.to_ascii_lowercase();
+    lower == "package.json"
+        || has_optional_extension(&lower, "readme")
+        || has_optional_extension(&lower, "license")
+        || has_optional_extension(&lower, "licence")
+}
+
+/// Whether `name` is exactly `stem`, or `stem` followed by an extension.
+fn has_optional_extension(name: &str, stem: &str) -> bool {
+    name == stem
+        || name
+            .strip_prefix(stem)
+            .is_some_and(|suffix| suffix.starts_with('.'))
+}
+
+/// Apply the `files` allowlist in order, including negations.
 fn files_publish(path: &str, files: &[&str]) -> bool {
+    if is_always_published_root_file(path) {
+        return true;
+    }
     let mut published = false;
     for entry in files {
         let Some(pattern) = file_pattern(entry) else {
             continue;
         };
-        if !file_pattern_matches(pattern.body, path) {
+        if !file_pattern_matches(pattern.body, path)
+            && (pattern.include || !file_negation_matches_anywhere(pattern.body, path))
+        {
             continue;
         }
         published = pattern.include;
@@ -510,11 +565,13 @@ fn files_publish(path: &str, files: &[&str]) -> bool {
     published
 }
 
+/// One parsed `files` entry.
 struct FilePattern<'a> {
     include: bool,
     body: &'a str,
 }
 
+/// Parse a `files` entry into its include/exclude direction and pattern body.
 fn file_pattern(entry: &str) -> Option<FilePattern<'_>> {
     let entry = entry.trim();
     if entry.is_empty() {
@@ -533,6 +590,7 @@ fn file_pattern(entry: &str) -> Option<FilePattern<'_>> {
     Some(FilePattern { include, body })
 }
 
+/// Whether a single `files` pattern selects `path`.
 fn file_pattern_matches(pattern: &str, path: &str) -> bool {
     if !has_glob_syntax(pattern) {
         return path == pattern
@@ -543,20 +601,37 @@ fn file_pattern_matches(pattern: &str, path: &str) -> bool {
     if glob_matches(pattern, path) {
         return true;
     }
+    let mut rest = path;
+    while let Some((ancestor, _)) = rest.rsplit_once('/') {
+        if glob_matches(pattern, ancestor) {
+            return true;
+        }
+        rest = ancestor;
+    }
+    false
+}
+
+/// Slashless negations behave like ignore rules and subtract matching names at any depth.
+fn file_negation_matches_anywhere(pattern: &str, path: &str) -> bool {
     if pattern.contains('/') {
         return false;
     }
-    path.rsplit('/')
-        .next()
-        .is_some_and(|name| glob_matches(pattern, name))
+    let name = path.rsplit('/').next().unwrap_or(path);
+    if has_glob_syntax(pattern) {
+        glob_matches(pattern, name)
+    } else {
+        pattern == name
+    }
 }
 
+/// Whether `pattern` needs glob matching rather than literal path matching.
 fn has_glob_syntax(pattern: &str) -> bool {
     pattern
         .chars()
         .any(|character| matches!(character, '*' | '?' | '[' | '{'))
 }
 
+/// Match one root-relative glob pattern against one root-relative path.
 fn glob_matches(pattern: &str, path: &str) -> bool {
     GlobBuilder::new(pattern)
         .literal_separator(true)
