@@ -3827,7 +3827,9 @@ version = "0.0.0-alpha.20"
 dependencies = [
  "camino",
  "compact_str",
+ "globset",
  "ignore",
+ "serde_json",
  "tempfile",
  "thiserror",
  "uf_config",
