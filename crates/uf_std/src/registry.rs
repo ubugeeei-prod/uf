@@ -243,13 +243,15 @@ pub fn std_modules() -> StdModuleList {
         // that one to the file.
         StdModule::declared("@uniflowed/std", StdCategory::Types),
         // ---------------------------------------------------------------
-        // What ships. ubugeeei-prod/uf#711, the first tranche.
+        // What ships. ubugeeei-prod/uf#711, the first tranche, plus the first
+        // slice-search piece of #710's next tranche.
         // ---------------------------------------------------------------
         //
         // Every list below is exactly what the file exports, and a test reads
-        // the file rather than trusting that. All six are pure Flow over
-        // `Uint8Array`, `TextEncoder`, `AbortController`, `Promise` and
-        // `setTimeout`: no `node:` import, no `Buffer`, no binding.
+        // the file rather than trusting that. The shipped modules are pure
+        // Flow over platform values such as `Uint8Array`, `TextEncoder`,
+        // `AbortController`, `Promise` and `setTimeout`: no `node:` import, no
+        // `Buffer`, no binding.
         StdModule::ships(
             "@uniflowed/std/errors",
             StdCategory::Diagnostics,
@@ -315,13 +317,18 @@ pub fn std_modules() -> StdModuleList {
                 "isValid",
             ],
         ),
+        StdModule::ships(
+            "@uniflowed/std/slices",
+            StdCategory::Data,
+            &["binarySearch", "binarySearchBy", "search"],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
         //
         // Read [`StdStatus::Planned`] before reading any of these. The exports
         // are the shape somebody imagined, they are checked by nothing, and
-        // being here is not a commitment that the module will exist. Four of
+        // being here is not a commitment that the module will exist. Three of
         // them are named in #710's next tranche and say so.
         StdModule::planned(
             "@uniflowed/std/vfs",

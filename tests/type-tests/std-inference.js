@@ -33,6 +33,7 @@ import { background, key, withCancel, withTimeout, withValue } from "../../packa
 import { as, is, join, wrap } from "../../packages/std/errors.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
+import { binarySearch, binarySearchBy, search } from "../../packages/std/slices.js";
 import { Group, Mutex, Semaphore, once } from "../../packages/std/sync.js";
 
 class HttpError extends Error {
@@ -162,6 +163,26 @@ export const encodeGivesText: Uint8Array = encode(left);
 // expect: string
 export const builderWritesBytes: mixed = new Builder().write("text");
 
+// --- slices -----------------------------------------------------------------
+
+// expect: number is incompatible with string
+export const searchAnswersAnIndex: string = search(4, (index) => index >= 2);
+
+// The sorted array decides the element type, not `any`.
+const sortedNumbers: $ReadOnlyArray<number> = [1, 3, 5];
+const compareNumbers = (left: number, right: number): number => left - right;
+const searchSortedNumbers = (target: number) => binarySearch(sortedNumbers, target, compareNumbers);
+const searchNumbers = binarySearch(sortedNumbers, 3, (left, right) => left - right);
+// expect: boolean is incompatible with number
+export const binarySearchFoundIsBoolean: number = searchNumbers.found;
+
+// expect: "3" is incompatible with number
+export const binarySearchTargetHasElementType: mixed = searchSortedNumbers("3");
+
+const searchRows = binarySearchBy([{ id: "a" }, { id: "b" }], (row) => row.id.localeCompare("b"));
+// expect: number is incompatible with string
+export const binarySearchByIndexIsNumber: string = searchRows.index;
+
 // --- what is *not* an error -------------------------------------------------
 //
 // Without these the fixture would pass just as happily on a package whose every
@@ -186,3 +207,11 @@ export const bytesCompare: -1 | 0 | 1 = compare(left, left);
 export const bytesSplit: $ReadOnlyArray<Uint8Array> = split(left, left);
 export const hexEncodes: string = encode(left);
 export const hexDecodes: Uint8Array = decode("dead");
+export const searchIndex: number = search(4, (index) => index >= 2);
+export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
+  sortedNumbers,
+  3,
+  (left, right) => left - right,
+);
+export const binarySearchByResult: { readonly index: number, readonly found: boolean } =
+  binarySearchBy([{ id: "a" }, { id: "b" }], (row) => row.id.localeCompare("b"));

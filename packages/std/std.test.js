@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Six modules, and what is asserted here is the property that makes each one
+// Seven modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -52,6 +52,7 @@ import {
 import { as, chain, is, join as joinErrors, unwrap, wrap } from "@uniflowed/std/errors";
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
+import { binarySearch, binarySearchBy, search } from "@uniflowed/std/slices";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
 
 import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
@@ -880,6 +881,46 @@ describe("hex", () => {
   });
 });
 
+describe("slices", () => {
+  it("finds the first true index of a monotone predicate", () => {
+    expect(search(8, (index) => index >= 5)).toBe(5);
+    expect(search(8, () => false)).toBe(8);
+    expect(search(8, () => true)).toBe(0);
+  });
+
+  it("refuses a length that is not a searchable array bound", () => {
+    expect(() => search(-1, () => true)).toThrow(RangeError);
+    expect(() => search(1.5, () => true)).toThrow(RangeError);
+    expect(() => search(Number.MAX_SAFE_INTEGER + 1, () => true)).toThrow(RangeError);
+  });
+
+  it("finds the first equal item and otherwise returns the insertion point", () => {
+    const numbers = [1, 3, 3, 3, 7, 9];
+    expect(binarySearch(numbers, 3, (left, right) => left - right)).toEqual({
+      index: 1,
+      found: true,
+    });
+    expect(binarySearch(numbers, 6, (left, right) => left - right)).toEqual({
+      index: 4,
+      found: false,
+    });
+    expect(binarySearch(numbers, 12, (left, right) => left - right)).toEqual({
+      index: 6,
+      found: false,
+    });
+  });
+
+  it("searches objects through a captured target", () => {
+    const rows = [{ id: "a" }, { id: "c" }, { id: "f" }];
+    const wanted = "c";
+
+    expect(binarySearchBy(rows, (row) => row.id.localeCompare(wanted))).toEqual({
+      index: 1,
+      found: true,
+    });
+  });
+});
+
 describe("the types", () => {
   it("reports every misuse in tests/type-tests/std-inference.js", () => {
     // Running proves what the code does; only the checker can prove what a
@@ -917,7 +958,7 @@ describe("what ships is one list in three places", () => {
     return found.sort();
   };
 
-  it("is the same six in the registry and the package manifest", () => {
+  it("is the same shipped modules in the registry and the package manifest", () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.join(REPO, "packages/std/package.json"), "utf8"),
     );
@@ -932,7 +973,7 @@ describe("what ships is one list in three places", () => {
     expect(ships()).toEqual(subpaths);
   });
 
-  it("is the same six the reference page's table names", () => {
+  it("is the same shipped modules the reference page's table names", () => {
     const page = fs.readFileSync(path.join(REPO, "docs/app/reference/std/$page.mdx"), "utf8");
     const start = page.indexOf("## What ships today");
     expect(start).toBeGreaterThan(-1);

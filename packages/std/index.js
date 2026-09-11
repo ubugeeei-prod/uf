@@ -21,9 +21,10 @@ export type StdCategory =
 /**
  * What a `@uniflowed/std` specifier is today.
  *
- * `"ships"` is the six subpaths of ubugeeei-prod/uf#711 — `errors`, `sync`,
- * `context`, `bytes`, `heap`, `hex` — each of which is real code behind its own
- * export path. `"declared"` is this module: functions that raise
+ * `"ships"` is the subpaths that have real code behind their own export paths:
+ * the six of ubugeeei-prod/uf#711 — `errors`, `sync`, `context`, `bytes`,
+ * `heap`, `hex` — and the `slices` search helper from #710's next tranche.
+ * `"declared"` is this module: functions that raise
  * `NativeRuntimeRequiredError`. `"planned"` means nobody has written it, and
  * nothing more; `"declined"` is a decision that the platform or another
  * `@uniflowed/*` already answers it, or that no runtime-agnostic module can.
