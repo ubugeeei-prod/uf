@@ -62,6 +62,8 @@ enum Resolution {
     Module(usize),
     /// A module Flow's own library definitions declare.
     Declared,
+    /// A package export that would resolve after choosing a concrete host.
+    HostConditional,
     /// Nothing typed: the import is `any`, and the specifier is reported.
     Untyped,
 }
@@ -76,6 +78,7 @@ impl Resolution {
         match self {
             Self::Module(_) => "@",
             Self::Declared => "~",
+            Self::HostConditional => "!",
             Self::Untyped => "?",
         }
     }
@@ -175,7 +178,27 @@ impl<'a> Graph<'a> {
             .requires
             .iter()
             .zip(&self.resolutions[index])
-            .filter(|(_, resolution)| **resolution == Resolution::Untyped)
+            .filter(|(_, resolution)| {
+                matches!(
+                    **resolution,
+                    Resolution::HostConditional | Resolution::Untyped
+                )
+            })
+            .map(|(require, _)| require.specifier.clone())
+            .collect()
+    }
+
+    /// The specifiers that stayed untyped because their `exports` map only
+    /// resolved for a concrete host.
+    pub(super) fn host_conditional(&self, index: usize) -> Vec<CompactString> {
+        if self.facts[index].signature.is_none() {
+            return Vec::new();
+        }
+        self.facts[index]
+            .requires
+            .iter()
+            .zip(&self.resolutions[index])
+            .filter(|(_, resolution)| **resolution == Resolution::HostConditional)
             .map(|(require, _)| require.specifier.clone())
             .collect()
     }
@@ -200,6 +223,9 @@ fn resolve(
         // the cache exists not to do.
         Some(index) if facts[index].signature.is_some() => Resolution::Module(index),
         _ if require.declared => Resolution::Declared,
+        _ if modules.host_conditional_exports(importer, &require.specifier) => {
+            Resolution::HostConditional
+        }
         _ => Resolution::Untyped,
     }
 }

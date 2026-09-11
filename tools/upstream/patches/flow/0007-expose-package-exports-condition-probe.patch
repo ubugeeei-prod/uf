@@ -1,0 +1,35 @@
+Subject: expose a package exports condition-set probe
+
+Issue: ubugeeei-prod/uf#735
+Upstream: not filed with facebook/flow yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+uf needs to tell apart a package that is not present from a package whose
+`exports` map is present but publishes a subpath only behind host-specific
+conditions. The answer has to come from the same matcher Flow uses for package
+exports, otherwise the diagnostic would drift from the graph the checker
+actually types.
+
+This patch exposes a small probe that reuses `resolve_package` across several
+candidate condition sets and reports whether any of them would resolve.
+
+diff --git a/rust_port/crates/flow_parser_utils/src/package_exports.rs b/rust_port/crates/flow_parser_utils/src/package_exports.rs
+--- a/rust_port/crates/flow_parser_utils/src/package_exports.rs
++++ b/rust_port/crates/flow_parser_utils/src/package_exports.rs
+@@ -65,6 +65,15 @@ impl PackageExports {
+         }
+     }
+-
++    pub fn resolves_package_with_any_condition_set(
++        &self,
++        subpath: &str,
++        condition_sets: &[Vec<FlowSmolStr>],
++    ) -> bool {
++        condition_sets
++            .iter()
++            .any(|conditions| self.resolve_package(subpath, conditions).is_some())
++    }
++
+     pub fn parse(expr: &ast::expression::Expression<Loc, Loc>) -> Option<Self> {
+         match expr.deref() {
+             ExpressionInner::StringLiteral { inner, .. } => Some(

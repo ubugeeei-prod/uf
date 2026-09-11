@@ -107,6 +107,7 @@ fn a_report_counts_by_severity() {
         files_skipped: 0,
         files_from_cache: 0,
         untyped_modules: Vec::new(),
+        host_conditional_modules: Vec::new(),
         builtins: BuiltinsTiming {
             elapsed: std::time::Duration::ZERO,
             cold_elapsed: std::time::Duration::ZERO,
@@ -129,6 +130,7 @@ fn throughput_is_unknown_when_no_time_passed() {
         files_skipped: 0,
         files_from_cache: 0,
         untyped_modules: Vec::new(),
+        host_conditional_modules: Vec::new(),
         builtins: BuiltinsTiming {
             elapsed: std::time::Duration::ZERO,
             cold_elapsed: std::time::Duration::ZERO,
@@ -1153,6 +1155,41 @@ fn a_path_the_exports_map_does_not_publish_stays_unresolved() {
         report.untyped_modules,
         ["@uniflowed/cell/internal/schedule.js"]
     );
+}
+
+#[test]
+fn host_only_package_exports_are_reported_separately_from_missing_packages() {
+    require_checker!();
+
+    let report = batch(&[
+        Source::new(
+            "packages/hosted/package.json",
+            r#"{
+              "name": "hosted",
+              "exports": {
+                ".": { "node": "./node.js", "bun": "./bun.js" }
+              }
+            }"#,
+        ),
+        Source::new(
+            "packages/hosted/node.js",
+            "// @flow\nexport type Mode = \"node\";\n",
+        ),
+        Source::new(
+            "packages/hosted/bun.js",
+            "// @flow\nexport type Mode = \"bun\";\n",
+        ),
+        Source::new(
+            "app.js",
+            "// @flow\nimport type { Mode } from \"hosted\";\n\
+             import type { Missing } from \"not-installed\";\n\
+             export const mode: Mode = \"node\";\n\
+             export const missing: Missing = 1;\n",
+        ),
+    ]);
+
+    assert_eq!(report.untyped_modules, ["hosted", "not-installed"]);
+    assert_eq!(report.host_conditional_modules, ["hosted"]);
 }
 
 #[test]

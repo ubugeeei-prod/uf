@@ -129,6 +129,14 @@ pub struct CheckReport {
     /// `any` and carry on, which is what happens here — and this list is how a
     /// caller says so out loud instead of letting the hole be silent.
     pub untyped_modules: Vec<CompactString>,
+    /// Untyped package imports whose `exports` map only resolved for a
+    /// concrete host condition such as `node`, `bun`, `deno` or `browser`.
+    ///
+    /// These are also present in [`Self::untyped_modules`], because the import
+    /// is still typed as `any`. This list says why: the package was visible,
+    /// but `uf check` deliberately did not pick one host's branch for a graph
+    /// it has to share across hosts.
+    pub host_conditional_modules: Vec<CompactString>,
     /// What the shared builtin environment cost.
     pub builtins: BuiltinsTiming,
     /// Wall time spent in inference, excluding the builtin merge.

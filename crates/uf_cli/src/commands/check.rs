@@ -414,6 +414,7 @@ fn type_check_payload(types: &TypeCheck) -> Value {
                 .map_or(report.builtins.cold, |batch| batch.builtins.cold)
         );
         value["untypedModules"] = json!(report.untyped_modules);
+        value["hostConditionalModules"] = json!(report.host_conditional_modules);
     }
     if let TypeCheck::Failed(error) = types {
         value["error"] = json!(error.to_string());
@@ -641,6 +642,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 rows.insert(1, KeyValue::toned("libdefs", &libdefs, Tone::Muted));
             }
             let untyped = untyped_module_list(report);
+            let host_conditional = host_conditional_module_list(report);
             ui.render(|renderer, out| {
                 renderer.blank(out);
                 renderer.key_values(out, 2, &rows);
@@ -655,6 +657,17 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                     let items: Vec<&str> = untyped.iter().map(String::as_str).collect();
                     renderer.bullet_list(out, 4, &items);
                 }
+                if !host_conditional.is_empty() {
+                    renderer.blank(out);
+                    push_spaces(out, 2);
+                    renderer.status(
+                        out,
+                        Status::Info,
+                        "these packages only publish host-specific exports; uf check typed them as any instead of guessing a host",
+                    );
+                    let items: Vec<&str> = host_conditional.iter().map(String::as_str).collect();
+                    renderer.bullet_list(out, 4, &items);
+                }
             });
         }
     }
@@ -666,16 +679,22 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
 /// set is always in `--json`.
 #[cfg(feature = "upstream-typecheck")]
 fn untyped_module_list(report: &CheckReport) -> Vec<String> {
-    let mut named: Vec<String> = report
-        .untyped_modules
+    limited_module_list(&report.untyped_modules)
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn host_conditional_module_list(report: &CheckReport) -> Vec<String> {
+    limited_module_list(&report.host_conditional_modules)
+}
+
+#[cfg(feature = "upstream-typecheck")]
+fn limited_module_list<T: std::fmt::Display>(modules: &[T]) -> Vec<String> {
+    let mut named: Vec<String> = modules
         .iter()
         .take(UNTYPED_MODULES_SHOWN)
         .map(ToString::to_string)
         .collect();
-    let overflow = report
-        .untyped_modules
-        .len()
-        .saturating_sub(UNTYPED_MODULES_SHOWN);
+    let overflow = modules.len().saturating_sub(UNTYPED_MODULES_SHOWN);
     if overflow > 0 {
         named.push(format!("and {overflow} more"));
     }

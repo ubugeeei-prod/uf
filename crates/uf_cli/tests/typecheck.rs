@@ -164,6 +164,7 @@ fn a_second_run_is_answered_from_the_cache_under_the_project_root() {
         "filesChecked",
         "filesSkipped",
         "untypedModules",
+        "hostConditionalModules",
     ] {
         assert_eq!(
             first["typeCheck"][field], second["typeCheck"][field],
@@ -320,6 +321,54 @@ fn imports_that_uf_cannot_type_yet_are_named_rather_than_hidden() {
         untyped.iter().any(|name| name == "./generated/table.js"),
         "{untyped:?}"
     );
+}
+
+#[test]
+fn host_conditional_package_exports_are_reported_apart_from_missing_packages() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    let package = dir.path().join("packages/hosted");
+    fs::create_dir_all(&src).unwrap();
+    fs::create_dir_all(&package).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{
+          "name": "hosted",
+          "exports": { ".": { "node": "./node.js", "bun": "./bun.js" } }
+        }"#,
+    )
+    .unwrap();
+    fs::write(
+        package.join("node.js"),
+        "// @flow\nexport type Mode = \"node\";\n",
+    )
+    .unwrap();
+    fs::write(
+        package.join("bun.js"),
+        "// @flow\nexport type Mode = \"bun\";\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport type { Mode } from \"hosted\";\n\
+         import type { Missing } from \"not-installed\";\n\
+         export const mode: Mode = \"node\";\n\
+         export const missing: Missing = 1;\n",
+    )
+    .unwrap();
+
+    let value = check_json(dir.path());
+    let untyped = value["typeCheck"]["untypedModules"].as_array().unwrap();
+    let host_conditional = value["typeCheck"]["hostConditionalModules"]
+        .as_array()
+        .unwrap();
+
+    assert!(untyped.iter().any(|name| name == "hosted"), "{untyped:?}");
+    assert!(
+        untyped.iter().any(|name| name == "not-installed"),
+        "{untyped:?}"
+    );
+    assert_eq!(host_conditional, [serde_json::json!("hosted")].as_slice());
 }
 
 /// A hand-written library definition is full of `any`, and that is what one is

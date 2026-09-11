@@ -74,6 +74,10 @@ const MANIFEST: &str = "package.json";
 /// The directory an installed package sits under, with its separator.
 const INSTALLED_PREFIX: &str = "node_modules/";
 
+/// Host-specific `exports` conditions that are intentionally not part of the
+/// checker graph.
+const HOST_EXPORT_CONDITIONS: [&str; 4] = ["node", "bun", "deno", "browser"];
+
 /// The path a bare specifier named, and how much of a path it is.
 ///
 /// The two cases resolve differently on purpose, and the difference is Node's
@@ -148,6 +152,11 @@ pub(super) struct WorkspacePackages {
     installed: HashMap<CompactString, Vec<Installed>>,
     /// The `exports` conditions a subpath is resolved under, from [`Options`].
     conditions: Vec<FlowSmolStr>,
+    /// The condition sets that would resolve for one concrete host.
+    ///
+    /// These do not decide the checker graph. They only explain a miss after
+    /// the graph has already refused to pick one host.
+    host_condition_sets: Vec<Vec<FlowSmolStr>>,
 }
 
 impl WorkspacePackages {
@@ -206,15 +215,19 @@ impl WorkspacePackages {
             copies.sort_by_key(|copy| std::cmp::Reverse(specificity(&copy.enclosing)));
         }
 
+        let conditions: Vec<FlowSmolStr> = options
+            .node_package_export_conditions
+            .iter()
+            .map(|condition| FlowSmolStr::new(condition.as_str()))
+            .collect();
+        let host_condition_sets = host_condition_sets(&conditions);
+
         Self {
             scopes,
             project,
             installed,
-            conditions: options
-                .node_package_export_conditions
-                .iter()
-                .map(|condition| FlowSmolStr::new(condition.as_str()))
-                .collect(),
+            conditions,
+            host_condition_sets,
         }
     }
 
@@ -277,6 +290,27 @@ impl WorkspacePackages {
         }
     }
 
+    /// Whether `specifier` names a package subpath that only resolves after a
+    /// concrete host condition is added.
+    pub(super) fn host_conditional_exports(&self, importer: &str, specifier: &str) -> bool {
+        if specifier.starts_with('#') {
+            return false;
+        }
+        let Some((name, subpath)) = split(specifier) else {
+            return false;
+        };
+        let Some(package) = self.lookup(importer, name) else {
+            return false;
+        };
+        let Some(exports) = package.manifest.exports() else {
+            return false;
+        };
+        exports
+            .resolve_package(&subpath, &self.conditions)
+            .is_none()
+            && exports.resolves_package_with_any_condition_set(&subpath, &self.host_condition_sets)
+    }
+
     fn resolve_import(&self, importer: &str, specifier: &str) -> Option<PackageFile> {
         let package = self.scope(importer)?;
         let imports = package.manifest.imports()?;
@@ -310,6 +344,19 @@ impl WorkspacePackages {
         let (name, _) = split(specifier)?;
         Some(self.lookup(importer, name)?.manifest_path.as_str())
     }
+}
+
+fn host_condition_sets(conditions: &[FlowSmolStr]) -> Vec<Vec<FlowSmolStr>> {
+    HOST_EXPORT_CONDITIONS
+        .iter()
+        .map(|host| {
+            let mut set = conditions.to_vec();
+            if !set.iter().any(|condition| condition.as_str() == *host) {
+                set.push(FlowSmolStr::new(host));
+            }
+            set
+        })
+        .collect()
 }
 
 /// Where an installed package is installed, and under what name.
@@ -554,6 +601,22 @@ mod tests {
             exact(&packages, "@uniflowed/host/transform"),
             "packages/host/transform.js"
         );
+    }
+
+    #[test]
+    fn host_only_exports_are_classified_without_resolving_the_checker_graph() {
+        let packages = packages(&[Source::new(
+            "packages/hosted/package.json",
+            r#"{
+              "name": "hosted",
+              "exports": { ".": { "bun": "./bun.js", "node": "./node.js" } }
+            }"#,
+        )]);
+
+        assert!(packages.resolve("app.js", "hosted").is_none());
+        assert!(packages.host_conditional_exports("app.js", "hosted"));
+        assert!(!packages.host_conditional_exports("app.js", "missing"));
+        assert!(!packages.host_conditional_exports("app.js", "hosted/private"));
     }
 
     #[test]
