@@ -37,6 +37,11 @@ import { as, is, join, wrap } from "../../packages/std/errors.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
 import { List } from "../../packages/std/list.js";
+import {
+  isAbsolute as pathIsAbsolute,
+  join as joinPath,
+  relative as relativePath,
+} from "../../packages/std/path.js";
 import { binarySearch, binarySearchBy, search } from "../../packages/std/slices.js";
 import { Group, Mutex, Semaphore, once } from "../../packages/std/sync.js";
 
@@ -224,6 +229,17 @@ const searchRows = binarySearchBy([{ id: "a" }, { id: "b" }], (row) => row.id.lo
 // expect: number is incompatible with string
 export const binarySearchByIndexIsNumber: string = searchRows.index;
 
+// --- path -------------------------------------------------------------------
+
+// expect: string is incompatible with number
+export const pathJoinAnswersText: number = joinPath("app", "routes");
+
+// expect: boolean is incompatible with string
+export const pathAbsoluteAnswersBoolean: string = pathIsAbsolute("/app");
+
+// expect: 1 is incompatible with string
+export const pathJoinTakesText: mixed = joinPath("app", 1);
+
 // --- what is *not* an error -------------------------------------------------
 //
 // Without these the fixture would pass just as happily on a package whose every
@@ -266,3 +282,6 @@ export const binarySearchResult: { readonly index: number, readonly found: boole
 );
 export const binarySearchByResult: { readonly index: number, readonly found: boolean } =
   binarySearchBy([{ id: "a" }, { id: "b" }], (row) => row.id.localeCompare("b"));
+export const pathJoinText: string = joinPath("app", "routes", "..", "assets");
+export const pathRelativeText: string = relativePath("app/routes", "app/assets");
+export const pathAbsoluteBoolean: boolean = pathIsAbsolute("/app");

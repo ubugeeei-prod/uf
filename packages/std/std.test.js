@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Eleven modules, and what is asserted here is the property that makes each one
+// Twelve modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -74,6 +74,15 @@ import { as, chain, is, join as joinErrors, unwrap, wrap } from "@uniflowed/std/
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
 import { Element, List } from "@uniflowed/std/list";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join as joinPath,
+  normalize,
+  relative,
+} from "@uniflowed/std/path";
 import { binarySearch, binarySearchBy, search } from "@uniflowed/std/slices";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
 
@@ -1210,6 +1219,42 @@ describe("slices", () => {
       index: 1,
       found: true,
     });
+  });
+});
+
+describe("path", () => {
+  it("cleans slash paths without asking a host file system", () => {
+    expect(normalize("")).toBe(".");
+    expect(normalize("./a//b/../c/")).toBe("a/c");
+    expect(normalize("/a/../../b")).toBe("/b");
+    expect(normalize("../../a")).toBe("../../a");
+  });
+
+  it("joins fragments and keeps absolute roots lexical", () => {
+    expect(joinPath("routes", "users", "..", "settings")).toBe("routes/settings");
+    expect(joinPath("/app/", "/routes", "index.js")).toBe("/app/routes/index.js");
+    expect(joinPath()).toBe(".");
+  });
+
+  it("names directory, base and extension like Go path helpers", () => {
+    expect(dirname("/app/routes/index.flow.js")).toBe("/app/routes");
+    expect(dirname("index.js")).toBe(".");
+    expect(dirname("/")).toBe("/");
+    expect(basename("/app/routes/")).toBe("routes");
+    expect(basename("")).toBe(".");
+    expect(extname("/app/.env")).toBe(".env");
+    expect(extname("archive.tar.gz")).toBe(".gz");
+    expect(extname("README")).toBe("");
+  });
+
+  it("computes relative paths only inside the same root shape", () => {
+    expect(relative("app/routes", "app/routes/admin/index.js")).toBe("admin/index.js");
+    expect(relative("app/routes/admin", "app/assets/logo.svg")).toBe("../../assets/logo.svg");
+    expect(relative("/app/routes", "/app/routes")).toBe(".");
+    expect(isAbsolute("/app/routes")).toBe(true);
+    expect(isAbsolute("app/routes")).toBe(false);
+    expect(() => relative("/app", "app")).toThrow(RangeError);
+    expect(() => relative("../a", "b")).toThrow(RangeError);
   });
 });
 
