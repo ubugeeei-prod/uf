@@ -30,19 +30,86 @@ pub fn lower(program: &mut Value) -> Result<(), TransformError> {
     profile_span!("lower::matches");
     let mut names = GenId::new(program);
     transform_post(program, &mut |node| {
-        Ok(match node_type(node) {
-            Some("MatchExpression") => Edit::Replace(super::with_position_of(
-                map_match_expression(node, &mut names)?,
-                node,
-            )),
-            Some("MatchStatement") => Edit::Replace(super::with_position_of(
-                map_match_statement(node, &mut names)?,
-                node,
-            )),
-            _ => Edit::Keep,
+        let replacement = match node_type(node) {
+            Some("MatchExpression") => Some(map_match_expression(node, &mut names)?),
+            Some("MatchStatement") => Some(map_match_statement(node, &mut names)?),
+            _ => None,
+        };
+        Ok(if let Some(replacement) = replacement {
+            let mut replacement = super::with_position_of(replacement, node);
+            infer_compiler_spans(&mut replacement);
+            inherit_compiler_spans(&mut replacement, None);
+            Edit::Replace(replacement)
+        } else {
+            Edit::Keep
         })
     })?;
     Ok(())
+}
+
+/// The compiler's hoisting pass still uses statement ranges, even though
+/// binding identity uses node IDs. A generated declaration with no range is
+/// treated as 0..MAX and captures references from unrelated match cases.
+/// Infer enclosing spans from the original descendants, then give wholly
+/// synthetic children that enclosing span. Keep `loc` absent: these offsets
+/// are compiler bookkeeping, not authored locations for the source map.
+fn infer_compiler_spans(node: &mut Value) -> Option<(u64, u64)> {
+    match node {
+        Value::Array(items) => items
+            .iter_mut()
+            .filter_map(infer_compiler_spans)
+            .reduce(union_span),
+        Value::Object(fields) if fields.get("type").and_then(Value::as_str).is_some() => {
+            let own = fields
+                .get("range")
+                .and_then(Value::as_array)
+                .and_then(|range| Some((range.first()?.as_u64()?, range.get(1)?.as_u64()?)))
+                .or_else(|| Some((fields.get("start")?.as_u64()?, fields.get("end")?.as_u64()?)));
+            let descendants = fields
+                .values_mut()
+                .filter_map(infer_compiler_spans)
+                .reduce(union_span);
+            let span = own.or(descendants);
+            if own.is_none()
+                && let Some((start, end)) = span
+            {
+                fields.insert("start".to_owned(), start.into());
+                fields.insert("end".to_owned(), end.into());
+            }
+            span
+        }
+        _ => None,
+    }
+}
+fn union_span(a: (u64, u64), b: (u64, u64)) -> (u64, u64) {
+    (a.0.min(b.0), a.1.max(b.1))
+}
+fn inherit_compiler_spans(node: &mut Value, enclosing: Option<(u64, u64)>) {
+    match node {
+        Value::Array(items) => {
+            for item in items {
+                inherit_compiler_spans(item, enclosing);
+            }
+        }
+        Value::Object(fields) if fields.get("type").and_then(Value::as_str).is_some() => {
+            let own = fields
+                .get("range")
+                .and_then(Value::as_array)
+                .and_then(|range| Some((range.first()?.as_u64()?, range.get(1)?.as_u64()?)))
+                .or_else(|| Some((fields.get("start")?.as_u64()?, fields.get("end")?.as_u64()?)));
+            let span = own.or(enclosing);
+            if own.is_none()
+                && let Some((start, end)) = span
+            {
+                fields.insert("start".to_owned(), start.into());
+                fields.insert("end".to_owned(), end.into());
+            }
+            for child in fields.values_mut() {
+                inherit_compiler_spans(child, span);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Generated identifiers that cannot collide with a name the module uses.

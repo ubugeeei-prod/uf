@@ -125,6 +125,21 @@ fn assert_clean(path: &str, source: &str) {
     );
 }
 
+/// 0006 — the renderer exports ViewTransition; both React import spellings
+/// must admit its real transition classes and reject invalid props.
+#[test]
+fn react_view_transition_has_typed_named_and_namespace_exports() {
+    assert_clean(
+        "transition.js",
+        "// @flow\nimport * as React from 'react'; import {ViewTransition} from 'react';\nexport component App() { return <ViewTransition name=\"note\" enter={{default: 'appear', navigation: 'slide'}} exit=\"none\"><React.ViewTransition update=\"resize\"><div /></React.ViewTransition></ViewTransition>; }",
+    );
+    let diagnostics = check(
+        "invalid_transition.js",
+        "// @flow\nimport * as React from 'react'; import {ViewTransition} from 'react';\nexport component App() { return <ViewTransition name={42} enter={false}><div /></ViewTransition>; }",
+    );
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+}
+
 /// 0001 — the reproduction ubugeeei-prod/uf#205 was filed with.
 #[test]
 fn match_over_a_generic_union_binds_the_payload_as_the_type_variable() {

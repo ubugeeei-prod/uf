@@ -1,120 +1,43 @@
 "use server";
 // @flow
-
+// Thin transport adapters. Untrusted previous state never selects an identity or a record.
 import {
-  clampMessageBody,
-  clampPostBody,
-  normalizeHandle,
-  type FormState,
-  type Message,
-  type Post,
-  type Settings,
-  type Topic,
-  type User,
-} from "./social-model.js";
-import {
-  insertMessage,
-  insertPost,
-  likePostById,
-  saveSettings,
-  upsertDemoUser,
-} from "./social-db.server.js";
+  publishNote,
+  appreciateNote,
+  deliverMessage,
+  changeProfile,
+} from "./server/programs.server.js";
+import { runMutation } from "./server/run-mutation.server.js";
+import type { ActionResult, FormState, Post, Message, Settings } from "./social-model.js";
 
-function text(form: FormData, name: string): string {
-  const value = form.get(name);
-  return typeof value === "string" ? value : "";
-}
-
-function bool(form: FormData, name: string): boolean {
-  return form.get(name) === "on";
-}
-
-function topic(form: FormData): Topic {
-  const value = text(form, "topic");
-  return match (value) {
-    "release" => "release",
-    "runtime" => "runtime",
-    "design" => "design",
-    "community" => "community",
-    _ => "community",
-  };
-}
-
+/** Publish through the authenticated Effect program; previous form state is never trusted. */
 export async function createPost(
-  previous: FormState<Post>,
+  _previous: FormState<Post>,
   form: FormData,
-): Promise<FormState<Post>> {
-  const body = clampPostBody(text(form, "body"));
-  if (body.length === 0) {
-    return { status: "error", message: "Write something before posting.", value: previous.value };
-  }
-  const post = await insertPost(body, topic(form));
-  return { status: "success", message: "Posted to the timeline.", value: post };
+): Promise<ActionResult<Post>> {
+  return runMutation(publishNote(form), "Note published.");
 }
 
-export async function likePost(
-  id: string,
-): Promise<{| readonly id: string, readonly likes: number |}> {
-  return { id, likes: await likePostById(id) };
+/** Apply an intended reaction state, so retries cannot accidentally toggle it twice. */
+export async function likePost(id: string, liked: boolean): Promise<ActionResult<Post>> {
+  return runMutation(
+    appreciateNote(id, liked),
+    liked ? "Appreciation added." : "Appreciation removed.",
+  );
 }
 
+/** Deliver through the authenticated Effect program with repository membership checks. */
 export async function sendMessage(
-  previous: FormState<Message>,
+  _previous: FormState<Message>,
   form: FormData,
-): Promise<FormState<Message>> {
-  const threadId = text(form, "threadId");
-  const body = clampMessageBody(text(form, "body"));
-  if (threadId.length === 0 || body.length === 0) {
-    return {
-      status: "error",
-      message: "Choose a thread and write a message.",
-      value: previous.value,
-    };
-  }
-  const message = await insertMessage(threadId, body);
-  return { status: "success", message: "Message sent.", value: message };
+): Promise<ActionResult<Message>> {
+  return runMutation(deliverMessage(form), "Message sent.");
 }
 
-export async function signIn(previous: FormState<User>, form: FormData): Promise<FormState<User>> {
-  const rawHandle = text(form, "handle").trim();
-  if (rawHandle.length === 0) {
-    return { status: "error", message: "Enter a handle.", value: previous.value };
-  }
-  const handle = normalizeHandle(rawHandle);
-  const user = await upsertDemoUser(handle, handle, "Signed in with the demo account.");
-  return { status: "success", message: `Welcome back, @${user.handle}.`, value: user };
-}
-
-export async function signUp(previous: FormState<User>, form: FormData): Promise<FormState<User>> {
-  const name = text(form, "name").trim();
-  const handle = normalizeHandle(text(form, "handle"));
-  if (name.length === 0 || handle.length === 0) {
-    return { status: "error", message: "Name and handle are required.", value: previous.value };
-  }
-  const user = await upsertDemoUser(name, handle, text(form, "bio"));
-  return { status: "success", message: `Created @${user.handle}.`, value: user };
-}
-
+/** Update the current account only; submitted previous state cannot select another account. */
 export async function updateSettings(
-  previous: FormState<Settings>,
+  _previous: FormState<Settings>,
   form: FormData,
-): Promise<FormState<Settings>> {
-  const displayName = text(form, "displayName").trim();
-  const email = text(form, "email").trim();
-  if (displayName.length === 0 || email.length === 0) {
-    return {
-      status: "error",
-      message: "Display name and email are required.",
-      value: previous.value,
-    };
-  }
-  const value = await saveSettings({
-    displayName,
-    handle: normalizeHandle(text(form, "handle")),
-    bio: text(form, "bio").trim().slice(0, 160),
-    email,
-    digest: bool(form, "digest"),
-    quietMode: bool(form, "quietMode"),
-  });
-  return { status: "success", message: "Settings saved.", value };
+): Promise<ActionResult<Settings>> {
+  return runMutation(changeProfile(form), "Your changes are saved.");
 }

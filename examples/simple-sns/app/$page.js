@@ -1,135 +1,83 @@
 // @flow
+
 import * as React from "@uniflowed/react";
-import { Suspense, use } from "@uniflowed/react";
-import { props, stylex } from "@uniflowed/stylex";
-
+import { Link } from "@uniflowed/router";
+import type { LoaderArgs } from "@uniflowed/router";
 import { SocialFrame } from "./social-frame.js";
-import { timelineData } from "./social-queries.js";
+import { sessionData, timelineData } from "./social-queries.js";
 import { TimelineClient } from "./timeline-client.js";
-import { type FeedStats, type Post, type User } from "./social-model.js";
+import { SearchNotes } from "./search.client.js";
+import {
+  TOPICS,
+  feedHref,
+  feedFilter,
+  topicLabel,
+  type FeedData,
+  type FeedFilter,
+  type Session,
+} from "./social-model.js";
 
-type TimelineData = {|
-  readonly posts: Array<Post>,
-  readonly stats: FeedStats,
-  readonly viewer: User,
+/** Resolved shell identity and URL state with an independently deferred feed. */
+export type Data = {|
+  readonly session: Session,
+  readonly filter: FeedFilter,
+  readonly feed: Promise<FeedData>,
 |};
 
-type HomeData = {|
-  readonly timeline: Promise<TimelineData>,
-|};
-
-export function loader(): HomeData {
-  return { timeline: timelineData() };
-}
-
-component Feed(data: Promise<TimelineData>) {
-  const value = use(data);
-  return <TimelineClient initialPosts={value.posts} viewer={value.viewer} />;
-}
-
-component Stats(data: Promise<TimelineData>) {
-  const value = use(data).stats;
-  return (
-    <section {...props(styles.stats)} aria-label="Timeline summary">
-      <h2 {...props(styles.asideTitle)}>Today</h2>
-      <dl {...props(styles.statGrid)}>
-        <div {...props(styles.stat)}>
-          <dt {...props(styles.statLabel)}>Posts</dt>
-          <dd {...props(styles.statValue)}>{value.posts}</dd>
-        </div>
-        <div {...props(styles.stat)}>
-          <dt {...props(styles.statLabel)}>Authors</dt>
-          <dd {...props(styles.statValue)}>{value.authors}</dd>
-        </div>
-        <div {...props(styles.stat)}>
-          <dt {...props(styles.statLabel)}>Likes</dt>
-          <dd {...props(styles.statValue)}>{value.likes}</dd>
-        </div>
-        <div {...props(styles.stat)}>
-          <dt {...props(styles.statLabel)}>Replies</dt>
-          <dd {...props(styles.statValue)}>{value.replies}</dd>
-        </div>
-      </dl>
-    </section>
+/** Start session and feed reads together; await only the identity needed by the page shell. */
+export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
+  const filter = feedFilter(
+    String(searchParams.topic ?? "all"),
+    String(searchParams.q ?? ""),
+    String(searchParams.page ?? "1"),
   );
+  const session = sessionData();
+  const feed = timelineData(filter.topic, filter.query, String(filter.page));
+
+  return { session: await session, filter, feed };
 }
 
-component Skeleton() {
-  return (
-    <div {...props(styles.skeleton)}>
-      <span />
-      <span />
-      <span />
-    </div>
-  );
-}
+/** Render the stable feed shell while the timeline region owns its deferred content. */
+export component Page(data: Data) {
+  const feed = data.filter;
 
-export default component Home(data: HomeData) {
   return (
-    <SocialFrame
-      active="timeline"
-      aside={
-        <Suspense fallback={<Skeleton />}>
-          <Stats data={data.timeline} />
-        </Suspense>
-      }
-    >
-      <Suspense fallback={<Skeleton />}>
-        <Feed data={data.timeline} />
-      </Suspense>
+    <SocialFrame active="timeline" session={data.session}>
+      <header className="page-heading">
+        <div>
+          <h1>Feed</h1>
+          <p>Notes from the people in your community.</p>
+        </div>
+      </header>
+      <div className="feed-toolbar">
+        <nav className="feed-tabs" aria-label="Feed channels">
+          <Link
+            to={feedHref("all", feed.query)}
+            aria-current={feed.topic === "all" ? "page" : undefined}
+          >
+            All notes
+          </Link>
+          {TOPICS.map((topic) => (
+            <Link
+              to={feedHref(topic, feed.query)}
+              key={topic}
+              aria-current={feed.topic === topic ? "page" : undefined}
+            >
+              {topicLabel(topic)}
+            </Link>
+          ))}
+        </nav>
+      </div>
+      <SearchNotes key={feed.query} filter={feed} />
+      {feed.query ? <p className="result-label">Results for “{feed.query}”</p> : null}
+      <div className="feed-content">
+        <TimelineClient
+          key={`${feed.topic}:${feed.query}:${feed.page}`}
+          initial={data.feed}
+          filter={feed}
+          session={data.session}
+        />
+      </div>
     </SocialFrame>
   );
 }
-
-const styles = stylex.create({
-  stats: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    boxShadow: "0 16px 38px rgba(15, 23, 42, 0.08)",
-    display: "grid",
-    gap: 14,
-    padding: 16,
-  },
-  asideTitle: {
-    color: "#111827",
-    fontSize: 18,
-    lineHeight: 1.2,
-    marginBlock: 0,
-  },
-  statGrid: {
-    display: "grid",
-    gap: 10,
-    marginBlock: 0,
-  },
-  stat: {
-    alignItems: "center",
-    borderBottomColor: "#eaecf0",
-    borderBottomStyle: "solid",
-    borderBottomWidth: 1,
-    display: "flex",
-    justifyContent: "space-between",
-    paddingBottom: 10,
-  },
-  statLabel: {
-    color: "#475467",
-    fontWeight: 700,
-  },
-  statValue: {
-    color: "#111827",
-    fontWeight: 800,
-    marginBlock: 0,
-  },
-  skeleton: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    display: "grid",
-    gap: 12,
-    padding: 16,
-  },
-});

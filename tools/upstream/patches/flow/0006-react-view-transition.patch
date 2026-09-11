@@ -1,0 +1,56 @@
+From: uf maintainers
+Subject: [PATCH] Declare React 19.3 ViewTransition in the bundled Flow library
+
+Issue: https://github.com/ubugeeei-prod/uf/pull/772
+Upstream: not filed yet
+Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
+
+The pinned Flow library has Activity but predates ViewTransition. React 19.3
+exports the component at runtime. Keep its class-selection props checked for
+both the namespace and named imports, including @uniflowed/react's re-export.
+Renderer-specific callback instances remain mixed in this renderer-neutral lib.
+Reference: https://react.dev/reference/react/ViewTransition
+Regression: crates/uf_check/tests/upstream_patches.rs
+
+--- a/lib/react.js
++++ b/lib/react.js
+@@ -459,6 +459,10 @@
+    * `<Activity>` lets you hide and show parts of the UI.
+    */
+   declare export const Activity: typeof React.Activity;
++
++  /** React 19.3's transition boundary. */
++  declare export const ViewTransition: typeof React.ViewTransition;
++  declare export type ViewTransitionClass = React.ViewTransitionClass;
+
+   declare export type ElementConfig<C> = React.ElementConfig<C>;
+   declare export type ElementRef<C> = React.ElementRef<C>;
+@@ -1128,6 +1132,28 @@
+       mode?: 'visible' | 'hidden',
+     ) renders Renders;
+
++    /** CSS classes may be selected by the transition's type. */
++    type ViewTransitionClass = string | {readonly [string]: string};
++
++    /**
++     * React 19.3's transition boundary. The renderer owns the instance passed
++     * to callbacks; code that uses renderer-specific animation methods must
++     * refine that instance rather than assuming a DOM renderer here.
++     */
++    declare const ViewTransition: component(
++      children?: React.Node,
++      name?: string,
++      default?: ViewTransitionClass,
++      enter?: ViewTransitionClass,
++      exit?: ViewTransitionClass,
++      share?: ViewTransitionClass,
++      update?: ViewTransitionClass,
++      onEnter?: (instance: mixed, types: Array<string>) => void | (() => void),
++      onExit?: (instance: mixed, types: Array<string>) => void | (() => void),
++      onShare?: (instance: mixed, types: Array<string>) => void | (() => void),
++      onUpdate?: (instance: mixed, types: Array<string>) => void | (() => void),
++    );
++
+     /**
+      * `<Profiler>` lets you measure rendering performance of a
+      * React tree programmatically.

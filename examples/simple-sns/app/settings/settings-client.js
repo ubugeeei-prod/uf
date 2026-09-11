@@ -2,214 +2,142 @@
 // @flow
 
 import * as React from "@uniflowed/react";
-import { useActionState } from "@uniflowed/react";
-import { useFormStatus } from "react-dom";
-import { props, stylex } from "@uniflowed/stylex";
-
+import { callAction } from "../action-result.client.js";
+import { useActionState, useState } from "@uniflowed/react";
+import { FieldControl } from "@uniflowed/ui/field";
 import { updateSettings } from "../social-actions.js";
-import { type FormState, type Settings, profileInitials } from "../social-model.js";
+import { FormField, FormStatus, SubmitButton } from "../form-ui.client.js";
+import { Avatar } from "../ui.js";
+import {
+  IDLE,
+  fieldError,
+  profileInitials,
+  type FormState,
+  type Settings,
+} from "../social-model.js";
 
-component SaveButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" disabled={pending} {...props(styles.button)}>
-      {pending ? "Saving" : "Save settings"}
-    </button>
-  );
-}
-
+/**
+ * Keep editable profile fields local until a successful server action commits them.
+ * Validation failures preserve the draft and associate feedback with the affected fields.
+ */
 export component SettingsClient(initial: Settings) {
-  const [state, action] = useActionState<FormState<Settings>, FormData>(updateSettings, {
-    status: "idle",
-    message: "",
-    value: initial,
-  });
-  const current = state.value ?? initial;
+  const [draft, setDraft] = useState<Settings>(initial);
+  const [state, submit, pending] = useActionState<FormState<Settings>, FormData>(
+    async (_previous: FormState<Settings>, form: FormData): Promise<FormState<Settings>> => {
+      const result = await callAction(
+        () => updateSettings(IDLE, form),
+        "Could not save. Your edits are still here; try again.",
+      );
+      match (result) {
+        {status: "success", value: const saved, ...} => {
+          setDraft(saved);
+        }
+        {status: "error", ...} => {}
+      }
+      return result;
+    },
+    IDLE,
+  );
 
   return (
-    <form action={action} suppressHydrationWarning {...props(styles.form)}>
-      <section {...props(styles.profile)}>
-        <span {...props(styles.avatar)}>{profileInitials(current)}</span>
-        <div>
-          <h2 {...props(styles.title)}>{current.displayName}</h2>
-          <p {...props(styles.handle)}>@{current.handle}</p>
-        </div>
-      </section>
-      <div {...props(styles.grid)}>
-        <label {...props(styles.field)}>
-          <span {...props(styles.label)}>Display name</span>
-          <input
-            name="displayName"
-            defaultValue={current.displayName}
-            required
-            {...props(styles.input)}
-          />
-        </label>
-        <label {...props(styles.field)}>
-          <span {...props(styles.label)}>Handle</span>
-          <input name="handle" defaultValue={current.handle} required {...props(styles.input)} />
-        </label>
-      </div>
-      <label {...props(styles.field)}>
-        <span {...props(styles.label)}>Email</span>
-        <input
-          name="email"
-          type="email"
-          defaultValue={current.email}
-          required
-          {...props(styles.input)}
+    <form action={submit} className="settings-panel" aria-label="Profile settings">
+      <div className="settings-profile">
+        <Avatar
+          user={{
+            id: "profile",
+            name: draft.displayName,
+            handle: draft.handle,
+            avatar: profileInitials(draft),
+            bio: draft.bio,
+          }}
         />
-      </label>
-      <label {...props(styles.field)}>
-        <span {...props(styles.label)}>Bio</span>
-        <textarea name="bio" defaultValue={current.bio} rows={4} {...props(styles.textarea)} />
-      </label>
-      <div {...props(styles.switches)}>
-        <label {...props(styles.check)}>
-          <input name="digest" type="checkbox" defaultChecked={current.digest} />
-          <span>Daily digest</span>
-        </label>
-        <label {...props(styles.check)}>
-          <input name="quietMode" type="checkbox" defaultChecked={current.quietMode} />
-          <span>Quiet mode</span>
-        </label>
+        <div>
+          <h2>{draft.displayName}</h2>
+          <p>@{draft.handle}</p>
+        </div>
       </div>
-      <div {...props(styles.footer)}>
-        <span {...props(styles.status, state.status === "error" && styles.error)}>
-          {state.message}
-        </span>
-        <SaveButton />
-      </div>
+      <section className="form-section">
+        <h3>Your profile</h3>
+        <p>Your name and bio are visible to the community.</p>
+        <div className="form-grid">
+          <FormField label="Display name" error={fieldError(state, "displayName")}>
+            <FieldControl
+              render={(props) => (
+                <input
+                  {...props}
+                  name="displayName"
+                  value={draft.displayName}
+                  onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
+                  required
+                  maxLength={80}
+                  autoComplete="name"
+                  disabled={pending}
+                />
+              )}
+            />
+          </FormField>
+          <FormField label="Handle" error={fieldError(state, "handle")}>
+            <FieldControl
+              render={(props) => (
+                <input
+                  {...props}
+                  name="handle"
+                  value={draft.handle}
+                  onChange={(event) => setDraft({ ...draft, handle: event.target.value })}
+                  required
+                  minLength={3}
+                  maxLength={20}
+                  pattern="[a-z][a-z0-9_]{2,19}"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  autoComplete="username"
+                  disabled={pending}
+                />
+              )}
+            />
+          </FormField>
+        </div>
+        <FormField label="Bio" error={fieldError(state, "bio")} hint="Up to 160 characters.">
+          <FieldControl
+            render={(props) => (
+              <textarea
+                {...props}
+                name="bio"
+                value={draft.bio}
+                onChange={(event) => setDraft({ ...draft, bio: event.target.value })}
+                rows={3}
+                maxLength={160}
+                disabled={pending}
+              />
+            )}
+          />
+        </FormField>
+      </section>
+      <section className="form-section">
+        <h3>Account details</h3>
+        <p>Your email is private.</p>
+        <FormField label="Email address" error={fieldError(state, "email")}>
+          <FieldControl
+            render={(props) => (
+              <input
+                {...props}
+                name="email"
+                type="email"
+                value={draft.email}
+                onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+                required
+                maxLength={254}
+                autoComplete="email"
+                disabled={pending}
+              />
+            )}
+          />
+        </FormField>
+      </section>
+      <footer className="settings-footer">
+        <FormStatus state={state} />
+        <SubmitButton pendingLabel="Saving…">Save changes</SubmitButton>
+      </footer>
     </form>
   );
 }
-
-const styles = stylex.create({
-  form: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    boxShadow: "0 16px 38px rgba(15, 23, 42, 0.08)",
-    display: "grid",
-    gap: 16,
-    padding: {
-      default: 16,
-      "@media (min-width: 760px)": 20,
-    },
-  },
-  profile: {
-    alignItems: "center",
-    borderBottomColor: "#eaecf0",
-    borderBottomStyle: "solid",
-    borderBottomWidth: 1,
-    display: "flex",
-    gap: 12,
-    paddingBottom: 16,
-  },
-  avatar: {
-    alignItems: "center",
-    backgroundColor: "#be123c",
-    borderRadius: 8,
-    color: "#ffffff",
-    display: "inline-flex",
-    fontSize: 16,
-    fontWeight: 800,
-    height: 52,
-    justifyContent: "center",
-    width: 52,
-  },
-  title: {
-    color: "#111827",
-    fontSize: 22,
-    lineHeight: 1.15,
-    marginBlock: 0,
-  },
-  handle: {
-    color: "#667085",
-    marginBlock: 0,
-  },
-  grid: {
-    display: "grid",
-    gap: 14,
-    gridTemplateColumns: {
-      default: "1fr",
-      "@media (min-width: 720px)": "1fr 1fr",
-    },
-  },
-  field: {
-    display: "grid",
-    gap: 6,
-  },
-  label: {
-    color: "#344054",
-    fontSize: 13,
-    fontWeight: 800,
-  },
-  input: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#0f172a",
-    font: "inherit",
-    minHeight: 46,
-    paddingInline: 14,
-  },
-  textarea: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#0f172a",
-    font: "inherit",
-    padding: 14,
-    resize: "vertical",
-  },
-  switches: {
-    display: "grid",
-    gap: 10,
-  },
-  check: {
-    alignItems: "center",
-    color: "#344054",
-    display: "flex",
-    gap: 10,
-    fontWeight: 700,
-  },
-  footer: {
-    alignItems: {
-      default: "stretch",
-      "@media (min-width: 560px)": "center",
-    },
-    display: {
-      default: "grid",
-      "@media (min-width: 560px)": "flex",
-    },
-    gap: 12,
-    justifyContent: "space-between",
-  },
-  status: {
-    color: "#667085",
-    fontSize: 14,
-  },
-  error: {
-    color: "#b42318",
-  },
-  button: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#ffffff",
-    cursor: "pointer",
-    font: "inherit",
-    fontWeight: 800,
-    minHeight: 46,
-    paddingInline: 18,
-  },
-});

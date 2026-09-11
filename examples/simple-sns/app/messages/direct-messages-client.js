@@ -2,310 +2,181 @@
 // @flow
 
 import * as React from "@uniflowed/react";
-import { useActionState, useMemo, useOptimistic, useState } from "@uniflowed/react";
-import { useFormStatus } from "react-dom";
-import { props, stylex } from "@uniflowed/stylex";
-
+import { callAction } from "../action-result.client.js";
+import { useActionState, useOptimistic, useState, useEffect, useRef } from "@uniflowed/react";
 import { sendMessage } from "../social-actions.js";
+import { FieldError, FormStatus, SubmitButton } from "../form-ui.client.js";
+import { Avatar, Icon } from "../ui.js";
 import {
+  IDLE,
+  fieldError,
   MAX_MESSAGE_LENGTH,
-  deliveryLabel,
-  messagePreview,
-  optimisticMessage,
+  displayTime,
   type FormState,
   type Message,
   type MessageThread,
 } from "../social-model.js";
 
-const EMPTY_MESSAGE_STATE: FormState<Message> = { status: "idle", message: "" };
+type LocalMessage = {| readonly requestId: string, readonly message: Message |};
 
-component SendButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button type="submit" disabled={pending} {...props(styles.button)}>
-      {pending ? "Sending" : "Send"}
-    </button>
-  );
-}
-
-component ThreadButton(thread: MessageThread, selected: boolean, onSelect: (string) => void) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={() => onSelect(thread.id)}
-      {...props(styles.thread, selected && styles.threadSelected)}
-    >
-      <span {...props(styles.threadTop)}>
-        <strong>{thread.name}</strong>
-        {thread.unread > 0 ? <span {...props(styles.unread)}>{thread.unread}</span> : null}
-      </span>
-      <span {...props(styles.preview)}>{messagePreview(thread)}</span>
-    </button>
-  );
-}
-
-component Bubble(message: Message) {
-  const mine = message.author === "me";
-  return (
-    <div {...props(styles.bubbleRow, mine && styles.bubbleRowMine)}>
-      <article {...props(styles.bubble, mine && styles.bubbleMine)}>
-        <p {...props(styles.messageBody)}>{message.body}</p>
-        <footer {...props(styles.messageMeta)}>
-          {message.sentAt.slice(11, 16)} · {deliveryLabel(message.delivery)}
-        </footer>
-      </article>
-    </div>
-  );
-}
-
+/**
+ * Preserve a conversation draft while pending and reconcile each submitted message once.
+ * Failed sends roll back the optimistic bubble and retain the request ID for an idempotent retry.
+ */
 export component DirectMessagesClient(
-  threads: $ReadOnlyArray<MessageThread>,
+  thread: MessageThread,
   initialMessages: $ReadOnlyArray<Message>,
 ) {
-  const firstThread = threads[0]?.id ?? "";
-  const [selectedThreadId, setSelectedThreadId] = useState<string>(firstThread);
-  const [state, action] = useActionState<FormState<Message>, FormData>(
-    sendMessage,
-    EMPTY_MESSAGE_STATE,
+  const [committed, setCommitted] = useState<Array<LocalMessage>>(() =>
+    initialMessages.map((message) => ({ requestId: message.id, message })),
   );
-  const [committedMessages, setCommittedMessages] = useState<Array<Message>>(() =>
-    Array.from(initialMessages),
+  const [entries, addOptimistic] = useOptimistic<Array<LocalMessage>, LocalMessage>(
+    committed,
+    (current, draft) =>
+      current.some((entry) => entry.requestId === draft.requestId) ? current : [...current, draft],
   );
-  const [messages, addOptimisticMessage] = useOptimistic<Array<Message>, Message>(
-    committedMessages,
-    (current, draft) => [...current.filter((message) => message.id !== draft.id), draft],
-  );
-  React.useEffect(() => {
-    const message = state.value;
-    if (state.status !== "success" || message == null) {
-      return;
-    }
-    setCommittedMessages((current) =>
-      current.some((item) => item.id === message.id) ? current : [...current, message],
-    );
-  }, [state, setCommittedMessages]);
-  const selectedMessages = useMemo(
-    () => messages.filter((message) => message.threadId === selectedThreadId),
-    [messages, selectedThreadId],
+  const messages = entries.map((entry) => entry.message);
+  const [body, setBody] = useState("");
+  const [requestId, setRequestId] = useState("");
+  const [state, submit, pending] = useActionState<FormState<Message>, FormData>(
+    async (_previous: FormState<Message>, form: FormData): Promise<FormState<Message>> => {
+      const text = String(form.get("body") ?? "").trim();
+      const submissionId = requestId || crypto.randomUUID();
+      setRequestId(submissionId);
+      const submitted = new FormData();
+      submitted.set("body", text);
+      submitted.set("threadId", thread.id);
+      submitted.set("requestId", submissionId);
+      if (text.length > 0 && text.length <= MAX_MESSAGE_LENGTH)
+        addOptimistic({
+          requestId: submissionId,
+          message: {
+            id: `pending-${submissionId}`,
+            threadId: thread.id,
+            author: "me",
+            body: text,
+            sentAt: new Date().toISOString(),
+          },
+        });
+      const result = await callAction(
+        () => sendMessage(IDLE, submitted),
+        "Your message was not sent. Your draft is still here; try again.",
+      );
+      match (result) {
+        {status: "success", value: const saved, ...} => {
+          setCommitted((current) => [
+            ...current.filter((entry) => entry.message.id !== saved.id),
+            { requestId: submissionId, message: saved },
+          ]);
+          setBody("");
+          setRequestId("");
+        }
+        {status: "error", ...} => {}
+      }
+      return result;
+    },
+    IDLE,
   );
 
   return (
-    <div {...props(styles.layout)}>
-      <section {...props(styles.threads)} aria-label="Message threads">
-        {threads.map((thread) => (
-          <ThreadButton
-            key={thread.id}
-            thread={thread}
-            selected={thread.id === selectedThreadId}
-            onSelect={setSelectedThreadId}
-          />
-        ))}
-      </section>
-      <section {...props(styles.chat)} aria-label="Messages">
-        <div {...props(styles.messages)}>
-          {selectedMessages.map((message) => (
-            <Bubble key={message.id} message={message} />
-          ))}
-        </div>
-        <form
-          suppressHydrationWarning
-          action={(formData) => {
-            const body = String(formData.get("body") ?? "");
-            if (selectedThreadId.length > 0 && body.trim().length > 0) {
-              addOptimisticMessage(optimisticMessage(selectedThreadId, body, new Date()));
-            }
-            formData.set("threadId", selectedThreadId);
-            action(formData);
+    <section className="conversation" aria-label={`Conversation with ${thread.name}`}>
+      <header className="conversation-header">
+        <Avatar
+          user={{
+            id: thread.id,
+            name: thread.name,
+            handle: thread.handle,
+            avatar: thread.avatar,
+            photo: thread.photo,
+            bio: "",
           }}
-          {...props(styles.composer)}
-        >
-          <input type="hidden" name="threadId" value={selectedThreadId} />
-          <textarea
-            name="body"
-            aria-label="Direct message body"
-            rows={3}
-            maxLength={MAX_MESSAGE_LENGTH}
-            required
-            placeholder="Write a direct message"
-            {...props(styles.textarea)}
-          />
-          <div {...props(styles.formFooter)}>
-            <span {...props(styles.formMessage, state.status === "error" && styles.error)}>
-              {state.message}
-            </span>
-            <SendButton />
-          </div>
-        </form>
-      </section>
-    </div>
+          small
+        />
+        <div>
+          <h2>{thread.name}</h2>
+          <p>@{thread.handle}</p>
+        </div>
+        <span className="conversation-private" title="Private conversation">
+          <Icon name="lock" size={16} />
+        </span>
+      </header>
+      <MessageLog lastId={messages.at(-1)?.id ?? ""}>
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
+        ))}
+      </MessageLog>
+      <form action={submit} className="message-composer" aria-label="Send a message">
+        <input type="hidden" name="threadId" value={thread.id} />
+        <textarea
+          name="body"
+          aria-label="Message body"
+          aria-describedby="body-error"
+          aria-invalid={fieldError(state, "body") != null}
+          value={body}
+          onChange={(event) => {
+            setBody(event.currentTarget.value);
+            setRequestId((current) => current || crypto.randomUUID());
+          }}
+          placeholder={`Write to ${thread.name.split(" ")[0]}…`}
+          required
+          maxLength={MAX_MESSAGE_LENGTH}
+          disabled={pending}
+          rows={2}
+        />
+        <FieldError state={state} name="body" />
+        <div className="message-composer-footer">
+          <small>Only the people in this conversation can read it.</small>
+          <SubmitButton pendingLabel="Sending…" disabled={body.trim().length === 0}>
+            Send
+          </SubmitButton>
+        </div>
+        <FormStatus state={state} />
+      </form>
+    </section>
   );
 }
 
-const styles = stylex.create({
-  layout: {
-    display: "grid",
-    gap: 14,
-    gridTemplateColumns: {
-      default: "1fr",
-      "@media (min-width: 860px)": "280px minmax(0, 1fr)",
-    },
-  },
-  threads: {
-    display: {
-      default: "flex",
-      "@media (min-width: 860px)": "grid",
-    },
-    gap: 8,
-    overflowX: {
-      default: "auto",
-      "@media (min-width: 860px)": "visible",
-    },
-  },
-  thread: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#344054",
-    cursor: "pointer",
-    display: "grid",
-    gap: 6,
-    minWidth: {
-      default: 220,
-      "@media (min-width: 860px)": "auto",
-    },
-    padding: 12,
-    textAlign: "left",
-  },
-  threadSelected: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
-    color: "#ffffff",
-  },
-  threadTop: {
-    alignItems: "center",
-    display: "flex",
-    gap: 8,
-    justifyContent: "space-between",
-  },
-  unread: {
-    backgroundColor: "#f97316",
-    borderRadius: 8,
-    color: "#ffffff",
-    fontSize: 12,
-    fontWeight: 800,
-    paddingBlock: 2,
-    paddingInline: 7,
-  },
-  preview: {
-    fontSize: 13,
-    lineHeight: 1.35,
-    opacity: 0.82,
-  },
-  chat: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    display: "grid",
-    gap: 12,
-    minHeight: {
-      default: 500,
-      "@media (min-width: 860px)": 560,
-    },
-    padding: {
-      default: 12,
-      "@media (min-width: 760px)": 16,
-    },
-  },
-  messages: {
-    alignContent: "start",
-    display: "grid",
-    gap: 10,
-  },
-  bubbleRow: {
-    display: "flex",
-    justifyContent: "flex-start",
-  },
-  bubbleRowMine: {
-    justifyContent: "flex-end",
-  },
-  bubble: {
-    backgroundColor: "#f1f5f9",
-    borderRadius: 8,
-    color: "#0f172a",
-    maxWidth: 560,
-    paddingBlock: 10,
-    paddingInline: 12,
-  },
-  bubbleMine: {
-    backgroundColor: "#dbeafe",
-    borderBottomRightRadius: 2,
-  },
-  messageBody: {
-    color: "#111827",
-    lineHeight: 1.45,
-    marginBlock: 0,
-  },
-  messageMeta: {
-    color: "#475467",
-    fontSize: 12,
-    marginTop: 6,
-  },
-  composer: {
-    alignSelf: "end",
-    borderTopColor: "#eaecf0",
-    borderTopStyle: "solid",
-    borderTopWidth: 1,
-    display: "grid",
-    gap: 10,
-    paddingTop: 12,
-  },
-  textarea: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: { default: "#0f172a", "::placeholder": "#475467" },
-    font: "inherit",
-    minHeight: 92,
-    padding: 12,
-    resize: "vertical",
-  },
-  formFooter: {
-    alignItems: {
-      default: "stretch",
-      "@media (min-width: 560px)": "center",
-    },
-    display: {
-      default: "grid",
-      "@media (min-width: 560px)": "flex",
-    },
-    gap: 12,
-    justifyContent: "space-between",
-  },
-  formMessage: {
-    color: "#475467",
-    fontSize: 14,
-  },
-  error: {
-    color: "#b42318",
-  },
-  button: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#ffffff",
-    cursor: "pointer",
-    font: "inherit",
-    fontWeight: 800,
-    minHeight: 44,
-    paddingInline: 16,
-  },
-});
+/** Render one message with direction relative to the authenticated participant. */
+export component MessageBubble(message: Message) {
+  const pending = message.id.startsWith("pending-");
+
+  return (
+    <article
+      className={`message-bubble ${message.author === "me" ? "mine" : ""} ${pending ? "optimistic" : ""}`}
+    >
+      <p>{message.body}</p>
+      <time dateTime={message.sentAt}>
+        {pending ? "Sending…" : `${displayTime(message.sentAt)} UTC`}
+      </time>
+    </article>
+  );
+}
+
+/** Accept typed message children and synchronize scroll position with the latest message. */
+export component MessageLog(lastId: string, children: renders* MessageBubble) {
+  const viewport = useRef<HTMLDivElement | null>(null);
+  const following = useRef(true);
+  // Scroll is a DOM side effect. Reading older messages opts out until the reader returns below.
+
+  useEffect(() => {
+    const node = viewport.current;
+    if (node != null && following.current) node.scrollTop = node.scrollHeight;
+  }, [lastId]);
+
+  return (
+    <div
+      ref={viewport}
+      onScroll={(event) => {
+        const node = event.currentTarget;
+        following.current = node.scrollHeight - node.clientHeight - node.scrollTop < 48;
+      }}
+      className="message-list"
+      role="log"
+      aria-label="Messages"
+      aria-live="polite"
+      aria-relevant="additions text"
+    >
+      {children}
+    </div>
+  );
+}

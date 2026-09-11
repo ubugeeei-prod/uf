@@ -1277,3 +1277,42 @@ describe("where a failing query is reported", () => {
     WORKER_BUDGET,
   );
 });
+
+component ActionForm(onValue: (string) => void) {
+  const [value, submit] = React.useActionState(
+    async (_previous: string, data: FormData): Promise<string> => {
+      await Promise.resolve();
+      const next = String(data.get("note"));
+      onValue(next);
+      return next;
+    },
+    "",
+  );
+  return (
+    <form action={submit}>
+      <label htmlFor="action-note">Action note</label>
+      <input id="action-note" name="note" defaultValue="Submitted through React" />
+      <button type="submit">Submit action</button>
+      <output>{value}</output>
+    </form>
+  );
+}
+it("supports React form Actions with the document's FormData and ViewTransition's CSS namespace", async () => {
+  let received = "";
+  await act(async () => {
+    render(
+      <React.ViewTransition>
+        <ActionForm
+          onValue={(value) => {
+            received = value;
+          }}
+        />
+      </React.ViewTransition>,
+    );
+  });
+  const button = screen.getByRole("button", { name: "Submit action" });
+  if (!(button instanceof HTMLElement)) throw new Error("expected an HTML button");
+  await act(async () => userEvent.click(button));
+  expect(received).toBe("Submitted through React");
+  expect(Reflect.get(globalThis, "CSS").escape("a:b")).toBe("a\\:b");
+});

@@ -331,6 +331,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "suspend",
                 "promise",
                 "tryPromise",
+                "trySync",
                 "call",
                 "effect",
                 "map",

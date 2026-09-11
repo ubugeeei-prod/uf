@@ -1,45 +1,73 @@
 "use server";
 // @flow
-
+// These are callable read capabilities. uf does not yet send a Flight component tree.
+// Each read establishes its own identity, even when invoked outside a page loader.
+import { viewer } from "./server/session.server.js";
+import { listPosts, listThreads, listMessages, settingsFor } from "./server/repository.server.js";
 import {
-  getSettings,
-  getViewer,
-  listMessages,
-  listPosts,
-  listThreads,
-} from "./social-db.server.js";
-import {
-  statsFor,
-  type FeedStats,
-  type Message,
-  type MessageThread,
-  type Post,
+  PAGE_SIZE,
+  feedFilter,
+  GUEST,
+  type Session,
+  type FeedData,
+  type InboxData,
+  type ConversationData,
+  type Protected,
   type Settings,
-  type User,
 } from "./social-model.js";
 
-type TimelineData = {|
-  readonly posts: Array<Post>,
-  readonly stats: FeedStats,
-  readonly viewer: User,
-|};
+/** Return this request’s public identity state for the shared page shell. */
+export async function sessionData(): Promise<Session> {
+  const user = viewer();
 
-type MessagesData = {|
-  readonly messages: Array<Message>,
-  readonly threads: Array<MessageThread>,
-|};
-
-export async function timelineData(): Promise<TimelineData> {
-  const [viewer, posts] = await Promise.all([getViewer(), listPosts()]);
-  return { viewer, posts, stats: statsFor(posts) };
+  return user == null ? GUEST : { kind: "authenticated", user };
 }
 
-export async function messagesData(): Promise<MessagesData> {
-  const threads = await listThreads();
-  const groups = await Promise.all(threads.map((thread) => listMessages(thread.id)));
-  return { threads, messages: groups.flat() };
+/** Read a bounded public feed page with reactions relative to this request’s viewer. */
+export async function timelineData(
+  topic: string = "all",
+  query: string = "",
+  page: string = "1",
+): Promise<FeedData> {
+  const current = viewer();
+  const filter = feedFilter(topic, query, page);
+  const rows = listPosts(current?.id ?? null, filter.topic, filter.query, filter.page);
+
+  return { ...filter, posts: rows.slice(0, PAGE_SIZE), hasNext: rows.length > PAGE_SIZE };
 }
 
-export async function settingsData(): Promise<Settings> {
-  return getSettings();
+/** Authorize this request before exposing any private inbox previews. */
+export async function threadsData(): Promise<InboxData> {
+  const current = viewer();
+
+  return current == null
+    ? { kind: "unauthenticated" }
+    : { kind: "ready", value: listThreads(current) };
+}
+
+/**
+ * Authorize and select exactly one conversation; absent and inaccessible IDs reveal no messages.
+ */
+export async function messagesData(threadId: string = ""): Promise<ConversationData> {
+  const current = viewer();
+  if (current == null) {
+    return { kind: "unauthenticated" };
+  }
+  const threads = listThreads(current);
+  const selected = threadId === "" ? threads[0] : threads.find((thread) => thread.id === threadId);
+  if (selected == null) {
+    return threadId === "" ? { kind: "empty" } : { kind: "missing" };
+  }
+  // Only one conversation crosses the boundary, after membership was checked.
+
+  return { kind: "ready", thread: selected, messages: listMessages(current, selected.id) };
+}
+
+/** Return private profile fields only for the account identified by this request’s cookie. */
+export async function settingsData(): Promise<Protected<Settings>> {
+  const current = viewer();
+
+  return current == null
+    ? { kind: "unauthenticated" }
+    : { kind: "ready", value: settingsFor(current) };
 }
