@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Eight modules, and what is asserted here is the property that makes each one
+// Nine modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -60,6 +60,7 @@ import {
 import { as, chain, is, join as joinErrors, unwrap, wrap } from "@uniflowed/std/errors";
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
+import { Element, List } from "@uniflowed/std/list";
 import { binarySearch, binarySearchBy, search } from "@uniflowed/std/slices";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
 
@@ -795,6 +796,89 @@ describe("heap", () => {
     expect([...queue.toArray()].sort((x, y) => x - y)).toEqual([1, 2, 3]);
     queue.clear();
     expect(queue.size()).toBe(0);
+  });
+});
+
+describe("list", () => {
+  it("keeps stable element handles while values move", () => {
+    const recent = new List<string>();
+    const inbox = recent.pushBack("inbox");
+    const home = recent.pushBack("home");
+    const searchItem = recent.pushFront("search");
+
+    expect(recent.size()).toBe(3);
+    expect(recent.front()).toBe(searchItem);
+    expect(recent.back()).toBe(home);
+    expect(recent.toArray()).toEqual(["search", "inbox", "home"]);
+
+    recent.moveToFront(home);
+    expect(recent.front()).toBe(home);
+    expect(searchItem.previous()).toBe(home);
+    expect(searchItem.next()).toBe(inbox);
+    expect([...recent.values()]).toEqual(["home", "search", "inbox"]);
+  });
+
+  it("inserts before and after existing elements in constant time", () => {
+    const queue = new List<number>([2, 4]);
+    const four = queue.back();
+    if (four == null) throw new Error("expected a back element");
+
+    const one = queue.insertBefore(1, queue.front() ?? four);
+    const three = queue.insertBefore(3, four);
+    const five = queue.insertAfter(5, four);
+
+    expect(queue.toArray()).toEqual([1, 2, 3, 4, 5]);
+    expect(one.next()?.value()).toBe(2);
+    expect(three.previous()?.value()).toBe(2);
+    expect(five.previous()).toBe(four);
+  });
+
+  it("moves elements relative to other elements without changing handles", () => {
+    const list = new List<string>(["a", "b", "c", "d"]);
+    const a = list.front();
+    const d = list.back();
+    if (a == null || d == null) throw new Error("expected both ends");
+    const b = a.next();
+    const c = d.previous();
+    if (b == null || c == null) throw new Error("expected middle elements");
+
+    list.moveAfter(a, c);
+    expect(list.toArray()).toEqual(["b", "c", "a", "d"]);
+    expect(a.previous()).toBe(c);
+
+    list.moveBefore(d, b);
+    expect(list.toArray()).toEqual(["d", "b", "c", "a"]);
+    expect(list.front()).toBe(d);
+    expect(list.back()).toBe(a);
+  });
+
+  it("removes and clears by detaching elements", () => {
+    const list = new List<number>([1, 2, 3]);
+    const two = list.front()?.next();
+    if (two == null) throw new Error("expected a middle element");
+
+    expect(list.remove(two)).toBe(2);
+    expect(list.toArray()).toEqual([1, 3]);
+    expect(two.next()).toBe(undefined);
+    expect(two.previous()).toBe(undefined);
+    expect(() => list.remove(two)).toThrow(RangeError);
+
+    const front = list.front();
+    list.clear();
+    expect(list.isEmpty()).toBe(true);
+    expect(list.front()).toBe(undefined);
+    expect(front?.next()).toBe(undefined);
+  });
+
+  it("refuses elements from another list or no list", () => {
+    const left = new List<string>(["a"]);
+    const right = new List<string>(["b"]);
+    const alien = right.front();
+    if (alien == null) throw new Error("expected an element");
+
+    expect(() => left.insertAfter("x", alien)).toThrow(RangeError);
+    expect(() => left.moveToBack(alien)).toThrow(RangeError);
+    expect(() => left.remove(new Element("detached"))).toThrow(RangeError);
   });
 });
 

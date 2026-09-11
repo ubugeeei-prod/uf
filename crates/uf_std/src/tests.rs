@@ -51,8 +51,8 @@ fn std_registry_covers_requested_modules() {
     assert!(specifiers.contains(&"@uniflowed/std/zip"));
     assert!(specifiers.contains(&"@uniflowed/std/import-meta"));
     assert!(specifiers.contains(&"@uniflowed/std/defer"));
-    // The six of ubugeeei-prod/uf#711 plus the first helpers from #710's next
-    // tranche, named here as well as held to
+    // The six of ubugeeei-prod/uf#711 plus helpers from #710's next tranche,
+    // named here as well as held to
     // `packages/std` by `crates/uf_lib`: this list is what a reader checks
     // first, and a shipped module missing from it is the drift #710 is about.
     for shipped in [
@@ -64,6 +64,7 @@ fn std_registry_covers_requested_modules() {
         "@uniflowed/std/hex",
         "@uniflowed/std/base32",
         "@uniflowed/std/slices",
+        "@uniflowed/std/list",
     ] {
         let module = modules
             .iter()

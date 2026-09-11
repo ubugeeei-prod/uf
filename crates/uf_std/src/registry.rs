@@ -241,7 +241,7 @@ pub fn std_modules() -> StdModuleList {
         // that one to the file.
         StdModule::declared("@uniflowed/std", StdCategory::Types),
         // ---------------------------------------------------------------
-        // What ships. ubugeeei-prod/uf#711, the first tranche, plus the first
+        // What ships. ubugeeei-prod/uf#711, the first tranche, plus
         // next-tranche pieces from ubugeeei-prod/uf#710.
         // ---------------------------------------------------------------
         //
@@ -331,6 +331,11 @@ pub fn std_modules() -> StdModuleList {
             "@uniflowed/std/slices",
             StdCategory::Data,
             &["binarySearch", "binarySearchBy", "search"],
+        ),
+        StdModule::ships(
+            "@uniflowed/std/list",
+            StdCategory::Data,
+            &["Element", "List"],
         ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
