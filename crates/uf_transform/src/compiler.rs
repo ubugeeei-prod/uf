@@ -378,15 +378,28 @@ mod tests {
     use serde_json::json;
 
     fn compiled(source: &str, mode: ReactCompilerMode) -> (Value, Vec<CompilerDiagnostic>, usize) {
-        let mut program = parse(source).unwrap();
-        lower::lower(&mut program, source).unwrap();
-        let file = crate::babel::to_babel(program, source).unwrap();
-        let info = scope::analyze(&file);
-        let options = TransformOptions {
-            react_compiler: mode,
-            ..TransformOptions::new("app.js")
-        };
-        compile(file, info, source, &options).unwrap()
+        // Like the transform service and formatter test helper, give these
+        // recursive AST passes their own stack. Debug builds of structural
+        // matches exceed libtest's default stack before reaching assertions.
+        std::thread::scope(|thread_scope| {
+            std::thread::Builder::new()
+                .name("uf-compiler-test".to_owned())
+                .stack_size(uf_flow::PARSE_STACK_BYTES)
+                .spawn_scoped(thread_scope, || {
+                    let mut program = parse(source).unwrap();
+                    lower::lower(&mut program, source).unwrap();
+                    let file = crate::babel::to_babel(program, source).unwrap();
+                    let info = scope::analyze(&file);
+                    let options = TransformOptions {
+                        react_compiler: mode,
+                        ..TransformOptions::new("app.js")
+                    };
+                    compile(file, info, source, &options).unwrap()
+                })
+                .expect("compiler test thread starts")
+                .join()
+                .expect("compiler test completes")
+        })
     }
 
     #[test]
