@@ -1535,7 +1535,7 @@ fn every_advertised_module_resolves_to_a_package() {
         }
     }
 
-    // The std subpaths are six of these, and naming the number is how a
+    // The std subpaths are part of this set, and checking one of them is how a
     // regression that quietly stops walking them shows up as a failure rather
     // than as a shorter green run.
     assert!(
@@ -1609,12 +1609,12 @@ fn a_shipping_std_module_is_the_one_that_runs() {
 ///
 /// The flag used to be set by the constructor for all forty-five entries, which
 /// made it a claim about `@uniflowed/std/net` — `TcpListener`, `UdpSocket` — as
-/// loudly as about the six modules somebody wrote. It now means "this file was
-/// read and it imports no host", and this is the reading:
-/// `docs/app/reference/std` says of the six that "nothing here imports `node:`
-/// anything, touches `Buffer`, or reads `process`", and that claim is the
-/// difference between a module that runs on Deno and the edge and one that has
-/// only ever been run on Node.
+/// loudly as about modules somebody wrote. It now means "this file was read and
+/// it imports no host", and this is the reading: `docs/app/reference/std` says
+/// of the shipped modules that nothing here imports `node:` anything, touches
+/// `Buffer`, or reads `process`, and that claim is the difference between a
+/// module that runs on Deno and the edge and one that has only ever been run on
+/// Node.
 ///
 /// `code_only` first, so that `bytes.js`'s note about Go's `bytes.Buffer` and
 /// `hex.js`'s benchmark against Node's native `Buffer` stay what they are:

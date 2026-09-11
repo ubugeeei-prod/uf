@@ -54,20 +54,18 @@
 //!   subpath could be advertised with nothing behind it and every check in the
 //!   repository stayed green.
 //!
-//! And in `tests/library/std.test.js`, the one no cargo test can do: the six
+//! And in `tests/library/std.test.js`, the one no cargo test can do: the
 //! specifiers here, `package.json#exports`, and the table in
 //! `docs/app/reference/std` are one list in three places.
 //!
 //! # What `Planned` does not mean
 //!
 //! It means "nobody has written it", and nothing else. It is not a promise and
-//! the number of them is not a roadmap: #710's next tranche — `io`, `bufio`,
-//! `encoding/csv`, `encoding/binary`, `hash/crc32`, `slices.BinarySearch`,
-//! `encoding/base32`, `container/list`, `time` durations, `path/filepath`,
-//! `archive/zip` — is a checklist in that issue, and no row was added here for
-//! any of it. A specifier in this table is a name uf advertises, and
-//! advertising eleven more names nobody has written is the failure the status
-//! field exists to end, not a use for it.
+//! the number of them is not a roadmap: #710's next tranche is a checklist in
+//! that issue, and a row moves out of this idea-space only when the package has
+//! real code and an export path for it. A specifier in this table is a name uf
+//! advertises, and advertising names nobody has written is the failure the
+//! status field exists to end, not a use for it.
 
 use compact_str::{CompactString, ToCompactString};
 use serde::{Deserialize, Serialize};
@@ -236,7 +234,7 @@ pub fn std_modules() -> StdModuleList {
         //
         // `packages/std/index.js` is 274 lines of functions that raise
         // `NativeRuntimeRequiredError`, and it is deliberately still that: the
-        // six modules below are separate subpaths so that importing a hex
+        // shipped modules below are separate subpaths so that importing a hex
         // codec brings in a hex codec. Its export list is not repeated here —
         // `uf_lib::builtin_modules()` carries it, and
         // `the_registry_names_exactly_what_each_package_exports` already holds
@@ -244,7 +242,7 @@ pub fn std_modules() -> StdModuleList {
         StdModule::declared("@uniflowed/std", StdCategory::Types),
         // ---------------------------------------------------------------
         // What ships. ubugeeei-prod/uf#711, the first tranche, plus the first
-        // slice-search piece of #710's next tranche.
+        // next-tranche pieces from ubugeeei-prod/uf#710.
         // ---------------------------------------------------------------
         //
         // Every list below is exactly what the file exports, and a test reads
@@ -312,6 +310,18 @@ pub fn std_modules() -> StdModuleList {
                 "decode",
                 "decodedLength",
                 "dump",
+                "encode",
+                "encodedLength",
+                "isValid",
+            ],
+        ),
+        StdModule::ships(
+            "@uniflowed/std/base32",
+            StdCategory::Data,
+            &[
+                "InvalidBase32Error",
+                "decode",
+                "decodedLength",
                 "encode",
                 "encodedLength",
                 "isValid",

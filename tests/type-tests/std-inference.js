@@ -2,7 +2,7 @@
 //
 // What `@uniflowed/std` infers, and the test that says so.
 //
-// This file is *supposed* to fail `uf check`. The claim these six modules make
+// This file is *supposed* to fail `uf check`. The claim these modules make
 // is that a generic container, a typed error walk and a typed context key all
 // come back at the type the *call site* implies, with nothing annotated and no
 // `any` underneath — and a claim about inference cannot be proved by running
@@ -28,6 +28,7 @@
 // `tests/type-tests/anchoring.js` says the rest of why these fixtures live here
 // rather than inside the packages they are about.
 
+import { decode as decodeBase32, encode as encodeBase32 } from "../../packages/std/base32.js";
 import { Builder, compare, equal, split } from "../../packages/std/bytes.js";
 import { background, key, withCancel, withTimeout, withValue } from "../../packages/std/context.js";
 import { as, is, join, wrap } from "../../packages/std/errors.js";
@@ -139,7 +140,7 @@ const rows = new Group<number>();
 // expect: "not a number" is incompatible with number
 export const groupTakesItsElement: mixed = rows.go(() => "not a number");
 
-// --- bytes and hex ----------------------------------------------------------
+// --- bytes and encodings ----------------------------------------------------
 
 const left = new Uint8Array(2);
 
@@ -158,6 +159,12 @@ export const decodeGivesBytes: string = decode("dead");
 
 // expect: string, a primitive, cannot be used as a subtype of Uint8Array
 export const encodeGivesText: Uint8Array = encode(left);
+
+// expect: Uint8Array
+export const base32DecodeGivesBytes: string = decodeBase32("MY======");
+
+// expect: string, a primitive, cannot be used as a subtype of Uint8Array
+export const base32EncodeGivesText: Uint8Array = encodeBase32(left);
 
 // A builder writes bytes; a string is the other method.
 // expect: string
@@ -207,6 +214,8 @@ export const bytesCompare: -1 | 0 | 1 = compare(left, left);
 export const bytesSplit: $ReadOnlyArray<Uint8Array> = split(left, left);
 export const hexEncodes: string = encode(left);
 export const hexDecodes: Uint8Array = decode("dead");
+export const base32Encodes: string = encodeBase32(left);
+export const base32Decodes: Uint8Array = decodeBase32("MY======");
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,
