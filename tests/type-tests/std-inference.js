@@ -34,6 +34,7 @@ import { background, key, withCancel, withTimeout, withValue } from "../../packa
 import { as, is, join, wrap } from "../../packages/std/errors.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
+import { List } from "../../packages/std/list.js";
 import { binarySearch, binarySearchBy, search } from "../../packages/std/slices.js";
 import { Group, Mutex, Semaphore, once } from "../../packages/std/sync.js";
 
@@ -89,6 +90,17 @@ export const comparatorSeesTheElement: mixed = new Heap<number>((a, b) => a.toUp
 const words = heapify(["b", "a"], (a, b) => (a < b ? -1 : 1));
 // expect: string is incompatible with number
 export const heapifyKeepsTheElement: number | void = words.peek();
+
+// --- list -------------------------------------------------------------------
+
+const pages = new List<string>(["home"]);
+const page = pages.pushFront("inbox");
+
+// expect: string is incompatible with number
+export const listElementHasItsValueType: number = page.value();
+
+// expect: 1 is incompatible with string
+export const listTakesItsElementType: mixed = pages.pushBack(1);
 
 // --- context ----------------------------------------------------------------
 //
@@ -201,6 +213,8 @@ export const joinIsNullable: Error | null = join(new Error("a"));
 export const heapPops: number | void = numbers.pop();
 export const heapifyInfers: string | void = words.peek();
 export const drainYieldsElements: Array<number> = [...numbers.drain()];
+export const listFront: string | void = pages.front()?.value();
+export const listValues: Array<string> = [...pages.values()];
 export const keyReads: string | void = withValue(root, TRACE, "abc").value(TRACE);
 export const attemptReads: number | void = withValue(root, ATTEMPT, 1).value(ATTEMPT);
 export const cancelTakesNothing: void = cancel();
