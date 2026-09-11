@@ -29,6 +29,10 @@
 //!   `index.js` under [`OUTPUT`], `@uniflowed/host/transform` → the compiled
 //!   `transform.js`, and a trailing-slash key per package so a deep path
 //!   nobody declared still lands in the right tree.
+//! * **one scoped table per `@uniflowed/*` package with `imports`.** A package's
+//!   `#internal` names belong to that package, not to the whole run. Import
+//!   map scopes keep two packages that both say `#runtime` from overwriting each
+//!   other while still pointing at the compiled copies under [`OUTPUT`].
 //! * **the project root, as a prefix.** `file:///<root>/` → `file:///<out>/`,
 //!   which is what makes the worker's own `import(pathToFileURL(file))` reach
 //!   the compiled copy. It has to be a prefix key rather than one key per
@@ -88,7 +92,7 @@ const STAMP: &str = ".uf-deno-build";
 /// stamp — but what this pass puts around a transform: the layout under
 /// [`OUTPUT`], the shape of the import map. A change to either makes every
 /// tree already on disk wrong in a way no source edit would reveal.
-const FRAMING: &str = "1";
+const FRAMING: &str = "2";
 
 /// The scope every package this pass mirrors belongs to.
 const SCOPE: &str = "@uniflowed";
@@ -456,6 +460,7 @@ fn import_map(
     packages: &BTreeMap<String, Utf8PathBuf>,
 ) -> String {
     let mut imports: BTreeMap<String, String> = BTreeMap::new();
+    let mut scopes: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
 
     for (name, real) in packages {
         let into = directory.join(PACKAGES).join(SCOPE).join(name.as_str());
@@ -467,6 +472,10 @@ fn import_map(
                 format!("{SCOPE}/{name}/{}", subpath.trim_start_matches("./"))
             };
             imports.insert(key, file_url(&into.join(target.trim_start_matches("./"))));
+        }
+        let local = package_imports(real, &into);
+        if !local.is_empty() {
+            scopes.insert(directory_url(&into), local);
         }
     }
 
@@ -482,6 +491,17 @@ fn import_map(
         table.insert(key, serde_json::Value::String(value));
     }
     document.insert("imports".to_string(), serde_json::Value::Object(table));
+    if !scopes.is_empty() {
+        let mut all = serde_json::Map::new();
+        for (scope, entries) in scopes {
+            let mut table = serde_json::Map::new();
+            for (key, value) in entries {
+                table.insert(key, serde_json::Value::String(value));
+            }
+            all.insert(scope, serde_json::Value::Object(table));
+        }
+        document.insert("scopes".to_string(), serde_json::Value::Object(all));
+    }
     let mut text = serde_json::to_string_pretty(&serde_json::Value::Object(document))
         .unwrap_or_else(|_| String::from("{\"imports\":{}}"));
     text.push('\n');
@@ -516,6 +536,49 @@ fn exports(directory: &Utf8Path) -> Vec<(String, String)> {
         .filter(|(key, _)| key.starts_with('.') && !key.contains('*'))
         .filter_map(|(key, value)| condition(value).map(|target| (key.clone(), target)))
         .collect()
+}
+
+/// One package's private `#` specifiers, scoped to the compiled package tree.
+///
+/// Exact entries map to exact files. Pattern entries map to import-map prefixes
+/// when both sides are the package-imports shape Node specifies:
+/// `"#x/*": "./internal/*"` becomes `"#x/" -> ".../internal/"`.
+fn package_imports(directory: &Utf8Path, into: &Utf8Path) -> BTreeMap<String, String> {
+    let Some(manifest) = manifest(directory) else {
+        return BTreeMap::new();
+    };
+    let Some(table) = manifest.get("imports").and_then(|value| value.as_object()) else {
+        return BTreeMap::new();
+    };
+
+    table
+        .iter()
+        .filter(|(key, _)| key.starts_with('#'))
+        .filter_map(|(key, value)| {
+            let target = condition(value)?;
+            scoped_import_entry(key, &target, into)
+        })
+        .collect()
+}
+
+fn scoped_import_entry(key: &str, target: &str, into: &Utf8Path) -> Option<(String, String)> {
+    if !target.starts_with("./") {
+        return None;
+    }
+    if let Some(key_prefix) = key.strip_suffix("/*") {
+        let target_prefix = target.strip_suffix("/*")?;
+        return Some((
+            format!("{key_prefix}/"),
+            directory_url(&into.join(target_prefix.trim_start_matches("./"))),
+        ));
+    }
+    if key.contains('*') || target.contains('*') {
+        return None;
+    }
+    Some((
+        key.to_owned(),
+        file_url(&into.join(target.trim_start_matches("./"))),
+    ))
 }
 
 /// The file one export entry resolves to, following conditions.

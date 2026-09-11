@@ -136,6 +136,46 @@ fn the_map_names_every_uniflowed_export() {
     assert_eq!(imports["@uniflowed/test/"], directory_url(&into));
 }
 
+#[test]
+fn package_imports_are_scoped_to_the_package_that_declares_them() {
+    let fixture = Fixture::new();
+    fixture.package(
+        "test",
+        r##"{
+          "name": "@uniflowed/test",
+          "type": "module",
+          "imports": {
+            "#worker": "./worker.js",
+            "#internal/*": "./internal/*",
+            "#external": "@uniflowed/host"
+          },
+          "exports": { ".": "./index.js", "./worker": "./worker.js" }
+        }"##,
+    );
+    fixture.write(
+        &fixture.scope.join("test/internal/log.js"),
+        "// @flow\nexport const label: string = \"log\";\n",
+    );
+    let sources = vec![fixture.source("src/a.test.js", "// @flow\nimport \"@uniflowed/test\";\n")];
+
+    let loader = fixture.build(&sources);
+    let map = fixture.map(&loader);
+    let into = loader.directory.join("packages/@uniflowed/test");
+    let scope = directory_url(&into);
+    let entries = &map["scopes"][scope.as_str()];
+
+    assert_eq!(entries["#worker"], file_url(&into.join("worker.js")));
+    assert_eq!(entries["#internal/"], directory_url(&into.join("internal")));
+    assert!(
+        entries["#external"].is_null(),
+        "bare package targets are omitted rather than written as invalid import-map addresses"
+    );
+    assert!(
+        map["imports"]["#worker"].is_null(),
+        "package-local imports must not become process-wide import-map entries"
+    );
+}
+
 /// The entry a reader stops at, and the one whose absence breaks everything.
 ///
 /// `.uf/deno` is under the project root, so the prefix that redirects the
