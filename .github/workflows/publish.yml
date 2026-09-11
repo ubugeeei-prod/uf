@@ -116,7 +116,7 @@ jobs:
             echo "UF_REAL_BROWSER=$browser"
             echo "UF_BROWSER=$wrapper"
           } >> "$GITHUB_ENV"
-      - run: cargo test --workspace
+      - run: cargo test --workspace --profile ci
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the set that is implemented.
       #

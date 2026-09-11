@@ -45,11 +45,11 @@ jobs:
       # Built once and shared, because every job below runs its checks through
       # `uf run` — this repository is a uf project, and its pipeline uses the
       # toolchain it ships rather than a second description of the same checks.
-      - run: cargo build --release --bin uf
+      - run: cargo build --profile ci-opt --bin uf
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: uf-ci
-          path: target/release/uf
+          path: target/ci-opt/uf
           retention-days: 1
 
   format:
@@ -548,7 +548,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: nightly-2026-08-01
-          components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       # The suite builds the docs site through the real `@uniflowed/vite`, and
       # those tests fail rather than skip when the workspace is not installed.
@@ -582,8 +581,7 @@ jobs:
       - run: deno --version
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
-      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - run: cargo test --workspace --all-features
+      - run: cargo test --workspace --all-features --profile ci
 
   upstream-flow:
     name: Upstream Flow

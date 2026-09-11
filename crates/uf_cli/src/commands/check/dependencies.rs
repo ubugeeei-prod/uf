@@ -107,11 +107,12 @@ pub(super) fn load_packages(
     read: &mut FxHashSet<String>,
 ) -> Vec<SourceFile> {
     let mut loaded = Vec::new();
+    let ancestors = ancestor_bases(root);
     for import in unresolved {
         let Some(name) = package_name(&import.specifier) else {
             continue;
         };
-        let Some(directory) = installed_for(root, &import.importer, name) else {
+        let Some(directory) = installed_for(root, &ancestors, &import.importer, name) else {
             continue;
         };
         if !read.insert(directory.clone()) {
@@ -128,7 +129,12 @@ pub(super) fn load_packages(
 /// Existence is decided by the manifest, because that is what makes a
 /// directory a package: `node_modules/.bin/foo` and a leftover empty directory
 /// are both on the path and neither is one.
-fn installed_for(root: &Utf8Path, importer: &str, name: &str) -> Option<String> {
+fn installed_for(
+    root: &Utf8Path,
+    ancestors: &[String],
+    importer: &str,
+    name: &str,
+) -> Option<String> {
     let inside = search_paths(importer)
         .into_iter()
         .map(|base| {
@@ -139,8 +145,8 @@ fn installed_for(root: &Utf8Path, importer: &str, name: &str) -> Option<String> 
             }
         })
         .collect::<Vec<String>>();
-    let above = ancestor_bases(root)
-        .into_iter()
+    let above = ancestors
+        .iter()
         .map(|base| format!("{base}/{INSTALLED}/{name}"));
 
     // Inside the project first, then above it, which is the order Node climbs.
@@ -323,9 +329,9 @@ fn declares_flow(path: &Utf8PathBuf) -> bool {
     {
         return false;
     }
-    // Lossy, because a package is not obliged to be UTF-8 and a byte sequence
-    // that is not says nothing about the pragma either way.
-    String::from_utf8_lossy(&header).contains(FLOW_PRAGMA)
+    header
+        .windows(FLOW_PRAGMA.len())
+        .any(|window| window == FLOW_PRAGMA.as_bytes())
 }
 
 #[cfg(test)]
