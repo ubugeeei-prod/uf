@@ -46,6 +46,7 @@ import {
 } from "../../packages/std/path.js";
 import { binarySearch, binarySearchBy, search } from "../../packages/std/slices.js";
 import { Group, Mutex, Semaphore, once } from "../../packages/std/sync.js";
+import { Duration, Ticker, Timer, after, milliseconds, seconds } from "../../packages/std/time.js";
 
 class HttpError extends Error {
   status: number;
@@ -264,6 +265,27 @@ export const fnv1a64AnswersABigInt: number = fnv1a64("hello");
 // expect: 1 is incompatible with
 export const hashInputIsBytesOrText: mixed = crc32(1);
 
+// --- time -------------------------------------------------------------------
+
+const oneSecond = seconds(1);
+const timer = new Timer(milliseconds(10));
+const ticker = new Ticker(milliseconds(10));
+
+// expect: number is incompatible with string
+export const durationMillisecondsAreNumbers: string = oneSecond.milliseconds();
+
+// expect: number
+export const timerDelayIsDurationOrMillis: mixed = new Timer("soon");
+
+// expect: Promise
+export const timerDoneIsAPromise: boolean = timer.done();
+
+// expect: number
+export const tickerTicksCanEnd: Promise<number> = ticker.tick();
+
+// expect: number
+export const afterDelayIsDurationOrMillis: mixed = after("soon");
+
 // --- what is *not* an error -------------------------------------------------
 //
 // Without these the fixture would pass just as happily on a package whose every
@@ -313,3 +335,8 @@ export const globPattern: GlobPattern = compiledGlob;
 export const globMatchBoolean: boolean = matchGlob(compiledGlob, "src/index.js");
 export const crc32Number: number = crc32(left);
 export const fnv64BigInt: bigint = fnv1a64("hello");
+export const durationValue: Duration = oneSecond;
+export const durationCompare: -1 | 0 | 1 = oneSecond.compare(500);
+export const timerDone: Promise<boolean> = timer.done();
+export const tickerTick: Promise<number | null> = ticker.tick();
+export const afterPromise: Promise<void> = after(milliseconds(1));
