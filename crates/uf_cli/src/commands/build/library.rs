@@ -80,6 +80,7 @@ use std::fs;
 
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
+use globset::GlobBuilder;
 use serde_json::json;
 use uf_bundle::{
     BudgetMetric, BundleReport, ReportOptions, build_report, collect_assets, write_report,
@@ -201,6 +202,7 @@ pub(crate) fn build(
     // imported, and every existing check would pass it: the manifest is
     // well-formed, the build succeeded, and the two disagree.
     let unresolved = timer.measure("exports", || unresolved_exports(&root, &out_dir));
+    let unpublished = timer.measure("files", || unpublished_exports(&root));
 
     let build_manifest = meta_dir.join("uf-build-manifest.json");
     let payload = json!({
@@ -323,7 +325,7 @@ pub(crate) fn build(
         );
         renderer.blank(out);
 
-        for warning in warnings.iter().chain(&unresolved) {
+        for warning in warnings.iter().chain(&unresolved).chain(&unpublished) {
             renderer.status(out, Status::Warn, warning);
         }
         renderer.status(out, Status::Success, &summary);
@@ -425,6 +427,143 @@ fn unresolved_exports(root: &Utf8Path, out_dir: &Utf8Path) -> Vec<String> {
         plural(missing.len(), "file"),
         missing.join(", "),
     )]
+}
+
+/// Subpaths whose `exports` target is not included by `package.json#files`.
+///
+/// `files` is a publish-time allowlist, which makes it the other half of the
+/// same contract [`unresolved_exports`] checks: one asks whether the build wrote
+/// the target, the other asks whether npm will put that target in the tarball.
+/// Without this, a library can build cleanly and publish a package that has an
+/// `exports` map pointing at files npm omitted — especially the scaffold's
+/// `dist/`, which `.gitignore` intentionally ignores unless `files` names it.
+fn unpublished_exports(root: &Utf8Path) -> Vec<String> {
+    let Ok(text) = fs::read_to_string(root.join("package.json")) else {
+        return Vec::new();
+    };
+    let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    let Some(exports) = manifest.get("exports") else {
+        return Vec::new();
+    };
+
+    let files = manifest
+        .get("files")
+        .and_then(serde_json::Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let mut missing = Vec::new();
+    let mut targets = Vec::new();
+    collect_targets(exports, &mut targets);
+    for target in targets {
+        let Some(relative) = export_target(&target) else {
+            continue;
+        };
+        if npm_always_publishes(relative) || files_publish(relative, &files) {
+            continue;
+        }
+        missing.push(target);
+    }
+    missing.sort();
+    missing.dedup();
+    if missing.is_empty() {
+        return Vec::new();
+    }
+    vec![format!(
+        "package.json exports {} not covered by files: {}",
+        plural(missing.len(), "file"),
+        missing.join(", "),
+    )]
+}
+
+fn export_target(target: &str) -> Option<&str> {
+    target.strip_prefix("./")
+}
+
+fn npm_always_publishes(path: &str) -> bool {
+    path == "package.json"
+        || path.eq_ignore_ascii_case("readme")
+        || path
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.eq_ignore_ascii_case("license"))
+}
+
+fn files_publish(path: &str, files: &[&str]) -> bool {
+    let mut published = false;
+    for entry in files {
+        let Some(pattern) = file_pattern(entry) else {
+            continue;
+        };
+        if !file_pattern_matches(pattern.body, path) {
+            continue;
+        }
+        published = pattern.include;
+    }
+    published
+}
+
+struct FilePattern<'a> {
+    include: bool,
+    body: &'a str,
+}
+
+fn file_pattern(entry: &str) -> Option<FilePattern<'_>> {
+    let entry = entry.trim();
+    if entry.is_empty() {
+        return None;
+    }
+    let (include, body) = entry
+        .strip_prefix('!')
+        .map_or((true, entry), |body| (false, body));
+    let body = body
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .trim_end_matches('/');
+    if body.is_empty() {
+        return None;
+    }
+    Some(FilePattern { include, body })
+}
+
+fn file_pattern_matches(pattern: &str, path: &str) -> bool {
+    if !has_glob_syntax(pattern) {
+        return path == pattern
+            || path
+                .strip_prefix(pattern)
+                .is_some_and(|rest| rest.starts_with('/'));
+    }
+    if glob_matches(pattern, path) {
+        return true;
+    }
+    if pattern.contains('/') {
+        return false;
+    }
+    path.rsplit('/')
+        .next()
+        .is_some_and(|name| glob_matches(pattern, name))
+}
+
+fn has_glob_syntax(pattern: &str) -> bool {
+    pattern
+        .chars()
+        .any(|character| matches!(character, '*' | '?' | '[' | '{'))
+}
+
+fn glob_matches(pattern: &str, path: &str) -> bool {
+    GlobBuilder::new(pattern)
+        .literal_separator(true)
+        .backslash_escape(true)
+        .build()
+        .map(|glob| glob.compile_matcher().is_match(path))
+        .unwrap_or(false)
 }
 
 /// Every string an `exports` value can reach, however it is nested.
