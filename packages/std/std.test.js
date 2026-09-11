@@ -72,6 +72,7 @@ import {
 import { InvalidCsvError, parse as parseCsv, stringify as stringifyCsv } from "@uniflowed/std/csv";
 import { as, chain, is, join as joinErrors, unwrap, wrap } from "@uniflowed/std/errors";
 import { GlobPattern, glob, matchGlob } from "@uniflowed/std/glob";
+import { adler32, crc32, fnv1a32, fnv1a64 } from "@uniflowed/std/hash";
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
 import { Element, List } from "@uniflowed/std/list";
@@ -1294,6 +1295,50 @@ describe("glob", () => {
   it("rejects malformed patterns when they are compiled", () => {
     expect(() => glob("src/[.js")).toThrow(SyntaxError);
     expect(() => matchGlob("src/[z-a].js", "src/x.js")).toThrow(SyntaxError);
+  });
+});
+
+describe("hash", () => {
+  it("matches established checksum vectors", () => {
+    expect(crc32("")).toBe(0x00000000);
+    expect(crc32("hello")).toBe(0x3610a686);
+    expect(crc32("hello world")).toBe(0x0d4a1185);
+
+    expect(adler32("")).toBe(0x00000001);
+    expect(adler32("hello")).toBe(0x062c0215);
+    expect(adler32("hello world")).toBe(0x1a0b045d);
+
+    expect(fnv1a32("")).toBe(0x811c9dc5);
+    expect(fnv1a32("hello")).toBe(0x4f9f2cab);
+    expect(fnv1a64("")).toBe(0xcbf29ce484222325n);
+    expect(fnv1a64("hello")).toBe(0xa430d84680aabd0bn);
+  });
+
+  it("continues from a previous chunk when given a seed", () => {
+    const full = fromUtf8("hello world");
+    const left = full.subarray(0, 5);
+    const right = full.subarray(5);
+
+    expect(crc32(right, crc32(left))).toBe(crc32(full));
+    expect(adler32(right, adler32(left))).toBe(adler32(full));
+    expect(fnv1a32(right, fnv1a32(left))).toBe(fnv1a32(full));
+    expect(fnv1a64(right, fnv1a64(left))).toBe(fnv1a64(full));
+  });
+
+  it("hashes strings as UTF-8 bytes on every host", () => {
+    const drop = b(0xf0, 0x9f, 0x92, 0xa7);
+
+    expect(crc32("💧")).toBe(crc32(drop));
+    expect(adler32("💧")).toBe(adler32(drop));
+    expect(fnv1a32("💧")).toBe(fnv1a32(drop));
+    expect(fnv1a64("💧")).toBe(fnv1a64(drop));
+  });
+
+  it("rejects seeds outside their checksum width", () => {
+    expect(() => crc32("x", -1)).toThrow(RangeError);
+    expect(() => adler32("x", 0x1_0000_0000)).toThrow(RangeError);
+    expect(() => fnv1a32("x", 0x1_0000_0000)).toThrow(RangeError);
+    expect(() => fnv1a64("x", -1n)).toThrow(RangeError);
   });
 });
 
