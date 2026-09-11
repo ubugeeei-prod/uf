@@ -633,6 +633,43 @@ mod tests {
     }
 
     #[test]
+    fn a_uf_library_resolves_to_its_flow_source_and_not_its_build() {
+        let packages = packages(&[Source::new(
+            "node_modules/some-lib/package.json",
+            r#"{
+              "name": "some-lib",
+              "type": "module",
+              "exports": {
+                ".": { "flow": "./index.js", "default": "./dist/index.js" }
+              }
+            }"#,
+        )]);
+
+        assert_eq!(
+            exact(&packages, "some-lib"),
+            "node_modules/some-lib/index.js"
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_writes_import_first_still_gets_its_import_target() {
+        let packages = packages(&[Source::new(
+            "node_modules/other-lib/package.json",
+            r#"{
+              "name": "other-lib",
+              "exports": {
+                ".": { "import": "./esm.js", "flow": "./src/index.js" }
+              }
+            }"#,
+        )]);
+
+        assert_eq!(
+            exact(&packages, "other-lib"),
+            "node_modules/other-lib/esm.js"
+        );
+    }
+
+    #[test]
     fn a_wildcard_subpath_expands() {
         let packages = packages(&[Source::new(
             "packages/glob/package.json",

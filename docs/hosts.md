@@ -197,6 +197,20 @@ major version and says so when it steps aside — asserting a version's behaviou
 on a version nobody ran the test against would be the unchecked claim this page
 exists to end.
 
+## What a dependency's host conditions get you
+
+A dependency can ship one target per condition: `node` against `browser`, `bun`
+or `deno` against neither, and `flow` against compiled JavaScript. `uf check`
+answers the conditions that are true of uf's portable module graph: `flow` and
+`import`. It answers no host condition.
+
+That means a package written as `{ "bun": "./b.js", "import": "./i.js" }` is
+typed as `./i.js`: right on Node, wrong on Bun, and intentionally visible as the
+cost of one shared graph. A package that publishes only host branches resolves
+to nothing and is reported separately from a missing package by
+`uf check --json` as a host-conditional module. Which host graph the checker
+should resolve, if any, is ubugeeei-prod/uf#735.
+
 ### Permissions, and why there is no `-A`
 
 Deno **is the only host that enforces the whole permission set**, and the model

@@ -5,6 +5,10 @@
 //! these are constants rather than configuration. They match what
 //! `flow_dot_js_wasm` runs with, which is the configuration Flow's own
 //! try-it-online uses, plus `uf`'s limits.
+//!
+//! The package entry fields and `exports` conditions are not Flow dialect
+//! options. They decide which file the checker types, and
+//! [`crate::resolution`] is where that decision is documented.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,32 +36,6 @@ const REACT_RULES: [ReactRule; 4] = [
 /// How many tokens of a file's header are scanned for a docblock.
 const MAX_HEADER_TOKENS: i32 = 10;
 
-/// The `package.json` fields a package with no `exports` map is entered through.
-///
-/// Prefer `module` to `main` because uf checks the ESM graph. A legacy dual
-/// package with no `exports` map commonly leaves its CommonJS entry in `main`
-/// and its ESM entry in `module`; checking the CommonJS file is the same kind
-/// of wrong graph as choosing the `require` condition below.
-///
-/// Stated rather than left to `Options::default()`, whose list is empty — with
-/// an empty list neither field is ever read, and a package that has no
-/// `exports` map would resolve to nothing at all.
-const NODE_MAIN_FIELDS: [&str; 2] = ["module", "main"];
-
-/// The `exports` conditions a package subpath is resolved under.
-///
-/// uf checks the module an ESM `import` loads, because that is the only module
-/// a uf project has: every package here is `"type": "module"`, and the
-/// transform, the dev server and the bundler all reach a package through
-/// `import`. Upstream honours `default` on top of whatever is listed, so a
-/// package with no conditions at all still resolves.
-///
-/// Listing more would be worse, not more permissive: conditions are matched in
-/// the order the *manifest* writes them, so adding `require` here would hand a
-/// dual package its CommonJS entry whenever it happened to list that first —
-/// the checker would then be typing a file the runtime never loads.
-const EXPORT_CONDITIONS: [&str; 1] = ["import"];
-
 /// Build the checker options for one run.
 ///
 /// Flow lints are left entirely off: `uf_lint` owns lint rules and reports them
@@ -73,8 +51,12 @@ pub(super) fn options(limits: &CheckLimits) -> Options {
         hook_compatibility: true,
         lint_severities: LintSettings::<Severity>::empty_severities(),
         max_header_tokens: MAX_HEADER_TOKENS,
-        node_main_fields: NODE_MAIN_FIELDS.iter().copied().map(String::from).collect(),
-        node_package_export_conditions: EXPORT_CONDITIONS
+        node_main_fields: crate::MAIN_FIELDS
+            .iter()
+            .copied()
+            .map(String::from)
+            .collect(),
+        node_package_export_conditions: crate::EXPORT_CONDITIONS
             .iter()
             .copied()
             .map(String::from)
@@ -169,13 +151,16 @@ mod tests {
     }
 
     #[test]
-    fn a_package_is_entered_the_way_an_es_module_import_enters_it() {
+    fn a_package_is_entered_under_the_conditions_uf_resolves_by() {
         let options = options(&CheckLimits::default());
 
-        assert_eq!(&*options.node_package_export_conditions, ["import"]);
+        assert_eq!(
+            &*options.node_package_export_conditions,
+            crate::EXPORT_CONDITIONS
+        );
         // Without this the entry fields of a package with no `exports` map are
         // never read, and such a package resolves to nothing.
-        assert_eq!(&*options.node_main_fields, ["module", "main"]);
+        assert_eq!(&*options.node_main_fields, crate::MAIN_FIELDS);
     }
 
     #[test]
