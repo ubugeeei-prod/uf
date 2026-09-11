@@ -80,6 +80,7 @@ import {
   RESERVED,
   VIRTUAL,
   clientModuleSource,
+  resolveRouteTarget,
   routesModuleSource,
   scanRoutes,
   serverModuleSource,
@@ -115,6 +116,7 @@ export function devUrlFor(id) {
  * @typedef {object} UniflowedOptions
  * @property {string} [root] absolute project root; Vite's root by default
  * @property {object} [config] the loaded `uf.config.js` object
+ * @property {"web" | "native" | "ios" | "android"} [target] app target
  * @property {string} [command] the `uf` binary to transform through
  */
 
@@ -126,6 +128,7 @@ export function devUrlFor(id) {
 export default function uniflowed(options = {}) {
   const ufConfig = options.config ?? {};
   const app = ufConfig.app ?? {};
+  const routeTarget = resolveRouteTarget(ufConfig, options.target);
   const routerRoot = app.router?.root ?? "app";
   const appEntry = app.router?.entry ?? ufConfig.build?.entries?.[0] ?? "app.js";
   const markdown = app.builtins?.markdown ?? {};
@@ -156,6 +159,7 @@ export default function uniflowed(options = {}) {
     flowPlugin({
       routerRoot,
       appEntry,
+      routeTarget,
       strictMode,
       navigation,
       mount,
@@ -176,6 +180,7 @@ export default function uniflowed(options = {}) {
 function flowPlugin({
   routerRoot,
   appEntry,
+  routeTarget,
   strictMode,
   navigation,
   mount,
@@ -373,7 +378,7 @@ function flowPlugin({
       if (id === RUNTIME_RESOLVED_ID) return refreshRuntimeSource();
       if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe);
       if (id === resolved(VIRTUAL.routes)) {
-        const table = scanRoutes(appRoot);
+        const table = scanRoutes(appRoot, { target: routeTarget });
         // The server renders every route, so the server's table is the whole
         // one and is generated with no filter at all. Only the browser's copy
         // is split.

@@ -7,7 +7,7 @@
 //
 //   <host> driver.js dev     --root <dir> [--mode <m>] [--host <h>] [--port <n>] [--strict-port]
 //                            [--uf-env-file <file>]...
-//   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>]
+//   <host> driver.js build   --root <dir> [--mode <m>] [--out-dir <dir>] [--target <target>]
 //                            [--prerender everything|possible|nothing]
 //                            [--static-build] [--because <sentence>]
 //   <host> driver.js library --root <dir> [--mode <m>] [--out-dir <dir>]
@@ -51,7 +51,7 @@ import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { send, toRequest } from "./internal/http.js";
 import { withProjectConfig } from "./merge.js";
-import { VIRTUAL, scanRoutes } from "./internal/routes.js";
+import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
 import {
   BUILD_ID_FILE,
   assetsFromManifest,
@@ -161,6 +161,7 @@ async function viteConfig(config, mode) {
   const port = Number(argument("--port") ?? dev.port ?? 5173);
   const allowedHosts =
     Array.isArray(dev.allowedHosts) && dev.allowedHosts.length > 0 ? dev.allowedHosts : undefined;
+  const routeTarget = resolveRouteTarget(config, argument("--target"));
 
   // What uf generates from the semantics it owns: where the project is, which
   // plugins make Flow compile, and the few settings uf enforces rather than
@@ -191,7 +192,7 @@ async function viteConfig(config, mode) {
     mode,
     clearScreen: false,
     customLogger: eventLogger(argument("--log-level") ?? "info"),
-    plugins: [uniflowed({ root, config })],
+    plugins: [uniflowed({ root, config, target: routeTarget })],
     server: {
       host,
       port,
@@ -255,6 +256,7 @@ async function viteConfig(config, mode) {
 async function dev() {
   const { createServer } = await import("vite");
   const config = await loadConfig();
+  const routeTarget = resolveRouteTarget(config, argument("--target"));
   // The mode is uf's to decide, not this file's: `uf dev` resolves `--mode`,
   // the profile `uf env use` wrote and `env.active` before it starts anything,
   // and always passes the answer. The fallback is for a driver started by hand.
@@ -266,9 +268,9 @@ async function dev() {
   emit("listening", {
     local: urls.local,
     network: urls.network,
-    routes: scanRoutes(path.resolve(root, config.app?.router?.root ?? "app")).routes.map(
-      (route) => route.path,
-    ),
+    routes: scanRoutes(path.resolve(root, config.app?.router?.root ?? "app"), {
+      target: routeTarget,
+    }).routes.map((route) => route.path),
   });
   watchSources(server);
   watchEnvFiles(server);
@@ -390,6 +392,7 @@ function watchEnvFiles(server) {
 async function preview() {
   const { preview: startPreview } = await import("vite");
   const config = await loadConfig();
+  const routeTarget = resolveRouteTarget(config, argument("--target"));
   const inline = await viteConfig(config, argument("--mode") ?? "production");
   // A build that declared it emits no server has none to mount. `uf` refuses
   // `uf start` for such a project and lets this one through, because a preview
@@ -489,9 +492,9 @@ async function preview() {
     // be the report being wrong about the thing it exists to report.
     routes:
       build == null
-        ? scanRoutes(path.resolve(root, config.app?.router?.root ?? "app")).routes.map(
-            (route) => route.path,
-          )
+        ? scanRoutes(path.resolve(root, config.app?.router?.root ?? "app"), {
+            target: routeTarget,
+          }).routes.map((route) => route.path)
         : build.entry.routes.map((route) => route.path),
     handlers: build == null ? [] : build.entry.handlers.map((handler) => handler.path),
   });

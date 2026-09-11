@@ -2,6 +2,7 @@ pub mod reserved;
 pub mod scaffold;
 
 use std::fs;
+use std::str::FromStr;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::{CompactString, ToCompactString};
@@ -55,24 +56,106 @@ pub const PAGE_EXTENSIONS: [&str; 3] = [".js", ".jsx", ".mdx"];
 /// and neither is something Markdown can be.
 pub const MODULE_EXTENSIONS: [&str; 2] = [".js", ".jsx"];
 
-/// The first spelling of `stem` that exists in `directory`.
+/// Which application target the file-system router is resolving.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RouteTarget {
+    /// A React DOM application.
+    #[default]
+    Web,
+    /// A React Native application, before it has been narrowed to a platform.
+    Native,
+    /// A React Native application on iOS.
+    Ios,
+    /// A React Native application on Android.
+    Android,
+}
+
+impl RouteTarget {
+    /// The spelling `uf build --target` accepts.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Web => "web",
+            Self::Native => "native",
+            Self::Ios => "ios",
+            Self::Android => "android",
+        }
+    }
+
+    /// The reserved-file variants this target checks, most specific first.
+    #[must_use]
+    pub const fn variants(self) -> &'static [ReservedVariant] {
+        match self {
+            Self::Web => &[ReservedVariant::Web, ReservedVariant::Default],
+            Self::Native => &[ReservedVariant::Native, ReservedVariant::Default],
+            Self::Ios => &[
+                ReservedVariant::Ios,
+                ReservedVariant::Native,
+                ReservedVariant::Default,
+            ],
+            Self::Android => &[
+                ReservedVariant::Android,
+                ReservedVariant::Native,
+                ReservedVariant::Default,
+            ],
+        }
+    }
+}
+
+impl FromStr for RouteTarget {
+    type Err = ();
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "web" => Ok(Self::Web),
+            "native" | "react-native" => Ok(Self::Native),
+            "ios" => Ok(Self::Ios),
+            "android" => Ok(Self::Android),
+            _ => Err(()),
+        }
+    }
+}
+
+/// The first spelling of `stem` this target would load from `directory`.
 ///
-/// First rather than "the only one", mirroring `findModule` in
-/// `packages/vite/internal/routes.js`: a directory holding both `$page.js`
-/// and `$page.mdx` resolves to the same one on both sides, which matters
-/// more than which one it is.
-fn find_module(directory: &Utf8Path, stem: &str, extensions: &[&str]) -> Option<Utf8PathBuf> {
-    extensions.iter().find_map(|extension| {
-        let candidate = directory.join(format!("{stem}{extension}"));
-        candidate.is_file().then_some(candidate)
+/// Platform before extension: `$page.native.mdx` is more specific to the
+/// target than `$page.js`, and a directory that wrote both has made the
+/// native one the route for a native build.
+fn find_module_for_target(
+    directory: &Utf8Path,
+    stem: &str,
+    extensions: &[&str],
+    target: RouteTarget,
+) -> Option<Utf8PathBuf> {
+    for variant in target.variants() {
+        for extension in extensions {
+            let file = match variant.as_str() {
+                Some(variant) => format!("{stem}.{variant}{extension}"),
+                None => format!("{stem}{extension}"),
+            };
+            let candidate = directory.join(file);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
+}
+
+/// Whether `name` is the page this target might resolve.
+fn is_reserved_page_for_target(name: &str, target: RouteTarget) -> bool {
+    target.variants().iter().any(|variant| {
+        PAGE_EXTENSIONS
+            .iter()
+            .any(|extension| match variant.as_str() {
+                Some(variant) => name == format!("{RESERVED_PAGE_STEM}.{variant}{extension}"),
+                None => name == format!("{RESERVED_PAGE_STEM}{extension}"),
+            })
     })
 }
 
-/// Whether `name` is a reserved page in any of its spellings.
-fn is_reserved_page(name: &str) -> bool {
-    PAGE_EXTENSIONS
-        .iter()
-        .any(|extension| name == format!("{RESERVED_PAGE_STEM}{extension}"))
+fn reserved_file_applies_to_target(file: ReservedFile, target: RouteTarget) -> bool {
+    file.variant.is_route_entry() && target.variants().contains(&file.variant)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -107,9 +190,8 @@ pub struct Route {
     /// which prerendered files a guard never sees — got `false` from the
     /// per-directory form for every route below the one that declared it.
     ///
-    /// Kept in the `.js` grammar `reserved` documents. The build's router also
-    /// accepts `.jsx`, which this discovery does not, for pages as much as for
-    /// middleware; see ubugeeei-prod/uf#386.
+    /// Resolved through the same extension and target ordering as the build
+    /// router, because `uf build` reads this before it asks Vite to bundle.
     pub middleware: Vec<Utf8PathBuf>,
 }
 
@@ -415,6 +497,14 @@ pub fn discover_routes(
     root: &Utf8Path,
     config: &UniflowedConfig,
 ) -> Result<Vec<Route>, RouterError> {
+    discover_routes_for_target(root, config, RouteTarget::Web)
+}
+
+pub fn discover_routes_for_target(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    target: RouteTarget,
+) -> Result<Vec<Route>, RouterError> {
     let app_root = root.join(config.app.router.root.as_str());
     if !app_root.exists() {
         return Ok(Vec::new());
@@ -427,7 +517,7 @@ pub fn discover_routes(
     // And before any route is built for the opposite reason: a slot's pages are
     // routes uf renders, so what is wrong with a slot has to be said here
     // rather than discovered as a missing prop at render time.
-    check_slots(&app_root)?;
+    check_slots(&app_root, target)?;
 
     let mut routes = Vec::new();
     for entry in WalkDir::new(&app_root) {
@@ -435,7 +525,11 @@ pub fn discover_routes(
             path: app_root.clone(),
             source,
         })?;
-        if !entry.file_type().is_file() || !entry.file_name().to_str().is_some_and(is_reserved_page)
+        if !entry.file_type().is_file()
+            || !entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| is_reserved_page_for_target(name, target))
         {
             continue;
         }
@@ -455,7 +549,7 @@ pub fn discover_routes(
         // so the precedence is written once, in `PAGE_EXTENSIONS`, and both
         // routers read the same order. File names rather than whole paths,
         // because the two are built from different halves of the walk.
-        if find_module(&directory, RESERVED_PAGE_STEM, &PAGE_EXTENSIONS)
+        if find_module_for_target(&directory, RESERVED_PAGE_STEM, &PAGE_EXTENSIONS, target)
             .is_none_or(|resolved| resolved.file_name() != page.file_name())
         {
             continue;
@@ -496,8 +590,14 @@ pub fn discover_routes(
 
         routes.push(Route {
             path: path.to_compact_string(),
-            has_layout: find_module(&directory, RESERVED_LAYOUT_STEM, &MODULE_EXTENSIONS).is_some(),
-            middleware: middleware_chain(&app_root, &directory),
+            has_layout: find_module_for_target(
+                &directory,
+                RESERVED_LAYOUT_STEM,
+                &MODULE_EXTENSIONS,
+                target,
+            )
+            .is_some(),
+            middleware: middleware_chain(&app_root, &directory, target),
             directory,
             page,
             params,
@@ -568,6 +668,14 @@ pub fn discover_server_modules(
     root: &Utf8Path,
     config: &UniflowedConfig,
 ) -> Result<Vec<ServerModule>, RouterError> {
+    discover_server_modules_for_target(root, config, RouteTarget::Web)
+}
+
+pub fn discover_server_modules_for_target(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    target: RouteTarget,
+) -> Result<Vec<ServerModule>, RouterError> {
     let app_root = root.join(config.app.router.root.as_str());
     if !app_root.exists() {
         return Ok(Vec::new());
@@ -590,7 +698,8 @@ pub fn discover_server_modules(
             (RESERVED_ROUTE_STEM, ServerModuleKind::RouteHandler),
             (RESERVED_MIDDLEWARE_STEM, ServerModuleKind::Middleware),
         ] {
-            if let Some(file) = find_module(&directory, stem, &MODULE_EXTENSIONS) {
+            if let Some(file) = find_module_for_target(&directory, stem, &MODULE_EXTENSIONS, target)
+            {
                 found.push(ServerModule {
                     path: path.to_compact_string(),
                     file,
@@ -681,7 +790,7 @@ fn slot_in(relative: &Utf8Path) -> Option<&str> {
 ///
 /// Sorted by name so the first offender does not depend on the order the
 /// filesystem hands entries back.
-fn check_slots(app_root: &Utf8Path) -> Result<(), RouterError> {
+fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterError> {
     let walk = WalkDir::new(app_root)
         .sort_by_file_name()
         .into_iter()
@@ -715,7 +824,9 @@ fn check_slots(app_root: &Utf8Path) -> Result<(), RouterError> {
             // there. A slot rendered into an inherited layout would be a prop
             // that layout never declared, on every route below it.
             let declaring = path.parent().unwrap_or(app_root);
-            if find_module(declaring, RESERVED_LAYOUT_STEM, &MODULE_EXTENSIONS).is_none() {
+            if find_module_for_target(declaring, RESERVED_LAYOUT_STEM, &MODULE_EXTENSIONS, target)
+                .is_none()
+            {
                 let (segment_path, _) =
                     route_path_and_params(declaring.strip_prefix(app_root).unwrap_or(declaring));
                 return Err(RouterError::SlotWithoutLayout {
@@ -734,7 +845,7 @@ fn check_slots(app_root: &Utf8Path) -> Result<(), RouterError> {
         let file_name = entry.file_name().to_string_lossy().into_owned();
         let Some(role) = classify_reserved_file(&file_name)
             .recognized()
-            .filter(|file| file.variant.is_route_entry())
+            .filter(|file| reserved_file_applies_to_target(*file, target))
             .map(|file| file.role)
         else {
             continue;
@@ -797,11 +908,17 @@ fn check_slots(app_root: &Utf8Path) -> Result<(), RouterError> {
 /// `packages/vite/internal/routes.js` builds on its descent, and it has to be:
 /// one of the two decides what runs, and the other decides what `uf build`
 /// says about it.
-fn middleware_chain(app_root: &Utf8Path, directory: &Utf8Path) -> Vec<Utf8PathBuf> {
+fn middleware_chain(
+    app_root: &Utf8Path,
+    directory: &Utf8Path,
+    target: RouteTarget,
+) -> Vec<Utf8PathBuf> {
     let mut chain = Vec::new();
     let mut current = Some(directory);
     while let Some(dir) = current {
-        if let Some(file) = find_module(dir, RESERVED_MIDDLEWARE_STEM, &MODULE_EXTENSIONS) {
+        if let Some(file) =
+            find_module_for_target(dir, RESERVED_MIDDLEWARE_STEM, &MODULE_EXTENSIONS, target)
+        {
             chain.push(file);
         }
         if dir == app_root {
@@ -928,10 +1045,18 @@ pub fn write_router_manifest(
     root: &Utf8Path,
     config: &UniflowedConfig,
 ) -> Result<Option<Utf8PathBuf>, RouterError> {
+    write_router_manifest_for_target(root, config, RouteTarget::Web)
+}
+
+pub fn write_router_manifest_for_target(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    target: RouteTarget,
+) -> Result<Option<Utf8PathBuf>, RouterError> {
     if !config.app.router.enabled {
         return Ok(None);
     }
-    let routes = discover_routes(root, config)?;
+    let routes = discover_routes_for_target(root, config, target)?;
     let manifest = root.join(config.app.router.manifest.as_str());
     // Through the formatter uf ships, with this project's own `fmt` settings.
     //

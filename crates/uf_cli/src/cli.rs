@@ -141,8 +141,11 @@ pub(crate) enum Commands {
         /// 25.5 and newer; the file itself needs nothing.
         #[arg(long)]
         compile: bool,
-        /// Compile for this platform rather than for this machine, as a
-        /// target triple: `x86_64-unknown-linux-gnu`, `aarch64-apple-darwin`.
+        /// Build this application target: `web`, `native`, `ios` or `android`.
+        ///
+        /// With `--compile`, this remains the standalone binary's platform
+        /// triple instead: `x86_64-unknown-linux-gnu`,
+        /// `aarch64-apple-darwin`.
         ///
         /// Cross-compiling downloads that platform's runtime, so the first
         /// build for a target needs the network. Bun's backend only; Node
@@ -153,7 +156,7 @@ pub(crate) enum Commands {
         // a triple is not accepted, and "uf has never built for this" and
         // "your Bun is too old for this" are different sentences that a reader
         // has to be able to tell apart. `compile::parse_target` says both.
-        #[arg(long, value_name = "TRIPLE", requires = "compile")]
+        #[arg(long, value_name = "TARGET")]
         target: Option<String>,
         /// Also write a directory that can be copied to a host with a
         /// JavaScript runtime and nothing else. Overrides
