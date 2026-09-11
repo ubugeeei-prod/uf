@@ -65,6 +65,7 @@ fn std_registry_covers_requested_modules() {
         "@uniflowed/std/base32",
         "@uniflowed/std/slices",
         "@uniflowed/std/list",
+        "@uniflowed/std/csv",
     ] {
         let module = modules
             .iter()
