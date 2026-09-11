@@ -472,6 +472,50 @@ fn parses_flow_config() {
     assert!(config.app.builtins.native_test_runner);
 }
 
+#[test]
+fn parses_an_evaluated_config_projection() {
+    let path = Utf8PathBuf::from("/project/uf.config.js");
+    let config = parse_config_projection(
+        &path,
+        serde_json::json!({
+            "dev": { "port": 4173 },
+            "tasks": {
+                "hello": { "command": "echo hi" }
+            }
+        }),
+    )
+    .unwrap();
+
+    assert_eq!(config.dev.port, 4173);
+    assert_eq!(config.tasks["hello"].command(), "echo hi");
+    assert_eq!(config.builder.module, "@uniflowed/vite");
+    assert_eq!(
+        config.app.runtime.capability_js_host.default,
+        CapabilityJsHost::Node
+    );
+}
+
+#[test]
+fn evaluated_config_projection_uses_the_same_validation() {
+    let path = Utf8PathBuf::from("/project/uf.config.js");
+    let error = parse_config_projection(
+        &path,
+        serde_json::json!({
+            "app": {
+                "rendering": {
+                    "cache": { "data": true }
+                }
+            }
+        }),
+    )
+    .expect_err("evaluated config still refuses unavailable caches");
+
+    assert!(matches!(
+        error,
+        ConfigError::UnimplementedCache { key: "data", .. }
+    ));
+}
+
 /// The two cache switches uf implements are read and carried.
 ///
 /// They reach `@uniflowed/vite`'s generated server entry and `uf preview`, and

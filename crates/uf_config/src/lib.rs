@@ -1916,35 +1916,69 @@ pub fn load_config_file(path: &Utf8Path) -> Result<UniflowedConfig, ConfigError>
                     });
                 }
             };
-            let config: UniflowedConfig =
-                json5::from_str(&json5).map_err(|source| ConfigError::Parse {
-                    path: path.to_path_buf(),
-                    message: source.to_string(),
-                })?;
-            check_cache_switches(path, &config.app.rendering.cache)?;
-            // Which runtime this project says it is written for, checked
-            // against the table that says which runtimes have a host. Before
-            // the rendering and library checks only because it is the
-            // cheapest of the three; the three are independent. See
-            // ubugeeei-prod/uf#246.
-            runtime::check(path, &config)?;
-            // What the project says a build may produce, checked where it was
-            // written. `rendering::check` refuses the two combinations that
-            // have no build behind them; `RenderingPlan::resolve` is
-            // infallible after it, which is why every caller downstream can
-            // ask for the plan without handling an error.
-            rendering::check(path, &config)?;
-            // And what a build *is*, which is the question one level above
-            // that: `app.router.enabled: false` makes the project a library,
-            // and `build.lib` describes a build only a library has. See
-            // ubugeeei-prod/uf#268.
-            library::check(path, &config)?;
-            Ok(config)
+            parse_config_object(path, &json5)
         }
         _ => Err(ConfigError::UnreadableConfigFile {
             path: path.to_path_buf(),
         }),
     }
+}
+
+/// Parse the object literal extracted from a static `uf.config.js`.
+///
+/// This is the bootstrap path: Rust can read enough config to choose a host and
+/// builder without running user code. Once a command has a JavaScript host, the
+/// evaluated module should enter through [`parse_config_projection`] instead.
+pub fn parse_config_object(
+    path: &Utf8Path,
+    json5_object: &str,
+) -> Result<UniflowedConfig, ConfigError> {
+    let config: UniflowedConfig =
+        json5::from_str(json5_object).map_err(|source| ConfigError::Parse {
+            path: path.to_path_buf(),
+            message: source.to_string(),
+        })?;
+    validate_config(path, &config)?;
+    Ok(config)
+}
+
+/// Parse the JSON projection of an evaluated `uf.config.js`.
+///
+/// `@uniflowed/vite` already evaluates the module for commands that start a
+/// builder driver and emits plain JSON. Keeping this entry point in `uf_config`
+/// gives that evaluated path the same serde defaults and semantic validation
+/// as the static bootstrap loader.
+pub fn parse_config_projection(
+    path: &Utf8Path,
+    projection: serde_json::Value,
+) -> Result<UniflowedConfig, ConfigError> {
+    let config: UniflowedConfig =
+        serde_json::from_value(projection).map_err(|source| ConfigError::Parse {
+            path: path.to_path_buf(),
+            message: source.to_string(),
+        })?;
+    validate_config(path, &config)?;
+    Ok(config)
+}
+
+/// Validate semantic config combinations that serde alone cannot express.
+pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), ConfigError> {
+    check_cache_switches(path, &config.app.rendering.cache)?;
+    // Which runtime this project says it is written for, checked against the
+    // table that says which runtimes have a host. Before the rendering and
+    // library checks only because it is the cheapest of the three; the three
+    // are independent. See ubugeeei-prod/uf#246.
+    runtime::check(path, config)?;
+    // What the project says a build may produce, checked where it was written.
+    // `rendering::check` refuses the two combinations that have no build behind
+    // them; `RenderingPlan::resolve` is infallible after it, which is why every
+    // caller downstream can ask for the plan without handling an error.
+    rendering::check(path, config)?;
+    // And what a build *is*, which is the question one level above that:
+    // `app.router.enabled: false` makes the project a library, and `build.lib`
+    // describes a build only a library has. See ubugeeei-prod/uf#268.
+    library::check(path, config)?;
+    Ok(())
 }
 
 /// Refuse a cache switch uf would read and not honour.
