@@ -5,12 +5,12 @@ default:
 
 check:
     cargo fmt --all -- --check
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
-    cargo test --workspace --all-features
+    cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings
+    cargo test --workspace --all-features --profile ci
     cargo bench --workspace --all-features --no-run
 
 test:
-    cargo test --workspace --all-features
+    cargo test --workspace --all-features --profile ci
 
 ci:
-    cargo test --workspace --all-features
+    cargo test --workspace --all-features --profile ci

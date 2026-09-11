@@ -12,11 +12,11 @@ tools/upstream/sync.sh
 Pinned release toolchain (1.98.0):
 
 - [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-- [ ] `cargo test --workspace`
+- [ ] `cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings`
+- [ ] `cargo test --workspace --profile ci`
 - [ ] `cargo bench --workspace --no-run`
 
 Nightly, for the `upstream/flow` Rust port behind `--all-features`:
 
-- [ ] `cargo +nightly clippy --workspace --all-targets --all-features -- -D warnings`
-- [ ] `cargo +nightly test --workspace --all-features`
+- [ ] `cargo +nightly clippy --workspace --all-targets --all-features --profile ci -- -D warnings`
+- [ ] `cargo +nightly test --workspace --all-features --profile ci`

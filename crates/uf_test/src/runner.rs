@@ -275,7 +275,7 @@ impl TestRunner {
     ) {
         let mut worker: Option<Worker> = None;
         loop {
-            let at = state.next.fetch_add(1, Ordering::SeqCst);
+            let at = state.next.fetch_add(1, Ordering::Relaxed);
             if at >= schedule.len() {
                 retire(&mut worker, host);
                 return;
@@ -284,10 +284,7 @@ impl TestRunner {
                 // Leave the slot empty; `assemble` reports it as not run.
                 continue;
             }
-            let Some(selected) = selected
-                .iter()
-                .find(|selected| selected.file.relative == schedule[at].file)
-            else {
+            let Some(selected) = selected.get(schedule[at].index) else {
                 continue;
             };
             let file = selected.file;

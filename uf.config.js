@@ -136,8 +136,10 @@ export default defineConfig({
     // --- Rust ----------------------------------------------------------
     "rust:fmt": "cargo fmt --all",
     "rust:fmt:check": "cargo fmt --all -- --check",
-    "rust:clippy": "cargo clippy --workspace --all-targets --all-features -- -D warnings",
-    "rust:test": "cargo test --workspace",
+    "rust:clippy": {
+      command: "cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings",
+    },
+    "rust:test": "cargo test --workspace --profile ci",
     "rust:bench": "cargo bench --workspace --no-run",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
     "rust:lints": {
@@ -147,8 +149,10 @@ export default defineConfig({
 
     // The parser and the checker are vendored, and they are the thing
     // everything else reads, so they get a pass of their own.
-    "flow:clippy": "cargo clippy -p uf_flow --all-targets -- -D warnings",
-    "flow:test": "cargo test -p uf_flow",
+    "flow:clippy": {
+      command: "cargo clippy -p uf_flow --all-targets --profile ci -- -D warnings",
+    },
+    "flow:test": "cargo test -p uf_flow --profile ci",
 
     // --- The toolchain, used on itself ---------------------------------
     //
