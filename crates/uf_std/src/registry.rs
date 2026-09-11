@@ -337,6 +337,11 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Data,
             &["Element", "List"],
         ),
+        StdModule::ships(
+            "@uniflowed/std/csv",
+            StdCategory::Serialization,
+            &["InvalidCsvError", "parse", "stringify"],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------

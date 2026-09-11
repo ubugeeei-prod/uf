@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Nine modules, and what is asserted here is the property that makes each one
+// Ten modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -57,6 +57,7 @@ import {
   withTimeout,
   withValue,
 } from "@uniflowed/std/context";
+import { InvalidCsvError, parse as parseCsv, stringify as stringifyCsv } from "@uniflowed/std/csv";
 import { as, chain, is, join as joinErrors, unwrap, wrap } from "@uniflowed/std/errors";
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
@@ -1018,6 +1019,51 @@ describe("base32", () => {
 
     expect(() => decodeBase32("MZX=6===")).toThrow(InvalidBase32Error);
     expect(isValidBase32("MZ======")).toBe(false);
+  });
+});
+
+describe("csv", () => {
+  it("parses quoted commas, escaped quotes and embedded newlines", () => {
+    const source = 'name,note\r\nAda,"hello, ""Flow"""\r\nBob,"line 1\nline 2"';
+
+    expect(parseCsv(source)).toEqual([
+      ["name", "note"],
+      ["Ada", 'hello, "Flow"'],
+      ["Bob", "line 1\nline 2"],
+    ]);
+  });
+
+  it("serializes only the fields that need quoting", () => {
+    const rows = [
+      ["plain", "needs,comma"],
+      ['quote "here"', "line\nbreak"],
+      [" space", "tab\t"],
+    ];
+    const text = stringifyCsv(rows, { lineTerminator: "\r\n" });
+
+    expect(text).toBe('plain,"needs,comma"\r\n"quote ""here""","line\nbreak"\r\n" space","tab\t"');
+    expect(parseCsv(text)).toEqual(rows);
+  });
+
+  it("checks record width by default and can allow ragged rows", () => {
+    expect(() => parseCsv("a,b\nc")).toThrow(InvalidCsvError);
+    expect(parseCsv("a,b\nc", { fieldsPerRecord: "variable" })).toEqual([["a", "b"], ["c"]]);
+    expect(() => parseCsv("a,b", { fieldsPerRecord: 3 })).toThrow(InvalidCsvError);
+  });
+
+  it("names malformed quoted fields with a source position", () => {
+    try {
+      parseCsv('ok\n"unterminated');
+      throw new Error("parse should have refused");
+    } catch (failure) {
+      expect(failure).toBeInstanceOf(InvalidCsvError);
+      if (failure instanceof InvalidCsvError) {
+        expect(failure.line).toBe(2);
+        expect(failure.column).toBe(1);
+      }
+    }
+
+    expect(() => parseCsv('a"b')).toThrow(InvalidCsvError);
   });
 });
 

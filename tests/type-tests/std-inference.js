@@ -31,6 +31,7 @@
 import { decode as decodeBase32, encode as encodeBase32 } from "../../packages/std/base32.js";
 import { Builder, compare, equal, split } from "../../packages/std/bytes.js";
 import { background, key, withCancel, withTimeout, withValue } from "../../packages/std/context.js";
+import { parse as parseCsv, stringify as stringifyCsv } from "../../packages/std/csv.js";
 import { as, is, join, wrap } from "../../packages/std/errors.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
@@ -182,6 +183,12 @@ export const base32EncodeGivesText: Uint8Array = encodeBase32(left);
 // expect: string
 export const builderWritesBytes: mixed = new Builder().write("text");
 
+// expect: string is incompatible with number
+export const csvCellsAreText: number = parseCsv("a")[0][0];
+
+// expect: 1 is incompatible with string
+export const csvStringifyTakesText: mixed = stringifyCsv([[1]]);
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -230,6 +237,8 @@ export const hexEncodes: string = encode(left);
 export const hexDecodes: Uint8Array = decode("dead");
 export const base32Encodes: string = encodeBase32(left);
 export const base32Decodes: Uint8Array = decodeBase32("MY======");
+export const csvRows: $ReadOnlyArray<$ReadOnlyArray<string>> = parseCsv("a,b");
+export const csvText: string = stringifyCsv([["a", "b"]]);
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,
