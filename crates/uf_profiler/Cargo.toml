@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
 # No dependencies, and that is a property rather than an accident. A profiler
 # that pulls in a dependency tree measures that tree as well as the program,
 # and every crate uf profiles would then link it. `std` has an atomic, a

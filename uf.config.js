@@ -140,6 +140,10 @@ export default defineConfig({
     "rust:test": "cargo test --workspace",
     "rust:bench": "cargo bench --workspace --no-run",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
+    "rust:lints": {
+      command: "tools/ci/workspace-rust-lints.sh",
+      inputs: ["Cargo.toml", "crates/*/Cargo.toml", "tools/ci/workspace-rust-lints.sh"],
+    },
 
     // The parser and the checker are vendored, and they are the thing
     // everything else reads, so they get a pass of their own.
@@ -879,6 +883,7 @@ export default defineConfig({
         "test:lib",
         "docs:build",
         "rust:metadata",
+        "rust:lints",
         "manifests",
         "lockfile",
         "lockfile:test",

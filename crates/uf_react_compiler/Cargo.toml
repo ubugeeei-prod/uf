@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 compact_str.workspace = true
 react_compiler.workspace = true
