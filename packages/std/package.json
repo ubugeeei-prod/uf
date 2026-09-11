@@ -14,6 +14,7 @@
   "exports": {
     ".": "./index.js",
     "./base32": "./base32.js",
+    "./binary": "./binary.js",
     "./bytes": "./bytes.js",
     "./context": "./context.js",
     "./csv": "./csv.js",
@@ -27,6 +28,7 @@
   },
   "files": [
     "base32.js",
+    "binary.js",
     "bytes.js",
     "context.js",
     "csv.js",

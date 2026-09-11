@@ -328,6 +328,22 @@ pub fn std_modules() -> StdModuleList {
             ],
         ),
         StdModule::ships(
+            "@uniflowed/std/binary",
+            StdCategory::Data,
+            &[
+                "BIG_ENDIAN",
+                "Cursor",
+                "InvalidBinaryError",
+                "LITTLE_ENDIAN",
+                "putUvarint",
+                "putVarint",
+                "uvarint",
+                "uvarintLength",
+                "varint",
+                "varintLength",
+            ],
+        ),
+        StdModule::ships(
             "@uniflowed/std/slices",
             StdCategory::Data,
             &["binarySearch", "binarySearchBy", "search"],

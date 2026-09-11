@@ -34,7 +34,7 @@ try {
 
 ## What ships today
 
-Ten modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
+Eleven modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
 brings in a hex codec and nothing else.
 
 | Import | Go's name | What it is |
@@ -49,9 +49,10 @@ brings in a hex codec and nothing else.
 | `@uniflowed/std/slices` | `sort.Search`, `slices.BinarySearch` | Lower-bound search and insertion points for sorted arrays |
 | `@uniflowed/std/list` | `container/list` | A doubly linked list with stable element handles |
 | `@uniflowed/std/csv` | `encoding/csv` | RFC 4180 parsing and writing without `split(",")` bugs |
+| `@uniflowed/std/binary` | `encoding/binary` | Checked `DataView` cursor reads and writes, plus Go-compatible varints |
 
 The root `@uniflowed/std` is unchanged: it is a declaration surface whose
-functions raise `NativeRuntimeRequiredError`, and it is not what these ten are.
+functions raise `NativeRuntimeRequiredError`, and it is not what these eleven are.
 Everything above runs.
 
 ## The types are the point
@@ -217,15 +218,14 @@ on them rather than replacing them.
 
 ### Missing, and worth having
 
-The first six at the top of this page are tranche 1. `slices`, `base32`, `list`
-and `csv` are the first next-tranche pieces. What remains, roughly in order of
-value:
+The first six at the top of this page are tranche 1. `slices`, `base32`, `list`,
+`csv` and `binary` are the first next-tranche pieces. What remains, roughly in
+order of value:
 
 | Go | What it would be |
 | --- | --- |
 | `io` | `Reader`/`Writer` over `Uint8Array`, `copy`, `readAll`, `limitReader`, and adapters to and from Web Streams. Held back for a concrete reason: `ReadableStream` is not polymorphic in the Flow libdefs uf's checker uses, so `ReadableStream<Uint8Array>` is refused, and fixing that libdef is the first half of the item |
 | `bufio` | A buffered reader, and `Scanner` with line, word and custom split functions |
-| `encoding/binary` | `getUint16`/`putUint32`/… over a cursor, and **varint**, which `DataView` does not have |
 | `hash/crc32`, `hash/fnv`, `hash/adler32` | WebCrypto has none of them. The strongest native candidate on this list, because CRC32 has a hardware instruction — so measure it before writing the JavaScript |
 | `time` durations and tickers | A `Duration` with the arithmetic, `Ticker`, `Timer`, `AfterFunc`, and the leak-free cancellation `context` already had to solve once |
 | `path/filepath` | `join`, `clean`, `rel`, `ext`, `base`, `dir`, and a real glob matcher |
