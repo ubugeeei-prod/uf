@@ -490,24 +490,25 @@ fn export_target(target: &str) -> Option<&str> {
 fn always_published_targets(manifest: &serde_json::Value) -> BTreeSet<String> {
     let mut targets = BTreeSet::from([String::from("package.json")]);
 
-    if let Some(main) = manifest.get("main").and_then(serde_json::Value::as_str) {
-        if let Some(target) = manifest_path(main) {
-            targets.insert(target);
-        }
+    if let Some(target) = manifest
+        .get("main")
+        .and_then(serde_json::Value::as_str)
+        .and_then(manifest_path)
+    {
+        targets.insert(target);
     }
     if let Some(bin) = manifest.get("bin") {
         match bin {
             serde_json::Value::String(path) => {
-                if let Some(target) = manifest_path(path) {
-                    targets.insert(target);
-                }
+                targets.extend(manifest_path(path));
             }
             serde_json::Value::Object(commands) => {
-                for path in commands.values().filter_map(serde_json::Value::as_str) {
-                    if let Some(target) = manifest_path(path) {
-                        targets.insert(target);
-                    }
-                }
+                targets.extend(
+                    commands
+                        .values()
+                        .filter_map(serde_json::Value::as_str)
+                        .filter_map(manifest_path),
+                );
             }
             _ => {}
         }
