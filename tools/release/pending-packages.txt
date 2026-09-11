@@ -51,6 +51,7 @@ form
 i18n
 immer
 mock
+react-native
 state
 std
 story

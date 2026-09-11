@@ -1,43 +1,21 @@
 // @flow
 //
-// `@uniflowed/react-native`.
+// `@uniflowed/react-native`: React Native, re-exported.
+//
+// This is the real `react-native` package, not a declaration of it. uf owns the
+// Flow-first compiler, router, lints and target selection around React Native;
+// the host components, Platform object, StyleSheet runtime and native module
+// bridge stay with React Native itself.
+//
+// `export *` rather than a list of names: React Native's public JavaScript
+// surface moves with its release, and a hand-maintained copy here would turn
+// every upstream addition into a uf runtime gap.
+//
+// React Native is a peer dependency, so the application chooses the exact
+// version. uf's own release does not decide when an app moves its native host.
 
-import type * as React from "@uniflowed/react";
-import { nativeRuntimeRequired } from "@uniflowed/core/native";
+export * from "react-native";
 
-const MODULE = "@uniflowed/core/react-native";
+import * as ReactNative from "react-native";
 
-export component View(...props: $ReadOnly<{ readonly children?: React.Node }>) {
-  return nativeRuntimeRequired(MODULE, "View");
-}
-
-export component Text(...props: $ReadOnly<{ readonly children?: React.Node }>) {
-  return nativeRuntimeRequired(MODULE, "Text");
-}
-
-/**
- * Host description. The native runtime replaces this object with the real host;
- * outside it the only truthful value is the generic `native` target, and
- * `select` raises rather than silently picking a branch.
- */
-export const Platform: {
-  readonly OS: "ios" | "android" | "web" | "native",
-  readonly select: <T>(
-    options: $ReadOnly<{
-      readonly ios?: T,
-      readonly android?: T,
-      readonly web?: T,
-      readonly native?: T,
-    }>,
-  ) => T | void,
-} = {
-  OS: "native",
-  select: <T>(
-    options: $ReadOnly<{
-      readonly ios?: T,
-      readonly android?: T,
-      readonly web?: T,
-      readonly native?: T,
-    }>,
-  ): T | void => nativeRuntimeRequired(MODULE, "Platform.select"),
-};
+export { ReactNative };

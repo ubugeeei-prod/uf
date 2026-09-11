@@ -37,7 +37,7 @@ case "$1" in
   view)
     [ -n "${NPM_ALL_PRESENT:-}" ] && { echo "$2"; exit 0; }
     case "$2" in
-      @uniflowed/temporal | @uniflowed/std) exit 1 ;;
+      @uniflowed/react-native | @uniflowed/temporal | @uniflowed/std) exit 1 ;;
       *) echo "$2"; exit 0 ;;
     esac ;;
   publish) ;;
@@ -74,10 +74,16 @@ run() {
     sh "$script" "$@" >"${work}/${label}.log" 2>&1
 }
 
-# 1. The two names currently in the pending room are missing from the registry,
-#    so bootstrap publishes them even though they are not in the published list.
+# 1. The pending names missing from the registry are bootstrapped even though
+#    they are not in the published list.
 run missing-pending pending --yes || fail "pending names were not bootstrapped:
 $(cat "${work}/pending.log")"
+grep -q '^dry-run @uniflowed/react-native ' "${work}/pending.npm" \
+  || fail "react-native was not dry-run packed:
+$(cat "${work}/pending.npm")"
+grep -q '^publish @uniflowed/react-native ' "${work}/pending.npm" \
+  || fail "react-native was not published:
+$(cat "${work}/pending.npm")"
 grep -q '^dry-run @uniflowed/temporal ' "${work}/pending.npm" \
   || fail "temporal was not dry-run packed:
 $(cat "${work}/pending.npm")"

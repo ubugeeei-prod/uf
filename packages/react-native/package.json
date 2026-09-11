@@ -1,8 +1,7 @@
 {
   "name": "@uniflowed/react-native",
   "version": "0.0.0-alpha.20",
-  "private": true,
-  "description": "Flow declarations for @uniflowed/react-native, part of the Unified Toolchain for Flow.",
+  "description": "React Native, re-exported for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -18,8 +17,13 @@
     "index.js",
     "!*.test.js"
   ],
-  "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.20",
-    "@uniflowed/react": "0.0.0-alpha.20"
+  "peerDependencies": {
+    "react": ">=19.2.3",
+    "react-native": ">=0.87"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
   }
 }

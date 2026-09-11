@@ -4,7 +4,7 @@
 //! tests over the files themselves rather than tests of Rust code:
 //!
 //! - no `.js.flow` (or any other `.flow`) declaration file exists,
-//! - no module re-exports with `export *`,
+//! - no module re-exports with `export *`, except peer library facades,
 //! - no module runs anything when it is imported,
 //! - every module opens with the `// @flow` pragma,
 //! - every `exports` subpath resolves and every shipped module is reachable,
@@ -142,7 +142,7 @@ fn runs_at_import(module: &Utf8Path) -> bool {
 /// an export surface uf does not control. Everything else lists its names: uf's
 /// own domains collide, and a star between them cannot say which `graphql` or
 /// which `Text` was meant.
-const RE_EXPORT_PACKAGES: &[&str] = &["react", "relay"];
+const RE_EXPORT_PACKAGES: &[&str] = &["react", "react-native", "relay"];
 
 /// Keywords a top-level statement in a shipped module may begin with. Anything
 /// else runs when the module is imported.
