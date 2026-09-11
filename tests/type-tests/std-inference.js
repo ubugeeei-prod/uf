@@ -35,6 +35,7 @@ import { background, key, withCancel, withTimeout, withValue } from "../../packa
 import { parse as parseCsv, stringify as stringifyCsv } from "../../packages/std/csv.js";
 import { as, is, join, wrap } from "../../packages/std/errors.js";
 import { GlobPattern, glob, matchGlob } from "../../packages/std/glob.js";
+import { crc32, fnv1a64 } from "../../packages/std/hash.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
 import { List } from "../../packages/std/list.js";
@@ -252,6 +253,17 @@ export const globAnswersBoolean: string = javascriptFiles.match("src/index.js");
 // expect: 1 is incompatible with string
 export const globPatternNeedsText: mixed = glob(1);
 
+// --- hash -------------------------------------------------------------------
+
+// expect: number is incompatible with string
+export const crc32AnswersANumber: string = crc32(left);
+
+// expect: bigint is incompatible with number
+export const fnv1a64AnswersABigInt: number = fnv1a64("hello");
+
+// expect: 1 is incompatible with
+export const hashInputIsBytesOrText: mixed = crc32(1);
+
 // --- what is *not* an error -------------------------------------------------
 //
 // Without these the fixture would pass just as happily on a package whose every
@@ -299,3 +311,5 @@ export const pathRelativeText: string = relativePath("app/routes", "app/assets")
 export const pathAbsoluteBoolean: boolean = pathIsAbsolute("/app");
 export const globPattern: GlobPattern = compiledGlob;
 export const globMatchBoolean: boolean = matchGlob(compiledGlob, "src/index.js");
+export const crc32Number: number = crc32(left);
+export const fnv64BigInt: bigint = fnv1a64("hello");

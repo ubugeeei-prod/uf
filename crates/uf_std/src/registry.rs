@@ -376,6 +376,11 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::FileSystem,
             &["GlobPattern", "glob", "matchGlob"],
         ),
+        StdModule::ships(
+            "@uniflowed/std/hash",
+            StdCategory::Data,
+            &["adler32", "crc32", "fnv1a32", "fnv1a64"],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
@@ -413,15 +418,6 @@ pub fn std_modules() -> StdModuleList {
             "@uniflowed/std/stdio",
             StdCategory::Environment,
             &["stdin", "stdout", "stderr", "print", "readLine"],
-        ),
-        // #710's next tranche names `hash/crc32`, `hash/fnv` and
-        // `hash/adler32`, and calls them the strongest native candidate in the
-        // list because CRC32 has a hardware instruction. This is the specifier
-        // that would answer them; the measurement comes before the binding.
-        StdModule::planned(
-            "@uniflowed/std/hash",
-            StdCategory::Data,
-            &["fastHash", "hashBytes", "hashString"],
         ),
         StdModule::planned(
             "@uniflowed/std/debug",
