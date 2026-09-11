@@ -466,6 +466,12 @@ impl ProjectModules {
         }
     }
 
+    /// Whether a package specifier missed because `exports` only offered
+    /// concrete host branches.
+    pub(super) fn host_conditional_exports(&self, importer: &str, specifier: &str) -> bool {
+        self.packages.host_conditional_exports(importer, specifier)
+    }
+
     /// Type the import as `any`, and say so.
     ///
     /// Exactly `flow_services_inference`'s `unchecked_module_t`: the module

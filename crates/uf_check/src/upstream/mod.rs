@@ -287,6 +287,7 @@ fn check_batch(
 
     let mut diagnostics = Vec::new();
     let mut untyped = BTreeSet::new();
+    let mut host_conditional = BTreeSet::new();
     let mut skipped = 0usize;
     let mut from_cache = 0usize;
     let mut result = Ok(());
@@ -295,6 +296,7 @@ fn check_batch(
             skipped += 1;
         }
         untyped.extend(graph.untyped(index));
+        host_conditional.extend(graph.host_conditional(index));
 
         let dependencies = graph.dependency_digest(index);
         // The record is about this file; the digest says whether it is still
@@ -359,6 +361,7 @@ fn check_batch(
         files_skipped: skipped,
         files_from_cache: from_cache,
         untyped_modules: untyped.into_iter().collect(),
+        host_conditional_modules: host_conditional.into_iter().collect(),
         builtins,
         elapsed: started.elapsed(),
     })
