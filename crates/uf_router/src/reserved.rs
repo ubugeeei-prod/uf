@@ -265,14 +265,13 @@ impl ReservedVariant {
         }
     }
 
-    /// Whether this variant is the one the router resolves as the route itself.
+    /// Whether this variant can be the file the router resolves for a target.
     ///
-    /// Platform variants and colocated tests are companions to a route, never
-    /// routes of their own, which is why `discover_routes` only matches the
-    /// default variant.
+    /// A platform variant is a route for the target that selects it; a
+    /// colocated test is a companion to a route and never is.
     #[must_use]
     pub const fn is_route_entry(self) -> bool {
-        matches!(self, Self::Default)
+        !matches!(self, Self::Test)
     }
 
     /// Every variant, in declaration order.
@@ -772,13 +771,13 @@ mod tests {
     }
 
     #[test]
-    fn only_the_default_variant_is_a_route_entry() {
-        assert!(ReservedVariant::Default.is_route_entry());
-        for variant in ReservedVariant::all()
-            .into_iter()
-            .filter(|variant| *variant != ReservedVariant::Default)
-        {
-            assert!(!variant.is_route_entry(), "{variant:?}");
+    fn every_variant_but_a_colocated_test_can_be_a_route_entry() {
+        for variant in ReservedVariant::all() {
+            assert_eq!(
+                variant.is_route_entry(),
+                variant != ReservedVariant::Test,
+                "{variant:?}"
+            );
         }
     }
 

@@ -78,6 +78,52 @@ export const LAYOUT_PROP_NAMES = Object.freeze(["children", "params"]);
 const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx"];
 const MODULE_EXTENSIONS = [".js", ".jsx"];
 
+/** Application targets the route scanner knows how to select files for. */
+export const ROUTE_TARGETS = Object.freeze(["web", "native", "ios", "android"]);
+
+const TARGET_VARIANTS = Object.freeze({
+  web: ["web", null],
+  native: ["native", null],
+  ios: ["ios", "native", null],
+  android: ["android", "native", null],
+});
+
+/**
+ * The route target a loaded `uf.config.js` and an optional CLI flag describe.
+ *
+ * `react-native` is accepted as the config-shaped spelling of the same target
+ * `uf build --target native` selects. The default follows the framework
+ * preset rather than the target list: uf's default list names both web and
+ * React Native, so the list is a promise the project should keep satisfying,
+ * not the one build to run when none was requested.
+ */
+export function resolveRouteTarget(config = {}, requested = null) {
+  const app = config.app ?? {};
+  const named =
+    requested == null || requested === ""
+      ? app.framework === "react-native"
+        ? "native"
+        : "web"
+      : requested === "react-native"
+        ? "native"
+        : requested;
+  if (!ROUTE_TARGETS.includes(named)) {
+    throw new Error(
+      `uf: ${JSON.stringify(named)} is not an application target; choose web, native, ios or android`,
+    );
+  }
+  const declared = app.targets;
+  if (Array.isArray(declared)) {
+    const needs = named === "web" ? "web" : "react-native";
+    if (!declared.includes(needs)) {
+      throw new Error(
+        `uf: --target ${named} needs app.targets to include ${JSON.stringify(needs)}`,
+      );
+    }
+  }
+  return named;
+}
+
 /** Deepest directory nesting the scan will follow. */
 const MAX_DEPTH = 32;
 
@@ -254,6 +300,7 @@ const MAX_DEPTH = 32;
  * about.
  *
  * @param {string} appRoot absolute path of the router root (`app/`)
+ * @param {{target?: "web" | "native" | "ios" | "android"}} [options]
  * @returns {{
  *   routes: Route[],
  *   handlers: Handler[],
@@ -262,7 +309,8 @@ const MAX_DEPTH = 32;
  *   errors: ErrorBoundary[],
  * }}
  */
-export function scanRoutes(appRoot) {
+export function scanRoutes(appRoot, options = {}) {
+  const target = resolveRouteTarget({}, options.target ?? "web");
   const routes = [];
   const handlers = [];
   const middleware = [];
@@ -283,7 +331,7 @@ export function scanRoutes(appRoot) {
     // A `$default.js` answers one question — what a slot renders when the
     // URL says nothing about it — and this walk is everywhere a slot is not,
     // so one found here is a file nothing would ever open.
-    const strayDefault = findModule(directory, RESERVED.default, PAGE_EXTENSIONS);
+    const strayDefault = findModule(directory, RESERVED.default, PAGE_EXTENSIONS, target);
     if (strayDefault != null) {
       throw new Error(
         `${strayDefault}: \`$default.js\` is what a \`@slot\` renders when the URL says ` +
@@ -293,7 +341,7 @@ export function scanRoutes(appRoot) {
       );
     }
 
-    const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS);
+    const ownLayout = findModule(directory, RESERVED.layout, MODULE_EXTENSIONS, target);
     const nextLayouts = ownLayout ? [...layouts, ownLayout] : layouts;
     if (depth === 0) {
       rootLayouts = nextLayouts;
@@ -305,7 +353,7 @@ export function scanRoutes(appRoot) {
     // `nextLayouts.length` is therefore the count taken after the own layout is
     // added, not before. A segment with a loading file and no layout of its own
     // still gets a boundary — it just shares its parent's frame.
-    const ownLoading = findModule(directory, RESERVED.loading, MODULE_EXTENSIONS);
+    const ownLoading = findModule(directory, RESERVED.loading, MODULE_EXTENSIONS, target);
     const nextLoading = ownLoading
       ? [...loading, { above: nextLayouts.length, module: ownLoading }]
       : loading;
@@ -316,7 +364,7 @@ export function scanRoutes(appRoot) {
     // Every template above a route is on that route, one inside the next, for
     // the reason every layout is — the difference between the two is a `key`,
     // not a shape.
-    const ownTemplate = findModule(directory, RESERVED.template, MODULE_EXTENSIONS);
+    const ownTemplate = findModule(directory, RESERVED.template, MODULE_EXTENSIONS, target);
     const nextTemplates = ownTemplate
       ? [...templates, { above: nextLayouts.length, module: ownTemplate }]
       : templates;
@@ -339,6 +387,7 @@ export function scanRoutes(appRoot) {
           segments,
           ownLayout,
           nextLayouts.length,
+          target,
           depth,
         ),
       ];
@@ -347,12 +396,12 @@ export function scanRoutes(appRoot) {
     // A middleware guards this directory and everything below it, whether or
     // not this directory is itself a route: `app/dashboard/$middleware.js`
     // with no `$page.js` beside it still guards `/dashboard/settings`.
-    const ownMiddleware = findModule(directory, RESERVED.middleware, MODULE_EXTENSIONS);
+    const ownMiddleware = findModule(directory, RESERVED.middleware, MODULE_EXTENSIONS, target);
     if (ownMiddleware) {
       middleware.push({ path: routeFromSegments(segments).path, module: ownMiddleware });
     }
 
-    const page = findModule(directory, RESERVED.page, PAGE_EXTENSIONS);
+    const page = findModule(directory, RESERVED.page, PAGE_EXTENSIONS, target);
     if (page) {
       const { path: routePath, pattern, params } = routeFromSegments(segments);
       routes.push({
@@ -370,7 +419,7 @@ export function scanRoutes(appRoot) {
     // A handler answers the request itself, so it takes no layouts and is not
     // MDX. It may sit beside a page: `/feed` can render for a browser and
     // `/feed.xml` answer for a reader, and both are the same directory tree.
-    const handler = findModule(directory, RESERVED.route, MODULE_EXTENSIONS);
+    const handler = findModule(directory, RESERVED.route, MODULE_EXTENSIONS, target);
     if (handler) {
       const { path: routePath, pattern, params } = routeFromSegments(segments);
       handlers.push({ path: routePath, pattern, params, module: handler });
@@ -380,7 +429,7 @@ export function scanRoutes(appRoot) {
     // `app/guide/$not-found.js` was never looked for and a reader who
     // followed a stale link into the manual was answered by the site's root
     // 404, outside the manual's own layout. See ubugeeei-prod/uf#263.
-    const ownNotFound = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS);
+    const ownNotFound = findModule(directory, RESERVED.notFound, PAGE_EXTENSIONS, target);
     if (ownNotFound) {
       notFound.push({
         path: routeFromSegments(segments).path,
@@ -392,7 +441,7 @@ export function scanRoutes(appRoot) {
 
     // `errors` is the boundaries a project declares, not failures that
     // happened: one entry per directory holding an `$error.js`.
-    const ownError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS);
+    const ownError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS, target);
     if (ownError) {
       errors.push({
         path: routeFromSegments(segments).path,
@@ -495,10 +544,11 @@ export function scanRoutes(appRoot) {
  * @param {ReadonlyArray<string>} segments the declaring segments, for the URL
  * @param {?string} ownLayout the declaring segment's own layout, or `null`
  * @param {number} above how many layouts are outside the slot
+ * @param {"web" | "native" | "ios" | "android"} target application target
  * @param {number} depth nesting depth, against `MAX_DEPTH`
  * @returns {Slot}
  */
-function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth) {
+function scanSlot(parent, directoryName, name, segments, ownLayout, above, target, depth) {
   const directory = path.join(parent, directoryName);
   if (LAYOUT_PROP_NAMES.includes(name)) {
     throw new Error(
@@ -525,7 +575,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
   }
 
   const routes = [];
-  const defaultPage = findModule(directory, RESERVED.default, PAGE_EXTENSIONS);
+  const defaultPage = findModule(directory, RESERVED.default, PAGE_EXTENSIONS, target);
 
   const walkSlot = (current, currentSegments, layouts, atSlotRoot, currentDepth) => {
     if (currentDepth > MAX_DEPTH) return;
@@ -534,7 +584,8 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
     // is left of parallel routes; see the issue.
     for (const role of [RESERVED.notFound, RESERVED.error, RESERVED.loading, RESERVED.template]) {
       const found =
-        findModule(current, role, MODULE_EXTENSIONS) ?? findModule(current, role, PAGE_EXTENSIONS);
+        findModule(current, role, MODULE_EXTENSIONS, target) ??
+        findModule(current, role, PAGE_EXTENSIONS, target);
       if (found != null) {
         throw new Error(
           `${found}: a \`@slot\` renders a page and the layouts inside the slot, and has no ` +
@@ -546,7 +597,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
       }
     }
     for (const role of [RESERVED.route, RESERVED.middleware]) {
-      const found = findModule(current, role, MODULE_EXTENSIONS);
+      const found = findModule(current, role, MODULE_EXTENSIONS, target);
       if (found != null) {
         throw new Error(
           `${found}: a \`@slot\` renders inside the page at a URL and answers no request of its ` +
@@ -559,15 +610,16 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
     // One default per slot, at the slot. A deeper one would be a second answer
     // to a question that is asked once — the URL either addressed this slot or
     // it did not.
-    if (!atSlotRoot && findModule(current, RESERVED.default, PAGE_EXTENSIONS) != null) {
+    const nestedDefault = findModule(current, RESERVED.default, PAGE_EXTENSIONS, target);
+    if (!atSlotRoot && nestedDefault != null) {
       throw new Error(
-        `${findModule(current, RESERVED.default, PAGE_EXTENSIONS)}: a \`@slot\` has one ` +
+        `${nestedDefault}: a \`@slot\` has one ` +
           `\`$default.js\`, directly inside \`${directoryName}\`, and this one is deeper, so ` +
           "nothing would ever render it.",
       );
     }
 
-    const layoutHere = findModule(current, RESERVED.layout, MODULE_EXTENSIONS);
+    const layoutHere = findModule(current, RESERVED.layout, MODULE_EXTENSIONS, target);
     const nextLayouts = layoutHere ? [...layouts, layoutHere] : layouts;
 
     const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
@@ -589,12 +641,13 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, depth
           currentSegments,
           layoutHere,
           nextLayouts.length,
+          target,
           currentDepth,
         ),
       ];
     }
 
-    const page = findModule(current, RESERVED.page, PAGE_EXTENSIONS);
+    const page = findModule(current, RESERVED.page, PAGE_EXTENSIONS, target);
     if (page) {
       const { path: routePath, params } = routeFromSegments(currentSegments);
       routes.push({
@@ -647,13 +700,16 @@ function isDirectory(candidate) {
   }
 }
 
-function findModule(directory, stem, extensions) {
-  for (const extension of extensions) {
-    const candidate = path.join(directory, stem + extension);
-    try {
-      if (statSync(candidate).isFile()) return candidate;
-    } catch {
-      // keep looking
+function findModule(directory, stem, extensions, target = "web") {
+  for (const variant of TARGET_VARIANTS[target] ?? TARGET_VARIANTS.web) {
+    for (const extension of extensions) {
+      const fileName = variant == null ? `${stem}${extension}` : `${stem}.${variant}${extension}`;
+      const candidate = path.join(directory, fileName);
+      try {
+        if (statSync(candidate).isFile()) return candidate;
+      } catch {
+        // keep looking
+      }
     }
   }
   return null;

@@ -28,8 +28,14 @@ use uf_bundle::{
     BudgetMetric, BundleBudgets, BundleReport, ByteSize, ReportOptions, build_report,
     collect_assets, evaluate, write_report,
 };
-use uf_config::{DeployAdapter, LibraryPlan, Navigation, Prerender, RenderingPlan, load_config};
-use uf_router::{Route, discover_routes, discover_server_modules, write_router_manifest};
+use uf_config::{
+    DeployAdapter, FrameworkPreset, LibraryPlan, Navigation, Prerender, RenderingPlan,
+    RuntimeTarget, UniflowedConfig, load_config,
+};
+use uf_router::{
+    Route, RouteTarget, discover_routes_for_target, discover_server_modules_for_target,
+    write_router_manifest_for_target,
+};
 use uf_rsc::{
     BuildId, ProjectScanOptions, RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RscAnalysis,
     RscDiagnostic, RscSeverity, analyze_project,
@@ -149,11 +155,13 @@ pub(crate) fn build(
             &plan,
             standalone,
             requested_adapter.or(resolved.config.app.runtime.deploy.adapter),
+            requested_target,
         )?;
         return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
     }
 
     let root = resolved.root.clone();
+    let app_target = application_target(&resolved.config, requested_target, standalone)?;
     // What this project said a build may produce, resolved once. Two settings
     // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
     // them apart at the four places below is how they would come to disagree;
@@ -162,10 +170,10 @@ pub(crate) fn build(
 
     progress.tick("discovering routes");
     let routes = timer.measure("routes", || {
-        discover_routes(&resolved.root, &resolved.config)
+        discover_routes_for_target(&resolved.root, &resolved.config, app_target)
     })?;
     let router_manifest = timer.measure("router types", || {
-        write_router_manifest(&resolved.root, &resolved.config)
+        write_router_manifest_for_target(&resolved.root, &resolved.config, app_target)
     })?;
     // The other half of the same tree: the route handlers and middleware,
     // which have no page and so appear in no `Route`. Only `--adapter static`
@@ -173,7 +181,7 @@ pub(crate) fn build(
     // refuse by name — and the walk is one pass over a directory that was just
     // walked, so it is done here rather than made conditional on a flag.
     let server_modules = timer.measure("server modules", || {
-        discover_server_modules(&resolved.root, &resolved.config)
+        discover_server_modules_for_target(&resolved.root, &resolved.config, app_target)
     })?;
 
     let out_dir = resolved.root.join(resolved.config.build.out_dir.as_str());
@@ -321,7 +329,7 @@ pub(crate) fn build(
             &builder,
             &root,
             "build",
-            &build_arguments(&resolved.config.build.out_dir, plan),
+            &build_arguments(&resolved.config.build.out_dir, plan, app_target),
             &env,
             &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
         )?;
@@ -389,6 +397,7 @@ pub(crate) fn build(
         "engine": "vite",
         "transform": "uf transform",
         "host": host.name(),
+        "target": app_target.as_str(),
         "entries": resolved.config.build.entries,
         "routes": routes.iter().map(|route| json!({
             "path": route.path,
@@ -708,6 +717,7 @@ pub(crate) fn build(
         let mut summary_rows = vec![
             KeyValue::new("engine", "vite"),
             KeyValue::toned("host", host_name, Tone::Muted),
+            KeyValue::toned("target", app_target.as_str(), Tone::Muted),
             KeyValue::new("entries", &entries),
             KeyValue::toned("routes", &route_count, Tone::Number),
             KeyValue::toned("prerendered pages", &page_count, Tone::Number),
@@ -927,16 +937,17 @@ fn refuse_unanswerable_actions(
     )
 }
 
-/// Refuse `--compile` or `--adapter` on a project that is a library.
+/// Refuse application-only build flags on a project that is a library.
 ///
-/// Both flags produce a **deployment**: an executable that serves the
-/// application, or a directory a host runs it from. A library has no
-/// application to serve — no route table, no server entry, no request to
-/// answer — so each would have to invent one, and what it invented would be an
-/// empty server that starts and 404s everything.
+/// `--compile` and `--adapter` produce a **deployment**: an executable that
+/// serves the application, or a directory a host runs it from. `--target`
+/// without `--compile` chooses the application surface whose routes uf should
+/// discover. A library has no application to serve or route table to narrow, so
+/// each would have to invent one, and what it invented would be an empty server
+/// that starts and 404s everything.
 ///
 /// Refused by name and before anything is built, which is the rule
-/// ubugeeei-prod/uf#638 applied to the same two flags: a target uf cannot
+/// ubugeeei-prod/uf#638 applied to the same class of flags: a target uf cannot
 /// produce is a sentence, and a sentence is cheaper before the bundle than
 /// after it.
 /// The adapter is whichever of `--adapter` and `app.runtime.deploy.adapter`
@@ -947,11 +958,13 @@ fn refuse_an_application_artefact(
     plan: &LibraryPlan,
     standalone: bool,
     adapter: Option<DeployAdapter>,
+    requested_target: Option<&str>,
 ) -> Result<()> {
-    let asked = match (standalone, adapter) {
-        (true, _) => "`uf build --compile` writes an executable that serves an application",
-        (_, Some(_)) => "a deploy adapter writes a directory a host serves an application from",
-        (false, None) => return Ok(()),
+    let asked = match (standalone, adapter, requested_target) {
+        (true, _, _) => "`uf build --compile` writes an executable that serves an application",
+        (_, Some(_), _) => "a deploy adapter writes a directory a host serves an application from",
+        (false, None, Some(_)) => "`uf build --target` chooses which application routes to build",
+        (false, None, None) => return Ok(()),
     };
     bail!(
         "{asked}, and {}. A library is imported rather than served: `uf build` writes its \
@@ -960,26 +973,110 @@ fn refuse_an_application_artefact(
     )
 }
 
+/// Which application target this ordinary build resolves.
+///
+/// `--target` used to mean only the standalone binary's platform triple, so
+/// `standalone` leaves that meaning with [`compile::runtimes`]. Without
+/// `--compile`, it names the app surface instead: web, native, iOS or Android.
+fn application_target(
+    config: &UniflowedConfig,
+    requested: Option<&str>,
+    standalone: bool,
+) -> Result<RouteTarget> {
+    let target = match requested.filter(|_| !standalone) {
+        Some(requested) => parse_application_target(requested)?,
+        None => default_application_target(config),
+    };
+    let needed = runtime_target_for_route_target(target);
+    if config.app.targets.contains(&needed) {
+        return Ok(target);
+    }
+    let declared = config
+        .app
+        .targets
+        .iter()
+        .map(runtime_target_name)
+        .collect::<Vec<_>>()
+        .join(", ");
+    let declared = if declared.is_empty() {
+        String::from("nothing")
+    } else {
+        declared
+    };
+    bail!(
+        "`uf build --target {}` needs `app.targets` to include `{}`; this project declares {}",
+        target.as_str(),
+        runtime_target_name(&needed),
+        declared,
+    )
+}
+
+fn default_application_target(config: &UniflowedConfig) -> RouteTarget {
+    match config.app.framework {
+        FrameworkPreset::ReactNative => RouteTarget::Native,
+        FrameworkPreset::Uniflowed | FrameworkPreset::React => RouteTarget::Web,
+    }
+}
+
+fn parse_application_target(requested: &str) -> Result<RouteTarget> {
+    if let Ok(target) = requested.parse() {
+        return Ok(target);
+    }
+    if compile::TARGETS
+        .iter()
+        .any(|target| target.triple == requested)
+    {
+        bail!(
+            "`--target {requested}` is a platform target for `uf build --compile`; add \
+             `--compile`, or choose an application target: web, native, ios or android"
+        );
+    }
+    bail!(
+        "`--target {requested}` is not an application target uf builds.\n  \
+         accepted application targets: web, native, ios, android\n  \
+         platform targets are accepted with `uf build --compile --target <triple>`"
+    )
+}
+
+fn runtime_target_for_route_target(target: RouteTarget) -> RuntimeTarget {
+    match target {
+        RouteTarget::Web => RuntimeTarget::Web,
+        RouteTarget::Native | RouteTarget::Ios | RouteTarget::Android => RuntimeTarget::ReactNative,
+    }
+}
+
+fn runtime_target_name(target: &RuntimeTarget) -> &'static str {
+    match target {
+        RuntimeTarget::Web => "web",
+        RuntimeTarget::ReactNative => "react-native",
+        RuntimeTarget::Server => "server",
+        RuntimeTarget::Hermes => "hermes",
+    }
+}
+
 /// What `driver.js build` is told, beyond where to put the output.
 ///
-/// Three arguments, and the third is the interesting one. `--prerender` and
-/// `--static-build` are the decision; `--because` is the *sentence* the
-/// decision came from, so a refusal in the builder quotes the same config key
-/// a refusal in `uf` does. Without it the driver would have to reconstruct
-/// "which setting made this a static build" from a flag that no longer says,
-/// and the two halves of one rule would tell a reader to look in two places.
+/// `--target` is the application platform whose reserved files the builder
+/// should resolve; `--prerender` and `--static-build` are the rendering
+/// decision; `--because` is the *sentence* that decision came from, so a
+/// refusal in the builder quotes the same config key a refusal in `uf` does.
+/// Without it the driver would have to reconstruct "which setting made this a
+/// static build" from a flag that no longer says, and the two halves of one
+/// rule would tell a reader to look in two places.
 ///
-/// `app.rendering.navigation` is deliberately **not** a fourth. It is not a
+/// `app.rendering.navigation` is deliberately **not** a fifth. It is not a
 /// decision about this build — it is the same answer for `uf dev`, `uf build`
 /// and `uf preview`, and neither of the first two is handed a rendering plan
 /// at all — so a builder reads it out of `uf.config.js` the way it reads
 /// `app.react.strictMode`. Passing it here as well would make the client entry
 /// a function of two sources that agree until one of them is a flag somebody
 /// forgot to forward.
-fn build_arguments(out_dir: &str, plan: RenderingPlan) -> Vec<String> {
+fn build_arguments(out_dir: &str, plan: RenderingPlan, target: RouteTarget) -> Vec<String> {
     let mut args = vec![
         String::from("--out-dir"),
         out_dir.to_string(),
+        String::from("--target"),
+        target.as_str().to_string(),
         String::from("--prerender"),
         plan.prerender().as_str().to_string(),
         String::from("--because"),

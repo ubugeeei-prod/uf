@@ -658,6 +658,86 @@ fn a_directory_with_two_page_spellings_is_one_route() {
     }
 }
 
+/// Platform variants are route entries for the target that asks for them.
+///
+/// A native build should never silently ship the web page just because the
+/// unqualified `$page.js` exists, and iOS/Android should be able to narrow a
+/// shared `$page.native.js` the same way Metro resolves platform modules.
+#[test]
+fn route_targets_choose_the_most_specific_reserved_page() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = camino::Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
+    let app = root.join("app/guide");
+    std::fs::create_dir_all(&app).expect("a directory");
+    for name in [
+        "$page.js",
+        "$page.web.jsx",
+        "$page.native.mdx",
+        "$page.ios.js",
+        "$page.android.jsx",
+    ] {
+        std::fs::write(app.join(name), "// @flow\n").expect("a page");
+    }
+
+    for (target, expected) in [
+        (RouteTarget::Web, "$page.web.jsx"),
+        (RouteTarget::Native, "$page.native.mdx"),
+        (RouteTarget::Ios, "$page.ios.js"),
+        (RouteTarget::Android, "$page.android.jsx"),
+    ] {
+        let routes =
+            discover_routes_for_target(root, &uf_config::UniflowedConfig::default(), target)
+                .expect("discovery");
+
+        assert_eq!(
+            routes
+                .iter()
+                .map(|route| route.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/guide"],
+            "{target:?} sees one route"
+        );
+        assert_eq!(
+            routes[0].page.file_name(),
+            Some(expected),
+            "{target:?} chose the wrong page"
+        );
+    }
+}
+
+/// Server modules resolve through the same target-aware path as pages.
+#[test]
+fn route_targets_choose_the_most_specific_server_module() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = camino::Utf8Path::from_path(dir.path()).expect("a UTF-8 path");
+    let app = root.join("app/api");
+    std::fs::create_dir_all(&app).expect("a directory");
+    for name in ["$route.js", "$route.native.jsx", "$route.ios.js"] {
+        std::fs::write(app.join(name), "// @flow\n").expect("a route handler");
+    }
+
+    for (target, expected) in [
+        (RouteTarget::Web, "$route.js"),
+        (RouteTarget::Native, "$route.native.jsx"),
+        (RouteTarget::Ios, "$route.ios.js"),
+        (RouteTarget::Android, "$route.native.jsx"),
+    ] {
+        let modules = discover_server_modules_for_target(
+            root,
+            &uf_config::UniflowedConfig::default(),
+            target,
+        )
+        .expect("server module discovery");
+
+        assert_eq!(modules.len(), 1, "{target:?}: {modules:?}");
+        assert_eq!(
+            modules[0].file.file_name(),
+            Some(expected),
+            "{target:?} chose the wrong handler"
+        );
+    }
+}
+
 /// And a layout or a middleware beside it is found in either of its two.
 #[test]
 fn a_layout_and_a_middleware_are_found_in_either_spelling() {

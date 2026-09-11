@@ -29,6 +29,7 @@ import { afterAll, describe, expect, it } from "@uniflowed/test";
 import {
   UNSUPPORTED_SEGMENTS,
   classifyRouteSegment,
+  resolveRouteTarget,
   routeFromSegments,
   scanRoutes,
 } from "./internal/routes.js";
@@ -152,5 +153,36 @@ describe("scanning a router root that holds one", () => {
     const root = appRoot([path.join("(marketing)", "about", "$page.js")]);
 
     expect(scanRoutes(root).routes.map((route) => route.path)).toEqual(["/about"]);
+  });
+
+  it("selects the route files for the requested application target", () => {
+    const root = appRoot([
+      path.join("guide", "$page.js"),
+      path.join("guide", "$page.web.jsx"),
+      path.join("guide", "$page.native.mdx"),
+      path.join("guide", "$page.ios.js"),
+      path.join("guide", "$page.android.jsx"),
+    ]);
+
+    expect(scanRoutes(root, { target: "web" }).routes[0].page).toBe(
+      path.join(root, "guide", "$page.web.jsx"),
+    );
+    expect(scanRoutes(root, { target: "native" }).routes[0].page).toBe(
+      path.join(root, "guide", "$page.native.mdx"),
+    );
+    expect(scanRoutes(root, { target: "ios" }).routes[0].page).toBe(
+      path.join(root, "guide", "$page.ios.js"),
+    );
+    expect(scanRoutes(root, { target: "android" }).routes[0].page).toBe(
+      path.join(root, "guide", "$page.android.jsx"),
+    );
+  });
+
+  it("defaults a React Native config to the native route target", () => {
+    expect(resolveRouteTarget({ app: { framework: "react-native" } })).toBe("native");
+    expect(resolveRouteTarget({ app: { targets: ["react-native"] } }, "ios")).toBe("ios");
+    expect(() => resolveRouteTarget({ app: { targets: ["web"] } }, "native")).toThrow(
+      "react-native",
+    );
   });
 });
