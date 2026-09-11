@@ -34,6 +34,83 @@ fn a_directory_with_its_own_config_is_a_member() {
     assert_eq!(names(&found), vec!["docs", "site"]);
 }
 
+#[test]
+fn package_json_workspaces_are_members_without_uf_config() {
+    let (_dir, root) = tree(&[]);
+    fs::write(
+        root.join("package.json"),
+        r#"{ "workspaces": ["packages/*"] }"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("packages/app")).unwrap();
+    fs::write(
+        root.join("packages/app/package.json"),
+        r#"{ "name": "@demo/app" }"#,
+    )
+    .unwrap();
+
+    let found = discover_workspaces(&root, &UniflowedConfig::default());
+
+    assert_eq!(names(&found), vec!["@demo/app"]);
+    assert_eq!(found[0].path, "packages/app");
+}
+
+#[test]
+fn yarn_object_workspaces_are_members_too() {
+    let (_dir, root) = tree(&[]);
+    fs::write(
+        root.join("package.json"),
+        r#"{ "workspaces": { "packages": ["apps/*"], "nohoist": ["**"] } }"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("apps/web")).unwrap();
+    fs::write(root.join("apps/web/package.json"), "{}").unwrap();
+
+    let found = discover_workspaces(&root, &UniflowedConfig::default());
+
+    assert_eq!(names(&found), vec!["web"]);
+    assert_eq!(found[0].path, "apps/web");
+}
+
+#[test]
+fn negated_package_workspace_patterns_are_excluded() {
+    let (_dir, root) = tree(&[]);
+    fs::write(
+        root.join("package.json"),
+        r#"{ "workspaces": ["packages/*", "!packages/private"] }"#,
+    )
+    .unwrap();
+    for package in ["packages/public", "packages/private"] {
+        fs::create_dir_all(root.join(package)).unwrap();
+        fs::write(root.join(package).join("package.json"), "{}").unwrap();
+    }
+
+    let found = discover_workspaces(&root, &UniflowedConfig::default());
+
+    assert_eq!(names(&found), vec!["public"]);
+}
+
+#[test]
+fn a_package_workspace_and_config_member_are_one_member() {
+    let (_dir, root) = tree(&["packages/app"]);
+    fs::write(
+        root.join("package.json"),
+        r#"{ "workspaces": ["packages/*"] }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("packages/app/package.json"),
+        r#"{ "name": "@demo/app" }"#,
+    )
+    .unwrap();
+
+    let found = discover_workspaces(&root, &UniflowedConfig::default());
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].name, "@demo/app");
+    assert_eq!(found[0].path, "packages/app");
+}
+
 /// `uf dev` already means the root, so the root is not one of its own members.
 #[test]
 fn the_root_is_not_a_member_of_itself() {
