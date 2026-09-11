@@ -42,6 +42,12 @@ repository = "https://github.com/ubugeeei-prod/uf"
 rust-version = "1.98"
 version = "0.0.0-alpha.20"
 
+[workspace.lints.rust]
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = "deny"
+
 [workspace.dependencies]
 # Glyph outlines and coverage rasterisation, for `uf_assets::og`. Pure Rust
 # over `ttf-parser`: it turns a glyph id into an outline and an outline into

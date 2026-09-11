@@ -8,6 +8,9 @@ license.workspace = true
 repository.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 default = ["upstream-typecheck"]
 # Run Flow's own type inference from the `upstream/flow` submodule.
