@@ -1,4 +1,5 @@
 // @flow
+
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { cookies } from "@uniflowed/server";
 import { database, transaction } from "./database.server.js";
@@ -8,24 +9,40 @@ import type { User } from "../social-model.js";
 
 export const SESSION_COOKIE = "commonplace.session";
 const TTL = 60 * 60 * 24 * 7;
+
 function digest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
+
+/**
+ * Resolve a well-formed session token against its hash and expiry; invalid tokens are guests.
+ */
 export function viewerFor(token: string | null): User | null {
-  if (token == null || !/^[a-f0-9]{64}$/.test(token)) return null;
+  if (token == null || !/^[a-f0-9]{64}$/.test(token)) {
+    return null;
+  }
   const row = database()
     .prepare("SELECT member_id FROM sessions WHERE token_hash=? AND expires_at>?")
     .get(digest(token), Date.now());
+
   return row == null ? null : member(String(row.member_id));
 }
+
+/** Read identity from this request’s cookie context, never from process-global user state. */
 export function viewer(): User | null {
   return viewerFor(cookies().get(SESSION_COOKIE));
 }
+
+/** Require a current session for repository callers that need a concrete account. */
 export function requireViewer(): User {
   const current = viewer();
-  if (current == null) throw new InputError("Please sign in to continue.");
+  if (current == null) {
+    throw new InputError("Please sign in to continue.");
+  }
+
   return current;
 }
+
 function derive(password: string, salt: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     scrypt(password, salt, 64, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (error, key) =>
@@ -33,12 +50,19 @@ function derive(password: string, salt: string): Promise<Buffer> {
     );
   });
 }
+
 function passwordField(form: FormData): string {
   const raw = form.get("password");
   if (typeof raw !== "string" || raw.length < 12 || raw.length > 128)
     throw new InputError("Please check your password.", { password: "Use 12–128 characters." });
+
   return raw;
 }
+
+/**
+ * Validate credentials with asynchronous scrypt and persistent per-handle throttling.
+ * Signup creates the account and its welcome thread atomically; fixture accounts cannot sign in.
+ */
 export async function authenticate(form: FormData, mode: string): Promise<User> {
   const handle = handleField(form);
   const password = passwordField(form);
@@ -65,7 +89,9 @@ export async function authenticate(form: FormData, mode: string): Promise<User> 
         .run(id, name, handle, email, hash);
       welcomeConversation(id);
       const created = member(id);
-      if (created == null) throw new Error("New member is missing");
+      if (created == null) {
+        throw new Error("New member is missing");
+      }
       connection.prepare("DELETE FROM auth_attempts WHERE handle=?").run(handle);
       return created;
     });
@@ -85,8 +111,14 @@ export async function authenticate(form: FormData, mode: string): Promise<User> 
   )
     throw new InputError("The handle or password is incorrect.");
   db.prepare("DELETE FROM auth_attempts WHERE handle=?").run(handle);
+
   return publicUser(row);
 }
+
+/**
+ * Rotate a session atomically and return its HttpOnly cookie.
+ * Persist only the token hash; the caller must write this header before streaming a response.
+ */
 export function issueSession(user: User, oldToken: string | null, secure: boolean): string {
   const token = randomBytes(32).toString("hex");
   transaction((db) => {
@@ -99,10 +131,14 @@ export function issueSession(user: User, oldToken: string | null, secure: boolea
       Date.now() + TTL * 1000,
     );
   });
+
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${TTL}${secure ? "; Secure" : ""}`;
 }
+
+/** Delete the presented session and return an expired cookie for the HTTP response. */
 export function revokeSession(token: string | null, secure: boolean): string {
   if (token != null)
     database().prepare("DELETE FROM sessions WHERE token_hash=?").run(digest(token));
+
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`;
 }

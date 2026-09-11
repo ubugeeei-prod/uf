@@ -1,4 +1,5 @@
 // @flow
+
 import { database, transaction, type Row } from "./database.server.js";
 import { InputError, identifier } from "./validation.server.js";
 import {
@@ -14,6 +15,7 @@ import {
   type MessageThread,
 } from "../social-model.js";
 
+/** Project a database row into the public profile DTO, excluding credentials and email. */
 export function publicUser(row: Row): User {
   const user = {
     id: String(row.id),
@@ -22,16 +24,21 @@ export function publicUser(row: Row): User {
     bio: String(row.bio),
     avatar: "",
   };
+
   return { ...user, avatar: profileInitials(user) };
 }
+
+/** Find the public profile for a stable account identifier. */
 export function member(id: string): User | null {
   const row = database().prepare("SELECT id, name, handle, bio FROM members WHERE id = ?").get(id);
+
   return row == null ? null : publicUser(row);
 }
 const POST_SELECT = `SELECT e.id, e.body, e.topic, e.created_at, m.id AS author_id, m.name, m.handle, m.bio,
   (SELECT count(*) FROM reactions r WHERE r.entry_id=e.id) AS likes,
   EXISTS(SELECT 1 FROM reactions r WHERE r.entry_id=e.id AND r.member_id=?) AS liked
   FROM entries e JOIN members m ON m.id=e.author_id`;
+
 function asPost(row: Row): Post {
   return {
     id: String(row.id),
@@ -43,6 +50,11 @@ function asPost(row: Row): Post {
     author: publicUser({ id: row.author_id, name: row.name, handle: row.handle, bio: row.bio }),
   };
 }
+
+/**
+ * Read one ordered page plus one sentinel row.
+ * Search is literal and parameters are bound; reactions are relative to the supplied viewer.
+ */
 export function listPosts(
   viewerId: string | null,
   topic: Topic | "all",
@@ -50,6 +62,7 @@ export function listPosts(
   page: number,
 ): Array<Post> {
   // instr is literal search; user input cannot become LIKE wildcards or SQL.
+
   return database()
     .prepare(
       `${POST_SELECT}
@@ -59,11 +72,20 @@ export function listPosts(
     .all(viewerId, topic, topic, query, query.toLowerCase(), PAGE_SIZE + 1, (page - 1) * PAGE_SIZE)
     .map(asPost);
 }
+
 function post(id: string, viewerId: string): Post {
   const row = database().prepare(`${POST_SELECT} WHERE e.id = ?`).get(viewerId, id);
-  if (row == null) throw new InputError("This post is no longer available.");
+  if (row == null) {
+    throw new InputError("This post is no longer available.");
+  }
+
   return asPost(row);
 }
+
+/**
+ * Publish once per author and request ID within a transaction.
+ * An identical retry returns the original note; reusing the ID for different input is rejected.
+ */
 export function insertPost(viewer: User, body: string, topic: Topic, requestId: string): Post {
   return transaction((db) => {
     const previous = db
@@ -86,8 +108,11 @@ export function insertPost(viewer: User, body: string, topic: Topic, requestId: 
     return post(id, viewer.id);
   });
 }
+
+/** Set the viewer’s intended reaction state atomically; repeated requests are idempotent. */
 export function setReaction(viewer: User, id: string, liked: boolean): Post {
   identifier(id);
+
   return transaction((db) => {
     post(id, viewer.id);
     if (liked) db.prepare("INSERT OR IGNORE INTO reactions VALUES (?, ?)").run(id, viewer.id);
@@ -95,6 +120,8 @@ export function setReaction(viewer: User, id: string, liked: boolean): Post {
     return post(id, viewer.id);
   });
 }
+
+/** Return at most 50 previews for conversations the viewer participates in. */
 export function listThreads(viewer: User): Array<MessageThread> {
   return database()
     .prepare(
@@ -114,6 +141,7 @@ export function listThreads(viewer: User): Array<MessageThread> {
       lastMessage: String(row.last_message),
     }));
 }
+
 function requireParticipant(viewer: User, threadId: string): void {
   identifier(threadId);
   if (
@@ -123,6 +151,7 @@ function requireParticipant(viewer: User, threadId: string): void {
   )
     throw new InputError("This conversation is not available.");
 }
+
 function asMessage(row: Row, viewer: User): Message {
   return {
     id: String(row.id),
@@ -132,8 +161,11 @@ function asMessage(row: Row, viewer: User): Message {
     sentAt: String(row.created_at),
   };
 }
+
+/** Verify membership before returning the latest 50 messages in chronological order. */
 export function listMessages(viewer: User, threadId: string): Array<Message> {
   requireParticipant(viewer, threadId);
+
   return database()
     .prepare(
       "SELECT * FROM (SELECT * FROM notes WHERE conversation_id=? ORDER BY created_at DESC, id DESC LIMIT 50) ORDER BY created_at, id",
@@ -141,6 +173,11 @@ export function listMessages(viewer: User, threadId: string): Array<Message> {
     .all(threadId)
     .map((row) => asMessage(row, viewer));
 }
+
+/**
+ * Verify membership and persist one message per author and request ID.
+ * A reused ID cannot redirect a previous submission into a different conversation.
+ */
 export function insertMessage(
   viewer: User,
   threadId: string,
@@ -170,11 +207,16 @@ export function insertMessage(
     return { id, threadId, author: "me", body, sentAt };
   });
 }
+
+/** Read private profile fields for the already authenticated account. */
 export function settingsFor(viewer: User): Settings {
   const row = database()
     .prepare("SELECT name, handle, bio, email FROM members WHERE id=?")
     .get(viewer.id);
-  if (row == null) throw new InputError("Please sign in again.");
+  if (row == null) {
+    throw new InputError("Please sign in again.");
+  }
+
   return {
     displayName: String(row.name),
     handle: String(row.handle),
@@ -182,6 +224,8 @@ export function settingsFor(viewer: User): Settings {
     email: String(row.email),
   };
 }
+
+/** Check handle uniqueness and update the account in one transaction. */
 export function saveSettings(viewer: User, next: Settings): Settings {
   return transaction((db) => {
     if (
@@ -199,6 +243,8 @@ export function saveSettings(viewer: User, next: Settings): Settings {
     return settingsFor(viewer);
   });
 }
+
+/** Create an account’s private fixture conversation inside the signup transaction. */
 export function welcomeConversation(memberId: string): void {
   const db = database();
   const id = crypto.randomUUID();

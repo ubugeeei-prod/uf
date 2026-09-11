@@ -1,20 +1,36 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { useEffect, useRef, useState } from "@uniflowed/react";
+import { promise, runPromiseExit } from "@uniflowed/effect";
 import { Icon } from "../ui.js";
 import type { Clip, Playback } from "./clip-model.js";
 
-// These effects synchronize browser media and visibility, not application data.
+/** Convert a browser's rejected play request into a recoverable playback state. */
+async function requestPlayback(player: HTMLVideoElement, blocked: () => void): Promise<void> {
+  const result = await runPromiseExit(promise(() => player.play()));
+
+  if (result.kind === "failure") {
+    blocked();
+  }
+}
+
+/**
+ * Attach media only to the selected slide and synchronize its browser lifetime.
+ * Autoplay respects reduced motion; backgrounding and cleanup pause playback.
+ * A late rejection from an inactive slide cannot overwrite the current state.
+ */
 export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute: () => void) {
   const video = useRef<HTMLVideoElement | null>(null);
   const [playback, setPlayback] = useState<Playback>({ kind: "paused" });
+
   useEffect(() => {
     const player = video.current;
     if (player == null || !active) return;
     const lifetime = new AbortController();
     const play = (): void => {
-      player.play().catch(() => {
+      void requestPlayback(player, () => {
         if (!lifetime.signal.aborted) setPlayback({ kind: "blocked" });
       });
     };
@@ -30,13 +46,22 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [active]);
+
   function toggle(): void {
     const player = video.current;
     if (player == null) return;
-    if (player.paused) player.play().catch(() => setPlayback({ kind: "blocked" }));
-    else player.pause();
+    if (player.paused) {
+      void requestPlayback(player, () => {
+        if (video.current === player && player.isConnected && player.hasAttribute("src")) {
+          setPlayback({ kind: "blocked" });
+        }
+      });
+    } else {
+      player.pause();
+    }
   }
   const playing = playback.kind === "playing";
+
   return (
     <div className="clip-stage">
       <video
@@ -115,10 +140,15 @@ export component ClipPlayer(clip: Clip, active: boolean, muted: boolean, onMute:
   );
 }
 
+/**
+ * Coordinate one visible video through scroll snapping, visibility observation, and keyboard controls.
+ * The observer owns selection; navigation scrolls to a slide without preloading every video.
+ */
 export component Clips(clips: $ReadOnlyArray<Clip>) {
   const viewport = useRef<HTMLDivElement | null>(null);
   const [selected, setSelected] = useState(0);
   const [muted, setMuted] = useState(true);
+
   useEffect(() => {
     const element = viewport.current;
     if (element == null) return;
@@ -136,6 +166,7 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
     for (const child of element.children) observer.observe(child);
     return () => observer.disconnect();
   }, []);
+
   function move(index: number): void {
     const element = viewport.current;
     if (element == null || index < 0 || index >= clips.length) return;
@@ -144,6 +175,7 @@ export component Clips(clips: $ReadOnlyArray<Clip>) {
       behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
     });
   }
+
   return (
     <div className="clips-layout">
       <div className="clips-player">

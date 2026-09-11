@@ -1,5 +1,6 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { callAction } from "../action-result.client.js";
 import { useActionState, useOptimistic, useState, useEffect, useRef } from "@uniflowed/react";
@@ -17,6 +18,11 @@ import {
 } from "../social-model.js";
 
 type LocalMessage = {| readonly requestId: string, readonly message: Message |};
+
+/**
+ * Preserve a conversation draft while pending and reconcile each submitted message once.
+ * Failed sends roll back the optimistic bubble and retain the request ID for an idempotent retry.
+ */
 export component DirectMessagesClient(
   thread: MessageThread,
   initialMessages: $ReadOnlyArray<Message>,
@@ -36,6 +42,7 @@ export component DirectMessagesClient(
     async (_previous: FormState<Message>, form: FormData): Promise<FormState<Message>> => {
       const text = String(form.get("body") ?? "").trim();
       const submissionId = requestId || crypto.randomUUID();
+      setRequestId(submissionId);
       const submitted = new FormData();
       submitted.set("body", text);
       submitted.set("threadId", thread.id);
@@ -70,6 +77,7 @@ export component DirectMessagesClient(
     },
     IDLE,
   );
+
   return (
     <section className="conversation" aria-label={`Conversation with ${thread.name}`}>
       <header className="conversation-header">
@@ -107,7 +115,7 @@ export component DirectMessagesClient(
           value={body}
           onChange={(event) => {
             setBody(event.currentTarget.value);
-            setRequestId(crypto.randomUUID());
+            setRequestId((current) => current || crypto.randomUUID());
           }}
           placeholder={`Write to ${thread.name.split(" ")[0]}…`}
           required
@@ -128,8 +136,10 @@ export component DirectMessagesClient(
   );
 }
 
+/** Render one message with direction relative to the authenticated participant. */
 export component MessageBubble(message: Message) {
   const pending = message.id.startsWith("pending-");
+
   return (
     <article
       className={`message-bubble ${message.author === "me" ? "mine" : ""} ${pending ? "optimistic" : ""}`}
@@ -141,14 +151,18 @@ export component MessageBubble(message: Message) {
     </article>
   );
 }
+
+/** Accept typed message children and synchronize scroll position with the latest message. */
 export component MessageLog(lastId: string, children: renders* MessageBubble) {
   const viewport = useRef<HTMLDivElement | null>(null);
   const following = useRef(true);
   // Scroll is a DOM side effect. Reading older messages opts out until the reader returns below.
+
   useEffect(() => {
     const node = viewport.current;
     if (node != null && following.current) node.scrollTop = node.scrollHeight;
   }, [lastId]);
+
   return (
     <div
       ref={viewport}

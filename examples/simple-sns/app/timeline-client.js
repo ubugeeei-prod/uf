@@ -1,12 +1,12 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { callAction } from "./action-result.client.js";
 import { Link } from "@uniflowed/router";
 import {
   Activity,
   ViewTransition,
-  use,
   startTransition,
   useActionState,
   useOptimistic,
@@ -34,6 +34,7 @@ import {
   feedHref,
 } from "./social-model.js";
 
+/** Optimistically set a reaction and restore the committed value if its action fails. */
 component Appreciation(post: Post, signedIn: boolean) {
   const [current, setCurrent] = useState<Post>(post);
   const [optimistic, changeOptimistic] = useOptimistic<Post, boolean>(current, (value, liked) => ({
@@ -55,6 +56,7 @@ component Appreciation(post: Post, signedIn: boolean) {
     },
     IDLE,
   );
+
   return (
     <div>
       {signedIn ? (
@@ -87,8 +89,11 @@ component Appreciation(post: Post, signedIn: boolean) {
     </div>
   );
 }
+
+/** Render one note with its author, timestamp, and viewer-specific reaction control. */
 export component PostCard(post: Post, signedIn: boolean) {
   const pending = post.id.startsWith("pending-");
+
   return (
     <ViewTransition name={`note-${post.id}`} enter="feed-item" exit="feed-item">
       <article className={`post ${pending ? "optimistic" : ""}`} aria-busy={pending}>
@@ -119,10 +124,17 @@ export component PostCard(post: Post, signedIn: boolean) {
   );
 }
 // The list accepts cards, including fragments and arrays of cards, not arbitrary markup.
+
+/** Accept only rendered PostCard children so feed composition stays structurally typed. */
 export component PostList(children: renders* PostCard) {
   return <section aria-label="Timeline posts">{children}</section>;
 }
+
 type LocalPost = {| readonly requestId: string, readonly post: Post |};
+
+/**
+ * Keep the draft and submission ID through failures, clearing them only after a committed post.
+ */
 component PostComposer(
   viewer: User,
   onOptimistic: (LocalPost) => void,
@@ -135,6 +147,7 @@ component PostComposer(
     async (_previous: FormState<Post>, form: FormData): Promise<FormState<Post>> => {
       const text = String(form.get("body") ?? "").trim();
       const submissionId = requestId || crypto.randomUUID();
+      setRequestId(submissionId);
       const submitted = new FormData();
       submitted.set("body", text);
       submitted.set("topic", topic);
@@ -168,6 +181,7 @@ component PostComposer(
     },
     IDLE,
   );
+
   return (
     <form className="composer" action={submit} aria-label="Publish a note">
       <div className="composer-body">
@@ -180,7 +194,7 @@ component PostComposer(
           value={body}
           onChange={(event) => {
             setBody(event.currentTarget.value);
-            setRequestId(crypto.randomUUID());
+            setRequestId((current) => current || crypto.randomUUID());
           }}
           placeholder={`What are you working on, ${viewer.name.split(" ")[0]}?`}
           maxLength={MAX_POST_LENGTH}
@@ -195,7 +209,7 @@ component PostComposer(
           aria-label="Post channel"
           onChange={(event) => {
             setTopic(event.currentTarget.value);
-            setRequestId(crypto.randomUUID());
+            setRequestId((current) => current || crypto.randomUUID());
           }}
           value={topic}
           disabled={pending}
@@ -218,8 +232,13 @@ component PostComposer(
     </form>
   );
 }
+
+/**
+ * Keep composition outside feed loading and retry boundaries.
+ * Activity preserves a hidden draft; local submission records reconcile optimistic and committed notes once.
+ */
 export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, session: Session) {
-  const { resource, generation, retry } = useRetryableResource(initial, () =>
+  const { resource, retry } = useRetryableResource(initial, () =>
     timelineData(filter.topic, filter.query, String(filter.page)),
   );
   const showComposer = filter.topic === "all" && filter.query === "" && filter.page === 1;
@@ -230,12 +249,14 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
       current.some((entry) => entry.requestId === draft.requestId) ? current : [draft, ...current],
   );
   const [composerOpen, setComposerOpen] = useState(true);
+
   function published(saved: LocalPost): void {
     setCommitted((current) => [
       saved,
       ...current.filter((entry) => entry.post.id !== saved.post.id),
     ]);
   }
+
   return (
     <>
       {showComposer
@@ -275,26 +296,33 @@ export component TimelineClient(initial: Promise<FeedData>, filter: FeedFilter, 
           }
         : null}
       <AsyncRegion
-        generation={generation}
+        resource={resource}
         retry={retry}
         label="notes"
         pending={<LoadingState kind="feed" />}
       >
-        <FeedEntries
-          data={resource}
-          additions={posts.map((entry) => entry.post)}
-          signedIn={session.kind === "authenticated"}
-        />
+        {(feed) => (
+          <FeedEntries
+            data={feed}
+            additions={posts.map((entry) => entry.post)}
+            signedIn={session.kind === "authenticated"}
+          />
+        )}
       </AsyncRegion>
     </>
   );
 }
-component FeedEntries(data: Promise<FeedData>, additions: $ReadOnlyArray<Post>, signedIn: boolean) {
-  const feed = use(data);
+
+/**
+ * Merge local posts with the resolved page by server ID and render the feed or its empty state.
+ */
+component FeedEntries(data: FeedData, additions: $ReadOnlyArray<Post>, signedIn: boolean) {
+  const feed = data;
   const posts = [
     ...additions,
     ...feed.posts.filter((post) => !additions.some((saved) => saved.id === post.id)),
   ];
+
   return (
     <>
       {posts.length === 0 ? (

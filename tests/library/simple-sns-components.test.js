@@ -141,6 +141,7 @@ describe("Commonplace React interactions", () => {
     );
     expect(video.getAttribute("src")).toBe(null);
   });
+
   it("exposes correctly associated account fields", async () => {
     const { AuthClient } = await components();
     await renderAsync(<AuthClient mode="signup" />);
@@ -149,6 +150,7 @@ describe("Commonplace React interactions", () => {
       expect(screen.getByLabelText(label)).toBeInTheDocument();
     expect(screen.getByLabelText("Password").getAttribute("autocomplete")).toBe("new-password");
   });
+
   it("keeps the composer usable while the feed suspends and preserves its draft in Activity", async () => {
     const { TimelineClient } = await components();
     const pending = deferred<FeedData>();
@@ -178,13 +180,14 @@ describe("Commonplace React interactions", () => {
     expect(screen.getByText("An existing note")).toBeInTheDocument();
     expect(screen.getByLabelText("Post body")).toHaveValue("Draft while loading");
   });
+
   it("adopts a refreshed loader resource without losing the composer draft", async () => {
     const { TimelineClient } = await components();
     const session = { kind: "authenticated", user: USER } as const;
     const initial = Promise.resolve(feed());
-    const view = render(<TimelineClient initial={initial} filter={FILTER} session={session} />);
+    let view;
     await act(async () => {
-      await initial;
+      view = render(<TimelineClient initial={initial} filter={FILTER} session={session} />);
     });
     await act(async () =>
       userEvent.type(html(screen.getByLabelText("Post body")), "Keep my draft"),
@@ -200,6 +203,7 @@ describe("Commonplace React interactions", () => {
     expect(screen.queryByText("An existing note")).toBe(null);
     expect(screen.getByLabelText("Post body")).toHaveValue("Keep my draft");
   });
+
   it("reveals the inbox list independently of the conversation", async () => {
     const { InboxRegions } = await components();
     const threads = deferred<InboxData>(),
@@ -223,6 +227,7 @@ describe("Commonplace React interactions", () => {
     await act(async () => conversation.resolve({ kind: "empty" }));
     expect(screen.getByRole("heading", { name: "No conversations yet" })).toBeInTheDocument();
   });
+
   it("rolls back a failed optimistic note, retains the draft and reuses its request ID", async () => {
     const requests: Array<string> = [];
     const response = deferred<ReturnType<typeof failed>>();
@@ -259,12 +264,14 @@ describe("Commonplace React interactions", () => {
       ),
     ).toBe(null);
     expect(screen.getByLabelText("Post body")).toHaveValue("An optimistic note");
+    await act(async () => userEvent.type(html(screen.getByLabelText("Post body")), " edited"));
     await act(async () =>
       userEvent.click(html(screen.getByRole("button", { name: "Publish note" }))),
     );
     await waitFor(() => expect(requests.length).toBe(2));
     expect(requests[0]).toBe(requests[1]);
   });
+
   it("commits a published note once and clears the successful draft", async () => {
     const { TimelineClient } = await components({
       createPost: async () =>
@@ -291,6 +298,7 @@ describe("Commonplace React interactions", () => {
     ).toBe(1);
     expect(screen.getByLabelText("Post body")).toHaveValue("");
   });
+
   it("retries only the failed feed while retaining the composer draft", async () => {
     let reads = 0;
     const first = deferred<FeedData>();
@@ -320,6 +328,7 @@ describe("Commonplace React interactions", () => {
     expect(reads).toBe(1);
     expect(screen.getByLabelText("Post body")).toHaveValue("Keep this draft");
   });
+
   it("preserves failed profile edits and announces the field error", async () => {
     const { SettingsClient } = await components({
       updateSettings: async () => failed("Choose another handle.", { handle: "Already taken." }),
@@ -337,6 +346,7 @@ describe("Commonplace React interactions", () => {
     expect(screen.getByLabelText("Handle")).toHaveValue("alice_new");
     expect(screen.getByLabelText("Handle").getAttribute("aria-invalid")).toBe("true");
   });
+
   it("preserves a failed message draft and rolls back its optimistic bubble", async () => {
     const pending = deferred<ReturnType<typeof failed>>();
     const { DirectMessagesClient } = await components({ sendMessage: async () => pending.promise });

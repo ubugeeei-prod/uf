@@ -40,8 +40,8 @@ combinator:
 | Interruption | A decision somebody already took | Neither of the above; it is not a failure |
 
 So a `throw` inside `sync`, `promise` or `call` becomes a **defect**, not a
-typed failure. `tryPromise` is the one adopter that names a failure, because it
-is the one you hand a `catch`:
+typed failure. `trySync` and `tryPromise` name a failure through an explicit
+error mapper:
 
 ```js
 const fetched = tryPromise({
@@ -232,3 +232,24 @@ runtime refuses rather than degrading.
 The package has **no dependencies at all**, and every snippet on this page was
 run before it was published. `packages/effect/effect.test.js` is where the
 behaviour above is pinned — `uf test packages/effect/effect.test.js`.
+
+
+## Synchronous operations that can fail
+
+Use `trySync` when a synchronous API throws an expected input error. It preserves
+its original value for the error mapper and works with both `runSync` and
+`runPromise`; `sync` treats throws as defects. A mapper that throws is also a
+defect. Both callbacks run only when the effect executes.
+
+```js
+import { trySync } from "@uniflowed/effect";
+
+const decoded = trySync({
+  try: () => JSON.parse(source),
+  catch: () => ({ kind: "invalid-json", message: "Enter a JSON document." }),
+});
+```
+
+Compose this with `ensuring` when the operation owns cleanup, such as rolling back
+a synchronous database transaction. Cleanup runs before the original typed
+failure is returned to the caller.

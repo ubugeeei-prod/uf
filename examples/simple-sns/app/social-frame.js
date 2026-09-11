@@ -1,4 +1,5 @@
 // @flow
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { Avatar, Icon } from "./ui.js";
@@ -20,6 +21,9 @@ const PEOPLE: $ReadOnlyArray<User> = [
   { id: "seed-niko", name: "Niko Reyes", handle: "niko", avatar: "NR", bio: "Community" },
 ];
 
+/**
+ * Compose the shared navigation and route content, with a compact shell for the immersive Clips view.
+ */
 export component SocialFrame(
   active: View,
   session: Session = GUEST,
@@ -32,6 +36,7 @@ export component SocialFrame(
     { view: "messages", href: "/messages", icon: "message", label: "Inbox" },
     { view: "settings", href: "/settings", icon: "settings", label: "Settings" },
   ];
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">

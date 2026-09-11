@@ -1,4 +1,5 @@
 // @flow
+
 import { layerMerge, layerSucceed, provide, runPromiseExit, type Cause } from "@uniflowed/effect";
 import { viewer } from "./session.server.js";
 import { insertPost, setReaction, insertMessage, saveSettings } from "./repository.server.js";
@@ -17,6 +18,7 @@ const live = layerMerge(
   layerSucceed(IdentityService, { current: viewer }),
   layerSucceed(SocialStore, { insertPost, setReaction, insertMessage, saveSettings }),
 );
+
 function rejected(cause: Cause<MutationProblem>): ActionResult<empty> {
   return match (cause) {
     {kind: "fail", error: {kind: "unauthenticated"}} => failed("Please sign in to continue."),
@@ -30,6 +32,11 @@ function rejected(cause: Cause<MutationProblem>): ActionResult<empty> {
       failed("Your changes could not be saved. Please try again."),
   };
 }
+
+/**
+ * Provide request-time services and turn an Effect exit into a serializable action result.
+ * Expected failures retain field feedback; defects are logged and receive a generic public message.
+ */
 export async function runMutation<T>(
   program: Mutation<T>,
   message: string,
@@ -43,6 +50,7 @@ export async function runMutation<T>(
     result.cause.kind !== "interrupt"
   )
     console.error("Commonplace mutation defect", result.cause);
+
   return match (result) {
     {kind: "success", value: const value} => succeeded(value, message),
     {kind: "failure", cause: const cause} => rejected(cause),

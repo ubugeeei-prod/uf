@@ -1,64 +1,88 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
-import { Suspense, startTransition, useState } from "@uniflowed/react";
+import { Suspense, startTransition, use, useState } from "@uniflowed/react";
+import { promise, runPromiseExit } from "@uniflowed/effect";
+
 import { EmptyState, RetryButton, LoadingState } from "./ui.js";
 
-type BoundaryProps = {|
-  readonly children: React.MixedElement,
-  readonly label: string,
-  readonly onRetry: () => void,
-|};
-class RegionErrorBoundary extends React.Component<BoundaryProps, {| failed: boolean |}> {
-  state: {| failed: boolean |} = { failed: false };
-  static getDerivedStateFromError(): {| failed: boolean |} {
-    return { failed: true };
-  }
-  render(): React.MixedElement {
-    return this.state.failed ? (
-      <EmptyState
-        title={`Could not load ${this.props.label}`}
-        action={<RetryButton onRetry={this.props.onRetry} />}
-      >
-        Please try again. Your other work is still available.
-      </EmptyState>
-    ) : (
-      this.props.children
-    );
-  }
+/** A settled read carries data or a retryable failure, never a thrown transport error. */
+type ResourceResult<out T> =
+  | {| readonly kind: "ready", readonly value: T |}
+  | {| readonly kind: "failed" |};
+
+/** Run a read adapter without exposing its transport error to the rendered page. */
+async function settle<T>(read: () => Promise<T>): Promise<ResourceResult<T>> {
+  const result = await runPromiseExit(promise(read));
+
+  return match (result) {
+    {kind: "success", value: const value} => { kind: "ready", value },
+    {kind: "failure", ...} => { kind: "failed" },
+  };
 }
+
+/**
+ * Own the settled promise for one loader response and its explicit retries.
+ * Adapting a promise performs no I/O: the loader starts the initial read, and
+ * only `retry` calls `load`. A refreshed loader replaces an older retry while
+ * state in sibling components, such as an unfinished composition, survives.
+ */
 export hook useRetryableResource<T>(
   initial: Promise<T>,
   load: () => Promise<T>,
 ): {|
-  readonly resource: Promise<T>,
-  readonly generation: number,
+  readonly resource: Promise<ResourceResult<T>>,
   readonly retry: () => void,
 |} {
-  // Initial work is owned by the route loader. Only an explicit retry starts a new read.
-  const [request, setRequest] = useState({ initial, resource: initial, generation: 0 });
-  // A loader refresh hands over a new promise. Adopt it without starting work
-  // in render, and discard an error/retry belonging to the previous response.
+  const [request, setRequest] = useState(() => ({ initial, resource: settle(() => initial) }));
+
   if (request.initial !== initial) {
-    setRequest({ initial, resource: initial, generation: request.generation + 1 });
+    setRequest({ initial, resource: settle(() => initial) });
   }
+
   function retry(): void {
-    startTransition(() =>
-      setRequest({ initial, resource: load(), generation: request.generation + 1 }),
-    );
+    startTransition(() => {
+      setRequest({ initial, resource: settle(load) });
+    });
   }
-  return { resource: request.resource, generation: request.generation, retry };
+
+  return { resource: request.resource, retry };
 }
-export component AsyncRegion(
-  generation: number,
+
+/** Read beneath Suspense; a failed request renders data-driven recovery in this region. */
+component SettledRegion<T>(
+  resource: Promise<ResourceResult<T>>,
+  label: string,
+  retry: () => void,
+  children: (T) => React.MixedElement,
+) {
+  return match (use(resource)) {
+    {kind: "ready", value: const value} => children(value),
+    {kind: "failed"} =>
+      <EmptyState title={`Could not load ${label}`} action={<RetryButton onRetry={retry} />}>
+        Please try again. Your other work is still available.
+      </EmptyState>,
+  };
+}
+
+/**
+ * Reveal one independently loaded region. Suspense owns only pending work;
+ * settled failures use a functional component and an explicit retry action.
+ * Unexpected render defects remain the responsibility of the route's $error.js.
+ */
+export component AsyncRegion<T>(
+  resource: Promise<ResourceResult<T>>,
   label: string,
   retry: () => void,
   pending: renders LoadingState,
-  ...{ children }: React.ElementConfig<typeof Suspense>
+  children: (T) => React.MixedElement,
 ) {
   return (
-    <RegionErrorBoundary key={generation} label={label} onRetry={retry}>
-      <Suspense fallback={pending}>{children}</Suspense>
-    </RegionErrorBoundary>
+    <Suspense fallback={pending}>
+      <SettledRegion resource={resource} label={label} retry={retry}>
+        {children}
+      </SettledRegion>
+    </Suspense>
   );
 }

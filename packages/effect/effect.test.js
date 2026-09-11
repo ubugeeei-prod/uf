@@ -100,6 +100,7 @@ import {
   tapError,
   timeout,
   tryPromise,
+  trySync,
   withPermit,
   withPermits,
   zip,
@@ -129,6 +130,81 @@ import {
   streamToReadableStream,
   streamZip,
 } from "@uniflowed/effect/stream";
+
+describe("typed synchronous operations", () => {
+  it("runs lazily and preserves synchronous and asynchronous execution", async () => {
+    let calls = 0;
+    const operation = trySync({
+      try: () => ++calls,
+      catch: () => "unreachable",
+    });
+
+    expect(calls).toBe(0);
+    expect(runSync(operation)).toBe(1);
+    expect(await runPromise(operation)).toBe(2);
+  });
+
+  it("passes the original thrown value to the mapper and preserves typed recovery", async () => {
+    const original = { field: "handle", message: "Already taken" };
+    let mapped = 0;
+    const operation = trySync({
+      try: (): empty => {
+        throw original;
+      },
+      catch: (error) => {
+        expect(error).toBe(original);
+        mapped++;
+        return original;
+      },
+    });
+
+    const expected = { kind: "failure", cause: { kind: "fail", error: original } };
+    expect(runSyncExit(operation)).toEqual(expected);
+    expect(await runPromiseExit(operation)).toEqual(expected);
+    expect(runSync(catchAll(operation, (error) => succeed(error.field)))).toBe("handle");
+    expect(mapped).toBe(3);
+  });
+
+  it("reports a throwing error mapper as a defect in both runtimes", async () => {
+    const operation = trySync({
+      try: (): empty => {
+        throw "input";
+      },
+      catch: (): empty => {
+        throw new Error("mapper bug");
+      },
+    });
+
+    for (const result of [runSyncExit(operation), await runPromiseExit(operation)]) {
+      expect(result.kind).toBe("failure");
+      if (result.kind === "failure") {
+        expect(result.cause.kind).toBe("die");
+      }
+    }
+  });
+
+  it("runs cleanup before rethrowing the exact typed error", () => {
+    const original = new Error("rollback");
+    let released = false;
+    const result = runSyncExit(
+      ensuring(
+        trySync({
+          try: (): empty => {
+            throw original;
+          },
+          catch: (error) => error,
+        }),
+        () =>
+          sync(() => {
+            released = true;
+          }),
+      ),
+    );
+
+    expect(released).toBe(true);
+    expect(result).toEqual({ kind: "failure", cause: { kind: "fail", error: original } });
+  });
+});
 
 describe("succeed and fail", () => {
   it("runs a pure success synchronously", () => {

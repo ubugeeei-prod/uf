@@ -1,5 +1,6 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { callAction } from "../action-result.client.js";
 import { useActionState, useState } from "@uniflowed/react";
@@ -15,6 +16,10 @@ import {
   type Settings,
 } from "../social-model.js";
 
+/**
+ * Keep editable profile fields local until a successful server action commits them.
+ * Validation failures preserve the draft and associate feedback with the affected fields.
+ */
 export component SettingsClient(initial: Settings) {
   const [draft, setDraft] = useState<Settings>(initial);
   const [state, submit, pending] = useActionState<FormState<Settings>, FormData>(
@@ -33,6 +38,7 @@ export component SettingsClient(initial: Settings) {
     },
     IDLE,
   );
+
   return (
     <form action={submit} className="settings-panel" aria-label="Profile settings">
       <div className="settings-profile">
@@ -82,6 +88,8 @@ export component SettingsClient(initial: Settings) {
                   minLength={3}
                   maxLength={20}
                   pattern="[a-z][a-z0-9_]{2,19}"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   autoComplete="username"
                   disabled={pending}
                 />

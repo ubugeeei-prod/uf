@@ -1,14 +1,21 @@
 // @flow
+
 import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { ensuring, runSync, sync, trySync } from "@uniflowed/effect";
+
+/** Scalar SQLite row values, converted to explicit DTOs by the repository. */
 export type Row = { readonly [string]: string | number | null | void, ... };
+
 type Value = string | number | null;
+
 type Statement = {|
   all: (...values: Array<Value>) => Array<Row>,
   get: (...values: Array<Value>) => Row | void,
   run: (...values: Array<Value>) => mixed,
 |};
+
 type Database = {|
   close: () => void,
   exec: (sql: string) => void,
@@ -16,8 +23,15 @@ type Database = {|
 |};
 const SQLite: Class<Database> = DatabaseSync;
 let instance: Database | null = null;
+
+/**
+ * Open the process-local SQLite connection lazily and initialize its schema and fixtures.
+ * The database location belongs to the application cwd, not the bundled module path.
+ */
 export function database(): Database {
-  if (instance != null) return instance;
+  if (instance != null) {
+    return instance;
+  }
   // Bundling changes import.meta.url. Persistence belongs to the application cwd.
   const file = process.env.UF_SIMPLE_SNS_DB ?? path.resolve(".uf", "commonplace.sqlite");
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -56,25 +70,51 @@ export function database(): Database {
   `);
   seed(db);
   instance = db;
+
   return db;
 }
-// Releases the connection for an explicit application/test lifecycle restart.
+
+/** Release the connection at an explicit application or test lifecycle boundary. */
 export function closeDatabase(): void {
   instance?.close();
   instance = null;
 }
+
+/**
+ * Keep a SQLite write synchronous from BEGIN through COMMIT. Effect guarantees
+ * rollback on a failed body or commit; the original exception is rethrown so
+ * the mutation adapter can still distinguish InputError from a database defect.
+ * Callbacks must not return promises or open nested transactions.
+ */
 export function transaction<T>(body: (Database) => T): T {
   const db = database();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const result = body(db);
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+  let open = false;
+
+  return runSync(
+    ensuring(
+      trySync({
+        try: () => {
+          db.exec("BEGIN IMMEDIATE");
+          open = true;
+
+          const value = body(db);
+          db.exec("COMMIT");
+          open = false;
+
+          return value;
+        },
+        catch: (error) => error,
+      }),
+      () =>
+        sync(() => {
+          if (open) {
+            db.exec("ROLLBACK");
+          }
+        }),
+    ),
+  );
 }
+
 function seed(db: Database): void {
   // No password: fixture authors cannot be signed into.
   for (const [handle, name, bio] of [

@@ -1,5 +1,6 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { useFormStatus } from "react-dom";
 import { AlertRoot, AlertDescription } from "@uniflowed/ui/alert";
@@ -13,12 +14,14 @@ import {
 import { Icon } from "./ui.js";
 import { fieldError, type FormState } from "./social-model.js";
 
+/** Read the nearest form’s pending state and announce its current submission action. */
 export component SubmitButton(
   children: string,
   pendingLabel: string = "Saving…",
   disabled: boolean = false,
 ) {
   const { pending } = useFormStatus();
+
   return (
     <button type="submit" className="button primary" disabled={pending || disabled}>
       {pending ? pendingLabel : children}
@@ -26,6 +29,7 @@ export component SubmitButton(
     </button>
   );
 }
+
 component ErrorStatus(message: string) renders AlertRoot {
   return (
     <AlertRoot live className="form-status error">
@@ -33,8 +37,11 @@ component ErrorStatus(message: string) renders AlertRoot {
     </AlertRoot>
   );
 }
+
+/** Announce completed action feedback; pending state stays with the submit control. */
 export component FormStatus(state: FormState<mixed>) {
   // The polite region stays mounted before a successful Action updates its text.
+
   return (
     <>
       <p className="form-status success" role="status">
@@ -58,6 +65,8 @@ export component FormStatus(state: FormState<mixed>) {
     </>
   );
 }
+
+/** Associate a field label with its native control through the shared UI primitive. */
 export component FormField(
   label: string,
   error: string | null = null,
@@ -73,6 +82,8 @@ export component FormField(
     </FieldRoot>
   );
 }
+
+/** Render the failed field’s message at the ID referenced by its control. */
 export component FieldError(state: FormState<mixed>, name: string) {
   return (
     <span id={`${name}-error`} className="field-error">

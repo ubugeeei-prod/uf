@@ -1,13 +1,15 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
-import { use } from "@uniflowed/react";
 import { AsyncRegion, useRetryableResource } from "../async-region.client.js";
 import { threadsData, messagesData } from "../social-queries.js";
 import { Avatar, EmptyState, LoadingState, SignInPrompt } from "../ui.js";
 import { DirectMessagesClient } from "./direct-messages-client.js";
 import type { InboxData, ConversationData, MessageThread } from "../social-model.js";
+
+/** Navigate to one authorized conversation and expose the selected state accessibly. */
 export component ThreadLink(thread: MessageThread, selected: boolean) {
   return (
     <Link
@@ -33,6 +35,8 @@ export component ThreadLink(thread: MessageThread, selected: boolean) {
     </Link>
   );
 }
+
+/** Constrain the inbox navigation slot to rendered ThreadLink entries. */
 export component ThreadList(children: renders* ThreadLink) {
   return (
     <nav className="thread-list" aria-label="Conversations">
@@ -41,8 +45,9 @@ export component ThreadList(children: renders* ThreadLink) {
     </nav>
   );
 }
-component Threads(data: Promise<InboxData>, selectedId: string) {
-  return match (use(data)) {
+
+component Threads(data: InboxData, selectedId: string) {
+  return match (data) {
     {kind: "unauthenticated"} => <SignInPrompt />,
     {kind: "ready", value: const threads} =>
       <ThreadList>
@@ -56,8 +61,9 @@ component Threads(data: Promise<InboxData>, selectedId: string) {
       </ThreadList>,
   };
 }
-component Conversation(data: Promise<ConversationData>) {
-  return match (use(data)) {
+
+component Conversation(data: ConversationData) {
+  return match (data) {
     {kind: "unauthenticated"} => <SignInPrompt />,
     {kind: "empty"} =>
       <EmptyState title="No conversations yet">Your conversations will appear here.</EmptyState>,
@@ -70,6 +76,7 @@ component Conversation(data: Promise<ConversationData>) {
   };
 }
 
+/** Reveal and retry inbox previews independently from the selected conversation. */
 export component InboxRegions(
   threads: Promise<InboxData>,
   conversation: Promise<ConversationData>,
@@ -77,23 +84,24 @@ export component InboxRegions(
 ) {
   const list = useRetryableResource(threads, threadsData);
   const detail = useRetryableResource(conversation, () => messagesData(threadId));
+
   return (
     <div className="conversation-layout">
       <AsyncRegion
-        generation={list.generation}
+        resource={list.resource}
         retry={list.retry}
         label="conversations"
         pending={<LoadingState kind="threads" />}
       >
-        <Threads data={list.resource} selectedId={threadId} />
+        {(data) => <Threads data={data} selectedId={threadId} />}
       </AsyncRegion>
       <AsyncRegion
-        generation={detail.generation}
+        resource={detail.resource}
         retry={detail.retry}
         label="messages"
         pending={<LoadingState kind="conversation" />}
       >
-        <Conversation data={detail.resource} />
+        {(data) => <Conversation data={data} />}
       </AsyncRegion>
     </div>
   );

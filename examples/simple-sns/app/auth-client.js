@@ -1,12 +1,18 @@
 "use client";
 // @flow
+
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { useActionState, useState } from "@uniflowed/react";
 import { FieldControl } from "@uniflowed/ui/field";
+import { callAction } from "./action-result.client.js";
 import { FormField, FormStatus, SubmitButton } from "./form-ui.client.js";
 import { IDLE, failed, succeeded, fieldError, type FormState } from "./social-model.js";
 
+/**
+ * Submit credentials to the same-origin HTTP endpoint while preserving failed field drafts.
+ * The server owns the HttpOnly cookie; successful authentication starts a fresh document.
+ */
 export component AuthClient(mode: "login" | "signup") {
   const [draft, setDraft] = useState({ name: "", email: "", handle: "", password: "" });
   const [state, submit, pending] = useActionState<FormState<null>, FormData>(
@@ -16,7 +22,7 @@ export component AuthClient(mode: "login" | "signup") {
         const value = form.get(key);
         if (typeof value === "string") body.set(key, value);
       }
-      try {
+      return callAction(async () => {
         const response = await fetch("/auth/session", {
           method: "POST",
           body,
@@ -28,12 +34,11 @@ export component AuthClient(mode: "login" | "signup") {
         // The server sets an HttpOnly cookie; no token enters React state or storage.
         window.location.assign("/");
         return succeeded(null, "Signed in. Redirecting…");
-      } catch {
-        return failed("You seem to be offline. Please try again.");
-      }
+      }, "You seem to be offline. Please try again.");
     },
     IDLE,
   );
+
   return (
     <form action={submit} className="auth-card">
       <h1>

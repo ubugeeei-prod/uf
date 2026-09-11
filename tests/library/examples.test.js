@@ -35,6 +35,7 @@ import {
   messagesData,
   settingsData,
 } from "../../examples/simple-sns/app/social-queries.js";
+import { InputError } from "../../examples/simple-sns/app/server/validation.server.js";
 import { POST } from "../../examples/simple-sns/app/auth/session/$route.js";
 import {
   IDLE,
@@ -43,7 +44,14 @@ import {
   type Post,
   type FormState,
 } from "../../examples/simple-sns/app/social-model.js";
-import { layerMerge, layerSucceed, provide, runPromiseExit } from "@uniflowed/effect";
+import {
+  layerMerge,
+  layerSucceed,
+  provide,
+  runPromiseExit,
+  runSyncExit,
+  trySync,
+} from "@uniflowed/effect";
 import {
   IdentityService,
   SocialStore,
@@ -115,6 +123,7 @@ describe("Commonplace server contracts", () => {
     expect(feedFilter("design", "x".repeat(200), "99999").query.length).toBe(100);
     expect((await as("", () => timelineData("all", "' OR 1=1 --"))).posts).toEqual([]);
   });
+
   it("never accepts the previous action state as an identity", async () => {
     const alice = await account("alice");
     const forged: FormState<Post> = {
@@ -128,6 +137,7 @@ describe("Commonplace server contracts", () => {
     expect(denied.status).toBe("error");
     expect((await as("", () => timelineData("all", "Forged"))).posts).toEqual([]);
   });
+
   it("stores only password and session hashes, rotates tokens, and expires sessions", async () => {
     const alice = await account("alice");
     const row = database()
@@ -151,6 +161,7 @@ describe("Commonplace server contracts", () => {
     revokeSession(latest, false);
     expect(viewerFor(latest)).toBe(null);
   });
+
   it("keeps request identity isolated across interleaved asynchronous work", async () => {
     const alice = await account("alice"),
       bob = await account("bobby");
@@ -173,6 +184,7 @@ describe("Commonplace server contracts", () => {
     expect(JSON.stringify(results)).not.toContain("password_hash");
     expect(JSON.stringify(results)).not.toContain("@example.test");
   });
+
   it("makes publication retries idempotent and rejects a reused submission with different content", async () => {
     const alice = await account("alice");
     const input = form({ body: "A new note", topic: "design", requestId: "same-request" });
@@ -188,6 +200,7 @@ describe("Commonplace server contracts", () => {
     input.set("body", "x".repeat(501));
     expect((await as(alice.cookie, () => createPost(IDLE, input))).status).toBe("error");
   });
+
   it("sets intended appreciation per member without double counting retries", async () => {
     const alice = await account("alice"),
       bob = await account("bobby");
@@ -204,6 +217,7 @@ describe("Commonplace server contracts", () => {
       1,
     );
   });
+
   it("authorizes every conversation read and write and preserves messages across restart", async () => {
     const alice = await account("alice"),
       bob = await account("bobby");
@@ -223,6 +237,7 @@ describe("Commonplace server contracts", () => {
     ).toBe(1);
     expect(viewerFor(token(alice.cookie))?.id).toBe(alice.user.id);
   });
+
   it("updates only the request member and rolls back conflicting handles", async () => {
     const alice = await account("alice"),
       bob = await account("bobby");
@@ -239,6 +254,7 @@ describe("Commonplace server contracts", () => {
     expect(settingsFor(bob.user).displayName).toBe("bobby");
     expect(await as("", settingsData)).toEqual({ kind: "unauthenticated" });
   });
+
   it("rolls back a partially executed transaction", () => {
     expect(() =>
       transaction((db) => {
@@ -250,6 +266,40 @@ describe("Commonplace server contracts", () => {
       undefined,
     );
   });
+
+  it("preserves validation fields after rollback and permits the next transaction", () => {
+    const error = new InputError("Choose another handle.", { handle: "Taken" });
+    const result = runSyncExit(
+      trySync({
+        try: () =>
+          transaction((db) => {
+            db.prepare("INSERT INTO conversations VALUES (?)").run("rejected-input");
+            throw error;
+          }),
+        catch: (thrown) => thrown,
+      }),
+    );
+
+    expect(result).toEqual({ kind: "failure", cause: { kind: "fail", error } });
+    expect(
+      database().prepare("SELECT id FROM conversations WHERE id=?").get("rejected-input"),
+    ).toBe(undefined);
+    transaction((db) => db.prepare("INSERT INTO conversations VALUES (?)").run("next-write"));
+    expect(
+      database().prepare("SELECT id FROM conversations WHERE id=?").get("next-write")?.id,
+    ).toBe("next-write");
+  });
+
+  it("returns typed authentication feedback without issuing a session cookie", async () => {
+    const response = await as("", () => POST(request({ mode: "signup", handle: "!" })));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("set-cookie")).toBe(null);
+    const result = await response.json();
+    expect(result.status).toBe("error");
+    expect(result.fields.handle).toBeDefined();
+  });
+
   it("rejects cross-site, wrong content-type, and oversized authentication bodies", async () => {
     expect(
       (await as("", () => POST(request({ mode: "login" }, { origin: "https://elsewhere.test" }))))
@@ -267,6 +317,46 @@ describe("Commonplace server contracts", () => {
       (await as("", () => POST(request({ mode: "login", handle: "a".repeat(5000) })))).status,
     ).toBe(413);
   });
+
+  it("releases authentication body readers after completion, overflow, and a read failure", async () => {
+    for (const outcome of ["complete", "overflow", "failure"]) {
+      let cancelled = false;
+      const stream = new ReadableStream({
+        start(controller) {
+          if (outcome === "failure") {
+            controller.error(new Error("connection closed"));
+          } else {
+            controller.enqueue(
+              new TextEncoder().encode(outcome === "overflow" ? "x".repeat(4097) : "mode=logout"),
+            );
+            if (outcome === "complete") {
+              controller.close();
+            }
+          }
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      // Flow's RequestInit does not yet expose Node's standard streamed body/duplex options.
+      const incoming = new Request("http://localhost/auth/session", {
+        method: "POST",
+        headers: {
+          origin: "http://localhost",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: stream,
+        duplex: "half",
+      } as $FlowFixMe);
+
+      const response = await as("", () => POST(incoming));
+
+      expect(response.status).toBe(outcome === "complete" ? 200 : 413);
+      expect(stream.locked).toBe(false);
+      expect(cancelled).toBe(outcome === "overflow");
+    }
+  });
+
   it("issues the session only in HTTP headers and invalidates it on logout", async () => {
     const signup = request({
       mode: "signup",
@@ -285,6 +375,7 @@ describe("Commonplace server contracts", () => {
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
     expect(viewerFor(token(cookie))).toBe(null);
   });
+
   it("injects Effect dependencies and keeps expected failures separate from defects", async () => {
     const alice = await account("alice");
     let calls = 0;

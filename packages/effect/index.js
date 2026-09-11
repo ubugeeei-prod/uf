@@ -1310,6 +1310,32 @@ export function sync<A>(body: () => A): Effect<A> {
   });
 }
 
+/**
+ * Run a synchronous operation, translating a thrown value into a typed failure.
+ *
+ * Like `tryPromise`, but retains a synchronous kernel for `runSync` and SQLite
+ * transactions. The mapper receives the original value, including custom error
+ * fields; `sync` deliberately records a defect instead. Both the operation and
+ * mapper run lazily, once per execution. A mapper that throws is itself a defect.
+ */
+export function trySync<A, E>(options: {
+  readonly try: () => A,
+  readonly catch: (error: mixed) => E,
+}): Effect<A, E> {
+  const step = (): Exit<A, E> => {
+    try {
+      return success(options.try());
+    } catch (error) {
+      return failure(failCause(options.catch(error)));
+    }
+  };
+
+  return makeEffect({
+    run: () => Promise.resolve(step()),
+    runSync: step,
+  });
+}
+
 /** Build the effect when it runs, not when it is described. */
 export function suspend<A, E, R>(body: () => Effect<A, E, R>): Effect<A, E, R> {
   return makeEffect({
@@ -3453,7 +3479,12 @@ function takeFromQueue<A>(state: QueueState<A>, runContext: Context): Promise<Qu
 
 /** Remove the head, and let whoever was waiting for room put a value down. */
 function takeOne<A>(state: QueueState<A>): A {
-  const value = state.items.shift();
+  if (state.items.length === 0) {
+    throw new Error("cannot take from an empty queue buffer");
+  }
+
+  const value = state.items[0];
+  state.items.shift();
   admitOfferers(state);
   return value;
 }
