@@ -69,7 +69,17 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             "@uniflowed/react-native",
             NativeModuleKind::Framework,
             Stability::Experimental,
-            &["View", "Text", "Platform"],
+            &[
+                "ReactNative",
+                "View",
+                "Text",
+                "Image",
+                "TextInput",
+                "Pressable",
+                "ScrollView",
+                "StyleSheet",
+                "Platform",
+            ],
         ),
         NativeModule::new(
             "@uniflowed/brand",

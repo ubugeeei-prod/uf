@@ -33,7 +33,6 @@ fn creates_zero_config_react_flow_app() {
         "@uniflowed/fetch",
         "@uniflowed/loader",
         "@uniflowed/query",
-        "@uniflowed/react-native",
         "@uniflowed/react-testing",
         "@uniflowed/relay",
         "@uniflowed/server",
