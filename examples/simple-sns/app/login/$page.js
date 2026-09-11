@@ -1,14 +1,13 @@
 // @flow
-
 import * as React from "@uniflowed/react";
-
-import { AuthClient } from "../auth-client.js";
 import { SocialFrame } from "../social-frame.js";
-
-export default component LoginPage() {
+import { AuthClient } from "../auth-client.js";
+export component Page() {
   return (
-    <SocialFrame active="login">
-      <AuthClient mode="login" />
+    <SocialFrame active="login" aside={false}>
+      <div className="auth-layout">
+        <AuthClient mode="login" />
+      </div>
     </SocialFrame>
   );
 }

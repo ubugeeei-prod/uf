@@ -52,6 +52,7 @@ import { afterAll, afterEach, describe, expect, it } from "@uniflowed/test";
 // `error-boundary.test.js` reach for the same package: `internal/` is the
 // build's own router and its own split, not something a project imports.
 import { installDom } from "../../packages/react-testing/internal/dom.js";
+import uniflowed from "./index.js";
 import { clientRouteFilter, readRscManifest } from "./internal/rsc.js";
 import { routesModuleSource, scanRoutes } from "./internal/routes.js";
 
@@ -514,4 +515,19 @@ describe("navigating into a route that ships no page", () => {
     // browser's to perform, so nothing here unmounted anything.
     expect(ufRoot()?.textContent).toContain("counter");
   });
+});
+
+it("keeps HTTP handlers out of the browser route graph, including interactive routes", () => {
+  const root = project({
+    "app/$page.js": '"use client"; export component Page() { return <p>Home</p>; }',
+    "app/auth/session/$route.js":
+      'import {randomBytes} from "node:crypto"; export function POST() { return new Response(randomBytes(32)); }',
+  });
+  const plugin = uniflowed()[0];
+  plugin.configResolved({ root, base: "/" });
+  const client = plugin.load("\0virtual:uf/routes", { ssr: false });
+  const server = plugin.load("\0virtual:uf/routes", { ssr: true });
+  expect(client).not.toContain("$route.js");
+  expect(client).toContain("$page.js");
+  expect(server).toContain("/auth/session/$route.js");
 });

@@ -1,62 +1,46 @@
 // @flow
-
 import * as React from "@uniflowed/react";
-import { Suspense, use } from "@uniflowed/react";
-import { props, stylex } from "@uniflowed/stylex";
-
-import { DirectMessagesClient } from "./direct-messages-client.js";
-import { messagesData } from "../social-queries.js";
+import { InboxRegions } from "./inbox.client.js";
+import type { LoaderArgs } from "@uniflowed/router";
 import { SocialFrame } from "../social-frame.js";
-import { type Message, type MessageThread } from "../social-model.js";
-
-type MessagesData = {|
-  readonly messages: Array<Message>,
-  readonly threads: Array<MessageThread>,
+import { sessionData, threadsData, messagesData } from "../social-queries.js";
+import { SignInPrompt } from "../ui.js";
+import type { Session, InboxData, ConversationData, MessageThread } from "../social-model.js";
+export type Data = {|
+  readonly session: Session,
+  readonly threadId: string,
+  readonly threads: Promise<InboxData>,
+  readonly conversation: Promise<ConversationData>,
 |};
-
-type MessagesPageData = {|
-  readonly messages: Promise<MessagesData>,
-|};
-
-export function loader(): MessagesPageData {
-  return { messages: messagesData() };
+export async function loader({ searchParams }: LoaderArgs): Promise<Data> {
+  const threadId = String(searchParams.thread ?? "");
+  // Start both reads before awaiting identity; one pane never waits for the other.
+  const session = sessionData();
+  const threads = threadsData();
+  const conversation = messagesData(threadId);
+  return { session: await session, threadId, threads, conversation };
 }
-
-component Messages(data: Promise<MessagesData>) {
-  const value = use(data);
-  return <DirectMessagesClient threads={value.threads} initialMessages={value.messages} />;
-}
-
-component Skeleton() {
+export component Page(data: Data) {
   return (
-    <div {...props(styles.skeleton)}>
-      <span />
-      <span />
-      <span />
-    </div>
-  );
-}
-
-export default component MessagesPage(data: MessagesPageData) {
-  return (
-    <SocialFrame active="messages">
-      <Suspense fallback={<Skeleton />}>
-        <Messages data={data.messages} />
-      </Suspense>
+    <SocialFrame active="messages" session={data.session} aside={false}>
+      <header className="page-heading">
+        <div>
+          <h1>Inbox</h1>
+          <p>Your private conversations.</p>
+        </div>
+      </header>
+      {
+        match (data.session) {
+          {kind: "guest"} => <SignInPrompt title="Sign in to open your inbox" />,
+          {kind: "authenticated", ...} =>
+            <InboxRegions
+              key={data.threadId}
+              threads={data.threads}
+              conversation={data.conversation}
+              threadId={data.threadId}
+            />,
+        }
+      }
     </SocialFrame>
   );
 }
-
-const styles = stylex.create({
-  skeleton: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    display: "grid",
-    gap: 12,
-    minHeight: 420,
-    padding: 16,
-  },
-});

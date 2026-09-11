@@ -2,14 +2,17 @@
   "name": "uf-example-simple-sns",
   "private": true,
   "type": "module",
-  "description": "A small SSR social app example for uf, React 19.3, RSC, Actions, SQLite, and StyleX.",
+  "description": "Commonplace: an SSR community app with request-scoped sessions, authorized actions, and optimistic React interfaces.",
   "dependencies": {
-    "@uniflowed/config": "0.0.0-alpha.18",
-    "@uniflowed/react": "0.0.0-alpha.18",
-    "@uniflowed/router": "0.0.0-alpha.18",
-    "@uniflowed/stylex": "0.0.0-alpha.18",
-    "@uniflowed/vite": "0.0.0-alpha.18",
+    "@uniflowed/config": "0.0.0-alpha.20",
+    "@uniflowed/react": "0.0.0-alpha.20",
+    "@uniflowed/router": "0.0.0-alpha.20",
+    "@uniflowed/stylex": "0.0.0-alpha.20",
+    "@uniflowed/vite": "0.0.0-alpha.20",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "@uniflowed/server": "0.0.0-alpha.20",
+    "@uniflowed/effect": "0.0.0-alpha.20",
+    "@uniflowed/ui": "0.0.0-alpha.20"
   }
 }

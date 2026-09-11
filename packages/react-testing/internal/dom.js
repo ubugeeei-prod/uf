@@ -111,6 +111,8 @@ const CLASSES = [
   "FocusEvent",
   "PointerEvent",
   "SubmitEvent",
+  // React form Actions construct FormData from this document's form element.
+  "FormData",
   "DOMParser",
   "MutationObserver",
   "ResizeObserver",
@@ -124,7 +126,8 @@ const CLASSES = [
  * with no setter, and assigning to it throws. A test does not need it
  * replaced — it needs it to exist.
  */
-const OBJECTS = ["location", "history", "navigator"];
+// React ViewTransition uses CSS.escape when naming DOM transition participants.
+const OBJECTS = ["location", "history", "navigator", "CSS"];
 
 /**
  * Storage, which is installed where the host has none *or has one that does

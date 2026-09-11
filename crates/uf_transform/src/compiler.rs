@@ -89,10 +89,21 @@ pub struct CompilerDiagnostic {
 /// a fatal error.
 pub fn compile(
     file: Value,
-    scope: ScopeInfo,
+    mut scope: ScopeInfo,
     source: &str,
     options: &TransformOptions,
 ) -> Result<(Value, Vec<CompilerDiagnostic>, usize), TransformError> {
+    // The facade re-exports the application's React unchanged. Teach the
+    // compiler that provenance so refs and state retain their built-in
+    // semantics. Only analysis metadata changes; emitted imports stay owned
+    // by the application, including when both spellings occur in one file.
+    for binding in &mut scope.bindings {
+        if let Some(import) = &mut binding.import
+            && import.source == "@uniflowed/react"
+        {
+            import.source = "react".to_owned();
+        }
+    }
     let ast: File = serde_json::from_value(file.clone()).map_err(|error| {
         TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
     })?;
@@ -404,6 +415,42 @@ mod tests {
         assert_eq!(first["declarations"][0]["id"]["name"], "$");
         let plain = declaration("Plain");
         assert_eq!(plain["body"]["body"][0]["type"], "ReturnStatement");
+    }
+
+    #[test]
+    fn structural_matches_compile_inside_react_components_and_actions() {
+        for source in [
+            "import * as React from 'react'; component App(state) { return match (state) { {kind: 'ok', value: const value} => <p>{value}</p>, _ => null }; }",
+            "import * as React from 'react'; component App(state, update) { return <section>{match (state) { {kind: 'ok', value: const value} => <button onClick={() => update(value)}>{value}</button>, _ => null }}</section>; }",
+            "import * as React from 'react'; import {useActionState} from 'react'; component App(save) { const [state, action] = useActionState(async () => { const result = await save(); match (result) { {kind: 'ok', value: const value} => { return value; } _ => { return null; } } }, null); return <form action={action}>{state}</form>; }",
+        ] {
+            let (_, diagnostics, count) = compiled(source, ReactCompilerMode::Syntax);
+            assert!(diagnostics.is_empty(), "{source}\n{diagnostics:?}");
+            assert_eq!(count, 1, "{source}");
+        }
+    }
+
+    #[test]
+    fn react_facade_refs_keep_builtin_semantics_and_original_imports() {
+        for (import, prefix) in [
+            ("import {useRef, useEffect} from '@uniflowed/react';", ""),
+            ("import React from '@uniflowed/react';", "React."),
+            ("import * as React from '@uniflowed/react';", "React."),
+        ] {
+            let source = format!(
+                "{import} component App(value: string) {{ const ref = {prefix}useRef(null); const pinned = {prefix}useRef(true); {prefix}useEffect(() => {{ if (ref.current && pinned.current) ref.current.scrollTop = ref.current.scrollHeight; }}, [value]); return <div ref={{ref}} onScroll={{() => {{ pinned.current = false; }}}}>{{value}}</div>; }}"
+            );
+            let (file, diagnostics, count) = compiled(&source, ReactCompilerMode::Syntax);
+            assert!(diagnostics.is_empty(), "{source}\n{diagnostics:?}");
+            assert_eq!(count, 1);
+            assert!(
+                file["program"]["body"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|node| node["source"]["value"] == "@uniflowed/react")
+            );
+        }
     }
 
     #[test]

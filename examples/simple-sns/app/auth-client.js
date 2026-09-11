@@ -1,173 +1,160 @@
 "use client";
 // @flow
-
 import * as React from "@uniflowed/react";
-import { useActionState } from "@uniflowed/react";
-import { useFormStatus } from "react-dom";
-import { props, stylex } from "@uniflowed/stylex";
+import { Link } from "@uniflowed/router";
+import { useActionState, useState } from "@uniflowed/react";
+import { FieldControl } from "@uniflowed/ui/field";
+import { FormField, FormStatus, SubmitButton } from "./form-ui.client.js";
+import { IDLE, failed, succeeded, fieldError, type FormState } from "./social-model.js";
 
-import { signIn, signUp } from "./social-actions.js";
-import { type FormState, type User } from "./social-model.js";
-
-type AuthMode = "login" | "signup";
-
-const EMPTY_USER_STATE: FormState<User> = { status: "idle", message: "" };
-
-component Submit(mode: AuthMode) {
-  const { pending } = useFormStatus();
-  const label = match (mode) {
-    "login" => "Log in",
-    "signup" => "Create account",
-  };
-  return (
-    <button type="submit" disabled={pending} {...props(styles.button)}>
-      {pending ? "Working" : label}
-    </button>
+export component AuthClient(mode: "login" | "signup") {
+  const [draft, setDraft] = useState({ name: "", email: "", handle: "", password: "" });
+  const [state, submit, pending] = useActionState<FormState<null>, FormData>(
+    async (_previous: FormState<null>, form: FormData): Promise<FormState<null>> => {
+      const body = new URLSearchParams({ mode });
+      for (const key of ["name", "email", "handle", "password"]) {
+        const value = form.get(key);
+        if (typeof value === "string") body.set(key, value);
+      }
+      try {
+        const response = await fetch("/auth/session", {
+          method: "POST",
+          body,
+          credentials: "same-origin",
+        });
+        const result = await response.json();
+        if (!response.ok)
+          return failed(result.message ?? "Could not sign in. Try again.", result.fields ?? {});
+        // The server sets an HttpOnly cookie; no token enters React state or storage.
+        window.location.assign("/");
+        return succeeded(null, "Signed in. Redirecting…");
+      } catch {
+        return failed("You seem to be offline. Please try again.");
+      }
+    },
+    IDLE,
   );
-}
-
-export component AuthClient(mode: AuthMode) {
-  const action = mode === "login" ? signIn : signUp;
-  const [state, submit] = useActionState<FormState<User>, FormData>(action, EMPTY_USER_STATE);
-  const heading = match (mode) {
-    "login" => "Welcome back",
-    "signup" => "Reserve a demo profile",
-  };
-
   return (
-    <form action={submit} suppressHydrationWarning {...props(styles.form)}>
-      <div {...props(styles.header)}>
-        <h2 {...props(styles.title)}>{heading}</h2>
-        <p {...props(styles.copy)}>
-          {mode === "login"
-            ? "Use any handle from the seeded data, or type a new one."
-            : "This creates a local SQLite user for the example."}
-        </p>
-      </div>
-      {mode === "signup" ? (
-        <label {...props(styles.field)}>
-          <span {...props(styles.label)}>Name</span>
-          <input name="name" required autoComplete="name" {...props(styles.input)} />
-        </label>
-      ) : null}
-      <label {...props(styles.field)}>
-        <span {...props(styles.label)}>Handle</span>
-        <input
-          name="handle"
-          required
-          autoComplete="username"
-          placeholder="mika"
-          {...props(styles.input)}
+    <form action={submit} className="auth-card">
+      <h1>
+        {
+          match (mode) {
+            "signup" => "Create an account",
+            "login" => "Sign in",
+          }
+        }
+      </h1>
+      <p className="auth-intro">
+        {
+          match (mode) {
+            "signup" => "Create a profile to publish notes and send messages.",
+            "login" => "Enter your handle and password to continue.",
+          }
+        }
+      </p>
+      {
+        match (mode) {
+          "login" => null,
+          "signup" =>
+            <>
+              <FormField label="Name" error={fieldError(state, "name")}>
+                <FieldControl
+                  render={(props) => (
+                    <input
+                      {...props}
+                      name="name"
+                      value={draft.name}
+                      onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                      autoComplete="name"
+                      required
+                      maxLength={80}
+                      disabled={pending}
+                    />
+                  )}
+                />
+              </FormField>
+              <FormField label="Email address" error={fieldError(state, "email")}>
+                <FieldControl
+                  render={(props) => (
+                    <input
+                      {...props}
+                      name="email"
+                      value={draft.email}
+                      onChange={(event) => setDraft({ ...draft, email: event.target.value })}
+                      type="email"
+                      autoComplete="email"
+                      required
+                      maxLength={254}
+                      disabled={pending}
+                    />
+                  )}
+                />
+              </FormField>
+            </>,
+        }
+      }
+      <FormField label="Handle" error={fieldError(state, "handle")}>
+        <FieldControl
+          render={(props) => (
+            <input
+              {...props}
+              name="handle"
+              value={draft.handle}
+              onChange={(event) => setDraft({ ...draft, handle: event.target.value })}
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              required
+              minLength={3}
+              maxLength={20}
+              pattern="[a-z][a-z0-9_]{2,19}"
+              placeholder="your_name"
+              disabled={pending}
+            />
+          )}
         />
-      </label>
-      {mode === "signup" ? (
-        <label {...props(styles.field)}>
-          <span {...props(styles.label)}>Bio</span>
-          <textarea name="bio" rows={4} {...props(styles.textarea)} />
-        </label>
-      ) : null}
-      <div {...props(styles.footer)}>
-        <span {...props(styles.status, state.status === "error" && styles.error)}>
-          {state.message}
-        </span>
-        <Submit mode={mode} />
-      </div>
+      </FormField>
+      <FormField
+        label="Password"
+        error={fieldError(state, "password")}
+        hint="At least 12 characters. Use a password just for this example."
+      >
+        <FieldControl
+          render={(props) => (
+            <input
+              {...props}
+              name="password"
+              value={draft.password}
+              onChange={(event) => setDraft({ ...draft, password: event.target.value })}
+              type="password"
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              required
+              minLength={12}
+              maxLength={128}
+              disabled={pending}
+            />
+          )}
+        />
+      </FormField>
+      <FormStatus state={state} />
+      <SubmitButton pendingLabel={mode === "signup" ? "Creating account…" : "Signing in…"}>
+        {mode === "signup" ? "Create account" : "Sign in"}
+      </SubmitButton>
+      <p className="auth-alternative">
+        {
+          match (mode) {
+            "signup" =>
+              <>
+                Already have an account? <Link to="/login">Sign in</Link>
+              </>,
+            "login" =>
+              <>
+                No account yet? <Link to="/signup">Create an account</Link>
+              </>,
+          }
+        }
+      </p>
+      <p className="auth-note">Local example. Use sample details; email is not verified or sent.</p>
     </form>
   );
 }
-
-const styles = stylex.create({
-  form: {
-    backgroundColor: "#ffffff",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    boxShadow: "0 18px 42px rgba(15, 23, 42, 0.08)",
-    display: "grid",
-    gap: 16,
-    maxWidth: 520,
-    padding: {
-      default: 18,
-      "@media (min-width: 760px)": 22,
-    },
-  },
-  header: {
-    display: "grid",
-    gap: 6,
-  },
-  title: {
-    color: "#111827",
-    fontSize: 24,
-    lineHeight: 1.15,
-    marginBlock: 0,
-  },
-  copy: {
-    color: "#667085",
-    lineHeight: 1.5,
-    marginBlock: 0,
-  },
-  field: {
-    display: "grid",
-    gap: 6,
-  },
-  label: {
-    color: "#344054",
-    fontSize: 13,
-    fontWeight: 800,
-  },
-  input: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#0f172a",
-    font: "inherit",
-    minHeight: 46,
-    paddingInline: 14,
-  },
-  textarea: {
-    backgroundColor: "#f8fafc",
-    borderColor: "#d8e0ea",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#0f172a",
-    font: "inherit",
-    padding: 14,
-    resize: "vertical",
-  },
-  footer: {
-    alignItems: {
-      default: "stretch",
-      "@media (min-width: 520px)": "center",
-    },
-    display: {
-      default: "grid",
-      "@media (min-width: 520px)": "flex",
-    },
-    gap: 12,
-    justifyContent: "space-between",
-  },
-  status: {
-    color: "#667085",
-    fontSize: 14,
-  },
-  error: {
-    color: "#b42318",
-  },
-  button: {
-    backgroundColor: "#111827",
-    borderColor: "#111827",
-    borderRadius: 8,
-    borderStyle: "solid",
-    borderWidth: 1,
-    color: "#ffffff",
-    cursor: "pointer",
-    font: "inherit",
-    fontWeight: 800,
-    minHeight: 46,
-    paddingInline: 18,
-  },
-});

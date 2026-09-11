@@ -1,209 +1,158 @@
 // @flow
-
-export type View = "timeline" | "messages" | "settings" | "login" | "signup";
+// Public, serializable view models. Database rows and credentials stay on the server.
+export type View = "timeline" | "clips" | "messages" | "settings" | "login" | "signup";
 export type Topic = "release" | "runtime" | "design" | "community";
-export type Delivery = "sent" | "delivered" | "read";
-
 export type User = {|
   readonly id: string,
   readonly name: string,
   readonly handle: string,
   readonly avatar: string,
+  readonly photo?: string | null,
   readonly bio: string,
 |};
-
 export type Post = {|
   readonly id: string,
   readonly author: User,
   readonly body: string,
   readonly topic: Topic,
   readonly likes: number,
-  readonly replies: number,
-  readonly createdAt: string,
   readonly liked: boolean,
+  readonly createdAt: string,
 |};
-
-export type FeedStats = {|
-  readonly posts: number,
-  readonly authors: number,
-  readonly likes: number,
-  readonly replies: number,
-|};
-
 export type Settings = {|
   readonly displayName: string,
   readonly handle: string,
   readonly bio: string,
   readonly email: string,
-  readonly digest: boolean,
-  readonly quietMode: boolean,
 |};
-
 export type MessageThread = {|
   readonly id: string,
   readonly name: string,
   readonly handle: string,
-  readonly unread: number,
+  readonly avatar: string,
+  readonly photo?: string | null,
   readonly lastMessage: string,
 |};
-
 export type Message = {|
   readonly id: string,
   readonly threadId: string,
   readonly author: "me" | "them",
   readonly body: string,
   readonly sentAt: string,
-  readonly delivery: Delivery,
 |};
-
-export type FormState<T = empty> = {|
-  readonly status: "idle" | "success" | "error",
-  readonly message: string,
-  readonly value?: T,
+// Success always carries a value; failure never can. Pending belongs to React's Action.
+export type FieldErrors = { readonly [string]: string };
+export type ActionResult<out T> =
+  | {| readonly status: "success", readonly value: T, readonly message: string |}
+  | {| readonly status: "error", readonly message: string, readonly fields: FieldErrors |};
+export type FormState<out T> = {| readonly status: "idle" |} | ActionResult<T>;
+export type Session =
+  | {| readonly kind: "guest" |}
+  | {| readonly kind: "authenticated", readonly user: User |};
+export type Protected<out T> =
+  | {| readonly kind: "unauthenticated" |}
+  | {| readonly kind: "ready", readonly value: T |};
+export type FeedFilter = {|
+  readonly topic: Topic | "all",
+  readonly query: string,
+  readonly page: number,
 |};
-
-export const MAX_POST_LENGTH: number = 280;
-export const MAX_MESSAGE_LENGTH: number = 360;
-
-export const TOPICS: $ReadOnlyArray<Topic> = ["release", "runtime", "design", "community"];
-
-export function viewHref(view: View): string {
-  return match (view) {
-    "timeline" => "/",
-    "messages" => "/messages",
-    "settings" => "/settings",
-    "login" => "/login",
-    "signup" => "/signup",
+export type FeedData = {|
+  ...FeedFilter,
+  readonly posts: $ReadOnlyArray<Post>,
+  readonly hasNext: boolean,
+|};
+export type InboxData = Protected<$ReadOnlyArray<MessageThread>>;
+export type ConversationData =
+  | {| readonly kind: "unauthenticated" |}
+  | {| readonly kind: "empty" |}
+  | {| readonly kind: "missing" |}
+  | {|
+      readonly kind: "ready",
+      readonly thread: MessageThread,
+      readonly messages: $ReadOnlyArray<Message>,
+    |};
+export const GUEST: Session = { kind: "guest" };
+export const IDLE: FormState<empty> = { status: "idle" };
+export function succeeded<T>(value: T, message: string): ActionResult<T> {
+  return { status: "success", value, message };
+}
+export function failed(message: string, fields: FieldErrors = {}): ActionResult<empty> {
+  return { status: "error", message, fields };
+}
+export function fieldError(state: FormState<mixed>, name: string): string | null {
+  return match (state) {
+    {status: "idle"} | {status: "success", ...} => null,
+    {status: "error", fields: const fields, ...} => fields[name] ?? null,
   };
 }
-
-export function viewLabel(view: View): string {
-  return match (view) {
-    "timeline" => "Timeline",
-    "messages" => "Messages",
-    "settings" => "Settings",
-    "login" => "Log in",
-    "signup" => "Sign up",
+export function feedFilter(topic: string, query: string, page: string): FeedFilter {
+  const parsed = Number(page);
+  return {
+    topic: topicFrom(typeof topic === "string" ? topic : "") ?? "all",
+    query: typeof query === "string" ? query.trim().slice(0, 100) : "",
+    page: Number.isInteger(parsed) ? Math.min(1000, Math.max(1, parsed)) : 1,
   };
 }
-
-export function pageTitle(view: View): string {
-  return match (view) {
-    "timeline" => "Team timeline",
-    "messages" => "Direct messages",
-    "settings" => "Settings",
-    "login" => "Log in",
-    "signup" => "Create account",
-  };
-}
-
+export const MAX_POST_LENGTH: number = 500;
+export const MAX_MESSAGE_LENGTH: number = 2000;
+export const PAGE_SIZE: number = 12;
+export const TOPICS: $ReadOnlyArray<Topic> = ["design", "release", "runtime", "community"];
 export function topicLabel(topic: Topic): string {
   return match (topic) {
-    "release" => "Release",
-    "runtime" => "Runtime",
     "design" => "Design",
+    "release" => "Shipping",
+    "runtime" => "Engineering",
     "community" => "Community",
   };
 }
-
-export function topicAccent(topic: Topic): string {
-  return match (topic) {
-    "release" => "#2563eb",
-    "runtime" => "#047857",
-    "design" => "#be123c",
-    "community" => "#7c3aed",
+export function topicFrom(value: string): Topic | null {
+  return match (value) {
+    "design" => "design",
+    "release" => "release",
+    "runtime" => "runtime",
+    "community" => "community",
+    _ => null,
   };
 }
-
-export function deliveryLabel(delivery: Delivery): string {
-  return match (delivery) {
-    "sent" => "Sent",
-    "delivered" => "Delivered",
-    "read" => "Read",
-  };
-}
-
-export function visiblePosts(
-  posts: $ReadOnlyArray<Post>,
-  topic: Topic | "all",
-  query: string,
-): Array<Post> {
-  const needle = query.trim().toLowerCase();
-  return posts.filter((post) => {
-    const matchesTopic = topic === "all" || post.topic === topic;
-    const matchesQuery =
-      needle.length === 0 ||
-      post.body.toLowerCase().includes(needle) ||
-      post.author.name.toLowerCase().includes(needle) ||
-      post.author.handle.toLowerCase().includes(needle);
-    return matchesTopic && matchesQuery;
-  });
-}
-
-export function statsFor(posts: $ReadOnlyArray<Post>): FeedStats {
-  const authors = new Set<string>();
-  let likes = 0;
-  let replies = 0;
-  for (const post of posts) {
-    authors.add(post.author.handle);
-    likes += post.likes;
-    replies += post.replies;
-  }
-  return { posts: posts.length, authors: authors.size, likes, replies };
-}
-
-export function normalizeHandle(input: string): string {
-  const handle = input
-    .trim()
-    .toLowerCase()
-    .replace(/^@+/, "")
-    .replace(/[^a-z0-9_]/g, "");
-  return handle.length === 0 ? "reader" : handle.slice(0, 20);
-}
-
-export function clampPostBody(input: string): string {
-  return input.trim().slice(0, MAX_POST_LENGTH);
-}
-
-export function clampMessageBody(input: string): string {
-  return input.trim().slice(0, MAX_MESSAGE_LENGTH);
-}
-
 export function profileInitials(user: User | Settings): string {
   const name = "displayName" in user ? user.displayName : user.name;
   return name
+    .trim()
     .split(/\s+/)
-    .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
 }
-
-export function messagePreview(thread: MessageThread): string {
-  const prefix = thread.unread > 0 ? `${String(thread.unread)} new` : "Caught up";
-  return `${prefix} - ${thread.lastMessage}`;
+export function feedHref(topic: Topic | "all", query: string = "", page: number = 1): string {
+  const search = new URLSearchParams();
+  if (topic !== "all") search.set("topic", topic);
+  if (query !== "") search.set("q", query);
+  if (page > 1) search.set("page", String(page));
+  return search.size === 0 ? "/" : `/?${search.toString()}`;
+}
+export function displayDate(value: string): string {
+  // Explicit UTC keeps server and browser markup identical.
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(
+    new Date(value),
+  );
+}
+export function displayTime(value: string): string {
+  return new Intl.DateTimeFormat("en", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "UTC",
+  }).format(new Date(value));
 }
 
-export function optimisticPost(body: string, topic: Topic, viewer: User, now: Date): Post {
-  return {
-    id: `optimistic-${String(now.getTime())}`,
-    author: viewer,
-    body: clampPostBody(body),
-    topic,
-    likes: 1,
-    replies: 0,
-    createdAt: now.toISOString(),
-    liked: true,
-  };
-}
-
-export function optimisticMessage(threadId: string, body: string, now: Date): Message {
-  return {
-    id: `optimistic-${String(now.getTime())}`,
-    threadId,
-    author: "me",
-    body: clampMessageBody(body),
-    sentAt: now.toISOString(),
-    delivery: "sent",
+// The fixture identities use licensed portraits; newly created accounts keep initials.
+export function avatarPhoto(id: string): string | null {
+  return match (id) {
+    "seed-mika" => "/media/avatars/mika.jpg",
+    "seed-ren" => "/media/avatars/ren.jpg",
+    "seed-sora" => "/media/avatars/sora.jpg",
+    "seed-niko" => "/media/avatars/niko.jpg",
+    _ => null,
   };
 }

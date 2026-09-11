@@ -265,10 +265,15 @@ function flowPlugin({
     // survives the build — so the browser's table was shipping the absolute
     // path of every page on the machine that built the site, to every visitor.
     // The server's table is read where those files are and keeps them.
-    return routesModuleSource(table, {
-      shipsPage: (route) => kept.has(route),
-      relativeTo: root,
-    });
+    // HTTP handlers are exclusively server capabilities. Even an unused
+    // dynamic import makes Vite traverse the handler's database/auth imports.
+    return routesModuleSource(
+      { ...table, handlers: [] },
+      {
+        shipsPage: (route) => kept.has(route),
+        relativeTo: root,
+      },
+    );
   };
 
   /**
