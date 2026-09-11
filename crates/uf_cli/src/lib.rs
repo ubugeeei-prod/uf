@@ -550,7 +550,7 @@ fn enter_workspace(cwd: &Utf8PathBuf, target: &str) -> Result<Utf8PathBuf> {
         Ok(workspace) => Ok(resolved.root.join(&workspace.path)),
         Err(available) if available.is_empty() => Err(anyhow!(
             "no workspace named {target:?}\n\n  this project has no members; a member is a \
-             directory with its own uf.config.js"
+             directory with its own uf.config.js or a package named by package.json#workspaces"
         )),
         Err(available) => {
             let names = available.iter().map(compact_str::CompactString::as_str);
