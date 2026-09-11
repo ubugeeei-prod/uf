@@ -1,7 +1,7 @@
 From: uf maintainers
 Subject: [PATCH] Declare React 19.3 ViewTransition in the bundled Flow library
 
-Issue: React 19.3 ViewTransition declarations missing from pinned Flow (tracked by this PR).
+Issue: https://github.com/ubugeeei-prod/uf/pull/772
 Upstream: not filed yet
 Submodule: 81b0c2a3dd591c66c51167aac341d851932bd9c5
 
