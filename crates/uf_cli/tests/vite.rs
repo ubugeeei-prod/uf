@@ -6633,13 +6633,13 @@ fn a_library_reports_an_exports_target_it_did_not_build() {
     assert!(!said.contains("./index.js"), "{said}");
 }
 
-/// `--compile` and `--adapter` write a deployment that serves an application.
+/// `--compile`, `--adapter`, and bare `--target` need an application.
 ///
 /// Refused by name and before anything is built, which is the rule
-/// ubugeeei-prod/uf#638 applied to the same two flags. `--compile` needs no
-/// Bun here for the same reason: nothing is resolved before the refusal.
+/// ubugeeei-prod/uf#638 applied to the same family of flags. `--compile` needs
+/// no Bun here for the same reason: nothing is resolved before the refusal.
 #[test]
-fn a_library_refuses_the_two_flags_that_write_a_deployment() {
+fn a_library_refuses_application_only_build_flags() {
     if !fixture_ready() {
         return;
     }
@@ -6649,6 +6649,7 @@ fn a_library_refuses_the_two_flags_that_write_a_deployment() {
     for (flags, expected) in [
         (vec!["build", "--compile"], "executable"),
         (vec!["build", "--adapter", "node"], "directory"),
+        (vec!["build", "--target", "ios"], "application routes"),
     ] {
         let output = uf()
             .arg("--cwd")

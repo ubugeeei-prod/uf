@@ -155,6 +155,7 @@ pub(crate) fn build(
             &plan,
             standalone,
             requested_adapter.or(resolved.config.app.runtime.deploy.adapter),
+            requested_target,
         )?;
         return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
     }
@@ -936,16 +937,17 @@ fn refuse_unanswerable_actions(
     )
 }
 
-/// Refuse `--compile` or `--adapter` on a project that is a library.
+/// Refuse application-only build flags on a project that is a library.
 ///
-/// Both flags produce a **deployment**: an executable that serves the
-/// application, or a directory a host runs it from. A library has no
-/// application to serve — no route table, no server entry, no request to
-/// answer — so each would have to invent one, and what it invented would be an
-/// empty server that starts and 404s everything.
+/// `--compile` and `--adapter` produce a **deployment**: an executable that
+/// serves the application, or a directory a host runs it from. `--target`
+/// without `--compile` chooses the application surface whose routes uf should
+/// discover. A library has no application to serve or route table to narrow, so
+/// each would have to invent one, and what it invented would be an empty server
+/// that starts and 404s everything.
 ///
 /// Refused by name and before anything is built, which is the rule
-/// ubugeeei-prod/uf#638 applied to the same two flags: a target uf cannot
+/// ubugeeei-prod/uf#638 applied to the same class of flags: a target uf cannot
 /// produce is a sentence, and a sentence is cheaper before the bundle than
 /// after it.
 /// The adapter is whichever of `--adapter` and `app.runtime.deploy.adapter`
@@ -956,11 +958,13 @@ fn refuse_an_application_artefact(
     plan: &LibraryPlan,
     standalone: bool,
     adapter: Option<DeployAdapter>,
+    requested_target: Option<&str>,
 ) -> Result<()> {
-    let asked = match (standalone, adapter) {
-        (true, _) => "`uf build --compile` writes an executable that serves an application",
-        (_, Some(_)) => "a deploy adapter writes a directory a host serves an application from",
-        (false, None) => return Ok(()),
+    let asked = match (standalone, adapter, requested_target) {
+        (true, _, _) => "`uf build --compile` writes an executable that serves an application",
+        (_, Some(_), _) => "a deploy adapter writes a directory a host serves an application from",
+        (false, None, Some(_)) => "`uf build --target` chooses which application routes to build",
+        (false, None, None) => return Ok(()),
     };
     bail!(
         "{asked}, and {}. A library is imported rather than served: `uf build` writes its \
