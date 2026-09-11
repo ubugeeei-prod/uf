@@ -1,0 +1,394 @@
+---
+title: "Async React · uf"
+description: "Suspense, transitions and optimistic UI: what waits, what stays visible, and what is only temporary."
+---
+
+<p className="eyebrow">Writing code</p>
+
+# Async React
+
+<div className="lede">
+Suspense, transitions and optimistic UI are three answers to one question:
+what should the reader see while some other work is still unfinished? uf leans
+on React's model instead of adding a second one, and the file-system router,
+server actions and client router all make that choice visible.
+</div>
+
+## The map
+
+Use the smallest primitive that names the wait you actually have.
+
+| The wait | Write | What the reader sees |
+| --- | --- | --- |
+| a route segment is not ready | `$loading.js`, or a local `<Suspense>` | the layouts around it, then the fallback, then the content |
+| a client update may take time to render | `useTransition` or `startTransition` | the old UI stays usable while the next one renders |
+| a mutation should feel instant | `useOptimistic` inside an Action | the intended result now, then the server-confirmed result |
+
+That split matters because each primitive has a different failure mode.
+Suspense may replace a subtree with a fallback. A transition may keep stale UI
+on screen. Optimistic state may be wrong and then roll back. Treating all three
+as "loading" loses the part the user feels.
+
+React's own rule is the baseline: a Suspense boundary activates when rendering
+reads something React knows how to wait for, such as `use(promise)` or
+`lazy(...)`. A fetch that starts in an Effect or an event handler is ordinary
+client state unless you put the result behind one of those reads. The React
+references for [`<Suspense>`](https://react.dev/reference/react/Suspense),
+[`useTransition`](https://react.dev/reference/react/useTransition) and
+[`useOptimistic`](https://react.dev/reference/react/useOptimistic) are the
+upstream contract uf is following.
+
+## Route Suspense
+
+`$loading.js` declares a Suspense boundary for a route segment.
+
+```js
+// @flow
+// app/articles/$loading.js
+export default component LoadingArticles() {
+  return <p aria-busy="true">Loading articles...</p>;
+}
+```
+
+The boundary sits inside that segment's own layout and outside everything below
+it. A route can therefore carry more than one loading boundary:
+
+```text
+app/$layout.js              sent first
+app/articles/$layout.js     sent first
+app/articles/$loading.js    sent first
+app/articles/[slug]/$page.js  streamed when ready
+```
+
+On a streaming server response, uf sends the layouts and the fallback while the
+page or a deferred loader value is still pending. When the promise resolves,
+React fills that boundary. On `uf build`, there is no first paint to improve, so
+the prerender waits and writes the finished document.
+
+The same route can still use a local boundary when only part of the page waits:
+
+```js
+// @flow
+import { Suspense, use } from "@uniflowed/react";
+
+import Comments from "./Comments.js";
+import { readArticle, readComments } from "./data.server.js";
+
+export async function loader({ params }: LoaderArgs) {
+  return {
+    article: await readArticle(params.slug),
+    comments: readComments(params.slug),
+  };
+}
+
+export default component Article(data: {|
+  +article: ArticleRecord,
+  +comments: Promise<Array<CommentRecord>>,
+|}) {
+  return (
+    <article>
+      <h1>{data.article.title}</h1>
+      <Suspense fallback={<p aria-busy="true">Loading comments...</p>}>
+        <Comments comments={data.comments} />
+      </Suspense>
+    </article>
+  );
+}
+
+component Comments(comments: Promise<Array<CommentRecord>>) {
+  return (
+    <ul>
+      {use(comments).map((comment) => (
+        <li key={comment.id}>{comment.body}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+No `defer()` call is needed. A promise left in loader data is the contract: the
+server can stream the shell, the page can read it with `use`, and the boundary
+closest to that read owns the fallback.
+
+## What Suspense Is Not
+
+Suspense is not a request API. This does not suspend:
+
+```js
+"use client";
+// @flow
+import { useEffect, useState } from "@uniflowed/react";
+
+component SearchResults(query: string) {
+  const [rows, setRows] = useState<Array<Result>>([]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/search?q=${encodeURIComponent(query)}`)
+      .then((response) => response.json())
+      .then((next) => {
+        if (alive) setRows(next);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [query]);
+
+  return <Results rows={rows} />;
+}
+```
+
+A `<Suspense>` around that component has nothing to catch, because the component
+renders before the fetch has answered. Use route loaders for data that belongs
+to navigation, `use` with a cached promise for data that is intentionally
+suspense-backed, or an explicit `Loadable` value when loading is part of your
+state model. `@uniflowed/state` chooses the last shape for `asyncAtom`, which is
+why that page says "values, not suspense".
+
+Do not add invisible boundaries to be safe. A Suspense fallback is UI, and its
+position decides what disappears. If a whole segment may wait, write
+`$loading.js`. If one panel may wait, wrap that panel. If already visible
+content should remain visible while the next value is prepared, use a
+transition.
+
+## Transitions
+
+A transition says: this update can be interrupted, and already revealed content
+should not be hidden by a fallback just because the next render suspends.
+
+```js
+"use client";
+// @flow
+import { Suspense, use, useState, useTransition } from "@uniflowed/react";
+
+component ProjectTabs(projects: {|
+  +alpha: Promise<Project>,
+  +bravo: Promise<Project>,
+|}) {
+  const [selected, setSelected] = useState("alpha");
+  const [isPending, startTransition] = useTransition();
+
+  return (
+    <section aria-busy={isPending}>
+      <button
+        type="button"
+        onClick={() => {
+          startTransition(() => setSelected("alpha"));
+        }}
+      >
+        Alpha
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          startTransition(() => setSelected("bravo"));
+        }}
+      >
+        Bravo
+      </button>
+      <Suspense fallback={<p>Loading project...</p>}>
+        <ProjectPanel project={selected === "alpha" ? projects.alpha : projects.bravo} />
+      </Suspense>
+    </section>
+  );
+}
+
+component ProjectPanel(project: Promise<Project>) {
+  const resolved = use(project);
+  return <h2>{resolved.name}</h2>;
+}
+```
+
+`useTransition` is the component form. It gives you `isPending`, so a tablist,
+filter chip or sidebar can show that a non-urgent update is in progress without
+throwing away the current screen. The standalone `startTransition` is for code
+that is not itself a component, or for a helper that already has the setter it
+needs.
+
+Two habits keep transitions honest:
+
+- Do not put text input control inside a transition. The character the user
+  typed is urgent.
+- If an async action awaits and then sets state, wrap the state update after the
+  `await` in another `startTransition`. React currently marks the synchronous
+  updates inside the Action, and the post-`await` set needs to be marked again.
+
+uf's client router uses the same idea for navigation. A `Link` or
+`useRouter().push()` resolves the next route, then commits it in a transition
+unless you asked for a browser View Transition. `useRoute().pending` is the
+router's pending bit for a global progress bar or a dimmed nav item:
+
+```js
+"use client";
+// @flow
+import { Link, useRoute } from "@uniflowed/router";
+
+component NavLink(to: string, label: string) {
+  const route = useRoute();
+  const current = route.pathname === to;
+  return (
+    <Link aria-current={current ? "page" : undefined} data-pending={route.pending} to={to}>
+      {label}
+    </Link>
+  );
+}
+```
+
+That is different from the browser View Transition API. A React transition is
+about scheduling and fallbacks; a View Transition is about animating two painted
+frames. uf can use both on one navigation, but they answer different questions.
+
+## Optimistic UI
+
+Optimistic state is temporary state for an Action. It lets the interface show
+the result the user asked for before the server has confirmed it.
+
+```js
+"use server";
+// @flow
+// app/articles/_actions/favorite.js
+export async function setFavorite(id: string, favorite: boolean): Promise<{|
+  +favorite: boolean,
+|}> {
+  await saveFavorite(id, favorite);
+  return { favorite };
+}
+```
+
+```js
+"use client";
+// @flow
+// app/articles/_components/FavoriteButton.js
+import { startTransition, useOptimistic, useState } from "@uniflowed/react";
+
+import { setFavorite } from "../_actions/favorite.js";
+
+export default component FavoriteButton(id: string, initialFavorite: boolean) {
+  const [saved, setSaved] = useState<boolean>(initialFavorite);
+  const [favorite, setOptimisticFavorite] = useOptimistic<boolean>(saved);
+
+  function toggle() {
+    const next = !favorite;
+    startTransition(async () => {
+      setOptimisticFavorite(next);
+      const result = await setFavorite(id, next);
+      startTransition(() => {
+        setSaved(result.favorite);
+      });
+    });
+  }
+
+  return (
+    <button aria-pressed={favorite} type="button" onClick={toggle}>
+      {favorite ? "Saved" : "Save"}
+    </button>
+  );
+}
+```
+
+The first render after `setOptimisticFavorite(next)` shows `next`. When the
+Action finishes, the durable `saved` value catches up and the optimistic value
+converges with it. If the action throws and `saved` never changes, the UI falls
+back to the last confirmed value.
+
+Use a reducer when more than one optimistic update may be pending at once:
+
+```js
+"use client";
+// @flow
+import { startTransition, useOptimistic } from "@uniflowed/react";
+import { useRouter } from "@uniflowed/router";
+
+import { postMessage } from "../_actions/messages.js";
+
+type Message = {| +id: string, +body: string, +sending?: boolean |};
+
+component Thread(messages: $ReadOnlyArray<Message>) {
+  const router = useRouter();
+  const [shown, addOptimistic] = useOptimistic<
+    $ReadOnlyArray<Message>,
+    Message,
+  >(messages, (current, message) => [...current, { ...message, sending: true }]);
+
+  async function send(message: Message) {
+    startTransition(async () => {
+      addOptimistic(message);
+      await postMessage(message.body);
+      await router.refresh();
+    });
+  }
+
+  return <MessageList messages={shown} onSend={send} />;
+}
+```
+
+The reducer is pure, and React replays it over the latest real value while the
+Action is pending. That is the part optimistic UI needs when another refresh,
+subscription or server action updates the real list before this one finishes.
+
+## Forms and Actions
+
+React treats a `<form action={fn}>` action as a transition already, so an
+optimistic setter can run inside the action body without wrapping the first call
+in `startTransition`:
+
+```js
+"use client";
+// @flow
+import { useOptimistic } from "@uniflowed/react";
+import { useFormStatus } from "react-dom";
+import { useRouter } from "@uniflowed/router";
+
+import { postMessage } from "../_actions/messages.js";
+
+component SendButton() {
+  const { pending } = useFormStatus();
+  return <button disabled={pending} type="submit">Send</button>;
+}
+
+export default component Composer(messages: $ReadOnlyArray<Message>) {
+  const router = useRouter();
+  const [shown, addOptimistic] = useOptimistic(messages, (current, body: string) => [
+    ...current,
+    { id: "pending", body, sending: true },
+  ]);
+
+  async function submit(form: FormData) {
+    const body = String(form.get("body") ?? "");
+    addOptimistic(body);
+    await postMessage(body);
+    await router.refresh();
+  }
+
+  return (
+    <>
+      <MessageList messages={shown} />
+      <form action={submit}>
+        <input name="body" />
+        <SendButton />
+      </form>
+    </>
+  );
+}
+```
+
+`useFormStatus` says the submit is pending. `useOptimistic` says what the result
+should look like meanwhile. A validation error still belongs in the action's
+returned state, as shown in [Server actions](/guide/server-actions); optimism is
+for reversible feedback, not for replacing the server's verdict.
+
+## Choosing the boundary
+
+When in doubt, choose by what you want to preserve.
+
+| Preserve | Tool |
+| --- | --- |
+| the document shell while a route waits | `$loading.js` |
+| a resolved page while a navigation prepares the next one | transition |
+| the user's typed text | ordinary urgent state |
+| the user's intent while a mutation is in flight | `useOptimistic` |
+| a cacheable async state machine outside routing | `Loadable` from `@uniflowed/state` |
+
+That is the whole contract. Suspense says "this subtree is not ready".
+Transitions say "keep the old subtree useful while preparing the new one".
+Optimistic state says "show the intended result until the Action settles".

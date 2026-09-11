@@ -102,6 +102,12 @@ export const sections: $ReadOnlyArray<Section> = [
           "The boundary a directive draws, the graph that resolves it, and a split at the route, not the module.",
       },
       {
+        href: "/guide/async-react",
+        title: "Async React",
+        blurb:
+          "Suspense, transitions and optimistic UI: what waits, what stays visible, and what is only temporary.",
+      },
+      {
         href: "/guide/server-actions",
         title: "Server actions",
         blurb:
