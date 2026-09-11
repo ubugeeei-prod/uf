@@ -29,6 +29,7 @@
 // rather than inside the packages they are about.
 
 import { decode as decodeBase32, encode as encodeBase32 } from "../../packages/std/base32.js";
+import { Cursor, putVarint, uvarint } from "../../packages/std/binary.js";
 import { Builder, compare, equal, split } from "../../packages/std/bytes.js";
 import { background, key, withCancel, withTimeout, withValue } from "../../packages/std/context.js";
 import { parse as parseCsv, stringify as stringifyCsv } from "../../packages/std/csv.js";
@@ -189,6 +190,20 @@ export const csvCellsAreText: number = parseCsv("a")[0][0];
 // expect: 1 is incompatible with string
 export const csvStringifyTakesText: mixed = stringifyCsv([[1]]);
 
+const binaryCursor = new Cursor(left);
+
+// expect: number is incompatible with string
+export const binaryCursorReadsNumbers: string = binaryCursor.getUint16();
+
+// expect: not a number" is incompatible with number
+export const binaryCursorWritesNumbers: mixed = binaryCursor.putUint32("not a number");
+
+// expect: bigint is incompatible with number
+export const uvarintReadsBigInts: number = uvarint(left).value;
+
+// expect: 1 is incompatible with bigint
+export const putVarintTakesBigInts: mixed = putVarint(1);
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -239,6 +254,10 @@ export const base32Encodes: string = encodeBase32(left);
 export const base32Decodes: Uint8Array = decodeBase32("MY======");
 export const csvRows: $ReadOnlyArray<$ReadOnlyArray<string>> = parseCsv("a,b");
 export const csvText: string = stringifyCsv([["a", "b"]]);
+export const binaryCursorOffset: number = binaryCursor.offset();
+export const binaryCursorRead: number = binaryCursor.getUint16();
+export const binaryUvarint: bigint = uvarint(left).value;
+export const binaryPutVarint: Uint8Array = putVarint(-1n);
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,

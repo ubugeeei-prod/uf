@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Ten modules, and what is asserted here is the property that makes each one
+// Eleven modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -46,6 +46,18 @@ import {
   encodedLength as encodedBase32Length,
   isValid as isValidBase32,
 } from "@uniflowed/std/base32";
+import {
+  BIG_ENDIAN,
+  Cursor,
+  InvalidBinaryError,
+  LITTLE_ENDIAN,
+  putUvarint,
+  putVarint,
+  uvarint,
+  uvarintLength,
+  varint,
+  varintLength,
+} from "@uniflowed/std/binary";
 import {
   CANCELLED,
   DEADLINE_EXCEEDED,
@@ -1064,6 +1076,100 @@ describe("csv", () => {
     }
 
     expect(() => parseCsv('a"b')).toThrow(InvalidCsvError);
+  });
+});
+
+describe("binary", () => {
+  it("advances a cursor over checked DataView reads and writes", () => {
+    const bytes = new Uint8Array(16);
+    const writer = new Cursor(bytes);
+
+    writer.putUint16(0x1234, BIG_ENDIAN);
+    writer.putUint32(0x89abcdef, LITTLE_ENDIAN);
+    writer.putInt16(-2);
+    writer.putFloat32(1.5, LITTLE_ENDIAN);
+
+    expect(writer.offset()).toBe(12);
+    expect(Array.from(bytes.slice(0, 8))).toEqual([0x12, 0x34, 0xef, 0xcd, 0xab, 0x89, 0xff, 0xfe]);
+
+    const reader = new Cursor(bytes);
+    expect(reader.getUint16()).toBe(0x1234);
+    expect(reader.getUint32(LITTLE_ENDIAN)).toBe(0x89abcdef);
+    expect(reader.getInt16()).toBe(-2);
+    expect(reader.getFloat32(LITTLE_ENDIAN)).toBe(1.5);
+    expect(reader.remaining()).toBe(4);
+  });
+
+  it("fails before a cursor can read, write or seek outside the buffer", () => {
+    const reader = new Cursor(b(0, 1));
+    expect(reader.getUint16()).toBe(1);
+    expect(() => reader.getUint8()).toThrow(RangeError);
+    expect(() => reader.seek(3)).toThrow(RangeError);
+
+    expect(() => new Cursor(b(0)).putUint16(0x100)).toThrow(RangeError);
+    expect(() => new Cursor(b(0)).putUint8(0x100)).toThrow(RangeError);
+  });
+
+  it("encodes and decodes unsigned varints with the Go wire shape", () => {
+    const vectors: Array<[bigint, Array<number>]> = [
+      [0n, [0x00]],
+      [127n, [0x7f]],
+      [128n, [0x80, 0x01]],
+      [300n, [0xac, 0x02]],
+      [624485n, [0xe5, 0x8e, 0x26]],
+    ];
+
+    for (const [value, encoded] of vectors) {
+      const bytes = putUvarint(value);
+      expect(Array.from(bytes)).toEqual(encoded);
+      expect(uvarint(bytes)).toEqual({ value, read: encoded.length });
+      expect(uvarintLength(value)).toBe(encoded.length);
+    }
+  });
+
+  it("encodes and decodes signed zig-zag varints", () => {
+    const vectors: Array<[bigint, Array<number>]> = [
+      [0n, [0x00]],
+      [-1n, [0x01]],
+      [1n, [0x02]],
+      [-2n, [0x03]],
+      [-300n, [0xd7, 0x04]],
+      [300n, [0xd8, 0x04]],
+    ];
+
+    for (const [value, encoded] of vectors) {
+      const bytes = putVarint(value);
+      expect(Array.from(bytes)).toEqual(encoded);
+      expect(varint(bytes)).toEqual({ value, read: encoded.length });
+      expect(varintLength(value)).toBe(encoded.length);
+    }
+  });
+
+  it("lets a cursor read and write varints in sequence", () => {
+    const bytes = new Uint8Array(8);
+    const cursor = new Cursor(bytes);
+    cursor.putVarint(-300n);
+    cursor.putUvarint(624485n);
+    expect(cursor.offset()).toBe(5);
+
+    cursor.seek(0);
+    expect(cursor.getVarint()).toBe(-300n);
+    expect(cursor.getUvarint()).toBe(624485n);
+    expect(cursor.offset()).toBe(5);
+  });
+
+  it("names truncated varints by offset", () => {
+    try {
+      uvarint(b(0x80));
+      throw new Error("uvarint should have refused a truncated sequence");
+    } catch (failure) {
+      expect(failure).toBeInstanceOf(InvalidBinaryError);
+      if (failure instanceof InvalidBinaryError) {
+        expect(failure.offset).toBe(1);
+      }
+    }
+
+    expect(() => putUvarint(-1n)).toThrow(RangeError);
   });
 });
 
