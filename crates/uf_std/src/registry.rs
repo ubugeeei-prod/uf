@@ -358,6 +358,19 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Serialization,
             &["InvalidCsvError", "parse", "stringify"],
         ),
+        StdModule::ships(
+            "@uniflowed/std/path",
+            StdCategory::FileSystem,
+            &[
+                "basename",
+                "dirname",
+                "extname",
+                "isAbsolute",
+                "join",
+                "normalize",
+                "relative",
+            ],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
@@ -462,15 +475,6 @@ pub fn std_modules() -> StdModuleList {
             "@uniflowed/std/math",
             StdCategory::Data,
             &["clamp", "lerp", "mean", "percentile"],
-        ),
-        // #710's next tranche: `path/filepath` — `join`, `clean`, `rel`,
-        // `ext`, `base`, `dir` and a real glob matcher. Named in the root
-        // declaration surface as `joinPath` and `normalizePath`, and
-        // unimplemented there.
-        StdModule::planned(
-            "@uniflowed/std/path",
-            StdCategory::FileSystem,
-            &["join", "normalize", "dirname", "basename"],
         ),
         StdModule::planned(
             "@uniflowed/std/wasm",

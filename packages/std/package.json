@@ -22,6 +22,7 @@
     "./heap": "./heap.js",
     "./hex": "./hex.js",
     "./list": "./list.js",
+    "./path": "./path.js",
     "./slices": "./slices.js",
     "./sync": "./sync.js",
     "./package.json": "./package.json"
@@ -37,6 +38,7 @@
     "hex.js",
     "index.js",
     "list.js",
+    "path.js",
     "slices.js",
     "sync.js",
     "!*.test.js"
