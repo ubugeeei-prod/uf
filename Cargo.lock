@@ -3599,6 +3599,7 @@ dependencies = [
  "camino",
  "clap",
  "compact_str",
+ "globset",
  "image",
  "mimalloc",
  "serde",
