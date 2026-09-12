@@ -249,6 +249,41 @@ describe("the client route table", () => {
     );
   });
 
+  it("keeps a route named by a manifest client-boundary edge", () => {
+    // The module summary is the fast path, but the manifest also carries the
+    // edge that made the summary true. Reading that edge here keeps the Vite
+    // side honest: if a future analysis regression writes an isolated summary
+    // beside a real boundary edge, the browser still gets the page instead of
+    // quietly dropping the only module that can hydrate it.
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [
+        manifestModule("app/$layout.js", false),
+        manifestModule("app/$page.js", false),
+        manifestModule("app/counter/$page.js", false),
+        {
+          ...manifestModule("app/counter/Counter.js", false),
+          environment: "client",
+        },
+      ],
+      clientBoundaries: [
+        {
+          importer: "app/counter/$page.js",
+          target: { kind: "module", path: "app/counter/Counter.js" },
+        },
+      ],
+      clientBundleRoots: [{ kind: "module", path: "app/counter/Counter.js" }],
+    });
+    const shipsPage = clientRouteFilter(manifest, root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/counter/$page.js"))})`);
+    expect(source).not.toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
+  });
+
   it("ships a page the analysis never saw", () => {
     // `.mdx` is a page and is not `.js`, so it is in no manifest. The honest
     // reading of a module uf did not analyse is that it might reach a
