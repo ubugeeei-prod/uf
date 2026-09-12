@@ -420,6 +420,14 @@ fn a_native_target_manifest_names_the_pending_native_contract() {
         serde_json::json!(["js", "jsx", "mjs", "cjs"])
     );
     assert_eq!(
+        manifest["targetContract"]["transform"]["config"]["package"],
+        serde_json::json!("@uniflowed/react-native/metro")
+    );
+    assert_eq!(
+        manifest["targetContract"]["transform"]["config"]["helper"],
+        serde_json::json!("withUniflowedMetro")
+    );
+    assert_eq!(
         manifest["routes"][0]["page"],
         serde_json::json!("app/$page.native.js"),
         "the build did not consume the native route target:\n{manifest:#}"
