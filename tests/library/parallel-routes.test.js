@@ -341,6 +341,37 @@ describe("rendering a route that has one", () => {
     expect(result.html).toContain("the team default");
   });
 
+  it("passes the current route params to a slot default", async () => {
+    // A default is still rendered *at the current URL*. Under a dynamic
+    // segment, the page filling the slot needs the same params the layout that
+    // receives it sees, even though no route inside the slot matched.
+    component TeamDefault(params: { org?: string }) {
+      return <p>{`team default for ${params.org ?? "missing"}`}</p>;
+    }
+    const dynamicSlot = {
+      ...slot,
+      defaultPage: () => Promise.resolve({ default: TeamDefault }),
+      routes: [],
+    };
+    const { prerender } = createRenderer({
+      App: routerView("./app"),
+      routes: [
+        {
+          ...page("/dashboard/:org", "the org dashboard"),
+          params: [{ name: "org", catchAll: false }],
+          slots: [dynamicSlot],
+        },
+      ],
+      notFound: [],
+      errors: [],
+    });
+
+    const result = await prerender("/dashboard/acme", assets);
+
+    expect(result.html).toContain("the org dashboard");
+    expect(result.html).toContain("team default for acme");
+  });
+
   it("renders nothing for an unaddressed slot with no default", async () => {
     // The layout still receives the prop — as `null` — so a project can write
     // `{team ?? <Empty />}` and rely on it.

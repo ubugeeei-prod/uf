@@ -1227,7 +1227,12 @@ async function resolveRoute(
   // are: a slot is matched against the URL and depends on nothing the loader
   // produces, so the second match and its imports overlap the first page's
   // loader rather than following it.
-  const slots = resolveSlots(matched.route.slots ?? [], pathname, matched.route.layouts.length);
+  const slots = resolveSlots(
+    matched.route.slots ?? [],
+    pathname,
+    matched.route.layouts.length,
+    matched.params,
+  );
 
   // The loader, run here and awaited below — or not awaited at all.
   //
@@ -1311,17 +1316,21 @@ async function resolveSlots(
   records: $ReadOnlyArray<SlotRecord>,
   pathname: string,
   layoutCount: number,
+  fallbackParams: RouteParams,
 ): Promise<$ReadOnlyArray<ResolvedSlot>> {
   if (records.length === 0) {
     return [];
   }
-  return Promise.all(records.map((record) => resolveSlot(record, pathname, layoutCount)));
+  return Promise.all(
+    records.map((record) => resolveSlot(record, pathname, layoutCount, fallbackParams)),
+  );
 }
 
 async function resolveSlot(
   record: SlotRecord,
   pathname: string,
   layoutCount: number,
+  fallbackParams: RouteParams,
 ): Promise<ResolvedSlot> {
   // Clamped exactly as a template's `above` is, and for the same reason: a
   // hand-written table, or a `(group)` between the layout and the route, can
@@ -1331,7 +1340,7 @@ async function resolveSlot(
     name: record.name,
     above,
     page: null,
-    params: {},
+    params: fallbackParams,
     layouts: [],
     slots: [],
   };
@@ -1373,7 +1382,7 @@ async function resolveSlot(
     layouts: loaded,
     // The slot's own layouts are what a nested slot is measured against, so
     // the count handed down is this slot's rather than the route's.
-    slots: await resolveSlots(route.slots, pathname, loaded.length),
+    slots: await resolveSlots(route.slots, pathname, loaded.length, matched.params),
   };
 }
 
