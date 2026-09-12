@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/vite",
-  "version": "0.0.0-alpha.28",
+  "version": "0.0.0-alpha.29",
   "description": "Vite, driven by uf.config.js: every Flow module through `uf transform`, MDX, the file-system router and static rendering as Vite plugins.",
   "type": "module",
   "license": "MIT",
@@ -34,10 +34,10 @@
   "dependencies": {
     "@mdx-js/rollup": "^3.1.1",
     "@shikijs/rehype": "^3.23.0",
-    "@uniflowed/host": "0.0.0-alpha.28",
-    "@uniflowed/router": "0.0.0-alpha.28",
-    "@uniflowed/server": "0.0.0-alpha.28",
-    "@uniflowed/validator": "0.0.0-alpha.28",
+    "@uniflowed/host": "0.0.0-alpha.29",
+    "@uniflowed/router": "0.0.0-alpha.29",
+    "@uniflowed/server": "0.0.0-alpha.29",
+    "@uniflowed/validator": "0.0.0-alpha.29",
     "rehype-slug": "^6.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
