@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/config",
-  "version": "0.0.0-alpha.23",
+  "version": "0.0.0-alpha.24",
   "description": "Flow declarations for @uniflowed/config, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",

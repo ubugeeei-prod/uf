@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/i18n",
-  "version": "0.0.0-alpha.23",
+  "version": "0.0.0-alpha.24",
   "description": "Type-safe internationalisation on MessageFormat 2: a message's arguments are checked at the call, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
