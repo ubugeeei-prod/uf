@@ -38,7 +38,7 @@ use uf_profiler::profile_span;
 
 use super::project::ProjectModules;
 use super::resolve;
-use crate::cache::{CachedRequire, Digest, Fields, hex};
+use crate::cache::{CachedRequire, Digest, Fields, hex_into};
 
 /// What a check needs to know about one file before it checks anything.
 ///
@@ -104,6 +104,7 @@ pub(super) struct DependencyScratch {
     reached: Vec<usize>,
     seen: Vec<bool>,
     frontier: Vec<usize>,
+    digest: String,
 }
 
 impl DependencyScratch {
@@ -112,6 +113,7 @@ impl DependencyScratch {
             reached: Vec::new(),
             seen: vec![false; modules],
             frontier: Vec::new(),
+            digest: String::with_capacity(std::mem::size_of::<Digest>() * 2),
         }
     }
 
@@ -165,11 +167,11 @@ impl<'a> Graph<'a> {
         DependencyScratch::new(self.facts.len())
     }
 
-    pub(super) fn dependency_digest(
+    pub(super) fn dependency_digest<'scratch>(
         &self,
         index: usize,
-        scratch: &mut DependencyScratch,
-    ) -> String {
+        scratch: &'scratch mut DependencyScratch,
+    ) -> &'scratch str {
         scratch.reset();
         scratch.reached.push(index);
         scratch.seen[index] = true;
@@ -198,7 +200,8 @@ impl<'a> Graph<'a> {
             digest.push(self.paths[module]);
             digest.push_digest(&self.local[module]);
         }
-        hex(&digest.finish())
+        hex_into(&digest.finish(), &mut scratch.digest);
+        &scratch.digest
     }
 
     /// The specifiers the `index`th file imports that resolved to nothing

@@ -160,13 +160,20 @@ pub(crate) type Digest = [u8; 32];
 /// spelled one nibble wrong would be two records filed under one name, and
 /// there is no value here to fall back to that would be safe.
 pub(crate) fn hex(digest: &Digest) -> String {
-    const DIGITS: [u8; 16] = *b"0123456789abcdef";
     let mut out = String::with_capacity(digest.len() * 2);
+    hex_into(digest, &mut out);
+    out
+}
+
+/// Write a digest as lowercase hex into caller-owned storage.
+pub(crate) fn hex_into(digest: &Digest, out: &mut String) {
+    const DIGITS: [u8; 16] = *b"0123456789abcdef";
+    out.clear();
+    out.reserve(digest.len() * 2);
     for byte in digest {
         out.push(char::from(DIGITS[usize::from(byte >> 4)]));
         out.push(char::from(DIGITS[usize::from(byte & 0xf)]));
     }
-    out
 }
 
 /// A digest over anything upstream already knows how to hash.
