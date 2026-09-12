@@ -79,7 +79,7 @@ type Request = {|
  * browser that will not start, with its own output attached — not as a file
  * that timed out, which is a sentence about tests that were never reached.
  */
-const START_TIMEOUT_MS = 90_000;
+const START_TIMEOUT_MS = 110_000;
 
 /**
  * The switches a headless run needs, and what each is for.
@@ -130,6 +130,7 @@ function browserArguments(profile: string, url: string): Array<string> {
     "--disable-domain-reliability",
     "--disable-extensions",
     "--disable-sync",
+    "--disable-features=AutofillServerCommunication,BackgroundFetch,BackgroundSync,CertificateTransparencyComponentUpdater,DialMediaRouteProvider,MediaRouter,NotificationTriggers,OptimizationHints,PushMessaging,Translate",
     "--metrics-recording-only",
     // Nothing here paints, and a GPU process is one more thing to fail in a
     // container.

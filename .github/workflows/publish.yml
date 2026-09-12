@@ -85,37 +85,10 @@ jobs:
       # not give Chromium a usable sandbox under the AppArmor/user-namespace
       # policy in this image, and the distro `chromium` shim can spend the
       # browser worker's start budget talking to a broken DBus session before
-      # it ever opens the test page.
-      # The same browser test runs sandboxed in CI on Blacksmith; this wrapper
-      # is only for the publish runner, so the release can still prove browser
-      # mode before npm receives the packages.
+      # it ever opens the test page. Keep the wrapper shared with CI so the
+      # release still proves browser mode before npm receives the packages.
       - name: Make Chromium usable on the publish runner
-        run: |
-          set -eu
-          browser=
-          for candidate in google-chrome-stable google-chrome chrome chromium; do
-            if command -v "$candidate" >/dev/null 2>&1; then
-              browser="$(command -v "$candidate")"
-              break
-            fi
-          done
-          if [ -z "$browser" ]; then
-            echo "No Chromium-family browser found" >&2
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/uf-browser"
-          wrapper="$RUNNER_TEMP/uf-browser/chromium-publish"
-          printf '%s\n' \
-            '#!/bin/sh' \
-            'unset DBUS_SESSION_BUS_ADDRESS' \
-            'exec "$UF_REAL_BROWSER" --no-sandbox --disable-setuid-sandbox --no-zygote "$@"' \
-            > "$wrapper"
-          chmod +x "$wrapper"
-          echo "Using $browser for UF_BROWSER"
-          {
-            echo "UF_REAL_BROWSER=$browser"
-            echo "UF_BROWSER=$wrapper"
-          } >> "$GITHUB_ENV"
+        run: tools/ci/browser-wrapper.sh
       - run: cargo test --workspace --profile ci
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the set that is implemented.

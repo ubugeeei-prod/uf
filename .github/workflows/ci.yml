@@ -146,6 +146,12 @@ jobs:
         with:
           deno-version: v1.x
       - run: deno --version
+      # Blacksmith's image carries Chromium, but the distro binary can spend
+      # browser-mode's start budget talking to a broken DBus session before it
+      # opens the test page. Use the same wrapper the publish job uses so the
+      # browser integration test is still real, just started with CI's sandbox
+      # constraints named explicitly.
+      - run: tools/ci/browser-wrapper.sh
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -579,6 +585,9 @@ jobs:
         with:
           deno-version: v1.x
       - run: deno --version
+      # Same browser-host test suite as the `Test` job, this time under
+      # `--all-features`.
+      - run: tools/ci/browser-wrapper.sh
       - run: cargo install wild-linker --version 0.10.0 --locked
       - run: wild --version
       - run: cargo test --workspace --all-features --profile ci
