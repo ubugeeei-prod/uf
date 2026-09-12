@@ -109,7 +109,7 @@ use super::packages::{PackageFile, WorkspacePackages};
 use super::parse;
 use super::resolve::{self, ModuleIndex};
 use crate::cache::{CachedRequire, Digest, Fields, digest_of_hashable};
-use crate::{CheckLimits, Source};
+use crate::{CheckError, CheckLimits, Source};
 
 /// The resolver a file's context looks imports up through.
 ///
@@ -276,7 +276,11 @@ impl ProjectModules {
     /// are not the same set: a packed module only refers to what its *exported*
     /// types mention, while inference resolves every import the file has, and
     /// it is inference whose answer is being cached.
-    pub(super) fn facts(&self, index: usize) -> ModuleFacts {
+    pub(super) fn facts(
+        &self,
+        index: usize,
+        mut mk_builtins: impl FnMut() -> Result<MkBuiltins, CheckError>,
+    ) -> Result<ModuleFacts, CheckError> {
         profile_span!("check::module_facts");
         let (path, source) = &self.sources[index];
         let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
@@ -291,35 +295,39 @@ impl ProjectModules {
             // No signature, and no imports either: a file in this state is
             // never checked, so nothing it names is ever resolved.
             self.signatures.borrow_mut().insert(index, None);
-            return ModuleFacts {
+            return Ok(ModuleFacts {
                 signature: None,
                 requires: Vec::new(),
                 skipped,
-            };
+            });
         }
 
-        let requires = parsed
-            .file_sig
-            .require_loc_map()
-            .keys()
-            .map(|specifier| {
-                let FlowImportSpecifier::Userland(userland) = specifier;
-                let name = userland.as_str();
-                CachedRequire {
-                    specifier: name.to_compact_string(),
-                    declared: self.declared_externally(name),
+        let mut requires = Vec::new();
+        for specifier in parsed.file_sig.require_loc_map().keys() {
+            let FlowImportSpecifier::Userland(userland) = specifier;
+            let name = userland.as_str();
+            let declared = if declaration_probe_needs_builtins(name) {
+                if self.mk_builtins.borrow().is_none() {
+                    self.set_mk_builtins(mk_builtins()?);
                 }
-            })
-            .collect();
+                self.declared_externally(name)
+            } else {
+                false
+            };
+            requires.push(CachedRequire {
+                specifier: name.to_compact_string(),
+                declared,
+            });
+        }
 
         let signature = self.pack(&parsed);
         let digest = signature.digest;
         self.signatures.borrow_mut().insert(index, Some(signature));
-        ModuleFacts {
+        Ok(ModuleFacts {
             signature: Some(digest),
             requires,
             skipped,
-        }
+        })
     }
 
     /// The batch source `specifier` names, without building its signature.
@@ -758,6 +766,16 @@ impl ProjectModules {
             .set(file.downgrade())
             .unwrap_or_else(|_| unreachable!("the file cell is set exactly once, here"));
         (file, cx)
+    }
+}
+
+/// Whether deciding that `specifier` is declared outside the batch has to ask
+/// the merged builtin environment.
+fn declaration_probe_needs_builtins(specifier: &str) -> bool {
+    if resolve::is_relative(specifier) {
+        assets::declared_module_for(specifier).is_some()
+    } else {
+        true
     }
 }
 
