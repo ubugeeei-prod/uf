@@ -62,6 +62,8 @@ import { DefaultEventPriority, DiscreteEventPriority } from "react-reconciler/co
 import type { Capabilities } from "../capability.js";
 import type { Frame, Rect } from "../cells.js";
 import { createFrame } from "../cells.js";
+import type { Clipboard } from "../clipboard.js";
+import { unsupportedClipboard } from "../clipboard.js";
 import type { Update } from "../diff.js";
 import { diffFrames } from "../diff.js";
 import type { KeyEvent } from "../keys.js";
@@ -152,6 +154,15 @@ export type Renderer = {
   hasSelection(): boolean,
   clearSelection(): void,
   getSelectedText(): string,
+  /**
+   * The terminal clipboard transport.
+   *
+   * It is installed by `terminal.js`, not by the reconciler. A renderer that
+   * lives in memory or behind a pipe has no terminal that can receive OSC 52,
+   * and the unsupported object says so explicitly instead of accepting text
+   * and dropping it.
+   */
+  clipboard: Clipboard,
 };
 
 /**
@@ -206,6 +217,7 @@ export function createRenderer(
     getSelectedText() {
       return selectedText(renderer);
     },
+    clipboard: unsupportedClipboard,
   };
   return renderer;
 }

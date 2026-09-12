@@ -52,6 +52,7 @@ import {
 } from "@uniflowed/react";
 
 import type { BorderStyle } from "./capability.js";
+import type { Clipboard } from "./clipboard.js";
 import type { KeyEvent } from "./keys.js";
 import type { MouseEvent } from "./mouse.js";
 import type {
@@ -444,6 +445,20 @@ export function useTerminalSize(): { readonly width: number, readonly height: nu
   );
   const snapshot = useCallback(() => renderer.size, [renderer]);
   return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
+/**
+ * The terminal clipboard.
+ *
+ * Interactive terminals get OSC 52: `copy(text)` writes the escape sequence
+ * that asks the terminal emulator to put `text` on the system clipboard.
+ * Redirected output and in-memory renders report `supported: false` and
+ * return `false`, because a log file cannot carry an operating-system
+ * clipboard side effect. OSC 52 has no acknowledgement, so a `true` return
+ * means the request was written, not that the terminal policy accepted it.
+ */
+export function useClipboard(): Clipboard {
+  return useRenderer().clipboard;
 }
 
 /** Everything an `Input` accepts. */
