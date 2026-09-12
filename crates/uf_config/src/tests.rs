@@ -63,6 +63,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
         vec![
             DeployAdapter::Node,
             DeployAdapter::Bun,
+            DeployAdapter::Deno,
             DeployAdapter::Edge,
             DeployAdapter::Serverless,
             DeployAdapter::Static,
@@ -86,12 +87,9 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(DeployAdapter::Bun.is_implemented());
     assert_eq!(DeployAdapter::Bun.tracking_issue(), None);
     assert_eq!(DeployAdapter::Bun.unimplemented_because(), None);
-    // And the one that is not, which is waiting for something named rather
-    // than for somebody's attention: the same benchmark, on a machine that has
-    // a Deno to run it on.
-    assert!(!DeployAdapter::Deno.is_implemented());
-    assert_eq!(DeployAdapter::Deno.tracking_issue(), Some(391));
-    assert!(DeployAdapter::Deno.unimplemented_because().is_some());
+    assert!(DeployAdapter::Deno.is_implemented());
+    assert_eq!(DeployAdapter::Deno.tracking_issue(), None);
+    assert_eq!(DeployAdapter::Deno.unimplemented_because(), None);
     assert_eq!(DeployAdapter::Node.unimplemented_because(), None);
     assert!(!config.app.rendering.cache.fetch);
     assert!(!config.app.rendering.cache.route);

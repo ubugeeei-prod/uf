@@ -49,7 +49,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use support::{
-    NODE_SEA_FLOOR, Project, assert_plain, bun_ready, node_sea_ready, node_version, uf, uf_path,
+    NODE_SEA_FLOOR, Project, assert_plain, bun_ready, deno_ready, node_sea_ready, node_version, uf,
+    uf_path,
 };
 
 /// The repository's `docs/` directory.
@@ -2142,6 +2143,7 @@ async function lambdaDoor() {
 const doors = {
   node: applicationDoor,
   bun: applicationDoor,
+  deno: applicationDoor,
   container: applicationDoor,
   edge: workerDoor,
   serverless: lambdaDoor,
@@ -2353,8 +2355,8 @@ fn deploy_and_copy(root: &Path, adapter: &str) -> (String, tempfile::TempDir) {
 /// Ask the copied artefact `questions`, through [`ARTEFACT_DOORS`].
 ///
 /// The doors are one half and the questions the other, because two fixtures
-/// now have something to ask and the four ways into an artefact are the same
-/// for both of them. A second copy of those four would be a second place for
+/// now have something to ask and the ways into an artefact are the same
+/// for both of them. A second copy of those doors would be a second place for
 /// the seam to be described, which is the thing this test exists to deny.
 fn ask_the_artefact(empty: &Path, adapter: &str, questions: &str) -> String {
     fs::write(
@@ -2524,6 +2526,33 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
             assert!(
                 !bundled.contains("createServer"),
                 "a `bun` artefact carrying `node:http`'s server is the `node` one renamed"
+            );
+        }
+        "deno" => {
+            assert!(deployed.join("server.js").is_file());
+            let server = fs::read_to_string(deployed.join("server.js")).unwrap();
+            assert!(
+                server.contains("globalThis.process")
+                    && server.contains("globalThis.Buffer")
+                    && server.contains("globalThis.setImmediate")
+                    && server.contains("await import(\"./handler.js\")"),
+                "the `deno` entry must install the Node environment shim before it loads the handler:\n{server}"
+            );
+            let chunks = fs::read_dir(deployed.join("chunks"))
+                .unwrap()
+                .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let bundled = format!("{server}\n{chunks}");
+            for expected in ["Deno.serve", "Deno.open"] {
+                assert!(
+                    bundled.contains(expected),
+                    "the `deno` artefact must actually use {expected}"
+                );
+            }
+            assert!(
+                !bundled.contains("createServer") && !bundled.contains("Bun.serve"),
+                "a `deno` artefact carrying another runtime's server is that adapter renamed"
             );
         }
         "container" => {
@@ -2791,17 +2820,83 @@ fn the_bun_adapter_writes_a_directory_bun_serves_from_an_empty_one() {
     );
 }
 
-/// The other three adapters, and the one thing they may not differ in.
+/// `uf build --adapter deno` writes a directory Deno serves, from an empty one.
 ///
-/// `uf build --adapter node` has its own test above, because it is the one
-/// with a socket to take. This is the rest of ubugeeei-prod/uf#391: `edge`,
-/// `serverless` and `container`, each built for real, each copied to a
-/// directory with no `node_modules` anywhere above it, and each asked the same
-/// four questions through the entry its platform would call — a Worker's
-/// `export default { fetch }`, a Lambda's `handler(event)`, and for the
-/// container the same `handler.js` the Node adapter writes.
+/// The Deno sibling of the Bun test above: the all-adapter comparison proves
+/// the shared `handler.js` answer is the same, while this starts the host entry
+/// whose whole reason to exist is `Deno.serve` and `Deno.open`.
+#[test]
+fn the_deno_adapter_writes_a_directory_deno_serves_from_an_empty_one() {
+    if !fixture_ready() || !deno_ready() {
+        return;
+    }
+    let _served = served_lock();
+    let root = served_app_root();
+
+    let (stdout, empty) = deploy_and_copy(&root, "deno");
+    assert!(
+        stdout.contains("deno run --allow-net --allow-read --allow-env server.js"),
+        "the summary must say how to run it; missing Deno run command in:\n{stdout}"
+    );
+    let deployed = empty.path().join("app");
+    assert_artefact_shape("deno", &deployed);
+
+    if !loopback_ready() {
+        return;
+    }
+
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+
+        let served = std::thread::scope(|scope| {
+            let mut command = Command::new("deno");
+            command
+                .args([
+                    "run",
+                    "--allow-net",
+                    "--allow-read",
+                    "--allow-env",
+                    "server.js",
+                ])
+                .args(["--host", "127.0.0.1", "--port", &port.to_string()])
+                .current_dir(&deployed);
+            let mut server = Server::spawn(command, scope, &said);
+            if let Some(body) = wait_for_http(port, "/", Duration::from_secs(90)) {
+                assert_served(&mut server, port, &said, &body, "build --adapter deno");
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the deployed `deno` directory never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// The implemented server adapters, and the one thing they may not differ in.
 ///
-/// The assertion is that the five answers are **byte-identical**, `node`
+/// `uf build --adapter node`, `bun`, and `deno` each have a socket test above,
+/// because they own native servers too. This compares the linked application
+/// for all of ubugeeei-prod/uf#391's server adapters: each built for real, each
+/// copied to a directory with no `node_modules` anywhere above it, and each
+/// asked the same four questions through the entry its platform would call — a
+/// Worker's `export default { fetch }`, a Lambda's `handler(event)`, and for
+/// the process targets the same `handler.js` the Node adapter writes.
+///
+/// The assertion is that the six answers are **byte-identical**, `node`
 /// included. That is the whole claim of the seam: `createFetchHandler` is one
 /// function, an adapter is the file wrapped around it, and an adapter that
 /// answered differently would be a second application wearing the first one's
@@ -2826,7 +2921,7 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
     let root = served_app_root();
 
     let mut reference: Option<(&str, Vec<String>)> = None;
-    for adapter in ["node", "bun", "edge", "serverless", "container"] {
+    for adapter in ["node", "bun", "deno", "edge", "serverless", "container"] {
         let (_, empty) = deploy_and_copy(&root, adapter);
         assert_artefact_shape(adapter, &empty.path().join("app"));
 
@@ -5653,7 +5748,7 @@ fn a_server_action_is_a_reference_in_the_browser_and_a_module_on_the_server() {
 /// about an action is host-specific: it shares the file, so it shares the
 /// claim.
 ///
-/// It is a second all-adapter test rather than five more questions in the
+/// It is a second all-adapter test rather than six more questions in the
 /// first because it needs a different fixture: `served-app` has no
 /// `"use client"` module anywhere, so it can declare no callable action, and
 /// giving it one would change what the split does to it and what three other
@@ -5667,7 +5762,7 @@ fn every_adapter_answers_the_same_server_action_call() {
     let root = rsc_split_app_root();
 
     let mut answers: Option<(String, String)> = None;
-    for adapter in ["node", "bun", "edge", "serverless", "container"] {
+    for adapter in ["node", "bun", "deno", "edge", "serverless", "container"] {
         let (_, empty) = deploy_and_copy(&root, adapter);
         // After the build, and once per adapter. The id is an HMAC over a
         // per-build secret, so every one of these builds mints its own —

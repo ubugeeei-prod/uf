@@ -354,20 +354,21 @@ host answers. Deploy the output directory to any static host, or check it with
 ### uf build --adapter TARGET
 
 Writes `.uf/deploy/TARGET/`: everything the target needs and nothing that is
-still in your checkout — no `node_modules`, no source, no `uf`. Six targets
-are implemented. Five of them run an application and share every line of it;
-the sixth runs none:
+still in your checkout — no `node_modules`, no source, no `uf`. Seven targets
+are implemented. Six of them run an application and share every line of it;
+the seventh runs none:
 
 | Target | What you get | What runs it |
 | --- | --- | --- |
 | `node` | `handler.js`, `server.js` (ticking any declared schedule), `chunks/`, `static/`, `package.json` | `cd .uf/deploy/node && node server.js` |
 | `bun` | the same file names, with `Bun.serve` and `Bun.file` behind them | `cd .uf/deploy/bun && bun server.js` |
+| `deno` | the same file names, with `Deno.serve` and `Deno.open` behind them | `cd .uf/deploy/deno && deno run --allow-net --allow-read --allow-env server.js` |
 | `container` | the same, plus `Dockerfile` and `.dockerignore` | `docker build -t NAME .uf/deploy/container` |
 | `edge` | `handler.js`, `worker.js`, `wrangler.json` (with `triggers.crons` and a `scheduled()` for any declared schedule), `chunks/`, `static/` | `cd .uf/deploy/edge && npx wrangler deploy` |
 | `serverless` | `handler.js`, `lambda.js`, `chunks/`, `static/`, `package.json` | zip it, upload it, set the handler to `lambda.handler` |
 | `static` | your build, file for file, and nothing else | upload it to any static host |
 
-`handler.js` is the seam and is identical work in the five that have one: it is
+`handler.js` is the seam and is identical work in the six that have one: it is
 `@uniflowed/server/fetch`'s handler over your server bundle, it touches no
 filesystem, and it is the same function `uf preview` and `uf start` answer
 through. An adapter is the file beside it and an answer for where `static/`
@@ -382,7 +383,7 @@ because two of the answers differ:
 
 | Target | A body reaches the client as it is produced | The process outlives the response |
 | --- | --- | --- |
-| `node`, `bun`, `container` | yes | yes |
+| `node`, `bun`, `deno`, `container` | yes | yes |
 | `edge` | yes | no — the isolate may be torn down once the response is out |
 | `serverless` | no — a Lambda response is a JSON value, so the body is read to the end first | no |
 
@@ -403,7 +404,7 @@ what has to travel.
 sandbox with no cloud credentials, no Docker daemon and no ability to bind a
 socket. What its tests establish is that each directory has the file set the
 platform documents, that the emitted entry answers when it is driven in
-process, and that all four answer *identically* — byte for byte, the same as
+process, and that all six answer *identically* — byte for byte, the same as
 `uf start`, including a loader's `redirect()`, whose whole answer is a
 `Location` header. None of that is a deployment. The first person to run
 `wrangler deploy` or upload the zip is finding something out, and
@@ -459,7 +460,7 @@ have read them:
 
 React is linked from its `server.edge.js` build for this target, so a document
 comes out of `renderToReadableStream` rather than the Node renderer. That is a
-different code path from every other target, and the test that says all four
+different code path from every other target, and the test that says all six
 adapters answer identically is the one that covers it.
 
 What uf does not do: create the Worker, upload the assets, configure a route or
@@ -533,7 +534,7 @@ so this target adds no output. What it adds is that a project a static host
 
 Each finding names the URL, the file it is in, and what to do instead — which
 is usually `--adapter node`, since the application is the same file in all
-five server targets and the project does not have to change to use one. One
+six server targets and the project does not have to change to use one. One
 prerendered document is enough for a parameterised route: a
 `generateStaticParams` that named three slugs wrote three files, and whether it
 named *every* slug is a question about your data that no build can ask.
@@ -561,15 +562,13 @@ that 215 KB asset against `node:http`'s 5,732 — level. The win is `Bun.file`,
 and nothing else. [#391](https://github.com/ubugeeei-prod/uf/issues/391) has
 the method and the limits.
 
-#### The one that is not written
+#### deno
 
-`deno` is a name in `DeployAdapter` and nothing else. Asking for it is an error
-that says why, and names
-[#391](https://github.com/ubugeeei-prod/uf/issues/391).
-
-| Target | Why not |
-| --- | --- |
-| `deno` | The `node` output already runs unchanged on Deno. An adapter here is `Deno.serve` in place of `node:http`, and it is worth writing only once a benchmark shows the native server beating `node:http` *under the same handler* — otherwise it is a directory with a different name on it. That benchmark has been run for Bun and not for Deno, on a machine that has no Deno. |
+The same two files as `node`, with `@uniflowed/server/deno` in place of
+`@uniflowed/server/node`: `Deno.serve` for the socket and `Deno.open` for
+static assets. The generated command includes `--allow-net`, `--allow-read`
+and `--allow-env`, because those are the three capabilities the artefact uses:
+take a socket, read `static/`, and honour `HOST`/`PORT`.
 
 `app.runtime.deploy.adapters` lists what this toolchain can actually produce,
 and `uf explain build` names the adapter a build will run.

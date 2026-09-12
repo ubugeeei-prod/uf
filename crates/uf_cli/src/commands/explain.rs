@@ -1014,8 +1014,7 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
 ///
 /// Six of the seven have something to name. `static` is described by what it
 /// copies and what it refuses rather than by an entry, because it writes no
-/// entry; `deno` is described as "nothing yet", which is what `uf build` would
-/// say if a project configured it.
+/// entry.
 ///
 /// A project that has asked for none is told so, and told what the build
 /// therefore is: `dist/` plus a server bundle that needs the checkout around
@@ -1068,15 +1067,13 @@ fn adapter_stage(resolved: &ResolvedConfig) -> Stage {
 /// the entry wrapped around it and the platform file, if any, beside it.
 fn adapter_entries(adapter: DeployAdapter) -> &'static str {
     match adapter {
-        DeployAdapter::Node | DeployAdapter::Bun => "handler.js, server.js",
+        DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Deno => "handler.js, server.js",
         DeployAdapter::Container => "handler.js, server.js, Dockerfile",
         DeployAdapter::Edge => "handler.js, worker.js, wrangler.json",
         DeployAdapter::Serverless => "handler.js, lambda.js",
-        // `uf build` refuses `deno`, so this is what `uf explain build` says
-        // about a project that has configured it: the same "nothing", named.
         // `static` never reaches here — it has no entry and [`adapter_stage`]
         // describes it without asking this table.
-        DeployAdapter::Deno | DeployAdapter::Static => "nothing yet",
+        DeployAdapter::Static => "nothing yet",
     }
 }
 

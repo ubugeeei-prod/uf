@@ -330,7 +330,7 @@ impl DeployAdapter {
     ///
     /// "Writes something the platform accepts, in that platform's documented
     /// shape, driven by a test" — and not "has been deployed". None of the
-    /// five server targets has ever run on the platform it targets; the
+    /// six server targets has ever run on the platform it targets; the
     /// sandbox uf is developed in has no credentials for any cloud and cannot
     /// bind a socket. What the tests establish is the emitted file set, the
     /// emitted handler's answers in process, and that those answers match
@@ -345,17 +345,21 @@ impl DeployAdapter {
     pub const fn is_implemented(self) -> bool {
         matches!(
             self,
-            Self::Node | Self::Bun | Self::Edge | Self::Serverless | Self::Static | Self::Container
+            Self::Node
+                | Self::Bun
+                | Self::Deno
+                | Self::Edge
+                | Self::Serverless
+                | Self::Static
+                | Self::Container
         )
     }
 
     /// The issue that tracks an adapter nobody has written yet.
     ///
-    /// One issue rather than one per target, because what is left is one
-    /// target: `deno`. It needs the benchmark `bun` has now had — the `node`
-    /// output already runs unchanged on both, so an adapter that is not
-    /// measurably faster is a directory with a different name on it — and the
-    /// machine uf is developed on has no Deno to run it with.
+    /// Today every named adapter has an implementation. The branch remains so
+    /// a future enum row can fail like the earlier Bun and Deno rows failed:
+    /// with the umbrella issue, not by silently writing no artefact.
     #[must_use]
     pub const fn tracking_issue(self) -> Option<u32> {
         if self.is_implemented() {
@@ -367,22 +371,13 @@ impl DeployAdapter {
 
     /// What each unwritten adapter is still waiting for, in one clause.
     ///
-    /// Beside [`Self::tracking_issue`] because a reader who has just been told
-    /// "not yet" wants to know whether that means "nobody got to it" or "the
-    /// design says not to" — and for these three it is the second. `None` for
-    /// an adapter that is implemented, which is what makes the two functions
-    /// answer the same question.
+    /// `None` today because every row is implemented. Kept beside
+    /// [`Self::tracking_issue`] for the next adapter row that is a name before
+    /// it is a deployment.
     #[must_use]
     pub const fn unimplemented_because(self) -> Option<&'static str> {
-        match self {
-            Self::Deno => Some(
-                "the `node` output already runs unchanged on Deno, so this is worth writing \
-                 only once a benchmark shows the native server beating `node:http` under the \
-                 same handler — as one now has for Bun, on a machine that had no Deno to \
-                 measure",
-            ),
-            _ => None,
-        }
+        let _ = self;
+        None
     }
 }
 

@@ -322,7 +322,7 @@ fn unreadable(file: &Utf8Path) -> String {
 ///   a `scheduled()` into its `worker.js`, so Cloudflare's own scheduler has
 ///   both something to fire and something to call. One without the other was
 ///   the bug in #712.
-/// * `node`, `bun`, `container` — these keep a process, and the `server.js` uf
+/// * `node`, `bun`, `deno`, `container` — these keep a process, and the `server.js` uf
 ///   writes now hands the declaration to `serve`, which ticks it through
 ///   `@uniflowed/server/schedule`.
 ///
@@ -335,7 +335,11 @@ fn unreadable(file: &Utf8Path) -> String {
 pub(crate) const fn runs_schedules(adapter: DeployAdapter) -> bool {
     matches!(
         adapter,
-        DeployAdapter::Edge | DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Container
+        DeployAdapter::Edge
+            | DeployAdapter::Node
+            | DeployAdapter::Bun
+            | DeployAdapter::Deno
+            | DeployAdapter::Container
     )
 }
 
@@ -366,7 +370,7 @@ pub(crate) fn refuse_unrunnable(
     bail!(
         "the `{}` adapter would not run the {} schedule(s) this project declares, so this \
          build would produce a deployment whose scheduled work never happens:{named}\n  \
-         `node`, `bun`, `container` and `edge` all run one: the first three tick it in \
+         `node`, `bun`, `deno`, `container` and `edge` all run one: the first four tick it in \
          the process they keep, and `edge` hands it to Cloudflare's own scheduler. \
          `serverless` has no configuration file uf writes, so there is nowhere to say \
          when to call it (ubugeeei-prod/uf#531).",
@@ -419,11 +423,11 @@ pub(crate) fn refuse_unrunnable(
 ///   invocation is looked up in. An expression the map does not hold is an
 ///   invocation with nowhere to go, which the `scheduled` export alone would
 ///   not catch.
-/// * `node`, `bun`, `container` — the process is its own scheduler, so there
+/// * `node`, `bun`, `deno`, `container` — the process is its own scheduler, so there
 ///   is no platform file to disagree with and what can disagree is the entry.
 ///   `server.js` has to carry a `cron:` and a `path:` holding the strings of
 ///   every declaration.
-/// * `serverless`, `static`, `deno` — run none, and [`refuse_unrunnable`] has
+/// * `serverless`, `static` — run none, and [`refuse_unrunnable`] has
 ///   already said so. Reaching here with a schedule means that refusal was
 ///   bypassed rather than that this one is wrong, so it is reported as the
 ///   internal fault it is.
@@ -447,11 +451,14 @@ pub(crate) fn assert_wired(
     schedules: &[DeclaredSchedule],
 ) -> Result<()> {
     match adapter {
-        DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Container => {
+        DeployAdapter::Node
+        | DeployAdapter::Bun
+        | DeployAdapter::Deno
+        | DeployAdapter::Container => {
             assert_process_entry(adapter, &directory.join("server.js"), schedules)
         }
         DeployAdapter::Edge => assert_worker(directory, schedules),
-        DeployAdapter::Serverless | DeployAdapter::Static | DeployAdapter::Deno => {
+        DeployAdapter::Serverless | DeployAdapter::Static => {
             if schedules.is_empty() {
                 Ok(())
             } else {
@@ -467,7 +474,7 @@ pub(crate) fn assert_wired(
     }
 }
 
-/// The three targets that keep a process, checked against their `server.js`.
+/// The four targets that keep a process, checked against their `server.js`.
 fn assert_process_entry(
     adapter: DeployAdapter,
     entry: &Utf8Path,
