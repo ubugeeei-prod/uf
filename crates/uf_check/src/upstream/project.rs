@@ -159,13 +159,14 @@ pub(super) struct ProjectModules {
     /// manifest per package and hundreds of files importing them.
     packages: WorkspacePackages,
     options: Options,
-    /// One builtin environment for the whole batch.
+    /// One builtin environment for the whole batch, installed once something
+    /// needs it.
     ///
     /// Shared rather than made per file, and not only to save the merge: a type
     /// crossing from a dependency into the importing file is compared against
     /// the importer's builtins, so two files whose `Array` came from two
     /// separate merges would not agree on it.
-    mk_builtins: MkBuiltins,
+    mk_builtins: RefCell<Option<MkBuiltins>>,
     /// The wall-clock budget a dependency's merge is charged against when it is
     /// forced outside any importer's own context.
     file_timeout: Option<std::time::Duration>,
@@ -198,7 +199,7 @@ impl ProjectModules {
     pub(super) fn new(
         sources: &[Source<'_>],
         options: Options,
-        mk_builtins: MkBuiltins,
+        mk_builtins: Option<MkBuiltins>,
         limits: &CheckLimits,
     ) -> Self {
         profile_span!("check::project_modules");
@@ -210,12 +211,21 @@ impl ProjectModules {
                 .map(|source| (source.path.to_compact_string(), Box::from(source.source)))
                 .collect(),
             options,
-            mk_builtins,
+            mk_builtins: RefCell::new(mk_builtins),
             file_timeout: limits.file_timeout,
             signatures: RefCell::new(HashMap::new()),
             merged: RefCell::new(HashMap::new()),
             probe: RefCell::new(None),
             aloc_tables: RefCell::new(HashMap::new()),
+        }
+    }
+
+    /// Install the builtin environment this batch will use for any work that
+    /// reaches inference or a library-declaration query.
+    pub(super) fn set_mk_builtins(&self, mk_builtins: MkBuiltins) {
+        let mut slot = self.mk_builtins.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(mk_builtins);
         }
     }
 
@@ -384,9 +394,17 @@ impl ProjectModules {
             Arc::default(),
             aloc_table,
             resolve_require,
-            self.mk_builtins.dupe(),
+            self.mk_builtins(),
             CheckBudget::new(self.file_timeout),
         )
+    }
+
+    fn mk_builtins(&self) -> MkBuiltins {
+        self.mk_builtins
+            .borrow()
+            .as_ref()
+            .expect("builtin environment is installed before it is used")
+            .dupe()
     }
 
     /// Drop everything the merged dependencies hold.
@@ -404,6 +422,7 @@ impl ProjectModules {
             probe.post_inference_cleanup();
         }
         self.signatures.borrow_mut().clear();
+        self.mk_builtins.borrow_mut().take();
     }
 
     /// What `specifier`, imported from `importer`, resolves to.
@@ -669,7 +688,7 @@ impl ProjectModules {
                 Arc::default(),
                 signature.aloc_table.dupe(),
                 resolve_require,
-                self.mk_builtins.dupe(),
+                self.mk_builtins(),
                 CheckBudget::new(self.file_timeout),
             )
         };
