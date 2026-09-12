@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/vrt",
-  "version": "0.0.0-alpha.22",
+  "version": "0.0.0-alpha.23",
   "private": true,
   "description": "Flow declarations for @uniflowed/vrt, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,7 +19,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/browser": "0.0.0-alpha.22",
-    "@uniflowed/core": "0.0.0-alpha.22"
+    "@uniflowed/browser": "0.0.0-alpha.23",
+    "@uniflowed/core": "0.0.0-alpha.23"
   }
 }
