@@ -100,6 +100,14 @@ describe("scanning for templates", () => {
     expect(source).toContain("$template.js");
     expect(source).toContain("templates: [{ above: 0, module: template0 }]");
   });
+
+  it("refuses template spellings the router would otherwise ignore", () => {
+    for (const file of ["template.js", "_uf.template.js"]) {
+      const root = appRoot(["$page.js", file]);
+
+      expect(() => scanRoutes(root)).toThrow("$template.js");
+    }
+  });
 });
 
 // --- Composition -------------------------------------------------------

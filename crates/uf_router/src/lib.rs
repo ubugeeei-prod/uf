@@ -31,6 +31,8 @@ pub const RESERVED_ROUTE_STEM: &str = "$route";
 /// The stem a slot's stand-in page is spelled with.
 pub const RESERVED_DEFAULT_STEM: &str = "$default";
 
+const UNSUPPORTED_TEMPLATE_FILES: [&str; 2] = ["template.js", "_uf.template.js"];
+
 /// What a page may be written in, in the order a directory holding two is
 /// resolved.
 ///
@@ -364,6 +366,20 @@ pub enum RouterError {
         /// What is wrong with it and what to do instead.
         reason: String,
     },
+    /// A file name that looks like a route template but is not one uf opens.
+    ///
+    /// `$template.js` is uf's template convention. Next.js's `template.js`, and
+    /// the old-looking `_uf.template.js`, used to sit in a public route
+    /// directory as ordinary project files. That is worse than unsupported:
+    /// the author asked for remount behaviour, got no error, and the route
+    /// looked like it worked.
+    #[error("{file}: {reason}")]
+    UnsupportedTemplateFile {
+        /// The file, as it is written on disk.
+        file: Utf8PathBuf,
+        /// What is wrong with it and what to do instead.
+        reason: String,
+    },
     /// A `@slot` whose segment declares no layout of its own.
     ///
     /// A slot renders *into* a layout — that is the whole of what a parallel
@@ -514,6 +530,10 @@ pub fn discover_routes_for_target(
     // interception used to become a literal URL segment and a live route, and
     // so did a slot before slots were served.
     refuse_unsupported_directories(&app_root)?;
+    // A wrong template spelling is the file version of the same failure: the
+    // project asked for remount behaviour and got a file the router never
+    // opens.
+    refuse_unsupported_template_files(&app_root)?;
     // And before any route is built for the opposite reason: a slot's pages are
     // routes uf renders, so what is wrong with a slot has to be said here
     // rather than discovered as a missing prop at render time.
@@ -755,6 +775,44 @@ fn refuse_unsupported_directories(app_root: &Utf8Path) -> Result<(), RouterError
         return Err(RouterError::UnsupportedRouteDirectory { directory, reason });
     }
     Ok(())
+}
+
+fn refuse_unsupported_template_files(app_root: &Utf8Path) -> Result<(), RouterError> {
+    let walk = WalkDir::new(app_root)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_dir()
+                || !entry.file_name().to_string_lossy().starts_with(['.', '_'])
+        });
+
+    for entry in walk {
+        let entry = entry.map_err(|source| RouterError::Walk {
+            path: app_root.to_path_buf(),
+            source,
+        })?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let file_name = entry.file_name().to_string_lossy();
+        if !UNSUPPORTED_TEMPLATE_FILES.contains(&file_name.as_ref()) {
+            continue;
+        }
+        let file = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
+            .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
+        let reason = unsupported_template_file_reason(&file_name);
+        return Err(RouterError::UnsupportedTemplateFile { file, reason });
+    }
+    Ok(())
+}
+
+fn unsupported_template_file_reason(file_name: &str) -> String {
+    format!(
+        "`{file_name}` looks like a route template, but uf's route template file is \
+         `$template.js`. This file would be ignored rather than remounting the route, so it is \
+         refused; rename it to `$template.js`. https://github.com/ubugeeei-prod/uf/issues/267"
+    )
 }
 
 /// The first `@slot` segment of a path relative to the router root, if it has

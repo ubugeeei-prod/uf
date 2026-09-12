@@ -870,6 +870,24 @@ fn a_slot_with_a_default_and_a_layout_is_discovered() {
     assert_eq!(routes[0].path, "/");
 }
 
+#[test]
+fn unsupported_template_spellings_are_refused() {
+    for name in ["template.js", "_uf.template.js"] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::create_dir_all(root.join("app")).unwrap();
+        fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app").join(name), "// @flow\n").unwrap();
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(name), "{name}: {message}");
+        assert!(message.contains("$template.js"), "{name}: {message}");
+        assert!(message.contains("refused"), "{name}: {message}");
+    }
+}
+
 /// A slot arrives as a prop named after its directory, so it may not be named
 /// after a prop the layout already has.
 ///

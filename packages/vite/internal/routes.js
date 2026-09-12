@@ -74,6 +74,9 @@ export const UNSUPPORTED_SEGMENTS = Object.freeze([
  */
 export const LAYOUT_PROP_NAMES = Object.freeze(["children", "params"]);
 
+/** Template spellings that look conventional elsewhere but uf will not open. */
+const UNSUPPORTED_TEMPLATE_FILES = Object.freeze(["template.js", "_uf.template.js"]);
+
 /** Extensions a page or layout may use; `.mdx` is a page written as content. */
 const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx"];
 const MODULE_EXTENSIONS = [".js", ".jsx"];
@@ -327,6 +330,8 @@ export function scanRoutes(appRoot, options = {}) {
     const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
+
+    refuseUnsupportedTemplateFiles(directory, entries);
 
     // A `$default.js` answers one question — what a slot renders when the
     // URL says nothing about it — and this walk is everywhere a slot is not,
@@ -626,6 +631,8 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
 
+    refuseUnsupportedTemplateFiles(current, entries);
+
     let nestedSlots = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
@@ -713,6 +720,24 @@ function findModule(directory, stem, extensions, target = "web") {
     }
   }
   return null;
+}
+
+function refuseUnsupportedTemplateFiles(directory, entries) {
+  for (const entry of entries) {
+    if (!entry.isFile() || !UNSUPPORTED_TEMPLATE_FILES.includes(entry.name)) {
+      continue;
+    }
+    const file = path.join(directory, entry.name);
+    throw new Error(`${file}: ${unsupportedTemplateFileReason(entry.name)}`);
+  }
+}
+
+function unsupportedTemplateFileReason(fileName) {
+  return (
+    `\`${fileName}\` looks like a route template, but uf's route template file is ` +
+    "`$template.js`. This file would be ignored rather than remounting the route, so it is " +
+    "refused; rename it to `$template.js`. https://github.com/ubugeeei-prod/uf/issues/267"
+  );
 }
 
 /**
