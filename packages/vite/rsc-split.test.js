@@ -216,6 +216,39 @@ describe("the client route table", () => {
     expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
   });
 
+  it("keeps a route whose only client boundary is a package module", () => {
+    // Manifest version 3 can name a package specifier as the far side of a
+    // boundary. The route filter still decides from the importing project
+    // module's proximity: a page that imports `@uniflowed/ui/switch` is a page
+    // the browser must hydrate, even though there is no scanned file for the
+    // package module itself.
+    const root = splitProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [
+        manifestModule("app/$layout.js", false),
+        manifestModule("app/$page.js", true),
+        manifestModule("app/counter/$page.js", false),
+      ],
+      clientBoundaries: [
+        {
+          importer: "app/$page.js",
+          target: { kind: "package", specifier: "@uniflowed/ui/switch" },
+        },
+      ],
+      clientBundleRoots: [{ kind: "package", specifier: "@uniflowed/ui/switch" }],
+    });
+    const shipsPage = clientRouteFilter(manifest, root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
+    expect(source).not.toContain(
+      `import(${JSON.stringify(path.join(root, "app/counter/$page.js"))})`,
+    );
+  });
+
   it("ships a page the analysis never saw", () => {
     // `.mdx` is a page and is not `.js`, so it is in no manifest. The honest
     // reading of a module uf did not analyse is that it might reach a
