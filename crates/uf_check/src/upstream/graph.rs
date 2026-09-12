@@ -211,43 +211,29 @@ impl<'a> Graph<'a> {
     }
 
     /// The specifiers the `index`th file imports that resolved to nothing
-    /// typed.
+    /// typed, and whether each one was a host-conditional package export.
     ///
     /// Only a file that has a signature contributes: one that did not parse or
     /// said `@noflow` is never checked, so its imports are never resolved, and
     /// naming a hole nobody looked through would be a report of something that
     /// did not happen.
-    pub(super) fn untyped(&self, index: usize) -> Vec<CompactString> {
-        if self.facts[index].signature.is_none() {
-            return Vec::new();
-        }
+    pub(super) fn untyped_specifiers(
+        &self,
+        index: usize,
+    ) -> impl Iterator<Item = (&CompactString, bool)> {
+        let contributes = self.facts[index].signature.is_some();
         self.facts[index]
             .requires
             .iter()
             .zip(self.resolutions(index))
-            .filter(|(_, resolution)| {
-                matches!(
-                    **resolution,
-                    Resolution::HostConditional | Resolution::Untyped
-                )
+            .filter_map(move |(require, resolution)| {
+                contributes.then_some(())?;
+                match resolution {
+                    Resolution::HostConditional => Some((&require.specifier, true)),
+                    Resolution::Untyped => Some((&require.specifier, false)),
+                    Resolution::Module(_) | Resolution::Declared => None,
+                }
             })
-            .map(|(require, _)| require.specifier.clone())
-            .collect()
-    }
-
-    /// The specifiers that stayed untyped because their `exports` map only
-    /// resolved for a concrete host.
-    pub(super) fn host_conditional(&self, index: usize) -> Vec<CompactString> {
-        if self.facts[index].signature.is_none() {
-            return Vec::new();
-        }
-        self.facts[index]
-            .requires
-            .iter()
-            .zip(self.resolutions(index))
-            .filter(|(_, resolution)| **resolution == Resolution::HostConditional)
-            .map(|(require, _)| require.specifier.clone())
-            .collect()
     }
 }
 
@@ -358,6 +344,44 @@ mod tests {
                 assert_eq!(resolutions, &[Resolution::Module(index + 1)]);
             }
         }
+        modules.release();
+    }
+
+    #[test]
+    fn graph_reports_untyped_specifiers_without_intermediate_lists() {
+        let limits = CheckLimits::default().without_timeout();
+        let paths = ["app.js".to_owned()];
+        let texts = ["// @flow\nimport value from \"missing\";\n".to_owned()];
+        let sources = [Source::new(paths[0].as_str(), texts[0].as_str())];
+        let facts = [ModuleFacts {
+            signature: Some([1; 32]),
+            requires: vec![
+                CachedRequire {
+                    specifier: "react".to_compact_string(),
+                    declared: true,
+                },
+                CachedRequire {
+                    specifier: "missing".to_compact_string(),
+                    declared: false,
+                },
+            ],
+            skipped: false,
+        }];
+        let modules = ProjectModules::new(
+            &sources,
+            super::super::options::options(&limits),
+            None,
+            &limits,
+        );
+
+        let graph = Graph::new(vec![paths[0].as_str()], &facts, &modules);
+
+        let untyped: Vec<_> = graph
+            .untyped_specifiers(0)
+            .map(|(specifier, host_conditional)| (specifier.as_str(), host_conditional))
+            .collect();
+        assert_eq!(untyped, [("missing", false)]);
+
         modules.release();
     }
 }

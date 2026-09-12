@@ -129,10 +129,10 @@ type ModuleThunk =
 
 /// One file's signature: everything the merge needs, and nothing else.
 ///
-/// The AST is deliberately not kept. A dependency is merged from its signature,
-/// so once the signature is packed the tree it came from is dead weight — and a
-/// batch is a whole project, where holding every AST at once is the difference
-/// between a checker that scales and one that does not.
+/// The AST is deliberately not kept in the signature. A dependency is merged
+/// from its signature, so once the signature is packed the tree it came from is
+/// dead weight — and a batch is a whole project, where holding every AST at
+/// once is the difference between a checker that scales and one that does not.
 struct Signature {
     file_key: FileKey,
     metadata: Metadata,
@@ -192,6 +192,9 @@ pub(super) struct ProjectModules {
     /// its own component — so the batch keeps its own map, which is what
     /// `flow_cli`'s own `make_loc_of_aloc` does with the heap.
     aloc_tables: RefCell<HashMap<FileKey, LazyALocTable>>,
+    /// The parsed file from the facts pass, retained only for a one-file
+    /// batch so `check_source` and editor-style checks do not parse it twice.
+    parsed_for_check: RefCell<Option<(usize, Rc<parse::Parsed>)>>,
 }
 
 impl ProjectModules {
@@ -217,6 +220,7 @@ impl ProjectModules {
             merged: RefCell::new(HashMap::new()),
             probe: RefCell::new(None),
             aloc_tables: RefCell::new(HashMap::new()),
+            parsed_for_check: RefCell::new(None),
         }
     }
 
@@ -268,6 +272,19 @@ impl ProjectModules {
         self.aloc_tables.borrow().clone()
     }
 
+    /// The parsed file saved for inference in a one-file batch.
+    pub(super) fn take_parsed_for_check(&self, index: usize) -> Option<Rc<parse::Parsed>> {
+        let saved = self.parsed_for_check.borrow_mut().take();
+        match saved {
+            Some((saved_index, parsed)) if saved_index == index => Some(parsed),
+            Some(saved) => {
+                *self.parsed_for_check.borrow_mut() = Some(saved);
+                None
+            }
+            None => None,
+        }
+    }
+
     /// Everything a cache key needs to know about the `index`th source.
     ///
     /// Parses the file, packs its signature — leaving it where the check phase
@@ -284,7 +301,10 @@ impl ProjectModules {
         profile_span!("check::module_facts");
         let (path, source) = &self.sources[index];
         let file_key = FileKey::new(FileKeyInner::SourceFile(path.to_string()));
-        let parsed = parse::parse_file(file_key, source, &self.options, false);
+        let parsed = Rc::new(parse::parse_file(file_key, source, &self.options, false));
+        if self.sources.len() == 1 {
+            *self.parsed_for_check.borrow_mut() = Some((index, parsed.dupe()));
+        }
         // The one place the batch decides what "skipped" means, because a file
         // answered from the cache is never parsed again and has to be counted
         // the same way as one that was: `@noflow` is skipped, and a file that
@@ -430,6 +450,7 @@ impl ProjectModules {
             probe.post_inference_cleanup();
         }
         self.signatures.borrow_mut().clear();
+        self.parsed_for_check.borrow_mut().take();
         self.mk_builtins.borrow_mut().take();
     }
 
