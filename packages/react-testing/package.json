@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/react-testing",
-  "version": "0.0.0-alpha.31",
+  "version": "0.0.0-alpha.32",
   "description": "React Testing Library over a real DOM, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -23,8 +23,8 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.31",
-    "@uniflowed/react": "0.0.0-alpha.31",
+    "@uniflowed/core": "0.0.0-alpha.32",
+    "@uniflowed/react": "0.0.0-alpha.32",
     "happy-dom": "^20.13.2"
   },
   "peerDependencies": {

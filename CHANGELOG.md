@@ -1,5 +1,29 @@
 # Changelog
 
+## uf@0.0.0-alpha.32
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add popover render escape hatch (#862)
+
+### Fixed
+
+- **router**: preserve late payload row watches (#860)
+
+### Performance
+
+- **check**: defer environment setup for parse misses (#863)
+- **lint**: gate derived state on setter bindings (#864)
+- **lint**: skip memo tree path outside compiler boundaries (#859)
+- **rsc**: cache slot client route checks (#856)
+
+### Internal
+
+- disable browser background startup services (#861)
+- widen cold browser startup budget (#857)
+
 ## uf@0.0.0-alpha.31
 
 _2026-09-12_
