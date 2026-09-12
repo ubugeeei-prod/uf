@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Seventeen modules, and what is asserted here is the property that makes each one
+// Eighteen modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -108,6 +108,18 @@ import {
 } from "@uniflowed/std/path";
 import { binarySearch, binarySearchBy, search } from "@uniflowed/std/slices";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
+import {
+  InvalidHeaderError,
+  append as appendHeader,
+  canonicalHeaderKey,
+  get as getHeader,
+  parseHeaderBlock,
+  parseHeaders,
+  remove as removeHeader,
+  set as setHeader,
+  stringifyHeaderBlock,
+  values as headerValues,
+} from "@uniflowed/std/textproto";
 import {
   Ticker,
   Timer,
@@ -1451,6 +1463,61 @@ describe("bufio", () => {
 
     expect(await scanner.scan()).toBe(true);
     expect(scanner.text()).toBe("one");
+  });
+});
+
+describe("textproto", () => {
+  it("parses canonical MIME headers, repeated values and the rest of the body", () => {
+    const block = parseHeaderBlock(
+      "content-type: text/plain\r\nx-trace: one\r\nX-Trace: two\r\n folded\r\n\r\nbody",
+    );
+
+    expect(block.rest).toBe("body");
+    expect(getHeader(block.headers, "CONTENT-TYPE")).toBe("text/plain");
+    expect(headerValues(block.headers, "x-trace")).toEqual(["one", "two folded"]);
+    expect(Object.keys(block.headers)).toEqual(["Content-Type", "X-Trace"]);
+  });
+
+  it("updates header maps immutably", () => {
+    const original = parseHeaders("accept: text/html\n\n");
+    const changed = appendHeader(
+      setHeader(original, "accept", "application/json"),
+      "accept",
+      "*/*",
+    );
+
+    expect(headerValues(original, "Accept")).toEqual(["text/html"]);
+    expect(headerValues(changed, "ACCEPT")).toEqual(["application/json", "*/*"]);
+    expect(headerValues(removeHeader(changed, "accept"), "accept")).toEqual([]);
+  });
+
+  it("treats object prototype names as ordinary header keys", () => {
+    const parsed = parseHeaders("constructor: value\n__proto__: base\n folded\n\n");
+    const changed = appendHeader(setHeader({}, "__proto__", "plain"), "constructor", "made");
+
+    expect(Object.getPrototypeOf(parsed)).toBe(null);
+    expect(getHeader(parsed, "constructor")).toBe("value");
+    expect(headerValues(parsed, "__proto__")).toEqual(["base folded"]);
+    expect(Object.getPrototypeOf(changed)).toBe(null);
+    expect(getHeader(changed, "__proto__")).toBe("plain");
+    expect(getHeader({}, "constructor")).toBe(null);
+  });
+
+  it("stringifies terminated wire header blocks", () => {
+    const headers = appendHeader(setHeader({}, "content-type", "text/plain"), "x-trace", "one");
+
+    expect(stringifyHeaderBlock(headers)).toBe("Content-Type: text/plain\r\nX-Trace: one\r\n\r\n");
+    expect(stringifyHeaderBlock(headers, { lineTerminator: "\n" })).toBe(
+      "Content-Type: text/plain\nX-Trace: one\n\n",
+    );
+  });
+
+  it("rejects malformed header blocks", () => {
+    expect(canonicalHeaderKey("content-md5")).toBe("Content-Md5");
+    expect(() => parseHeaders(" folded\r\n\r\n")).toThrow(InvalidHeaderError);
+    expect(() => parseHeaders("bad key: value\r\n\r\n")).toThrow(InvalidHeaderError);
+    expect(() => parseHeaders("ok: value\r\n \u0001folded\r\n\r\n")).toThrow(InvalidHeaderError);
+    expect(() => stringifyHeaderBlock({ Ok: ["bad\nvalue"] })).toThrow(InvalidHeaderError);
   });
 });
 

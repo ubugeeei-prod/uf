@@ -61,6 +61,18 @@ import {
 } from "../../packages/std/path.js";
 import { binarySearch, binarySearchBy, search } from "../../packages/std/slices.js";
 import { Group, Mutex, Semaphore, once } from "../../packages/std/sync.js";
+import {
+  InvalidHeaderError,
+  append as appendHeader,
+  canonicalHeaderKey,
+  get as getHeader,
+  parseHeaderBlock,
+  parseHeaders,
+  set as setHeader,
+  stringifyHeaderBlock,
+  values as headerValues,
+} from "../../packages/std/textproto.js";
+import type { HeaderMap } from "../../packages/std/textproto.js";
 import { Duration, Ticker, Timer, after, milliseconds, seconds } from "../../packages/std/time.js";
 
 class HttpError extends Error {
@@ -271,6 +283,23 @@ const tokenTooLong = new TokenTooLongError(1024);
 // expect: number is incompatible with string
 export const bufioTokenLimitIsNumeric: string = tokenTooLong.limit;
 
+// --- textproto --------------------------------------------------------------
+
+const headers = parseHeaders("x-trace: one\n\n");
+const headerError = new InvalidHeaderError("bad", 2, 3);
+
+// expect: 1 is incompatible with string
+export const textprotoKeyNeedsText: mixed = canonicalHeaderKey(1);
+
+// expect: "" is incompatible with number
+export const textprotoGetAnswersText: number = getHeader(headers, "x-trace") ?? "";
+
+// expect: 1 is incompatible with string
+export const textprotoSetValueNeedsText: mixed = setHeader(headers, "x-trace", 1);
+
+// expect: number is incompatible with string
+export const textprotoErrorLineIsNumeric: string = headerError.line;
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -387,6 +416,17 @@ export const bufioPeek: Promise<Uint8Array> = bufioReader.peek(1);
 export const bufioScannerBytes: Uint8Array = scanner.bytes();
 export const bufioScannerText: string = scanner.text();
 export const bufioScannerScan: Promise<boolean> = scanner.scan();
+export const textprotoHeaders: HeaderMap = headers;
+export const textprotoRest: string = parseHeaderBlock("x: y\n\nbody").rest;
+export const textprotoKey: string = canonicalHeaderKey("content-type");
+export const textprotoFirst: string | null = getHeader(headers, "x-trace");
+export const textprotoValues: $ReadOnlyArray<string> = headerValues(headers, "x-trace");
+export const textprotoChanged: HeaderMap = appendHeader(
+  setHeader(headers, "x-trace", "two"),
+  "x-trace",
+  "three",
+);
+export const textprotoBlock: string = stringifyHeaderBlock(headers);
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,
