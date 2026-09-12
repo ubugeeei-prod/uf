@@ -1090,6 +1090,10 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
                 "kind": "metro",
                 "platform": target.as_str(),
                 "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
+                "config": {
+                    "package": "@uniflowed/react-native/metro",
+                    "helper": "withUniflowedMetro"
+                },
                 "reason": "React Native builds still need a Metro/native transformer contract"
             },
         }),
@@ -1432,6 +1436,14 @@ mod tests {
             assert_eq!(
                 contract["transform"]["sourceExtensions"],
                 serde_json::json!(["js", "jsx", "mjs", "cjs"])
+            );
+            assert_eq!(
+                contract["transform"]["config"]["package"],
+                serde_json::json!("@uniflowed/react-native/metro")
+            );
+            assert_eq!(
+                contract["transform"]["config"]["helper"],
+                serde_json::json!("withUniflowedMetro")
             );
         }
     }

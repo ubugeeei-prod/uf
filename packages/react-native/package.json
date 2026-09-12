@@ -11,10 +11,12 @@
     "directory": "packages/react-native"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./metro": "./metro.js"
   },
   "files": [
     "index.js",
+    "metro.js",
     "!*.test.js"
   ],
   "peerDependencies": {
