@@ -42,7 +42,7 @@ pub struct TuiFrameworkContract {
     pub renderer: TuiRenderer,
     /// Layout engine used by boxes and components.
     pub layout: TuiLayoutEngine,
-    /// Input model used for keyboard, mouse, focus, and selection.
+    /// Input model used for keyboard, key release, mouse, focus, and selection.
     pub input: TuiInputModel,
     /// Runtime binding exposed to Flow and the uf runtime.
     pub runtime_binding: TuiRuntimeBinding,
@@ -163,9 +163,9 @@ pub enum TuiInputModel {
     /// a node at all, which is why it is a third name and not a detail of the
     /// second.
     ///
-    /// Key *release* is still not implemented — it needs the Kitty keyboard
-    /// protocol, and `KeyEvent.eventType` is always `"press"`. That is
-    /// ubugeeei-prod/uf#314.
+    /// Key press, repeat, and release events use the Kitty keyboard protocol
+    /// where a terminal supports it; legacy terminals keep reporting presses.
+    /// The other unfinished OpenTUI input behaviours remain ubugeeei-prod/uf#314.
     KeyboardMouseSelectionFocus,
 }
 

@@ -75,6 +75,17 @@ const CLEAR = "\u001b[2J\u001b[H";
 const ENABLE_PASTE = "\u001b[?2004h";
 const DISABLE_PASTE = "\u001b[?2004l";
 /**
+ * Ask terminals that understand Kitty's keyboard protocol to report all keys
+ * as `CSI u`, including repeat/release event types and associated text.
+ *
+ * The flags are pushed onto the terminal's keyboard-mode stack and popped on
+ * exit, so a shell or parent program gets back whatever mode it had before.
+ * Terminals that do not implement the protocol ignore these bytes and keep
+ * sending the legacy sequences `keys.js` already decodes.
+ */
+const ENABLE_KEYBOARD_PROTOCOL = "\u001b[>27u";
+const DISABLE_KEYBOARD_PROTOCOL = "\u001b[<u";
+/**
  * Ask the terminal to report the mouse, in the four modes that answer.
  *
  * `?1000h` turns reporting on at all — presses and releases. `?1002h` adds
@@ -356,6 +367,7 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
       (alternateScreen ? ENTER_ALTERNATE : "") +
         HIDE_CURSOR +
         ENABLE_PASTE +
+        ENABLE_KEYBOARD_PROTOCOL +
         (mouse ? ENABLE_MOUSE : "") +
         CLEAR,
     );
@@ -431,6 +443,7 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
         }
         stdout.write(
           (mouse ? DISABLE_MOUSE : "") +
+            DISABLE_KEYBOARD_PROTOCOL +
             DISABLE_PASTE +
             SHOW_CURSOR +
             (alternateScreen ? LEAVE_ALTERNATE : "\n"),

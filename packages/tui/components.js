@@ -513,6 +513,9 @@ export component Input(
 
   const onKeyDown = useCallback(
     (key: KeyEvent) => {
+      if (key.eventType === "release") {
+        return;
+      }
       if (key.name === "return") {
         if (onSubmit != null) {
           onSubmit(text);
