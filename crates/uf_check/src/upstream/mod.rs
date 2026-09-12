@@ -301,9 +301,7 @@ fn check_batch(
                 // a shape this build does not understand: dropped, not
                 // repaired, so nothing downstream reads half of it.
                 *record = None;
-                let mk_builtins = environment.mk_builtins(libs, &options)?;
-                modules.set_mk_builtins(mk_builtins);
-                facts.push(modules.facts(index));
+                facts.push(modules.facts(index, || environment.mk_builtins(libs, &options))?);
             }
         }
     }

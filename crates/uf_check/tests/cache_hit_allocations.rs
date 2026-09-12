@@ -11,7 +11,7 @@
 #![cfg(feature = "upstream-typecheck")]
 
 use tempfile::TempDir;
-use uf_check::{CheckCache, CheckLimits, Source, check_sources_cached};
+use uf_check::{CheckCache, CheckLimits, Source, check_sources_cached, prepare_builtins};
 use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
 
 #[global_allocator]
@@ -24,6 +24,10 @@ const CEILING: u64 = 20_000;
 /// Above the current cost with room for JSON and platform allocator drift, and
 /// below the old cost that rebuilt cache-key strings per file.
 const BATCH_CEILING: u64 = 4_100;
+
+/// Above the parser's own broken-file cost, below that cost plus rebuilding
+/// the per-call builtin environment.
+const PARSE_ERROR_CEILING: u64 = 500_000;
 
 #[test]
 fn a_full_cache_hit_does_not_rebuild_the_check_environment() {
@@ -90,6 +94,43 @@ fn a_full_cache_hit_reuses_dependency_walk_storage_across_the_batch() {
         delta.allocations <= BATCH_CEILING,
         "a 64-file full cache hit took {} allocations, over the {BATCH_CEILING} ceiling. \
          That usually means per-file dependency-digest storage is being allocated again.",
+        delta.allocations,
+    );
+}
+
+#[test]
+fn a_parse_error_cache_miss_does_not_build_the_check_environment() {
+    let project = TempDir::new().unwrap();
+    let cache = CheckCache::open(project.path()).expect("this process can name its own binary");
+    let limits = CheckLimits::default().without_timeout();
+    let sources = [Source::new("app.js", "// @flow\nfunction (\n")];
+
+    // Keep this test about the per-call environment, not the process-global
+    // master context that is shared after the first preparation.
+    prepare_builtins(&[]).expect("builtins prepare");
+
+    let _window = Window::open();
+    CountingAllocator::enable();
+    let before = AllocSnapshot::capture();
+    let report = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
+    let after = AllocSnapshot::capture();
+    CountingAllocator::disable();
+
+    assert_eq!(
+        report.files_from_cache, 0,
+        "there is no record for the broken edit"
+    );
+    assert!(
+        !report.diagnostics.is_empty(),
+        "the parse error should still be reported"
+    );
+
+    let delta = after.delta_from(&before);
+    assert!(
+        delta.allocations <= PARSE_ERROR_CEILING,
+        "a parse-error cache miss took {} allocations, over the {PARSE_ERROR_CEILING} ceiling. \
+         That usually means check::environment was rebuilt before the parser found there was \
+         no file to infer.",
         delta.allocations,
     );
 }
