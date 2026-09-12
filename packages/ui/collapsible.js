@@ -53,7 +53,12 @@ import * as React from "@uniflowed/react";
 import { createContext, useContext, useId, useMemo, useRef, useState } from "@uniflowed/react";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withProps, withoutComposed } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
 import { useControlled } from "./internal/controlled-state.js";
 

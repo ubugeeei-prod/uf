@@ -7143,10 +7143,7 @@ describe("Collapsible", () => {
     const clicked = fn();
     render(
       <Collapsible.Root>
-        <Collapsible.Trigger
-          onClick={clicked}
-          render={(props) => <a href="#details" {...props} />}
-        >
+        <Collapsible.Trigger onClick={clicked} render={(props) => <a href="#details" {...props} />}>
           Details
         </Collapsible.Trigger>
         <Collapsible.Content render={(props) => <section {...props} data-testid="panel" />}>
