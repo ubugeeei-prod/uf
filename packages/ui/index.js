@@ -79,11 +79,12 @@
 // makes "no copy step" a trade rather than a loss.
 //
 // **Where it is, today.** `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Menu`,
-// `ContextMenu`, `Menubar`, `Tabs`, `Switch` and `Checkbox` are complete —
+// `ContextMenu`, `Menubar`, `Tabs`, `Tooltip`, `Popover`, `HoverCard`,
+// `Switch` and `Checkbox` are complete —
 // every part of each either takes `render` or renders no element to hand over —
-// along with `Field.Control`, `Tooltip.Trigger`, `HoverCard.Trigger` and
-// `Sidebar.Item`, which had it first. The rest do not have it yet, and that is
-// the remainder of #303. A documented escape hatch that is not there is worse
+// along with `Field.Control` and `Sidebar.Item`, which had it first. The rest
+// do not have it yet, and that is the remainder of #303. A documented escape
+// hatch that is not there is worse
 // than an undocumented one that is, so the state of every part is a table in
 // `tests/library/ui.test.js` rather than a claim in this paragraph: it names
 // all of them, in three lists, and four tests hold each list to the files. A
