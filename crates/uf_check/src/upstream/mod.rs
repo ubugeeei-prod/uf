@@ -322,8 +322,12 @@ fn check_batch(
         if facts[index].skipped {
             skipped += 1;
         }
-        untyped.extend(graph.untyped(index));
-        host_conditional.extend(graph.host_conditional(index));
+        for (specifier, is_host_conditional) in graph.untyped_specifiers(index) {
+            if is_host_conditional {
+                host_conditional.insert(specifier.clone());
+            }
+            untyped.insert(specifier.clone());
+        }
 
         let dependency_digest = graph.dependency_digest(index, &mut dependencies);
         // The record is about this file; the digest says whether it is still
@@ -357,7 +361,16 @@ fn check_batch(
 
         let mk_builtins = environment.mk_builtins(libs, &options)?;
         modules.set_mk_builtins(mk_builtins.dupe());
-        match check_one(index, &options, &mk_builtins, limits, source, &modules) {
+        let parsed = modules.take_parsed_for_check(index);
+        match check_one(
+            index,
+            &options,
+            &mk_builtins,
+            limits,
+            source,
+            &modules,
+            parsed,
+        ) {
             Ok(found) => {
                 if let Some(cache) = cache {
                     // Onto whatever the record already knew, not over it: the
@@ -488,6 +501,7 @@ fn check_one(
     limits: &CheckLimits,
     source: &Source<'_>,
     modules: &Rc<ProjectModules>,
+    parsed: Option<Rc<parse::Parsed>>,
 ) -> Result<Vec<TypeDiagnostic>, CheckError> {
     // Three spans inside this one, and they partition it: on
     // `packages/router/internal/runtime.js` they account for 1,951,920 of the
@@ -499,15 +513,17 @@ fn check_one(
     // this function does — the parse, the diagnostics, the context, the
     // signature table — is the remaining 2.2%.
     profile_span!("check::infer_one");
-    let file_key = FileKey::new(FileKeyInner::SourceFile(source.path.to_owned()));
-    // The second parse of this file in a cold batch: `ProjectModules::facts`
-    // parsed it too, in the pass that describes the batch before anything is
-    // checked. Spanned so the duplicate has a number — 35,914 allocations on
-    // that module, 1.7% — rather than being an unmeasured line in a comment.
-    let parsed = {
+    // Usually the second parse of this file in a cold batch:
+    // `ProjectModules::facts` parsed it too, in the pass that describes the
+    // batch before anything is checked. A one-file batch can hand that parse
+    // through, but project-sized batches deliberately drop their ASTs after
+    // packing signatures so peak memory stays bounded by inference, not by
+    // every parsed tree in the project.
+    let parsed = parsed.unwrap_or_else(|| {
         profile_span!("check::infer_parse");
-        parse::parse_file(file_key.dupe(), source.source, options, false)
-    };
+        let file_key = FileKey::new(FileKeyInner::SourceFile(source.path.to_owned()));
+        Rc::new(parse::parse_file(file_key, source.source, options, false))
+    });
     if !parsed.is_parseable() {
         // A file that does not parse is broken whatever its docblock says, so
         // it is reported. Whether it also *counts* as checked is
@@ -522,6 +538,7 @@ fn check_one(
         return Ok(Vec::new());
     }
 
+    let file_key = parsed.file_key.dupe();
     let metadata = parsed.metadata.clone();
     let lint_severities = merge::get_lint_severities(
         &metadata,
