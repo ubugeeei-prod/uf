@@ -1,5 +1,13 @@
 # Changelog
 
+## uf@0.0.0-alpha.26
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add field render escape hatch (#820)
+
 ## uf@0.0.0-alpha.25
 
 _2026-09-12_
