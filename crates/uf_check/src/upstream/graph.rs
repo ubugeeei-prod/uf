@@ -95,6 +95,33 @@ pub(super) struct Graph<'a> {
     local: Vec<Digest>,
 }
 
+/// Reused storage for one dependency walk.
+///
+/// A batch asks for one dependency digest per source. Allocating the reached,
+/// seen and frontier buffers inside each query made a warm cache hit pay the
+/// same tiny setup cost once per file, even though the graph itself is fixed.
+pub(super) struct DependencyScratch {
+    reached: Vec<usize>,
+    seen: Vec<bool>,
+    frontier: Vec<usize>,
+}
+
+impl DependencyScratch {
+    pub(super) fn new(modules: usize) -> Self {
+        Self {
+            reached: Vec::new(),
+            seen: vec![false; modules],
+            frontier: Vec::new(),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.reached.clear();
+        self.seen.fill(false);
+        self.frontier.clear();
+    }
+}
+
 impl<'a> Graph<'a> {
     /// Resolve every import in the batch.
     pub(super) fn new(
@@ -134,19 +161,27 @@ impl<'a> Graph<'a> {
     /// that two runs that reach the same modules by different routes — which
     /// they do, because discovery order follows whichever file was checked
     /// first — agree on the digest.
-    pub(super) fn dependency_digest(&self, index: usize) -> String {
-        let mut reached = vec![index];
-        let mut seen = vec![false; self.facts.len()];
-        seen[index] = true;
-        let mut frontier = vec![index];
-        while let Some(module) = frontier.pop() {
+    pub(super) fn scratch(&self) -> DependencyScratch {
+        DependencyScratch::new(self.facts.len())
+    }
+
+    pub(super) fn dependency_digest(
+        &self,
+        index: usize,
+        scratch: &mut DependencyScratch,
+    ) -> String {
+        scratch.reset();
+        scratch.reached.push(index);
+        scratch.seen[index] = true;
+        scratch.frontier.push(index);
+        while let Some(module) = scratch.frontier.pop() {
             for resolution in &self.resolutions[module] {
                 if let Resolution::Module(next) = *resolution
-                    && !seen[next]
+                    && !scratch.seen[next]
                 {
-                    seen[next] = true;
-                    reached.push(next);
-                    frontier.push(next);
+                    scratch.seen[next] = true;
+                    scratch.reached.push(next);
+                    scratch.frontier.push(next);
                 }
             }
         }
@@ -154,10 +189,12 @@ impl<'a> Graph<'a> {
         // path and gives the first one every import, so the second can still
         // be reached as itself — and two files that sort equal must not be
         // ordered by whichever the sort happened to move.
-        reached.sort_unstable_by_key(|module| (self.paths[*module], *module));
+        scratch
+            .reached
+            .sort_unstable_by_key(|module| (self.paths[*module], *module));
 
         let mut digest = Fields::new("uf-check-dependencies-v1");
-        for module in reached {
+        for &module in &scratch.reached {
             digest.push(self.paths[module]);
             digest.push_digest(&self.local[module]);
         }
