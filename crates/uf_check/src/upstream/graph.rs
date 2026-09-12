@@ -89,8 +89,10 @@ impl Resolution {
 pub(super) struct Graph<'a> {
     paths: Vec<&'a str>,
     facts: &'a [ModuleFacts],
-    /// Per module, what each of its `requires` resolved to, in the same order.
-    resolutions: Vec<Vec<Resolution>>,
+    /// Per module, the slice of [`Self::resolutions`] that belongs to it.
+    resolution_ranges: Vec<std::ops::Range<usize>>,
+    /// What each module's `requires` resolved to, in module order.
+    resolutions: Vec<Resolution>,
     /// Per module, a digest of everything about *it* a dependent must notice.
     local: Vec<Digest>,
 }
@@ -132,29 +134,33 @@ impl<'a> Graph<'a> {
         modules: &ProjectModules,
     ) -> Self {
         profile_span!("check::graph");
-        let resolutions: Vec<Vec<Resolution>> = paths
-            .iter()
-            .zip(facts)
-            .map(|(importer, importer_facts)| {
+        let total_requires = facts.iter().map(|facts| facts.requires.len()).sum();
+        let mut resolutions = Vec::with_capacity(total_requires);
+        let mut resolution_ranges = Vec::with_capacity(facts.len());
+        let mut local = Vec::with_capacity(facts.len());
+        for (path, importer_facts) in paths.iter().zip(facts) {
+            let start = resolutions.len();
+            resolutions.extend(
                 importer_facts
                     .requires
                     .iter()
-                    .map(|require| resolve(modules, facts, importer, require))
-                    .collect()
-            })
-            .collect();
-        let local = paths
-            .iter()
-            .zip(facts)
-            .zip(&resolutions)
-            .map(|((path, facts), resolutions)| local_digest(path, facts, resolutions))
-            .collect();
+                    .map(|require| resolve(modules, facts, path, require)),
+            );
+            let end = resolutions.len();
+            resolution_ranges.push(start..end);
+            local.push(local_digest(path, importer_facts, &resolutions[start..end]));
+        }
         Self {
             paths,
             facts,
+            resolution_ranges,
             resolutions,
             local,
         }
+    }
+
+    fn resolutions(&self, index: usize) -> &[Resolution] {
+        &self.resolutions[self.resolution_ranges[index].clone()]
     }
 
     /// The digest the `index`th file's diagnostics are only valid under.
@@ -177,7 +183,7 @@ impl<'a> Graph<'a> {
         scratch.seen[index] = true;
         scratch.frontier.push(index);
         while let Some(module) = scratch.frontier.pop() {
-            for resolution in &self.resolutions[module] {
+            for resolution in self.resolutions(module) {
                 if let Resolution::Module(next) = *resolution
                     && !scratch.seen[next]
                 {
@@ -218,7 +224,7 @@ impl<'a> Graph<'a> {
         self.facts[index]
             .requires
             .iter()
-            .zip(&self.resolutions[index])
+            .zip(self.resolutions(index))
             .filter(|(_, resolution)| {
                 matches!(
                     **resolution,
@@ -238,7 +244,7 @@ impl<'a> Graph<'a> {
         self.facts[index]
             .requires
             .iter()
-            .zip(&self.resolutions[index])
+            .zip(self.resolutions(index))
             .filter(|(_, resolution)| **resolution == Resolution::HostConditional)
             .map(|(require, _)| require.specifier.clone())
             .collect()
@@ -292,4 +298,66 @@ fn local_digest(path: &str, facts: &ModuleFacts, resolutions: &[Resolution]) -> 
         digest.push(resolution.mark());
     }
     digest.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use compact_str::ToCompactString;
+
+    use super::*;
+    use crate::{CheckLimits, Source};
+
+    #[test]
+    fn graph_keeps_resolutions_in_one_flat_buffer() {
+        const MODULES: usize = 32;
+
+        let limits = CheckLimits::default().without_timeout();
+        let paths: Vec<String> = (0..MODULES)
+            .map(|index| format!("module{index}.js"))
+            .collect();
+        let texts: Vec<String> = (0..MODULES).map(|_| "// @flow\n".to_owned()).collect();
+        let sources: Vec<Source<'_>> = paths
+            .iter()
+            .zip(&texts)
+            .map(|(path, source)| Source::new(path, source))
+            .collect();
+        let facts: Vec<ModuleFacts> = (0..MODULES)
+            .map(|index| {
+                let requires = if index + 1 == MODULES {
+                    Vec::new()
+                } else {
+                    vec![CachedRequire {
+                        specifier: format!("./module{}.js", index + 1).to_compact_string(),
+                        declared: false,
+                    }]
+                };
+                ModuleFacts {
+                    signature: Some([1; 32]),
+                    requires,
+                    skipped: false,
+                }
+            })
+            .collect();
+        let modules = ProjectModules::new(
+            &sources,
+            super::super::options::options(&limits),
+            None,
+            &limits,
+        );
+
+        let graph = Graph::new(paths.iter().map(String::as_str).collect(), &facts, &modules);
+
+        assert_eq!(graph.resolutions.len(), MODULES - 1);
+        assert_eq!(graph.resolutions.capacity(), MODULES - 1);
+        assert_eq!(graph.resolution_ranges.len(), MODULES);
+        for index in 0..MODULES {
+            let resolutions = graph.resolutions(index);
+            if index + 1 == MODULES {
+                assert!(resolutions.is_empty());
+            } else {
+                assert_eq!(resolutions, &[Resolution::Module(index + 1)]);
+            }
+        }
+        modules.release();
+    }
 }
