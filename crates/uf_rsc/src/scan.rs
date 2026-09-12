@@ -204,6 +204,15 @@ impl ExportKind {
 pub struct ModuleExport {
     /// Exported name; `default` for a default export.
     pub name: CompactString,
+    /// Local declaration name when it differs from the exported name.
+    ///
+    /// `export default function Page()` exports `default`, but the body owner
+    /// recorded for hooks and client APIs is `Page`. `export { useTheme as
+    /// useAppTheme }` has the same split. Consumers that match a body back to an
+    /// export must use this when it is present, while import resolution must keep
+    /// using [`name`](Self::name).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<CompactString>,
     /// Shape of the exported binding.
     pub kind: ExportKind,
     /// 1-based line the export was declared on.

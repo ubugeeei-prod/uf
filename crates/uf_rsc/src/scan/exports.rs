@@ -49,26 +49,48 @@ fn collect_export(
     if next.is_punct(b'{') {
         let re_export = find_from_clause(source, tokens, position).is_some();
         let mut at = position + 2;
-        let mut pending: Option<&Token> = None;
+        let mut local: Option<&Token> = None;
+        let mut exported: Option<&Token> = None;
         while at < tokens.len() && !tokens[at].is_punct(b'}') {
             let token = &tokens[at];
+            if token.is_punct(b',') {
+                if let Some(exported) = exported.take() {
+                    push_named_export(
+                        source,
+                        local.unwrap_or(exported),
+                        exported,
+                        line,
+                        re_export,
+                        locals,
+                        exports,
+                    );
+                }
+                local = None;
+                at += 1;
+                continue;
+            }
             if token.kind == TokenKind::Ident {
                 if token.text(source) == "as" {
-                    pending = None;
                     at += 1;
                     continue;
                 }
-                pending = Some(token);
-            }
-            if token.is_punct(b',')
-                && let Some(name) = pending.take()
-            {
-                push_named_export(source, name, line, re_export, locals, exports);
+                if local.is_none() {
+                    local = Some(token);
+                }
+                exported = Some(token);
             }
             at += 1;
         }
-        if let Some(name) = pending.take() {
-            push_named_export(source, name, line, re_export, locals, exports);
+        if let Some(exported) = exported.take() {
+            push_named_export(
+                source,
+                local.unwrap_or(exported),
+                exported,
+                line,
+                re_export,
+                locals,
+                exports,
+            );
         }
         return;
     }
@@ -80,8 +102,11 @@ fn collect_export(
     match next.text(source) {
         "default" => {
             let kind = initializer_kind(source, tokens, position + 2);
+            let local = default_declaration_name(source, tokens, position + 2)
+                .filter(|local| local != "default");
             exports.push(ModuleExport {
                 name: CompactString::const_new("default"),
+                local,
                 kind,
                 line,
             });
@@ -91,6 +116,7 @@ fn collect_export(
             if let Some(name) = declaration_name(source, tokens, position + 3) {
                 exports.push(ModuleExport {
                     name,
+                    local: None,
                     kind: ExportKind::AsyncFunction,
                     line,
                 });
@@ -100,6 +126,7 @@ fn collect_export(
             if let Some(name) = declaration_name(source, tokens, position + 2) {
                 exports.push(ModuleExport {
                     name,
+                    local: None,
                     kind: ExportKind::SyncFunction,
                     line,
                 });
@@ -109,6 +136,7 @@ fn collect_export(
             if let Some(name) = declaration_name(source, tokens, position + 2) {
                 exports.push(ModuleExport {
                     name,
+                    local: None,
                     kind: ExportKind::Class,
                     line,
                 });
@@ -123,23 +151,26 @@ fn collect_export(
 
 fn push_named_export(
     source: &str,
-    name: &Token,
+    local: &Token,
+    exported: &Token,
     line: u32,
     re_export: bool,
     locals: &[(CompactString, ExportKind)],
     exports: &mut ExportList,
 ) {
-    let text = name.text(source);
+    let local_text = local.text(source);
+    let exported_text = exported.text(source);
     let kind = if re_export {
         ExportKind::ReExport
     } else {
         locals
             .iter()
-            .find(|(local, _)| local == text)
+            .find(|(local, _)| local == local_text)
             .map_or(ExportKind::Value, |(_, kind)| *kind)
     };
     exports.push(ModuleExport {
-        name: CompactString::from(text),
+        name: CompactString::from(exported_text),
+        local: (!re_export && local_text != exported_text).then(|| CompactString::from(local_text)),
         kind,
         line,
     });
@@ -148,6 +179,24 @@ fn push_named_export(
 fn declaration_name(source: &str, tokens: &[Token], position: usize) -> Option<CompactString> {
     let token = tokens.get(position)?;
     (token.kind == TokenKind::Ident).then(|| CompactString::from(token.text(source)))
+}
+
+fn default_declaration_name(
+    source: &str,
+    tokens: &[Token],
+    position: usize,
+) -> Option<CompactString> {
+    let token = tokens.get(position)?;
+    if token.kind != TokenKind::Ident {
+        return None;
+    }
+    match token.text(source) {
+        "async" => declaration_name(source, tokens, position + 2),
+        "function" | "hook" | "component" | "class" => {
+            declaration_name(source, tokens, position + 1)
+        }
+        _ => None,
+    }
 }
 
 /// Walk the declarators of a `const a = 1, b = 2;` statement.
@@ -195,7 +244,12 @@ fn collect_declarators(
             cursor += 1;
         }
 
-        exports.push(ModuleExport { name, kind, line });
+        exports.push(ModuleExport {
+            name,
+            local: None,
+            kind,
+            line,
+        });
 
         match tokens.get(cursor) {
             Some(token) if token.is_punct(b',') => at = cursor + 1,

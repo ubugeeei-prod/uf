@@ -337,7 +337,183 @@ fn the_one_server_safe_hook_is_not_reported_as_client_only() {
         "{:#?}",
         graph.diagnostics()
     );
+    assert!(
+        !graph
+            .diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.rule() == "rsc/unclassified-hook-in-server"),
+        "{:#?}",
+        graph.diagnostics()
+    );
     assert!(!graph.has_errors(), "{:#?}", graph.diagnostics());
+}
+
+/// The first half of ubugeeei-prod/uf#388: a hook the project wrote can be
+/// decided once the graph knows which export owns the body and which import
+/// binding a call names.
+#[test]
+fn a_project_hook_wrapping_a_client_api_is_decided() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/hooks.js",
+        "export hook useTheme() {\n  const [theme] = useState(\"system\");\n  return theme;\n}\n",
+    );
+    builder.add_source(
+        "app/page.js",
+        "import { useTheme as useAppTheme } from \"./hooks.js\";\n\
+         export default function Page() { return useAppTheme(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let diagnostic = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.rule() == "rsc/client-only-hook-in-server"
+                && diagnostic.module().as_str() == "app/page.js"
+        })
+        .unwrap_or_else(|| panic!("the page call stayed undecided: {:#?}", graph.diagnostics()));
+    let message = diagnostic.to_string();
+    assert!(message.contains("useAppTheme"), "{message}");
+    assert!(
+        message.contains("project module `app/hooks.js`"),
+        "{message}"
+    );
+    assert!(
+        !graph.diagnostics().iter().any(|diagnostic| {
+            diagnostic.rule() == "rsc/unclassified-hook-in-server"
+                && diagnostic.module().as_str() == "app/page.js"
+        }),
+        "decided and asked about at once: {:#?}",
+        graph.diagnostics()
+    );
+}
+
+/// Default-exported declarations still have a local body name, and the graph
+/// must use that name for owner matching while keeping `default` for imports.
+#[test]
+fn a_default_exported_project_hook_wrapping_a_client_api_is_decided() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/hooks.js",
+        "export default function useTheme() {\n  const [theme] = useState(\"system\");\n  return theme;\n}\n",
+    );
+    builder.add_source(
+        "app/page.js",
+        "import useTheme from \"./hooks.js\";\n\
+         export default function Page() { return useTheme(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let diagnostic = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.rule() == "rsc/client-only-hook-in-server"
+                && diagnostic.module().as_str() == "app/page.js"
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "the default hook call stayed undecided or server-safe: {:#?}",
+                graph.diagnostics()
+            )
+        });
+    let message = diagnostic.to_string();
+    assert!(message.contains("useTheme"), "{message}");
+    assert!(
+        message.contains("project module `app/hooks.js`"),
+        "{message}"
+    );
+}
+
+/// `export { local as exported }` has the same split without `default`.
+#[test]
+fn an_aliased_project_hook_wrapping_a_client_api_is_decided() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/hooks.js",
+        "function useTheme() {\n  useEffect(() => {});\n}\nexport { useTheme as useAppTheme };\n",
+    );
+    builder.add_source(
+        "app/page.js",
+        "import { useAppTheme } from \"./hooks.js\";\n\
+         export default function Page() { return useAppTheme(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(
+        graph.diagnostics().iter().any(|diagnostic| {
+            diagnostic.rule() == "rsc/client-only-hook-in-server"
+                && diagnostic.module().as_str() == "app/page.js"
+        }),
+        "{:#?}",
+        graph.diagnostics()
+    );
+}
+
+/// The other verdict matters too: a project hook whose body the graph checked
+/// and found server-safe is no longer reported as "uf cannot say".
+#[test]
+fn a_project_hook_that_stays_server_safe_is_not_a_question() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/hooks.js",
+        "export hook useServerClock() { return Date.now(); }\n",
+    );
+    builder.add_source(
+        "app/page.js",
+        "import { useServerClock } from \"./hooks.js\";\n\
+         export default function Page() { return useServerClock(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert!(graph.diagnostics().is_empty(), "{:#?}", graph.diagnostics());
+}
+
+/// Re-export barrels are part of the same export graph; otherwise the call site
+/// that imports from the barrel would fall back to the old warning.
+#[test]
+fn a_reexported_project_hook_carries_its_client_only_verdict() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/theme.js",
+        "export hook useTheme() {\n  useEffect(() => {});\n}\n",
+    );
+    builder.add_source(
+        "app/hooks.js",
+        "export { useTheme as useAppTheme } from \"./theme.js\";\n",
+    );
+    builder.add_source(
+        "app/page.js",
+        "import { useAppTheme } from \"./hooks.js\";\n\
+         export default function Page() { useAppTheme(); }",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let diagnostic = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.rule() == "rsc/client-only-hook-in-server"
+                && diagnostic.module().as_str() == "app/page.js"
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "the barrel call stayed undecided: {:#?}",
+                graph.diagnostics()
+            )
+        });
+    assert!(
+        diagnostic
+            .to_string()
+            .contains("project module `app/hooks.js`"),
+        "{diagnostic}"
+    );
 }
 
 /// The import is what attributes the name, so a module that does not import

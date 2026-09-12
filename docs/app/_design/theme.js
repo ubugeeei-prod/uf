@@ -18,20 +18,8 @@
 
 import { useEffect, useState } from "@uniflowed/react";
 
-export type Theme = "system" | "light" | "dark";
-
-const STORAGE_KEY = "uf-docs-theme";
-
-/**
- * The script that runs before first paint.
- *
- * It has to be inline and synchronous: a stored dark preference applied after
- * the first frame is a white flash, and there is no CSS that can express
- * "read localStorage". Kept to one statement so it can be inlined safely.
- */
-export const themeBootstrap: string =
-  `try{var t=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});` +
-  `if(t==="dark"||t==="light")document.documentElement.dataset.theme=t}catch(e){}`;
+import { nextTheme, STORAGE_KEY, themeLabel } from "./theme-static.js";
+import type { Theme } from "./theme-static.js";
 
 /**
  * The current theme and a way to change it.
@@ -65,22 +53,14 @@ export hook useTheme(): [Theme, (next: Theme) => void] {
   return [theme, choose];
 }
 
-/** The theme after this one, cycling system → light → dark → system. */
-export function nextTheme(theme: Theme): Theme {
-  return match (theme) {
-    "system" => "light",
-    "light" => "dark",
-    "dark" => "system",
-  };
-}
+export component ThemeToggle() {
+  const [theme, setTheme] = useTheme();
 
-/** What the toggle should say it will do. */
-export function themeLabel(theme: Theme): string {
-  return match (theme) {
-    "system" => "Theme: system",
-    "light" => "Theme: light",
-    "dark" => "Theme: dark",
-  };
+  return (
+    <button className="theme-toggle" type="button" onClick={() => setTheme(nextTheme(theme))}>
+      {themeLabel(theme)}
+    </button>
+  );
 }
 
 function stored(): Theme {
@@ -97,6 +77,9 @@ function stored(): Theme {
 
 function apply(theme: Theme): void {
   const root = document.documentElement;
+  if (root == null) {
+    return;
+  }
   if (theme === "system") {
     delete root.dataset.theme;
   } else {

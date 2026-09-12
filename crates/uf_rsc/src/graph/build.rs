@@ -9,12 +9,13 @@
 use std::collections::VecDeque;
 
 use camino::Utf8PathBuf;
-use uf_infra::{FxHashMap, InlineVec};
+use compact_str::CompactString;
+use uf_infra::{FxHashMap, FxHashSet, InlineVec};
 
 use crate::directive::ModuleEnvironment;
-use crate::scan::ImportSpecifier;
+use crate::scan::{ExportKind, HookCall, ImportKind, ImportSpecifier};
 
-use super::diagnostic::RscDiagnostic;
+use super::diagnostic::{ClientOnlyHookOrigin, RscDiagnostic};
 use super::report::{report_client_graph_leaks, report_module_diagnostics};
 use super::resolve::{
     SpecifierResolution, is_inside_project, normalize_module_path, resolve_candidates,
@@ -22,7 +23,8 @@ use super::resolve::{
 };
 use super::{
     ClientBoundary, ClientBoundaryProximity, ClientBoundaryTarget, EntryKind, ModuleId,
-    ModuleReachability, RscGraph, RscModule, RscModuleInput,
+    ModuleReachability, RscGraph, RscModule, RscModuleInput, is_client_only_hook_package,
+    package_hook_server_component_safe,
 };
 
 /// Collects modules and entries, then resolves them into an [`RscGraph`].
@@ -97,19 +99,22 @@ impl RscGraphBuilder {
         let boundaries = collect_boundaries(&resolved, &environments, &server_seen);
         let proximity = compute_proximity(&resolved, &boundaries);
         let bundle_roots = collect_bundle_roots(&boundaries, &entries, &index, &environments);
+        let hook_classifications = HookClassifications::new(&modules, &resolved);
 
         let mut graph_modules = Vec::with_capacity(modules.len());
-        for (position, module) in modules.into_iter().enumerate() {
+        for (position, module) in modules.iter().enumerate() {
             let reachability =
                 ModuleReachability::from_colours(server_seen[position], client_seen[position]);
             report_module_diagnostics(
-                &module,
+                module,
+                ModuleId(position as u32),
                 reachability,
-                &resolved[position].external,
+                &resolved[position],
+                &hook_classifications,
                 &mut diagnostics,
             );
             graph_modules.push(RscModule {
-                path: module.path,
+                path: module.path.clone(),
                 environment: module.environment,
                 reachability,
                 proximity: proximity[position],
@@ -119,8 +124,8 @@ impl RscGraphBuilder {
                     .iter()
                     .map(|import| import.specifier.clone())
                     .collect(),
-                exports: module.exports,
-                function_actions: module.function_actions,
+                exports: module.exports.clone(),
+                function_actions: module.function_actions.clone(),
             });
         }
 
@@ -149,7 +154,15 @@ impl RscGraphBuilder {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ResolvedImports {
     pub(crate) imports: InlineVec<ModuleId, 8>,
+    pub(crate) resolved: Vec<ResolvedModuleImport>,
     pub(crate) external: Vec<ImportSpecifier>,
+}
+
+/// One import clause resolved to a module in the graph.
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedModuleImport {
+    pub(crate) import: ImportSpecifier,
+    pub(crate) target: ModuleId,
 }
 
 fn resolve_edges(
@@ -169,6 +182,10 @@ fn resolve_edges(
                             if !edges.imports.contains(&id) {
                                 edges.imports.push(id);
                             }
+                            edges.resolved.push(ResolvedModuleImport {
+                                import: import.clone(),
+                                target: id,
+                            });
                         }
                         None => edges.external.push(import.clone()),
                     }
@@ -191,6 +208,379 @@ fn resolve_edges(
     }
 
     resolved
+}
+
+/// One exported function or re-export the hook fixpoint can classify.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ExportKey {
+    module: ModuleId,
+    name: CompactString,
+}
+
+/// Verdict for one hook call in a server-reachable module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HookCallVerdict {
+    /// The hook resolves to an export that only runs in the browser.
+    ClientOnly(ClientOnlyHookOrigin),
+    /// The hook resolves to an export whose body was checked and found safe.
+    ServerSafe,
+    /// The graph cannot see enough to decide.
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExportStatus {
+    ClientOnly,
+    ServerSafe,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HookDependency {
+    PackageClientOnly,
+    PackageServerSafe,
+    Project(ExportKey),
+    Unknown,
+}
+
+/// Client-only and unknown project hook exports.
+///
+/// Function exports start as classified: the scanner saw their body and can
+/// decide whether that body directly reaches a client-only API. A body that
+/// calls an unknown hook stays unknown; a body that calls another project hook
+/// follows the edge until either a client-only export or an unknown edge is
+/// found. Re-exported hooks join the same graph through their `export { ... }
+/// from` binding.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HookClassifications {
+    candidates: FxHashSet<ExportKey>,
+    client_only: FxHashSet<ExportKey>,
+    unknown: FxHashSet<ExportKey>,
+    module_paths: Vec<Utf8PathBuf>,
+}
+
+impl HookClassifications {
+    fn new(modules: &[RscModuleInput], resolved: &[ResolvedImports]) -> Self {
+        let mut candidates = FxHashSet::default();
+        for (position, module) in modules.iter().enumerate() {
+            let module_id = ModuleId(position as u32);
+            for export in &module.exports {
+                if matches!(export.kind, ExportKind::ReExport) || export.kind.is_function() {
+                    candidates.insert(ExportKey {
+                        module: module_id,
+                        name: export.name.clone(),
+                    });
+                }
+            }
+        }
+
+        let mut direct_client = FxHashSet::default();
+        let mut direct_unknown = FxHashSet::default();
+        let mut edges = Vec::new();
+
+        for (position, module) in modules.iter().enumerate() {
+            let module_id = ModuleId(position as u32);
+            let mut collector = HookDependencyCollector {
+                module,
+                module_id,
+                candidates: &candidates,
+                resolved: &resolved[position],
+                direct_client: &mut direct_client,
+                direct_unknown: &mut direct_unknown,
+                edges: &mut edges,
+            };
+            for export in &module.exports {
+                let source = ExportKey {
+                    module: module_id,
+                    name: export.name.clone(),
+                };
+                if !collector.is_candidate(&source) {
+                    continue;
+                }
+
+                if export.kind.is_function() {
+                    let owner = export.local.as_ref().unwrap_or(&export.name);
+                    collector.collect_function(&source, owner);
+                }
+
+                if matches!(export.kind, ExportKind::ReExport) {
+                    collector.collect_reexport(&source);
+                }
+            }
+        }
+
+        let mut client_only = direct_client;
+        loop {
+            let mut changed = false;
+            for (source, target) in &edges {
+                if client_only.contains(target) && client_only.insert(source.clone()) {
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        let mut unknown = direct_unknown;
+        loop {
+            let mut changed = false;
+            for (source, target) in &edges {
+                if !client_only.contains(target)
+                    && unknown.contains(target)
+                    && unknown.insert(source.clone())
+                {
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        Self {
+            candidates,
+            client_only,
+            unknown,
+            module_paths: modules.iter().map(|module| module.path.clone()).collect(),
+        }
+    }
+
+    pub(crate) fn call_verdict(
+        &self,
+        module: ModuleId,
+        call: &HookCall,
+        resolved: &ResolvedImports,
+    ) -> HookCallVerdict {
+        match package_hook_dependency(&call.name, &resolved.external) {
+            Some(HookDependency::PackageClientOnly) => {
+                return HookCallVerdict::ClientOnly(ClientOnlyHookOrigin::Package(
+                    CompactString::from(super::CLIENT_ONLY_HOOK_PACKAGE),
+                ));
+            }
+            Some(HookDependency::PackageServerSafe) => return HookCallVerdict::ServerSafe,
+            Some(HookDependency::Unknown) => return HookCallVerdict::Unknown,
+            Some(HookDependency::Project(_)) | None => {}
+        }
+
+        match project_hook_dependency(module, &call.name, resolved, &self.candidates) {
+            HookDependency::Project(target) => self.export_verdict(target),
+            HookDependency::Unknown => HookCallVerdict::Unknown,
+            HookDependency::PackageClientOnly | HookDependency::PackageServerSafe => {
+                unreachable!("project dependency only")
+            }
+        }
+    }
+
+    fn export_verdict(&self, key: ExportKey) -> HookCallVerdict {
+        match self.export_status(&key) {
+            Some(ExportStatus::ClientOnly) => {
+                let path = self.module_paths[key.module.index()].clone();
+                HookCallVerdict::ClientOnly(ClientOnlyHookOrigin::Module(path))
+            }
+            Some(ExportStatus::ServerSafe) => HookCallVerdict::ServerSafe,
+            Some(ExportStatus::Unknown) | None => HookCallVerdict::Unknown,
+        }
+    }
+
+    fn export_status(&self, key: &ExportKey) -> Option<ExportStatus> {
+        if !self.candidates.contains(key) {
+            return None;
+        }
+        if self.client_only.contains(key) {
+            return Some(ExportStatus::ClientOnly);
+        }
+        if self.unknown.contains(key) {
+            return Some(ExportStatus::Unknown);
+        }
+        Some(ExportStatus::ServerSafe)
+    }
+}
+
+struct HookDependencyCollector<'a> {
+    module: &'a RscModuleInput,
+    module_id: ModuleId,
+    candidates: &'a FxHashSet<ExportKey>,
+    resolved: &'a ResolvedImports,
+    direct_client: &'a mut FxHashSet<ExportKey>,
+    direct_unknown: &'a mut FxHashSet<ExportKey>,
+    edges: &'a mut Vec<(ExportKey, ExportKey)>,
+}
+
+impl HookDependencyCollector<'_> {
+    fn is_candidate(&self, source: &ExportKey) -> bool {
+        self.candidates.contains(source)
+    }
+
+    fn collect_function(&mut self, source: &ExportKey, owner: &str) {
+        if self
+            .module
+            .client_api_uses
+            .iter()
+            .any(|use_site| use_site.owner.as_deref() == Some(owner))
+        {
+            self.direct_client.insert(source.clone());
+        }
+
+        for call in self
+            .module
+            .hook_calls
+            .iter()
+            .filter(|call| call.owner.as_deref() == Some(owner))
+        {
+            if let Some(dependency) = package_hook_dependency(&call.name, &self.resolved.external) {
+                match dependency {
+                    HookDependency::PackageClientOnly => {
+                        self.direct_client.insert(source.clone());
+                    }
+                    HookDependency::PackageServerSafe => {}
+                    HookDependency::Unknown => {
+                        self.direct_unknown.insert(source.clone());
+                    }
+                    HookDependency::Project(_) => unreachable!("package dependency only"),
+                }
+                continue;
+            }
+
+            match project_hook_dependency(
+                self.module_id,
+                &call.name,
+                self.resolved,
+                self.candidates,
+            ) {
+                HookDependency::Project(target) => self.edges.push((source.clone(), target)),
+                HookDependency::Unknown => {
+                    self.direct_unknown.insert(source.clone());
+                }
+                HookDependency::PackageClientOnly | HookDependency::PackageServerSafe => {
+                    unreachable!("project dependency only")
+                }
+            }
+        }
+    }
+
+    fn collect_reexport(&mut self, source: &ExportKey) {
+        let mut found = false;
+        for import in self
+            .resolved
+            .resolved
+            .iter()
+            .filter(|import| import.import.kind == ImportKind::ReExport)
+        {
+            for binding in &import.import.bindings {
+                if binding.local != source.name {
+                    continue;
+                }
+                found = true;
+                let Some(name) = binding.imported.as_export_name() else {
+                    self.direct_unknown.insert(source.clone());
+                    continue;
+                };
+                let target = ExportKey {
+                    module: import.target,
+                    name: CompactString::from(name),
+                };
+                if self.candidates.contains(&target) {
+                    self.edges.push((source.clone(), target));
+                } else {
+                    self.direct_unknown.insert(source.clone());
+                }
+            }
+        }
+        for import in self.resolved.external.iter().filter(|import| {
+            import.kind == ImportKind::ReExport && is_client_only_hook_package(&import.specifier)
+        }) {
+            for binding in &import.bindings {
+                if binding.local != source.name {
+                    continue;
+                }
+                found = true;
+                let Some(imported) = binding.imported.as_export_name() else {
+                    self.direct_unknown.insert(source.clone());
+                    continue;
+                };
+                match package_hook_server_component_safe(imported) {
+                    Some(true) => {}
+                    Some(false) => {
+                        self.direct_client.insert(source.clone());
+                    }
+                    None => {
+                        self.direct_unknown.insert(source.clone());
+                    }
+                }
+            }
+        }
+        if !found {
+            self.direct_unknown.insert(source.clone());
+        }
+    }
+}
+
+fn package_hook_dependency(hook: &str, imports: &[ImportSpecifier]) -> Option<HookDependency> {
+    for import in imports
+        .iter()
+        .filter(|import| is_client_only_hook_package(&import.specifier))
+    {
+        for binding in &import.bindings {
+            if binding.local != hook {
+                continue;
+            }
+            let Some(imported) = binding.imported.as_export_name() else {
+                return Some(HookDependency::Unknown);
+            };
+            return Some(match package_hook_server_component_safe(imported) {
+                Some(true) => HookDependency::PackageServerSafe,
+                Some(false) => HookDependency::PackageClientOnly,
+                None => HookDependency::Unknown,
+            });
+        }
+    }
+    if imports
+        .iter()
+        .any(|import| import.bindings.iter().any(|binding| binding.local == hook))
+    {
+        return Some(HookDependency::Unknown);
+    }
+    None
+}
+
+fn project_hook_dependency(
+    module: ModuleId,
+    hook: &str,
+    resolved: &ResolvedImports,
+    candidates: &FxHashSet<ExportKey>,
+) -> HookDependency {
+    for import in resolved
+        .resolved
+        .iter()
+        .filter(|import| import.import.kind == ImportKind::Static)
+    {
+        for binding in &import.import.bindings {
+            if binding.local != hook {
+                continue;
+            }
+            let Some(name) = binding.imported.as_export_name() else {
+                return HookDependency::Unknown;
+            };
+            let target = ExportKey {
+                module: import.target,
+                name: CompactString::from(name),
+            };
+            if candidates.contains(&target) {
+                return HookDependency::Project(target);
+            }
+            return HookDependency::Unknown;
+        }
+    }
+
+    let local = ExportKey {
+        module,
+        name: CompactString::from(hook),
+    };
+    if candidates.contains(&local) {
+        return HookDependency::Project(local);
+    }
+    HookDependency::Unknown
 }
 
 /// Walk the graph with an explicit worklist, once per `(module, colour)` pair.

@@ -162,7 +162,7 @@ export const value = 1;
 export const handler = async () => {};
 export const wrapped = serverAction(async () => {});
 export class Widget {}
-export default async function () {}
+export default async function Page() {}
 "#;
     let exports = scan_exports(source);
     let shapes: Vec<_> = exports
@@ -181,20 +181,22 @@ export default async function () {}
             ("default", ExportKind::AsyncFunction),
         ]
     );
+    assert_eq!(exports[6].local.as_deref(), Some("Page"));
 }
 
 #[test]
 fn resolves_named_exports_through_local_declarations() {
-    let source = "async function refresh() {}\nfunction render() {}\nexport { refresh, render };";
+    let source =
+        "async function refresh() {}\nfunction render() {}\nexport { refresh, render as draw };";
     let exports = scan_exports(source);
     assert_eq!(
         exports
             .iter()
-            .map(|export| (export.name.as_str(), export.kind))
+            .map(|export| (export.name.as_str(), export.local.as_deref(), export.kind))
             .collect::<Vec<_>>(),
         vec![
-            ("refresh", ExportKind::AsyncFunction),
-            ("render", ExportKind::SyncFunction),
+            ("refresh", None, ExportKind::AsyncFunction),
+            ("draw", Some("render"), ExportKind::SyncFunction),
         ]
     );
 }

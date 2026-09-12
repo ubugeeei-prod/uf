@@ -13,7 +13,8 @@ import { Link, useRoute } from "@uniflowed/router";
 import type { Metadata } from "@uniflowed/router";
 
 import "./_design/seam.css";
-import { nextTheme, themeBootstrap, themeLabel, useTheme } from "./_design/theme.js";
+import { themeBootstrap } from "./_design/theme-static.js";
+import { ThemeToggle } from "./_design/theme.js";
 
 const VERSION = "0.0.0-alpha";
 
@@ -142,16 +143,6 @@ component Masthead() {
         <ThemeToggle />
       </nav>
     </header>
-  );
-}
-
-component ThemeToggle() {
-  const [theme, setTheme] = useTheme();
-
-  return (
-    <button className="theme-toggle" type="button" onClick={() => setTheme(nextTheme(theme))}>
-      {themeLabel(theme)}
-    </button>
   );
 }
 
