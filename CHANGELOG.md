@@ -1,5 +1,22 @@
 # Changelog
 
+## uf@0.0.0-alpha.25
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add accordion render escape hatch (#814)
+- **ui**: add tooltip body render escape hatch (#817)
+
+### Performance
+
+- **check**: skip environment build on full cache hits (#816)
+
+### Other
+
+- **tui**: mark key release support implemented in the roadmap (#818)
+
 ## uf@0.0.0-alpha.24
 
 _2026-09-12_

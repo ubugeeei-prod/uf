@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/std",
-  "version": "0.0.0-alpha.24",
+  "version": "0.0.0-alpha.25",
   "private": true,
   "description": "Flow declarations for @uniflowed/std, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -60,6 +60,6 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.24"
+    "@uniflowed/core": "0.0.0-alpha.25"
   }
 }
