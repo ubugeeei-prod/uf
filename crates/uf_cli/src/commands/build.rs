@@ -1088,6 +1088,8 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
             "transform": {
                 "status": "pending",
                 "kind": "metro",
+                "platform": target.as_str(),
+                "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
                 "reason": "React Native builds still need a Metro/native transformer contract"
             },
         }),
@@ -1397,5 +1399,40 @@ mod tests {
         let source = diagnostic_source(&root, module, &[&diagnostic]);
 
         assert_eq!(source, "", "a climbing module path read a file anyway");
+    }
+
+    #[test]
+    fn react_native_alias_is_an_application_target() {
+        assert_eq!(
+            parse_application_target("react-native").unwrap(),
+            RouteTarget::Native
+        );
+    }
+
+    #[test]
+    fn native_target_contract_names_the_metro_platform() {
+        for (target, platform) in [
+            (RouteTarget::Native, "native"),
+            (RouteTarget::Ios, "ios"),
+            (RouteTarget::Android, "android"),
+        ] {
+            let contract = target_contract(target);
+            assert_eq!(contract["runtime"], serde_json::json!("react-native"));
+            assert_eq!(contract["renderer"]["status"], serde_json::json!("pending"));
+            assert_eq!(contract["router"]["kind"], serde_json::json!("navigator"));
+            assert_eq!(
+                contract["transform"]["status"],
+                serde_json::json!("pending")
+            );
+            assert_eq!(contract["transform"]["kind"], serde_json::json!("metro"));
+            assert_eq!(
+                contract["transform"]["platform"],
+                serde_json::json!(platform)
+            );
+            assert_eq!(
+                contract["transform"]["sourceExtensions"],
+                serde_json::json!(["js", "jsx", "mjs", "cjs"])
+            );
+        }
     }
 }
