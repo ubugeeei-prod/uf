@@ -114,6 +114,9 @@ function prop(props: TuiProps, name: string): mixed {
 const asNumber = (value: mixed): number | void =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
+const asMargin = (value: mixed): number | "auto" | void =>
+  value === "auto" ? "auto" : asNumber(value);
+
 const asDimension = (value: mixed): number | string | void => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -176,17 +179,15 @@ export function styleFromProps(props: TuiProps): LayoutStyle {
     "paddingRight",
     "paddingBottom",
     "paddingLeft",
-    "margin",
-    "marginTop",
-    "marginRight",
-    "marginBottom",
-    "marginLeft",
     "gap",
     "rowGap",
     "columnGap",
     "scrollTop",
   ]) {
     copy(name, asNumber);
+  }
+  for (const name of ["margin", "marginTop", "marginRight", "marginBottom", "marginLeft"]) {
+    copy(name, asMargin);
   }
   for (const name of ["flexDirection", "justifyContent", "alignItems", "alignSelf", "overflow"]) {
     copy(name, asString);

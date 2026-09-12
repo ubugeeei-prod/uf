@@ -24,8 +24,8 @@
 //
 // So this implements the subset a terminal uses, in whole cells. What it does
 // *not* implement is written down at the bottom of this file rather than
-// discovered: no wrapping, no absolute positioning, no aspect ratio, no `auto`
-// margins. Those are ubugeeei-prod/uf#314.
+// discovered: no wrapping, no absolute positioning, no aspect ratio. Those are
+// ubugeeei-prod/uf#314.
 //
 // # Whole cells, and where the remainder goes
 //
@@ -44,6 +44,9 @@
  * `"auto"` for "as large as the content needs".
  */
 export type Dimension = number | string;
+
+/** A margin: a number of cells, or `"auto"` inside a flex container. */
+export type Margin = number | "auto";
 
 /** Main-axis direction. `"column"` is the default, as in OpenTUI. */
 export type FlexDirection = "row" | "row-reverse" | "column" | "column-reverse";
@@ -100,11 +103,11 @@ export type LayoutStyle = {
   readonly paddingRight?: number,
   readonly paddingBottom?: number,
   readonly paddingLeft?: number,
-  readonly margin?: number,
-  readonly marginTop?: number,
-  readonly marginRight?: number,
-  readonly marginBottom?: number,
-  readonly marginLeft?: number,
+  readonly margin?: Margin,
+  readonly marginTop?: Margin,
+  readonly marginRight?: Margin,
+  readonly marginBottom?: Margin,
+  readonly marginLeft?: Margin,
   readonly gap?: number,
   readonly rowGap?: number,
   readonly columnGap?: number,
@@ -235,6 +238,8 @@ export type Size = { readonly width: number, readonly height: number };
 const clamp = (value: number, low: number, high: number): number =>
   Math.min(Math.max(value, low), high);
 
+type Edges<T> = [T, T, T, T];
+
 /** Whether the main axis is horizontal. */
 const isRow = (direction: FlexDirection): boolean =>
   direction === "row" || direction === "row-reverse";
@@ -261,7 +266,7 @@ function resolve(value: Dimension | void, basis: number): number | null {
 }
 
 /** Padding on each edge, with the shorthand applied first. */
-function padding(style: LayoutStyle): [number, number, number, number] {
+function padding(style: LayoutStyle): Edges<number> {
   const all = style.padding ?? 0;
   return [
     style.paddingTop ?? all,
@@ -272,13 +277,28 @@ function padding(style: LayoutStyle): [number, number, number, number] {
 }
 
 /** Margin on each edge, with the shorthand applied first. */
-function margin(style: LayoutStyle): [number, number, number, number] {
+function margin(style: LayoutStyle): Edges<Margin> {
   const all = style.margin ?? 0;
   return [
     style.marginTop ?? all,
     style.marginRight ?? all,
     style.marginBottom ?? all,
     style.marginLeft ?? all,
+  ];
+}
+
+/** The fixed part of a margin. `auto` is resolved only by the flex parent. */
+function marginCells(value: Margin): number {
+  return value === "auto" ? 0 : value;
+}
+
+/** A margin tuple with every `auto` edge treated as zero cells. */
+function fixedMargins(edges: Edges<Margin>): Edges<number> {
+  return [
+    marginCells(edges[0]),
+    marginCells(edges[1]),
+    marginCells(edges[2]),
+    marginCells(edges[3]),
   ];
 }
 
@@ -391,7 +411,7 @@ function measureIntrinsic(node: LayoutNode, availableWidth: number, availableHei
     let cross = 0;
     let counted = 0;
     for (const child of node.children) {
-      const [marginTop, marginRight, marginBottom, marginLeft] = margin(child.style);
+      const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
       const size = intrinsicSize(
         child,
         Math.max(0, innerAvailableWidth - marginLeft - marginRight),
@@ -506,24 +526,25 @@ export function layout(
 
   // Pass one: every child's base main size, and the outer margins around it.
   const margins = children.map((child) => margin(child.style));
+  const resolvedMargins = margins.map((edges) => fixedMargins(edges));
   const bases = children.map((child, index) => {
-    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = resolvedMargins[index];
     const availableWidth = Math.max(0, contentWidth - marginLeft - marginRight);
     const availableHeight = Math.max(0, contentHeight - marginTop - marginBottom);
     const basis = resolve(child.style.flexBasis, mainSpace);
     if (basis != null) {
       return basis;
     }
-    const fixed = resolve(row ? child.style.width : child.style.height, mainSpace);
-    if (fixed != null) {
-      return fixed;
+    const fixedMain = resolve(row ? child.style.width : child.style.height, mainSpace);
+    if (fixedMain != null) {
+      return fixedMain;
     }
     const size = intrinsicSize(child, availableWidth, availableHeight);
     return row ? size.width : size.height;
   });
 
   const outerMain = (index: number): number => {
-    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = resolvedMargins[index];
     return bases[index] + (row ? marginLeft + marginRight : marginTop + marginBottom);
   };
 
@@ -557,26 +578,53 @@ export function layout(
       (total, size, index) =>
         total +
         size +
-        (row ? margins[index][3] + margins[index][1] : margins[index][0] + margins[index][2]),
+        (row
+          ? resolvedMargins[index][3] + resolvedMargins[index][1]
+          : resolvedMargins[index][0] + resolvedMargins[index][2]),
       0,
     ) +
     Math.max(0, children.length - 1) * gap;
   const slack = Math.max(0, mainSpace - consumed);
+
+  const placed = resolvedMargins.map((edges) => edges.slice());
+  const autoMain: Array<[number, number]> = [];
+  if (slack > 0) {
+    for (let index = 0; index < margins.length; index += 1) {
+      const edges = margins[index];
+      if (row) {
+        if (edges[3] === "auto") autoMain.push([index, 3]);
+        if (edges[1] === "auto") autoMain.push([index, 1]);
+      } else {
+        if (edges[0] === "auto") autoMain.push([index, 0]);
+        if (edges[2] === "auto") autoMain.push([index, 2]);
+      }
+    }
+  }
+  const justifySlack = autoMain.length === 0 ? slack : 0;
+  const autoMainShares = distribute(
+    slack,
+    autoMain.map(() => 1),
+  );
+  for (let index = 0; index < autoMain.length; index += 1) {
+    const [childIndex, edge] = autoMain[index];
+    placed[childIndex][edge] += autoMainShares[index];
+  }
+
   const justify = style.justifyContent ?? "flex-start";
   let cursor = 0;
   let between = gap;
   if (justify === "center") {
-    cursor = Math.floor(slack / 2);
+    cursor = Math.floor(justifySlack / 2);
   } else if (justify === "flex-end") {
-    cursor = slack;
+    cursor = justifySlack;
   } else if (justify === "space-between" && children.length > 1) {
-    between = gap + Math.floor(slack / (children.length - 1));
+    between = gap + Math.floor(justifySlack / (children.length - 1));
   } else if (justify === "space-around" && children.length > 0) {
-    const each = Math.floor(slack / children.length);
+    const each = Math.floor(justifySlack / children.length);
     cursor = Math.floor(each / 2);
     between = gap + each;
   } else if (justify === "space-evenly" && children.length > 0) {
-    const each = Math.floor(slack / (children.length + 1));
+    const each = Math.floor(justifySlack / (children.length + 1));
     cursor = each;
     between = gap + each;
   }
@@ -586,11 +634,16 @@ export function layout(
 
   for (const index of order) {
     const child = children[index];
-    const [marginTop, marginRight, marginBottom, marginLeft] = margins[index];
+    const [marginTop, marginRight, marginBottom, marginLeft] = placed[index];
     const mainMarginStart = row ? marginLeft : marginTop;
     const mainMarginEnd = row ? marginRight : marginBottom;
     const crossMarginStart = row ? marginTop : marginLeft;
     const crossMarginEnd = row ? marginBottom : marginRight;
+    const crossStartEdge = row ? 0 : 3;
+    const crossEndEdge = row ? 2 : 1;
+    const autoCrossStart = margins[index][crossStartEdge] === "auto";
+    const autoCrossEnd = margins[index][crossEndEdge] === "auto";
+    const hasAutoCross = autoCrossStart || autoCrossEnd;
 
     const align = (() => {
       const own = child.style.alignSelf ?? "auto";
@@ -602,7 +655,7 @@ export function layout(
     let crossSize: number;
     if (fixedCross != null) {
       crossSize = fixedCross;
-    } else if (align === "stretch") {
+    } else if (align === "stretch" && !hasAutoCross) {
       crossSize = crossAvailable;
     } else {
       const size = intrinsicSize(
@@ -615,7 +668,11 @@ export function layout(
     crossSize = Math.min(crossSize, crossAvailable);
 
     let crossOffset = crossMarginStart;
-    if (align === "center") {
+    if (hasAutoCross) {
+      const remaining = Math.max(0, crossSpace - crossSize - crossMarginStart - crossMarginEnd);
+      const autoCrossShares = distribute(remaining, [autoCrossStart ? 1 : 0, autoCrossEnd ? 1 : 0]);
+      crossOffset += autoCrossShares[0];
+    } else if (align === "center") {
       crossOffset += Math.floor((crossAvailable - crossSize) / 2);
     } else if (align === "flex-end") {
       crossOffset += crossAvailable - crossSize;
@@ -696,7 +753,7 @@ function layoutScroll(node: LayoutNode, x: number, y: number, width: number, hei
       break;
     }
     const child = children[index];
-    const [, marginRight, , marginLeft] = margin(child.style);
+    const [, marginRight, , marginLeft] = fixedMargins(margin(child.style));
     const available = Math.max(0, width - marginLeft - marginRight);
     const childWidth = Math.min(available, resolve(child.style.width, width) ?? available);
     layout(child, x + marginLeft, y + top - offset, childWidth, stack.heights[index]);
@@ -796,15 +853,15 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
     let cursor = 0;
     if (stack.from > 0) {
       const previous = children[stack.from - 1];
-      const [, , previousBottom] = margin(previous.style);
+      const [, , previousBottom] = fixedMargins(margin(previous.style));
       cursor = stack.tops[stack.from - 1] + stack.heights[stack.from - 1] + previousBottom + gap;
     }
     for (let index = stack.from; index < children.length; index += 1) {
       const child = children[index];
-      const [marginTop, marginRight, marginBottom, marginLeft] = margin(child.style);
+      const [marginTop, marginRight, marginBottom, marginLeft] = fixedMargins(margin(child.style));
       const available = Math.max(0, width - marginLeft - marginRight);
-      const fixed = resolve(child.style.height, height);
-      const own = fixed ?? intrinsicSize(child, available, unbounded).height;
+      const fixedHeight = resolve(child.style.height, height);
+      const own = fixedHeight ?? intrinsicSize(child, available, unbounded).height;
       stack.tops[index] = cursor + marginTop;
       stack.heights[index] = own;
       cursor += marginTop + own + marginBottom + gap;
@@ -827,7 +884,7 @@ function scrollStack(node: LayoutNode, width: number, height: number): ScrollInd
 // - `position: "absolute"`. It needs a containing-block concept that nothing
 //   in this package has yet, and every use of it so far has been better served
 //   by a box that grows.
-// - `auto` margins, which are how CSS centres a single child, and which
-//   `justifyContent: "center"` already covers here.
+// - `aspectRatio`. A terminal resolves whole cells, and nothing here has a
+//   fractional layout pass to lean on.
 //
 // All three are ubugeeei-prod/uf#314.
