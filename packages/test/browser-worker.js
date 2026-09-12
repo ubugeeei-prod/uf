@@ -78,7 +78,7 @@ type Request = {|
  * browser that will not start, with its own output attached — not as a file
  * that timed out, which is a sentence about tests that were never reached.
  */
-const START_TIMEOUT_MS = 20_000;
+const START_TIMEOUT_MS = 25_000;
 
 /**
  * The switches a headless run needs, and what each is for.
