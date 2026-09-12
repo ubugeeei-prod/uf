@@ -1,5 +1,29 @@
 # Changelog
 
+## uf@0.0.0-alpha.30
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add table and pagination render escape hatches (#848)
+- **ui**: add field status live region (#847)
+- **router**: add pure routing subpath (#844)
+- **build**: record native Metro platform contract (#843)
+
+### Fixed
+
+- **router**: stream root loading fallbacks (#841)
+- refuse Deno coverage before AOT (#842)
+
+### Performance
+
+- cache repeated transform service replies (#846)
+
+### Internal
+
+- extend browser startup budget (#849)
+
 ## uf@0.0.0-alpha.29
 
 _2026-09-12_
