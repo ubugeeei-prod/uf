@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/mock",
-  "version": "0.0.0-alpha.28",
+  "version": "0.0.0-alpha.29",
   "description": "MSW-compatible request mocking over the platform's own fetch, part of the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -22,6 +22,6 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.28"
+    "@uniflowed/core": "0.0.0-alpha.29"
   }
 }

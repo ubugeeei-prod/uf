@@ -1,5 +1,20 @@
 # Changelog
 
+## uf@0.0.0-alpha.29
+
+_2026-09-12_
+
+### Fixed
+
+- **router**: tighten payload row ids (#836)
+- **router**: reject ignored template file spellings (#835)
+- **runtime**: guard runtime manager host manifests (#834)
+
+### Performance
+
+- **check**: reuse cache key strings (#837)
+- **lint**: scan react hook gates once (#838)
+
 ## uf@0.0.0-alpha.28
 
 _2026-09-12_
