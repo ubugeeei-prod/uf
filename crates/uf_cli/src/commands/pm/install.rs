@@ -315,7 +315,7 @@ fn write_plan(
     workspace: Option<&uf_pm::PackageManagerApplyReport>,
     workspace_packages: usize,
 ) -> Result<Utf8PathBuf> {
-    let runtime = uf_rm::RuntimeManagerPlan::infer_from_config(&resolved.config);
+    let runtime = uf_rm::RuntimeManagerPlan::infer_from_config(&resolved.config)?;
     let state_dir = resolved.root.join(".uf");
     std::fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
     let path = state_dir.join("install.json");
