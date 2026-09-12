@@ -24,7 +24,7 @@ export type StdCategory =
  * `"ships"` is the subpaths that have real code behind their own export paths:
  * the six of ubugeeei-prod/uf#711 — `errors`, `sync`, `context`, `bytes`,
  * `heap`, `hex` — plus `slices`, `base32`, `list`, `csv`, `binary`, `path`,
- * `glob`, `hash`, `time`, `io` and `bufio` from #710's next tranche.
+ * `glob`, `hash`, `time`, `io`, `bufio` and `textproto` from #710's next tranche.
  * `"declared"` is this module: functions that raise
  * `NativeRuntimeRequiredError`. `"planned"` means nobody has written it, and
  * nothing more; `"declined"` is a decision that the platform or another

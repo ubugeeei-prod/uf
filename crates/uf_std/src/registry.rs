@@ -427,6 +427,22 @@ pub fn std_modules() -> StdModuleList {
                 "scanWords",
             ],
         ),
+        StdModule::ships(
+            "@uniflowed/std/textproto",
+            StdCategory::Network,
+            &[
+                "InvalidHeaderError",
+                "append",
+                "canonicalHeaderKey",
+                "get",
+                "parseHeaderBlock",
+                "parseHeaders",
+                "remove",
+                "set",
+                "stringifyHeaderBlock",
+                "values",
+            ],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------

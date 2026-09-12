@@ -29,6 +29,7 @@
     "./path": "./path.js",
     "./slices": "./slices.js",
     "./sync": "./sync.js",
+    "./textproto": "./textproto.js",
     "./time": "./time.js",
     "./package.json": "./package.json"
   },
@@ -50,6 +51,7 @@
     "path.js",
     "slices.js",
     "sync.js",
+    "textproto.js",
     "time.js",
     "!*.test.js"
   ],
