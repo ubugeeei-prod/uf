@@ -56,12 +56,14 @@ renders what you wrote between the tags. The part is still the part — a
 `Menu.Item` rendered as an `<a>` is what `Menu.Body`'s `renders*` constraint
 accepts, and that constraint is the thing a copied source cannot keep.
 
-`Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`,
-`Tabs`, `Switch` and `Checkbox` take it on every part that renders an element,
-along with `Field.Control`, `Tooltip.Trigger`, `HoverCard.Trigger` and
-`Sidebar.Item`. The rest of the package does not have it yet; the table in
-`tests/library/ui.test.js` names every part and which of the three states it is
-in, and the suite fails if that table stops matching the files.
+`Accordion`, `Alert`, `AlertDialog`, `Avatar`, `Breadcrumb`, `Collapsible`,
+`Dialog`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`, `Sheet`, `Skeleton` and
+`Tabs` take it on every fixed-element part, as do the single-part `Checkbox`,
+`Progress`, `Separator`, `Switch` and `Toggle`, along with `Field.Control`,
+`Tooltip.Trigger`, `HoverCard.Trigger` and `Sidebar.Item`. The rest of the
+package does not have it yet; the table in `packages/ui/ui.test.js` names every
+part and which of the three states it is in, and the suite fails if that table
+stops matching the files.
 [#303](https://github.com/ubugeeei-prod/uf/issues/303) is the argument, and
 `packages/ui/index.js`'s header is where the decision is recorded.
 
@@ -81,10 +83,10 @@ be a weaker promise than not.
 Every example on this page was rendered and asserted before it was published;
 the keyboard tables below cite the test in
 [`packages/ui/ui.test.js`](https://github.com/ubugeeei-prod/uf/blob/main/packages/ui/ui.test.js)
-that holds each row. `uf test packages/ui/ui.test.js` runs 119 of them, in 1.1
-seconds. There is exactly one row no test holds, and rather than leaving it to
-be discovered it is named where it appears, under Checkbox — a row with no test
-is how it came to say the wrong thing.
+that holds each row. `uf test packages/ui/ui.test.js` runs the suite. There is
+exactly one row no test holds, and rather than leaving it to be discovered it is
+named where it appears, under Checkbox — a row with no test is how it came to
+say the wrong thing.
 
 ## Field
 

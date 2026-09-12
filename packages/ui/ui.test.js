@@ -7306,6 +7306,72 @@ describe("Accordion", () => {
     expect(screen.queryAllByRole("heading", { level: 3 })).toEqual([]);
   });
 
+  it("hands stack, item, trigger and panel behaviour to caller-rendered elements", async () => {
+    const keyed = fn();
+    const clicked = fn();
+    render(
+      <Accordion.Root
+        defaultValue={["shipping"]}
+        onKeyDown={keyed}
+        render={(props) => <section {...props} data-testid="faq" />}
+      >
+        <Accordion.Item
+          render={(props) => <article {...props} data-testid="shipping-item" />}
+          value="shipping"
+        >
+          <Accordion.Header level={3}>
+            <Accordion.Trigger
+              onClick={clicked}
+              render={(props) => <a href="#shipping" {...props} />}
+            >
+              Shipping
+            </Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content
+            render={(props) => <section {...props} data-testid="shipping-panel" />}
+          >
+            ships in two days
+          </Accordion.Content>
+        </Accordion.Item>
+        <Accordion.Item value="returns">
+          <Accordion.Header level={3}>
+            <Accordion.Trigger>Returns</Accordion.Trigger>
+          </Accordion.Header>
+          <Accordion.Content>thirty days</Accordion.Content>
+        </Accordion.Item>
+      </Accordion.Root>,
+    );
+
+    const root = screen.getByTestId("faq");
+    const item = screen.getByTestId("shipping-item");
+    const trigger = screen.getByRole("link", { name: "Shipping" });
+    const panel = screen.getByTestId("shipping-panel");
+
+    expect(root.tagName).toBe("SECTION");
+    expect(root).toHaveAttribute("data-accordion", "");
+    expect(item.tagName).toBe("ARTICLE");
+    expect(trigger.tagName).toBe("A");
+    expect(trigger).toHaveAttribute("href", "#shipping");
+    expect(trigger).not.toHaveAttribute("type");
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(trigger.getAttribute("aria-controls")).toBe(panel.getAttribute("id"));
+    expect(panel.tagName).toBe("SECTION");
+    expect(panel).toHaveAttribute("role", "region");
+    expect(panel.getAttribute("aria-labelledby")).toBe(trigger.getAttribute("id"));
+    expect(panel.textContent).toBe("ships in two days");
+    expect(danglingReferences()).toEqual([]);
+
+    act(() => trigger.focus());
+    await userEvent.keyboard("{ArrowDown}");
+    expect(keyed).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Returns" })).toHaveFocus();
+
+    await userEvent.click(trigger);
+    expect(clicked).toHaveBeenCalled();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(panel).toHaveAttribute("hidden", "until-found");
+  });
+
   it("keeps a single accordion to one open item", async () => {
     render(<Faq />);
     expect(showing()).toEqual(["ships in two days"]);
@@ -8370,6 +8436,10 @@ describe("the escape hatch: which part hands its element to the caller", () => {
 
   /** Parts that take `render` and hand their props to the caller. */
   const RENDER: $ReadOnlyArray<string> = [
+    "Accordion.Content",
+    "Accordion.Item",
+    "Accordion.Root",
+    "Accordion.Trigger",
     "Alert.Description",
     "Alert.Root",
     "Alert.Title",
@@ -8500,10 +8570,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
 
   /** Parts whose element a caller still cannot change. #303's remainder; it only shrinks. */
   const FIXED: $ReadOnlyArray<string> = [
-    "Accordion.Content",
-    "Accordion.Item",
-    "Accordion.Root",
-    "Accordion.Trigger",
     "Calendar.Day",
     "Calendar.Month",
     "Calendar.Root",
