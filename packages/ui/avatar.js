@@ -73,8 +73,13 @@ import {
 } from "@uniflowed/react";
 import { useTimeout } from "@uniflowed/hooks/timing";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 
 /**
  * Where an avatar's image is between having been asked for and being there.
@@ -122,7 +127,7 @@ hook useAvatar(part: string): AvatarState {
  * in a table cell, in a paragraph, inside a button's label — and a block
  * element is invalid in half of those.
  */
-export component AvatarRoot(children: React.Node, ...rest: Rest) {
+export component AvatarRoot(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const [seen, setSeen] = useState<Seen>(START);
   const [hasImage, setHasImage] = useState(false);
 
@@ -151,10 +156,11 @@ export component AvatarRoot(children: React.Node, ...rest: Rest) {
     }),
     [seen, hasImage, report],
   );
+  const props = withProps(rest, { children });
 
   return (
     <AvatarContext.Provider value={state}>
-      <span {...rest}>{children}</span>
+      {render != null ? render(props) : <span {...props} />}
     </AvatarContext.Provider>
   );
 }
@@ -175,7 +181,12 @@ export component AvatarRoot(children: React.Node, ...rest: Rest) {
  * stylesheet: `hidden` loses to any `display` the caller sets, and a caller who
  * has not written that rule yet would see both.
  */
-export component AvatarImage(alt?: string = "", src?: string | null, ...rest: Rest) {
+export component AvatarImage(
+  alt?: string = "",
+  src?: string | null,
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const avatar = useAvatar("Avatar.Image");
   const element = useRef<HTMLImageElement | null>(null);
   const report = avatar.report;
@@ -208,18 +219,19 @@ export component AvatarImage(alt?: string = "", src?: string | null, ...rest: Re
   if (avatar.status === "error") {
     return null;
   }
-  return (
-    <img
-      {...passed}
-      alt={alt}
-      onError={composeHandlers(rest.onError, () => report(source, "error"))}
-      onLoad={composeHandlers(rest.onLoad, () => report(source, "loaded"))}
-      ref={composeRefs(rest.ref, (node) => {
-        element.current = node;
-      })}
-      src={source ?? undefined}
-    />
-  );
+  const props = withProps(passed, {
+    alt,
+    onError: composeHandlers(rest.onError, () => report(source, "error")),
+    onLoad: composeHandlers(rest.onLoad, () => report(source, "loaded")),
+    ref: composeRefs(rest.ref, (node: HTMLImageElement | null) => {
+      element.current = node;
+    }),
+    src: source ?? undefined,
+  });
+  if (render != null) {
+    return render(props);
+  }
+  return <img {...props} />;
 }
 
 /**
@@ -235,7 +247,12 @@ export component AvatarImage(alt?: string = "", src?: string | null, ...rest: Re
  * avatar with no `Avatar.Image` at all are both answers rather than waits, and
  * the fallback for either is immediate.
  */
-export component AvatarFallback(children: React.Node, delay?: number = 300, ...rest: Rest) {
+export component AvatarFallback(
+  children: React.Node,
+  delay?: number = 300,
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const avatar = useAvatar("Avatar.Fallback");
   const [elapsed, setElapsed] = useState(false);
   const waiting = avatar.hasImage && avatar.status === "loading";
@@ -251,5 +268,9 @@ export component AvatarFallback(children: React.Node, delay?: number = 300, ...r
   if (avatar.status === "loaded" || (waiting && delay > 0 && !elapsed)) {
     return null;
   }
-  return <span {...rest}>{children}</span>;
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(props);
+  }
+  return <span {...props} />;
 }

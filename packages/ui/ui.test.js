@@ -6263,6 +6263,32 @@ describe("Avatar", () => {
     expect(pictureIn(container)).toHaveAttribute("alt", "Ada Lovelace");
   });
 
+  it("hands the avatar state contract to caller-rendered elements", () => {
+    render(
+      <Avatar.Root render={(props) => <span {...props} data-testid="avatar-root" />}>
+        <Avatar.Image
+          alt="Ada Lovelace"
+          render={(props) => <img {...props} data-testid="avatar-image" />}
+          src="/ada.png"
+        />
+        <Avatar.Fallback
+          delay={0}
+          render={(props) => <strong {...props} data-testid="avatar-fallback" />}
+        >
+          AL
+        </Avatar.Fallback>
+      </Avatar.Root>,
+    );
+
+    const image = screen.getByTestId("avatar-image");
+    expect(screen.getByTestId("avatar-root").contains(image)).toBe(true);
+    expect(image).toHaveAttribute("alt", "Ada Lovelace");
+    fireEvent.error(image);
+    expect(screen.queryByTestId("avatar-image")).toBe(null);
+    expect(screen.getByTestId("avatar-fallback").tagName).toBe("STRONG");
+    expect(screen.getByTestId("avatar-fallback").textContent).toBe("AL");
+  });
+
   it("takes the fallback away again once the image arrives", () => {
     const { container } = render(<Example />);
     fireEvent.load(pictureIn(container));
@@ -8282,6 +8308,9 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "AlertDialog.Overlay",
     "AlertDialog.Title",
     "AlertDialog.Trigger",
+    "Avatar.Fallback",
+    "Avatar.Image",
+    "Avatar.Root",
     "Breadcrumb.Item",
     "Breadcrumb.Link",
     "Breadcrumb.List",
@@ -8397,9 +8426,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Accordion.Item",
     "Accordion.Root",
     "Accordion.Trigger",
-    "Avatar.Fallback",
-    "Avatar.Image",
-    "Avatar.Root",
     "Calendar.Day",
     "Calendar.Month",
     "Calendar.Root",
