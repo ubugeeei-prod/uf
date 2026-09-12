@@ -1,5 +1,48 @@
 # Changelog
 
+## uf@0.0.0-alpha.21
+
+_2026-09-12_
+
+### Added
+
+- **std**: ship byte io adapters (#790)
+- **std**: ship cancellable timers (#789)
+- **std**: ship non-cryptographic hashes (#788)
+- **std**: ship slash glob helpers (#787)
+- **std**: ship slash path helpers (#786)
+- **std**: ship binary cursor and varints (#785)
+- **std**: ship csv codec (#782)
+- **std**: ship list container (#781)
+- **std**: ship base32 codec (#780)
+- **std**: ship slice search helpers (#779)
+- **examples**: rebuild Commonplace with scoped server data and clips (#772)
+- **router**: resolve routes for native targets (#769)
+- **react-native**: re-export React Native runtime (#771)
+
+### Fixed
+
+- **config**: evaluate task config modules (#784)
+- **check**: resolve Flow export conditions (#783)
+- **check**: prefer libdef declarations over package manifests (#778)
+- **project**: read package.json workspaces (#777)
+- **check**: report host-conditional package exports (#775)
+- **deno**: scope package imports in loader map (#774)
+
+### Performance
+
+- speed up tests and type checks (#773)
+
+### Internal
+
+- **config**: split evaluated projection parsing (#776)
+- warn when library exports are not published (#768)
+- deny Rust warnings at workspace level (#767)
+
+### Other
+
+- Document Async React primitives (#770)
+
 ## uf@0.0.0-alpha.20
 
 _2026-09-10_
