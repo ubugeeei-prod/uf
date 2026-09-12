@@ -54,7 +54,7 @@ use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser::loc::{LOC_NONE, Loc};
 use flow_parser::parse_error::ParseError;
 use flow_typing::{merge, type_inference};
-use flow_typing_context::Context;
+use flow_typing_context::{Context, Metadata};
 use flow_typing_errors::error_message::ErrorMessage;
 use flow_typing_errors::error_suppressions::ErrorSuppressions;
 use flow_typing_errors::flow_error::ErrorSet;
@@ -68,6 +68,44 @@ use crate::limits::CHECK_STACK_BYTES;
 use crate::upstream::graph::{Graph, ModuleFacts};
 use crate::upstream::project::{MkBuiltins, ProjectModules};
 use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
+
+/// The per-call builtin environment, built only if this batch really needs it.
+struct BatchEnvironment {
+    builtins: BuiltinsTiming,
+    base_metadata: Option<Metadata>,
+    mk_builtins: Option<MkBuiltins>,
+}
+
+impl BatchEnvironment {
+    fn new(builtins: BuiltinsTiming) -> Self {
+        Self {
+            builtins,
+            base_metadata: None,
+            mk_builtins: None,
+        }
+    }
+
+    fn mk_builtins(
+        &mut self,
+        libs: &[Source<'_>],
+        options: &Options,
+    ) -> Result<MkBuiltins, CheckError> {
+        if let Some(mk_builtins) = &self.mk_builtins {
+            return Ok(mk_builtins.dupe());
+        }
+
+        let mk_builtins = {
+            profile_span!("check::environment");
+            let master_cx = builtins::master_context(libs)?;
+            let base_metadata = flow_typing_context::mk_context_metadata(options, Arc::default());
+            let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
+            self.base_metadata = Some(base_metadata);
+            mk_builtins
+        };
+        self.mk_builtins = Some(mk_builtins.dupe());
+        Ok(mk_builtins)
+    }
+}
 
 /// The absolute root every Flow path is resolved against.
 ///
@@ -122,7 +160,7 @@ pub(crate) fn module_closure<'a>(
         let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
         // A batch of no files: this exists only to ask what the builtins
         // declare, which is a property of the compiler and not of any source.
-        let probe = ProjectModules::new(&[], options.clone(), mk_builtins, limits);
+        let probe = ProjectModules::new(&[], options.clone(), Some(mk_builtins), limits);
         let found = closure::closure(seeds, available, &options, &|specifier| {
             probe.declared_externally(specifier)
         });
@@ -210,8 +248,7 @@ fn check_batch(
         }
     }
 
-    let builtins = builtins::prepare(libs)?;
-    let master_cx = builtins::master_context(libs)?;
+    let mut environment = BatchEnvironment::new(builtins::prepare(libs)?);
     let options = {
         profile_span!("check::options");
         options::options(limits)
@@ -222,25 +259,11 @@ fn check_batch(
     // wasted work and wrong: a type crossing a module boundary is compared
     // against the importer's builtins, and two independent merges of `core.js`
     // do not agree on `Array`.
-    // Spanned together because they are one thing: the builtin environment this
-    // call will check against. `builtins::prepare` and `master_context` are
-    // memoized per process and read as zero after a warm-up, so this is where
-    // the per-*call* fixed cost ubugeeei-prod/uf#678 measured actually lands.
-    // `_base_metadata` is bound rather than dropped: `mk_builtins` is built
-    // from it, and the original code kept it alive for the rest of the
-    // function. Keeping that exactly, so the span is the only change here.
-    let (_base_metadata, mk_builtins) = {
-        profile_span!("check::environment");
-        let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
-        let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
-        (base_metadata, mk_builtins)
-    };
-    let modules = Rc::new(ProjectModules::new(
-        sources,
-        options.clone(),
-        mk_builtins.dupe(),
-        limits,
-    ));
+    // Built lazily: a fully warm cache already holds the file facts and
+    // diagnostics, so it does not need the per-call builtin environment #678
+    // measured. A cache miss installs it before parsing facts or inferring a
+    // file, and all files in that batch then share the same one.
+    let modules = Rc::new(ProjectModules::new(sources, options.clone(), None, limits));
 
     let started = Instant::now();
     // What each file's record is filed under. Computed even for a file the
@@ -275,6 +298,8 @@ fn check_batch(
                 // a shape this build does not understand: dropped, not
                 // repaired, so nothing downstream reads half of it.
                 *record = None;
+                let mk_builtins = environment.mk_builtins(libs, &options)?;
+                modules.set_mk_builtins(mk_builtins);
                 facts.push(modules.facts(index));
             }
         }
@@ -328,6 +353,8 @@ fn check_batch(
             continue;
         }
 
+        let mk_builtins = environment.mk_builtins(libs, &options)?;
+        modules.set_mk_builtins(mk_builtins.dupe());
         match check_one(index, &options, &mk_builtins, limits, source, &modules) {
             Ok(found) => {
                 if let Some(cache) = cache {
@@ -362,7 +389,7 @@ fn check_batch(
         files_from_cache: from_cache,
         untyped_modules: untyped.into_iter().collect(),
         host_conditional_modules: host_conditional.into_iter().collect(),
-        builtins,
+        builtins: environment.builtins,
         elapsed: started.elapsed(),
     })
 }
