@@ -8,17 +8,19 @@
 use compact_str::CompactString;
 
 use crate::directive::ModuleEnvironment;
-use crate::scan::{ExportKind, ImportSpecifier};
+use crate::scan::ExportKind;
 
-use super::build::ResolvedImports;
+use super::build::{HookCallVerdict, HookClassifications, ResolvedImports};
 use super::diagnostic::RscDiagnostic;
 use super::resolve::{is_server_only_path, is_server_only_specifier};
-use super::{ModuleReachability, RscModule, RscModuleInput, client_only_hook_package};
+use super::{ModuleId, ModuleReachability, RscModule, RscModuleInput};
 
 pub(crate) fn report_module_diagnostics(
     module: &RscModuleInput,
+    module_id: ModuleId,
     reachability: ModuleReachability,
-    external: &[ImportSpecifier],
+    resolved: &ResolvedImports,
+    hook_classifications: &HookClassifications,
     diagnostics: &mut Vec<RscDiagnostic>,
 ) {
     for issue in &module.directive_issues {
@@ -66,32 +68,37 @@ pub(crate) fn report_module_diagnostics(
         // the name lists do not know is only a question worth asking about
         // code the server runs.
         //
-        // Two answers now. A hook `@uniflowed/hooks` exports is decided, from
+        // Three answers now. A hook `@uniflowed/hooks` exports is decided from
         // the `server_component_safe` the registry has carried for it all
-        // along; anything else is still reported as the question it is,
-        // because "the graph said nothing" and "the graph checked and found
-        // nothing" are the same output otherwise and are not the same fact.
+        // along; a project hook whose export body the graph can follow is
+        // decided by the same fixpoint; anything else is still reported as the
+        // question it is.
         for call in &module.hook_calls {
-            match client_only_hook_package(&call.name, external) {
-                Some(package) => diagnostics.push(RscDiagnostic::ClientOnlyHookInServerModule {
-                    module: module.path.clone(),
-                    hook: call.name.clone(),
-                    package: CompactString::from(package),
-                    line: call.line,
-                    column: call.column,
-                }),
-                None => diagnostics.push(RscDiagnostic::UnclassifiedHookInServerModule {
-                    module: module.path.clone(),
-                    hook: call.name.clone(),
-                    line: call.line,
-                    column: call.column,
-                }),
+            match hook_classifications.call_verdict(module_id, call, resolved) {
+                HookCallVerdict::ClientOnly(package) => {
+                    diagnostics.push(RscDiagnostic::ClientOnlyHookInServerModule {
+                        module: module.path.clone(),
+                        hook: call.name.clone(),
+                        package,
+                        line: call.line,
+                        column: call.column,
+                    });
+                }
+                HookCallVerdict::ServerSafe => {}
+                HookCallVerdict::Unknown => {
+                    diagnostics.push(RscDiagnostic::UnclassifiedHookInServerModule {
+                        module: module.path.clone(),
+                        hook: call.name.clone(),
+                        line: call.line,
+                        column: call.column,
+                    });
+                }
             }
         }
     }
 
     if module.environment == ModuleEnvironment::Client || reachability.is_client_reachable() {
-        for import in external {
+        for import in &resolved.external {
             if is_server_only_specifier(&import.specifier) {
                 diagnostics.push(RscDiagnostic::ServerOnlyImportInClientModule {
                     module: module.path.clone(),

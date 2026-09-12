@@ -22,7 +22,7 @@ use std::sync::OnceLock;
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
-use uf_infra::{FxHashMap, FxHashSet, InlineVec, LineIndex};
+use uf_infra::{FxHashMap, InlineVec, LineIndex};
 
 use crate::directive::{
     DirectiveIssueList, FunctionDirective, FunctionDirectiveList, FunctionOwner, ModuleEnvironment,
@@ -74,59 +74,33 @@ pub const SERVER_ONLY_SUFFIX: &str = ".server.js";
 /// that needs no new data at all.
 pub const CLIENT_ONLY_HOOK_PACKAGE: &str = "@uniflowed/hooks";
 
-/// The hooks of [`CLIENT_ONLY_HOOK_PACKAGE`] a Server Component may not call.
+/// Server-component safety for hooks of [`CLIENT_ONLY_HOOK_PACKAGE`].
 ///
 /// Read from the registry rather than copied into a list here, so there is one
 /// place a hook's environment is written down and no second one to drift from
-/// it. Built once: `hook_descriptors()` allocates a `Vec` of owned names, and
-/// this is asked once per hook call in a server module.
-fn client_only_hooks() -> &'static FxHashSet<CompactString> {
-    static HOOKS: OnceLock<FxHashSet<CompactString>> = OnceLock::new();
+/// it. Built once: `hook_descriptors()` allocates a `Vec` of owned names.
+fn package_hook_safety() -> &'static FxHashMap<CompactString, bool> {
+    static HOOKS: OnceLock<FxHashMap<CompactString, bool>> = OnceLock::new();
     HOOKS.get_or_init(|| {
         uf_lib::hook_descriptors()
             .into_iter()
-            .filter(|hook| !hook.server_component_safe)
-            .map(|hook| hook.name)
+            .map(|hook| (hook.name, hook.server_component_safe))
             .collect()
     })
 }
 
+/// Whether a hook exported by [`CLIENT_ONLY_HOOK_PACKAGE`] is safe in a Server
+/// Component.
+pub(crate) fn package_hook_server_component_safe(hook: &str) -> Option<bool> {
+    package_hook_safety().get(hook).copied()
+}
+
 /// Whether `specifier` names [`CLIENT_ONLY_HOOK_PACKAGE`] or a subpath of it.
-fn is_client_only_hook_package(specifier: &str) -> bool {
+pub(crate) fn is_client_only_hook_package(specifier: &str) -> bool {
     specifier == CLIENT_ONLY_HOOK_PACKAGE
         || specifier
             .strip_prefix(CLIENT_ONLY_HOOK_PACKAGE)
             .is_some_and(|rest| rest.starts_with('/'))
-}
-
-/// The package a called hook came from, when this crate can say.
-///
-/// Attributed through the module's imports rather than through the binding the
-/// import introduced. That makes this answer wrong in exactly one shape: a
-/// module that imports `@uniflowed/hooks` *and* separately defines or imports
-/// its own `useMediaQuery`, and calls that one. It is the same imprecision the
-/// rest of this scanner already has — it matches identifiers against name
-/// lists — and it is narrower than the alternative of saying nothing, which is
-/// what this did before.
-///
-/// [`ImportSpecifier::bindings`] now carries what would narrow it: the
-/// `{ imported, local }` pairs say whether `useMediaQuery` is the name this
-/// module bound from that package or a different function that shares its
-/// spelling. Reading them here would change which calls are reported, so it
-/// belongs with the rest of the classification work rather than with the
-/// plumbing that made it possible — ubugeeei-prod/uf#388.
-///
-/// [`None`] is the honest answer and stays reported as one: a hook from a
-/// package with no table, a hook the project wrote, a hook reached through a
-/// value. See [`RscDiagnostic::UnclassifiedHookInServerModule`].
-fn client_only_hook_package(hook: &str, imports: &[ImportSpecifier]) -> Option<&'static str> {
-    if !client_only_hooks().contains(hook) {
-        return None;
-    }
-    imports
-        .iter()
-        .any(|import| is_client_only_hook_package(&import.specifier))
-        .then_some(CLIENT_ONLY_HOOK_PACKAGE)
 }
 
 /// Identifier of a module inside one [`RscGraph`].
@@ -322,6 +296,7 @@ impl RscModuleInput {
     pub fn with_export(mut self, name: impl Into<CompactString>, kind: ExportKind) -> Self {
         self.exports.push(ModuleExport {
             name: name.into(),
+            local: None,
             kind,
             line: 1,
         });

@@ -5,6 +5,8 @@
 //! accumulates violations as data rather than as formatted strings, and
 //! [`RscSeverity`] keeps the manifest spelling of how serious one is.
 
+use std::fmt;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
@@ -28,6 +30,24 @@ impl RscSeverity {
         match self {
             Self::Warn => "warn",
             Self::Error => "error",
+        }
+    }
+}
+
+/// Where a client-only hook verdict came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientOnlyHookOrigin {
+    /// A published package with declared hook metadata.
+    Package(CompactString),
+    /// A project module whose exported hook body was classified by the graph.
+    Module(Utf8PathBuf),
+}
+
+impl fmt::Display for ClientOnlyHookOrigin {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Package(package) => write!(formatter, "`{package}`"),
+            Self::Module(module) => write!(formatter, "project module `{module}`"),
         }
     }
 }
@@ -93,7 +113,7 @@ pub enum RscDiagnostic {
         /// The offending path, as supplied.
         module: Utf8PathBuf,
     },
-    /// A hook a uf package exports that only runs in the browser.
+    /// A hook a package or project module exports that only runs in the browser.
     ///
     /// The half of [`Self::UnclassifiedHookInServerModule`] that can be
     /// decided. `useMediaQuery` is not on `CLIENT_ONLY_APIS` — it is not a
@@ -101,7 +121,8 @@ pub enum RscDiagnostic {
     /// so a Server Component calling it fails for exactly the reason
     /// `useState` does. The registry has said so for every hook
     /// `@uniflowed/hooks` exports since before `uf_rsc` existed; this is the
-    /// rule that reads it.
+    /// rule that reads it. Project hooks use the same verdict once the
+    /// export-level fixpoint can prove their bodies reach the same APIs.
     ///
     /// An error rather than a warning, because unlike its unclassified
     /// neighbour this *is* a verdict: the contract has no tolerances, and a
@@ -115,8 +136,8 @@ pub enum RscDiagnostic {
         module: Utf8PathBuf,
         /// Name of the hook as called.
         hook: CompactString,
-        /// The uf package that exports it.
-        package: CompactString,
+        /// The package or project module that exports it.
+        package: ClientOnlyHookOrigin,
         /// 1-based line.
         line: u32,
         /// 1-based column.
