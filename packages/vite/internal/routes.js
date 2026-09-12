@@ -56,6 +56,7 @@ export const UNSUPPORTED_SEGMENTS = Object.freeze([
   "(..)photo",
   "(...)photo",
   "(..)(..)photo",
+  "(..)(..)(..)photo",
 ]);
 
 /**

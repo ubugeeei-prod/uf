@@ -488,8 +488,13 @@ impl<'a> RouteSegment<'a> {
     /// same list, the way it already holds it to [`ReservedRole`]. A spelling
     /// one router refuses and the other serves is the disagreement this module
     /// exists to prevent, and the two are separate implementations.
-    pub const UNSUPPORTED_EXAMPLES: &'static [&'static str] =
-        &["(.)photo", "(..)photo", "(...)photo", "(..)(..)photo"];
+    pub const UNSUPPORTED_EXAMPLES: &'static [&'static str] = &[
+        "(.)photo",
+        "(..)photo",
+        "(...)photo",
+        "(..)(..)photo",
+        "(..)(..)(..)photo",
+    ];
 
     /// Whether uf serves a segment spelled this way.
     ///
@@ -912,6 +917,7 @@ mod tests {
             ("(..)photo", "(..)"),
             ("(...)photo", "(...)"),
             ("(..)(..)photo", "(..)(..)"),
+            ("(..)(..)(..)photo", "(..)(..)(..)"),
         ] {
             assert_eq!(
                 classify_route_segment(segment),
