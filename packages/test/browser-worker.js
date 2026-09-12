@@ -119,12 +119,6 @@ function browserArguments(profile: string, url: string): Array<string> {
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
-    // CI Chromium may be installed as a system package without a working
-    // namespace sandbox. A layout smoke test should measure the renderer, not
-    // the runner's sandbox configuration.
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
-    "--no-zygote",
     // Keep startup deterministic in CI. These cut services Chrome may start
     // before the first page request: extensions, sync, updater probes, and
     // background network clients such as GCM. None of them changes layout or

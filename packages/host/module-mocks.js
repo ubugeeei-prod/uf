@@ -281,6 +281,10 @@ export function startModuleEpoch() {
 export function resetModuleMocks() {
   mocks.clear();
   served.clear();
+  if (bunStandinRoot != null) {
+    fs.rmSync(bunStandinRoot, { force: true, recursive: true });
+    bunStandinRoot = null;
+  }
   bunStandins.clear();
   epoch = 0;
 }
