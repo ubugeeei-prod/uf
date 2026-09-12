@@ -41,7 +41,7 @@ use uf_infra::{FxHashMap, FxHashSet};
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
 
-use crate::scan::FileScan;
+use crate::scan::{FileScan, find_words};
 use crate::{Diagnostic, push_at, severity};
 
 /// `react/no-derived-state-effect`.
@@ -108,13 +108,14 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         return None;
     }
 
-    let source = &scan.file.source;
     // Both words, not just the effect: see `STATE`. Textual on purpose — the
-    // point is to decide without parsing, and a module that mentions
-    // `useState` in a comment costs one parse it would have paid anyway.
-    let wants_effects = derived.is_some() && source.contains(EFFECT) && source.contains(STATE);
-    let wants_memo =
-        memo.is_some() && (source.contains("useMemo") || source.contains("useCallback"));
+    // point is to decide without parsing. Read the scanner's code slices rather
+    // than the whole source so a comment or prose string that names a hook does
+    // not pay for the module-tree path.
+    let wants_effects =
+        derived.is_some() && mentions_code_word(scan, EFFECT) && mentions_code_word(scan, STATE);
+    let wants_memo = memo.is_some()
+        && (mentions_code_word(scan, "useMemo") || mentions_code_word(scan, "useCallback"));
     if !wants_effects && !wants_memo {
         return None;
     }
@@ -123,6 +124,19 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         memo,
         wants_effects,
         wants_memo,
+    })
+}
+
+/// Whether a hook-ish name is present where code can read it.
+///
+/// This is still a cheap textual gate, not binding analysis. It is deliberately
+/// narrower than `source.contains`: comments and string prose cannot be hook
+/// calls, and those false positives are exactly what make `uf lint` enter the
+/// allocation-heavy tree path for modules that cannot report anything here.
+fn mentions_code_word(scan: &FileScan<'_>, word: &str) -> bool {
+    scan.lines.iter().any(|line| {
+        let code = line.code();
+        find_words(code, word).any(|at| !line.in_string(at))
     })
 }
 
@@ -1357,4 +1371,66 @@ fn span_start(node: &Value) -> Option<u64> {
 /// The span's end, from the same pair.
 fn span_end(node: &Value) -> Option<u64> {
     node.get("range")?.as_array()?.get(1)?.as_u64()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SourceFile;
+    use crate::scan::mask_inline_comments;
+    use uf_config::{RuleLevel, UniflowedConfig};
+    use uf_infra::CompactString;
+
+    fn only(rule: &str) -> UniflowedConfig {
+        let mut config = UniflowedConfig::default();
+        config.lint.rules.clear();
+        config
+            .lint
+            .rules
+            .insert(CompactString::from(rule), RuleLevel::Error);
+        config
+    }
+
+    fn wants(rule: &str, source: &str) -> bool {
+        let file = SourceFile {
+            path: "app/page.js".to_owned(),
+            source: source.to_owned(),
+        };
+        let masked = mask_inline_comments(&file.source);
+        let scan = FileScan::new(&file, &masked);
+        wanted(&scan, &only(rule)).is_some()
+    }
+
+    #[test]
+    fn comments_and_strings_do_not_request_the_react_tree_path() {
+        let source = r#"// @flow
+// useEffect useState useMemo useCallback
+const prose = "useEffect useState useMemo useCallback";
+component Page() {
+  return <main />;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, source));
+        assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn code_hook_names_still_request_the_react_tree_path() {
+        let derived = r#"// @flow
+import { useEffect, useState } from "react";
+component Page() {
+  return <main />;
+}
+"#;
+        let memo = r#"// @flow
+import { useMemo } from "react";
+component Page() {
+  return <main />;
+}
+"#;
+
+        assert!(wants(DERIVED_STATE, derived));
+        assert!(wants(REDUNDANT_MEMO, memo));
+    }
 }
