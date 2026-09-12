@@ -138,12 +138,12 @@ pub enum TuiLayoutEngine {
     /// Flexbox in whole cells, with OpenTUI's defaults and not Yoga's whole surface.
     ///
     /// It was `"flexbox-yoga-compatible"`, which claimed more than is true:
-    /// `flexWrap`, `position: absolute` and `auto` margins are not implemented
+    /// `flexWrap` and `position: absolute` are not implemented
     /// (ubugeeei-prod/uf#314), and a terminal resolves whole columns where Yoga
     /// resolves fractional pixels. What *is* compatible is the part a caller
-    /// writes: the property names, and the defaults — a `flexDirection` that
-    /// starts at `column`, an `alignItems` that starts at `stretch`, and a
-    /// `flexShrink` that starts at zero for a numeric dimension.
+    /// writes: the property names, the defaults — a `flexDirection` that starts
+    /// at `column`, an `alignItems` that starts at `stretch`, and a `flexShrink`
+    /// that starts at zero for a numeric dimension — and `auto` margins.
     FlexboxCells,
 }
 
