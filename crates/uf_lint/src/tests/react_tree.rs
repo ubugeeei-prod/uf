@@ -53,6 +53,15 @@ fn a_concise_body_is_the_same_effect() {
 }
 
 #[test]
+fn an_unused_state_slot_still_binds_the_setter() {
+    let diagnostics = derived(
+        "component Mirror(a: number) {\n  const [, setB] = useState(0);\n  useEffect(() => setB(a), [a]);\n  return null;\n}\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
 fn a_ternary_and_a_template_are_still_expressions_over_the_dependencies() {
     let diagnostics = derived(
         "component Label(count: number, name: string) {\n  const [text, setText] = useState(\"\");\n  useEffect(() => {\n    setText(count > 1 ? `${name}s` : name);\n  }, [count, name]);\n  return <p>{text}</p>;\n}\n",
