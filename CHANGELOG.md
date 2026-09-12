@@ -1,5 +1,27 @@
 # Changelog
 
+## uf@0.0.0-alpha.28
+
+_2026-09-12_
+
+### Added
+
+- **build**: expose native target contract (#831)
+
+### Fixed
+
+- **vite**: keep rsc boundary importers in client routes (#832)
+- **router**: pass params to slot defaults (#830)
+
+### Performance
+
+- **check**: reuse dependency digest hex buffer (#829)
+- **lint**: require call-shaped react tree gates (#828)
+
+### Internal
+
+- cover Bun module mock aliases (#827)
+
 ## uf@0.0.0-alpha.27
 
 _2026-09-12_
