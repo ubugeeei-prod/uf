@@ -1,5 +1,18 @@
 # Changelog
 
+## uf@0.0.0-alpha.27
+
+_2026-09-12_
+
+### Performance
+
+- **lint**: skip non-code react tree hook gates (#822)
+- **check**: reuse dependency digest buffers (#824)
+
+### Internal
+
+- **rsc**: cover package client boundary routing (#823)
+
 ## uf@0.0.0-alpha.26
 
 _2026-09-12_
