@@ -35,6 +35,8 @@
 
 use serde_json::Value;
 use uf_config::UniflowedConfig;
+use uf_flow::ast_visitor::{self, AstVisitor};
+use uf_flow::{Loc, ast};
 use uf_infra::{FxHashMap, FxHashSet};
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
@@ -144,6 +146,10 @@ pub(super) fn analyse_parsed(
         ..TransformOptions::new(scan.file.path.clone())
     };
 
+    if work.wants_effects && !work.wants_memo {
+        return derived_state_effects_native(parsed);
+    }
+
     // Lowered, not raw: `component` and `match` are Flow's own syntax, and
     // this rule reads functions and calls. After the lowering a component
     // *is* a `FunctionDeclaration`, which is the tree the rule was always
@@ -170,6 +176,7 @@ pub(super) fn analyse_parsed(
             kind: FindingKind::RedundantMemo,
             line: memo.line,
             column: memo.column,
+            column_unit: ColumnUnit::Utf16,
             message: format!(
                 "the React Compiler memoizes this already; `{}` here is a second dependency array to keep correct",
                 memo.hook
@@ -217,9 +224,10 @@ pub(super) fn report(
         // same number until a line holds an astral character, and then they are
         // not — so the unit is chosen by which tree the finding came from
         // rather than assumed to be one of them.
-        let column = match finding.kind {
-            FindingKind::DerivedState => byte_column_of_code_point(text, finding.column),
-            FindingKind::RedundantMemo => byte_column(text, finding.column),
+        let column = match finding.column_unit {
+            ColumnUnit::Byte => usize::try_from(finding.column).unwrap_or(0).min(text.len()),
+            ColumnUnit::CodePoint => byte_column_of_code_point(text, finding.column),
+            ColumnUnit::Utf16 => byte_column(text, finding.column),
         };
         push_at(
             diagnostics,
@@ -245,9 +253,18 @@ pub(super) struct TreeFinding {
     kind: FindingKind,
     /// 1-based line.
     line: u32,
-    /// 0-based column, in UTF-16 code units.
+    /// 0-based column, counted according to [`column_unit`].
     column: u32,
+    column_unit: ColumnUnit,
     message: String,
+}
+
+/// Which unit a finding's column is expressed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ColumnUnit {
+    Byte,
+    CodePoint,
+    Utf16,
 }
 
 /// The mode uf would compile this project's modules in.
@@ -352,6 +369,7 @@ fn derived_state_effects(file: &Value) -> Vec<TreeFinding> {
                         kind: FindingKind::DerivedState,
                         line: at.0,
                         column: at.1,
+                        column_unit: ColumnUnit::CodePoint,
                         message: String::from(
                             "this effect only stores a value derived from its dependencies; compute it during render instead",
                         ),
@@ -365,6 +383,516 @@ fn derived_state_effects(file: &Value) -> Vec<TreeFinding> {
 
     found.sort_by_key(|finding| (finding.line, finding.column));
     found
+}
+
+/// Native Flow-AST implementation of `react/no-derived-state-effect`.
+///
+/// The derived-state rule does not need Babel's AST shape, and on a module
+/// that does not ask for `react/no-redundant-memo` there is no reason to render
+/// the parsed tree as `serde_json::Value` only to walk it again.
+fn derived_state_effects_native(parsed: &uf_flow::Parsed) -> Vec<TreeFinding> {
+    let mut tree = NativeDerivedState {
+        scopes: Vec::new(),
+        found: Vec::new(),
+    };
+    let _ = tree.program(&parsed.program);
+    let mut found = tree.found;
+    found.sort_by_key(|finding| (finding.line, finding.column));
+    found
+}
+
+struct NativeDerivedState {
+    scopes: Vec<NativeSetterScope>,
+    found: Vec<TreeFinding>,
+}
+
+impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for NativeDerivedState {
+    fn normalize_loc(loc: &'ast Loc) -> &'ast Loc {
+        loc
+    }
+
+    fn normalize_type(type_: &'ast Loc) -> &'ast Loc {
+        type_
+    }
+
+    fn function_(
+        &mut self,
+        loc: &'ast Loc,
+        function: &'ast ast::function::Function<Loc, Loc>,
+    ) -> Result<(), ()> {
+        if let Some(scope) = native_scope_for_function(loc, function) {
+            self.scopes.push(scope);
+        }
+        ast_visitor::function_default(self, loc, function)
+    }
+
+    fn component_declaration(
+        &mut self,
+        loc: &'ast Loc,
+        component: &'ast ast::statement::ComponentDeclaration<Loc, Loc>,
+    ) -> Result<(), ()> {
+        if let Some((_, body)) = component.body.as_ref()
+            && let Some(scope) = native_scope(loc, body)
+        {
+            self.scopes.push(scope);
+        }
+        ast_visitor::component_declaration_default(self, loc, component)
+    }
+
+    fn call(
+        &mut self,
+        loc: &'ast Loc,
+        call: &'ast ast::expression::Call<Loc, Loc>,
+    ) -> Result<(), ()> {
+        if let Some((line, column)) = derived_state_effect_native(loc, call, &self.scopes) {
+            self.found.push(TreeFinding {
+                kind: FindingKind::DerivedState,
+                line,
+                column,
+                column_unit: ColumnUnit::Byte,
+                message: String::from(
+                    "this effect only stores a value derived from its dependencies; compute it during render instead",
+                ),
+            });
+        }
+        ast_visitor::call_default(self, loc, call)
+    }
+}
+
+fn native_scope_for_function(
+    loc: &Loc,
+    function: &ast::function::Function<Loc, Loc>,
+) -> Option<NativeSetterScope> {
+    match &function.body {
+        ast::function::Body::BodyBlock((_, body)) => native_scope(loc, body),
+        ast::function::Body::BodyExpression(_) => None,
+    }
+}
+
+fn native_scope(loc: &Loc, body: &ast::statement::Block<Loc, Loc>) -> Option<NativeSetterScope> {
+    let state = native_declared_state(body);
+    (!state.is_empty()).then(|| NativeSetterScope {
+        span: NativeSpan::from_loc(loc),
+        state,
+        reads: native_declared_reads(body),
+    })
+}
+
+#[derive(Clone, Copy)]
+struct NativeSpan {
+    start_line: i32,
+    start_column: i32,
+    end_line: i32,
+    end_column: i32,
+}
+
+impl NativeSpan {
+    fn from_loc(loc: &Loc) -> Self {
+        Self {
+            start_line: loc.start.line,
+            start_column: loc.start.column,
+            end_line: loc.end.line,
+            end_column: loc.end.column,
+        }
+    }
+
+    fn contains(self, loc: &Loc) -> bool {
+        let start = (self.start_line, self.start_column);
+        let end = (self.end_line, self.end_column);
+        let at = (loc.start.line, loc.start.column);
+        start <= at && at <= end
+    }
+
+    fn width_key(self) -> (i32, i32) {
+        (
+            self.end_line.saturating_sub(self.start_line),
+            self.end_column.saturating_sub(self.start_column),
+        )
+    }
+}
+
+struct NativeSetterScope {
+    span: NativeSpan,
+    state: Vec<StateBinding>,
+    reads: FxHashMap<String, Vec<String>>,
+}
+
+impl NativeSetterScope {
+    fn binding(&self, setter: &str) -> Option<&StateBinding> {
+        self.state.iter().find(|held| held.setter == setter)
+    }
+
+    fn feeds_back<'a>(&'a self, deps: &[&'a str], state: &str) -> bool {
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
+        let mut pending: Vec<&str> = deps.to_vec();
+
+        while let Some(name) = pending.pop() {
+            if name == state {
+                return true;
+            }
+            if !seen.insert(name) {
+                continue;
+            }
+            if let Some(reads) = self.reads.get(name) {
+                pending.extend(reads.iter().map(String::as_str));
+            }
+        }
+
+        false
+    }
+}
+
+fn native_declared_state(body: &ast::statement::Block<Loc, Loc>) -> Vec<StateBinding> {
+    let mut state = Vec::new();
+    for statement in body.body.iter() {
+        let ast::statement::StatementInner::VariableDeclaration { inner, .. } = &**statement else {
+            continue;
+        };
+        for declarator in inner.declarations.iter() {
+            if !calls_hook_native(declarator.init.as_ref(), STATE) {
+                continue;
+            }
+            let ast::pattern::Pattern::Array { inner: pattern, .. } = &declarator.id else {
+                continue;
+            };
+            if let Some(setter) = native_pattern_array_identifier(pattern, 1) {
+                state.push(StateBinding {
+                    value: native_pattern_array_identifier(pattern, 0).map(str::to_owned),
+                    setter: setter.to_owned(),
+                });
+            }
+        }
+    }
+    state
+}
+
+fn native_pattern_array_identifier(
+    pattern: &ast::pattern::Array<Loc, Loc>,
+    at: usize,
+) -> Option<&str> {
+    match pattern.elements.get(at)? {
+        ast::pattern::array::Element::NormalElement(element) => {
+            native_pattern_identifier(&element.argument)
+        }
+        ast::pattern::array::Element::RestElement(_) | ast::pattern::array::Element::Hole(_) => {
+            None
+        }
+    }
+}
+
+fn native_pattern_identifier(pattern: &ast::pattern::Pattern<Loc, Loc>) -> Option<&str> {
+    let ast::pattern::Pattern::Identifier { inner, .. } = pattern else {
+        return None;
+    };
+    Some(inner.name.name.as_str())
+}
+
+fn native_declared_reads(body: &ast::statement::Block<Loc, Loc>) -> FxHashMap<String, Vec<String>> {
+    let mut collector = NativeDeclaredReads {
+        reads: FxHashMap::default(),
+    };
+    for statement in body.body.iter() {
+        let _ = collector.statement(statement);
+    }
+    collector.reads
+}
+
+struct NativeDeclaredReads {
+    reads: FxHashMap<String, Vec<String>>,
+}
+
+impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for NativeDeclaredReads {
+    fn normalize_loc(loc: &'ast Loc) -> &'ast Loc {
+        loc
+    }
+
+    fn normalize_type(type_: &'ast Loc) -> &'ast Loc {
+        type_
+    }
+
+    fn variable_declarator(
+        &mut self,
+        kind: ast::VariableKind,
+        declarator: &'ast ast::statement::variable::Declarator<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let bound = native_pattern_identifiers(&declarator.id);
+        let read = declarator
+            .init
+            .as_ref()
+            .map(native_identifiers_read_in)
+            .unwrap_or_default();
+        for name in bound {
+            self.reads
+                .entry(name)
+                .or_default()
+                .extend(read.iter().cloned());
+        }
+        ast_visitor::variable_declarator_default(self, kind, declarator)
+    }
+}
+
+fn native_pattern_identifiers(pattern: &ast::pattern::Pattern<Loc, Loc>) -> Vec<String> {
+    let mut collector = NativeIdentifierCollector { names: Vec::new() };
+    let _ = collector.pattern(None, pattern);
+    collector.names
+}
+
+fn native_identifiers_read_in(expression: &ast::expression::Expression<Loc, Loc>) -> Vec<String> {
+    let mut collector = NativeIdentifierCollector { names: Vec::new() };
+    let _ = collector.expression(expression);
+    collector.names
+}
+
+struct NativeIdentifierCollector {
+    names: Vec<String>,
+}
+
+impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for NativeIdentifierCollector {
+    fn normalize_loc(loc: &'ast Loc) -> &'ast Loc {
+        loc
+    }
+
+    fn normalize_type(type_: &'ast Loc) -> &'ast Loc {
+        type_
+    }
+
+    fn identifier(&mut self, id: &'ast ast::Identifier<Loc, Loc>) -> Result<(), ()> {
+        self.names.push(id.name.as_str().to_owned());
+        Ok(())
+    }
+
+    fn member(
+        &mut self,
+        _loc: &'ast Loc,
+        member: &'ast ast::expression::Member<Loc, Loc>,
+    ) -> Result<(), ()> {
+        self.expression(&member.object)?;
+        if let ast::expression::member::Property::PropertyExpression(property) = &member.property {
+            self.expression(property)?;
+        }
+        Ok(())
+    }
+
+    fn object_property(
+        &mut self,
+        property: &'ast ast::expression::object::NormalProperty<Loc, Loc>,
+    ) -> Result<(), ()> {
+        match property {
+            ast::expression::object::NormalProperty::Init { key, value, .. } => {
+                self.object_key(key)?;
+                self.expression(value)?;
+            }
+            ast::expression::object::NormalProperty::Method { key, value, .. }
+            | ast::expression::object::NormalProperty::Get { key, value, .. }
+            | ast::expression::object::NormalProperty::Set { key, value, .. } => {
+                self.object_key(key)?;
+                let (loc, function) = value;
+                self.function_expression_or_method(loc, function)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn object_key(&mut self, key: &'ast ast::expression::object::Key<Loc, Loc>) -> Result<(), ()> {
+        if let ast::expression::object::Key::Computed(computed) = key {
+            self.expression(&computed.expression)?;
+        }
+        Ok(())
+    }
+}
+
+fn derived_state_effect_native(
+    loc: &Loc,
+    call: &ast::expression::Call<Loc, Loc>,
+    scopes: &[NativeSetterScope],
+) -> Option<(u32, u32)> {
+    if !calls_hook_call_native(call, EFFECT) {
+        return None;
+    }
+    let [effect, dependencies] = call.arguments.arguments.as_ref() else {
+        return None;
+    };
+    let (
+        ast::expression::ExpressionOrSpread::Expression(effect),
+        ast::expression::ExpressionOrSpread::Expression(dependencies),
+    ) = (effect, dependencies)
+    else {
+        return None;
+    };
+
+    let ast::expression::ExpressionInner::ArrowFunction { inner: effect, .. } = &**effect else {
+        return None;
+    };
+    if !effect.params.params.is_empty() || effect.params.rest.is_some() || effect.async_ {
+        return None;
+    }
+
+    let deps = native_dependency_names(dependencies)?;
+    let value_call = native_effect_body(&effect.body)?;
+    let ast::expression::ExpressionInner::Call {
+        inner: value_call, ..
+    } = &**value_call
+    else {
+        return None;
+    };
+    let setter = native_identifier_name(&value_call.callee)?;
+    let scope = scopes
+        .iter()
+        .filter(|scope| scope.span.contains(loc) && scope.binding(setter).is_some())
+        .min_by_key(|scope| scope.span.width_key())?;
+    let [value] = value_call.arguments.arguments.as_ref() else {
+        return None;
+    };
+    let ast::expression::ExpressionOrSpread::Expression(value) = value else {
+        return None;
+    };
+    if !native_derives_from(value, &deps) {
+        return None;
+    }
+    if let Some(state) = scope.binding(setter).and_then(|held| held.value.as_deref())
+        && scope.feeds_back(&deps, state)
+    {
+        return None;
+    }
+
+    let at = native_expression_loc(&call.callee);
+    Some((
+        u32::try_from(at.start.line).ok()?,
+        u32::try_from(at.start.column).ok()?,
+    ))
+}
+
+fn native_effect_body(
+    body: &ast::function::Body<Loc, Loc>,
+) -> Option<&ast::expression::Expression<Loc, Loc>> {
+    match body {
+        ast::function::Body::BodyExpression(expression) => Some(expression),
+        ast::function::Body::BodyBlock((_, block)) => {
+            let [statement] = block.body.as_ref() else {
+                return None;
+            };
+            let ast::statement::StatementInner::Expression { inner, .. } = &**statement else {
+                return None;
+            };
+            Some(&inner.expression)
+        }
+    }
+}
+
+fn native_dependency_names(
+    expression: &ast::expression::Expression<Loc, Loc>,
+) -> Option<Vec<&str>> {
+    let ast::expression::ExpressionInner::Array { inner, .. } = &**expression else {
+        return None;
+    };
+    if inner.elements.is_empty() {
+        return None;
+    }
+    inner
+        .elements
+        .iter()
+        .map(|element| match element {
+            ast::expression::ArrayElement::Expression(expression) => {
+                native_identifier_name(expression)
+            }
+            ast::expression::ArrayElement::Spread(_) | ast::expression::ArrayElement::Hole(_) => {
+                None
+            }
+        })
+        .collect()
+}
+
+fn native_derives_from(expression: &ast::expression::Expression<Loc, Loc>, deps: &[&str]) -> bool {
+    let mut mentions = false;
+    let mut pending = vec![expression];
+
+    while let Some(expression) = pending.pop() {
+        match &**expression {
+            ast::expression::ExpressionInner::Identifier { inner, .. } => {
+                if deps.contains(&inner.name.as_str()) {
+                    mentions = true;
+                } else {
+                    return false;
+                }
+            }
+            ast::expression::ExpressionInner::StringLiteral { .. }
+            | ast::expression::ExpressionInner::BooleanLiteral { .. }
+            | ast::expression::ExpressionInner::NullLiteral { .. }
+            | ast::expression::ExpressionInner::NumberLiteral { .. }
+            | ast::expression::ExpressionInner::BigIntLiteral { .. }
+            | ast::expression::ExpressionInner::RegExpLiteral { .. } => {}
+            ast::expression::ExpressionInner::TemplateLiteral { inner, .. } => {
+                pending.extend(inner.expressions.iter());
+            }
+            ast::expression::ExpressionInner::Binary { inner, .. } => {
+                pending.extend([&inner.left, &inner.right]);
+            }
+            ast::expression::ExpressionInner::Logical { inner, .. } => {
+                pending.extend([&inner.left, &inner.right]);
+            }
+            ast::expression::ExpressionInner::Conditional { inner, .. } => {
+                pending.extend([&inner.test, &inner.consequent, &inner.alternate]);
+            }
+            ast::expression::ExpressionInner::Unary { inner, .. }
+                if native_pure_unary(inner.operator) =>
+            {
+                pending.push(&inner.argument);
+            }
+            _ => return false,
+        }
+    }
+
+    mentions
+}
+
+fn native_pure_unary(operator: ast::expression::UnaryOperator) -> bool {
+    matches!(
+        operator,
+        ast::expression::UnaryOperator::Minus
+            | ast::expression::UnaryOperator::Plus
+            | ast::expression::UnaryOperator::Not
+            | ast::expression::UnaryOperator::BitNot
+            | ast::expression::UnaryOperator::Typeof
+            | ast::expression::UnaryOperator::Void
+    )
+}
+
+fn calls_hook_native(
+    expression: Option<&ast::expression::Expression<Loc, Loc>>,
+    hook: &str,
+) -> bool {
+    let Some(ast::expression::ExpressionInner::Call { inner, .. }) =
+        expression.map(|expression| &**expression)
+    else {
+        return false;
+    };
+    calls_hook_call_native(inner, hook)
+}
+
+fn calls_hook_call_native(call: &ast::expression::Call<Loc, Loc>, hook: &str) -> bool {
+    match &*call.callee {
+        ast::expression::ExpressionInner::Identifier { inner, .. } => inner.name == hook,
+        ast::expression::ExpressionInner::Member { inner, .. } => {
+            native_identifier_name(&inner.object) == Some("React")
+                && matches!(
+                    &inner.property,
+                    ast::expression::member::Property::PropertyIdentifier(identifier)
+                        if identifier.name == hook
+                )
+        }
+        _ => false,
+    }
+}
+
+fn native_identifier_name(expression: &ast::expression::Expression<Loc, Loc>) -> Option<&str> {
+    match &**expression {
+        ast::expression::ExpressionInner::Identifier { inner, .. } => Some(inner.name.as_str()),
+        _ => None,
+    }
+}
+
+fn native_expression_loc(expression: &ast::expression::Expression<Loc, Loc>) -> &Loc {
+    expression.0.loc()
 }
 
 /// One `useState` binding: `const [value, setValue] = useState(…)`.
