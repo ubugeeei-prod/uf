@@ -316,6 +316,31 @@ describe("reading rows out of a document", () => {
     expect(doc.watchers()).toBe(0);
   });
 
+  it("applies a row that arrived before its reference was decoded", async () => {
+    const doc = rowDocument();
+    const reader = createPayloadReader(doc.document, doc.observe);
+    reader.watch();
+    expect(doc.watchers()).toBe(0);
+
+    doc.write(1, `{"value":"already streamed"}`);
+    const row = reader.resolve(1);
+    expect(await row).toBe("already streamed");
+    expect(doc.watchers()).toBe(0);
+  });
+
+  it("starts watching future rows when their references are decoded late", async () => {
+    const doc = rowDocument();
+    const reader = createPayloadReader(doc.document, doc.observe);
+    reader.watch();
+    expect(doc.watchers()).toBe(0);
+
+    const row = reader.resolve(1);
+    expect(doc.watchers()).toBe(1);
+    doc.write(1, `{"value":"late reference"}`);
+    expect(await row).toBe("late reference");
+    expect(doc.watchers()).toBe(0);
+  });
+
   it("rejects the row the server said failed, and nothing else", async () => {
     const doc = rowDocument();
     const reader = createPayloadReader(doc.document, doc.observe);
