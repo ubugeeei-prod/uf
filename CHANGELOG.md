@@ -1,5 +1,15 @@
 # Changelog
 
+## uf@0.0.0-alpha.22
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add render escape hatch to breadcrumb parts (#803)
+- **ui**: add render escape hatch to small parts (#802)
+- **tui**: report key release events (#801)
+
 ## uf@0.0.0-alpha.21
 
 _2026-09-12_
