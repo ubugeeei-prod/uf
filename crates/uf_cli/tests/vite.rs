@@ -222,6 +222,7 @@ fn build_renders_the_docs_site_through_vite() {
         "uf-build-manifest.json",
         "uf-rsc-manifest.json",
         "uf-bundle-report.json",
+        "openapi.json",
     ] {
         assert!(
             meta.join(name).is_file(),
@@ -3610,6 +3611,7 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "/uf-build-manifest.json",
         "/uf-rsc-manifest.json",
         "/uf-bundle-report.json",
+        "/openapi.json",
     ] {
         let response = get(server, port, leaked, said);
         assert!(
@@ -6522,6 +6524,33 @@ fn the_served_fixture_records_every_route_a_server_has_to_answer() {
             "{expected} is missing from {per_request:?}"
         );
     }
+
+    let openapi: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(root.join(".uf/build/meta/openapi.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(openapi["openapi"], serde_json::json!("3.1.0"));
+    let health = &openapi["paths"]["/api/health"];
+    assert!(
+        health["get"]["x-uf-untyped"].is_null(),
+        "a handler with a schema must not be reported as untyped: {health:#?}"
+    );
+    assert_eq!(
+        health["get"]["responses"]["200"]["content"]["application/json"]["schema"],
+        serde_json::json!({
+            "type": "object",
+            "properties": { "status": { "type": "string" } },
+            "required": ["status"],
+        })
+    );
+    assert_eq!(
+        health["post"]["requestBody"]["content"]["application/json"]["schema"],
+        serde_json::json!({
+            "type": "object",
+            "properties": { "name": { "type": "string" } },
+            "required": ["name"],
+        })
+    );
     // And it is reported, not only recorded.
     assert!(
         said.contains("answered by a server"),

@@ -4,6 +4,18 @@
 // `createDispatcher` is complete and `uf build` never called it, so this
 // module answered under `uf dev` and did not exist in `dist/`.
 
+import { object, string } from "@uniflowed/validator";
+
+export const schemas = {
+  GET: {
+    response: object({ status: string() }),
+  },
+  POST: {
+    body: object({ name: string() }),
+    response: object({ echoed: string() }),
+  },
+};
+
 export function GET(): Response {
   return Response.json({ status: "ok" });
 }

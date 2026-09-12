@@ -757,6 +757,25 @@ a dispatcher that treated every export as one would answer requests with your
 utility functions, and one that treated every upper-case export as one would
 answer a `PURGE` with your constant.
 
+Route handlers can declare their request and response schema beside those
+methods. `uf build` reads the schemas and writes `.uf/build/meta/openapi.json`;
+handlers without schemas are still listed as untyped.
+
+```js
+// @flow
+import { object, string } from "@uniflowed/validator";
+
+export const schemas = {
+  GET: {
+    response: object({ status: string() }),
+  },
+  POST: {
+    body: object({ name: string() }),
+    response: object({ echoed: string() }),
+  },
+};
+```
+
 Three things the dispatcher does so every handler does not have to:
 
 - **`HEAD` falls back to `GET`**, with the body dropped. A client asking for

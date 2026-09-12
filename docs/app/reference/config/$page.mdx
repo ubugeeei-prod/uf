@@ -295,12 +295,13 @@ each writes can answer an endpoint, so there is no unanswered one to refuse.
 refused while the config is read. Neither declaration is wrong on its own and
 there is no behaviour that honours both.
 
-`uf build` also writes three files *beside* the output directory, in
-`.uf/build/meta/`: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
-`uf-bundle-report.json`. They are notes about the build rather than part of it
-— between them they name every route including the ones nothing links to, the
-source file behind each one, and the size of every chunk — and everything in
-the output directory is served to whoever asks for it.
+`uf build` also writes files *beside* the output directory, in
+`.uf/build/meta/`: `uf-build-manifest.json`, `uf-rsc-manifest.json`,
+`uf-bundle-report.json` and `openapi.json`. They are notes about the build
+rather than part of it — between them they name every route including the ones
+nothing links to, the source file behind each one, the size of every chunk and
+the route-handler schema contract — and everything in the output directory is
+served to whoever asks for it.
 
 ## site
 

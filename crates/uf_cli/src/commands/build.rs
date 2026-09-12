@@ -76,10 +76,11 @@ const LARGEST_ASSETS_SHOWN: usize = 20;
 ///   the server reads off disk at startup and which is Vite's own file in
 ///   Vite's own place;
 /// * this directory is for *whoever ran the build*: `uf-build-manifest.json`,
-///   `uf-rsc-manifest.json` and `uf-bundle-report.json`. Nothing reads them to
-///   answer a request. Between them they name every route including the ones
-///   that were never prerendered, the source file behind each one, and the
-///   size of every chunk — a map of an application, handed to anyone who
+///   `uf-rsc-manifest.json`, `uf-bundle-report.json` and `openapi.json`.
+///   Nothing reads them to answer a request. Between them they name every
+///   route including the ones that were never prerendered, the source file
+///   behind each one, the size of every chunk, and the route-handler contract
+///   declared for API clients — a map of an application, handed to anyone who
 ///   guesses the filename. See ubugeeei-prod/uf#339.
 ///
 /// Beside `.uf/build/server`, `.uf/build/compile` and `.uf/build/deploy`,
@@ -396,6 +397,7 @@ pub(crate) fn build(
     let meta_dir = resolved.root.join(BUILD_META_DIR);
     fs::create_dir_all(&meta_dir).with_context(|| format!("failed to create {meta_dir}"))?;
     let build_manifest = meta_dir.join("uf-build-manifest.json");
+    let openapi_document = meta_dir.join("openapi.json");
     let payload = json!({
         "version": 2,
         "engine": "vite",
@@ -600,6 +602,9 @@ pub(crate) fn build(
         relative_to(&resolved.root, &rsc_manifest),
         relative_to(&resolved.root, &size_report_path),
     ];
+    if openapi_document.is_file() {
+        outputs.push(relative_to(&resolved.root, &openapi_document));
+    }
     if let Some(manifest) = &router_manifest {
         outputs.push(relative_to(&resolved.root, manifest));
     }
