@@ -448,6 +448,11 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Data,
             &["ZipReader", "ZipWriter", "deflate", "inflate"],
         ),
+        StdModule::ships(
+            "@uniflowed/std/tar",
+            StdCategory::Data,
+            &["TarReader", "TarWriter"],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
@@ -574,7 +579,6 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Data,
             &["uuidV4", "uuidV7", "parseUuid"],
         ),
-        // #710's next tranche: `archive/tar`, reading at least.
         StdModule::planned(
             "@uniflowed/std/import-meta",
             StdCategory::Environment,

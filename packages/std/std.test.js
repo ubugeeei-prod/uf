@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Nineteen modules, and what is asserted here is the property that makes each one
+// Twenty modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -108,6 +108,7 @@ import {
 } from "@uniflowed/std/path";
 import { binarySearch, binarySearchBy, search } from "@uniflowed/std/slices";
 import { Group, Mutex, Semaphore, WaitGroup, once } from "@uniflowed/std/sync";
+import { TarReader, TarWriter } from "@uniflowed/std/tar";
 import {
   InvalidHeaderError,
   append as appendHeader,
@@ -1570,6 +1571,48 @@ describe("zip", () => {
   it("rejects unsafe paths and unsupported archives", async () => {
     await expect(new ZipWriter().add("../escape.txt", b(1))).rejects.toThrow("unsafe");
     expect(() => new ZipReader(b(1, 2, 3))).toThrow("end of central directory");
+  });
+});
+
+describe("tar", () => {
+  it("writes ustar file and directory entries and reads them back", () => {
+    const writer = new TarWriter();
+    writer.add("hello.txt", fromUtf8("hello"));
+    writer.add("nested/", b(), { kind: "directory", mode: 0o755 });
+    writer.add("nested/readme.txt", fromUtf8("read me"));
+
+    const reader = new TarReader(writer.bytes());
+
+    expect(
+      reader.entries().map((entry) => [entry.path, entry.kind, entry.size, entry.mode]),
+    ).toEqual([
+      ["hello.txt", "file", 5, 0o644],
+      ["nested/", "directory", 0, 0o755],
+      ["nested/readme.txt", "file", 7, 0o644],
+    ]);
+    expect(toUtf8(reader.read("hello.txt"))).toBe("hello");
+    expect(toUtf8(reader.read("nested/readme.txt"))).toBe("read me");
+    expect(() => reader.read("nested/")).toThrow("not a file");
+  });
+
+  it("rejects corrupted headers instead of reading unchecked offsets", () => {
+    const writer = new TarWriter();
+    writer.add("file.txt", fromUtf8("payload"));
+
+    const corrupted = writer.bytes();
+    corrupted[0] ^= 0xff;
+
+    expect(() => new TarReader(corrupted)).toThrow("checksum");
+  });
+
+  it("rejects unsafe paths, duplicate entries and missing end blocks", () => {
+    const writer = new TarWriter();
+    writer.add("file.txt", b(1));
+
+    expect(() => new TarWriter().add("../escape.txt", b(1))).toThrow("unsafe");
+    expect(() => writer.add("file.txt", b(2))).toThrow("duplicate");
+    expect(() => new TarReader(b(1, 2, 3))).toThrow("truncated header");
+    expect(() => new TarReader(new Uint8Array(512))).toThrow("end blocks");
   });
 });
 

@@ -74,6 +74,8 @@ import {
 } from "../../packages/std/textproto.js";
 import type { HeaderMap } from "../../packages/std/textproto.js";
 import { Duration, Ticker, Timer, after, milliseconds, seconds } from "../../packages/std/time.js";
+import { TarReader, TarWriter } from "../../packages/std/tar.js";
+import type { TarEntry } from "../../packages/std/tar.js";
 import {
   ZipReader,
   ZipWriter,
@@ -326,6 +328,22 @@ export const zipAddCompressionIsChecked: mixed = zipWriter.add("file.txt", left,
 // expect: Promise
 export const zipDeflateIsAsync: Uint8Array = zipDeflate(left);
 
+// --- tar --------------------------------------------------------------------
+
+const tarReader = new TarReader(left);
+const tarWriter = new TarWriter();
+
+// expect: Uint8Array<ArrayBufferLike> is incompatible with string
+export const tarReadAnswersBytes: string = tarReader.read("file.txt");
+
+// expect: 1 is incompatible with string
+export const tarAddPathNeedsText: mixed = tarWriter.add(1, left);
+
+export const tarAddKindIsChecked: mixed = tarWriter.add("file.txt", left, {
+  // expect: "symlink" is incompatible with TarEntryKind
+  kind: "symlink",
+});
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -458,6 +476,9 @@ export const zipInflatedBytes: Promise<Uint8Array> = zipInflate(left);
 export const zipAddedEntry: Promise<ZipEntry> = zipWriter.add("file.txt", left, {
   compression: "store",
 });
+export const tarEntries: $ReadOnlyArray<TarEntry> = tarReader.entries();
+export const tarBytes: Uint8Array = tarReader.read("file.txt");
+export const tarAddedEntry: TarEntry = tarWriter.add("file.txt", left);
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,
