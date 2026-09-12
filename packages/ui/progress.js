@@ -38,7 +38,8 @@
 
 import * as React from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withProps } from "./internal/merge-props.js";
 import { clamp } from "./internal/range.js";
 
 /**
@@ -57,6 +58,9 @@ import { clamp } from "./internal/range.js";
  * `Slider`, whose value may be its own, a progress bar's value arrived as a
  * prop, so the caller already has everything they need to size a bar with and
  * a helpful custom property would only be their own arithmetic handed back.
+ *
+ * `render` changes the element and not the accessibility contract: the
+ * progressbar role and value attributes are the props handed to the caller.
  */
 export component Progress(
   value?: number | null = null,
@@ -64,23 +68,24 @@ export component Progress(
   max?: number = 100,
   valueText?: string,
   children?: React.Node,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const known = value == null ? null : clamp(value, min, max);
+  const props = withProps(rest, {
+    "aria-valuemax": max,
+    "aria-valuemin": min,
+    // Omitted, not zeroed. `aria-valuenow="0"` tells a reader that nothing
+    // has happened; leaving it out tells them the amount is unknown, which
+    // is the true one and the one a spinner means.
+    "aria-valuenow": known ?? undefined,
+    "aria-valuetext": valueText,
+    children,
+    role: "progressbar",
+  });
 
-  return (
-    <div
-      {...rest}
-      aria-valuemax={max}
-      aria-valuemin={min}
-      // Omitted, not zeroed. `aria-valuenow="0"` tells a reader that nothing
-      // has happened; leaving it out tells them the amount is unknown, which
-      // is the true one and the one a spinner means.
-      aria-valuenow={known ?? undefined}
-      aria-valuetext={valueText}
-      role="progressbar"
-    >
-      {children}
-    </div>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
