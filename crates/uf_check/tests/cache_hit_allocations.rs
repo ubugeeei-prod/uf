@@ -22,8 +22,8 @@ static GLOBAL: CountingAllocator = CountingAllocator::new();
 const CEILING: u64 = 20_000;
 
 /// Above the current cost with room for JSON and platform allocator drift, and
-/// below the old cost that allocated fresh dependency-walk buffers per file.
-const BATCH_CEILING: u64 = 4_400;
+/// below the old cost that allocated fresh dependency-digest hex per file.
+const BATCH_CEILING: u64 = 4_300;
 
 #[test]
 fn a_full_cache_hit_does_not_rebuild_the_check_environment() {

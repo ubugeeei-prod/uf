@@ -332,7 +332,7 @@ fn check_batch(
         // batch, so a project checked both whole and by path finds both here.
         let believed = records[index]
             .as_ref()
-            .and_then(|record| record.answer(&dependency_digest))
+            .and_then(|record| record.answer(dependency_digest))
             .map(<[TypeDiagnostic]>::to_vec);
         if let Some(found) = believed {
             diagnostics.extend(found);
@@ -347,7 +347,7 @@ fn check_batch(
             // moved, so a settled warm run still touches no file on disk.
             if let Some(cache) = cache
                 && let Some(record) = records[index].as_mut()
-                && record.touch(&dependency_digest)
+                && record.touch(dependency_digest)
             {
                 cache.write(&keys[index], record);
             }
@@ -365,7 +365,7 @@ fn check_batch(
                     let record =
                         records[index].get_or_insert_with(|| record_of(source.path, &facts[index]));
                     record.remember(CachedAnswer {
-                        dependencies: dependency_digest,
+                        dependencies: dependency_digest.to_owned(),
                         diagnostics: found.clone(),
                     });
                     cache.write(&keys[index], record);
