@@ -123,6 +123,18 @@ function splitProject(): string {
   });
 }
 
+/** A root slot, so its content is part of every route under the root layout. */
+function slottedProject(): string {
+  const page = "// @flow\nexport default function Page() {}\n";
+  return project({
+    "app/$layout.js": page,
+    "app/$page.js": page,
+    "app/docs/$page.js": page,
+    "app/@panel/$default.js": page,
+    "app/@panel/docs/$page.js": page,
+  });
+}
+
 /** The manifest that project's analysis would produce. */
 function splitManifest(version: number = 3) {
   return {
@@ -187,6 +199,74 @@ describe("the client route table", () => {
     // Not the layout: `/counter` keeps it, so it is already in the table as a
     // lazy import, and a second static one would pull it into the entry chunk.
     expect(source).not.toContain(`import ${JSON.stringify(path.join(root, "app/$layout.js"))};`);
+  });
+
+  it("keeps a route whose only client boundary lives in a slot", () => {
+    // A slot renders inside the route that declares it. If the only
+    // interactive module is there, the ordinary page and its layout still have
+    // to ship: the browser hydrates the whole matched tree, not just the slot.
+    const root = slottedProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [
+        manifestModule("app/$layout.js", false),
+        manifestModule("app/$page.js", false),
+        manifestModule("app/docs/$page.js", false),
+        manifestModule("app/@panel/$default.js", true),
+        manifestModule("app/@panel/docs/$page.js", false),
+      ],
+    });
+    const shipsPage = clientRouteFilter(manifest, root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(table.routes.map((route) => [route.path, shipsPage(route)])).toEqual([
+      ["/", true],
+      ["/docs", true],
+    ]);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/docs/$page.js"))})`);
+    expect(source).toContain(
+      `import(${JSON.stringify(path.join(root, "app/@panel/$default.js"))})`,
+    );
+  });
+
+  it("still imports dropped slot modules for their stylesheets", () => {
+    // The side-effect import rule applies to slots too. A route that needs no
+    // browser JavaScript can still render a slotted subtree whose CSS is part
+    // of the document; dropping that import would make the page correct but
+    // visually broken.
+    const root = slottedProject();
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [
+        manifestModule("app/$layout.js", false),
+        manifestModule("app/$page.js", false),
+        manifestModule("app/docs/$page.js", false),
+        manifestModule("app/@panel/$default.js", false),
+        manifestModule("app/@panel/docs/$page.js", false),
+      ],
+    });
+    const shipsPage = clientRouteFilter(manifest, root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(table.routes.map((route) => [route.path, shipsPage(route)])).toEqual([
+      ["/", false],
+      ["/docs", false],
+    ]);
+    expect(source).toContain(`import ${JSON.stringify(path.join(root, "app/$page.js"))};`);
+    expect(source).toContain(
+      `import ${JSON.stringify(path.join(root, "app/@panel/$default.js"))};`,
+    );
+    expect(source).toContain(
+      `import ${JSON.stringify(path.join(root, "app/@panel/docs/$page.js"))};`,
+    );
+    expect(source).not.toContain(
+      `import(${JSON.stringify(path.join(root, "app/@panel/$default.js"))})`,
+    );
   });
 
   it("ships every page when there is no manifest to read", () => {

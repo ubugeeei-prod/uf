@@ -145,6 +145,7 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
 
   const notFound = boundaries.notFound ?? [];
   const errors = boundaries.errors ?? [];
+  const needsSlot = slotPredicate(needed);
 
   return (route) => {
     if (needed(route.page)) return true;
@@ -156,7 +157,7 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
     // interactive part is in a slot would be dropped from the client bundle
     // and served as a document — rendered correctly and never hydrated, which
     // is the quietest way a feature can be half-implemented.
-    if (slotNeeds(route.slots ?? [], needed)) return true;
+    if ((route.slots ?? []).some(needsSlot)) return true;
     // A boundary with no module of its own is the record the scan synthesises
     // at the router root, and what renders there is the framework's own page —
     // already in `@uniflowed/router`, reaching nothing this project wrote. It
@@ -187,19 +188,28 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
  * @param {ReadonlyArray<{
  *   defaultPage: ?string,
  *   routes: ReadonlyArray<{page: string, layouts: ReadonlyArray<string>, slots: ReadonlyArray<*>}>,
- * }>} slots
  * @param {(file: ?string) => boolean} needed
+ * @returns {(slot: *) => boolean}
  */
-function slotNeeds(slots, needed) {
-  for (const slot of slots) {
-    if (slot.defaultPage != null && needed(slot.defaultPage)) return true;
-    for (const route of slot.routes) {
-      if (needed(route.page)) return true;
-      if (route.layouts.some(needed)) return true;
-      if (slotNeeds(route.slots, needed)) return true;
+function slotPredicate(needed) {
+  const cache = new WeakMap();
+  const needsSlot = (slot) => {
+    const cached = cache.get(slot);
+    if (cached !== undefined) return cached;
+    let answer = false;
+    if (slot.defaultPage != null && needed(slot.defaultPage)) {
+      answer = true;
     }
-  }
-  return false;
+    for (const route of slot.routes) {
+      if (answer) break;
+      if (needed(route.page) || route.layouts.some(needed) || route.slots.some(needsSlot)) {
+        answer = true;
+      }
+    }
+    cache.set(slot, answer);
+    return answer;
+  };
+  return needsSlot;
 }
 
 // ---------------------------------------------------------------------------
