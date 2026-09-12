@@ -1,5 +1,18 @@
 # Changelog
 
+## uf@0.0.0-alpha.31
+
+_2026-09-12_
+
+### Added
+
+- **react-native**: expose Metro config helper (#853)
+
+### Internal
+
+- extend browser startup budget on CI (#854)
+- **release**: check pending package tarballs (#851)
+
 ## uf@0.0.0-alpha.30
 
 _2026-09-12_
