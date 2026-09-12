@@ -359,6 +359,65 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
     ]
 }
 
+/// A React Native target is a target contract, not only a route suffix.
+///
+/// `--target native` already narrows the route table to `$page.native.js`.
+/// Until the renderer, navigator runtime and Metro contract exist, the build
+/// manifest also has to say that those pieces are pending, so a downstream
+/// tool cannot mistake a document build for a complete React Native artefact.
+#[test]
+fn a_native_target_manifest_names_the_pending_native_contract() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/$page.native.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <main>native home</main>;\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--target", "native"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{said}");
+
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(project.path().join(".uf/build/meta/uf-build-manifest.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(manifest["target"], serde_json::json!("native"));
+    assert_eq!(
+        manifest["targetContract"]["runtime"],
+        serde_json::json!("react-native")
+    );
+    assert_eq!(
+        manifest["targetContract"]["renderer"]["status"],
+        serde_json::json!("pending")
+    );
+    assert_eq!(
+        manifest["targetContract"]["router"]["kind"],
+        serde_json::json!("navigator")
+    );
+    assert_eq!(
+        manifest["targetContract"]["transform"]["kind"],
+        serde_json::json!("metro")
+    );
+    assert_eq!(
+        manifest["routes"][0]["page"],
+        serde_json::json!("app/$page.native.js"),
+        "the build did not consume the native route target:\n{manifest:#}"
+    );
+}
+
 /// A middleware must run before the path it guards answers.
 ///
 /// `$middleware.js` was a reserved name in the Rust router, a reserved name
