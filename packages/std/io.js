@@ -21,6 +21,7 @@ export type ReadResult =
 
 /** A source of byte chunks. */
 export interface Reader {
+  /** Read at most `maxBytes` when a positive bound is supplied. */
   read(maxBytes?: number): Promise<ReadResult>;
   cancel?(reason?: mixed): Promise<void> | void;
 }
@@ -255,7 +256,7 @@ export type ReadableSource = {
 };
 
 export type WritableSink = {
-  readonly write: (chunk: Uint8Array) => Promise<void>,
+  readonly write: (chunk: mixed) => Promise<void>,
   readonly close: () => Promise<void>,
   readonly abort: (reason?: mixed) => Promise<void>,
 };
@@ -360,7 +361,10 @@ export function writableStreamFromWriter<Made>(
   make: (sink: WritableSink) => Made,
 ): Made {
   return make({
-    async write(chunk: Uint8Array): Promise<void> {
+    async write(chunk: mixed): Promise<void> {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new TypeError("io writer expected Uint8Array stream chunks");
+      }
       const written = await writer.write(chunk);
       if (written !== chunk.length) {
         throw new ShortWriteError(chunk.length, written);

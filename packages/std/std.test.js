@@ -1317,6 +1317,16 @@ describe("io", () => {
 
     expect(Array.from(out.bytes())).toEqual([1, 2, 3]);
   });
+
+  it("rejects non-byte chunks from web writable streams", async () => {
+    const out = new BufferWriter();
+    const stream = writableStreamFromWriter(out, (sink) => new WritableStream(sink));
+    const writer = stream.getWriter();
+
+    await expect(writer.write("not bytes")).rejects.toThrow(TypeError);
+
+    expect(out.length()).toBe(0);
+  });
 });
 
 describe("slices", () => {
