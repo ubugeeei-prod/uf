@@ -42,7 +42,7 @@ use uf_infra::{FxHashMap, FxHashSet};
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
 
-use crate::scan::{FileScan, find_words, next_non_space};
+use crate::scan::{FileScan, ends_word, next_non_space, starts_word};
 use crate::{Diagnostic, push_at, severity};
 
 /// `react/no-derived-state-effect`.
@@ -110,13 +110,12 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
     }
 
     // Both calls, not just the effect: see `STATE`. Textual on purpose — the
-    // point is to decide without parsing. Read the scanner's code slices rather
-    // than the whole source so a comment, prose string or import-only mention
-    // of a hook does not pay for the module-tree path.
-    let wants_effects =
-        derived.is_some() && mentions_code_call(scan, EFFECT) && mentions_code_call(scan, STATE);
-    let wants_memo = memo.is_some()
-        && (mentions_code_call(scan, "useMemo") || mentions_code_call(scan, "useCallback"));
+    // point is to decide without parsing. Read the scanner's code slices once
+    // and classify every hook-looking call in that pass, so the hot gate does
+    // not re-walk the file once per hook name.
+    let calls = requested_hook_calls(scan, derived.is_some(), memo.is_some());
+    let wants_effects = derived.is_some() && calls.effect && calls.state;
+    let wants_memo = memo.is_some() && (calls.memo || calls.callback);
     if !wants_effects && !wants_memo {
         return None;
     }
@@ -128,19 +127,97 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
     })
 }
 
-/// Whether a hook-ish name is present where code can call it.
+#[derive(Default)]
+struct HookCalls {
+    effect: bool,
+    state: bool,
+    memo: bool,
+    callback: bool,
+}
+
+impl HookCalls {
+    fn mark(&mut self, hook: HookCall) {
+        match hook {
+            HookCall::Effect => self.effect = true,
+            HookCall::State => self.state = true,
+            HookCall::Memo => self.memo = true,
+            HookCall::Callback => self.callback = true,
+        }
+    }
+
+    fn satisfied(&self, needs_effects: bool, needs_memo: bool) -> bool {
+        (!needs_effects || (self.effect && self.state))
+            && (!needs_memo || self.memo || self.callback)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum HookCall {
+    Effect,
+    State,
+    Memo,
+    Callback,
+}
+
+/// Which hook-ish names are present where code can call them.
 ///
 /// This is still a cheap textual gate, not binding analysis. It is deliberately
 /// narrower than `source.contains`: comments, string prose and imports cannot
 /// be hook calls, and those false positives are exactly what make `uf lint`
 /// enter the allocation-heavy tree path for modules that cannot report
 /// anything here.
-fn mentions_code_call(scan: &FileScan<'_>, word: &str) -> bool {
-    scan.lines.iter().any(|line| {
+fn requested_hook_calls(scan: &FileScan<'_>, needs_effects: bool, needs_memo: bool) -> HookCalls {
+    let mut calls = HookCalls::default();
+    for line in &scan.lines {
         let code = line.code();
-        find_words(code, word)
-            .any(|at| !line.in_string(at) && call_follows_name(code, at + word.len()))
-    })
+        for at in uf_infra::memchr_iter(b'u', code.as_bytes()) {
+            let Some((hook, after)) = hook_call_at(code, at, needs_effects, needs_memo) else {
+                continue;
+            };
+            // The call-shape check is cheaper than proving the name is not in
+            // a string, and it rejects import-only names before `in_string`
+            // has to rescan the line prefix.
+            if call_follows_name(code, after) && !line.in_string(at) {
+                calls.mark(hook);
+                if calls.satisfied(needs_effects, needs_memo) {
+                    return calls;
+                }
+            }
+        }
+    }
+    calls
+}
+
+fn hook_call_at(
+    code: &str,
+    at: usize,
+    needs_effects: bool,
+    needs_memo: bool,
+) -> Option<(HookCall, usize)> {
+    if !starts_word(code, at) {
+        return None;
+    }
+    if needs_effects {
+        if hook_name_at(code, at, EFFECT) {
+            return Some((HookCall::Effect, at + EFFECT.len()));
+        }
+        if hook_name_at(code, at, STATE) {
+            return Some((HookCall::State, at + STATE.len()));
+        }
+    }
+    if needs_memo {
+        if hook_name_at(code, at, "useMemo") {
+            return Some((HookCall::Memo, at + "useMemo".len()));
+        }
+        if hook_name_at(code, at, "useCallback") {
+            return Some((HookCall::Callback, at + "useCallback".len()));
+        }
+    }
+    None
+}
+
+fn hook_name_at(code: &str, at: usize, hook: &str) -> bool {
+    code.as_bytes()[at..].starts_with(hook.as_bytes()) && ends_word(code, at + hook.len())
 }
 
 /// Whether the next non-space token after a name can still be the same call.
@@ -1465,8 +1542,17 @@ component Page() {
   return <main />;
 }
 "#;
+        let derived_member = r#"// @flow
+import * as React from "react";
+component Page() {
+  const [value, setValue] = React.useState(0);
+  React.useEffect(() => setValue(value + 1), [value]);
+  return <main />;
+}
+"#;
 
         assert!(wants(DERIVED_STATE, derived));
+        assert!(wants(DERIVED_STATE, derived_member));
         assert!(wants(REDUNDANT_MEMO, memo));
         assert!(wants(REDUNDANT_MEMO, react_member));
     }
