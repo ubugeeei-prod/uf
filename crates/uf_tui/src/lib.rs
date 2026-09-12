@@ -63,9 +63,9 @@ impl Default for TuiFrameworkContract {
             layout: TuiLayoutEngine::FlexboxCells,
             input: TuiInputModel::KeyboardMouseSelectionFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
-            // Ten, not twenty-three. Every one of these is exercised by
+            // Eleven, not twenty-three. Every one of these is exercised by
             // `packages/tui/tui.test.js` against a rendered frame; the other
-            // thirteen variants of `TuiFeature` name parts of OpenTUI that uf
+            // twelve variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
             features: smallvec::smallvec![
