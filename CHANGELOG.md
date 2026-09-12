@@ -1,5 +1,23 @@
 # Changelog
 
+## uf@0.0.0-alpha.24
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add render escape hatch to avatar parts (#806)
+- **ui**: add render escape hatch to alert parts (#805)
+
+## uf@0.0.0-alpha.23
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add render escape hatch to avatar parts (#806)
+- **ui**: add render escape hatch to alert parts (#805)
+
 ## uf@0.0.0-alpha.22
 
 _2026-09-12_
