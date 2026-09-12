@@ -292,6 +292,49 @@ async function ask() {
 ask();
 "#;
 
+/// The narrow Bun mechanism #419 can build on: a generated stand-in written as
+/// a real file, reached by an `onResolve` redirect from a static import.
+const BUN_STAND_IN_PROGRAM: &str = r#"// @flow
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  bunMockedModulePath,
+  defineModuleMock,
+  resetModuleMocks,
+} from "@uniflowed/host/module-mocks";
+
+async function run() {
+  const clientUrl = new URL("./client.js", import.meta.url).href;
+  defineModuleMock(clientUrl, { send: () => "stand-in" });
+  const standIn = bunMockedModulePath(clientUrl);
+  if (standIn == null) throw new Error("no Bun stand-in was written");
+
+  const clientPath = fileURLToPath(clientUrl);
+  Bun.plugin({
+    name: "uf-module-mock-stand-in-test",
+    setup(build) {
+      build.onResolve({ filter: /client\.js$/ }, (args) => {
+        if (args.importer === "") return;
+        const resolved = path.resolve(path.dirname(args.importer), args.path);
+        if (resolved === clientPath) {
+          return { path: standIn };
+        }
+      });
+    },
+  });
+
+  const consumer = await import("./consumer.js");
+  console.log(`consumer=${consumer.greeting}`);
+  resetModuleMocks();
+  defineModuleMock(clientUrl, { send: () => "again" });
+  const nextStandIn = bunMockedModulePath(clientUrl);
+  console.log(`stand-ins=${nextStandIn === standIn ? "reused" : "unique"}`);
+  resetModuleMocks();
+}
+
+run();
+"#;
+
 /// What `uft.mock` does on Bun, which is refuse and say why.
 ///
 /// ubugeeei-prod/uf#283 shipped module mocking on Node and raised
@@ -360,6 +403,53 @@ fn module_mocking_on_bun_refuses_by_name_rather_than_doing_nothing() {
             run.stderr
         );
     }
+}
+
+/// Bun cannot run the public module-mocking API yet, because #419's direct
+/// dynamic import path still refuses the redirect. This proves the next
+/// implementation slice below that API: the stand-in module `@uniflowed/host`
+/// generates can be materialized as a file, and Bun can route a static import
+/// declaration to it through `Bun.plugin`.
+#[test]
+fn module_mocking_on_bun_can_materialize_a_stand_in_for_static_imports() {
+    if !host_ready() || !bun_ready() {
+        return;
+    }
+
+    let project = Project::new(&[
+        (
+            "client.js",
+            "// @flow\nexport const send = (): string => \"real\";\n",
+        ),
+        (
+            "consumer.js",
+            "// @flow\nimport { send } from \"./client.js\";\n\n\
+             export const greeting: string = send();\n",
+        ),
+        ("main.js", BUN_STAND_IN_PROGRAM),
+    ]);
+
+    let run = run_on_bun(&project, "main.js");
+
+    assert_eq!(
+        run.status,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        run.stdout.contains("consumer=stand-in"),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        run.stdout.contains("stand-ins=unique"),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
 }
 
 /// The preload is a file this repository ships, and it has to be reachable
