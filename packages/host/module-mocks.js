@@ -200,7 +200,12 @@ export function moduleKey(url) {
  * than a `true` nobody wired up.
  */
 export function interceptionSupported() {
-  return typeof nodeModule.registerHooks === "function";
+  const process = globalThis.process;
+  return (
+    process != null &&
+    process.versions?.node != null &&
+    typeof nodeModule.registerHooks === "function"
+  );
 }
 
 /**

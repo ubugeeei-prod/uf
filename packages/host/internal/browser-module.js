@@ -13,10 +13,10 @@
 // project that writes an in-source test gets a warning about a module that was
 // never going to run.
 //
-// So this file exists to be resolved and never called. `registerHooks` is the
-// only browser-reachable binding the public API can touch; the Bun stand-in
-// helpers use `fs`, `os` and `path`, but they are a host-only escape hatch and
-// should fail with a sentence if a page ever asks for them.
+// So this file exists to be resolved and to make feature detection answer
+// "not here". `registerHooks` is intentionally absent; the Bun stand-in helpers
+// use `fs`, `os` and `path`, but they are a host-only escape hatch and should
+// fail with a sentence if a page ever asks for them.
 //
 // Mapped in by `package.json`'s `browser` field, which Node ignores and every
 // bundler honours, so the host's own behaviour is untouched.
@@ -28,9 +28,7 @@ function unavailable(what) {
 }
 
 /** Node's synchronous module hooks, which a page does not have. */
-export function registerHooks() {
-  unavailable("module interception");
-}
+export const registerHooks = undefined;
 
 /** A filesystem write, which only the host can perform. */
 export function mkdtempSync(_prefix) {
