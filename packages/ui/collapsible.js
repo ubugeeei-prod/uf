@@ -52,8 +52,13 @@
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useId, useMemo, useRef, useState } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
 import { useControlled } from "./internal/controlled-state.js";
 
@@ -105,34 +110,33 @@ export component CollapsibleRoot(
   return <CollapsibleContext.Provider value={state}>{children}</CollapsibleContext.Provider>;
 }
 
-/** The button that shows and hides the content. */
+/** The control that shows and hides the content. */
 export component CollapsibleTrigger(
   children: React.Node,
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const collapsible = useCollapsible("Collapsible.Trigger");
-  const passed = withoutComposed(rest, ["onClick"]);
+  const props = withProps(withoutComposed(rest, ["onClick"]), {
+    // Named only while the content is in the document. A caller who renders
+    // the content conditionally — or not at all until data arrives — would
+    // otherwise have this trigger pointing at nothing.
+    "aria-controls": collapsible.present ? collapsible.contentId : undefined,
+    "aria-expanded": collapsible.open ? "true" : "false",
+    children,
+    disabled,
+    onClick: composeHandlers(rest.onClick, () => {
+      if (!disabled) {
+        collapsible.setOpen(!collapsible.open);
+      }
+    }),
+  });
 
-  return (
-    <button
-      {...passed}
-      // Named only while the content is in the document. A caller who renders
-      // the content conditionally — or not at all until data arrives — would
-      // otherwise have this button pointing at nothing.
-      aria-controls={collapsible.present ? collapsible.contentId : undefined}
-      aria-expanded={collapsible.open ? "true" : "false"}
-      disabled={disabled}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (!disabled) {
-          collapsible.setOpen(!collapsible.open);
-        }
-      })}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -142,23 +146,24 @@ export component CollapsibleTrigger(
  * the module header, and `internal/disclosure.js` for what `hidden` is upgraded
  * to and why that takes an effect.
  */
-export component CollapsibleContent(children: React.Node, ...rest: Rest) {
+export component CollapsibleContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const collapsible = useCollapsible("Collapsible.Content");
   const contentRef = useRef<HTMLElement | null>(null);
   usePresence(collapsible.registerContent);
   useUntilFound(contentRef, collapsible.open);
   useMeasuredHeight(contentRef, collapsible.measure);
 
-  return (
-    <div
-      {...withoutComposed(rest, ["ref"])}
-      hidden={!collapsible.open}
-      id={collapsible.contentId}
-      ref={composeRefs(rest.ref, (element) => {
-        contentRef.current = element;
-      })}
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(withoutComposed(rest, ["ref"]), {
+    children,
+    hidden: !collapsible.open,
+    id: collapsible.contentId,
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      contentRef.current = element;
+    }),
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }

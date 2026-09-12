@@ -7139,6 +7139,60 @@ describe("Collapsible", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
+  it("hands trigger and content behaviour to caller-rendered elements", async () => {
+    const clicked = fn();
+    render(
+      <Collapsible.Root>
+        <Collapsible.Trigger onClick={clicked} render={(props) => <a href="#details" {...props} />}>
+          Details
+        </Collapsible.Trigger>
+        <Collapsible.Content render={(props) => <section {...props} data-testid="panel" />}>
+          the small print
+        </Collapsible.Content>
+      </Collapsible.Root>,
+    );
+
+    const trigger = screen.getByRole("link", { name: "Details" });
+    const content = screen.getByTestId("panel");
+    expect(trigger.tagName).toBe("A");
+    expect(trigger).toHaveAttribute("href", "#details");
+    expect(trigger).not.toHaveAttribute("type");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger.getAttribute("aria-controls")).toBe(content.getAttribute("id"));
+    expect(content.tagName).toBe("SECTION");
+    expect(content.textContent).toBe("the small print");
+    expect(content).toHaveAttribute("hidden", "until-found");
+
+    await userEvent.click(trigger);
+    expect(clicked).toHaveBeenCalled();
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(content).not.toHaveAttribute("hidden");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("does not open a caller-rendered trigger while disabled", async () => {
+    render(
+      <Collapsible.Root>
+        <Collapsible.Trigger
+          disabled
+          render={(props) => <div {...props} role="button" tabIndex={0} />}
+        >
+          Details
+        </Collapsible.Trigger>
+        <Collapsible.Content render={(props) => <section {...props} data-testid="panel" />}>
+          the small print
+        </Collapsible.Content>
+      </Collapsible.Root>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Details" });
+    expect(trigger.tagName).toBe("DIV");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("panel")).toHaveAttribute("hidden", "until-found");
+  });
+
   it("claims no aria-controls when there is no content to name", () => {
     render(
       <Collapsible.Root>
@@ -8338,6 +8392,8 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Breadcrumb.Root",
     "Breadcrumb.Separator",
     "Checkbox",
+    "Collapsible.Content",
+    "Collapsible.Trigger",
     "ContextMenu.Body",
     "ContextMenu.CheckboxItem",
     "ContextMenu.Group",
@@ -8455,8 +8511,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Carousel.Item",
     "Carousel.Pause",
     "Carousel.Root",
-    "Collapsible.Content",
-    "Collapsible.Trigger",
     "Combobox.Empty",
     "Combobox.Group",
     "Combobox.GroupLabel",
