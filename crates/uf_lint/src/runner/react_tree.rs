@@ -57,14 +57,14 @@ const REDUNDANT_MEMO: &str = "react/no-redundant-memo";
 /// a measurement is exactly the shape this rule must not move into render.
 const EFFECT: &str = "useEffect";
 
-/// A module that does not mention `useState` cannot produce a finding.
+/// A module that does not bind a `useState` setter cannot produce a finding.
 ///
 /// The rule reports an effect whose only job is to store a value derived from
 /// its dependencies, and it finds those stores through the **setters**
-/// `declared_state` collects from `useState` destructuring. No `useState`, no
-/// setter, no finding — and building a Babel AST to discover that is 790,000
-/// allocations and 65 MiB for a 111 KiB module, which is 94% of what `uf lint`
-/// spends on it. See ubugeeei-prod/uf#668.
+/// `declared_state` collects from `useState` destructuring. No destructured
+/// setter, no finding — and building a Babel AST used to cost 790,000
+/// allocations and 65 MiB for a 111 KiB module, which was 94% of what
+/// `uf lint` spent on it. See ubugeeei-prod/uf#668.
 ///
 /// # What a textual gate cannot see
 ///
@@ -109,13 +109,14 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         return None;
     }
 
-    // Both calls, not just the effect: see `STATE`. Textual on purpose — the
-    // point is to decide without parsing. Read the scanner's code slices once
-    // and classify every hook-looking call in that pass, so the hot gate does
-    // not re-walk the file once per hook name.
+    // Both calls, not just the effect, and a setter-looking state binding: see
+    // `STATE`. Textual on purpose — the point is to decide without parsing.
+    // Read the scanner's code slices once and classify every hook-looking call
+    // in that pass, so the hot gate does not re-walk the file once per hook
+    // name.
     let has_compiled_boundary = memo.is_some() && declares_react_compiler_boundary(scan);
     let calls = requested_hook_calls(scan, derived.is_some(), has_compiled_boundary);
-    let wants_effects = derived.is_some() && calls.effect && calls.state;
+    let wants_effects = derived.is_some() && calls.effect && calls.state_setter;
     let wants_memo = memo.is_some() && has_compiled_boundary && (calls.memo || calls.callback);
     if !wants_effects && !wants_memo {
         return None;
@@ -131,7 +132,7 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
 #[derive(Default)]
 struct HookCalls {
     effect: bool,
-    state: bool,
+    state_setter: bool,
     memo: bool,
     callback: bool,
 }
@@ -140,14 +141,14 @@ impl HookCalls {
     fn mark(&mut self, hook: HookCall) {
         match hook {
             HookCall::Effect => self.effect = true,
-            HookCall::State => self.state = true,
+            HookCall::State => self.state_setter = true,
             HookCall::Memo => self.memo = true,
             HookCall::Callback => self.callback = true,
         }
     }
 
     fn satisfied(&self, needs_effects: bool, needs_memo: bool) -> bool {
-        (!needs_effects || (self.effect && self.state))
+        (!needs_effects || (self.effect && self.state_setter))
             && (!needs_memo || self.memo || self.callback)
     }
 }
@@ -179,6 +180,9 @@ fn requested_hook_calls(scan: &FileScan<'_>, needs_effects: bool, needs_memo: bo
             // a string, and it rejects import-only names before `in_string`
             // has to rescan the line prefix.
             if call_follows_name(code, after) && !line.in_string(at) {
+                if matches!(hook, HookCall::State) && !state_setter_binding_before_call(code, at) {
+                    continue;
+                }
                 calls.mark(hook);
                 if calls.satisfied(needs_effects, needs_memo) {
                     return calls;
@@ -229,6 +233,96 @@ fn hook_name_at(code: &str, at: usize, hook: &str) -> bool {
 /// than paying the #668 path for import-only modules.
 fn call_follows_name(code: &str, after: usize) -> bool {
     next_non_space(code, after).is_some_and(|(_, byte)| matches!(byte, b'(' | b'<'))
+}
+
+/// Whether a `useState` call is initialized into the array destructuring shape
+/// this rule can actually read: `const [value, setValue] = useState(...)`.
+fn state_setter_binding_before_call(code: &str, at: usize) -> bool {
+    let before_call = &code[..at.min(code.len())];
+    let Some(equal) = before_call
+        .as_bytes()
+        .iter()
+        .rposition(|byte| *byte == b'=')
+    else {
+        return false;
+    };
+    let statement_start = before_call.as_bytes()[..equal]
+        .iter()
+        .rposition(|byte| matches!(*byte, b';' | b'{' | b'}'))
+        .map_or(0, |boundary| boundary + 1);
+    let lhs = &before_call[statement_start..equal];
+    has_state_setter_pattern(lhs)
+}
+
+fn has_state_setter_pattern(lhs: &str) -> bool {
+    let bytes = lhs.as_bytes();
+    let mut open = 0;
+    while open < bytes.len() {
+        if bytes[open] != b'[' {
+            open += 1;
+            continue;
+        }
+        let Some(close) = matching_bracket(bytes, open) else {
+            return false;
+        };
+        let tail = lhs[close + 1..].trim_start();
+        if (tail.is_empty() || tail.starts_with(':'))
+            && has_plain_second_pattern_element(&lhs[open + 1..close])
+        {
+            return true;
+        }
+        open = close + 1;
+    }
+    false
+}
+
+fn matching_bracket(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0u32;
+    for (offset, byte) in bytes[open..].iter().enumerate() {
+        match byte {
+            b'[' => depth += 1,
+            b']' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn has_plain_second_pattern_element(pattern: &str) -> bool {
+    let Some(comma) = top_level_comma(pattern) else {
+        return false;
+    };
+    let second = &pattern[comma + 1..];
+    let end = top_level_comma(second).unwrap_or(second.len());
+    let second = second[..end].trim_start();
+    let Some(first) = second.as_bytes().first().copied() else {
+        return false;
+    };
+    first.is_ascii_alphabetic() || first == b'_' || first == b'$'
+}
+
+fn top_level_comma(pattern: &str) -> Option<usize> {
+    let mut square = 0u32;
+    let mut curly = 0u32;
+    let mut paren = 0u32;
+    for (at, byte) in pattern.as_bytes().iter().enumerate() {
+        match byte {
+            b',' if square == 0 && curly == 0 && paren == 0 => return Some(at),
+            b'[' => square += 1,
+            b']' => square = square.saturating_sub(1),
+            b'{' => curly += 1,
+            b'}' => curly = curly.saturating_sub(1),
+            b'(' => paren += 1,
+            b')' => paren = paren.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Whether this module has a declaration the syntax-mode React Compiler reads.
@@ -1541,6 +1635,22 @@ component Page() {
 
         assert!(!wants(DERIVED_STATE, source));
         assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn use_state_without_a_setter_binding_does_not_request_the_derived_state_path() {
+        let source = r#"// @flow
+import { useEffect, useState } from "react";
+component Page(value: number) {
+  const state = useState(0);
+  useEffect(() => {
+    state[1](value);
+  }, [value]);
+  return <main />;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, source));
     }
 
     #[test]
