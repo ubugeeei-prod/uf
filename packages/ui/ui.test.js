@@ -6102,6 +6102,77 @@ describe("Table", () => {
     }
     expect(message).toContain("Table.Head must be rendered inside a Table.Root");
   });
+
+  it("hands the table contract to caller-rendered elements", async () => {
+    component CallerRenderedTable() {
+      const [sort, setSort] = useState(null);
+      return (
+        <Table.Root
+          onSortChange={setSort}
+          render={(props) => <section {...props} data-testid="table" />}
+          rowCount={PEOPLE.length}
+          sort={sort}
+        >
+          <Table.Caption render={(props) => <h2 {...props} />}>People</Table.Caption>
+          <Table.Header render={(props) => <div {...props} data-testid="head" />}>
+            <Table.Row render={(props) => <div {...props} data-testid="header-row" />}>
+              <Table.Head render={(props) => <div {...props} data-testid="select-head" />}>
+                <Table.SelectAll
+                  checked="mixed"
+                  onCheckedChange={() => {}}
+                  render={(props) => <span {...props} data-testid="select-all" tabIndex={0} />}
+                />
+              </Table.Head>
+              <Table.Head
+                column="name"
+                render={(props) => <div {...props} data-testid="name-head" />}
+              >
+                Name
+              </Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body render={(props) => <div {...props} data-testid="body" />}>
+            <Table.Row index={0} render={(props) => <div {...props} data-testid="row" />}>
+              <Table.RowHeader render={(props) => <strong {...props} />}>
+                Ada Lovelace
+              </Table.RowHeader>
+              <Table.Cell render={(props) => <span {...props} data-testid="born" />}>
+                1815
+              </Table.Cell>
+              <Table.Cell>
+                <Table.RowSelect
+                  checked={false}
+                  label="Select Ada Lovelace"
+                  onCheckedChange={() => {}}
+                  render={(props) => <span {...props} data-testid="row-select" tabIndex={0} />}
+                />
+              </Table.Cell>
+            </Table.Row>
+          </Table.Body>
+        </Table.Root>
+      );
+    }
+
+    render(<CallerRenderedTable />);
+
+    expect(screen.getByRole("table", { name: "People" })).toHaveAttribute("data-testid", "table");
+    expect(screen.getByTestId("table").tagName).toBe("SECTION");
+    expect(screen.getByTestId("table")).toHaveAttribute("aria-rowcount", "4");
+    expect(screen.getByText("People")).toHaveAttribute("role", "caption");
+    expect(screen.getByTestId("head")).toHaveAttribute("role", "rowgroup");
+    expect(screen.getByTestId("header-row")).toHaveAttribute("role", "row");
+    expect(screen.getByTestId("select-head")).toHaveAttribute("role", "columnheader");
+    expect(screen.getByTestId("select-head")).toHaveAttribute("scope", "col");
+    expect(screen.getByTestId("select-all")).toHaveAttribute("role", "checkbox");
+    expect(screen.getByTestId("select-all")).toHaveAttribute("aria-checked", "mixed");
+    expect(screen.getByRole("rowheader", { name: "Ada Lovelace" })).toHaveAttribute("scope", "row");
+    expect(screen.getByTestId("born")).toHaveAttribute("role", "cell");
+    expect(screen.getByTestId("row-select")).toHaveAttribute("role", "checkbox");
+
+    await userEvent.click(within(screen.getByTestId("name-head")).getByRole("button"));
+    expect(screen.getByTestId("name-head")).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");
+  });
 });
 
 describe("Pagination", () => {
@@ -6182,6 +6253,53 @@ describe("Pagination", () => {
   it("is a list, so a reader can skip it in one keystroke", () => {
     render(<Example />);
     expect(within(screen.getByRole("navigation")).getAllByRole("listitem").length).toBe(5);
+  });
+
+  it("hands the pagination contract to caller-rendered elements", () => {
+    render(
+      <Pagination.Root
+        label="Pages"
+        page={4}
+        pageCount={25}
+        render={(props) => <section {...props} data-testid="pager" />}
+      >
+        <Pagination.Content render={(props) => <div {...props} data-testid="pages" />}>
+          <Pagination.Previous
+            disabled
+            href="?page=3"
+            render={(props) => <span {...props} data-testid="previous" />}
+          >
+            ‹
+          </Pagination.Previous>
+          <Pagination.Item
+            current
+            href="?page=4"
+            render={(props) => <span {...props} data-testid="current" />}
+          >
+            4
+          </Pagination.Item>
+          <Pagination.Next
+            href="?page=5"
+            render={(props) => <span {...props} data-testid="next" />}
+          >
+            ›
+          </Pagination.Next>
+        </Pagination.Content>
+      </Pagination.Root>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Pages" })).toHaveAttribute(
+      "data-testid",
+      "pager",
+    );
+    expect(screen.getByTestId("pager").tagName).toBe("SECTION");
+    expect(screen.getByTestId("pages")).toHaveAttribute("role", "list");
+    expect(screen.getByRole("link", { current: "page" }).textContent).toBe("4");
+    expect(screen.getByRole("link", { name: "Next page" })).toHaveAttribute("data-testid", "next");
+    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    expect(screen.getByTestId("previous")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByTestId("previous")).not.toHaveAttribute("href");
+    expect(screen.getByRole("status").textContent).toBe("Page 4 of 25.");
   });
 });
 
@@ -8685,6 +8803,11 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Menubar.Separator",
     "Menubar.SubTrigger",
     "Menubar.Trigger",
+    "Pagination.Content",
+    "Pagination.Item",
+    "Pagination.Next",
+    "Pagination.Previous",
+    "Pagination.Root",
     "Progress",
     "Separator",
     "Sheet.Body",
@@ -8703,6 +8826,16 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Tabs.Panel",
     "Tabs.Root",
     "Tabs.Tab",
+    "Table.Body",
+    "Table.Caption",
+    "Table.Cell",
+    "Table.Head",
+    "Table.Header",
+    "Table.Root",
+    "Table.Row",
+    "Table.RowHeader",
+    "Table.RowSelect",
+    "Table.SelectAll",
     "Toggle",
     "Tooltip.Body",
     "Tooltip.Trigger",
@@ -8728,14 +8861,9 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Menu.Sub",
     "Menubar.Menu",
     "Menubar.Sub",
-    "Pagination.Item",
-    "Pagination.Next",
-    "Pagination.Previous",
     "Popover.Root",
     "Sheet.Root",
     "Sidebar.Root",
-    "Table.RowSelect",
-    "Table.SelectAll",
     "Tooltip.Provider",
     "Tooltip.Root",
   ];
@@ -8771,8 +8899,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "NavigationMenu.List",
     "NavigationMenu.Root",
     "NavigationMenu.Trigger",
-    "Pagination.Content",
-    "Pagination.Root",
     "Popover.Body",
     "Popover.Trigger",
     "RadioGroup.Indicator",
@@ -8801,14 +8927,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Slider.Root",
     "Slider.Thumb",
     "Slider.Track",
-    "Table.Body",
-    "Table.Caption",
-    "Table.Cell",
-    "Table.Head",
-    "Table.Header",
-    "Table.Root",
-    "Table.Row",
-    "Table.RowHeader",
     "Toast.Action",
     "Toast.Close",
     "Toast.Description",

@@ -44,8 +44,8 @@
 
 import * as React from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withProps, withoutComposed } from "./internal/merge-props.js";
 
 /**
  * The pagination, as a named landmark, and the region that announces it.
@@ -62,16 +62,16 @@ export component PaginationRoot(
   page?: number | null = null,
   pageCount?: number | null = null,
   announcePage?: (page: number, pageCount: number) => string,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const message =
     page == null || pageCount == null ? "" : (announcePage ?? defaultAnnouncement)(page, pageCount);
+  const props = withProps(rest, { "aria-label": label, children });
 
   return (
     <>
-      <nav {...rest} aria-label={label}>
-        {children}
-      </nav>
+      {render == null ? <nav {...props} /> : render(withProps(props, { role: "navigation" }))}
       {/*
         Beside the navigation rather than inside it, so a reader walking the
         landmark hears the links and not a sentence about them — and mounted
@@ -93,9 +93,14 @@ export component PaginationRoot(
  */
 export component PaginationContent(
   children: renders* (PaginationItem | PaginationPrevious | PaginationNext),
+  render?: RenderProp,
   ...rest: Rest
 ) {
-  return <ul {...rest}>{children}</ul>;
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(withProps(props, { role: "list" }));
+  }
+  return <ul {...props} />;
 }
 
 /**
@@ -108,10 +113,11 @@ export component PaginationItem(
   children: React.Node,
   current?: boolean = false,
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   return (
-    <PageLink current={current} disabled={disabled} rest={rest}>
+    <PageLink current={current} disabled={disabled} render={render} rest={rest}>
       {children}
     </PageLink>
   );
@@ -129,10 +135,11 @@ export component PaginationPrevious(
   children?: React.Node,
   label?: string = "Previous page",
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   return (
-    <PageLink disabled={disabled} label={label} rest={rest}>
+    <PageLink disabled={disabled} label={label} render={render} rest={rest}>
       {children}
     </PageLink>
   );
@@ -143,10 +150,11 @@ export component PaginationNext(
   children?: React.Node,
   label?: string = "Next page",
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   return (
-    <PageLink disabled={disabled} label={label} rest={rest}>
+    <PageLink disabled={disabled} label={label} render={render} rest={rest}>
       {children}
     </PageLink>
   );
@@ -174,19 +182,23 @@ component PageLink(
   current?: boolean = false,
   disabled?: boolean = false,
   label?: string,
+  render?: RenderProp,
 ) {
   const passed = withoutComposed(rest, disabled ? ["href"] : []);
+  const props = withProps(passed, {
+    "aria-current": current ? "page" : undefined,
+    "aria-disabled": disabled ? "true" : undefined,
+    "aria-label": label,
+    children,
+  });
+
+  if (render != null) {
+    return <li>{render(withProps(props, { role: disabled ? undefined : "link" }))}</li>;
+  }
 
   return (
     <li>
-      <a
-        {...passed}
-        aria-current={current ? "page" : undefined}
-        aria-disabled={disabled ? "true" : undefined}
-        aria-label={label}
-      >
-        {children}
-      </a>
+      <a {...props} />
     </li>
   );
 }
