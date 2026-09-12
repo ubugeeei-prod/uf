@@ -253,7 +253,7 @@ fn two_modules_imported_at_once_do_not_hold_the_host_open() {
 
 /// The program that asks Bun for a module mock and prints what it was told.
 ///
-/// It reaches for the four bindings a person actually writes rather than only
+/// It reaches for the seven bindings a person actually writes rather than only
 /// `mock`, because the promise `@uniflowed/test` makes is that *none* of them
 /// silently does nothing — a `unmock` that returned quietly on a host with no
 /// interception would leave a suite green and unmocked.
@@ -269,8 +269,11 @@ import { UnsupportedError, uft } from "@uniflowed/test";
 async function ask() {
   for (const [name, call] of [
     ["mock", () => uft.mock("./client.js", () => ({ send: () => "stand-in" }))],
+    ["doMock", () => uft.doMock("./client.js", () => ({ send: () => "stand-in" }))],
     ["unmock", () => uft.unmock("./client.js")],
+    ["doUnmock", () => uft.doUnmock("./client.js")],
     ["importActual", () => uft.importActual("./client.js")],
+    ["importMock", () => uft.importMock("./client.js")],
     ["resetModules", () => uft.resetModules()],
   ]) {
     try {
@@ -331,8 +334,11 @@ fn module_mocking_on_bun_refuses_by_name_rather_than_doing_nothing() {
     );
     for expected in [
         "mock=UnsupportedError",
+        "doMock=UnsupportedError",
         "unmock=UnsupportedError",
+        "doUnmock=UnsupportedError",
         "importActual=UnsupportedError",
+        "importMock=UnsupportedError",
         "resetModules=UnsupportedError",
         // Not "not implemented": the host, read off the runtime rather than
         // guessed, the hook it would need, and the two things that do work

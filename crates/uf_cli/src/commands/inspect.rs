@@ -296,7 +296,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
     let test_runner = NativeTestRunnerPlan::runtime_agnostic();
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
     let package_manager_detection = detect_project_package_manager(resolved);
-    let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config);
+    let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config)?;
     // Every stage of the build is a plugin, so the resolved order here is the
     // order that actually runs — including whatever `plugins: [...]` adds.
     let pipeline = resolve_pipeline(&resolved.config, &resolved.root, PipelineMode::Build)?;

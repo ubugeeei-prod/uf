@@ -404,6 +404,7 @@ pub(crate) fn build(
         "transform": "uf transform",
         "host": host.name(),
         "target": app_target.as_str(),
+        "targetContract": target_contract(app_target),
         "entries": resolved.config.build.entries,
         "routes": routes.iter().map(|route| json!({
             "path": route.path,
@@ -1063,6 +1064,42 @@ fn runtime_target_name(target: &RuntimeTarget) -> &'static str {
     }
 }
 
+fn target_contract(target: RouteTarget) -> serde_json::Value {
+    match target {
+        RouteTarget::Web => json!({
+            "runtime": "web",
+            "renderer": { "status": "implemented", "kind": "react-dom" },
+            "router": { "status": "implemented", "kind": "document" },
+            "transform": { "status": "implemented", "kind": "vite" },
+        }),
+        RouteTarget::Native | RouteTarget::Ios | RouteTarget::Android => json!({
+            "runtime": "react-native",
+            "renderer": {
+                "status": "pending",
+                "kind": "react-native-host-config",
+                "package": "@uniflowed/react-native",
+                "reason": "React Native rendering still needs a native test renderer and host config"
+            },
+            "router": {
+                "status": "pending",
+                "kind": "navigator",
+                "reason": "React Native routes need a navigator runtime rather than document URLs"
+            },
+            "transform": {
+                "status": "pending",
+                "kind": "metro",
+                "platform": target.as_str(),
+                "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
+                "config": {
+                    "package": "@uniflowed/react-native/metro",
+                    "helper": "withUniflowedMetro"
+                },
+                "reason": "React Native builds still need a Metro/native transformer contract"
+            },
+        }),
+    }
+}
+
 /// What `driver.js build` is told, beyond where to put the output.
 ///
 /// `--target` is the application platform whose reserved files the builder
@@ -1366,5 +1403,48 @@ mod tests {
         let source = diagnostic_source(&root, module, &[&diagnostic]);
 
         assert_eq!(source, "", "a climbing module path read a file anyway");
+    }
+
+    #[test]
+    fn react_native_alias_is_an_application_target() {
+        assert_eq!(
+            parse_application_target("react-native").unwrap(),
+            RouteTarget::Native
+        );
+    }
+
+    #[test]
+    fn native_target_contract_names_the_metro_platform() {
+        for (target, platform) in [
+            (RouteTarget::Native, "native"),
+            (RouteTarget::Ios, "ios"),
+            (RouteTarget::Android, "android"),
+        ] {
+            let contract = target_contract(target);
+            assert_eq!(contract["runtime"], serde_json::json!("react-native"));
+            assert_eq!(contract["renderer"]["status"], serde_json::json!("pending"));
+            assert_eq!(contract["router"]["kind"], serde_json::json!("navigator"));
+            assert_eq!(
+                contract["transform"]["status"],
+                serde_json::json!("pending")
+            );
+            assert_eq!(contract["transform"]["kind"], serde_json::json!("metro"));
+            assert_eq!(
+                contract["transform"]["platform"],
+                serde_json::json!(platform)
+            );
+            assert_eq!(
+                contract["transform"]["sourceExtensions"],
+                serde_json::json!(["js", "jsx", "mjs", "cjs"])
+            );
+            assert_eq!(
+                contract["transform"]["config"]["package"],
+                serde_json::json!("@uniflowed/react-native/metro")
+            );
+            assert_eq!(
+                contract["transform"]["config"]["helper"],
+                serde_json::json!("withUniflowedMetro")
+            );
+        }
     }
 }

@@ -129,6 +129,7 @@ export type FieldSource = {|
   readonly invalid: boolean,
   readonly required: boolean,
   readonly disabled: boolean,
+  readonly busy: boolean,
   /** What is wrong, or null while the field is valid. */
   readonly message: string | null,
   readonly control: Rest,
@@ -141,14 +142,17 @@ type FieldState = {|
   readonly controlId: string,
   readonly labelId: string,
   readonly descriptionId: string,
+  readonly statusId: string,
   readonly errorId: string,
   readonly invalid: boolean,
   readonly required: boolean,
+  readonly busy: boolean,
   readonly group: boolean,
   readonly message: string | null,
   readonly control: Rest,
   readonly describedBy: string | void,
   readonly registerDescription: (present: boolean) => void,
+  readonly registerStatus: (present: boolean) => void,
   readonly registerError: (present: boolean) => void,
 |};
 
@@ -187,26 +191,32 @@ export component FieldRoot(
   children: React.Node,
   invalid?: boolean = false,
   required?: boolean = false,
+  busy?: boolean = false,
   field?: FieldSource,
   group?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const base = useId();
   const [hasDescription, setHasDescription] = useState(false);
+  const [hasStatus, setHasStatus] = useState(false);
   const [hasError, setHasError] = useState(false);
   const sourceInvalid = field?.invalid ?? false;
   const sourceRequired = field?.required ?? false;
+  const sourceBusy = field?.busy ?? false;
   const message = field?.message ?? null;
   const control = field?.control ?? NO_CONTROL;
 
   const state = useMemo(() => {
     const descriptionId = `${base}-description`;
+    const statusId = `${base}-status`;
     const errorId = `${base}-error`;
     const wrong = invalid || sourceInvalid;
     // Only ids that are in the document. `aria-describedby` naming a missing
     // element makes a screen reader announce nothing rather than skipping it.
     const described = [
       hasDescription ? descriptionId : null,
+      hasStatus ? statusId : null,
       wrong && hasError ? errorId : null,
     ].filter(Boolean);
 
@@ -214,14 +224,17 @@ export component FieldRoot(
       controlId: `${base}-control`,
       labelId: `${base}-label`,
       descriptionId,
+      statusId,
       errorId,
       invalid: wrong,
       required: required || sourceRequired,
+      busy: busy || sourceBusy,
       group,
       message,
       control,
       describedBy: described.length === 0 ? undefined : described.join(" "),
       registerDescription: setHasDescription,
+      registerStatus: setHasStatus,
       registerError: setHasError,
     };
   }, [
@@ -230,27 +243,31 @@ export component FieldRoot(
     sourceInvalid,
     required,
     sourceRequired,
+    busy,
+    sourceBusy,
     group,
     message,
     control,
     hasDescription,
+    hasStatus,
     hasError,
   ]);
 
+  const props = withProps(rest, {
+    // A group names itself, describes itself and reports its own validity,
+    // because there is no one control inside it to carry any of the three.
+    // See the module header.
+    "aria-busy": group && state.busy ? "true" : undefined,
+    "aria-describedby": group ? state.describedBy : undefined,
+    "aria-invalid": group && state.invalid ? "true" : undefined,
+    "aria-labelledby": group ? state.labelId : undefined,
+    children,
+    role: group ? "group" : undefined,
+  });
+
   return (
     <FieldContext.Provider value={state}>
-      <div
-        {...rest}
-        // A group names itself, describes itself and reports its own validity,
-        // because there is no one control inside it to carry any of the three.
-        // See the module header.
-        aria-describedby={group ? state.describedBy : undefined}
-        aria-invalid={group && state.invalid ? "true" : undefined}
-        aria-labelledby={group ? state.labelId : undefined}
-        role={group ? "group" : undefined}
-      >
-        {children}
-      </div>
+      {render != null ? render(props) : <div {...props} />}
     </FieldContext.Provider>
   );
 }
@@ -262,22 +279,16 @@ export component FieldRoot(
  * `<label for>` naming something that is not a form control is ignored by every
  * browser, and ignored silently. The module header says more.
  */
-export component FieldLabel(children: React.Node, ...rest: Rest) {
+export component FieldLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Label");
   // `rest` first: a caller `id` here would break the relationship the control
   // points at, and it would break it silently.
   if (field.group) {
-    return (
-      <span {...rest} id={field.labelId}>
-        {children}
-      </span>
-    );
+    const props = withProps(rest, { children, id: field.labelId });
+    return render != null ? render(props) : <span {...props} />;
   }
-  return (
-    <label {...rest} htmlFor={field.controlId} id={field.labelId}>
-      {children}
-    </label>
-  );
+  const props = withProps(rest, { children, htmlFor: field.controlId, id: field.labelId });
+  return render != null ? render(props) : <label {...props} />;
 }
 
 /**
@@ -297,6 +308,7 @@ export component FieldControl(render: RenderProp) {
   const own: Rest = field.group
     ? { "aria-required": field.required ? "true" : undefined }
     : {
+        "aria-busy": field.busy ? "true" : undefined,
         id: field.controlId,
         "aria-labelledby": field.labelId,
         "aria-describedby": field.describedBy,
@@ -307,7 +319,7 @@ export component FieldControl(render: RenderProp) {
 }
 
 /** Help text, which the control points at while it is rendered. */
-export component FieldDescription(children: React.Node, ...rest: Rest) {
+export component FieldDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Description");
   const register = field.registerDescription;
   useEffect(() => {
@@ -315,11 +327,32 @@ export component FieldDescription(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
-  return (
-    <p {...rest} id={field.descriptionId}>
-      {children}
-    </p>
-  );
+  const props = withProps(rest, { children, id: field.descriptionId });
+  return render != null ? render(props) : <p {...props} />;
+}
+
+/**
+ * Non-error feedback for the field.
+ *
+ * A polite live region has to exist before the text changes. So unlike
+ * `Field.Error`, this part stays in the document even while it is empty; the
+ * control points at it only while the caller rendered the part.
+ */
+export component FieldStatus(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+  const field = useField("Field.Status");
+  const register = field.registerStatus;
+  useEffect(() => {
+    register(true);
+    return () => register(false);
+  }, [register]);
+
+  const props = withProps(rest, {
+    "aria-live": "polite",
+    children: children ?? "",
+    id: field.statusId,
+    role: "status",
+  });
+  return render != null ? render(props) : <p {...props} />;
 }
 
 /**
@@ -334,7 +367,7 @@ export component FieldDescription(children: React.Node, ...rest: Rest) {
  * store does not need the caller to reach back into `formState.errors` for a
  * string the source is already carrying.
  */
-export component FieldError(children?: React.Node, ...rest: Rest) {
+export component FieldError(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Error");
   const register = field.registerError;
   useEffect(() => {
@@ -345,9 +378,10 @@ export component FieldError(children?: React.Node, ...rest: Rest) {
   if (!field.invalid) {
     return null;
   }
-  return (
-    <p {...rest} id={field.errorId} role="alert">
-      {children ?? field.message}
-    </p>
-  );
+  const props = withProps(rest, {
+    children: children ?? field.message,
+    id: field.errorId,
+    role: "alert",
+  });
+  return render != null ? render(props) : <p {...props} />;
 }

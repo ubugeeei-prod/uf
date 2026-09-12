@@ -70,15 +70,16 @@ type Request = {|
  * How long a browser is given to open the page before the run is refused.
  *
  * Generous against a cold Chromium with a cold profile, which is about seven
- * seconds on a laptop and worse in a container, and deliberately *shorter than
- * `uf_test`'s browser file budget* (`BROWSER_FILE_TIMEOUT`, thirty seconds).
+ * seconds on a laptop and much worse in a busy container, and deliberately
+ * *shorter than `uf_test`'s browser file budget* (`BROWSER_FILE_TIMEOUT`, two
+ * minutes).
  * That order is the whole point: `uf` is already holding a stopwatch on the
  * first file while this is happening, and whichever of the two fires first is
  * what the report says. A browser that will not start should be reported as a
  * browser that will not start, with its own output attached — not as a file
  * that timed out, which is a sentence about tests that were never reached.
  */
-const START_TIMEOUT_MS = 20_000;
+const START_TIMEOUT_MS = 90_000;
 
 /**
  * The switches a headless run needs, and what each is for.
@@ -118,6 +119,18 @@ function browserArguments(profile: string, url: string): Array<string> {
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
+    // Keep startup deterministic in CI. These cut services Chrome may start
+    // before the first page request: extensions, sync, updater probes, and
+    // background network clients such as GCM. None of them changes layout or
+    // module execution, which is what browser mode measures.
+    "--disable-background-networking",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-domain-reliability",
+    "--disable-extensions",
+    "--disable-sync",
+    "--metrics-recording-only",
     // Nothing here paints, and a GPU process is one more thing to fail in a
     // container.
     "--disable-gpu",

@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use uf_config::{RuntimeEngine, UniflowedConfig};
-use uf_runtime::{RuntimeContract, RuntimeHost};
+use uf_runtime::{HostSupport, RuntimeContract, RuntimeHost};
 
 /// Inline host list used by the runtime manager.
 pub type RuntimeHostList = SmallVec<[RuntimeHost; 8]>;
@@ -63,21 +63,27 @@ impl Default for RuntimeManagerPlan {
 
 impl RuntimeManagerPlan {
     /// Infer the runtime manager plan from the unified config.
-    pub fn infer_from_config(config: &UniflowedConfig) -> Self {
+    ///
+    /// This is deliberately a second guard behind `uf_config`'s validation.
+    /// `.uf/install.json` publishes `runtimeManager.hosts` as the hosts that
+    /// must be available, and an unchecked caller must not be able to put an
+    /// enum name with no Flow loader there by constructing `UniflowedConfig`
+    /// directly. See ubugeeei-prod/uf#246.
+    pub fn infer_from_config(config: &UniflowedConfig) -> Result<Self, RuntimeManagerError> {
         let mut plan = Self {
             engine: config.app.runtime.default,
             ..Self::default()
         };
         plan.hosts.clear();
         plan.hosts
-            .push(runtime_engine_to_host(config.app.runtime.default));
+            .push(runtime_engine_to_host(config.app.runtime.default)?);
         for engine in &config.app.runtime.compatibility {
-            let host = runtime_engine_to_host(*engine);
+            let host = runtime_engine_to_host(*engine)?;
             if !plan.hosts.contains(&host) {
                 plan.hosts.push(host);
             }
         }
-        plan
+        Ok(plan)
     }
 
     /// Return whether the default plan includes the uf runtime.
@@ -376,13 +382,60 @@ pub enum RuntimeUseStep {
     ActivateVersion,
 }
 
-/// The host a configured engine names.
+/// A runtime manager plan that would publish an unsupported host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeManagerError {
+    /// A configured runtime engine has a row in `uf_runtime::HOSTS`, but that
+    /// row has no Flow loader and therefore cannot run a uf project's source.
+    RuntimeEngineWithoutHost {
+        /// The configured engine name.
+        engine: &'static str,
+        /// How `uf_runtime::HOSTS` grades the row.
+        level: &'static str,
+        /// Where the rest of the host work is tracked.
+        tracking_issue: Option<u32>,
+    },
+}
+
+impl std::fmt::Display for RuntimeManagerError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RuntimeEngineWithoutHost {
+                engine,
+                level,
+                tracking_issue,
+            } => {
+                write!(
+                    formatter,
+                    "`{engine}` cannot be written to runtimeManager.hosts because \
+                     uf_runtime::HOSTS grades it {level} with no Flow loader"
+                )?;
+                if let Some(issue) = tracking_issue {
+                    write!(formatter, "; see ubugeeei-prod/uf#{issue}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::error::Error for RuntimeManagerError {}
+
+/// The host a configured engine names, when it can run project source.
 ///
 /// One arm each, once, in `uf_config`: this mapping used to be written out
 /// here as well, and a second copy of "which row is this name" is how a name
 /// and its row drift apart.
-const fn runtime_engine_to_host(engine: RuntimeEngine) -> RuntimeHost {
-    engine.host()
+fn runtime_engine_to_host(engine: RuntimeEngine) -> Result<RuntimeHost, RuntimeManagerError> {
+    let support = HostSupport::for_host(engine.host());
+    if support.loads_flow() {
+        return Ok(support.host);
+    }
+    Err(RuntimeManagerError::RuntimeEngineWithoutHost {
+        engine: engine.as_str(),
+        level: support.level.as_str(),
+        tracking_issue: support.tracking_issue,
+    })
 }
 
 /// Runtime acquisition strategy.

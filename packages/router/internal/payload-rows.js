@@ -57,6 +57,7 @@ import {
   PAYLOAD_ROW_ATTRIBUTE,
   PayloadRowError,
   PayloadValueError,
+  payloadRowId,
   parseRowMessage,
 } from "./payload.js";
 
@@ -112,7 +113,7 @@ export function createPayloadReader(
 ): PayloadReader {
   const slots: Map<number, Slot> = new Map();
   let disconnect: (() => void) | null = null;
-  let watching = false;
+  let reading = false;
 
   function slotFor(id: number): Slot {
     const existing = slots.get(id);
@@ -149,8 +150,8 @@ export function createPayloadReader(
     if (attribute == null) {
       return;
     }
-    const id = Number.parseInt(attribute, 10);
-    if (!Number.isSafeInteger(id)) {
+    const id = payloadRowId(attribute);
+    if (id == null) {
       return;
     }
     const slot = slots.get(id);
@@ -191,11 +192,21 @@ export function createPayloadReader(
   }
 
   function stop(): void {
-    watching = false;
+    reading = false;
     const off = disconnect;
     disconnect = null;
     if (off != null) {
       off();
+    }
+  }
+
+  function observeRest(): void {
+    if (!reading || disconnect != null || finished() || observe == null) {
+      return;
+    }
+    disconnect = observe(sweep);
+    if (disconnect == null) {
+      reading = false;
     }
   }
 
@@ -205,22 +216,23 @@ export function createPayloadReader(
       // A reference discovered after the watch started — a client navigation
       // decoding a payload of its own — still gets whatever is already in the
       // document, so the order the two calls happen in does not matter.
-      if (watching) {
+      if (reading) {
         sweep();
+        observeRest();
       }
       return slot.promise;
     },
     watch(): void {
-      if (watching || slots.size === 0) {
+      if (reading) {
         return;
       }
-      watching = true;
+      reading = true;
       sweep();
-      if (finished() || observe == null) {
-        watching = false;
+      if (slots.size > 0 && finished()) {
+        reading = false;
         return;
       }
-      disconnect = observe(sweep);
+      observeRest();
     },
     stop,
   };

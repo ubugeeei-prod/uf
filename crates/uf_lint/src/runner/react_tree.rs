@@ -22,8 +22,9 @@
 //!
 //! 1. Neither rule is enabled — nothing runs.
 //! 2. The path is not Flow source — nothing runs.
-//! 3. The text holds no `useEffect`, `useMemo` or `useCallback` — nothing runs.
-//!    A module without one of those words cannot violate either rule.
+//! 3. The text holds no call-shaped `useEffect`, `useMemo` or `useCallback`,
+//!    and the memo rule also sees a Flow `component` or `hook` boundary —
+//!    nothing runs when a module cannot violate either rule.
 //! 4. The module is nested or chained past [`uf_flow`]'s parser ceilings —
 //!    nothing runs, because `flow/syntax` has already refused it and a linter
 //!    must not be the thing that overflows a stack on a minified bundle.
@@ -41,7 +42,7 @@ use uf_infra::{FxHashMap, FxHashSet};
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
 
-use crate::scan::FileScan;
+use crate::scan::{FileScan, ends_word, next_non_space, starts_word};
 use crate::{Diagnostic, push_at, severity};
 
 /// `react/no-derived-state-effect`.
@@ -56,14 +57,14 @@ const REDUNDANT_MEMO: &str = "react/no-redundant-memo";
 /// a measurement is exactly the shape this rule must not move into render.
 const EFFECT: &str = "useEffect";
 
-/// A module that does not mention `useState` cannot produce a finding.
+/// A module that does not bind a `useState` setter cannot produce a finding.
 ///
 /// The rule reports an effect whose only job is to store a value derived from
 /// its dependencies, and it finds those stores through the **setters**
-/// `declared_state` collects from `useState` destructuring. No `useState`, no
-/// setter, no finding — and building a Babel AST to discover that is 790,000
-/// allocations and 65 MiB for a 111 KiB module, which is 94% of what `uf lint`
-/// spends on it. See ubugeeei-prod/uf#668.
+/// `declared_state` collects from `useState` destructuring. No destructured
+/// setter, no finding — and building a Babel AST used to cost 790,000
+/// allocations and 65 MiB for a 111 KiB module, which was 94% of what
+/// `uf lint` spent on it. See ubugeeei-prod/uf#668.
 ///
 /// # What a textual gate cannot see
 ///
@@ -108,13 +109,15 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         return None;
     }
 
-    let source = &scan.file.source;
-    // Both words, not just the effect: see `STATE`. Textual on purpose — the
-    // point is to decide without parsing, and a module that mentions
-    // `useState` in a comment costs one parse it would have paid anyway.
-    let wants_effects = derived.is_some() && source.contains(EFFECT) && source.contains(STATE);
-    let wants_memo =
-        memo.is_some() && (source.contains("useMemo") || source.contains("useCallback"));
+    // Both calls, not just the effect, and a setter-looking state binding: see
+    // `STATE`. Textual on purpose — the point is to decide without parsing.
+    // Read the scanner's code slices once and classify every hook-looking call
+    // in that pass, so the hot gate does not re-walk the file once per hook
+    // name.
+    let has_compiled_boundary = memo.is_some() && declares_react_compiler_boundary(scan);
+    let calls = requested_hook_calls(scan, derived.is_some(), has_compiled_boundary);
+    let wants_effects = derived.is_some() && calls.effect && calls.state_setter;
+    let wants_memo = memo.is_some() && has_compiled_boundary && (calls.memo || calls.callback);
     if !wants_effects && !wants_memo {
         return None;
     }
@@ -124,6 +127,226 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         wants_effects,
         wants_memo,
     })
+}
+
+#[derive(Default)]
+struct HookCalls {
+    effect: bool,
+    state_setter: bool,
+    memo: bool,
+    callback: bool,
+}
+
+impl HookCalls {
+    fn mark(&mut self, hook: HookCall) {
+        match hook {
+            HookCall::Effect => self.effect = true,
+            HookCall::State => self.state_setter = true,
+            HookCall::Memo => self.memo = true,
+            HookCall::Callback => self.callback = true,
+        }
+    }
+
+    fn satisfied(&self, needs_effects: bool, needs_memo: bool) -> bool {
+        (!needs_effects || (self.effect && self.state_setter))
+            && (!needs_memo || self.memo || self.callback)
+    }
+}
+
+#[derive(Clone, Copy)]
+enum HookCall {
+    Effect,
+    State,
+    Memo,
+    Callback,
+}
+
+/// Which hook-ish names are present where code can call them.
+///
+/// This is still a cheap textual gate, not binding analysis. It is deliberately
+/// narrower than `source.contains`: comments, string prose and imports cannot
+/// be hook calls, and those false positives are exactly what make `uf lint`
+/// enter the allocation-heavy tree path for modules that cannot report
+/// anything here.
+fn requested_hook_calls(scan: &FileScan<'_>, needs_effects: bool, needs_memo: bool) -> HookCalls {
+    let mut calls = HookCalls::default();
+    for line in &scan.lines {
+        let code = line.code();
+        for at in uf_infra::memchr_iter(b'u', code.as_bytes()) {
+            let Some((hook, after)) = hook_call_at(code, at, needs_effects, needs_memo) else {
+                continue;
+            };
+            // The call-shape check is cheaper than proving the name is not in
+            // a string, and it rejects import-only names before `in_string`
+            // has to rescan the line prefix.
+            if call_follows_name(code, after) && !line.in_string(at) {
+                if matches!(hook, HookCall::State) && !state_setter_binding_before_call(code, at) {
+                    continue;
+                }
+                calls.mark(hook);
+                if calls.satisfied(needs_effects, needs_memo) {
+                    return calls;
+                }
+            }
+        }
+    }
+    calls
+}
+
+fn hook_call_at(
+    code: &str,
+    at: usize,
+    needs_effects: bool,
+    needs_memo: bool,
+) -> Option<(HookCall, usize)> {
+    if !starts_word(code, at) {
+        return None;
+    }
+    if needs_effects {
+        if hook_name_at(code, at, EFFECT) {
+            return Some((HookCall::Effect, at + EFFECT.len()));
+        }
+        if hook_name_at(code, at, STATE) {
+            return Some((HookCall::State, at + STATE.len()));
+        }
+    }
+    if needs_memo {
+        if hook_name_at(code, at, "useMemo") {
+            return Some((HookCall::Memo, at + "useMemo".len()));
+        }
+        if hook_name_at(code, at, "useCallback") {
+            return Some((HookCall::Callback, at + "useCallback".len()));
+        }
+    }
+    None
+}
+
+fn hook_name_at(code: &str, at: usize, hook: &str) -> bool {
+    code.as_bytes()[at..].starts_with(hook.as_bytes()) && ends_word(code, at + hook.len())
+}
+
+/// Whether the next non-space token after a name can still be the same call.
+///
+/// `useMemo<T>(...)` is a call too, so `<` is accepted with `(`. The gate stays
+/// local to the line: if somebody splits a hook callee from its argument list
+/// across lines, this errs toward skipping the expensive optional rule rather
+/// than paying the #668 path for import-only modules.
+fn call_follows_name(code: &str, after: usize) -> bool {
+    next_non_space(code, after).is_some_and(|(_, byte)| matches!(byte, b'(' | b'<'))
+}
+
+/// Whether a `useState` call is initialized into the array destructuring shape
+/// this rule can actually read: `const [value, setValue] = useState(...)`.
+fn state_setter_binding_before_call(code: &str, at: usize) -> bool {
+    let before_call = &code[..at.min(code.len())];
+    let Some(equal) = before_call
+        .as_bytes()
+        .iter()
+        .rposition(|byte| *byte == b'=')
+    else {
+        return false;
+    };
+    let statement_start = before_call.as_bytes()[..equal]
+        .iter()
+        .rposition(|byte| matches!(*byte, b';' | b'{' | b'}'))
+        .map_or(0, |boundary| boundary + 1);
+    let lhs = &before_call[statement_start..equal];
+    has_state_setter_pattern(lhs)
+}
+
+fn has_state_setter_pattern(lhs: &str) -> bool {
+    let bytes = lhs.as_bytes();
+    let mut open = 0;
+    while open < bytes.len() {
+        if bytes[open] != b'[' {
+            open += 1;
+            continue;
+        }
+        let Some(close) = matching_bracket(bytes, open) else {
+            return false;
+        };
+        let tail = lhs[close + 1..].trim_start();
+        if (tail.is_empty() || tail.starts_with(':'))
+            && has_plain_second_pattern_element(&lhs[open + 1..close])
+        {
+            return true;
+        }
+        open = close + 1;
+    }
+    false
+}
+
+fn matching_bracket(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0u32;
+    for (offset, byte) in bytes[open..].iter().enumerate() {
+        match byte {
+            b'[' => depth += 1,
+            b']' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn has_plain_second_pattern_element(pattern: &str) -> bool {
+    let Some(comma) = top_level_comma(pattern) else {
+        return false;
+    };
+    let second = &pattern[comma + 1..];
+    let end = top_level_comma(second).unwrap_or(second.len());
+    let second = second[..end].trim_start();
+    let Some(first) = second.as_bytes().first().copied() else {
+        return false;
+    };
+    first.is_ascii_alphabetic() || first == b'_' || first == b'$'
+}
+
+fn top_level_comma(pattern: &str) -> Option<usize> {
+    let mut square = 0u32;
+    let mut curly = 0u32;
+    let mut paren = 0u32;
+    for (at, byte) in pattern.as_bytes().iter().enumerate() {
+        match byte {
+            b',' if square == 0 && curly == 0 && paren == 0 => return Some(at),
+            b'[' => square += 1,
+            b']' => square = square.saturating_sub(1),
+            b'{' => curly += 1,
+            b'}' => curly = curly.saturating_sub(1),
+            b'(' => paren += 1,
+            b')' => paren = paren.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Whether this module has a declaration the syntax-mode React Compiler reads.
+///
+/// `react/no-redundant-memo` reports memoization only when the compiler removed
+/// it, and syntax mode compiles Flow `component` and `hook` declarations. A
+/// plain helper with a hand-written `useMemo` keeps that memoization, so building
+/// the Babel AST just to learn that is avoidable work.
+fn declares_react_compiler_boundary(scan: &FileScan<'_>) -> bool {
+    scan.facts.declares_component
+        || scan.lines.iter().any(|line| {
+            let code = line.code();
+            code.match_indices("hook").any(|(at, _)| {
+                starts_word(code, at)
+                    && ends_word(code, at + "hook".len())
+                    && !line.in_string(at)
+                    && next_non_space(code, at + "hook".len())
+                        .is_some_and(|(_, byte)| is_identifier_start(byte))
+            })
+        })
+}
+
+fn is_identifier_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_' || byte == b'$'
 }
 
 /// Run whichever of the two rules was asked for, over a tree somebody else
@@ -1357,4 +1580,148 @@ fn span_start(node: &Value) -> Option<u64> {
 /// The span's end, from the same pair.
 fn span_end(node: &Value) -> Option<u64> {
     node.get("range")?.as_array()?.get(1)?.as_u64()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SourceFile;
+    use crate::scan::mask_inline_comments;
+    use uf_config::{RuleLevel, UniflowedConfig};
+    use uf_infra::CompactString;
+
+    fn only(rule: &str) -> UniflowedConfig {
+        let mut config = UniflowedConfig::default();
+        config.lint.rules.clear();
+        config
+            .lint
+            .rules
+            .insert(CompactString::from(rule), RuleLevel::Error);
+        config
+    }
+
+    fn wants(rule: &str, source: &str) -> bool {
+        let file = SourceFile {
+            path: "app/page.js".to_owned(),
+            source: source.to_owned(),
+        };
+        let masked = mask_inline_comments(&file.source);
+        let scan = FileScan::new(&file, &masked);
+        wanted(&scan, &only(rule)).is_some()
+    }
+
+    #[test]
+    fn comments_and_strings_do_not_request_the_react_tree_path() {
+        let source = r#"// @flow
+// useEffect useState useMemo useCallback
+const prose = "useEffect useState useMemo useCallback";
+component Page() {
+  return <main />;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, source));
+        assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn import_only_hook_names_do_not_request_the_react_tree_path() {
+        let source = r#"// @flow
+import { useEffect, useMemo, useState } from "react";
+component Page() {
+  return <main />;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, source));
+        assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn use_state_without_a_setter_binding_does_not_request_the_derived_state_path() {
+        let source = r#"// @flow
+import { useEffect, useState } from "react";
+component Page(value: number) {
+  const state = useState(0);
+  useEffect(() => {
+    state[1](value);
+  }, [value]);
+  return <main />;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, source));
+    }
+
+    #[test]
+    fn plain_function_memoization_does_not_request_the_react_tree_path() {
+        let source = r#"// @flow
+import { useMemo } from "react";
+export function Page(items: Array<string>) {
+  const sorted = useMemo(() => items.slice(), [items]);
+  return <main>{sorted}</main>;
+}
+"#;
+
+        assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn hook_calls_still_request_the_react_tree_path() {
+        let derived = r#"// @flow
+import { useEffect, useState } from "react";
+component Page() {
+  const [value, setValue] = useState(0);
+  useEffect(() => setValue(value + 1), [value]);
+  return <main />;
+}
+"#;
+        let memo = r#"// @flow
+import { useMemo } from "react";
+component Page() {
+  const value = useMemo(() => 1, []);
+  return <main />;
+}
+"#;
+        let react_member = r#"// @flow
+import * as React from "react";
+component Page() {
+  const value = React.useMemo(() => 1, []);
+  return <main />;
+}
+"#;
+        let derived_member = r#"// @flow
+import * as React from "react";
+component Page() {
+  const [value, setValue] = React.useState(0);
+  React.useEffect(() => setValue(value + 1), [value]);
+  return <main />;
+}
+"#;
+        let hook_declaration = r#"// @flow
+import { useCallback } from "react";
+export hook useHandler(id: string): () => void {
+  return useCallback(() => send(id), [id]);
+}
+"#;
+
+        assert!(wants(DERIVED_STATE, derived));
+        assert!(wants(DERIVED_STATE, derived_member));
+        assert!(wants(REDUNDANT_MEMO, memo));
+        assert!(wants(REDUNDANT_MEMO, react_member));
+        assert!(wants(REDUNDANT_MEMO, hook_declaration));
+    }
+
+    #[test]
+    fn generic_hook_calls_still_request_the_react_tree_path() {
+        let source = r#"// @flow
+import { useMemo } from "react";
+component Page() {
+  const value = useMemo<number>(() => 1, []);
+  return <main>{value}</main>;
+}
+"#;
+
+        assert!(wants(REDUNDANT_MEMO, source));
+    }
 }

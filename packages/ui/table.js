@@ -68,8 +68,13 @@ import { createContext, useContext, useEffect, useId, useMemo, useState } from "
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import { Checkbox } from "./checkbox.js";
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /** Which column a table is sorted by, and which way. */
@@ -130,6 +135,7 @@ export component TableRoot(
   rowCount?: number | null = null,
   rowOffset?: number = 0,
   announceSort?: (column: string, direction: "ascending" | "descending") => string,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const base = useId();
@@ -184,23 +190,15 @@ export component TableRoot(
           labels[current.column] ?? current.column,
           current.direction,
         );
+  const props = withProps(rest, {
+    "aria-labelledby": captioned ? `${base}-caption` : undefined,
+    "aria-rowcount": rowCount == null ? undefined : rowCount + headerRows,
+    children,
+  });
 
   return (
     <TableContext.Provider value={state}>
-      <table
-        {...rest}
-        // The caption is a `<table>`'s accessible name in HTML-AAM already;
-        // naming it again here is what turns "the host will probably do this"
-        // into something this component promises, and it costs nothing because
-        // both point at the same words. Only while a caption is rendered, for
-        // the reason every part of this package repeats.
-        aria-labelledby={captioned ? `${base}-caption` : undefined}
-        // Every row in the table, which is the data plus the header — the
-        // arithmetic a caller should not have to remember.
-        aria-rowcount={rowCount == null ? undefined : rowCount + headerRows}
-      >
-        {children}
-      </table>
+      {render == null ? <table {...props} /> : render(withProps(props, { role: "table" }))}
       {/*
         Beside the table rather than inside it, because a `<table>` may only
         contain a caption, column groups and row groups — and mounted from the
@@ -221,7 +219,7 @@ export component TableRoot(
  * what a screen reader reads when a reader lands on it. A heading above the
  * table looks the same and is not the table's name.
  */
-export component TableCaption(children: React.Node, ...rest: Rest) {
+export component TableCaption(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const table = useTable("Table.Caption");
   const register = table.registerCaption;
 
@@ -230,11 +228,11 @@ export component TableCaption(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
-  return (
-    <caption {...rest} id={table.captionId}>
-      {children}
-    </caption>
-  );
+  const props = withProps(rest, { children, id: table.captionId });
+  if (render != null) {
+    return render(withProps(props, { role: "caption" }));
+  }
+  return <caption {...props} />;
 }
 
 /**
@@ -243,7 +241,7 @@ export component TableCaption(children: React.Node, ...rest: Rest) {
  * It tells the root that it exists, because `aria-rowcount` and every row's
  * `aria-rowindex` count header rows and a table without one counts differently.
  */
-export component TableHeader(children: React.Node, ...rest: Rest) {
+export component TableHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const table = useTable("Table.Header");
   const register = table.registerHeader;
 
@@ -252,18 +250,21 @@ export component TableHeader(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
+  const props = withProps(rest, { children });
+
   return (
     <HeaderContext.Provider value={true}>
-      <thead {...rest}>{children}</thead>
+      {render == null ? <thead {...props} /> : render(withProps(props, { role: "rowgroup" }))}
     </HeaderContext.Provider>
   );
 }
 
 /** The data rows. */
-export component TableBody(children: React.Node, ...rest: Rest) {
+export component TableBody(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
   return (
     <HeaderContext.Provider value={false}>
-      <tbody {...rest}>{children}</tbody>
+      {render == null ? <tbody {...props} /> : render(withProps(props, { role: "rowgroup" }))}
     </HeaderContext.Provider>
   );
 }
@@ -284,7 +285,12 @@ export component TableBody(children: React.Node, ...rest: Rest) {
  * adding them anyway is a second source of truth that can disagree with the
  * document.
  */
-export component TableRow(children: React.Node, index?: number | null = null, ...rest: Rest) {
+export component TableRow(
+  children: React.Node,
+  index?: number | null = null,
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const table = useTable("Table.Row");
   const header = useContext(HeaderContext);
   const counted = table.rowCount != null;
@@ -300,11 +306,11 @@ export component TableRow(children: React.Node, index?: number | null = null, ..
     rowIndex = table.headerRows + table.rowOffset + (index ?? 0) + 1;
   }
 
-  return (
-    <tr {...rest} aria-rowindex={rowIndex}>
-      {children}
-    </tr>
-  );
+  const props = withProps(rest, { "aria-rowindex": rowIndex, children });
+  if (render != null) {
+    return render(withProps(props, { role: "row" }));
+  }
+  return <tr {...props} />;
 }
 
 /**
@@ -320,7 +326,12 @@ export component TableRow(children: React.Node, index?: number | null = null, ..
  * Not `"none"` on the others: eleven headers each announcing "not sorted" is
  * eleven announcements of nothing, on every pass through the table.
  */
-export component TableHead(children: React.Node, column?: string | null = null, ...rest: Rest) {
+export component TableHead(
+  children: React.Node,
+  column?: string | null = null,
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const table = useTable("Table.Head");
   const passed = withoutComposed(rest, column == null ? [] : ["onClick", "ref"]);
   const sorted = column != null && table.sort?.column === column;
@@ -341,41 +352,49 @@ export component TableHead(children: React.Node, column?: string | null = null, 
   });
 
   if (column == null) {
-    return (
-      <th {...rest} scope="col">
-        {children}
-      </th>
-    );
+    const props = withProps(rest, { children, scope: "col" });
+    if (render != null) {
+      return render(withProps(props, { role: "columnheader" }));
+    }
+    return <th {...props} />;
   }
 
-  return (
-    <th
-      {...passed}
-      aria-sort={sorted ? table.sort?.direction : undefined}
-      ref={composeRefs(rest.ref, setElement)}
-      scope="col"
+  const button = (
+    <button
+      onClick={composeHandlers(rest.onClick, () => {
+        // Two states, not three. A sort that cycles back to "unsorted" gives
+        // a reader a third press whose result is a table in an order nobody
+        // asked for.
+        table.setSort({
+          column,
+          direction: sorted && table.sort?.direction === "ascending" ? "descending" : "ascending",
+        });
+      })}
+      type="button"
     >
-      <button
-        onClick={composeHandlers(rest.onClick, () => {
-          // Two states, not three. A sort that cycles back to "unsorted" gives
-          // a reader a third press whose result is a table in an order nobody
-          // asked for.
-          table.setSort({
-            column,
-            direction: sorted && table.sort?.direction === "ascending" ? "descending" : "ascending",
-          });
-        })}
-        type="button"
-      >
-        {children}
-      </button>
-    </th>
+      {children}
+    </button>
   );
+  const props = withProps(passed, {
+    "aria-sort": sorted ? table.sort?.direction : undefined,
+    children: button,
+    ref: composeRefs(rest.ref, setElement),
+    scope: "col",
+  });
+
+  if (render != null) {
+    return render(withProps(props, { role: "columnheader" }));
+  }
+  return <th {...props} />;
 }
 
 /** One cell. */
-export component TableCell(children: React.Node, ...rest: Rest) {
-  return <td {...rest}>{children}</td>;
+export component TableCell(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(withProps(props, { role: "cell" }));
+  }
+  return <td {...props} />;
 }
 
 /**
@@ -386,12 +405,12 @@ export component TableCell(children: React.Node, ...rest: Rest) {
  * moves down the year column. A table of records usually has one and almost
  * never marks it.
  */
-export component TableRowHeader(children: React.Node, ...rest: Rest) {
-  return (
-    <th {...rest} scope="row">
-      {children}
-    </th>
-  );
+export component TableRowHeader(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children, scope: "row" });
+  if (render != null) {
+    return render(withProps(props, { role: "rowheader" }));
+  }
+  return <th {...props} />;
 }
 
 /**
@@ -430,6 +449,7 @@ export component TableSelectAll(
   label?: string = "Select all rows",
   className?: string,
   disabled?: boolean = false,
+  render?: RenderProp,
 ) {
   return (
     <Checkbox
@@ -439,6 +459,7 @@ export component TableSelectAll(
       disabled={disabled}
       indeterminate={checked === "mixed"}
       onCheckedChange={onCheckedChange}
+      render={render}
     />
   );
 }
@@ -461,6 +482,7 @@ export component TableRowSelect(
   onCheckedChange: (checked: boolean) => void,
   className?: string,
   disabled?: boolean = false,
+  render?: RenderProp,
 ) {
   return (
     <Checkbox
@@ -469,6 +491,7 @@ export component TableRowSelect(
       className={className}
       disabled={disabled}
       onCheckedChange={onCheckedChange}
+      render={render}
     />
   );
 }

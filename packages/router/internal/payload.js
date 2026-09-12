@@ -581,6 +581,19 @@ function decodeReference(value: string, path: string, resolve: RowResolver): mix
 }
 
 /**
+ * The row id carried by a streamed row element, or `null` when the attribute
+ * is not one.
+ *
+ * This is the same grammar as the `$P<n>` reference without the `$P` tag:
+ * digits only, in range. The browser reads row elements from a live document,
+ * so accepting `Number.parseInt`'s looser spellings would let `1x` satisfy the
+ * row the model named as `$P1`.
+ */
+export function payloadRowId(value: string): number | null {
+  return parsePayloadRowId(value);
+}
+
+/**
  * The row a reference names, or `null` when the string is not one.
  *
  * Digits only, and read by hand rather than with `Number`, which accepts
@@ -591,7 +604,10 @@ function rowId(value: string): number | null {
   if (!value.startsWith(REFERENCE_PREFIX + ROW_TAG)) {
     return null;
   }
-  const digits = value.slice(2);
+  return parsePayloadRowId(value.slice(2));
+}
+
+function parsePayloadRowId(digits: string): number | null {
   if (digits.length === 0 || digits.length > 3) {
     return null;
   }

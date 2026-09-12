@@ -1,5 +1,124 @@
 # Changelog
 
+## uf@0.0.0-alpha.32
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add popover render escape hatch (#862)
+
+### Fixed
+
+- **router**: preserve late payload row watches (#860)
+
+### Performance
+
+- **check**: defer environment setup for parse misses (#863)
+- **lint**: gate derived state on setter bindings (#864)
+- **lint**: skip memo tree path outside compiler boundaries (#859)
+- **rsc**: cache slot client route checks (#856)
+
+### Internal
+
+- disable browser background startup services (#861)
+- widen cold browser startup budget (#857)
+
+## uf@0.0.0-alpha.31
+
+_2026-09-12_
+
+### Added
+
+- **react-native**: expose Metro config helper (#853)
+
+### Internal
+
+- extend browser startup budget on CI (#854)
+- **release**: check pending package tarballs (#851)
+
+## uf@0.0.0-alpha.30
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add table and pagination render escape hatches (#848)
+- **ui**: add field status live region (#847)
+- **router**: add pure routing subpath (#844)
+- **build**: record native Metro platform contract (#843)
+
+### Fixed
+
+- **router**: stream root loading fallbacks (#841)
+- refuse Deno coverage before AOT (#842)
+
+### Performance
+
+- cache repeated transform service replies (#846)
+
+### Internal
+
+- extend browser startup budget (#849)
+
+## uf@0.0.0-alpha.29
+
+_2026-09-12_
+
+### Fixed
+
+- **router**: tighten payload row ids (#836)
+- **router**: reject ignored template file spellings (#835)
+- **runtime**: guard runtime manager host manifests (#834)
+
+### Performance
+
+- **check**: reuse cache key strings (#837)
+- **lint**: scan react hook gates once (#838)
+
+## uf@0.0.0-alpha.28
+
+_2026-09-12_
+
+### Added
+
+- **build**: expose native target contract (#831)
+
+### Fixed
+
+- **vite**: keep rsc boundary importers in client routes (#832)
+- **router**: pass params to slot defaults (#830)
+
+### Performance
+
+- **check**: reuse dependency digest hex buffer (#829)
+- **lint**: require call-shaped react tree gates (#828)
+
+### Internal
+
+- cover Bun module mock aliases (#827)
+
+## uf@0.0.0-alpha.27
+
+_2026-09-12_
+
+### Performance
+
+- **lint**: skip non-code react tree hook gates (#822)
+- **check**: reuse dependency digest buffers (#824)
+
+### Internal
+
+- **rsc**: cover package client boundary routing (#823)
+
+## uf@0.0.0-alpha.26
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add field render escape hatch (#820)
+
 ## uf@0.0.0-alpha.25
 
 _2026-09-12_

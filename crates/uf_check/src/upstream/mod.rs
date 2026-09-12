@@ -269,12 +269,15 @@ fn check_batch(
     // What each file's record is filed under. Computed even for a file the
     // cache turns out to know nothing about, because it is also where the
     // recomputed answer is written back.
-    let libdefs = builtins::digest(libs);
     let keys: Vec<Digest> = match cache {
-        Some(cache) => sources
-            .iter()
-            .map(|source| file_key(cache, limits, &libdefs, source))
-            .collect(),
+        Some(cache) => {
+            let libdefs = builtins::digest(libs);
+            let limits_field = limits_field(limits);
+            sources
+                .iter()
+                .map(|source| file_key(cache, &limits_field, &libdefs, source))
+                .collect()
+        }
         None => Vec::new(),
     };
     let mut records: Vec<Option<Record>> = match cache {
@@ -298,9 +301,7 @@ fn check_batch(
                 // a shape this build does not understand: dropped, not
                 // repaired, so nothing downstream reads half of it.
                 *record = None;
-                let mk_builtins = environment.mk_builtins(libs, &options)?;
-                modules.set_mk_builtins(mk_builtins);
-                facts.push(modules.facts(index));
+                facts.push(modules.facts(index, || environment.mk_builtins(libs, &options))?);
             }
         }
     }
@@ -316,6 +317,7 @@ fn check_batch(
     let mut skipped = 0usize;
     let mut from_cache = 0usize;
     let mut result = Ok(());
+    let mut dependencies = graph.scratch();
     for (index, source) in sources.iter().enumerate() {
         if facts[index].skipped {
             skipped += 1;
@@ -323,7 +325,7 @@ fn check_batch(
         untyped.extend(graph.untyped(index));
         host_conditional.extend(graph.host_conditional(index));
 
-        let dependencies = graph.dependency_digest(index);
+        let dependency_digest = graph.dependency_digest(index, &mut dependencies);
         // The record is about this file; the digest says whether it is still
         // about this *batch*. Both have to hold, and they fail for different
         // reasons: the key stops matching when the file was edited, the digest
@@ -331,7 +333,7 @@ fn check_batch(
         // batch, so a project checked both whole and by path finds both here.
         let believed = records[index]
             .as_ref()
-            .and_then(|record| record.answer(&dependencies))
+            .and_then(|record| record.answer(dependency_digest))
             .map(<[TypeDiagnostic]>::to_vec);
         if let Some(found) = believed {
             diagnostics.extend(found);
@@ -346,7 +348,7 @@ fn check_batch(
             // moved, so a settled warm run still touches no file on disk.
             if let Some(cache) = cache
                 && let Some(record) = records[index].as_mut()
-                && record.touch(&dependencies)
+                && record.touch(dependency_digest)
             {
                 cache.write(&keys[index], record);
             }
@@ -364,7 +366,7 @@ fn check_batch(
                     let record =
                         records[index].get_or_insert_with(|| record_of(source.path, &facts[index]));
                     record.remember(CachedAnswer {
-                        dependencies,
+                        dependencies: dependency_digest.to_owned(),
                         diagnostics: found.clone(),
                     });
                     cache.write(&keys[index], record);
@@ -404,13 +406,13 @@ fn check_batch(
 /// reports, including the files that reach nothing at all.
 fn file_key(
     cache: &CheckCache,
-    limits: &CheckLimits,
+    limits_field: &str,
     libdefs: &Digest,
     source: &Source<'_>,
 ) -> Digest {
     let mut fields = Fields::new("uf-check-file-v1");
     fields.push(cache.identity());
-    fields.push(&limits_field(limits));
+    fields.push(limits_field);
     fields.push_digest(libdefs);
     fields.push(source.path);
     fields.push(source.source);

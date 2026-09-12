@@ -30,6 +30,7 @@ import {
   render,
   screen,
   userEvent,
+  waitFor,
   within,
 } from "@uniflowed/react-testing";
 // The clock behind `Temporal.Now`, so that "today" in a calendar is a fact this
@@ -263,7 +264,7 @@ describe("Field", () => {
 
   it("describes the control with the help text", () => {
     render(<EmailField invalid={false} />);
-    const control = screen.getByLabelText("Email address");
+    const control = screen.getByRole("textbox", { name: "Email address" });
     const described = control.getAttribute("aria-describedby") ?? "";
     const help = screen.getByText("We will not share it.");
     expect(described.split(" ")).toContain(help.getAttribute("id"));
@@ -313,6 +314,72 @@ describe("Field", () => {
       message = String(error);
     }
     expect(message).toContain("Field.Label must be rendered inside a Field.Root");
+  });
+
+  it("hands the field wiring to caller-rendered parts", () => {
+    render(
+      <Field.Root render={(props) => <section {...props} />} invalid>
+        <Field.Label render={(props) => <strong {...props} />}>Email address</Field.Label>
+        <Field.Control render={(props) => <input type="email" {...props} />} />
+        <Field.Description render={(props) => <small {...props} />}>
+          We will not share it.
+        </Field.Description>
+        <Field.Status render={(props) => <output {...props} />}>Checking…</Field.Status>
+        <Field.Error render={(props) => <output {...props} />}>
+          That is not an email address.
+        </Field.Error>
+      </Field.Root>,
+    );
+
+    const control = screen.getByRole("textbox", { name: "Email address" });
+    const label = screen.getByText("Email address");
+    const help = screen.getByText("We will not share it.");
+    const status = screen.getByRole("status");
+    const error = screen.getByRole("alert");
+    expect(label.tagName).toBe("STRONG");
+    expect(help.tagName).toBe("SMALL");
+    expect(status.tagName).toBe("OUTPUT");
+    expect(error.tagName).toBe("OUTPUT");
+    expect(control.getAttribute("aria-labelledby")).toBe(label.getAttribute("id"));
+    const described = control.getAttribute("aria-describedby") ?? "";
+    expect(described.split(" ")).toContain(help.getAttribute("id"));
+    expect(described.split(" ")).toContain(status.getAttribute("id"));
+    expect(described.split(" ")).toContain(error.getAttribute("id"));
+    expect(control).toHaveAttribute("aria-invalid", "true");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("keeps non-error status feedback in a polite region before it changes", async () => {
+    component SavingField() {
+      const [saving, setSaving] = useState(false);
+      return (
+        <div>
+          <Field.Root busy={saving}>
+            <Field.Label>Email address</Field.Label>
+            <Field.Control render={(props) => <input type="email" {...props} />} />
+            <Field.Status>{saving ? "Saving email" : ""}</Field.Status>
+          </Field.Root>
+          <button onClick={() => setSaving(true)} type="button">
+            Save
+          </button>
+        </div>
+      );
+    }
+
+    render(<SavingField />);
+    const control = screen.getByLabelText("Email address");
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect((control.getAttribute("aria-describedby") ?? "").split(" ")).toContain(
+      status.getAttribute("id"),
+    );
+    expect(control).not.toHaveAttribute("aria-busy");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("status").textContent).toBe("Saving email");
+    expect(control).toHaveAttribute("aria-busy", "true");
+    expect(danglingReferences()).toEqual([]);
   });
 });
 
@@ -429,6 +496,49 @@ describe("Field: bound to a form", () => {
     expect(screen.getByLabelText("Email address")).not.toHaveAttribute("aria-invalid");
     expect(screen.queryByRole("alert")).toBe(null);
   });
+
+  it("marks the bound control busy while the form is submitting", async () => {
+    let release: () => void = () => {};
+
+    component SubmittingForm() {
+      const form = useForm<Signup>({ defaultValues: { email: "" } });
+      const email = useFieldSource(form, "email", { required: "We need an email address" });
+      return (
+        <form
+          onSubmit={form.handleSubmit(
+            () =>
+              new Promise<void>((resolve) => {
+                release = () => resolve();
+              }),
+          )}
+        >
+          <Field.Root field={email}>
+            <Field.Label>Email address</Field.Label>
+            <Field.Control render={(props) => <input type="email" {...props} />} />
+            <Field.Status>Saving email</Field.Status>
+            <Field.Error />
+          </Field.Root>
+          <button type="submit">Save</button>
+        </form>
+      );
+    }
+
+    render(<SubmittingForm />);
+    const control = screen.getByLabelText("Email address");
+    await userEvent.type(control, "someone@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(control).toHaveAttribute("aria-busy", "true");
+    });
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(control).not.toHaveAttribute("aria-busy");
+    });
+  });
 });
 
 describe("Field: a group that a label cannot point at", () => {
@@ -473,6 +583,32 @@ describe("Field: a group that a label cannot point at", () => {
     // roving tab stop, which is `radio-group.js`'s job and not this one's.
     expect(screen.getByRole("radiogroup")).toBeInTheDocument();
     expect(screen.getAllByRole("radio").length).toBe(2);
+  });
+
+  it("keeps a caller-rendered group named and described by caller-rendered text", () => {
+    render(
+      <Field.Root group invalid render={(props) => <fieldset {...props} />}>
+        <Field.Label render={(props) => <legend {...props} />}>Plan</Field.Label>
+        <Field.Description render={(props) => <small {...props} />}>
+          You can change this later.
+        </Field.Description>
+        <Field.Error render={(props) => <output {...props} />}>Choose a plan.</Field.Error>
+      </Field.Root>,
+    );
+
+    const group = screen.getByRole("group");
+    const label = screen.getByText("Plan");
+    const help = screen.getByText("You can change this later.");
+    const error = screen.getByRole("alert");
+    expect(group.tagName).toBe("FIELDSET");
+    expect(label.tagName).toBe("LEGEND");
+    expect(accessibleName(group)).toBe("Plan");
+    expect(group.getAttribute("aria-labelledby")).toBe(label.getAttribute("id"));
+    const described = group.getAttribute("aria-describedby") ?? "";
+    expect(described.split(" ")).toContain(help.getAttribute("id"));
+    expect(described.split(" ")).toContain(error.getAttribute("id"));
+    expect(group).toHaveAttribute("aria-invalid", "true");
+    expect(danglingReferences()).toEqual([]);
   });
 });
 
@@ -3943,6 +4079,35 @@ describe("Popover", () => {
     expect(body).not.toHaveAttribute("aria-labelledby");
     expect(body).toHaveAttribute("aria-label", "Filter options");
   });
+
+  it("hands trigger and body behaviour to caller-rendered elements", async () => {
+    render(
+      <Popover.Root>
+        <Popover.Trigger render={(props) => <a href="#filters" {...props} />}>
+          Filters
+        </Popover.Trigger>
+        <Popover.Body render={(props) => <section {...props} data-testid="panel" />}>
+          <button type="button">Only mine</button>
+        </Popover.Body>
+      </Popover.Root>,
+    );
+
+    const trigger = screen.getByRole("link", { name: "Filters" });
+    await userEvent.click(trigger);
+
+    const body = screen.getByRole("dialog", { name: "Filters" });
+    expect(body.tagName).toBe("SECTION");
+    expect(body).toHaveAttribute("data-state", "open");
+    expect(body).toHaveAttribute("data-side", "bottom");
+    expect(body).toHaveAttribute("data-align", "center");
+    expect(trigger.getAttribute("aria-controls")).toBe(body.id);
+    expect(screen.getByRole("button", { name: "Only mine" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+    expect(trigger).toHaveFocus();
+    expect(danglingReferences()).toEqual([]);
+  });
 });
 
 describe("Tooltip", () => {
@@ -4385,6 +4550,44 @@ describe("HoverCard", () => {
       trigger.focus();
     });
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
+  });
+
+  it("keeps a caller-rendered body hoverable", () => {
+    uft.useFakeTimers();
+    const seen = { current: null };
+    render(
+      <HoverCard.Root>
+        <HoverCard.Trigger
+          render={(props) => (
+            <a href="/ada" {...props}>
+              @ada
+            </a>
+          )}
+        />
+        <HoverCard.Body ref={seen} render={(props) => <section {...props} data-testid="card" />}>
+          <p>Ada Lovelace</p>
+          <a href="/ada/notes">Notes</a>
+        </HoverCard.Body>
+      </HoverCard.Root>,
+    );
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+
+    const card = screen.getByTestId("card");
+    expect(card.tagName).toBe("SECTION");
+    expect(card).toHaveTextContent("Ada Lovelace");
+    expect(card).toHaveAttribute("data-state", "open");
+    expect(card).toHaveAttribute("data-side", "bottom");
+    expect(card).toHaveAttribute("data-align", "center");
+    expect(seen.current).toBe(card);
+    expect(screen.getByRole("link", { name: "Notes" })).toBeInTheDocument();
+
+    fireEvent.pointerLeave(trigger);
+    advance(100);
+    fireEvent.pointerEnter(card);
+    advance(10_000);
+    expect(card).toBeInTheDocument();
   });
 
   it("is not a dialog and does not describe its trigger", () => {
@@ -5966,6 +6169,77 @@ describe("Table", () => {
     }
     expect(message).toContain("Table.Head must be rendered inside a Table.Root");
   });
+
+  it("hands the table contract to caller-rendered elements", async () => {
+    component CallerRenderedTable() {
+      const [sort, setSort] = useState(null);
+      return (
+        <Table.Root
+          onSortChange={setSort}
+          render={(props) => <section {...props} data-testid="table" />}
+          rowCount={PEOPLE.length}
+          sort={sort}
+        >
+          <Table.Caption render={(props) => <h2 {...props} />}>People</Table.Caption>
+          <Table.Header render={(props) => <div {...props} data-testid="head" />}>
+            <Table.Row render={(props) => <div {...props} data-testid="header-row" />}>
+              <Table.Head render={(props) => <div {...props} data-testid="select-head" />}>
+                <Table.SelectAll
+                  checked="mixed"
+                  onCheckedChange={() => {}}
+                  render={(props) => <span {...props} data-testid="select-all" tabIndex={0} />}
+                />
+              </Table.Head>
+              <Table.Head
+                column="name"
+                render={(props) => <div {...props} data-testid="name-head" />}
+              >
+                Name
+              </Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body render={(props) => <div {...props} data-testid="body" />}>
+            <Table.Row index={0} render={(props) => <div {...props} data-testid="row" />}>
+              <Table.RowHeader render={(props) => <strong {...props} />}>
+                Ada Lovelace
+              </Table.RowHeader>
+              <Table.Cell render={(props) => <span {...props} data-testid="born" />}>
+                1815
+              </Table.Cell>
+              <Table.Cell>
+                <Table.RowSelect
+                  checked={false}
+                  label="Select Ada Lovelace"
+                  onCheckedChange={() => {}}
+                  render={(props) => <span {...props} data-testid="row-select" tabIndex={0} />}
+                />
+              </Table.Cell>
+            </Table.Row>
+          </Table.Body>
+        </Table.Root>
+      );
+    }
+
+    render(<CallerRenderedTable />);
+
+    expect(screen.getByRole("table", { name: "People" })).toHaveAttribute("data-testid", "table");
+    expect(screen.getByTestId("table").tagName).toBe("SECTION");
+    expect(screen.getByTestId("table")).toHaveAttribute("aria-rowcount", "4");
+    expect(screen.getByText("People")).toHaveAttribute("role", "caption");
+    expect(screen.getByTestId("head")).toHaveAttribute("role", "rowgroup");
+    expect(screen.getByTestId("header-row")).toHaveAttribute("role", "row");
+    expect(screen.getByTestId("select-head")).toHaveAttribute("role", "columnheader");
+    expect(screen.getByTestId("select-head")).toHaveAttribute("scope", "col");
+    expect(screen.getByTestId("select-all")).toHaveAttribute("role", "checkbox");
+    expect(screen.getByTestId("select-all")).toHaveAttribute("aria-checked", "mixed");
+    expect(screen.getByRole("rowheader", { name: "Ada Lovelace" })).toHaveAttribute("scope", "row");
+    expect(screen.getByTestId("born")).toHaveAttribute("role", "cell");
+    expect(screen.getByTestId("row-select")).toHaveAttribute("role", "checkbox");
+
+    await userEvent.click(within(screen.getByTestId("name-head")).getByRole("button"));
+    expect(screen.getByTestId("name-head")).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");
+  });
 });
 
 describe("Pagination", () => {
@@ -6046,6 +6320,53 @@ describe("Pagination", () => {
   it("is a list, so a reader can skip it in one keystroke", () => {
     render(<Example />);
     expect(within(screen.getByRole("navigation")).getAllByRole("listitem").length).toBe(5);
+  });
+
+  it("hands the pagination contract to caller-rendered elements", () => {
+    render(
+      <Pagination.Root
+        label="Pages"
+        page={4}
+        pageCount={25}
+        render={(props) => <section {...props} data-testid="pager" />}
+      >
+        <Pagination.Content render={(props) => <div {...props} data-testid="pages" />}>
+          <Pagination.Previous
+            disabled
+            href="?page=3"
+            render={(props) => <span {...props} data-testid="previous" />}
+          >
+            ‹
+          </Pagination.Previous>
+          <Pagination.Item
+            current
+            href="?page=4"
+            render={(props) => <span {...props} data-testid="current" />}
+          >
+            4
+          </Pagination.Item>
+          <Pagination.Next
+            href="?page=5"
+            render={(props) => <span {...props} data-testid="next" />}
+          >
+            ›
+          </Pagination.Next>
+        </Pagination.Content>
+      </Pagination.Root>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Pages" })).toHaveAttribute(
+      "data-testid",
+      "pager",
+    );
+    expect(screen.getByTestId("pager").tagName).toBe("SECTION");
+    expect(screen.getByTestId("pages")).toHaveAttribute("role", "list");
+    expect(screen.getByRole("link", { current: "page" }).textContent).toBe("4");
+    expect(screen.getByRole("link", { name: "Next page" })).toHaveAttribute("data-testid", "next");
+    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    expect(screen.getByTestId("previous")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByTestId("previous")).not.toHaveAttribute("href");
+    expect(screen.getByRole("status").textContent).toBe("Page 4 of 25.");
   });
 });
 
@@ -8522,6 +8843,12 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Drawer.Title",
     "Drawer.Trigger",
     "Field.Control",
+    "Field.Description",
+    "Field.Error",
+    "Field.Label",
+    "Field.Root",
+    "Field.Status",
+    "HoverCard.Body",
     "HoverCard.Trigger",
     "Menu.Body",
     "Menu.CheckboxItem",
@@ -8544,6 +8871,13 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Menubar.Separator",
     "Menubar.SubTrigger",
     "Menubar.Trigger",
+    "Pagination.Content",
+    "Pagination.Item",
+    "Pagination.Next",
+    "Pagination.Previous",
+    "Pagination.Root",
+    "Popover.Body",
+    "Popover.Trigger",
     "Progress",
     "Separator",
     "Sheet.Body",
@@ -8562,6 +8896,16 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Tabs.Panel",
     "Tabs.Root",
     "Tabs.Tab",
+    "Table.Body",
+    "Table.Caption",
+    "Table.Cell",
+    "Table.Head",
+    "Table.Header",
+    "Table.Root",
+    "Table.Row",
+    "Table.RowHeader",
+    "Table.RowSelect",
+    "Table.SelectAll",
     "Toggle",
     "Tooltip.Body",
     "Tooltip.Trigger",
@@ -8587,14 +8931,9 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Menu.Sub",
     "Menubar.Menu",
     "Menubar.Sub",
-    "Pagination.Item",
-    "Pagination.Next",
-    "Pagination.Previous",
     "Popover.Root",
     "Sheet.Root",
     "Sidebar.Root",
-    "Table.RowSelect",
-    "Table.SelectAll",
     "Tooltip.Provider",
     "Tooltip.Root",
   ];
@@ -8619,11 +8958,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Combobox.Status",
     "DatePicker.Input",
     "DatePicker.Root",
-    "Field.Description",
-    "Field.Error",
-    "Field.Label",
-    "Field.Root",
-    "HoverCard.Body",
     "InputOtp.Group",
     "InputOtp.Root",
     "InputOtp.Separator",
@@ -8634,10 +8968,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "NavigationMenu.List",
     "NavigationMenu.Root",
     "NavigationMenu.Trigger",
-    "Pagination.Content",
-    "Pagination.Root",
-    "Popover.Body",
-    "Popover.Trigger",
     "RadioGroup.Indicator",
     "RadioGroup.Item",
     "RadioGroup.Root",
@@ -8664,14 +8994,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Slider.Root",
     "Slider.Thumb",
     "Slider.Track",
-    "Table.Body",
-    "Table.Caption",
-    "Table.Cell",
-    "Table.Head",
-    "Table.Header",
-    "Table.Root",
-    "Table.Row",
-    "Table.RowHeader",
     "Toast.Action",
     "Toast.Close",
     "Toast.Description",

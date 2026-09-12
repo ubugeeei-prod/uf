@@ -148,6 +148,7 @@ export hook useFieldSource<
     // what this module is for.
     required: isRequired(rules ?? {}),
     disabled: registered.disabled === true,
+    busy: state.isSubmitting || state.isValidating || state.isLoading,
     message: error?.message ?? null,
     control,
   };

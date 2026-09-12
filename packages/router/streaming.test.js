@@ -204,6 +204,31 @@ function suspendingTable(waited: Promise<string>, options?: {| readonly loading?
   };
 }
 
+/** The same wait, with the fallback declared at the router root and no layout. */
+function rootSuspendingTable(waited: Promise<string>) {
+  component SlowPage() {
+    return <p>{use(waited)}</p>;
+  }
+  component Loading() {
+    return <p>the root fallback is here</p>;
+  }
+  return {
+    routes: [
+      {
+        path: "/slow",
+        params: [],
+        mdx: false,
+        file: "app/slow/$page.js",
+        page: () => Promise.resolve({ default: SlowPage }),
+        layouts: [],
+        loading: [{ above: 0, module: () => Promise.resolve({ default: Loading }) }],
+      },
+    ],
+    notFound: [],
+    errors: [],
+  };
+}
+
 describe("the `<Suspense>` in the tree", () => {
   it("renders the fallback while the page waits, and the layout around both", async () => {
     const waited = deferred();
@@ -354,6 +379,34 @@ describe("rendering a route that suspends", () => {
       .join("");
     expect(rest).toContain("the page is here");
     expect(chunks.length > 1).toBe(true);
+  });
+
+  it("sends a root fallback before the page resolves even without a layout", async () => {
+    const waited = deferred();
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...rootSuspendingTable(waited.promise),
+    });
+
+    let settled = false;
+    setTimeout(() => {
+      settled = true;
+      waited.resolve();
+    }, 120);
+    const result = await renderer.render("/slow", assets);
+
+    expect(settled).toBe(false);
+    const chunks = await chunksOf(result);
+    const shell = chunks[0];
+    expect(shell.text).toContain("the root fallback is here");
+    expect(shell.text).not.toContain("the page is here");
+    expect(shell.at < 120).toBe(true);
+
+    const rest = chunks
+      .slice(1)
+      .map((chunk) => chunk.text)
+      .join("");
+    expect(rest).toContain("the page is here");
   });
 
   it("writes the head before any of the body", async () => {

@@ -79,11 +79,12 @@
 // makes "no copy step" a trade rather than a loss.
 //
 // **Where it is, today.** `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Menu`,
-// `ContextMenu`, `Menubar`, `Tabs`, `Switch` and `Checkbox` are complete —
+// `ContextMenu`, `Menubar`, `Tabs`, `Tooltip`, `Popover`, `HoverCard`,
+// `Switch` and `Checkbox` are complete —
 // every part of each either takes `render` or renders no element to hand over —
-// along with `Field.Control`, `Tooltip.Trigger`, `HoverCard.Trigger` and
-// `Sidebar.Item`, which had it first. The rest do not have it yet, and that is
-// the remainder of #303. A documented escape hatch that is not there is worse
+// along with `Field.Control` and `Sidebar.Item`, which had it first. The rest
+// do not have it yet, and that is the remainder of #303. A documented escape
+// hatch that is not there is worse
 // than an undocumented one that is, so the state of every part is a table in
 // `tests/library/ui.test.js` rather than a claim in this paragraph: it names
 // all of them, in three lists, and four tests hold each list to the files. A
@@ -396,7 +397,14 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "./drawer.js";
-import { FieldControl, FieldDescription, FieldError, FieldLabel, FieldRoot } from "./field.js";
+import {
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldRoot,
+  FieldStatus,
+} from "./field.js";
 import { HoverCardBody, HoverCardRoot, HoverCardTrigger } from "./hover-card.js";
 import { InputOtpGroup, InputOtpRoot, InputOtpSeparator, InputOtpSlot } from "./input-otp.js";
 import {
@@ -551,14 +559,16 @@ export { dismissAllToasts, dismissToast, toast, updateToast };
  *     <Field.Label>Email</Field.Label>
  *     <Field.Control render={(props) => <input type="email" {...props} />} />
  *     <Field.Description>We will not share it.</Field.Description>
+ *     <Field.Status>{saving ? "Saving…" : ""}</Field.Status>
  *     <Field.Error>{error}</Field.Error>
  *   </Field.Root>
  *
  * Inside a form, `field` replaces the hand-written `invalid`: the form says
  * whether the field is wrong and what the message is, and the field composes
- * every `aria-*` from that in one place. `@uniflowed/form`'s `useFieldSource`
- * is what produces one, and `field.js`'s header says why the hook lives there
- * rather than here.
+ * every `aria-*` from that in one place. It also marks the control busy during
+ * submit, validation, or async default loading. `@uniflowed/form`'s
+ * `useFieldSource` is what produces one, and `field.js`'s header says why the
+ * hook lives there rather than here.
  *
  *   const email = useFieldSource(form, "email", { required: "We need one" });
  *   <Field.Root field={email}>…<Field.Error /></Field.Root>
@@ -573,6 +583,7 @@ export const Field = {
   Label: FieldLabel,
   Control: FieldControl,
   Description: FieldDescription,
+  Status: FieldStatus,
   Error: FieldError,
 };
 

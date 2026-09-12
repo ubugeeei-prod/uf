@@ -31,12 +31,15 @@
 //! A request is a line so the reader never has to guess where one ends; the
 //! code is JSON-escaped, so a newline in the source cannot end a request.
 
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Read, Write};
 
 use anyhow::{Context, Result};
 use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use uf_config::{UniflowedConfig, load_config};
+use uf_infra::FxHashMap;
 use uf_transform::{
     CompilerDiagnostic, ReactCompilerMode, TransformError, TransformOptions, is_flow_module,
     transform,
@@ -59,7 +62,7 @@ struct Request {
 }
 
 /// The per-request knobs; everything else comes from `uf.config.js`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct RequestOptions {
     development: bool,
@@ -86,7 +89,7 @@ impl Default for RequestOptions {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 struct Reply {
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,6 +158,87 @@ impl ProjectTransform {
 /// one that compiles nothing and starts no `uf` at all.
 const TRANSFORM_CACHE: [&str; 3] = [".uf", "cache", "transform"];
 
+/// How many answers one transform process keeps warm.
+///
+/// This cache is deliberately small and in-process. It is not the durable
+/// `.uf/cache/transform` store; it catches repeated requests inside one dev
+/// server when the same module, source and output options reach the service
+/// again. The entry is the whole protocol reply, so a hit skips the Flow
+/// parse, ESTree render, lowering, Babel conversion, React Compiler and StyleX
+/// passes together.
+const SERVICE_CACHE_ENTRIES: usize = 64;
+
+/// One compiled reply held by this `uf transform` process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct CacheKey([u8; 32]);
+
+/// Bounded, least-recently-used answers for one transform service.
+#[derive(Debug, Default)]
+struct TransformCache {
+    entries: FxHashMap<CacheKey, Reply>,
+    recent: VecDeque<CacheKey>,
+    #[cfg(test)]
+    hits: usize,
+    #[cfg(test)]
+    misses: usize,
+}
+
+impl TransformCache {
+    fn key(request: &Request) -> CacheKey {
+        let mut hasher = Sha256::new();
+        frame(&mut hasher, b"uf-transform-service-cache-v1");
+        frame(&mut hasher, request.id.as_bytes());
+        frame(&mut hasher, request.code.as_bytes());
+        hasher.update([
+            u8::from(request.options.development),
+            u8::from(request.options.refresh),
+            u8::from(request.options.source_map),
+            u8::from(request.options.in_source_tests),
+        ]);
+        CacheKey(hasher.finalize().into())
+    }
+
+    fn get(&mut self, key: CacheKey) -> Option<Reply> {
+        let answer = self.entries.get(&key).cloned();
+        if answer.is_some() {
+            #[cfg(test)]
+            {
+                self.hits += 1;
+            }
+            self.touch(key);
+        } else {
+            #[cfg(test)]
+            {
+                self.misses += 1;
+            }
+        }
+        answer
+    }
+
+    fn insert(&mut self, key: CacheKey, reply: Reply) {
+        if self.entries.insert(key, reply).is_none() && self.entries.len() > SERVICE_CACHE_ENTRIES {
+            while let Some(old) = self.recent.pop_front() {
+                if self.entries.remove(&old).is_some() {
+                    break;
+                }
+            }
+        }
+        self.touch(key);
+    }
+
+    fn touch(&mut self, key: CacheKey) {
+        if let Some(index) = self.recent.iter().position(|seen| *seen == key) {
+            self.recent.remove(index);
+        }
+        self.recent.push_back(key);
+    }
+}
+
+fn frame(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
 /// Serve transform requests until stdin closes.
 pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
     // The config loader itself reaches `uf transform` before the config can be
@@ -197,13 +281,14 @@ pub(crate) fn transform_service(cwd: &Utf8Path) -> Result<()> {
 }
 
 fn serve(input: impl Read, out: &mut impl Write, project: &ProjectTransform) -> Result<()> {
+    let mut cache = TransformCache::default();
     for line in BufReader::new(input).lines() {
         let line = line.context("reading a transform request")?;
         if line.trim().is_empty() {
             continue;
         }
         let reply = match serde_json::from_str::<Request>(&line) {
-            Ok(request) => handle(&request, project),
+            Ok(request) => handle(&request, project, &mut cache),
             Err(error) => Reply {
                 error: Some(format!("malformed request: {error}")),
                 ..Reply::default()
@@ -251,15 +336,19 @@ fn compile_styles(code: &str) -> Styled {
     }
 }
 
-fn handle(request: &Request, project: &ProjectTransform) -> Reply {
+fn handle(request: &Request, project: &ProjectTransform, cache: &mut TransformCache) -> Reply {
     if !is_flow_module(&request.id) {
         return Reply {
             id: request.id.clone(),
             ..Reply::default()
         };
     }
+    let key = TransformCache::key(request);
+    if let Some(reply) = cache.get(key) {
+        return reply;
+    }
     let options = project.options(&request.id, &request.options);
-    match transform(&request.code, &options) {
+    let reply = match transform(&request.code, &options) {
         Ok(transformed) => {
             // StyleX last, over the JavaScript the Flow chain produced. It is a
             // source-to-source rewrite of `stylex.create` calls into the class
@@ -290,7 +379,9 @@ fn handle(request: &Request, project: &ProjectTransform) -> Reply {
                 ..Reply::default()
             }
         }
-    }
+    };
+    cache.insert(key, reply.clone());
+    reply
 }
 
 /// One module compiled the way a *loader* frames it, for a host that has to be
@@ -359,6 +450,54 @@ mod tests {
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect()
+    }
+
+    fn request(id: &str, code: &str) -> Request {
+        Request {
+            id: id.to_owned(),
+            code: code.to_owned(),
+            options: RequestOptions::default(),
+        }
+    }
+
+    #[test]
+    fn identical_requests_are_answered_from_the_process_cache() {
+        let request = request(
+            "/app/main.js",
+            "// @flow\nexport const value: number = 1;\n",
+        );
+        let mut cache = TransformCache::default();
+
+        let first = handle(&request, &project(), &mut cache);
+        let second = handle(&request, &project(), &mut cache);
+
+        assert_eq!(first.code, second.code);
+        assert_eq!(first.map, second.map);
+        assert_eq!(cache.misses, 1);
+        assert_eq!(cache.hits, 1);
+    }
+
+    #[test]
+    fn transform_options_are_part_of_the_process_cache_key() {
+        let source = "// @flow\nexport component App() { return <p />; }\n";
+        let production = request("/app/App.js", source);
+        let development = Request {
+            options: RequestOptions {
+                development: true,
+                refresh: true,
+                ..RequestOptions::default()
+            },
+            ..request("/app/App.js", source)
+        };
+        let mut cache = TransformCache::default();
+
+        let plain = handle(&production, &project(), &mut cache).code.unwrap();
+        let dev = handle(&development, &project(), &mut cache).code.unwrap();
+
+        assert!(!plain.contains("jsxDEV"), "{plain}");
+        assert!(dev.contains("jsxDEV"), "{dev}");
+        assert_eq!(cache.misses, 2);
+        assert_eq!(cache.hits, 0);
     }
 
     /// StyleX is uf's style engine, and a module that uses it has to come back

@@ -33,7 +33,7 @@ use uf_test::{
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
 use crate::commands::deno_loader;
-use crate::commands::vite::{find_program, resolve_host};
+use crate::commands::vite::{Host, find_program, resolve_host};
 
 use crate::support::{
     TEST, ignore_deprecation, plural, project_env, quoted_list, render_ignore_deprecation, selects,
@@ -228,9 +228,29 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         );
     }
 
-    let mut host = test_host(&root, &resolved.config, &env, &files, args.browser)?
-        .with_snapshot_updates(args.update_snapshots)
-        .with_axe(resolved.config.accessibility.axe.as_json());
+    let resolved_host = resolve_host(&resolved.config)?;
+    let host_kind = test_host_kind(resolved_host.kind, args.browser);
+    let settings = &resolved.config.test.coverage;
+    if (args.coverage || settings.enabled) && !host_kind_can_collect_coverage(host_kind) {
+        bail!(
+            "`uf test --coverage` needs Node.js: coverage is V8's own count, written out \
+             through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
+             loader attaches. {} provides neither, and reporting zeroes would be worse than \
+             saying so.",
+            host_kind.name()
+        );
+    }
+
+    let mut host = test_host_with_resolved_host(
+        &root,
+        &resolved.config,
+        &env,
+        &files,
+        args.browser,
+        resolved_host,
+    )?
+    .with_snapshot_updates(args.update_snapshots)
+    .with_axe(resolved.config.accessibility.axe.as_json());
 
     // Every JavaScript file the project has, before discovery narrows it to the
     // ones that declare tests: a file no test imports never becomes a script,
@@ -245,17 +265,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         .map(|file| file.relative_path.clone())
         .collect();
 
-    let settings = &resolved.config.test.coverage;
     let raw = if args.coverage || settings.enabled {
-        if !host.can_collect_coverage() {
-            bail!(
-                "`uf test --coverage` needs Node.js: coverage is V8's own count, written out \
-                 through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
-                 loader attaches. {} provides neither, and reporting zeroes would be worse than \
-                 saying so.",
-                host.kind.name()
-            );
-        }
         let raw = coverage::RawCoverage::create(&root)?;
         host = host.with_coverage_dir(raw.directory().to_path_buf());
         Some(raw)
@@ -373,6 +383,17 @@ pub(crate) fn test_host(
     browser: bool,
 ) -> Result<HostCommand> {
     let host = resolve_host(config)?;
+    test_host_with_resolved_host(root, config, env, sources, browser, host)
+}
+
+fn test_host_with_resolved_host(
+    root: &Utf8Path,
+    config: &uf_config::UniflowedConfig,
+    env: &ProjectEnv,
+    sources: &[ProjectFile],
+    browser: bool,
+    host: Host,
+) -> Result<HostCommand> {
     // The loader, not the bundler. `uf test` transforms through `uf transform`
     // and runs on a Capability JS Host; nothing in that path is Vite's, and
     // asking for `@uniflowed/vite` made a test run depend on a bundler it never
@@ -395,15 +416,7 @@ pub(crate) fn test_host(
             )
         })?;
 
-    let kind = if browser {
-        HostKind::Browser
-    } else {
-        match host.kind {
-            uf_config::CapabilityJsHost::Node => HostKind::Node,
-            uf_config::CapabilityJsHost::Bun => HostKind::Bun,
-            uf_config::CapabilityJsHost::Deno => HostKind::Deno,
-        }
-    };
+    let kind = test_host_kind(host.kind, browser);
     // The driver of a browser run is Node whatever the project's Capability JS
     // Host is, because the runtime under test is the browser and the driver
     // only shuttles JSON between a pipe and a socket. Found here rather than
@@ -557,6 +570,21 @@ pub(crate) fn test_host(
         );
     }
     Ok(command)
+}
+
+fn test_host_kind(host: uf_config::CapabilityJsHost, browser: bool) -> HostKind {
+    if browser {
+        return HostKind::Browser;
+    }
+    match host {
+        uf_config::CapabilityJsHost::Node => HostKind::Node,
+        uf_config::CapabilityJsHost::Bun => HostKind::Bun,
+        uf_config::CapabilityJsHost::Deno => HostKind::Deno,
+    }
+}
+
+const fn host_kind_can_collect_coverage(kind: HostKind) -> bool {
+    matches!(kind, HostKind::Node)
 }
 
 /// The `uf` every worker in this run transforms its modules through.

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/react-native",
-  "version": "0.0.0-alpha.25",
+  "version": "0.0.0-alpha.32",
   "description": "React Native, re-exported for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -11,10 +11,12 @@
     "directory": "packages/react-native"
   },
   "exports": {
-    ".": "./index.js"
+    ".": "./index.js",
+    "./metro": "./metro.js"
   },
   "files": [
     "index.js",
+    "metro.js",
     "!*.test.js"
   ],
   "peerDependencies": {

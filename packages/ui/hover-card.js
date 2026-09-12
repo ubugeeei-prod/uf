@@ -206,6 +206,7 @@ export component HoverCardBody(
   alignOffset?: number = 0,
   avoidCollisions?: boolean = true,
   collisionPadding?: number = 0,
+  render?: RenderProp,
   side?: LogicalSide = "bottom",
   sideOffset?: number = 0,
   ...rest: Rest
@@ -310,18 +311,20 @@ export component HoverCardBody(
     return null;
   }
 
-  return (
-    <div
-      {...withoutComposed(rest, ["ref"])}
-      data-align={anchored.align}
-      data-side={anchored.side}
-      data-state="open"
-      id={`${card.base}-body`}
-      ref={composeRefs(rest.ref, (element) => {
-        bodyRef.current = element;
-      })}
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(withoutComposed(rest, ["ref"]), {
+    children,
+    "data-align": anchored.align,
+    "data-side": anchored.side,
+    "data-state": "open",
+    id: `${card.base}-body`,
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      bodyRef.current = element;
+    }),
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+
+  return <div {...props} />;
 }

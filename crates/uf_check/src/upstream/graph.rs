@@ -38,7 +38,7 @@ use uf_profiler::profile_span;
 
 use super::project::ProjectModules;
 use super::resolve;
-use crate::cache::{CachedRequire, Digest, Fields, hex};
+use crate::cache::{CachedRequire, Digest, Fields, hex_into};
 
 /// What a check needs to know about one file before it checks anything.
 ///
@@ -89,10 +89,41 @@ impl Resolution {
 pub(super) struct Graph<'a> {
     paths: Vec<&'a str>,
     facts: &'a [ModuleFacts],
-    /// Per module, what each of its `requires` resolved to, in the same order.
-    resolutions: Vec<Vec<Resolution>>,
+    /// Per module, the slice of [`Self::resolutions`] that belongs to it.
+    resolution_ranges: Vec<std::ops::Range<usize>>,
+    /// What each module's `requires` resolved to, in module order.
+    resolutions: Vec<Resolution>,
     /// Per module, a digest of everything about *it* a dependent must notice.
     local: Vec<Digest>,
+}
+
+/// Reused storage for one dependency walk.
+///
+/// A batch asks for one dependency digest per source. Allocating the reached,
+/// seen and frontier buffers inside each query made a warm cache hit pay the
+/// same tiny setup cost once per file, even though the graph itself is fixed.
+pub(super) struct DependencyScratch {
+    reached: Vec<usize>,
+    seen: Vec<bool>,
+    frontier: Vec<usize>,
+    digest: String,
+}
+
+impl DependencyScratch {
+    pub(super) fn new(modules: usize) -> Self {
+        Self {
+            reached: Vec::new(),
+            seen: vec![false; modules],
+            frontier: Vec::new(),
+            digest: String::with_capacity(std::mem::size_of::<Digest>() * 2),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.reached.clear();
+        self.seen.fill(false);
+        self.frontier.clear();
+    }
 }
 
 impl<'a> Graph<'a> {
@@ -103,29 +134,33 @@ impl<'a> Graph<'a> {
         modules: &ProjectModules,
     ) -> Self {
         profile_span!("check::graph");
-        let resolutions: Vec<Vec<Resolution>> = paths
-            .iter()
-            .zip(facts)
-            .map(|(importer, importer_facts)| {
+        let total_requires = facts.iter().map(|facts| facts.requires.len()).sum();
+        let mut resolutions = Vec::with_capacity(total_requires);
+        let mut resolution_ranges = Vec::with_capacity(facts.len());
+        let mut local = Vec::with_capacity(facts.len());
+        for (path, importer_facts) in paths.iter().zip(facts) {
+            let start = resolutions.len();
+            resolutions.extend(
                 importer_facts
                     .requires
                     .iter()
-                    .map(|require| resolve(modules, facts, importer, require))
-                    .collect()
-            })
-            .collect();
-        let local = paths
-            .iter()
-            .zip(facts)
-            .zip(&resolutions)
-            .map(|((path, facts), resolutions)| local_digest(path, facts, resolutions))
-            .collect();
+                    .map(|require| resolve(modules, facts, path, require)),
+            );
+            let end = resolutions.len();
+            resolution_ranges.push(start..end);
+            local.push(local_digest(path, importer_facts, &resolutions[start..end]));
+        }
         Self {
             paths,
             facts,
+            resolution_ranges,
             resolutions,
             local,
         }
+    }
+
+    fn resolutions(&self, index: usize) -> &[Resolution] {
+        &self.resolutions[self.resolution_ranges[index].clone()]
     }
 
     /// The digest the `index`th file's diagnostics are only valid under.
@@ -134,19 +169,27 @@ impl<'a> Graph<'a> {
     /// that two runs that reach the same modules by different routes — which
     /// they do, because discovery order follows whichever file was checked
     /// first — agree on the digest.
-    pub(super) fn dependency_digest(&self, index: usize) -> String {
-        let mut reached = vec![index];
-        let mut seen = vec![false; self.facts.len()];
-        seen[index] = true;
-        let mut frontier = vec![index];
-        while let Some(module) = frontier.pop() {
-            for resolution in &self.resolutions[module] {
+    pub(super) fn scratch(&self) -> DependencyScratch {
+        DependencyScratch::new(self.facts.len())
+    }
+
+    pub(super) fn dependency_digest<'scratch>(
+        &self,
+        index: usize,
+        scratch: &'scratch mut DependencyScratch,
+    ) -> &'scratch str {
+        scratch.reset();
+        scratch.reached.push(index);
+        scratch.seen[index] = true;
+        scratch.frontier.push(index);
+        while let Some(module) = scratch.frontier.pop() {
+            for resolution in self.resolutions(module) {
                 if let Resolution::Module(next) = *resolution
-                    && !seen[next]
+                    && !scratch.seen[next]
                 {
-                    seen[next] = true;
-                    reached.push(next);
-                    frontier.push(next);
+                    scratch.seen[next] = true;
+                    scratch.reached.push(next);
+                    scratch.frontier.push(next);
                 }
             }
         }
@@ -154,14 +197,17 @@ impl<'a> Graph<'a> {
         // path and gives the first one every import, so the second can still
         // be reached as itself — and two files that sort equal must not be
         // ordered by whichever the sort happened to move.
-        reached.sort_unstable_by_key(|module| (self.paths[*module], *module));
+        scratch
+            .reached
+            .sort_unstable_by_key(|module| (self.paths[*module], *module));
 
         let mut digest = Fields::new("uf-check-dependencies-v1");
-        for module in reached {
+        for &module in &scratch.reached {
             digest.push(self.paths[module]);
             digest.push_digest(&self.local[module]);
         }
-        hex(&digest.finish())
+        hex_into(&digest.finish(), &mut scratch.digest);
+        &scratch.digest
     }
 
     /// The specifiers the `index`th file imports that resolved to nothing
@@ -178,7 +224,7 @@ impl<'a> Graph<'a> {
         self.facts[index]
             .requires
             .iter()
-            .zip(&self.resolutions[index])
+            .zip(self.resolutions(index))
             .filter(|(_, resolution)| {
                 matches!(
                     **resolution,
@@ -198,7 +244,7 @@ impl<'a> Graph<'a> {
         self.facts[index]
             .requires
             .iter()
-            .zip(&self.resolutions[index])
+            .zip(self.resolutions(index))
             .filter(|(_, resolution)| **resolution == Resolution::HostConditional)
             .map(|(require, _)| require.specifier.clone())
             .collect()
@@ -252,4 +298,66 @@ fn local_digest(path: &str, facts: &ModuleFacts, resolutions: &[Resolution]) -> 
         digest.push(resolution.mark());
     }
     digest.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use compact_str::ToCompactString;
+
+    use super::*;
+    use crate::{CheckLimits, Source};
+
+    #[test]
+    fn graph_keeps_resolutions_in_one_flat_buffer() {
+        const MODULES: usize = 32;
+
+        let limits = CheckLimits::default().without_timeout();
+        let paths: Vec<String> = (0..MODULES)
+            .map(|index| format!("module{index}.js"))
+            .collect();
+        let texts: Vec<String> = (0..MODULES).map(|_| "// @flow\n".to_owned()).collect();
+        let sources: Vec<Source<'_>> = paths
+            .iter()
+            .zip(&texts)
+            .map(|(path, source)| Source::new(path, source))
+            .collect();
+        let facts: Vec<ModuleFacts> = (0..MODULES)
+            .map(|index| {
+                let requires = if index + 1 == MODULES {
+                    Vec::new()
+                } else {
+                    vec![CachedRequire {
+                        specifier: format!("./module{}.js", index + 1).to_compact_string(),
+                        declared: false,
+                    }]
+                };
+                ModuleFacts {
+                    signature: Some([1; 32]),
+                    requires,
+                    skipped: false,
+                }
+            })
+            .collect();
+        let modules = ProjectModules::new(
+            &sources,
+            super::super::options::options(&limits),
+            None,
+            &limits,
+        );
+
+        let graph = Graph::new(paths.iter().map(String::as_str).collect(), &facts, &modules);
+
+        assert_eq!(graph.resolutions.len(), MODULES - 1);
+        assert_eq!(graph.resolutions.capacity(), MODULES - 1);
+        assert_eq!(graph.resolution_ranges.len(), MODULES);
+        for index in 0..MODULES {
+            let resolutions = graph.resolutions(index);
+            if index + 1 == MODULES {
+                assert!(resolutions.is_empty());
+            } else {
+                assert_eq!(resolutions, &[Resolution::Module(index + 1)]);
+            }
+        }
+        modules.release();
+    }
 }

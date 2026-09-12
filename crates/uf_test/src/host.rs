@@ -354,9 +354,9 @@ impl HostCommand {
     ///
     /// Node only, and the reason is not a missing feature of uf's: Bun's
     /// preload transforms with `sourceMap: false` and implements no
-    /// `NODE_V8_COVERAGE`, and Deno has no Flow loader in `@uniflowed/host` to
-    /// produce a map with. A caller is expected to say so rather than report a
-    /// run of zeroes.
+    /// `NODE_V8_COVERAGE`, and Deno's ahead-of-time loader has no equivalent
+    /// coverage flush or source-map cache to read back. A caller is expected to
+    /// say so rather than report a run of zeroes.
     ///
     /// The browser is the interesting `false`, because the counters are right
     /// there — V8 is counting in the renderer exactly as it counts in Node. The
