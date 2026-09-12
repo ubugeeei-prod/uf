@@ -316,6 +316,7 @@ fn check_batch(
     let mut skipped = 0usize;
     let mut from_cache = 0usize;
     let mut result = Ok(());
+    let mut dependencies = graph.scratch();
     for (index, source) in sources.iter().enumerate() {
         if facts[index].skipped {
             skipped += 1;
@@ -323,7 +324,7 @@ fn check_batch(
         untyped.extend(graph.untyped(index));
         host_conditional.extend(graph.host_conditional(index));
 
-        let dependencies = graph.dependency_digest(index);
+        let dependency_digest = graph.dependency_digest(index, &mut dependencies);
         // The record is about this file; the digest says whether it is still
         // about this *batch*. Both have to hold, and they fail for different
         // reasons: the key stops matching when the file was edited, the digest
@@ -331,7 +332,7 @@ fn check_batch(
         // batch, so a project checked both whole and by path finds both here.
         let believed = records[index]
             .as_ref()
-            .and_then(|record| record.answer(&dependencies))
+            .and_then(|record| record.answer(&dependency_digest))
             .map(<[TypeDiagnostic]>::to_vec);
         if let Some(found) = believed {
             diagnostics.extend(found);
@@ -346,7 +347,7 @@ fn check_batch(
             // moved, so a settled warm run still touches no file on disk.
             if let Some(cache) = cache
                 && let Some(record) = records[index].as_mut()
-                && record.touch(&dependencies)
+                && record.touch(&dependency_digest)
             {
                 cache.write(&keys[index], record);
             }
@@ -364,7 +365,7 @@ fn check_batch(
                     let record =
                         records[index].get_or_insert_with(|| record_of(source.path, &facts[index]));
                     record.remember(CachedAnswer {
-                        dependencies,
+                        dependencies: dependency_digest,
                         diagnostics: found.clone(),
                     });
                     cache.write(&keys[index], record);
