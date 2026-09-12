@@ -119,6 +119,18 @@ function browserArguments(profile: string, url: string): Array<string> {
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
+    // Keep startup deterministic in CI. These cut services Chrome may start
+    // before the first page request: extensions, sync, updater probes, and
+    // background network clients such as GCM. None of them changes layout or
+    // module execution, which is what browser mode measures.
+    "--disable-background-networking",
+    "--disable-client-side-phishing-detection",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-domain-reliability",
+    "--disable-extensions",
+    "--disable-sync",
+    "--metrics-recording-only",
     // Nothing here paints, and a GPU process is one more thing to fail in a
     // container.
     "--disable-gpu",
