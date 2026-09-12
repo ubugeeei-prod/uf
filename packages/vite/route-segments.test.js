@@ -80,6 +80,7 @@ describe("classifying a directory name", () => {
       ["(..)photo", "(..)"],
       ["(...)photo", "(...)"],
       ["(..)(..)photo", "(..)(..)"],
+      ["(..)(..)(..)photo", "(..)(..)(..)"],
     ]) {
       expect(classifyRouteSegment(segment)).toEqual({
         kind: "interception",
