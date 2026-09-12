@@ -934,12 +934,10 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
                     });
                 }
             }
-            // What a slot does not have yet. `layout`, `page` and `default` are
-            // what it does have, and a `story` is not the router's at all.
-            ReservedRole::NotFound
-            | ReservedRole::Error
-            | ReservedRole::Loading
-            | ReservedRole::Template => {
+            // What a slot does not have yet. `layout`, `template`, `page` and
+            // `default` are what it does have, and a `story` is not the
+            // router's at all.
+            ReservedRole::NotFound | ReservedRole::Error | ReservedRole::Loading => {
                 if let Some(slot) = slot_in(relative) {
                     return Err(RouterError::BoundaryInsideSlot {
                         role: role.as_str(),
@@ -949,6 +947,7 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
                 }
             }
             ReservedRole::Layout
+            | ReservedRole::Template
             | ReservedRole::Page
             | ReservedRole::Default
             | ReservedRole::Story => {}

@@ -32,24 +32,25 @@ export type LoadingRecord<TLoading = mixed> = {|
 |};
 
 /** One parallel-route slot, as the route table carries it. */
-export type SlotRecord<TPage = mixed, TLayout = mixed> = {|
+export type SlotRecord<TPage = mixed, TLayout = mixed, TTemplate = mixed> = {|
   readonly name: string,
   readonly above: number,
   readonly defaultPage: ?RouteModule<TPage>,
   readonly defaultFile?: string,
   readonly defaultMdx?: boolean,
-  readonly routes: $ReadOnlyArray<SlotRouteRecord<TPage, TLayout>>,
+  readonly routes: $ReadOnlyArray<SlotRouteRecord<TPage, TLayout, TTemplate>>,
 |};
 
 /** One page inside a slot. */
-export type SlotRouteRecord<TPage = mixed, TLayout = mixed> = {|
+export type SlotRouteRecord<TPage = mixed, TLayout = mixed, TTemplate = mixed> = {|
   readonly path: string,
   readonly params: $ReadOnlyArray<RouteParamSpec>,
   readonly mdx: boolean,
   readonly file: string,
   readonly page: RouteModule<TPage>,
   readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
-  readonly slots: $ReadOnlyArray<SlotRecord<TPage, TLayout>>,
+  readonly templates?: $ReadOnlyArray<TemplateRecord<TTemplate>>,
+  readonly slots: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate>>,
 |};
 
 /** One entry of the generated route table. */
@@ -62,7 +63,7 @@ export type RouteRecord<TPage = mixed, TLayout = mixed, TTemplate = mixed, TLoad
   readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
   readonly loading?: $ReadOnlyArray<LoadingRecord<TLoading>>,
   readonly templates?: $ReadOnlyArray<TemplateRecord<TTemplate>>,
-  readonly slots?: $ReadOnlyArray<SlotRecord<TPage, TLayout>>,
+  readonly slots?: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate>>,
 |};
 
 /** One not-found boundary: the page for a path under `path` that matched nothing. */

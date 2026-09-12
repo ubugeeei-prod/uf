@@ -71,6 +71,7 @@ const DASHBOARD = [
   "dashboard/members/$page.js",
   "dashboard/@team/$default.js",
   "dashboard/@team/$layout.js",
+  "dashboard/@team/$template.js",
   "dashboard/@team/members/$page.js",
   "dashboard/@analytics/$page.js",
 ];
@@ -96,6 +97,10 @@ describe("scanning a router root that holds slots", () => {
     expect(team?.routes.map((route) => route.path)).toEqual(["/dashboard/members"]);
     expect(team?.routes[0].layouts.map((file) => path.relative(root, file))).toEqual([
       path.join("dashboard", "@team", "$layout.js"),
+    ]);
+    expect(team?.routes[0].templates.map((entry) => entry.above)).toEqual([1]);
+    expect(team?.routes[0].templates.map((entry) => path.relative(root, entry.module))).toEqual([
+      path.join("dashboard", "@team", "$template.js"),
     ]);
   });
 
@@ -150,6 +155,7 @@ describe("scanning a router root that holds slots", () => {
     expect(source).toContain("slots: [slot0, slot1]");
     expect(source).toContain('name: "team"');
     expect(source).toContain("defaultPage: () => import(");
+    expect(source).toContain("templates: [{ above: 1, module: template0 }]");
   });
 
   it("nests a slot inside a slot", () => {
@@ -228,7 +234,6 @@ describe("what a slot may not be written as", () => {
       ["@aside/$loading.js", "loading"],
       ["@aside/$error.js", "error"],
       ["@aside/$not-found.js", "not-found"],
-      ["@aside/$template.js", "template"],
     ]) {
       const message = refusal(["$layout.js", "$page.js", "@aside/$page.js", file]);
 
@@ -274,6 +279,12 @@ component Frame(children: React.Node, team: React.Node) {
 const loadFrame = () => Promise.resolve({ default: Frame });
 const pageOf = (text: string) => () => Promise.resolve({ default: () => <p>{text}</p> });
 
+component TeamTemplate(children: React.Node) {
+  return <section data-testid="team-template">{children}</section>;
+}
+
+const loadTeamTemplate = () => Promise.resolve({ default: TeamTemplate });
+
 const slot = {
   name: "team",
   above: 1,
@@ -287,6 +298,7 @@ const slot = {
       file: "app/dashboard/@team/members/$page.js",
       page: pageOf("the team members"),
       layouts: [],
+      templates: [{ above: 0, module: loadTeamTemplate }],
       slots: [],
     },
   ],
@@ -322,6 +334,7 @@ describe("rendering a route that has one", () => {
 
     expect(result.html).toContain("the members page");
     expect(result.html).toContain("the team members");
+    expect(result.html).toContain('data-testid="team-template"');
     // Inside the layout, in the place the layout put it: before `children`,
     // because that is where the `<aside>` is written.
     expect(result.html.indexOf("the team members")).toBeLessThan(
