@@ -72,6 +72,7 @@ fn std_registry_covers_requested_modules() {
         "@uniflowed/std/hash",
         "@uniflowed/std/time",
         "@uniflowed/std/io",
+        "@uniflowed/std/bufio",
     ] {
         let module = modules
             .iter()

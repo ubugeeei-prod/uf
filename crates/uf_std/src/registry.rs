@@ -414,6 +414,19 @@ pub fn std_modules() -> StdModuleList {
                 "writerFromWritableStream",
             ],
         ),
+        StdModule::ships(
+            "@uniflowed/std/bufio",
+            StdCategory::Platform,
+            &[
+                "BufferedReader",
+                "Scanner",
+                "TokenTooLongError",
+                "newReader",
+                "scanBytes",
+                "scanLines",
+                "scanWords",
+            ],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------

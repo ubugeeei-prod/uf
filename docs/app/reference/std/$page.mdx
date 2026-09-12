@@ -55,9 +55,10 @@ brings in a hex codec and nothing else.
 | `@uniflowed/std/hash` | `hash/crc32`, `hash/fnv`, `hash/adler32` | Checksums and non-cryptographic hashes over bytes or UTF-8 text |
 | `@uniflowed/std/time` | `time` | Duration arithmetic plus cancellable `Timer`, `Ticker` and `afterFunc` |
 | `@uniflowed/std/io` | `io` | Byte `Reader`/`Writer`, `copy`, `readAll`, `limitReader` and Web Stream adapters |
+| `@uniflowed/std/bufio` | `bufio` | Buffered byte reads plus `Scanner` line, word, byte and custom splits |
 
 The root `@uniflowed/std` is unchanged: it is a declaration surface whose
-functions raise `NativeRuntimeRequiredError`, and it is not what these sixteen are.
+functions raise `NativeRuntimeRequiredError`, and it is not what these seventeen are.
 Everything above runs.
 
 ## The types are the point
@@ -224,12 +225,11 @@ on them rather than replacing them.
 ### Missing, and worth having
 
 The first six at the top of this page are tranche 1. `slices`, `base32`, `list`,
-`csv`, `binary`, `path`, `glob`, `hash`, `time` and `io` are the first next-tranche
+`csv`, `binary`, `path`, `glob`, `hash`, `time`, `io` and `bufio` are the first next-tranche
 pieces. What remains, roughly in order of value:
 
 | Go | What it would be |
 | --- | --- |
-| `bufio` | A buffered reader, and `Scanner` with line, word and custom split functions |
 | `archive/zip`, `archive/tar` | Reading, at least. The compression half is `DecompressionStream`; the container format is not |
 | `net/textproto` | MIME header parsing and `multipart/form-data` beyond what `FormData` gives |
 
