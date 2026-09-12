@@ -190,7 +190,7 @@ fn the_generated_link_builder_has_a_runtime_behind_it() {
         "a declaration is not an implementation:\n{source}"
     );
     assert!(
-        source.contains(r#"import { buildRoute } from "@uniflowed/router";"#),
+        source.contains(r#"import { buildRoute } from "@uniflowed/router/routing";"#),
         "{source}"
     );
     assert!(

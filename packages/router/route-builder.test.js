@@ -15,7 +15,7 @@
 // A builder with its own idea of the pattern grammar would produce links that
 // 404, and the 404 is the only place anybody would find out.
 
-import { buildRoute, matchRoute } from "@uniflowed/router";
+import { buildRoute, matchRoute } from "@uniflowed/router/routing";
 import { describe, expect, it } from "@uniflowed/test";
 
 /** The smallest record `matchRoute` will rank. */

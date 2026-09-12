@@ -68,15 +68,53 @@ import {
   routeBoundaries,
   suspenseId,
 } from "./boundaries.js";
+import {
+  ForbiddenError,
+  NotFoundError,
+  RedirectError,
+  UnauthorizedError,
+  hasClientPage,
+  matchIn,
+  matchRoute,
+  nearestBoundary,
+  parseSearch,
+  routeErrorStatus,
+  splitUrl,
+} from "./routing.js";
+import type {
+  ErrorBoundary as RoutingErrorBoundary,
+  LoadingRecord as RoutingLoadingRecord,
+  NotFoundBoundary as RoutingNotFoundBoundary,
+  RouteError,
+  RouteMatch as RoutingRouteMatch,
+  RouteParams,
+  RouteRecord as RoutingRouteRecord,
+  RouteTable as RoutingRouteTable,
+  SearchParams,
+  SlotRecord as RoutingSlotRecord,
+  SlotRouteRecord as RoutingSlotRouteRecord,
+  TemplateRecord as RoutingTemplateRecord,
+} from "./routing.js";
 
-/** One parameter a route path captures. */
-export type RouteParamSpec = {| readonly name: string, readonly catchAll: boolean |};
+export type { RouteError, RouteParamSpec, RouteParams, SearchParams } from "./routing.js";
 
-/** The parameters captured from a URL. A catch-all captures the rest as a list. */
-export type RouteParams = { readonly [string]: string | $ReadOnlyArray<string> };
-
-/** The query string, as a read-only map. */
-export type SearchParams = { readonly [string]: string };
+export {
+  ForbiddenError,
+  NotFoundError,
+  RedirectError,
+  UnauthorizedError,
+  buildRoute,
+  forbidden,
+  hasClientPage,
+  matchRoute,
+  notFound,
+  parseSearch,
+  permanentRedirect,
+  redirect,
+  routeErrorStatus,
+  splitUrl,
+  unauthorized,
+} from "./routing.js";
 
 /**
  * A component found in a route module.
@@ -420,241 +458,34 @@ export type MetadataArgs = {|
   readonly data: mixed,
 |};
 
-/** One entry of the generated route table. */
-export type RouteRecord = {|
-  readonly path: string,
-  readonly params: $ReadOnlyArray<RouteParamSpec>,
-  readonly mdx: boolean,
-  readonly file: string,
-  /**
-   * The page module — absent when this table cannot render the route.
-   *
-   * The server's table always has one: the server renders every route. The
-   * browser's may not. `@uniflowed/vite` leaves the page out of the client
-   * route table when uf's server-component analysis finds no `"use client"`
-   * boundary reachable from the page, its layouts or its fallbacks, and with
-   * the `import()` gone so is the whole subtree it reached — which is the
-   * point of leaving it out.
-   *
-   * The route stays in the table because the router still has to *match* the
-   * URL. Matching is what tells a `Link` that the destination is a document
-   * the browser must fetch rather than a page this bundle can render; a route
-   * missing from the table entirely would be a 404 instead. See
-   * [`hasClientPage`], which is the question every caller asks.
-   */
-  readonly page?: () => Promise<PageModule>,
-  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
-  /**
-   * The `<Suspense>` boundaries this route renders inside, root first.
-   *
-   * Optional because a table written before `$loading.js` existed — a
-   * hand-written one in a test, a server bundle built by an older `uf` —
-   * is still a table this router can render, and a route with no boundary is
-   * exactly what it had before.
-   */
-  readonly loading?: $ReadOnlyArray<LoadingRecord>,
-  /**
-   * The `$template.js` wrappers this route renders inside, root first.
-   *
-   * Optional for the reason `loading` is: a table written before templates
-   * existed is still a table this router can render, and a route with no
-   * template renders exactly the tree it did before.
-   */
-  readonly templates?: $ReadOnlyArray<TemplateRecord>,
-  /**
-   * The parallel-route slots in scope on this route, outermost first.
-   *
-   * Optional for the reason `templates` is. A route with no slot renders
-   * exactly the tree it did before slots existed, which is most routes.
-   */
-  readonly slots?: $ReadOnlyArray<SlotRecord>,
-|};
+export type RouteRecord = RoutingRouteRecord<
+  PageModule,
+  LayoutModule,
+  TemplateModule,
+  LoadingModule,
+>;
 
-/**
- * One parallel-route slot, as the route table carries it.
- *
- * A slot is a second thing a layout renders. `app/dashboard/@team/` gives
- * `app/dashboard/$layout.js` a `team` prop beside `children`, and the slot's
- * pages are matched against the same URL the page is: `/dashboard/members`
- * renders `app/dashboard/members/$page.js` as `children` and
- * `app/dashboard/@team/members/$page.js` as `team`, at once, each inside its
- * own layouts.
- *
- * A slot never adds a URL — the directory contributes no path segment — so
- * `routes` here is a second table matched against paths the main table already
- * defines. That is uf's answer to the question Next.js answers with a
- * `default.js` for `children`: there is no such thing, because `children` is
- * the page the URL matched and a URL that matches no page is a 404.
- *
- * `above` is how many of the route's `layouts` are outside the slot, so
- * `layouts[above - 1]` is the one that receives it — the same number, spelled
- * the same way, as [`TemplateRecord`]'s and [`LoadingRecord`]'s.
- */
-export type SlotRecord = {|
-  readonly name: string,
-  readonly above: number,
-  /**
-   * `$default.js`: what this slot renders when the URL matches none of its
-   * routes.
-   *
-   * `null` for a slot that declares none, and then the slot renders nothing at
-   * all. That is what an unaddressed slot does on a soft navigation in Next.js
-   * too, and it is the honest answer for a slot that only some URLs have
-   * something to put in — a modal, a detail pane.
-   */
-  readonly defaultPage: ?() => Promise<PageModule>,
-  /** The default's source path, for diagnostics; absent when there is none. */
-  readonly defaultFile?: string,
-  /** Whether that default is MDX content. */
-  readonly defaultMdx?: boolean,
-  readonly routes: $ReadOnlyArray<SlotRouteRecord>,
-|};
+export type SlotRecord = RoutingSlotRecord<PageModule, LayoutModule>;
 
-/**
- * One page inside a slot.
- *
- * A [`RouteRecord`] without the parts a slot does not have. No `loading` and no
- * `templates`: those belong to the segment, and they already wrap the layout
- * the slot renders into. Per-slot boundaries are the part of parallel routes uf
- * has not built, and `@uniflowed/vite`'s scan refuses the files rather than
- * leaving them unopened — see ubugeeei-prod/uf#267.
- *
- * `page` is required, unlike a `RouteRecord`'s: a slot route that ships no
- * client page has no URL of its own to hand the browser, so there would be
- * nothing to do with the entry. The client table drops the whole route when its
- * page is dropped, slots and all.
- *
- * `layouts` are the layouts *inside* the slot, and `slots` are the slots a
- * layout inside this one declares — the recursion is the feature rather than a
- * special case.
- */
-export type SlotRouteRecord = {|
-  readonly path: string,
-  readonly params: $ReadOnlyArray<RouteParamSpec>,
-  readonly mdx: boolean,
-  readonly file: string,
-  readonly page: () => Promise<PageModule>,
-  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
-  readonly slots: $ReadOnlyArray<SlotRecord>,
-|};
+export type SlotRouteRecord = RoutingSlotRouteRecord<PageModule, LayoutModule>;
 
-/**
- * One `$template.js`, as the route table carries it.
- *
- * The same shape as [`LoadingRecord`] and the same `above`, because it answers
- * the same question — where in the stack of layouts this thing sits — and
- * there is no second vocabulary for it.
- */
-export type TemplateRecord = {|
-  readonly above: number,
-  readonly module: () => Promise<TemplateModule>,
-|};
+export type TemplateRecord = RoutingTemplateRecord<TemplateModule>;
 
-/**
- * One `$loading.js`, as the route table carries it.
- *
- * `above` is how many of the route's `layouts` are outside the boundary, which
- * is the same number `ResolvedRoute["errorBoundary"].above` means and is
- * spelled the same way on purpose: both answer "where in the stack of layouts
- * does this thing sit", and there is no second vocabulary for it.
- */
-export type LoadingRecord = {|
-  readonly above: number,
-  readonly module: () => Promise<LoadingModule>,
-|};
+export type LoadingRecord = RoutingLoadingRecord<LoadingModule>;
 
-/**
- * One not-found boundary: the page for a path under `path` that matched
- * nothing.
- *
- * `$not-found.js` is a segment file, so `path` is the route path of the
- * directory that declares it and `layouts` are the layouts in scope *there* —
- * which is what the boundary renders inside. A project with one at the router
- * root has one of these; a project whose manual answers its own 404 has two.
- */
-export type NotFoundBoundary = {|
-  readonly path: string,
-  readonly mdx: boolean,
-  readonly file: string,
-  /**
-   * The page this boundary renders — `null` for the one the build synthesises
-   * at the router root when a project declares no `$not-found.js` there.
-   *
-   * A project that had declared none used to get `layouts: []` along with the
-   * framework's page: not the nearest-ancestor rule failing, but the fallback
-   * having no record to take layouts from. So the root's layouts are a record
-   * like any other, with the framework's component in place of a module to
-   * import — which is a nullable field rather than a second kind of answer, and
-   * is why an unmatched URL still arrives inside the site's own masthead. See
-   * ubugeeei-prod/uf#351.
-   */
-  readonly page: ?() => Promise<PageModule>,
-  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
-|};
+export type NotFoundBoundary = RoutingNotFoundBoundary<PageModule, LayoutModule>;
 
-/**
- * One error boundary: what renders in place of the subtree under `path` when
- * something in it throws.
- *
- * The same nearest-ancestor shape as [`NotFoundBoundary`], and `layouts` means
- * the same thing — the layouts in scope where the file is, which stay mounted
- * around the error and are why the rest of the document is still there.
- */
-export type ErrorBoundary = {|
-  readonly path: string,
-  readonly file: string,
-  /** `null` for the synthesised root record; see [`NotFoundBoundary`]`.page`. */
-  readonly module: ?() => Promise<ErrorModule>,
-  readonly layouts: $ReadOnlyArray<() => Promise<LayoutModule>>,
-|};
+export type ErrorBoundary = RoutingErrorBoundary<ErrorModule, LayoutModule>;
 
-/**
- * A route table plus the boundaries declared under it.
- *
- * `errors` is the error boundaries a project declared, not failures that
- * happened.
- */
-export type RouteTable = {|
-  readonly routes: $ReadOnlyArray<RouteRecord>,
-  readonly notFound: $ReadOnlyArray<NotFoundBoundary>,
-  readonly errors: $ReadOnlyArray<ErrorBoundary>,
-|};
+export type RouteTable = RoutingRouteTable<
+  PageModule,
+  LayoutModule,
+  TemplateModule,
+  LoadingModule,
+  ErrorModule,
+>;
 
-/** A URL matched against the table. */
-export type RouteMatch = {|
-  readonly route: RouteRecord,
-  readonly params: RouteParams,
-|};
-
-/**
- * Why the router is rendering an error boundary instead of a page.
- *
- * One union rather than one file convention per status. `forbidden()` and
- * `unauthorized()` are not different *kinds* of file to write; they are
- * different sentences an error page says, and `match` over this is where a
- * page says all three and the checker confirms it covered them. Deciding it
- * the other way — `$forbidden.js` and `$unauthorized.js` beside
- * `$error.js`, which is what Next.js does — is three files per segment to
- * express one thing, and nothing would check that any of them handled the
- * case it was named for.
- *
- * The thrown value is carried but deliberately not rendered by the default
- * boundary: a server exception's message is written for the person who
- * deployed the application, not for whoever asks for the page.
- */
-export type RouteError =
-  | {| readonly kind: "thrown", readonly error: mixed |}
-  | {| readonly kind: "unauthorized" |}
-  | {| readonly kind: "forbidden" |};
-
-/** The status a `RouteError` answers with. */
-export function routeErrorStatus(error: RouteError): 401 | 403 | 500 {
-  return match (error) {
-    {kind: "unauthorized"} => 401,
-    {kind: "forbidden"} => 403,
-    {kind: "thrown"} => 500,
-  };
-}
+export type RouteMatch = RoutingRouteMatch<RouteRecord>;
 
 /**
  * A match whose modules are loaded and whose loader has run or is running — or,
@@ -771,319 +602,6 @@ export type ResolvedSlot = {|
   readonly layouts: $ReadOnlyArray<LayoutModule>,
   readonly slots: $ReadOnlyArray<ResolvedSlot>,
 |};
-
-/** Thrown by `notFound()`; the renderer answers with the not-found page. */
-export class NotFoundError extends Error {
-  constructor() {
-    super("not found");
-    this.name = "NotFoundError";
-  }
-}
-
-/** Thrown by `unauthorized()`; the renderer answers with the error boundary. */
-export class UnauthorizedError extends Error {
-  constructor() {
-    super("unauthorized");
-    this.name = "UnauthorizedError";
-  }
-}
-
-/** Thrown by `forbidden()`; the renderer answers with the error boundary. */
-export class ForbiddenError extends Error {
-  constructor() {
-    super("forbidden");
-    this.name = "ForbiddenError";
-  }
-}
-
-/** Thrown by `redirect()`; the renderer answers with a redirect. */
-export class RedirectError extends Error {
-  to: string;
-  permanent: boolean;
-
-  constructor(to: string, permanent: boolean) {
-    super(`redirect to ${to}`);
-    this.name = "RedirectError";
-    this.to = to;
-    this.permanent = permanent;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Matching
-// ---------------------------------------------------------------------------
-
-type Segment =
-  | {| readonly kind: "static", readonly value: string |}
-  | {| readonly kind: "param", readonly name: string |}
-  | {| readonly kind: "catchAll", readonly name: string |};
-
-function compile(routePath: string): $ReadOnlyArray<Segment> {
-  return routePath
-    .split("/")
-    .filter((segment) => segment !== "")
-    .map((segment): Segment => {
-      if (segment.startsWith(":") && segment.endsWith("*")) {
-        return { kind: "catchAll", name: segment.slice(1, -1) };
-      }
-      if (segment.startsWith(":")) {
-        return { kind: "param", name: segment.slice(1) };
-      }
-      return { kind: "static", value: segment };
-    });
-}
-
-/**
- * How specific a route is, for ranking: a static segment outranks a parameter,
- * which outranks a catch-all, and a longer path outranks a shorter one.
- */
-function specificity(segments: $ReadOnlyArray<Segment>): number {
-  let score = 0;
-  for (const segment of segments) {
-    score += match (segment) {
-      {kind: "static"} => 3,
-      {kind: "param"} => 2,
-      {kind: "catchAll"} => 1,
-    };
-  }
-  return score;
-}
-
-function matchSegments(
-  segments: $ReadOnlyArray<Segment>,
-  parts: $ReadOnlyArray<string>,
-): ?RouteParams {
-  const params: { [string]: string | $ReadOnlyArray<string> } = {};
-  let index = 0;
-  for (const segment of segments) {
-    match (segment) {
-      {kind: "static", value: const value} => {
-        if (parts[index] !== value) {
-          return null;
-        }
-        index += 1;
-      }
-      {kind: "param", name: const name} => {
-        if (index >= parts.length) {
-          return null;
-        }
-        params[name] = decodeSegment(parts[index]);
-        index += 1;
-      }
-      {kind: "catchAll", name: const name} => {
-        params[name] = parts.slice(index).map(decodeSegment);
-        index = parts.length;
-      }
-    }
-  }
-  return index === parts.length ? params : null;
-}
-
-/**
- * The URL for a route pattern and the parameters it takes.
- *
- * The inverse of [`matchSegments`], and deliberately built out of the same
- * [`compile`]: a builder that parsed patterns its own way would drift from the
- * matcher, and the drift would show up as a link that 404s rather than as a
- * failure anybody could see.
- *
- * The generated `router.js` is what a project calls — `route("/posts/:slug",
- * { slug })` — and it is typed there, so the parameters are checked before this
- * runs. This still refuses a bad call rather than building a wrong URL,
- * because the types are only in front of the callers that have them: a value
- * that arrived from JSON, or from a module that opted out of Flow, reaches
- * here unchecked. A link to `/posts/undefined` is the failure this exists to
- * turn into an error with a name on it.
- *
- * Each segment is `encodeURIComponent`d, which is what [`decodeSegment`]
- * undoes on the way back — so a slug with a slash in it round-trips as one
- * segment rather than becoming two.
- */
-export function buildRoute(routePath: string, params?: RouteParams): string {
-  const values: RouteParams = params ?? {};
-  const parts: Array<string> = [];
-  for (const segment of compile(routePath)) {
-    match (segment) {
-      {kind: "static", value: const value} => {
-        parts.push(value);
-      }
-      {kind: "param", name: const name} => {
-        const value = values[name];
-        if (typeof value !== "string") {
-          throw new Error(
-            `route ${routePath} takes a string for :${name}, and got ${describeParam(value)}`,
-          );
-        }
-        parts.push(encodeURIComponent(value));
-      }
-      {kind: "catchAll", name: const name} => {
-        const value = values[name];
-        if (value == null || typeof value === "string") {
-          throw new Error(
-            `route ${routePath} takes an array of segments for :${name}*, and got ` +
-              describeParam(value),
-          );
-        }
-        for (const part of value) {
-          parts.push(encodeURIComponent(part));
-        }
-      }
-    }
-  }
-  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
-}
-
-/** What a parameter was, for the message that says it was the wrong thing. */
-function describeParam(value: string | $ReadOnlyArray<string> | void): string {
-  if (value === undefined) {
-    return "nothing";
-  }
-  return typeof value === "string" ? `the string ${JSON.stringify(value)}` : "an array";
-}
-
-function decodeSegment(segment: string): string {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    return segment;
-  }
-}
-
-/**
- * Whether this table can render the route in the browser.
- *
- * False only in the client bundle, and only for a route uf decided ships no
- * JavaScript. Every caller that would load a page asks this first, and the two
- * answers are different actions rather than a success and a failure: render
- * it, or let the browser fetch the document.
- */
-export function hasClientPage(route: RouteRecord): boolean {
-  return route.page != null;
-}
-
-/**
- * Match a pathname against the table, preferring the most specific route.
- */
-export function matchRoute(routes: $ReadOnlyArray<RouteRecord>, pathname: string): ?RouteMatch {
-  return matchIn(routes, pathname);
-}
-
-/**
- * The same match, over anything that has a route path.
- *
- * A slot is a second table matched against the same URL — see [`SlotRecord`] —
- * and it has to be matched by *this* function rather than by one of its own:
- * two matchers would be two answers to "which of these paths does this URL
- * name", and the one that disagreed would show up as a slot holding somebody
- * else's page. The generic is only about the record type; the ranking, the
- * parameters and the tie-break are the route table's.
- */
-function matchIn<TRecord: { +path: string, ... }>(
-  routes: $ReadOnlyArray<TRecord>,
-  pathname: string,
-): ?{| readonly route: TRecord, readonly params: RouteParams |} {
-  const parts = pathname.split("/").filter((part) => part !== "");
-  let best: ?{| readonly route: TRecord, readonly params: RouteParams |} = null;
-  let bestScore = -1;
-  for (const route of routes) {
-    const segments = compile(route.path);
-    const params = matchSegments(segments, parts);
-    if (params == null) {
-      continue;
-    }
-    const score = specificity(segments);
-    if (score > bestScore) {
-      best = { route, params };
-      bestScore = score;
-    }
-  }
-  return best;
-}
-
-/**
- * Whether a boundary declared at `segments` is at or above `parts`.
- *
- * The same segment kinds as [`matchSegments`], stopping when the boundary's
- * own segments run out instead of requiring the path to: `/guide` covers
- * `/guide/nope`, and `/guide` covers `/guide` itself.
- */
-function covers(segments: $ReadOnlyArray<Segment>, parts: $ReadOnlyArray<string>): boolean {
-  let index = 0;
-  for (const segment of segments) {
-    const next = match (segment) {
-      {kind: "static", value: const value} => parts[index] === value ? index + 1 : -1,
-      {kind: "param"} => index < parts.length ? index + 1 : -1,
-      {kind: "catchAll"} => parts.length,
-    };
-    if (next === -1) {
-      return false;
-    }
-    index = next;
-  }
-  return true;
-}
-
-/**
- * The nearest boundary above `pathname`, or `null` when none covers it.
- *
- * The one rule both `$not-found.js` and `$error.js` are resolved by, and
- * the same one layouts already follow: nearest means the longest path that
- * covers the URL. It is decided here rather than by the table's order — the
- * table is sorted by path so the generated module is stable, and a resolver
- * that read "nearest" as "first" would silently depend on that sort. Two
- * boundaries can share a path (a route group's directory does not appear in
- * the URL), and then the first in the table wins.
- */
-function nearestBoundary<TBoundary: { readonly path: string, ... }>(
-  boundaries: $ReadOnlyArray<TBoundary>,
-  pathname: string,
-): ?TBoundary {
-  const parts = pathname.split("/").filter((part) => part !== "");
-  let best: ?TBoundary = null;
-  let bestDepth = -1;
-  for (const boundary of boundaries) {
-    const segments = compile(boundary.path);
-    if (!covers(segments, parts)) {
-      continue;
-    }
-    if (segments.length > bestDepth) {
-      best = boundary;
-      bestDepth = segments.length;
-    }
-  }
-  return best;
-}
-
-/** Split a URL into its pathname and search string. */
-export function splitUrl(url: string): {| readonly pathname: string, readonly search: string |} {
-  const hash = url.indexOf("#");
-  const withoutHash = hash === -1 ? url : url.slice(0, hash);
-  const question = withoutHash.indexOf("?");
-  if (question === -1) {
-    return { pathname: normalizePathname(withoutHash), search: "" };
-  }
-  return {
-    pathname: normalizePathname(withoutHash.slice(0, question)),
-    search: withoutHash.slice(question),
-  };
-}
-
-function normalizePathname(pathname: string): string {
-  if (pathname === "" || pathname === "/") {
-    return "/";
-  }
-  const trimmed = pathname.replace(/\/+$/, "");
-  return trimmed === "" ? "/" : trimmed;
-}
-
-/** Parse a search string into a flat map; a repeated key keeps its last value. */
-export function parseSearch(search: string): SearchParams {
-  const params: { [string]: string } = {};
-  for (const [key, value] of new URLSearchParams(search)) {
-    params[key] = value;
-  }
-  return params;
-}
 
 // ---------------------------------------------------------------------------
 // Loading
@@ -3504,31 +3022,6 @@ export function routerView(root: string): React.ComponentType<AppProps> {
     );
   }
   return App;
-}
-
-/** Stop rendering the current page and show the not-found page instead. */
-export function notFound(): empty {
-  throw new NotFoundError();
-}
-
-/** Stop rendering the current page and show the error boundary, as a 401. */
-export function unauthorized(): empty {
-  throw new UnauthorizedError();
-}
-
-/** Stop rendering the current page and show the error boundary, as a 403. */
-export function forbidden(): empty {
-  throw new ForbiddenError();
-}
-
-/** Stop rendering the current page and send the visitor elsewhere. */
-export function redirect(to: string): empty {
-  throw new RedirectError(to, false);
-}
-
-/** `redirect`, with a permanent status. */
-export function permanentRedirect(to: string): empty {
-  throw new RedirectError(to, true);
 }
 
 /**
