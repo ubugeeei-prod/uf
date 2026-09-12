@@ -41,12 +41,30 @@ const repository: string = (() => {
   throw new Error(`could not find ${wanted} above ${process.cwd()}`);
 })();
 
-/** The packages that go to npm, in the order the release publishes them. */
-const published: Array<string> = fs
-  .readFileSync(path.join(repository, "tools/release/published-packages.txt"), "utf8")
-  .split("\n")
-  .map((line) => line.trim())
-  .filter((line) => line !== "" && !line.startsWith("#"));
+/** A release manifest, comments removed. */
+const releaseNames = (file: string): Array<string> =>
+  fs
+    .readFileSync(path.join(repository, file), "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+
+/** The packages the release workflow can send today. */
+const published: Array<string> = releaseNames("tools/release/published-packages.txt");
+
+/** Implemented packages waiting for npm bootstrap/trusted publishing. */
+const pending: Array<string> = releaseNames("tools/release/pending-packages.txt");
+
+/**
+ * Every package that should eventually reach npm.
+ *
+ * Pending names are not in the OIDC publish closure yet, but the local
+ * bootstrap publishes the same tarball npm would get later. A front door such
+ * as `@uniflowed/temporal` is still broken if it packs without its export or
+ * without a relative module it imports, even while the external blocker is the
+ * npm account step that creates and trusts the name.
+ */
+const releasePackages: Array<string> = Array.from(new Set([...published, ...pending]));
 
 /**
  * A cache directory of this test's own, removed when the process exits.
@@ -197,7 +215,7 @@ const resolvesTo = (packed: Set<string>, from: string, specifier: string): strin
   return null;
 };
 
-describe("what the published packages pack", () => {
+describe("what the release packages pack", () => {
   it("the scan finds the imports it is looking for", () => {
     // A guard on the guard. `internal/node-hooks.js` is the file whose import
     // #409 was about, so if the scanner ever stops seeing that one, both
@@ -248,12 +266,12 @@ describe("what the published packages pack", () => {
   // that reports itself as unexpandable is a worse trade than a failure
   // message that names the package itself.
   const packed: Map<string, Set<string>> = new Map(
-    published.map((name) => [name, packedPaths(path.join(repository, "packages", name))]),
+    releasePackages.map((name) => [name, packedPaths(path.join(repository, "packages", name))]),
   );
 
   it("every package publishes every file it exports", () => {
     const missing = [];
-    for (const name of published) {
+    for (const name of releasePackages) {
       const directory = path.join(repository, "packages", name);
       const manifest = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
       const files = packed.get(name) ?? new Set();
@@ -277,7 +295,7 @@ describe("what the published packages pack", () => {
   it("no package publishes a test file", () => {
     const shipped = [];
     let beside = 0;
-    for (const name of published) {
+    for (const name of releasePackages) {
       for (const file of packed.get(name) ?? new Set()) {
         if (file.endsWith(".test.js")) shipped.push(`@uniflowed/${name} packs ${file}`);
       }
@@ -295,7 +313,7 @@ describe("what the published packages pack", () => {
 
   it("every package publishes every file its published files import", () => {
     const missing = [];
-    for (const name of published) {
+    for (const name of releasePackages) {
       const directory = path.join(repository, "packages", name);
       const files = packed.get(name) ?? new Set();
       for (const file of files) {
@@ -309,6 +327,11 @@ describe("what the published packages pack", () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+
+  it("checks the temporal front door before npm can install it", () => {
+    expect(releasePackages).toContain("temporal");
+    expect(packed.get("temporal")?.has("index.js")).toBe(true);
   });
 });
 
