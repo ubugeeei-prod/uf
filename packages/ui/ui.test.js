@@ -4012,6 +4012,36 @@ describe("Tooltip", () => {
     expect(screen.queryByRole("tooltip")).toBe(null);
   });
 
+  it("keeps a caller-rendered body hoverable and described", () => {
+    uft.useFakeTimers();
+    const seen = { current: null };
+    render(
+      <Tooltip.Root>
+        <Tooltip.Trigger aria-label="Bold">B</Tooltip.Trigger>
+        <Tooltip.Body ref={seen} render={(props) => <section {...props} data-testid="tip" />}>
+          Bold
+        </Tooltip.Body>
+      </Tooltip.Root>,
+    );
+    const trigger = screen.getByRole("button", { name: "Bold" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+
+    const tip = screen.getByRole("tooltip");
+    expect(tip.tagName).toBe("SECTION");
+    expect(tip.textContent).toBe("Bold");
+    expect(tip).toHaveAttribute("data-testid", "tip");
+    expect(tip).toHaveAttribute("data-state", "open");
+    expect(seen.current).toBe(tip);
+    expect(trigger.getAttribute("aria-describedby")).toBe(tip.id);
+
+    fireEvent.pointerLeave(trigger);
+    advance(100);
+    fireEvent.pointerEnter(tip);
+    advance(10_000);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  });
+
   it("closes on Escape without moving the pointer", () => {
     uft.useFakeTimers();
     render(<Example />);
@@ -8533,6 +8563,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Tabs.Root",
     "Tabs.Tab",
     "Toggle",
+    "Tooltip.Body",
     "Tooltip.Trigger",
   ];
 
@@ -8649,7 +8680,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Toast.Title",
     "ToggleGroup.Item",
     "ToggleGroup.Root",
-    "Tooltip.Body",
   ];
 
   /** The parts `packages/ui/index.js` names, and the component behind each. */

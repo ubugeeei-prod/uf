@@ -324,6 +324,7 @@ export component TooltipBody(
   alignOffset?: number = 0,
   avoidCollisions?: boolean = true,
   collisionPadding?: number = 0,
+  render?: RenderProp,
   side?: LogicalSide = "top",
   sideOffset?: number = 0,
   ...rest: Rest
@@ -378,21 +379,22 @@ export component TooltipBody(
     return null;
   }
 
-  return (
-    <div
-      {...withoutComposed(rest, ["ref"])}
-      data-align={anchored.align}
-      data-side={anchored.side}
-      data-state="open"
-      id={`${tooltip.base}-body`}
-      ref={composeRefs(rest.ref, (element) => {
-        bodyRef.current = element;
-      })}
-      role="tooltip"
-      // No `tabIndex`. A tooltip the keyboard can land in is a stop the reader
-      // did not ask for and cannot leave the way they expect.
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(withoutComposed(rest, ["ref"]), {
+    children,
+    "data-align": anchored.align,
+    "data-side": anchored.side,
+    "data-state": "open",
+    id: `${tooltip.base}-body`,
+    ref: composeRefs(rest.ref, (element) => {
+      bodyRef.current = element;
+    }),
+    role: "tooltip",
+    // No `tabIndex`. A tooltip the keyboard can land in is a stop the reader
+    // did not ask for and cannot leave the way they expect.
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
