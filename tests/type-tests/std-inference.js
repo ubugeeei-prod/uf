@@ -38,6 +38,14 @@ import { GlobPattern, glob, matchGlob } from "../../packages/std/glob.js";
 import { crc32, fnv1a64 } from "../../packages/std/hash.js";
 import { Heap, heapify } from "../../packages/std/heap.js";
 import { decode, encode } from "../../packages/std/hex.js";
+import {
+  BufferWriter,
+  ShortWriteError,
+  copy as copyBytes,
+  limitReader,
+  readAll as readAllBytes,
+  readerFromBytes,
+} from "../../packages/std/io.js";
 import { List } from "../../packages/std/list.js";
 import {
   isAbsolute as pathIsAbsolute,
@@ -212,6 +220,27 @@ export const uvarintReadsBigInts: number = uvarint(left).value;
 // expect: 1 is incompatible with bigint
 export const putVarintTakesBigInts: mixed = putVarint(1);
 
+// --- io ---------------------------------------------------------------------
+
+const ioReader = readerFromBytes(left);
+const ioWriter = new BufferWriter();
+
+// expect: string
+export const ioReaderNeedsBytes: mixed = readerFromBytes("not bytes");
+
+// expect: Promise
+export const ioReadAllAnswersBytes: Uint8Array = readAllBytes(ioReader);
+
+// expect: "ten" is incompatible with number
+export const ioLimitTakesNumber: mixed = limitReader(ioReader, "ten");
+
+// expect: Promise
+export const ioCopyAnswersCount: string = copyBytes(ioWriter, readerFromBytes(left));
+
+const shortWrite = new ShortWriteError(2, 1);
+// expect: number is incompatible with string
+export const ioShortWriteCountsAreNumbers: string = shortWrite.written;
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -320,6 +349,9 @@ export const binaryCursorOffset: number = binaryCursor.offset();
 export const binaryCursorRead: number = binaryCursor.getUint16();
 export const binaryUvarint: bigint = uvarint(left).value;
 export const binaryPutVarint: Uint8Array = putVarint(-1n);
+export const ioReadAllBytes: Promise<Uint8Array> = readAllBytes(readerFromBytes(left));
+export const ioCopyCount: Promise<number> = copyBytes(ioWriter, readerFromBytes(left));
+export const ioBufferBytes: Uint8Array = new BufferWriter().bytes();
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,
