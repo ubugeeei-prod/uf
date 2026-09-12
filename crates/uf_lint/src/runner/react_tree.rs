@@ -22,8 +22,9 @@
 //!
 //! 1. Neither rule is enabled — nothing runs.
 //! 2. The path is not Flow source — nothing runs.
-//! 3. The text holds no `useEffect`, `useMemo` or `useCallback` — nothing runs.
-//!    A module without one of those words cannot violate either rule.
+//! 3. The text holds no call-shaped `useEffect`, `useMemo` or `useCallback` —
+//!    nothing runs. A module without one of those calls cannot violate either
+//!    rule.
 //! 4. The module is nested or chained past [`uf_flow`]'s parser ceilings —
 //!    nothing runs, because `flow/syntax` has already refused it and a linter
 //!    must not be the thing that overflows a stack on a minified bundle.
@@ -41,7 +42,7 @@ use uf_infra::{FxHashMap, FxHashSet};
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
 
-use crate::scan::{FileScan, find_words};
+use crate::scan::{FileScan, find_words, next_non_space};
 use crate::{Diagnostic, push_at, severity};
 
 /// `react/no-derived-state-effect`.
@@ -108,14 +109,14 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         return None;
     }
 
-    // Both words, not just the effect: see `STATE`. Textual on purpose — the
+    // Both calls, not just the effect: see `STATE`. Textual on purpose — the
     // point is to decide without parsing. Read the scanner's code slices rather
-    // than the whole source so a comment or prose string that names a hook does
-    // not pay for the module-tree path.
+    // than the whole source so a comment, prose string or import-only mention
+    // of a hook does not pay for the module-tree path.
     let wants_effects =
-        derived.is_some() && mentions_code_word(scan, EFFECT) && mentions_code_word(scan, STATE);
+        derived.is_some() && mentions_code_call(scan, EFFECT) && mentions_code_call(scan, STATE);
     let wants_memo = memo.is_some()
-        && (mentions_code_word(scan, "useMemo") || mentions_code_word(scan, "useCallback"));
+        && (mentions_code_call(scan, "useMemo") || mentions_code_call(scan, "useCallback"));
     if !wants_effects && !wants_memo {
         return None;
     }
@@ -127,17 +128,29 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
     })
 }
 
-/// Whether a hook-ish name is present where code can read it.
+/// Whether a hook-ish name is present where code can call it.
 ///
 /// This is still a cheap textual gate, not binding analysis. It is deliberately
-/// narrower than `source.contains`: comments and string prose cannot be hook
-/// calls, and those false positives are exactly what make `uf lint` enter the
-/// allocation-heavy tree path for modules that cannot report anything here.
-fn mentions_code_word(scan: &FileScan<'_>, word: &str) -> bool {
+/// narrower than `source.contains`: comments, string prose and imports cannot
+/// be hook calls, and those false positives are exactly what make `uf lint`
+/// enter the allocation-heavy tree path for modules that cannot report
+/// anything here.
+fn mentions_code_call(scan: &FileScan<'_>, word: &str) -> bool {
     scan.lines.iter().any(|line| {
         let code = line.code();
-        find_words(code, word).any(|at| !line.in_string(at))
+        find_words(code, word)
+            .any(|at| !line.in_string(at) && call_follows_name(code, at + word.len()))
     })
+}
+
+/// Whether the next non-space token after a name can still be the same call.
+///
+/// `useMemo<T>(...)` is a call too, so `<` is accepted with `(`. The gate stays
+/// local to the line: if somebody splits a hook callee from its argument list
+/// across lines, this errs toward skipping the expensive optional rule rather
+/// than paying the #668 path for import-only modules.
+fn call_follows_name(code: &str, after: usize) -> bool {
+    next_non_space(code, after).is_some_and(|(_, byte)| matches!(byte, b'(' | b'<'))
 }
 
 /// Run whichever of the two rules was asked for, over a tree somebody else
@@ -1416,21 +1429,58 @@ component Page() {
     }
 
     #[test]
-    fn code_hook_names_still_request_the_react_tree_path() {
+    fn import_only_hook_names_do_not_request_the_react_tree_path() {
+        let source = r#"// @flow
+import { useEffect, useMemo, useState } from "react";
+component Page() {
+  return <main />;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, source));
+        assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn hook_calls_still_request_the_react_tree_path() {
         let derived = r#"// @flow
 import { useEffect, useState } from "react";
 component Page() {
+  const [value, setValue] = useState(0);
+  useEffect(() => setValue(value + 1), [value]);
   return <main />;
 }
 "#;
         let memo = r#"// @flow
 import { useMemo } from "react";
 component Page() {
+  const value = useMemo(() => 1, []);
+  return <main />;
+}
+"#;
+        let react_member = r#"// @flow
+import * as React from "react";
+component Page() {
+  const value = React.useMemo(() => 1, []);
   return <main />;
 }
 "#;
 
         assert!(wants(DERIVED_STATE, derived));
         assert!(wants(REDUNDANT_MEMO, memo));
+        assert!(wants(REDUNDANT_MEMO, react_member));
+    }
+
+    #[test]
+    fn generic_hook_calls_still_request_the_react_tree_path() {
+        let source = r#"// @flow
+import { useMemo } from "react";
+component Page() {
+  const value = useMemo<number>(() => 1, []);
+  return <main>{value}</main>;
+}
+"#;
+
+        assert!(wants(REDUNDANT_MEMO, source));
     }
 }
