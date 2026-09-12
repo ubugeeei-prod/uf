@@ -31,6 +31,7 @@
     "./sync": "./sync.js",
     "./textproto": "./textproto.js",
     "./time": "./time.js",
+    "./zip": "./zip.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -53,6 +54,7 @@
     "sync.js",
     "textproto.js",
     "time.js",
+    "zip.js",
     "!*.test.js"
   ],
   "dependencies": {

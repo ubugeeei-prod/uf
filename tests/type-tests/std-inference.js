@@ -74,6 +74,13 @@ import {
 } from "../../packages/std/textproto.js";
 import type { HeaderMap } from "../../packages/std/textproto.js";
 import { Duration, Ticker, Timer, after, milliseconds, seconds } from "../../packages/std/time.js";
+import {
+  ZipReader,
+  ZipWriter,
+  deflate as zipDeflate,
+  inflate as zipInflate,
+} from "../../packages/std/zip.js";
+import type { ZipEntry } from "../../packages/std/zip.js";
 
 class HttpError extends Error {
   status: number;
@@ -300,6 +307,25 @@ export const textprotoSetValueNeedsText: mixed = setHeader(headers, "x-trace", 1
 // expect: number is incompatible with string
 export const textprotoErrorLineIsNumeric: string = headerError.line;
 
+// --- zip --------------------------------------------------------------------
+
+const zipReader = new ZipReader(left);
+const zipWriter = new ZipWriter();
+
+// expect: Promise
+export const zipReadIsAsync: Uint8Array = zipReader.read("file.txt");
+
+// expect: 1 is incompatible with string
+export const zipAddPathNeedsText: mixed = zipWriter.add(1, left);
+
+export const zipAddCompressionIsChecked: mixed = zipWriter.add("file.txt", left, {
+  // expect: "brotli" is incompatible with ZipCompression
+  compression: "brotli",
+});
+
+// expect: Promise
+export const zipDeflateIsAsync: Uint8Array = zipDeflate(left);
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -427,6 +453,11 @@ export const textprotoChanged: HeaderMap = appendHeader(
   "three",
 );
 export const textprotoBlock: string = stringifyHeaderBlock(headers);
+export const zipEntries: $ReadOnlyArray<ZipEntry> = zipReader.entries();
+export const zipInflatedBytes: Promise<Uint8Array> = zipInflate(left);
+export const zipAddedEntry: Promise<ZipEntry> = zipWriter.add("file.txt", left, {
+  compression: "store",
+});
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,

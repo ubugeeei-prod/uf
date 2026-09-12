@@ -443,6 +443,11 @@ pub fn std_modules() -> StdModuleList {
                 "values",
             ],
         ),
+        StdModule::ships(
+            "@uniflowed/std/zip",
+            StdCategory::Data,
+            &["ZipReader", "ZipWriter", "deflate", "inflate"],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
@@ -569,14 +574,7 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Data,
             &["uuidV4", "uuidV7", "parseUuid"],
         ),
-        // #710's next tranche: `archive/zip` and `archive/tar`, reading at
-        // least. The compression half is `DecompressionStream` on all four
-        // runtimes; the container format is not.
-        StdModule::planned(
-            "@uniflowed/std/zip",
-            StdCategory::Data,
-            &["ZipReader", "ZipWriter", "deflate", "inflate"],
-        ),
+        // #710's next tranche: `archive/tar`, reading at least.
         StdModule::planned(
             "@uniflowed/std/import-meta",
             StdCategory::Environment,
