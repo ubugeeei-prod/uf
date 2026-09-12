@@ -267,6 +267,18 @@ describe("layout is flexbox", () => {
     handle.stop();
   });
 
+  it("accepts auto margins inside style props", () => {
+    const handle = testRender(
+      <Box flexDirection="row" justifyContent="flex-end" width={10}>
+        <Text>ab</Text>
+        <Text style={{ marginLeft: "auto" }}>cd</Text>
+      </Box>,
+      { width: 10, height: 1 },
+    );
+    expect(rows(handle.frame())).toEqual(["ab      cd"]);
+    handle.stop();
+  });
+
   it("lets cross-axis auto margins override alignment", () => {
     const handle = testRender(
       <Box flexDirection="row" alignItems="flex-start" height={3} width={3}>
