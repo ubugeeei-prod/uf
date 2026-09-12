@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Thirteen modules, and what is asserted here is the property that makes each one
+// Sixteen modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -75,6 +75,18 @@ import { GlobPattern, glob, matchGlob } from "@uniflowed/std/glob";
 import { adler32, crc32, fnv1a32, fnv1a64 } from "@uniflowed/std/hash";
 import { Heap, heapify } from "@uniflowed/std/heap";
 import { InvalidHexError, decode, dump, encode, isValid } from "@uniflowed/std/hex";
+import {
+  BufferWriter,
+  ShortWriteError,
+  copy,
+  limitReader,
+  readAll,
+  readableStreamFromReader,
+  readerFromBytes,
+  readerFromReadableStream,
+  writableStreamFromWriter,
+  writerFromWritableStream,
+} from "@uniflowed/std/io";
 import { Element, List } from "@uniflowed/std/list";
 import {
   basename,
@@ -1191,6 +1203,119 @@ describe("binary", () => {
     }
 
     expect(() => putUvarint(-1n)).toThrow(RangeError);
+  });
+});
+
+describe("io", () => {
+  it("reads bytes in chunks and collects them again", async () => {
+    const reader = readerFromBytes(b(1, 2, 3, 4, 5), { chunkSize: 2 });
+
+    expect(await reader.read()).toEqual({ done: false, value: b(1, 2) });
+    expect(await readAll(reader)).toEqual(b(3, 4, 5));
+    expect(await reader.read()).toEqual({ done: true });
+  });
+
+  it("copies byte readers into byte writers and owns the written chunks", async () => {
+    const input = b(9, 8, 7);
+    const writer = new BufferWriter();
+
+    expect(await copy(writer, readerFromBytes(input, { chunkSize: 1 }))).toBe(3);
+    input[0] = 0;
+
+    expect(writer.length()).toBe(3);
+    expect(Array.from(writer.bytes())).toEqual([9, 8, 7]);
+    writer.reset();
+    expect(writer.length()).toBe(0);
+    expect(Array.from(writer.bytes())).toEqual([]);
+  });
+
+  it("limits a reader to the requested number of bytes", async () => {
+    const reader = readerFromBytes(b(1, 2, 3, 4), { chunkSize: 4 });
+    const limited = limitReader(reader, 3);
+
+    expect(Array.from(await readAll(limited))).toEqual([1, 2, 3]);
+    expect(await limited.read()).toEqual({ done: true });
+    expect(Array.from(await readAll(reader))).toEqual([4]);
+  });
+
+  it("keeps unread stream bytes buffered when a limit cuts through a chunk", async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(b(1, 2, 3, 4));
+        controller.close();
+      },
+    });
+    const reader = readerFromReadableStream(stream);
+
+    expect(Array.from(await readAll(limitReader(reader, 3)))).toEqual([1, 2, 3]);
+    expect(Array.from(await readAll(reader))).toEqual([4]);
+  });
+
+  it("reports short writes instead of silently dropping bytes", async () => {
+    await expect(
+      copy(
+        {
+          write() {
+            return 1;
+          },
+        },
+        readerFromBytes(b(1, 2)),
+      ),
+    ).rejects.toThrow(ShortWriteError);
+  });
+
+  it("adapts web readable streams into readers", async () => {
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(b(4, 5));
+        controller.enqueue(b(6));
+        controller.close();
+      },
+    });
+
+    expect(Array.from(await readAll(readerFromReadableStream(stream)))).toEqual([4, 5, 6]);
+  });
+
+  it("adapts readers into web readable streams", async () => {
+    const stream = readableStreamFromReader(
+      readerFromBytes(b(1, 2, 3), { chunkSize: 2 }),
+      (source) => new ReadableStream(source),
+    );
+    const reader = stream.getReader();
+
+    expect(await reader.read()).toEqual({ done: false, value: b(1, 2) });
+    expect(await reader.read()).toEqual({ done: false, value: b(3) });
+    expect(await reader.read()).toEqual({ done: true });
+  });
+
+  it("adapts web writable streams into writers", async () => {
+    const chunks = [];
+    const stream = new WritableStream({
+      write(chunk) {
+        chunks.push(Array.from(chunk));
+      },
+      close() {
+        chunks.push(["closed"]);
+      },
+    });
+    const writer = writerFromWritableStream(stream);
+
+    expect(await writer.write(b(7, 8))).toBe(2);
+    await writer.close?.();
+
+    expect(chunks).toEqual([[7, 8], ["closed"]]);
+  });
+
+  it("adapts writers into web writable streams", async () => {
+    const out = new BufferWriter();
+    const stream = writableStreamFromWriter(out, (sink) => new WritableStream(sink));
+    const writer = stream.getWriter();
+
+    await writer.write(b(1));
+    await writer.write(b(2, 3));
+    await writer.close();
+
+    expect(Array.from(out.bytes())).toEqual([1, 2, 3]);
   });
 });
 

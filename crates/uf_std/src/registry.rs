@@ -396,6 +396,24 @@ pub fn std_modules() -> StdModuleList {
                 "seconds",
             ],
         ),
+        StdModule::ships(
+            "@uniflowed/std/io",
+            StdCategory::Platform,
+            &[
+                "BufferWriter",
+                "BytesReader",
+                "LimitedReader",
+                "ShortWriteError",
+                "copy",
+                "limitReader",
+                "readAll",
+                "readableStreamFromReader",
+                "readerFromBytes",
+                "readerFromReadableStream",
+                "writableStreamFromWriter",
+                "writerFromWritableStream",
+            ],
+        ),
         // ---------------------------------------------------------------
         // Planned: nobody has written it.
         // ---------------------------------------------------------------
@@ -626,9 +644,9 @@ pub fn std_modules() -> StdModuleList {
             StdCategory::Data,
             &["digest", "randomBytes", "timingSafeEqual"],
         ),
-        // Web Streams are on all four runtimes. #710's `io` item is a bridge
-        // to them — `Reader`/`Writer` over `Uint8Array` with adapters — and
-        // re-exporting `ReadableStream` under a second name is not that.
+        // Web Streams are on all four runtimes. `@uniflowed/std/io` ships the
+        // byte-oriented bridge to them; re-exporting `ReadableStream` under a
+        // second name is not that.
         StdModule::declined(
             "@uniflowed/std/stream",
             StdCategory::Platform,

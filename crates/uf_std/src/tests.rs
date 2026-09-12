@@ -66,6 +66,12 @@ fn std_registry_covers_requested_modules() {
         "@uniflowed/std/slices",
         "@uniflowed/std/list",
         "@uniflowed/std/csv",
+        "@uniflowed/std/binary",
+        "@uniflowed/std/path",
+        "@uniflowed/std/glob",
+        "@uniflowed/std/hash",
+        "@uniflowed/std/time",
+        "@uniflowed/std/io",
     ] {
         let module = modules
             .iter()
