@@ -114,7 +114,16 @@ export type HandlerRecord = {|
  * taste: the `fetch` specification forbids the last two outright, so a handler
  * exporting either could never be reached by a browser.
  */
-const METHODS = ["GET", "HEAD", "QUERY", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"];
+export const HANDLER_METHODS: $ReadOnlyArray<string> = Object.freeze([
+  "GET",
+  "HEAD",
+  "QUERY",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+]);
 
 /**
  * Match a request against the handler table and run it.
@@ -193,7 +202,7 @@ export function createDispatcher(options: {|
  * answer one.
  */
 function pick(module: HandlerModule, method: string): Handler | null {
-  if (!METHODS.includes(method)) {
+  if (!HANDLER_METHODS.includes(method)) {
     return null;
   }
   const own = module[method];
@@ -213,7 +222,7 @@ function pick(module: HandlerModule, method: string): Handler | null {
  * do that here" from "there is nothing here".
  */
 function methodNotAllowed(module: HandlerModule): Response {
-  const own = new Set(METHODS.filter((method) => typeof module[method] === "function"));
+  const own = new Set(HANDLER_METHODS.filter((method) => typeof module[method] === "function"));
   // A module exporting `GET` also answers `HEAD`, so `Allow` has to say so.
   if (own.has("GET")) {
     own.add("HEAD");
@@ -222,7 +231,7 @@ function methodNotAllowed(module: HandlerModule): Response {
   // header reads in the conventional order however the module was written.
   return new Response(null, {
     status: 405,
-    headers: { allow: METHODS.filter((method) => own.has(method)).join(", ") },
+    headers: { allow: HANDLER_METHODS.filter((method) => own.has(method)).join(", ") },
   });
 }
 

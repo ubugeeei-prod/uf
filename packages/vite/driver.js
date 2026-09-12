@@ -50,6 +50,7 @@ import { COMPILE_ASSETS_ID, compileAssetsPlugin } from "./internal/compile-asset
 import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { send, toRequest } from "./internal/http.js";
+import { createOpenApiDocument } from "./internal/openapi.js";
 import { withProjectConfig } from "./merge.js";
 import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
 import {
@@ -635,6 +636,10 @@ async function build() {
   emit("phase", { name: "prerender" });
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
   const assets = assetsFromManifest(manifest);
+  const openapi = await createOpenApiDocument(server.handlers);
+  const openapiFile = path.join(root, ".uf", "build", "meta", "openapi.json");
+  mkdirSync(path.dirname(openapiFile), { recursive: true });
+  writeFileSync(openapiFile, `${JSON.stringify(openapi, null, 2)}\n`);
   const plan = await renderingPlan(server, prerender);
   emit("rendering", {
     prerender,
