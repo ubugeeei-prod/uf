@@ -74,7 +74,12 @@ import {
 import { useTimeout } from "@uniflowed/hooks/timing";
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withProps, withoutComposed } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 
 /**
  * Where an avatar's image is between having been asked for and being there.
@@ -218,7 +223,7 @@ export component AvatarImage(
     alt,
     onError: composeHandlers(rest.onError, () => report(source, "error")),
     onLoad: composeHandlers(rest.onLoad, () => report(source, "loaded")),
-    ref: composeRefs(rest.ref, (node) => {
+    ref: composeRefs(rest.ref, (node: HTMLImageElement | null) => {
       element.current = node;
     }),
     src: source ?? undefined,
