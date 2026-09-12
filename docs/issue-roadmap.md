@@ -207,9 +207,11 @@
       `selectable` text highlights the cells between the two ends,
       `getSelectedText()` reads them back out of the frame, and
       `preventDefault()` on the press is how a box that means its own thing by
-      a drag keeps out of it. Key release, the clipboard that would carry the
-      selected text somewhere, the repeated-press gestures that widen one to a
-      word or a line, and rich content are ubugeeei-prod/uf#314.
+      a drag keeps out of it. Key press, repeat and release events are decoded
+      through Kitty keyboard reports when the terminal supports them, and
+      legacy terminals continue to send key presses. The clipboard that would
+      carry selected text somewhere, the repeated-press gestures that widen
+      one to a word or a line, and rich content are ubugeeei-prod/uf#314.
 - [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
