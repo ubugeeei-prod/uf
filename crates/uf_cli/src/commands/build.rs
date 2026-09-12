@@ -404,6 +404,7 @@ pub(crate) fn build(
         "transform": "uf transform",
         "host": host.name(),
         "target": app_target.as_str(),
+        "targetContract": target_contract(app_target),
         "entries": resolved.config.build.entries,
         "routes": routes.iter().map(|route| json!({
             "path": route.path,
@@ -1060,6 +1061,36 @@ fn runtime_target_name(target: &RuntimeTarget) -> &'static str {
         RuntimeTarget::ReactNative => "react-native",
         RuntimeTarget::Server => "server",
         RuntimeTarget::Hermes => "hermes",
+    }
+}
+
+fn target_contract(target: RouteTarget) -> serde_json::Value {
+    match target {
+        RouteTarget::Web => json!({
+            "runtime": "web",
+            "renderer": { "status": "implemented", "kind": "react-dom" },
+            "router": { "status": "implemented", "kind": "document" },
+            "transform": { "status": "implemented", "kind": "vite" },
+        }),
+        RouteTarget::Native | RouteTarget::Ios | RouteTarget::Android => json!({
+            "runtime": "react-native",
+            "renderer": {
+                "status": "pending",
+                "kind": "react-native-host-config",
+                "package": "@uniflowed/react-native",
+                "reason": "React Native rendering still needs a native test renderer and host config"
+            },
+            "router": {
+                "status": "pending",
+                "kind": "navigator",
+                "reason": "React Native routes need a navigator runtime rather than document URLs"
+            },
+            "transform": {
+                "status": "pending",
+                "kind": "metro",
+                "reason": "React Native builds still need a Metro/native transformer contract"
+            },
+        }),
     }
 }
 
