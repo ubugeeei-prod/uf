@@ -4552,6 +4552,44 @@ describe("HoverCard", () => {
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
   });
 
+  it("keeps a caller-rendered body hoverable", () => {
+    uft.useFakeTimers();
+    const seen = { current: null };
+    render(
+      <HoverCard.Root>
+        <HoverCard.Trigger
+          render={(props) => (
+            <a href="/ada" {...props}>
+              @ada
+            </a>
+          )}
+        />
+        <HoverCard.Body ref={seen} render={(props) => <section {...props} data-testid="card" />}>
+          <p>Ada Lovelace</p>
+          <a href="/ada/notes">Notes</a>
+        </HoverCard.Body>
+      </HoverCard.Root>,
+    );
+    const trigger = screen.getByRole("link", { name: "@ada" });
+    fireEvent.pointerEnter(trigger);
+    advance(700);
+
+    const card = screen.getByTestId("card");
+    expect(card.tagName).toBe("SECTION");
+    expect(card).toHaveTextContent("Ada Lovelace");
+    expect(card).toHaveAttribute("data-state", "open");
+    expect(card).toHaveAttribute("data-side", "bottom");
+    expect(card).toHaveAttribute("data-align", "center");
+    expect(seen.current).toBe(card);
+    expect(screen.getByRole("link", { name: "Notes" })).toBeInTheDocument();
+
+    fireEvent.pointerLeave(trigger);
+    advance(100);
+    fireEvent.pointerEnter(card);
+    advance(10_000);
+    expect(card).toBeInTheDocument();
+  });
+
   it("is not a dialog and does not describe its trigger", () => {
     uft.useFakeTimers();
     render(<Example />);
@@ -8810,6 +8848,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Field.Label",
     "Field.Root",
     "Field.Status",
+    "HoverCard.Body",
     "HoverCard.Trigger",
     "Menu.Body",
     "Menu.CheckboxItem",
@@ -8919,7 +8958,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Combobox.Status",
     "DatePicker.Input",
     "DatePicker.Root",
-    "HoverCard.Body",
     "InputOtp.Group",
     "InputOtp.Root",
     "InputOtp.Separator",
