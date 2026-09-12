@@ -23,7 +23,8 @@
     "node:fs": "./internal/browser-module.js",
     "node:module": "./internal/browser-module.js",
     "node:os": "./internal/browser-module.js",
-    "node:path": "./internal/browser-module.js"
+    "node:path": "./internal/browser-module.js",
+    "node:url": "./internal/browser-module.js"
   },
   "files": [
     "register.js",

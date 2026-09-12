@@ -65,16 +65,20 @@
 // written down because "it did not work" is the kind of thing that gets tried
 // twice — and because each of the three looks obviously right until it is run.
 //
-// **Two of the three have since opened.** Re-run on **Bun 1.3.13**, the third
+// **One of the three has since opened.** Re-run on **Bun 1.3.13**, the third
 // door below — a stand-in written after the process started — loads, and an
-// `onResolve` answering with its path redirects an `import` *declaration* and
-// not merely a dynamic `import()`. That is a whole mechanism: with the hook
-// installed once and a mutable registry consulted per resolution, a mock
-// registers and clears the way it does on Node. So the reason this file still
-// raises `UnsupportedError` on Bun is that nobody has written it, not that
-// Bun cannot — which is the opposite of what the three paragraphs below said
-// when they were written, and the reason they are kept with a date on them
-// rather than deleted.
+// `onResolve` answering with its path redirects an `import` *declaration*.
+// That is the primitive #845 materialized in `bunMockedModulePath`: with the
+// hook installed once and a mutable registry consulted per resolution, a mock
+// can be written as a real file and a static graph can be sent to it.
+//
+// That primitive was not the whole feature. `@uniflowed/test` reaches a mock
+// through `await import("./client.js")` after `uft.mock`, because static
+// imports have already run. On Bun 1.3.14, the same `onResolve` answer that
+// redirects a static graph is still refused for that direct dynamic import.
+// Bun 1.4.2 fixed that path, so this file installs a second implementation
+// against Bun's plugin API there and keeps older Bun versions on the explicit
+// unsupported error.
 //
 // The first door is half open and it is not the useful half: the `ENOENT` is
 // gone, so a query-carrying path resolves and loads, but `onLoad` still never
@@ -134,6 +138,7 @@ import fs from "node:fs";
 import * as nodeModule from "node:module";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** The URL parameter carrying `<module epoch>.<mock revision>`. */
 export const REVISION_PARAM = "uf-modules";
@@ -171,6 +176,9 @@ let epoch = 0;
 /** The installed hooks, or `null` when interception is not installed. */
 let handle = null;
 
+/** Whether Bun resolution is already inside this plugin. */
+let bunResolving = false;
+
 /**
  * A module's identity for the purpose of mocking: its URL with no query.
  *
@@ -195,16 +203,16 @@ export function moduleKey(url) {
  * into an error that names the host rather than a mock that quietly does
  * nothing.
  *
- * Bun's plugin API is not a second answer, and "Bun, and the three doors that
- * are shut" at the top of this file is why — it is a `false` on purpose rather
- * than a `true` nobody wired up.
+ * Bun's plugin API is a second answer only once direct dynamic import redirects
+ * work, which starts at the version pinned in `bunInterceptionSupported`.
  */
 export function interceptionSupported() {
   const process = globalThis.process;
   return (
-    process != null &&
-    process.versions?.node != null &&
-    typeof nodeModule.registerHooks === "function"
+    (process != null &&
+      process.versions?.node != null &&
+      typeof nodeModule.registerHooks === "function") ||
+    bunInterceptionSupported()
   );
 }
 
@@ -222,7 +230,14 @@ export function installInterception() {
   if (!interceptionSupported()) {
     return false;
   }
-  handle = nodeModule.registerHooks({ load: loadHook, resolve: resolveHook });
+  if (typeof nodeModule.registerHooks === "function") {
+    handle = nodeModule.registerHooks({ load: loadHook, resolve: resolveHook });
+    return true;
+  }
+  if (installBunInterception()) {
+    handle = { bun: true };
+    return true;
+  }
   return true;
 }
 
@@ -376,10 +391,7 @@ export function mockedSource(url) {
  * Node serves generated modules from `loadHook`, but Bun's `onLoad` never sees
  * the query-carrying identity this file uses. The piece of Bun that does work
  * is an `onResolve` answer naming another file, so this materializes the same
- * generated module under a unique path. It is intentionally only a primitive:
- * Bun still cannot make a direct dynamic import take that redirect, so
- * `@uniflowed/test` keeps the public API disabled on Bun until that path is
- * solved too.
+ * generated module under a unique path.
  */
 export function bunMockedModulePath(url) {
   const record = mocks.get(moduleKey(url));
@@ -459,6 +471,122 @@ function resolveHook(specifier, context, nextResolve) {
   }
   const url = redirect(specifier, context?.parentURL, resolved?.url);
   return url === resolved.url ? resolved : { ...resolved, url };
+}
+
+/** Install Bun's plugin-backed resolver for module mocks. */
+function installBunInterception() {
+  const bun = globalThis.Bun;
+  if (bun == null || typeof bun.plugin !== "function") {
+    return false;
+  }
+  bun.plugin({
+    name: "uniflowed-module-mocks",
+    setup(build) {
+      build.onResolve({ filter: /.*/ }, bunResolveHook);
+    },
+  });
+  return true;
+}
+
+/** Whether this Bun can redirect the direct dynamic import `uft.mock` needs. */
+function bunInterceptionSupported() {
+  const version = globalThis.process?.versions?.bun;
+  return globalThis.Bun != null && typeof version === "string" && versionAtLeast(version, 1, 4, 2);
+}
+
+/** Bun's `onResolve` hook, shaped into the same redirect rule Node uses. */
+function bunResolveHook(args) {
+  if (bunResolving || (mocks.size === 0 && epoch === 0)) {
+    return;
+  }
+
+  const resolved = bunResolve(args.path, args.importer);
+  if (resolved == null) {
+    return;
+  }
+  const redirected = redirect(args.path, resolved.parentURL, resolved.url);
+  if (redirected === resolved.url) {
+    return;
+  }
+  return bunLoadPath(redirected);
+}
+
+/** Resolve a Bun specifier to a file URL and parent URL. */
+function bunResolve(specifier, importer) {
+  const parentURL = importer === "" ? null : bunPathToFileURL(importer);
+  const split = splitBunSpecifier(specifier);
+  if (specifier.startsWith("file:")) {
+    return { parentURL, url: specifier };
+  }
+  if (isPathSpecifier(split.path)) {
+    if (importer === "") {
+      return null;
+    }
+    return {
+      parentURL,
+      url: pathToFileURL(path.resolve(path.dirname(importer), split.path)).href + split.suffix,
+    };
+  }
+
+  const bun = globalThis.Bun;
+  if (bun == null || typeof bun.resolveSync !== "function") {
+    return null;
+  }
+  try {
+    bunResolving = true;
+    const from = importer === "" ? process.cwd() : importer;
+    return { parentURL, url: bunPathToFileURL(bun.resolveSync(specifier, from)) };
+  } catch {
+    return null;
+  } finally {
+    bunResolving = false;
+  }
+}
+
+/** Turn a redirected file URL into the path form Bun's resolver returns. */
+function bunLoadPath(url) {
+  if (!url.startsWith("file:")) {
+    return;
+  }
+  const parsed = new URL(url);
+  if (parsed.searchParams.has(ACTUAL_PARAM)) {
+    return;
+  }
+  const mocked = mocks.get(moduleKey(url));
+  if (mocked != null && parsed.searchParams.has(REVISION_PARAM)) {
+    const standIn = bunMockedModulePath(url);
+    return standIn == null ? undefined : { path: standIn };
+  }
+  return { path: `${fileURLToPath(parsed)}${parsed.search}${parsed.hash}` };
+}
+
+/** Split off query/hash before path resolution. */
+function splitBunSpecifier(specifier) {
+  const query = specifier.search(/[?#]/);
+  if (query === -1) {
+    return { path: specifier, suffix: "" };
+  }
+  return { path: specifier.slice(0, query), suffix: specifier.slice(query) };
+}
+
+/** A filesystem path from Bun, preserving a query or fragment if it has one. */
+function bunPathToFileURL(file) {
+  const split = splitBunSpecifier(file);
+  return pathToFileURL(split.path).href + split.suffix;
+}
+
+/** Whether `version` is at least the given semantic version. */
+function versionAtLeast(version, major, minor, patch) {
+  const [actualMajor, actualMinor, actualPatch] = version
+    .split(/[.+-]/, 3)
+    .map((part) => Number.parseInt(part, 10));
+  if (actualMajor !== major) {
+    return actualMajor > major;
+  }
+  if (actualMinor !== minor) {
+    return actualMinor > minor;
+  }
+  return actualPatch >= patch;
 }
 
 /** Where an import of `url` should actually go. */

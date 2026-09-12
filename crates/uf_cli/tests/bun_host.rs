@@ -335,6 +335,101 @@ async function run() {
 run();
 "#;
 
+/// The capability that turns the stand-in primitive into a real Bun module
+/// mock: the same `onResolve` answer redirects the direct dynamic import a test
+/// writes after registering a mock.
+const BUN_DIRECT_DYNAMIC_STAND_IN_BLOCKER_PROGRAM: &str = r#"// @flow
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  bunMockedModulePath,
+  defineModuleMock,
+  resetModuleMocks,
+} from "@uniflowed/host/module-mocks";
+
+async function run() {
+  const clientUrl = new URL("./client.js", import.meta.url).href;
+  defineModuleMock(clientUrl, { send: () => "stand-in" });
+  const standIn = bunMockedModulePath(clientUrl);
+  if (standIn == null) throw new Error("no Bun stand-in was written");
+
+  const clientPath = fileURLToPath(clientUrl);
+  let directDynamicWasOfferedStandIn = false;
+  Bun.plugin({
+    name: "uf-module-mock-direct-dynamic-blocker-test",
+    setup(build) {
+      build.onResolve({ filter: /client\.js$/ }, (args) => {
+        if (args.importer === "") return;
+        const resolved = path.resolve(path.dirname(args.importer), args.path);
+        if (resolved !== clientPath) return;
+        if (path.basename(args.importer) === "main.js") {
+          directDynamicWasOfferedStandIn = true;
+        }
+        return { path: standIn };
+      });
+    },
+  });
+
+  try {
+    const direct = await import("./client.js");
+    console.log(`dynamic=${direct.send()}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`dynamic-error=${message.includes(path.basename(standIn)) ? "stand-in" : "other"}`);
+  }
+  console.log(`dynamic-redirect=${directDynamicWasOfferedStandIn ? "offered" : "missed"}`);
+
+  const consumer = await import("./consumer.js");
+  console.log(`consumer=${consumer.greeting}`);
+  resetModuleMocks();
+}
+
+run();
+"#;
+
+/// The public Bun module-mocking path, using the same rules Node asserts:
+/// nothing hoisted, the next import sees the stand-in, and unmock starts a new
+/// epoch for the graph that had computed its exports from it.
+const BUN_PUBLIC_MODULE_MOCKING_PROGRAM: &str = r#"// @flow
+import { uft } from "@uniflowed/test";
+
+async function run() {
+  await uft.mock("./client.js", () => ({ send: () => "stand-in" }));
+  console.log(`direct=${(await import("./client.js")).send()}`);
+  console.log(`consumer=${(await import("./consumer.js")).greeting}`);
+
+  uft.unmock("./client.js");
+  console.log(`direct-after=${(await import("./client.js")).send()}`);
+  console.log(`consumer-after=${(await import("./consumer.js")).greeting}`);
+}
+
+run();
+"#;
+
+/// Bun gained the direct dynamic import redirect `uft.mock` needs in 1.4.2.
+fn bun_module_mocking_supported() -> bool {
+    let Ok(output) = Command::new("bun").arg("--version").output() else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    version_at_least(String::from_utf8_lossy(&output.stdout).trim(), 1, 4, 2)
+}
+
+fn version_at_least(version: &str, major: u64, minor: u64, patch: u64) -> bool {
+    let mut parts = version
+        .split(['.', '+', '-'])
+        .take(3)
+        .map(|part| part.parse::<u64>().unwrap_or(0));
+    let actual = (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    );
+    actual >= (major, minor, patch)
+}
+
 /// What `uft.mock` does on Bun, which is refuse and say why.
 ///
 /// ubugeeei-prod/uf#283 shipped module mocking on Node and raised
@@ -355,6 +450,9 @@ run();
 #[test]
 fn module_mocking_on_bun_refuses_by_name_rather_than_doing_nothing() {
     if !host_ready() || !bun_ready() {
+        return;
+    }
+    if bun_module_mocking_supported() {
         return;
     }
 
@@ -405,11 +503,111 @@ fn module_mocking_on_bun_refuses_by_name_rather_than_doing_nothing() {
     }
 }
 
-/// Bun cannot run the public module-mocking API yet, because #419's direct
-/// dynamic import path still refuses the redirect. This proves the next
-/// implementation slice below that API: the stand-in module `@uniflowed/host`
-/// generates can be materialized as a file, and Bun can route a static import
-/// declaration to it through `Bun.plugin`.
+/// Bun 1.4.2 opens the #419 direct dynamic import path. This pins the host
+/// capability below the public API: a generated stand-in can be written, Bun
+/// asks the hook about a direct dynamic import, and the returned path loads.
+#[test]
+fn module_mocking_on_bun_can_redirect_direct_dynamic_imports_to_stand_ins() {
+    if !host_ready() || !bun_ready() {
+        return;
+    }
+    if !bun_module_mocking_supported() {
+        return;
+    }
+
+    let project = Project::new(&[
+        (
+            "client.js",
+            "// @flow\nexport const send = (): string => \"real\";\n",
+        ),
+        (
+            "consumer.js",
+            "// @flow\nimport { send } from \"./client.js\";\n\n\
+             export const greeting: string = send();\n",
+        ),
+        ("main.js", BUN_DIRECT_DYNAMIC_STAND_IN_BLOCKER_PROGRAM),
+    ]);
+
+    let run = run_on_bun(&project, "main.js");
+
+    assert_eq!(
+        run.status,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        run.stdout.contains("dynamic-redirect=offered"),
+        "Bun did not ask the hook about the direct dynamic import:\nstdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        run.stdout.contains("dynamic=stand-in"),
+        "the direct dynamic import did not load the stand-in redirect:\nstdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        run.stdout.contains("consumer=stand-in"),
+        "the same stand-in path should still work through a static graph:\nstdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+}
+
+/// On Bun versions where direct dynamic redirects work, `@uniflowed/test` can
+/// expose the same un-hoisted module-mocking rule it exposes on Node.
+#[test]
+fn module_mocking_on_bun_reaches_the_public_test_api() {
+    if !host_ready() || !bun_ready() {
+        return;
+    }
+    if !bun_module_mocking_supported() {
+        return;
+    }
+
+    let project = Project::new(&[
+        (
+            "client.js",
+            "// @flow\nexport const send = (): string => \"real\";\n",
+        ),
+        (
+            "consumer.js",
+            "// @flow\nimport { send } from \"./client.js\";\n\n\
+             export const greeting: string = send();\n",
+        ),
+        ("main.js", BUN_PUBLIC_MODULE_MOCKING_PROGRAM),
+    ]);
+
+    let run = run_on_bun(&project, "main.js");
+
+    assert_eq!(
+        run.status,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    for expected in [
+        "direct=stand-in",
+        "consumer=stand-in",
+        "direct-after=real",
+        "consumer-after=real",
+    ] {
+        assert!(
+            run.stdout.contains(expected),
+            "missing {expected:?}\nstdout:\n{}\nstderr:\n{}",
+            run.stdout,
+            run.stderr
+        );
+    }
+}
+
+/// The stand-in module `@uniflowed/host` generates can be materialized as a
+/// file, and Bun can route a static import declaration to it through
+/// `Bun.plugin`.
 #[test]
 fn module_mocking_on_bun_can_materialize_a_stand_in_for_static_imports() {
     if !host_ready() || !bun_ready() {
