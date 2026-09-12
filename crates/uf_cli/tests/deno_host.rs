@@ -433,6 +433,45 @@ fn uf_test_watch_on_deno_refuses_rather_than_running_a_stale_tree() {
     assert!(stderr.contains("issues/246"), "stderr:\n{stderr}");
 }
 
+/// Coverage is a Node loader feature, not a Deno AOT feature.
+///
+/// The refusal has to happen before the ahead-of-time pass, or an unsupported
+/// mode can fail while compiling the project and tell the user about their
+/// Flow syntax instead of the mode they asked for. This test gives Deno a file
+/// the pass would reject and asserts the pass never ran.
+#[test]
+fn uf_test_coverage_on_deno_refuses_before_the_aot_pass() {
+    if !deno_ready() {
+        return;
+    }
+    let project = deno_project(&[(
+        "broken.test.js",
+        "// @flow\nimport { it } from \"@uniflowed/test\";\n\n\
+         const value: = 1;\n\
+         it(\"would never parse\", () => {});\n",
+    )]);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--coverage", "broken.test.js"])
+        .output()
+        .expect("uf runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "stderr:\n{stderr}");
+    assert!(stderr.contains("uf test --coverage"), "stderr:\n{stderr}");
+    assert!(stderr.contains("needs Node.js"), "stderr:\n{stderr}");
+    assert!(
+        stderr.contains("Deno provides neither"),
+        "stderr:\n{stderr}"
+    );
+    assert!(
+        !project.path().join(".uf/deno").exists(),
+        "`uf test --coverage` on Deno must refuse before building the AOT tree"
+    );
+}
+
 /// No `-A` reaches Deno from `uf test`, on a project that declared nothing.
 ///
 /// This is the sentence ubugeeei-prod/uf#246 ends on. `uf test` passed
