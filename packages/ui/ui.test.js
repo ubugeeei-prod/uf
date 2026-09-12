@@ -5272,6 +5272,21 @@ describe("Progress", () => {
     // reader reads out loud.
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "10");
   });
+
+  it("hands the progressbar contract to a caller-rendered element", () => {
+    render(
+      <Progress
+        aria-label="Uploading"
+        max={10}
+        render={(props) => <section {...props} />}
+        value={4}
+      />,
+    );
+    const bar = screen.getByRole("progressbar", { name: "Uploading" });
+    expect(bar.tagName).toBe("SECTION");
+    expect(bar).toHaveAttribute("aria-valuenow", "4");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
+  });
 });
 
 describe("Slider", () => {
@@ -6271,6 +6286,22 @@ describe("Separator", () => {
     // nobody finds out — so the default is the mistake that can be corrected.
     expect(screen.getByRole("separator")).toBeInTheDocument();
   });
+
+  it("hands the chosen separator semantics to a caller-rendered element", () => {
+    const { rerender } = render(
+      <Separator
+        orientation="vertical"
+        render={(props) => <span {...props} data-testid="rule" />}
+      />,
+    );
+    const rule = screen.getByRole("separator");
+    expect(rule.tagName).toBe("SPAN");
+    expect(rule).toHaveAttribute("aria-orientation", "vertical");
+
+    rerender(<Separator decorative render={(props) => <span {...props} data-testid="rule" />} />);
+    expect(screen.queryByRole("separator")).toBe(null);
+    expect(screen.getByTestId("rule")).toHaveAttribute("aria-hidden", "true");
+  });
 });
 
 describe("Skeleton", () => {
@@ -6640,6 +6671,19 @@ describe("Toggle", () => {
     // A toggle button is a button, and a button activates on both keys.
     await userEvent.keyboard("{Enter}");
     expect(control).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("hands toggle-button behaviour to a caller-rendered element", async () => {
+    render(<Toggle aria-label="Bold" render={(props) => <div {...props} tabIndex={0} />} />);
+    const control = screen.getByRole("button", { name: "Bold" });
+    expect(control.tagName).toBe("DIV");
+    expect(control).toHaveAttribute("aria-pressed", "false");
+
+    await userEvent.click(control);
+    expect(control).toHaveAttribute("aria-pressed", "true");
+    control.focus();
+    await userEvent.keyboard(" ");
+    expect(control).toHaveAttribute("aria-pressed", "false");
   });
 
   it("does not press while disabled", async () => {
@@ -8241,6 +8285,8 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Menubar.Separator",
     "Menubar.SubTrigger",
     "Menubar.Trigger",
+    "Progress",
+    "Separator",
     "Sheet.Body",
     "Sheet.Close",
     "Sheet.Description",
@@ -8255,6 +8301,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Tabs.Panel",
     "Tabs.Root",
     "Tabs.Tab",
+    "Toggle",
     "Tooltip.Trigger",
   ];
 
@@ -8347,7 +8394,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Pagination.Root",
     "Popover.Body",
     "Popover.Trigger",
-    "Progress",
     "RadioGroup.Indicator",
     "RadioGroup.Item",
     "RadioGroup.Root",
@@ -8366,7 +8412,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Select.Separator",
     "Select.Trigger",
     "Select.Value",
-    "Separator",
     "Sidebar.Body",
     "Sidebar.Footer",
     "Sidebar.Header",
@@ -8391,7 +8436,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Toast.Region",
     "Toast.Root",
     "Toast.Title",
-    "Toggle",
     "ToggleGroup.Item",
     "ToggleGroup.Root",
     "Tooltip.Body",

@@ -51,7 +51,8 @@
 // One element, two attributes, nothing to remember. It renders on a server.
 
 import type { Orientation } from "./internal/roving-focus.js";
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withProps } from "./internal/merge-props.js";
 
 export type { Orientation } from "./internal/roving-focus.js";
 
@@ -75,14 +76,22 @@ export type { Orientation } from "./internal/roving-focus.js";
  * `aria-orientation` is written out even for the horizontal case, where ARIA
  * would default to it. It is the attribute a reader of this markup is looking
  * for, and a default that is left implicit is a default somebody has to know.
+ *
+ * `render` changes the element carrying that decision, not the decision
+ * itself: decorative rules stay hidden, semantic rules keep the separator
+ * role and orientation.
  */
 export component Separator(
   decorative?: boolean = false,
   orientation?: Orientation = "horizontal",
+  render?: RenderProp,
   ...rest: Rest
 ) {
-  if (decorative) {
-    return <div {...rest} aria-hidden="true" />;
+  const props = decorative
+    ? withProps(rest, { "aria-hidden": "true" })
+    : withProps(rest, { "aria-orientation": orientation, role: "separator" });
+  if (render != null) {
+    return render(props);
   }
-  return <div {...rest} aria-orientation={orientation} role="separator" />;
+  return <div {...props} />;
 }

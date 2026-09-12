@@ -44,49 +44,62 @@
 
 import * as React from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
-/** A button whose state stays applied: pressed or not. */
+/**
+ * A button whose state stays applied: pressed or not.
+ *
+ * `render` is the escape hatch. A caller-rendered element gets `role="button"`
+ * because it may be a link or a `div`; the native button branch keeps the role
+ * implicit and only adds `type="button"`, which is true of the element rather
+ * than of the toggle behaviour.
+ */
 export component Toggle(
   pressed?: boolean,
   defaultPressed?: boolean = false,
   onPressedChange?: (pressed: boolean) => void,
   disabled?: boolean = false,
   children?: React.Node,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(pressed, defaultPressed, onPressedChange);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
+  const semantics = {
+    "aria-pressed": on ? "true" : "false",
+    children,
+    disabled,
+    onClick: composeHandlers(rest.onClick, (_event: PartEvent) => {
+      if (!disabled) {
+        setOn(!on);
+      }
+    }),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      if (disabled || (event.key !== " " && event.key !== "Enter")) {
+        return;
+      }
+      // Preventing the default stops `Space` scrolling the page, and stops
+      // the browser's own click arriving after this handler and pressing the
+      // button a second time — back to where it started, which reads as the
+      // key having done nothing at all.
+      event.preventDefault();
+      setOn(!on);
+    }),
+  };
+
+  if (render != null) {
+    return render(withProps(passed, { ...semantics, role: "button" }));
+  }
 
   return (
     <button
-      {...passed}
+      {...withProps(passed, semantics)}
       // No `role`: this *is* a button, and `aria-pressed` is what makes it a
       // toggle one. Adding `role="button"` to a `<button>` would be noise, and
       // adding any other role would be a lie about what pressing it does.
-      aria-pressed={on ? "true" : "false"}
-      disabled={disabled}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (!disabled) {
-          setOn(!on);
-        }
-      })}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        if (disabled || (event.key !== " " && event.key !== "Enter")) {
-          return;
-        }
-        // Preventing the default stops `Space` scrolling the page, and stops
-        // the browser's own click arriving after this handler and pressing the
-        // button a second time — back to where it started, which reads as the
-        // key having done nothing at all.
-        event.preventDefault();
-        setOn(!on);
-      })}
       type="button"
-    >
-      {children}
-    </button>
+    />
   );
 }
