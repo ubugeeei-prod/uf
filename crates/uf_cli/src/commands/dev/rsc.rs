@@ -412,20 +412,43 @@ fn reason_line(graph: &RscGraph, module: &Utf8Path) -> String {
                 .filter_map(|id| graph.module_by_id(*id))
                 .map(|module| module.path.as_str())
                 .collect::<Vec<_>>();
-            match paths.split_last() {
-                // The chain reads as the imports somebody would follow, and
-                // the last hop is named for what it is rather than left to be
-                // inferred from the arrow before it.
-                Some((boundary, above)) => format!(
-                    "{} imports {boundary}, which declares `\"use client\"`",
-                    above.join(" imports ")
-                ),
-                None => "it reaches a client boundary".to_owned(),
-            }
+            path_boundary_reason(&paths)
+        }
+        ClientBundleReason::ImportsPackage { chain, specifier } => {
+            let paths = chain
+                .iter()
+                .filter_map(|id| graph.module_by_id(*id))
+                .map(|module| module.path.as_str())
+                .collect::<Vec<_>>();
+            package_boundary_reason(&paths, &specifier)
         }
         ClientBundleReason::Isolated => {
             "the split and the explanation disagree about it, which is a bug in uf".to_owned()
         }
+    }
+}
+
+fn path_boundary_reason(paths: &[&str]) -> String {
+    match paths.split_last() {
+        // The chain reads as the imports somebody would follow, and the last
+        // hop is named for what it is rather than left to be inferred from the
+        // arrow before it.
+        Some((boundary, above)) => format!(
+            "{} imports {boundary}, which declares `\"use client\"`",
+            above.join(" imports ")
+        ),
+        None => "it reaches a client boundary".to_owned(),
+    }
+}
+
+fn package_boundary_reason(paths: &[&str], specifier: &str) -> String {
+    match paths {
+        [] => "it reaches a client boundary".to_owned(),
+        [only] => format!("{only} imports {specifier}, which uf knows is a client module"),
+        _ => format!(
+            "{} imports {specifier}, which uf knows is a client module",
+            paths.join(" imports ")
+        ),
     }
 }
 

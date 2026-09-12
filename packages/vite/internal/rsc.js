@@ -47,13 +47,12 @@ export const RSC_MANIFEST_ENV = "UF_RSC_MANIFEST";
 /**
  * The manifest schema this understands.
  *
- * Version 1 published the client boundaries and nothing that said which
- * modules sat *above* one, so it cannot answer the question this module asks.
- * An older manifest is therefore refused rather than read optimistically: a
- * missing `proximity` would read as `undefined`, compare unequal to
- * `"reaches-boundary"`, and quietly drop every route from the client bundle.
+ * Version 3 lets client boundaries name package specifiers as well as project
+ * paths. An older manifest is therefore refused rather than read
+ * optimistically: it cannot know a route imports a package client module, and
+ * quietly dropping that route would be the worst possible answer.
  */
-const SUPPORTED_VERSION = 2;
+const SUPPORTED_VERSION = 3;
 
 /**
  * Read the RSC manifest, or `null` when there is nothing usable to read.

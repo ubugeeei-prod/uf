@@ -21,7 +21,9 @@ use serde::{Deserialize, Serialize};
 use crate::RscError;
 use crate::action::{ActionId, ServerActionKind, ServerActionRegistry};
 use crate::directive::ModuleEnvironment;
-use crate::graph::{ClientBoundaryProximity, ModuleReachability, RscGraph, RscSeverity};
+use crate::graph::{
+    ClientBoundaryProximity, ClientBoundaryTarget, ModuleReachability, RscGraph, RscSeverity,
+};
 
 /// File name of the manifest inside the build output directory.
 pub const RSC_MANIFEST_FILE_NAME: &str = "uf-rsc-manifest.json";
@@ -48,10 +50,10 @@ pub const RSC_MANIFEST_ENV: &str = "UF_RSC_MANIFEST";
 
 /// Schema version of the manifest.
 ///
-/// 2 added `proximity` to every module: version 1 published the client
-/// boundaries and nothing that said which modules were *above* one, so a reader
-/// could not tell a route that needs the browser from one that does not.
-pub const RSC_MANIFEST_VERSION: u32 = 2;
+/// 3 lets client boundaries and bundle roots name package specifiers as well
+/// as project paths. Version 2 could only name scanned files, so a reader could
+/// not represent a package client module without pretending it was a path.
+pub const RSC_MANIFEST_VERSION: u32 = 3;
 
 /// The serialized React Server Components manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -68,7 +70,7 @@ pub struct RscManifest {
     /// Server-to-client import edges, ordered.
     pub client_boundaries: Vec<RscManifestBoundary>,
     /// Client bundle roots, ordered.
-    pub client_bundle_roots: Vec<Utf8PathBuf>,
+    pub client_bundle_roots: Vec<RscManifestClientReference>,
     /// Callable server actions, ordered by id.
     pub server_actions: Vec<RscManifestAction>,
     /// Contract violations, ordered.
@@ -105,8 +107,24 @@ pub struct RscManifestModule {
 pub struct RscManifestBoundary {
     /// The server module that owns the import.
     pub importer: Utf8PathBuf,
-    /// The `"use client"` module it imports.
-    pub module: Utf8PathBuf,
+    /// The client module it imports.
+    pub target: RscManifestClientReference,
+}
+
+/// A client module named by the manifest.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum RscManifestClientReference {
+    /// A project module, path-relative to the project root.
+    Module {
+        /// Path relative to the project root.
+        path: Utf8PathBuf,
+    },
+    /// A package module, named by the exact imported specifier.
+    Package {
+        /// Imported bare specifier.
+        specifier: CompactString,
+    },
 }
 
 /// One callable server action.
@@ -186,22 +204,21 @@ impl RscManifest {
             .filter_map(|boundary| {
                 Some(RscManifestBoundary {
                     importer: graph.module_by_id(boundary.importer)?.path.clone(),
-                    module: graph.module_by_id(boundary.client_module)?.path.clone(),
+                    target: manifest_client_reference(graph, &boundary.target)?,
                 })
             })
             .collect();
         client_boundaries.sort_by(|left, right| {
             left.importer
                 .cmp(&right.importer)
-                .then(left.module.cmp(&right.module))
+                .then(left.target.cmp(&right.target))
         });
         client_boundaries.dedup();
 
-        let mut client_bundle_roots: Vec<Utf8PathBuf> = graph
+        let mut client_bundle_roots: Vec<RscManifestClientReference> = graph
             .client_bundle_roots()
             .iter()
-            .filter_map(|id| graph.module_by_id(*id))
-            .map(|module| module.path.clone())
+            .filter_map(|target| manifest_client_reference(graph, target))
             .collect();
         client_bundle_roots.sort();
         client_bundle_roots.dedup();
@@ -255,6 +272,24 @@ impl RscManifest {
             serde_json::to_string_pretty(self).map_err(|source| RscError::Serialize { source })?;
         json.push('\n');
         Ok(json)
+    }
+}
+
+fn manifest_client_reference(
+    graph: &RscGraph,
+    target: &ClientBoundaryTarget,
+) -> Option<RscManifestClientReference> {
+    match target {
+        ClientBoundaryTarget::Module(id) => {
+            graph
+                .module_by_id(*id)
+                .map(|module| RscManifestClientReference::Module {
+                    path: module.path.clone(),
+                })
+        }
+        ClientBoundaryTarget::Package(specifier) => Some(RscManifestClientReference::Package {
+            specifier: specifier.clone(),
+        }),
     }
 }
 
