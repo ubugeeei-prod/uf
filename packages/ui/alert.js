@@ -65,7 +65,8 @@
 
 import * as React from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withProps } from "./internal/merge-props.js";
 
 /**
  * A callout: a panel that is part of the page, or one that just appeared.
@@ -87,12 +88,17 @@ import type { Rest } from "./internal/merge-props.js";
  * header is about: the role is a promise about a change, and a box that was
  * always there has no change to report.
  */
-export component AlertRoot(children: React.Node, live?: boolean = false, ...rest: Rest) {
-  return (
-    <div {...rest} role={live ? "alert" : undefined}>
-      {children}
-    </div>
-  );
+export component AlertRoot(
+  children: React.Node,
+  live?: boolean = false,
+  render?: RenderProp,
+  ...rest: Rest
+) {
+  const props = withProps(rest, { children, role: live ? "alert" : undefined });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
 
 /**
@@ -110,14 +116,27 @@ export component AlertRoot(children: React.Node, live?: boolean = false, ...rest
  * the six HTML has is clamped, because `<h7>` is not an element and is
  * announced as nothing at all.
  */
-export component AlertTitle(children: React.Node, level?: number = 3, ...rest: Rest) {
+export component AlertTitle(
+  children: React.Node,
+  level?: number = 3,
+  render?: RenderProp,
+  ...rest: Rest
+) {
   const clamped = Math.min(6, Math.max(1, Math.trunc(level)));
   const Heading = `h${String(clamped)}`;
+  const props = withProps(rest, { children });
 
-  return <Heading {...rest}>{children}</Heading>;
+  if (render != null) {
+    return render(withProps(props, { "aria-level": clamped, role: "heading" }));
+  }
+  return <Heading {...props} />;
 }
 
 /** What the callout says, under its heading. */
-export component AlertDescription(children: React.Node, ...rest: Rest) {
-  return <p {...rest}>{children}</p>;
+export component AlertDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(props);
+  }
+  return <p {...props} />;
 }

@@ -6186,6 +6186,23 @@ describe("Alert", () => {
     // nothing at all — which loses the heading rather than deepening it.
     expect(screen.getByRole("heading", { level: 6 })).toBeInTheDocument();
   });
+
+  it("hands the callout contract to caller-rendered elements", () => {
+    render(
+      <Alert.Root live render={(props) => <section {...props} data-testid="callout" />}>
+        <Alert.Title level={2} render={(props) => <span {...props} />}>
+          Could not save
+        </Alert.Title>
+        <Alert.Description render={(props) => <div {...props} />}>
+          The server said no.
+        </Alert.Description>
+      </Alert.Root>,
+    );
+
+    expect(screen.getByTestId("callout")).toHaveAttribute("role", "alert");
+    expect(screen.getByRole("heading", { level: 2, name: "Could not save" })).toBeInTheDocument();
+    expect(screen.getByText("The server said no.")).toBeInTheDocument();
+  });
 });
 
 describe("Avatar", () => {
@@ -8253,6 +8270,9 @@ describe("the escape hatch: which part hands its element to the caller", () => {
 
   /** Parts that take `render` and hand their props to the caller. */
   const RENDER: $ReadOnlyArray<string> = [
+    "Alert.Description",
+    "Alert.Root",
+    "Alert.Title",
     "AlertDialog.Action",
     "AlertDialog.Body",
     "AlertDialog.Cancel",
@@ -8342,7 +8362,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
   /** Parts with no element of their own: a context, or another part of this package. */
   const NO_ELEMENT: $ReadOnlyArray<string> = [
     "Accordion.Header",
-    "Alert.Title",
     "AlertDialog.Root",
     "Calendar.Next",
     "Calendar.Previous",
@@ -8378,8 +8397,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Accordion.Item",
     "Accordion.Root",
     "Accordion.Trigger",
-    "Alert.Description",
-    "Alert.Root",
     "Avatar.Fallback",
     "Avatar.Image",
     "Avatar.Root",
