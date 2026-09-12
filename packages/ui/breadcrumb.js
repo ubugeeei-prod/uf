@@ -45,7 +45,8 @@
 
 import * as React from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withProps } from "./internal/merge-props.js";
 
 /**
  * The trail, as a named landmark.
@@ -58,13 +59,14 @@ import type { Rest } from "./internal/merge-props.js";
 export component BreadcrumbRoot(
   children: React.Node,
   label?: string = "Breadcrumb",
+  render?: RenderProp,
   ...rest: Rest
 ) {
-  return (
-    <nav {...rest} aria-label={label}>
-      {children}
-    </nav>
-  );
+  const props = withProps(rest, { "aria-label": label, children });
+  if (render != null) {
+    return render(withProps(props, { role: "navigation" }));
+  }
+  return <nav {...props} />;
 }
 
 /**
@@ -76,19 +78,32 @@ export component BreadcrumbRoot(
  */
 export component BreadcrumbList(
   children: renders* (BreadcrumbItem | BreadcrumbSeparator),
+  render?: RenderProp,
   ...rest: Rest
 ) {
-  return <ol {...rest}>{children}</ol>;
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(withProps(props, { role: "list" }));
+  }
+  return <ol {...props} />;
 }
 
 /** One level of the trail. Holds a `Breadcrumb.Link` or a `Breadcrumb.Page`. */
-export component BreadcrumbItem(children: React.Node, ...rest: Rest) {
-  return <li {...rest}>{children}</li>;
+export component BreadcrumbItem(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(withProps(props, { role: "listitem" }));
+  }
+  return <li {...props} />;
 }
 
 /** A level you can go back to. */
-export component BreadcrumbLink(children: React.Node, ...rest: Rest) {
-  return <a {...rest}>{children}</a>;
+export component BreadcrumbLink(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { children });
+  if (render != null) {
+    return render(withProps(props, { role: "link" }));
+  }
+  return <a {...props} />;
 }
 
 /**
@@ -99,12 +114,12 @@ export component BreadcrumbLink(children: React.Node, ...rest: Rest) {
  * a link by accident. See the module header for why announcing it as a disabled
  * link is worse than announcing it as text.
  */
-export component BreadcrumbPage(children: React.Node, ...rest: Rest) {
-  return (
-    <span {...rest} aria-current="page">
-      {children}
-    </span>
-  );
+export component BreadcrumbPage(children: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { "aria-current": "page", children });
+  if (render != null) {
+    return render(props);
+  }
+  return <span {...props} />;
 }
 
 /**
@@ -114,10 +129,10 @@ export component BreadcrumbPage(children: React.Node, ...rest: Rest) {
  * design decision and this package makes none. What is not the caller's is that
  * it is announced to nobody.
  */
-export component BreadcrumbSeparator(children?: React.Node, ...rest: Rest) {
-  return (
-    <li {...rest} aria-hidden="true" role="presentation">
-      {children}
-    </li>
-  );
+export component BreadcrumbSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { "aria-hidden": "true", children, role: "presentation" });
+  if (render != null) {
+    return render(props);
+  }
+  return <li {...props} />;
 }
