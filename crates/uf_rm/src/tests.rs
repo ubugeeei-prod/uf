@@ -33,7 +33,7 @@ fn default_plan_is_capability_js_host_and_runtime_agnostic() {
 #[test]
 fn infers_hosts_from_config_without_duplicates() {
     let config = UniflowedConfig::default();
-    let plan = RuntimeManagerPlan::infer_from_config(&config);
+    let plan = RuntimeManagerPlan::infer_from_config(&config).unwrap();
 
     assert_eq!(plan.engine, RuntimeEngine::Node);
     assert_eq!(plan.hosts[0], RuntimeHost::Node);
@@ -44,6 +44,27 @@ fn infers_hosts_from_config_without_duplicates() {
             .count(),
         1
     );
+}
+
+#[test]
+fn refuses_a_host_without_a_loader_before_it_reaches_the_manifest() {
+    let mut config = UniflowedConfig::default();
+    config.app.runtime.compatibility.push(RuntimeEngine::Edge);
+
+    let error = RuntimeManagerPlan::infer_from_config(&config).unwrap_err();
+
+    assert_eq!(
+        error,
+        RuntimeManagerError::RuntimeEngineWithoutHost {
+            engine: "edge",
+            level: "planned",
+            tracking_issue: Some(246),
+        }
+    );
+    let message = error.to_string();
+    assert!(message.contains("runtimeManager.hosts"), "{message}");
+    assert!(message.contains("no Flow loader"), "{message}");
+    assert!(message.contains("246"), "{message}");
 }
 
 #[test]
