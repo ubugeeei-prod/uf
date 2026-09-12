@@ -184,10 +184,11 @@ const MAX_DEPTH = 32;
 /**
  * One page inside a slot.
  *
- * A `Route` without the parts a slot does not have: no `loading`, no
- * `templates`, and no boundary of its own. Those are the segment's, and they
- * already wrap the layout the slot renders into. Per-slot boundaries are the
- * part of parallel routes uf has not built — see
+ * A `Route` without the parts a slot does not have: no `loading`, and no
+ * boundary of its own. Those are the segment's, and they already wrap the
+ * layout the slot renders into. A template is the exception because it
+ * composes like a layout and carries no data or fallback. Per-slot boundaries
+ * are the part of parallel routes uf has not built — see
  * https://github.com/ubugeeei-prod/uf/issues/267 — and {@link scanRoutes}
  * refuses the files rather than leaving them unopened.
  *
@@ -199,6 +200,8 @@ const MAX_DEPTH = 32;
  * @property {ReadonlyArray<{name: string, catchAll: boolean}>} params
  * @property {string} page absolute path of the page module
  * @property {ReadonlyArray<string>} layouts absolute paths, slot root first
+ * @property {ReadonlyArray<{above: number, module: string}>} templates the
+ *   `$template.js` wrappers inside the slot, root first
  * @property {ReadonlyArray<Slot>} slots slots declared inside this slot
  * @property {boolean} mdx whether the page is MDX content
  */
@@ -583,12 +586,13 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
   const routes = [];
   const defaultPage = findModule(directory, RESERVED.default, PAGE_EXTENSIONS, target);
 
-  const walkSlot = (current, currentSegments, layouts, atSlotRoot, currentDepth) => {
+  const walkSlot = (current, currentSegments, layouts, templates, atSlotRoot, currentDepth) => {
     if (currentDepth > MAX_DEPTH) return;
     // What a slot does not have, said where somebody writing the file will
     // read it rather than by never opening it. This is also the list of what
-    // is left of parallel routes; see the issue.
-    for (const role of [RESERVED.notFound, RESERVED.error, RESERVED.loading, RESERVED.template]) {
+    // is left of parallel routes; see the issue. A template composes like a
+    // layout, so it is carried below instead of refused here.
+    for (const role of [RESERVED.notFound, RESERVED.error, RESERVED.loading]) {
       const found =
         findModule(current, role, MODULE_EXTENSIONS, target) ??
         findModule(current, role, PAGE_EXTENSIONS, target);
@@ -627,6 +631,10 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
 
     const layoutHere = findModule(current, RESERVED.layout, MODULE_EXTENSIONS, target);
     const nextLayouts = layoutHere ? [...layouts, layoutHere] : layouts;
+    const templateHere = findModule(current, RESERVED.template, MODULE_EXTENSIONS, target);
+    const nextTemplates = templateHere
+      ? [...templates, { above: nextLayouts.length, module: templateHere }]
+      : templates;
 
     const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
@@ -663,6 +671,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         params,
         page,
         layouts: nextLayouts,
+        templates: nextTemplates,
         slots: nestedSlots,
         mdx: page.endsWith(".mdx"),
       });
@@ -681,13 +690,14 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         path.join(current, entry.name),
         [...currentSegments, entry.name],
         nextLayouts,
+        nextTemplates,
         false,
         currentDepth + 1,
       );
     }
   };
 
-  walkSlot(directory, segments, [], true, depth + 1);
+  walkSlot(directory, segments, [], [], true, depth + 1);
 
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
@@ -1037,6 +1047,9 @@ export function routesModuleSource(table, options = {}) {
       file: ${JSON.stringify(displayFile(route.page))},
       page: () => import(${JSON.stringify(route.page)}),
       layouts: [${route.layouts.map(layoutId).join(", ")}],
+      templates: [${(route.templates ?? [])
+        .map((entry) => `{ above: ${entry.above}, module: ${templateId(entry.module)} }`)
+        .join(", ")}],
       slots: [${nested.join(", ")}],
     }`;
     });
@@ -1223,7 +1236,12 @@ function slotModuleFiles(slots) {
   for (const slot of slots) {
     if (slot.defaultPage != null) files.push(slot.defaultPage);
     for (const route of slot.routes) {
-      files.push(route.page, ...route.layouts, ...slotModuleFiles(route.slots));
+      files.push(
+        route.page,
+        ...route.layouts,
+        ...(route.templates ?? []).map((it) => it.module),
+        ...slotModuleFiles(route.slots),
+      );
     }
   }
   return files;

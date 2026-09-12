@@ -465,9 +465,9 @@ export type RouteRecord = RoutingRouteRecord<
   LoadingModule,
 >;
 
-export type SlotRecord = RoutingSlotRecord<PageModule, LayoutModule>;
+export type SlotRecord = RoutingSlotRecord<PageModule, LayoutModule, TemplateModule>;
 
-export type SlotRouteRecord = RoutingSlotRouteRecord<PageModule, LayoutModule>;
+export type SlotRouteRecord = RoutingSlotRouteRecord<PageModule, LayoutModule, TemplateModule>;
 
 export type TemplateRecord = RoutingTemplateRecord<TemplateModule>;
 
@@ -486,6 +486,11 @@ export type RouteTable = RoutingRouteTable<
 >;
 
 export type RouteMatch = RoutingRouteMatch<RouteRecord>;
+
+type ResolvedTemplate = {|
+  readonly above: number,
+  readonly module: TemplateModule,
+|};
 
 /**
  * A match whose modules are loaded and whose loader has run or is running — or,
@@ -567,10 +572,7 @@ export type ResolvedRoute = {|
    * than walked to, and templates are accumulated on the walk down to a route
    * the URL never reached.
    */
-  readonly templates: $ReadOnlyArray<{|
-    readonly above: number,
-    readonly module: TemplateModule,
-  |}>,
+  readonly templates: $ReadOnlyArray<ResolvedTemplate>,
   /**
    * The slots this route renders, outermost first, already imported.
    *
@@ -600,6 +602,7 @@ export type ResolvedSlot = {|
   readonly page: ?PageModule,
   readonly params: RouteParams,
   readonly layouts: $ReadOnlyArray<LayoutModule>,
+  readonly templates: $ReadOnlyArray<ResolvedTemplate>,
   readonly slots: $ReadOnlyArray<ResolvedSlot>,
 |};
 
@@ -860,6 +863,7 @@ async function resolveSlot(
     page: null,
     params: fallbackParams,
     layouts: [],
+    templates: [],
     slots: [],
   };
 
@@ -892,12 +896,14 @@ async function resolveSlot(
   if (loaded.length !== layouts.length) {
     return empty;
   }
+  const templates = await resolveTemplateRecords(route.templates ?? [], loaded.length);
   return {
     name: record.name,
     above,
     page: withoutLoader(page, route.file),
     params: matched.params,
     layouts: loaded,
+    templates,
     // The slot's own layouts are what a nested slot is measured against, so
     // the count handed down is this slot's rather than the route's.
     slots: await resolveSlots(route.slots, pathname, loaded.length, matched.params),
@@ -963,8 +969,14 @@ function withoutLoader(module: PageModule, file: string): PageModule {
 async function resolveTemplates(
   route: RouteRecord,
   layoutCount: number,
-): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: TemplateModule |}>> {
-  const records = route.templates ?? [];
+): Promise<$ReadOnlyArray<ResolvedTemplate>> {
+  return resolveTemplateRecords(route.templates ?? [], layoutCount);
+}
+
+async function resolveTemplateRecords(
+  records: $ReadOnlyArray<TemplateRecord>,
+  layoutCount: number,
+): Promise<$ReadOnlyArray<ResolvedTemplate>> {
   if (records.length === 0) {
     return [];
   }
@@ -2510,7 +2522,16 @@ function loadingComponent(module: LoadingModule): React.ComponentType<{||}> {
  * the React Compiler's aliasing inference gave up on, and a component it
  * cannot compile is a component it does not memoise.
  */
-function insideTemplates(element: React.Node, resolved: ResolvedRoute, depth: number): React.Node {
+function insideTemplates(
+  element: React.Node,
+  resolved: {
+    readonly pathname: string,
+    readonly params: RouteParams,
+    readonly templates: $ReadOnlyArray<ResolvedTemplate>,
+    ...
+  },
+  depth: number,
+): React.Node {
   let out = element;
   for (let index = resolved.templates.length - 1; index >= 0; index -= 1) {
     const entry = resolved.templates[index];
@@ -2593,13 +2614,21 @@ component SlotView(slot: ResolvedSlot) {
   let element: React.Node = (
     <Page params={slot.params} searchParams={resolved.searchParams} data={undefined} />
   );
-  for (let depth = slot.layouts.length; depth > 0; depth -= 1) {
-    const Layout = layoutComponent(slot.layouts[depth - 1]);
-    element = (
-      <Layout {...slotsAt(slot.slots, depth)} params={slot.params}>
-        {element}
-      </Layout>
-    );
+  const templateContext = {
+    pathname: resolved.pathname,
+    params: slot.params,
+    templates: slot.templates,
+  };
+  for (let depth = slot.layouts.length; depth >= 0; depth -= 1) {
+    element = insideTemplates(element, templateContext, depth);
+    if (depth > 0) {
+      const Layout = layoutComponent(slot.layouts[depth - 1]);
+      element = (
+        <Layout {...slotsAt(slot.slots, depth)} params={slot.params}>
+          {element}
+        </Layout>
+      );
+    }
   }
   return element;
 }

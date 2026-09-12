@@ -871,6 +871,29 @@ fn a_slot_with_a_default_and_a_layout_is_discovered() {
 }
 
 #[test]
+fn a_template_inside_a_slot_is_discovered() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/@team/members")).unwrap();
+    fs::create_dir_all(root.join("app/members")).unwrap();
+    fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/members/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/$template.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/members/$page.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["/", "/members"]
+    );
+}
+
+#[test]
 fn unsupported_template_spellings_are_refused() {
     for name in ["template.js", "_uf.template.js"] {
         let dir = tempfile::tempdir().unwrap();
@@ -926,7 +949,6 @@ fn a_boundary_or_a_handler_inside_a_slot_is_refused() {
         ("$loading.js", "loading"),
         ("$error.js", "error"),
         ("$not-found.js", "not-found"),
-        ("$template.js", "template"),
         ("$route.js", "@team"),
         ("$middleware.js", "@team"),
     ] {
