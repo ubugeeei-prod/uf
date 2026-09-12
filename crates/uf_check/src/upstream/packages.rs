@@ -150,6 +150,13 @@ enum ImportValue {
     Nested(Vec<(CompactString, ImportValue)>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ImportTarget {
+    NoMatch,
+    Blocked,
+    Target(CompactString),
+}
+
 /// One package: where its manifest is, and what the manifest says.
 #[derive(Clone)]
 struct Package {
@@ -461,12 +468,12 @@ impl PackageImports {
 
             let pattern_match =
                 &specifier[pattern_base.len()..specifier.len() - pattern_trailer.len()];
-            if let Some(target) = self
-                .entries
-                .get(expansion_key)
-                .and_then(|condition_map| condition_map.resolve(Some(pattern_match), conditions))
-            {
-                return Some(target);
+            if let Some(condition_map) = self.entries.get(expansion_key) {
+                match condition_map.pick(Some(pattern_match), conditions) {
+                    ImportTarget::NoMatch => {}
+                    ImportTarget::Blocked => return None,
+                    ImportTarget::Target(target) => return Some(target),
+                }
             }
         }
         None
@@ -485,6 +492,13 @@ impl ImportConditionMap {
         pattern_match: Option<&str>,
         conditions: &[FlowSmolStr],
     ) -> Option<CompactString> {
+        match self.pick(pattern_match, conditions) {
+            ImportTarget::Target(target) => Some(target),
+            ImportTarget::NoMatch | ImportTarget::Blocked => None,
+        }
+    }
+
+    fn pick(&self, pattern_match: Option<&str>, conditions: &[FlowSmolStr]) -> ImportTarget {
         pick_import_target(conditions, pattern_match, &self.conditions)
     }
 }
@@ -493,7 +507,10 @@ impl ImportValue {
     fn parse(value: &Value) -> Option<Self> {
         match value {
             Value::Null => Some(Self::Null),
-            Value::String(path) => Some(Self::Path(path.as_str().to_compact_string())),
+            Value::String(path) => {
+                let path = path.as_str();
+                valid_import_target(path).then(|| Self::Path(path.to_compact_string()))
+            }
             Value::Object(object) => {
                 let conditions = object
                     .iter()
@@ -512,31 +529,30 @@ fn pick_import_target(
     valid_conditions: &[FlowSmolStr],
     pattern_match: Option<&str>,
     conditions: &[(CompactString, ImportValue)],
-) -> Option<CompactString> {
+) -> ImportTarget {
     for (candidate_condition, value) in conditions {
+        if !is_targeted_condition(valid_conditions, candidate_condition) {
+            continue;
+        }
         match value {
-            ImportValue::Null => return None,
+            ImportValue::Null => return ImportTarget::Blocked,
             ImportValue::Nested(child_condition_map) => {
-                if is_targeted_condition(valid_conditions, candidate_condition)
-                    && let Some(target) =
-                        pick_import_target(valid_conditions, pattern_match, child_condition_map)
-                {
-                    return Some(target);
+                match pick_import_target(valid_conditions, pattern_match, child_condition_map) {
+                    ImportTarget::NoMatch => {}
+                    target => return target,
                 }
             }
             ImportValue::Path(target_path) => {
-                if is_targeted_condition(valid_conditions, candidate_condition) {
-                    return Some(match pattern_match {
-                        Some(pattern_match) => target_path
-                            .replacen('*', pattern_match, 1)
-                            .to_compact_string(),
-                        None => target_path.clone(),
-                    });
-                }
+                return ImportTarget::Target(match pattern_match {
+                    Some(pattern_match) => target_path
+                        .replacen('*', pattern_match, 1)
+                        .to_compact_string(),
+                    None => target_path.clone(),
+                });
             }
         }
     }
-    None
+    ImportTarget::NoMatch
 }
 
 fn is_targeted_condition(valid_conditions: &[FlowSmolStr], candidate_condition: &str) -> bool {
@@ -544,6 +560,21 @@ fn is_targeted_condition(valid_conditions: &[FlowSmolStr], candidate_condition: 
         .iter()
         .any(|condition| condition.as_str() == candidate_condition)
         || candidate_condition == "default"
+}
+
+fn valid_import_target(target: &str) -> bool {
+    if target.is_empty()
+        || target == "."
+        || target == ".."
+        || target.starts_with('/')
+        || target.starts_with("../")
+    {
+        return false;
+    }
+    if target.starts_with("./") {
+        return !target.split('/').any(|segment| segment == "..");
+    }
+    true
 }
 
 fn pattern_key_compare(a: &str, b: &str) -> std::cmp::Ordering {
@@ -947,6 +978,70 @@ mod tests {
         )]);
 
         assert_eq!(exact(&packages, "#cell"), "packages/cell/index.js");
+    }
+
+    #[test]
+    fn an_active_null_import_target_blocks_fallback_conditions() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#mode": { "import": null, "default": "./fallback.js" }
+              }
+            }"##,
+        )]);
+
+        assert!(packages.resolve("app.js", "#mode").is_none());
+    }
+
+    #[test]
+    fn an_inactive_null_import_condition_is_skipped() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#mode": { "browser": null, "default": "./fallback.js" }
+              }
+            }"##,
+        )]);
+
+        assert_eq!(exact(&packages, "#mode"), "fallback.js");
+    }
+
+    #[test]
+    fn a_blocked_wildcard_import_does_not_fall_back_to_a_less_specific_pattern() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#feature/private/*": null,
+                "#feature/*": "./features/*.js"
+              }
+            }"##,
+        )]);
+
+        assert!(packages.resolve("app.js", "#feature/private/a").is_none());
+        assert_eq!(exact(&packages, "#feature/public"), "features/public.js");
+    }
+
+    #[test]
+    fn invalid_import_targets_are_ignored() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#escape": "../outside.js",
+                "#absolute": "/outside.js",
+                "#dotdot": "./../outside.js",
+                "#inside": "./inside.js"
+              }
+            }"##,
+        )]);
+
+        assert!(packages.resolve("app.js", "#escape").is_none());
+        assert!(packages.resolve("app.js", "#absolute").is_none());
+        assert!(packages.resolve("app.js", "#dotdot").is_none());
+        assert_eq!(exact(&packages, "#inside"), "inside.js");
     }
 
     #[test]
