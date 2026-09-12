@@ -6089,6 +6089,34 @@ describe("Breadcrumb", () => {
     );
     expect(screen.getByRole("navigation", { name: "Fil d'Ariane" })).toBeInTheDocument();
   });
+
+  it("hands the trail contract to caller-rendered elements", () => {
+    render(
+      <Breadcrumb.Root label="Trail" render={(props) => <section {...props} />}>
+        <Breadcrumb.List render={(props) => <div {...props} data-testid="list" />}>
+          <Breadcrumb.Item render={(props) => <div {...props} data-testid="home" />}>
+            <Breadcrumb.Link href="/" render={(props) => <span {...props} />}>
+              Home
+            </Breadcrumb.Link>
+          </Breadcrumb.Item>
+          <Breadcrumb.Separator render={(props) => <span {...props} data-testid="slash" />}>
+            /
+          </Breadcrumb.Separator>
+          <Breadcrumb.Item render={(props) => <div {...props} data-testid="billing" />}>
+            <Breadcrumb.Page render={(props) => <strong {...props} />}>Billing</Breadcrumb.Page>
+          </Breadcrumb.Item>
+        </Breadcrumb.List>
+      </Breadcrumb.Root>,
+    );
+    const trail = screen.getByRole("navigation", { name: "Trail" });
+    expect(trail.tagName).toBe("SECTION");
+    expect(screen.getByTestId("list")).toHaveAttribute("role", "list");
+    expect(screen.getAllByRole("listitem").length).toBe(2);
+    expect(screen.getByRole("link", { name: "Home" }).tagName).toBe("SPAN");
+    expect(screen.getByText("Billing")).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("slash")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("slash")).toHaveAttribute("role", "presentation");
+  });
 });
 
 describe("Alert", () => {
@@ -8234,6 +8262,12 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "AlertDialog.Overlay",
     "AlertDialog.Title",
     "AlertDialog.Trigger",
+    "Breadcrumb.Item",
+    "Breadcrumb.Link",
+    "Breadcrumb.List",
+    "Breadcrumb.Page",
+    "Breadcrumb.Root",
+    "Breadcrumb.Separator",
     "Checkbox",
     "ContextMenu.Body",
     "ContextMenu.CheckboxItem",
@@ -8349,12 +8383,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Avatar.Fallback",
     "Avatar.Image",
     "Avatar.Root",
-    "Breadcrumb.Item",
-    "Breadcrumb.Link",
-    "Breadcrumb.List",
-    "Breadcrumb.Page",
-    "Breadcrumb.Root",
-    "Breadcrumb.Separator",
     "Calendar.Day",
     "Calendar.Month",
     "Calendar.Root",
