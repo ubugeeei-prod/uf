@@ -51,6 +51,7 @@ import {
   encodePayload,
   encodeRowValue,
   parseRowMessage,
+  payloadRowId,
   payloadJson,
 } from "../../packages/router/internal/payload.js";
 import { createPayloadReader } from "../../packages/router/internal/payload-rows.js";
@@ -176,6 +177,8 @@ describe("the payload format", () => {
     expect(() => decodePayload({ a: "$P0" }, () => null, "data")).toThrow(PayloadValueError);
     expect(() => decodePayload({ a: "$P1e3" }, () => null, "data")).toThrow(PayloadValueError);
     expect(() => decodePayload({ a: "$P9999" }, () => null, "data")).toThrow(PayloadValueError);
+    expect(payloadRowId("1e3")).toBe(null);
+    expect(payloadRowId("1x")).toBe(null);
   });
 
   it("names where in the loader's answer the trouble was", () => {
@@ -261,7 +264,7 @@ describe("the payload format", () => {
 /** A document with a growing list of row scripts, and nothing else in it. */
 function rowDocument(): {|
   readonly document: $FlowFixMe,
-  readonly write: (id: number, text: string) => void,
+  readonly write: (id: number | string, text: string) => void,
   readonly observe: (callback: () => void) => () => void,
   readonly watchers: () => number,
 |} {
@@ -275,7 +278,7 @@ function rowDocument(): {|
       querySelectorAll: () => elements,
       documentElement: null,
     },
-    write(id: number, text: string) {
+    write(id: number | string, text: string) {
       elements.push({
         getAttribute: (name) => (name === PAYLOAD_ROW_ATTRIBUTE ? String(id) : null),
         textContent: text,
@@ -344,6 +347,17 @@ describe("reading rows out of a document", () => {
     doc.write(1, `{"value":"first"}`);
     doc.write(1, `{"value":"second"}`);
     expect(await row).toBe("first");
+  });
+
+  it("ignores row elements whose id is not the payload row grammar", async () => {
+    const doc = rowDocument();
+    const reader = createPayloadReader(doc.document, doc.observe);
+    const row = reader.resolve(1);
+    reader.watch();
+    doc.write("1x", `{"value":"wrong"}`);
+    doc.write("1e0", `{"value":"also wrong"}`);
+    doc.write(1, `{"value":"right"}`);
+    expect(await row).toBe("right");
   });
 
   it("never watches a document with nothing deferred in it", () => {

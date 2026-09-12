@@ -57,6 +57,7 @@ import {
   PAYLOAD_ROW_ATTRIBUTE,
   PayloadRowError,
   PayloadValueError,
+  payloadRowId,
   parseRowMessage,
 } from "./payload.js";
 
@@ -149,8 +150,8 @@ export function createPayloadReader(
     if (attribute == null) {
       return;
     }
-    const id = Number.parseInt(attribute, 10);
-    if (!Number.isSafeInteger(id)) {
+    const id = payloadRowId(attribute);
+    if (id == null) {
       return;
     }
     const slot = slots.get(id);
