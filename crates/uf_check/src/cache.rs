@@ -478,7 +478,10 @@ impl CheckCache {
     }
 
     fn entry_path(&self, key: &Digest) -> PathBuf {
-        self.directory.join(format!("{}.json", hex(key)))
+        let mut name = String::with_capacity(std::mem::size_of::<Digest>() * 2 + ".json".len());
+        hex_into(key, &mut name);
+        name.push_str(".json");
+        self.directory.join(name)
     }
 }
 

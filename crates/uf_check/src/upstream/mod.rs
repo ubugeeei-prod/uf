@@ -269,12 +269,15 @@ fn check_batch(
     // What each file's record is filed under. Computed even for a file the
     // cache turns out to know nothing about, because it is also where the
     // recomputed answer is written back.
-    let libdefs = builtins::digest(libs);
     let keys: Vec<Digest> = match cache {
-        Some(cache) => sources
-            .iter()
-            .map(|source| file_key(cache, limits, &libdefs, source))
-            .collect(),
+        Some(cache) => {
+            let libdefs = builtins::digest(libs);
+            let limits_field = limits_field(limits);
+            sources
+                .iter()
+                .map(|source| file_key(cache, &limits_field, &libdefs, source))
+                .collect()
+        }
         None => Vec::new(),
     };
     let mut records: Vec<Option<Record>> = match cache {
@@ -405,13 +408,13 @@ fn check_batch(
 /// reports, including the files that reach nothing at all.
 fn file_key(
     cache: &CheckCache,
-    limits: &CheckLimits,
+    limits_field: &str,
     libdefs: &Digest,
     source: &Source<'_>,
 ) -> Digest {
     let mut fields = Fields::new("uf-check-file-v1");
     fields.push(cache.identity());
-    fields.push(&limits_field(limits));
+    fields.push(limits_field);
     fields.push_digest(libdefs);
     fields.push(source.path);
     fields.push(source.source);
