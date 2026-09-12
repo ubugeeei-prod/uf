@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/loader",
-  "version": "0.0.0-alpha.20",
+  "version": "0.0.0-alpha.21",
   "private": true,
   "description": "Flow declarations for @uniflowed/loader, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,8 +19,8 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.20",
-    "@uniflowed/cell": "0.0.0-alpha.20",
-    "@uniflowed/fetch": "0.0.0-alpha.20"
+    "@uniflowed/core": "0.0.0-alpha.21",
+    "@uniflowed/cell": "0.0.0-alpha.21",
+    "@uniflowed/fetch": "0.0.0-alpha.21"
   }
 }
