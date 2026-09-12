@@ -4079,6 +4079,35 @@ describe("Popover", () => {
     expect(body).not.toHaveAttribute("aria-labelledby");
     expect(body).toHaveAttribute("aria-label", "Filter options");
   });
+
+  it("hands trigger and body behaviour to caller-rendered elements", async () => {
+    render(
+      <Popover.Root>
+        <Popover.Trigger render={(props) => <a href="#filters" {...props} />}>
+          Filters
+        </Popover.Trigger>
+        <Popover.Body render={(props) => <section {...props} data-testid="panel" />}>
+          <button type="button">Only mine</button>
+        </Popover.Body>
+      </Popover.Root>,
+    );
+
+    const trigger = screen.getByRole("link", { name: "Filters" });
+    await userEvent.click(trigger);
+
+    const body = screen.getByRole("dialog", { name: "Filters" });
+    expect(body.tagName).toBe("SECTION");
+    expect(body).toHaveAttribute("data-state", "open");
+    expect(body).toHaveAttribute("data-side", "bottom");
+    expect(body).toHaveAttribute("data-align", "center");
+    expect(trigger.getAttribute("aria-controls")).toBe(body.id);
+    expect(screen.getByRole("button", { name: "Only mine" })).toHaveFocus();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBe(null);
+    expect(trigger).toHaveFocus();
+    expect(danglingReferences()).toEqual([]);
+  });
 });
 
 describe("Tooltip", () => {
@@ -8808,6 +8837,8 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Pagination.Next",
     "Pagination.Previous",
     "Pagination.Root",
+    "Popover.Body",
+    "Popover.Trigger",
     "Progress",
     "Separator",
     "Sheet.Body",
@@ -8899,8 +8930,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "NavigationMenu.List",
     "NavigationMenu.Root",
     "NavigationMenu.Trigger",
-    "Popover.Body",
-    "Popover.Trigger",
     "RadioGroup.Indicator",
     "RadioGroup.Item",
     "RadioGroup.Root",
