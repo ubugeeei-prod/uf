@@ -944,6 +944,39 @@ describe("input reaches what has focus", () => {
     expect([shiftTab.name, shiftTab.shift]).toEqual(["tab", true]);
   });
 
+  it("decodes Kitty key repeat and release events", () => {
+    const release = decodeKeys("\u001b[97;1:3u")[0];
+    expect([release.name, release.sequence, release.eventType]).toEqual(["a", "", "release"]);
+
+    const repeat = decodeKeys("\u001b[97;2:2;65u")[0];
+    expect([repeat.name, repeat.sequence, repeat.shift, repeat.eventType]).toEqual([
+      "a",
+      "A",
+      true,
+      "repeat",
+    ]);
+
+    const text = decodeKeys("\u001b[0;;229u")[0];
+    expect([text.name, text.sequence, text.eventType]).toEqual(["text", "å", "press"]);
+
+    const control = decodeKeys("\u001b[57442;1:3u")[0];
+    expect([control.name, control.eventType]).toEqual(["left-control", "release"]);
+  });
+
+  it("waits for the rest of a Kitty key report split across chunks", () => {
+    const decoder = createInputDecoder();
+
+    expect(decoder.push("\u001b[97;1:")).toEqual([]);
+    const events = decoder.push("3u");
+    expect(events.map((event) => event.kind)).toEqual(["key"]);
+    const [release] = events;
+    if (release == null || release.kind !== "key") {
+      throw new Error("the two halves did not make one key");
+    }
+    expect([release.name, release.eventType]).toEqual(["a", "release"]);
+    expect(decoder.flush()).toEqual([]);
+  });
+
   it("decodes a burst as several keys, because fast typing arrives as one chunk", () => {
     expect(decodeKeys("abc").map((key) => key.sequence)).toEqual(["a", "b", "c"]);
     expect(decodeKeys("a\u001b[Db").map((key) => key.name)).toEqual(["a", "left", "b"]);
@@ -1257,6 +1290,18 @@ describe("input reaches what has focus", () => {
     expect(frameRow(handle.frame(), 0).trimEnd()).toBe("");
     handle.stop();
   });
+
+  it("does not edit an input for a key release event", () => {
+    const handle = testRender(<Input defaultValue="" focused={true} width={6} height={1} />, {
+      width: 6,
+      height: 1,
+    });
+    handle.press("a");
+    handle.press("\u001b[97;1:3u");
+    handle.press("\u001b[98;1:2;98u");
+    expect(frameRow(handle.frame(), 0).trimEnd()).toBe("ab");
+    handle.stop();
+  });
 });
 
 describe("the mouse reaches what is under it", () => {
@@ -1367,7 +1412,7 @@ describe("the mouse reaches what is under it", () => {
     // without waiting — which is what keeps a terminal sending nonsense from
     // wedging a driver that never calls `flush`.
     const flooded = createInputDecoder();
-    expect(flooded.push(`\u001b[<${"0".repeat(40)}`).length > 0).toBe(true);
+    expect(flooded.push(`\u001b[<${"0".repeat(110)}`).length > 0).toBe(true);
     // And the decoder still works afterwards: nothing was left held.
     expect(flooded.push("\u001b[<0;2;2M").map((event) => event.kind)).toEqual(["mouse"]);
   });
@@ -2558,7 +2603,7 @@ describe("the guide's comparison against React Ink", () => {
     // The frame is 80×24 and addressed cell by cell, so the first one is the
     // expensive one — and then one character of a status line at the *top* of
     // the frame costs eight bytes, which is the whole claim.
-    expect(measured).toEqual([2102, 8, 345, 534]);
+    expect(measured).toEqual([2108, 8, 345, 534]);
     expect(published()).toEqual(measured);
   });
 });
@@ -2627,6 +2672,7 @@ describe("a real terminal, or something that is not one", () => {
     expect(opened).toContain("\u001b[?1049h"); // the alternate screen
     expect(opened).toContain("\u001b[?25l"); // and no cursor of the terminal's own
     expect(opened).toContain("\u001b[?2004h"); // and pasted text, bracketed
+    expect(opened).toContain("\u001b[>27u"); // and Kitty key repeat/release reports
     expect(opened).toContain("hi");
     // Raw mode, because a menu needs the keystroke rather than the line.
     expect(stdin.modes).toEqual([true]);
@@ -2637,6 +2683,7 @@ describe("a real terminal, or something that is not one", () => {
     expect(closed).toContain("\u001b[?1049l");
     // A terminal left in bracketed paste mode hands the *shell* the brackets.
     expect(closed).toContain("\u001b[?2004l");
+    expect(closed).toContain("\u001b[<u");
     expect(stdin.modes).toEqual([true, false]);
   });
 

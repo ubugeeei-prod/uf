@@ -52,8 +52,11 @@ import { LEGACY_REPORT_LENGTH, decodeMouse, legacyReportLength } from "./mouse.j
 /** Which of the two parsers produced an event. */
 export type KeySource = "raw" | "escape";
 
+/** What the terminal says happened to the key. */
+export type KeyEventType = "press" | "repeat" | "release";
+
 /**
- * One key press.
+ * One key event.
  *
  * `sequence` is the text the key stands for and `raw` is the bytes it arrived
  * as; they differ for every key that is not a printable character, and a
@@ -88,8 +91,8 @@ export type KeyEvent = {
   readonly ctrl: boolean,
   readonly shift: boolean,
   readonly meta: boolean,
-  /** Always `"press"`. Release reporting needs the Kitty protocol; see #314. */
-  readonly eventType: "press",
+  /** Whether this was a press, terminal repeat, or release event. */
+  readonly eventType: KeyEventType,
   /** Skip the focused node's handler, without silencing later global ones. */
   preventDefault(): void,
   /** Silence later global handlers, and the focused node's. */
@@ -159,6 +162,99 @@ const CSI_TILDE: { [string]: string } = {
   "24": "f12",
 };
 
+/** Non-Unicode Kitty `CSI u` key codes that do not already have legacy names. */
+const CSI_U_FUNCTION: { [string]: string } = {
+  "9": "tab",
+  "13": "return",
+  "27": "escape",
+  "127": "backspace",
+  "57358": "caps-lock",
+  "57359": "scroll-lock",
+  "57360": "num-lock",
+  "57361": "print-screen",
+  "57362": "pause",
+  "57363": "menu",
+  "57376": "f13",
+  "57377": "f14",
+  "57378": "f15",
+  "57379": "f16",
+  "57380": "f17",
+  "57381": "f18",
+  "57382": "f19",
+  "57383": "f20",
+  "57384": "f21",
+  "57385": "f22",
+  "57386": "f23",
+  "57387": "f24",
+  "57388": "f25",
+  "57389": "f26",
+  "57390": "f27",
+  "57391": "f28",
+  "57392": "f29",
+  "57393": "f30",
+  "57394": "f31",
+  "57395": "f32",
+  "57396": "f33",
+  "57397": "f34",
+  "57398": "f35",
+  "57399": "kp-0",
+  "57400": "kp-1",
+  "57401": "kp-2",
+  "57402": "kp-3",
+  "57403": "kp-4",
+  "57404": "kp-5",
+  "57405": "kp-6",
+  "57406": "kp-7",
+  "57407": "kp-8",
+  "57408": "kp-9",
+  "57409": "kp-decimal",
+  "57410": "kp-divide",
+  "57411": "kp-multiply",
+  "57412": "kp-subtract",
+  "57413": "kp-add",
+  "57414": "kp-enter",
+  "57415": "kp-equal",
+  "57416": "kp-separator",
+  "57417": "kp-left",
+  "57418": "kp-right",
+  "57419": "kp-up",
+  "57420": "kp-down",
+  "57421": "kp-pageup",
+  "57422": "kp-pagedown",
+  "57423": "kp-home",
+  "57424": "kp-end",
+  "57425": "kp-insert",
+  "57426": "kp-delete",
+  "57427": "kp-begin",
+  "57428": "media-play",
+  "57429": "media-pause",
+  "57430": "media-play-pause",
+  "57431": "media-reverse",
+  "57432": "media-stop",
+  "57433": "media-fast-forward",
+  "57434": "media-rewind",
+  "57435": "media-track-next",
+  "57436": "media-track-previous",
+  "57437": "media-record",
+  "57438": "volume-down",
+  "57439": "volume-up",
+  "57440": "volume-mute",
+  "57441": "left-shift",
+  "57442": "left-control",
+  "57443": "left-alt",
+  "57444": "left-super",
+  "57445": "left-hyper",
+  "57446": "left-meta",
+  "57447": "right-shift",
+  "57448": "right-control",
+  "57449": "right-alt",
+  "57450": "right-super",
+  "57451": "right-hyper",
+  "57452": "right-meta",
+  "57453": "iso-level3-shift",
+  "57454": "iso-level5-shift",
+};
+
 /** Build an event with its two propagation flags wired up. */
 function event(fields: {
   name: string,
@@ -168,6 +264,7 @@ function event(fields: {
   ctrl?: boolean,
   shift?: boolean,
   meta?: boolean,
+  eventType?: KeyEventType,
 }): KeyEvent {
   const key: KeyEvent = {
     kind: "key",
@@ -178,7 +275,7 @@ function event(fields: {
     ctrl: fields.ctrl === true,
     shift: fields.shift === true,
     meta: fields.meta === true,
-    eventType: "press",
+    eventType: fields.eventType ?? "press",
     defaultPrevented: false,
     propagationStopped: false,
     preventDefault() {
@@ -203,6 +300,49 @@ function modifiers(parameter: string | void): { ctrl: boolean, shift: boolean, m
   const value = Number.parseInt(parameter ?? "1", 10);
   const bits = Number.isFinite(value) && value > 0 ? value - 1 : 0;
   return { shift: (bits & 1) !== 0, meta: (bits & 2) !== 0, ctrl: (bits & 4) !== 0 };
+}
+
+/** The Kitty keyboard protocol encodes press/repeat/release as modifier sub-fields. */
+function keyEventType(parameter: string | void): KeyEventType | null {
+  if (parameter == null || parameter === "" || parameter === "1") {
+    return "press";
+  }
+  if (parameter === "2") {
+    return "repeat";
+  }
+  if (parameter === "3") {
+    return "release";
+  }
+  return null;
+}
+
+function codePoint(parameter: string | void): number | null {
+  if (parameter == null || parameter === "") {
+    return null;
+  }
+  const value = Number.parseInt(parameter, 10);
+  if (!Number.isFinite(value) || value < 0 || value > 0x10ffff) {
+    return null;
+  }
+  if (value >= 0xd800 && value <= 0xdfff) {
+    return null;
+  }
+  return value;
+}
+
+function codePointText(parameter: string | void): string {
+  if (parameter == null || parameter === "") {
+    return "";
+  }
+  const points: Array<number> = [];
+  for (const field of parameter.split(":")) {
+    const point = codePoint(field);
+    if (point == null || point < 0x20 || (point >= 0x7f && point <= 0x9f)) {
+      return "";
+    }
+    points.push(point);
+  }
+  return String.fromCodePoint(...points);
 }
 
 /**
@@ -260,18 +400,18 @@ export type InputDecoder = {
  * The longest run of bytes this decoder will hold waiting for the rest of it.
  *
  * Every sequence `incomplete` waits for is shorter: the paste introducer is
- * six bytes, an old-style mouse report is six, and an SGR report is
- * `ESC [ <` plus three decimal parameters, two semicolons and a final byte —
- * nineteen bytes for coordinates larger than any terminal has. Past this, the
- * bytes are not the sequence they looked like and are decoded as what they
- * are.
+ * six bytes, an old-style mouse report is six, and an SGR report is `ESC [ <`
+ * plus three decimal parameters, two semicolons and a final byte. Kitty's
+ * `CSI u` key reports can be longer because their associated text is encoded
+ * as code points. Past this, the bytes are not the sequence they looked like
+ * and are decoded as what they are.
  *
  * The bound is what makes the hold safe without a timer. `flush` is the
  * ordinary way out and a driver calls it when its stream ends; this is for the
  * case where nothing ever calls it and the terminal has sent `ESC [ <` and
  * then a thousand digits.
  */
-const HOLD_LIMIT = 32;
+const HOLD_LIMIT = 96;
 
 /**
  * Whether the bytes from `start` begin a sequence whose rest has not arrived.
@@ -287,7 +427,9 @@ const HOLD_LIMIT = 32;
  *     `?1003h` produces is a report per cell crossed, which is the traffic
  *     most likely to be split;
  *   * `ESC [ M` …, the old-style report, whose three payload bytes are
- *     arbitrary and become arbitrary keys.
+ *     arbitrary and become arbitrary keys;
+ *   * Kitty `CSI u` key reports, where splitting before the final `u` would
+ *     turn `CSI 97 ; 1 : 3 u` from "release A" into ordinary characters.
  *
  * Two bytes at least, so a lone `ESC` is still the Escape key: holding that
  * back would mean Escape never fires until the next keystroke, which is worse
@@ -319,6 +461,9 @@ function incomplete(input: string, start: number): boolean {
   if (rest.startsWith(MOUSE_LEGACY)) {
     return rest.length < LEGACY_REPORT_LENGTH;
   }
+  if (rest.startsWith(ESC + "[")) {
+    return /^[0-9:;]*$/.test(rest.slice(2));
+  }
   return false;
 }
 
@@ -333,13 +478,14 @@ export function createInputDecoder(): InputDecoder {
       const events: Array<InputEvent> = [];
       let input = waiting + chunk;
       waiting = "";
-      if (pending != null) {
+      const pasting = pending;
+      if (pasting != null) {
         const end = input.indexOf(PASTE_END);
         if (end < 0) {
-          pending += input;
+          pending = pasting + input;
           return events;
         }
-        const text = pending + input.slice(0, end);
+        const text = pasting + input.slice(0, end);
         pending = null;
         events.push(pasteEvent(text, PASTE_START + text + PASTE_END));
         input = input.slice(end + PASTE_END.length);
@@ -512,7 +658,7 @@ function decodeSequence(input: string, start: number): { key: KeyEvent, length: 
 
   let cursor = start + 2;
   let parameters = "";
-  while (cursor < input.length && /[0-9;]/.test(input[cursor])) {
+  while (cursor < input.length && /[0-9:;]/.test(input[cursor])) {
     parameters += input[cursor];
     cursor += 1;
   }
@@ -522,6 +668,14 @@ function decodeSequence(input: string, start: number): { key: KeyEvent, length: 
   }
   const raw = input.slice(start, cursor + 1);
   const [first, second] = parameters.split(";");
+
+  if (final === "u") {
+    const key = decodeKittyKey(parameters, raw);
+    if (key == null) {
+      return null;
+    }
+    return { key, length: raw.length };
+  }
 
   if (final === "~") {
     const name = CSI_TILDE[first];
@@ -542,6 +696,51 @@ function decodeSequence(input: string, start: number): { key: KeyEvent, length: 
   // `CSI Z` is Shift+Tab, and it carries no modifier parameter to say so.
   const mods = final === "Z" ? { ctrl: false, shift: true, meta: false } : modifiers(second);
   return { key: event({ name, sequence: "", raw, source: "escape", ...mods }), length: raw.length };
+}
+
+function decodeKittyKey(parameters: string, raw: string): KeyEvent | null {
+  const [keyParameter, modifierParameter, textParameter] = parameters.split(";");
+  const key = codePoint(keyParameter.split(":")[0]);
+  if (key == null) {
+    return null;
+  }
+  const modifierFields = modifierParameter?.split(":") ?? [];
+  const mods = modifiers(modifierFields[0]);
+  const eventType = keyEventType(modifierFields[1]);
+  if (eventType == null) {
+    return null;
+  }
+  const associatedText = codePointText(textParameter);
+  const functionName = CSI_U_FUNCTION[String(key)];
+  if (functionName != null) {
+    return event({
+      name: functionName,
+      sequence: "",
+      raw,
+      source: "escape",
+      ...mods,
+      eventType,
+    });
+  }
+  if (key === 0) {
+    return event({
+      name: "text",
+      sequence: eventType === "release" ? "" : associatedText,
+      raw,
+      source: "escape",
+      ...mods,
+      eventType,
+    });
+  }
+  const character = String.fromCodePoint(key);
+  const name = character === " " ? "space" : character.toLowerCase();
+  const sequence =
+    associatedText !== ""
+      ? associatedText
+      : eventType === "release" || mods.ctrl || mods.meta
+        ? ""
+        : character;
+  return event({ name, sequence, raw, source: "escape", ...mods, eventType });
 }
 
 /** One byte that is not part of an escape sequence. */

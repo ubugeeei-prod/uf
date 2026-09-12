@@ -68,21 +68,21 @@
 //
 // Implemented, tested, and true: a component tree, flexbox layout in whole
 // cells, a cell buffer with correct wide-grapheme handling, a diff that emits
-// only changed cells, keyboard input with OpenTUI's key names and propagation
-// rules, bracketed paste, declarative focus, mouse input — press, release,
-// hover, drag with capture, drop and wheel, routed by a hit grid the painter
-// records — text selection by drag, one per renderer, read back with
+// only changed cells, keyboard input with OpenTUI's key names, propagation
+// rules and Kitty press/repeat/release event types, bracketed paste,
+// declarative focus, mouse input — press, release, hover, drag with capture,
+// drop and wheel, routed by a hit grid the painter records — text selection by
+// drag, one per renderer, read back with
 // `getSelectedText()`, a scrolling window onto content taller than it,
 // terminal capability and *size* detection that agrees with the CLI's, and an
 // in-memory renderer that runs the same code the terminal one does.
 //
-// Not here: key *release* (which needs the Kitty keyboard protocol), the
-// repeated-press gestures that widen a selection to a word or a line, images,
-// the rich content components, and everything under OpenTUI's "application
-// APIs" — including the clipboard, which is why `getSelectedText()` hands a
-// string back rather than putting it somewhere. They are
-// ubugeeei-prod/uf#314, and they are absent rather than present as functions
-// that throw — because a stub is what this package used to be.
+// Not here: the repeated-press gestures that widen a selection to a word or a
+// line, images, the rich content components, and everything under OpenTUI's
+// "application APIs" — including the clipboard, which is why
+// `getSelectedText()` hands a string back rather than putting it somewhere.
+// They are ubugeeei-prod/uf#314, and they are absent rather than present as
+// functions that throw — because a stub is what this package used to be.
 //
 // Also not here, and worth saying because ubugeeei-prod/uf#247 asked for it:
 // uf's own CLI does not draw through this. It cannot — `crates/uf_term` is
@@ -165,7 +165,7 @@ export type { WrapMode } from "./internal/paint.js";
 
 export type { Update } from "./diff.js";
 
-export type { InputDecoder, InputEvent, KeyEvent, KeySource } from "./keys.js";
+export type { InputDecoder, InputEvent, KeyEvent, KeyEventType, KeySource } from "./keys.js";
 export { createInputDecoder, decodeInput, decodeKeys } from "./keys.js";
 
 export type { MouseEvent, MouseEventType, Scroll, ScrollDirection } from "./mouse.js";
