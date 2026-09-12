@@ -189,6 +189,7 @@ export component FieldRoot(
   required?: boolean = false,
   field?: FieldSource,
   group?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const base = useId();
@@ -237,20 +238,20 @@ export component FieldRoot(
     hasError,
   ]);
 
+  const props = withProps(rest, {
+    // A group names itself, describes itself and reports its own validity,
+    // because there is no one control inside it to carry any of the three.
+    // See the module header.
+    "aria-describedby": group ? state.describedBy : undefined,
+    "aria-invalid": group && state.invalid ? "true" : undefined,
+    "aria-labelledby": group ? state.labelId : undefined,
+    children,
+    role: group ? "group" : undefined,
+  });
+
   return (
     <FieldContext.Provider value={state}>
-      <div
-        {...rest}
-        // A group names itself, describes itself and reports its own validity,
-        // because there is no one control inside it to carry any of the three.
-        // See the module header.
-        aria-describedby={group ? state.describedBy : undefined}
-        aria-invalid={group && state.invalid ? "true" : undefined}
-        aria-labelledby={group ? state.labelId : undefined}
-        role={group ? "group" : undefined}
-      >
-        {children}
-      </div>
+      {render != null ? render(props) : <div {...props} />}
     </FieldContext.Provider>
   );
 }
@@ -262,22 +263,16 @@ export component FieldRoot(
  * `<label for>` naming something that is not a form control is ignored by every
  * browser, and ignored silently. The module header says more.
  */
-export component FieldLabel(children: React.Node, ...rest: Rest) {
+export component FieldLabel(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Label");
   // `rest` first: a caller `id` here would break the relationship the control
   // points at, and it would break it silently.
   if (field.group) {
-    return (
-      <span {...rest} id={field.labelId}>
-        {children}
-      </span>
-    );
+    const props = withProps(rest, { children, id: field.labelId });
+    return render != null ? render(props) : <span {...props} />;
   }
-  return (
-    <label {...rest} htmlFor={field.controlId} id={field.labelId}>
-      {children}
-    </label>
-  );
+  const props = withProps(rest, { children, htmlFor: field.controlId, id: field.labelId });
+  return render != null ? render(props) : <label {...props} />;
 }
 
 /**
@@ -307,7 +302,7 @@ export component FieldControl(render: RenderProp) {
 }
 
 /** Help text, which the control points at while it is rendered. */
-export component FieldDescription(children: React.Node, ...rest: Rest) {
+export component FieldDescription(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Description");
   const register = field.registerDescription;
   useEffect(() => {
@@ -315,11 +310,8 @@ export component FieldDescription(children: React.Node, ...rest: Rest) {
     return () => register(false);
   }, [register]);
 
-  return (
-    <p {...rest} id={field.descriptionId}>
-      {children}
-    </p>
-  );
+  const props = withProps(rest, { children, id: field.descriptionId });
+  return render != null ? render(props) : <p {...props} />;
 }
 
 /**
@@ -334,7 +326,7 @@ export component FieldDescription(children: React.Node, ...rest: Rest) {
  * store does not need the caller to reach back into `formState.errors` for a
  * string the source is already carrying.
  */
-export component FieldError(children?: React.Node, ...rest: Rest) {
+export component FieldError(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const field = useField("Field.Error");
   const register = field.registerError;
   useEffect(() => {
@@ -345,9 +337,10 @@ export component FieldError(children?: React.Node, ...rest: Rest) {
   if (!field.invalid) {
     return null;
   }
-  return (
-    <p {...rest} id={field.errorId} role="alert">
-      {children ?? field.message}
-    </p>
-  );
+  const props = withProps(rest, {
+    children: children ?? field.message,
+    id: field.errorId,
+    role: "alert",
+  });
+  return render != null ? render(props) : <p {...props} />;
 }

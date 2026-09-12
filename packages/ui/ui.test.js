@@ -263,7 +263,7 @@ describe("Field", () => {
 
   it("describes the control with the help text", () => {
     render(<EmailField invalid={false} />);
-    const control = screen.getByLabelText("Email address");
+    const control = screen.getByRole("textbox", { name: "Email address" });
     const described = control.getAttribute("aria-describedby") ?? "";
     const help = screen.getByText("We will not share it.");
     expect(described.split(" ")).toContain(help.getAttribute("id"));
@@ -313,6 +313,35 @@ describe("Field", () => {
       message = String(error);
     }
     expect(message).toContain("Field.Label must be rendered inside a Field.Root");
+  });
+
+  it("hands the field wiring to caller-rendered parts", () => {
+    render(
+      <Field.Root render={(props) => <section {...props} />} invalid>
+        <Field.Label render={(props) => <strong {...props} />}>Email address</Field.Label>
+        <Field.Control render={(props) => <input type="email" {...props} />} />
+        <Field.Description render={(props) => <small {...props} />}>
+          We will not share it.
+        </Field.Description>
+        <Field.Error render={(props) => <output {...props} />}>
+          That is not an email address.
+        </Field.Error>
+      </Field.Root>,
+    );
+
+    const control = screen.getByRole("textbox", { name: "Email address" });
+    const label = screen.getByText("Email address");
+    const help = screen.getByText("We will not share it.");
+    const error = screen.getByRole("alert");
+    expect(label.tagName).toBe("STRONG");
+    expect(help.tagName).toBe("SMALL");
+    expect(error.tagName).toBe("OUTPUT");
+    expect(control.getAttribute("aria-labelledby")).toBe(label.getAttribute("id"));
+    const described = control.getAttribute("aria-describedby") ?? "";
+    expect(described.split(" ")).toContain(help.getAttribute("id"));
+    expect(described.split(" ")).toContain(error.getAttribute("id"));
+    expect(control).toHaveAttribute("aria-invalid", "true");
+    expect(danglingReferences()).toEqual([]);
   });
 });
 
@@ -473,6 +502,32 @@ describe("Field: a group that a label cannot point at", () => {
     // roving tab stop, which is `radio-group.js`'s job and not this one's.
     expect(screen.getByRole("radiogroup")).toBeInTheDocument();
     expect(screen.getAllByRole("radio").length).toBe(2);
+  });
+
+  it("keeps a caller-rendered group named and described by caller-rendered text", () => {
+    render(
+      <Field.Root group invalid render={(props) => <fieldset {...props} />}>
+        <Field.Label render={(props) => <legend {...props} />}>Plan</Field.Label>
+        <Field.Description render={(props) => <small {...props} />}>
+          You can change this later.
+        </Field.Description>
+        <Field.Error render={(props) => <output {...props} />}>Choose a plan.</Field.Error>
+      </Field.Root>,
+    );
+
+    const group = screen.getByRole("group");
+    const label = screen.getByText("Plan");
+    const help = screen.getByText("You can change this later.");
+    const error = screen.getByRole("alert");
+    expect(group.tagName).toBe("FIELDSET");
+    expect(label.tagName).toBe("LEGEND");
+    expect(accessibleName(group)).toBe("Plan");
+    expect(group.getAttribute("aria-labelledby")).toBe(label.getAttribute("id"));
+    const described = group.getAttribute("aria-describedby") ?? "";
+    expect(described.split(" ")).toContain(help.getAttribute("id"));
+    expect(described.split(" ")).toContain(error.getAttribute("id"));
+    expect(group).toHaveAttribute("aria-invalid", "true");
+    expect(danglingReferences()).toEqual([]);
   });
 });
 
@@ -8522,6 +8577,10 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Drawer.Title",
     "Drawer.Trigger",
     "Field.Control",
+    "Field.Description",
+    "Field.Error",
+    "Field.Label",
+    "Field.Root",
     "HoverCard.Trigger",
     "Menu.Body",
     "Menu.CheckboxItem",
@@ -8619,10 +8678,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Combobox.Status",
     "DatePicker.Input",
     "DatePicker.Root",
-    "Field.Description",
-    "Field.Error",
-    "Field.Label",
-    "Field.Root",
     "HoverCard.Body",
     "InputOtp.Group",
     "InputOtp.Root",
