@@ -64,6 +64,7 @@ use flow_data_structure_wrapper::smol_str::FlowSmolStr;
 use flow_parser::file_key::{FileKey, FileKeyInner};
 use flow_parser_utils::package_json::PackageJson;
 use flow_parsing::parsing_service::parse_package_json_file;
+use serde_json::Value;
 
 use super::resolve;
 use crate::Source;
@@ -101,6 +102,61 @@ pub(super) enum PackageFile {
     Implied(CompactString),
 }
 
+/// One manifest, including the fields Flow's package parser exposes and the
+/// `imports` map uf still has to read itself.
+#[derive(Clone)]
+struct Manifest {
+    package: PackageJson,
+    imports: Option<PackageImports>,
+}
+
+impl Manifest {
+    fn name(&self) -> Option<FlowSmolStr> {
+        self.package.name()
+    }
+
+    fn main(&self) -> Option<FlowSmolStr> {
+        self.package.main()
+    }
+
+    fn exports(&self) -> Option<&flow_parser_utils::package_exports::PackageExports> {
+        self.package.exports()
+    }
+
+    fn imports(&self) -> Option<&PackageImports> {
+        self.imports.as_ref()
+    }
+}
+
+/// A `package.json#imports` map.
+///
+/// Flow's package parser at the pinned upstream revision does not expose this
+/// field, but the checker still needs it to answer `#internal` specifiers from
+/// the nearest package scope.
+#[derive(Clone)]
+struct PackageImports {
+    entries: HashMap<CompactString, ImportConditionMap>,
+}
+
+#[derive(Clone)]
+struct ImportConditionMap {
+    conditions: Vec<(CompactString, ImportValue)>,
+}
+
+#[derive(Clone)]
+enum ImportValue {
+    Null,
+    Path(CompactString),
+    Nested(Vec<(CompactString, ImportValue)>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ImportTarget {
+    NoMatch,
+    Blocked,
+    Target(CompactString),
+}
+
 /// One package: where its manifest is, and what the manifest says.
 #[derive(Clone)]
 struct Package {
@@ -112,7 +168,7 @@ struct Package {
     /// `packages/cell/index.js`, with the same normalisation a relative import
     /// gets.
     manifest_path: CompactString,
-    manifest: PackageJson,
+    manifest: Manifest,
 }
 
 /// One installed copy of a package, and where it is installed.
@@ -308,13 +364,16 @@ impl WorkspacePackages {
         exports
             .resolve_package(&subpath, &self.conditions)
             .is_none()
-            && exports.resolves_package_with_any_condition_set(&subpath, &self.host_condition_sets)
+            && self
+                .host_condition_sets
+                .iter()
+                .any(|conditions| exports.resolve_package(&subpath, conditions).is_some())
     }
 
     fn resolve_import(&self, importer: &str, specifier: &str) -> Option<PackageFile> {
         let package = self.scope(importer)?;
         let imports = package.manifest.imports()?;
-        let target = imports.resolve_package(specifier, &self.conditions)?;
+        let target = imports.resolve(specifier, &self.conditions)?;
 
         if resolve::is_relative(target.as_str()) {
             return resolve::join(&package.manifest_path, target.as_str()).map(PackageFile::Exact);
@@ -357,6 +416,178 @@ fn host_condition_sets(conditions: &[FlowSmolStr]) -> Vec<Vec<FlowSmolStr>> {
             set
         })
         .collect()
+}
+
+impl PackageImports {
+    fn parse(source: &str) -> Option<Self> {
+        let value: Value = serde_json::from_str(source).ok()?;
+        let imports = value.get("imports")?.as_object()?;
+        let mut entries = HashMap::new();
+        for (specifier, value) in imports {
+            if let Some(conditions) = ImportConditionMap::parse(value) {
+                entries.insert(specifier.as_str().to_compact_string(), conditions);
+            }
+        }
+        Some(Self { entries })
+    }
+
+    fn resolve(&self, specifier: &str, conditions: &[FlowSmolStr]) -> Option<CompactString> {
+        match self.entries.get(specifier) {
+            Some(condition_map) => condition_map.resolve(None, conditions),
+            None => self.resolve_wildcard(specifier, conditions),
+        }
+    }
+
+    fn resolve_wildcard(
+        &self,
+        specifier: &str,
+        conditions: &[FlowSmolStr],
+    ) -> Option<CompactString> {
+        let mut expansion_keys: Vec<&CompactString> = self
+            .entries
+            .keys()
+            .filter(|key| key.contains('*'))
+            .collect();
+        expansion_keys.sort_by(|a, b| pattern_key_compare(a, b));
+
+        for expansion_key in expansion_keys {
+            let Some(pattern_base_index) = expansion_key.find('*') else {
+                continue;
+            };
+            let pattern_base = &expansion_key[..pattern_base_index];
+
+            if !specifier.starts_with(pattern_base) || specifier == pattern_base {
+                continue;
+            }
+            let pattern_trailer = &expansion_key[pattern_base_index + 1..];
+            if !pattern_trailer.is_empty()
+                && (!specifier.ends_with(pattern_trailer) || specifier.len() < expansion_key.len())
+            {
+                continue;
+            }
+
+            let pattern_match =
+                &specifier[pattern_base.len()..specifier.len() - pattern_trailer.len()];
+            if let Some(condition_map) = self.entries.get(expansion_key) {
+                match condition_map.pick(Some(pattern_match), conditions) {
+                    ImportTarget::NoMatch => {}
+                    ImportTarget::Blocked => return None,
+                    ImportTarget::Target(target) => return Some(target),
+                }
+            }
+        }
+        None
+    }
+}
+
+impl ImportConditionMap {
+    fn parse(value: &Value) -> Option<Self> {
+        Some(Self {
+            conditions: vec![("default".to_compact_string(), ImportValue::parse(value)?)],
+        })
+    }
+
+    fn resolve(
+        &self,
+        pattern_match: Option<&str>,
+        conditions: &[FlowSmolStr],
+    ) -> Option<CompactString> {
+        match self.pick(pattern_match, conditions) {
+            ImportTarget::Target(target) => Some(target),
+            ImportTarget::NoMatch | ImportTarget::Blocked => None,
+        }
+    }
+
+    fn pick(&self, pattern_match: Option<&str>, conditions: &[FlowSmolStr]) -> ImportTarget {
+        pick_import_target(conditions, pattern_match, &self.conditions)
+    }
+}
+
+impl ImportValue {
+    fn parse(value: &Value) -> Option<Self> {
+        match value {
+            Value::Null => Some(Self::Null),
+            Value::String(path) => {
+                let path = path.as_str();
+                valid_import_target(path).then(|| Self::Path(path.to_compact_string()))
+            }
+            Value::Object(object) => {
+                let conditions = object
+                    .iter()
+                    .filter_map(|(condition, value)| {
+                        Some((condition.as_str().to_compact_string(), Self::parse(value)?))
+                    })
+                    .collect();
+                Some(Self::Nested(conditions))
+            }
+            _ => None,
+        }
+    }
+}
+
+fn pick_import_target(
+    valid_conditions: &[FlowSmolStr],
+    pattern_match: Option<&str>,
+    conditions: &[(CompactString, ImportValue)],
+) -> ImportTarget {
+    for (candidate_condition, value) in conditions {
+        if !is_targeted_condition(valid_conditions, candidate_condition) {
+            continue;
+        }
+        match value {
+            ImportValue::Null => return ImportTarget::Blocked,
+            ImportValue::Nested(child_condition_map) => {
+                match pick_import_target(valid_conditions, pattern_match, child_condition_map) {
+                    ImportTarget::NoMatch => {}
+                    target => return target,
+                }
+            }
+            ImportValue::Path(target_path) => {
+                return ImportTarget::Target(match pattern_match {
+                    Some(pattern_match) => target_path
+                        .replacen('*', pattern_match, 1)
+                        .to_compact_string(),
+                    None => target_path.clone(),
+                });
+            }
+        }
+    }
+    ImportTarget::NoMatch
+}
+
+fn is_targeted_condition(valid_conditions: &[FlowSmolStr], candidate_condition: &str) -> bool {
+    valid_conditions
+        .iter()
+        .any(|condition| condition.as_str() == candidate_condition)
+        || candidate_condition == "default"
+}
+
+fn valid_import_target(target: &str) -> bool {
+    if target.is_empty()
+        || target == "."
+        || target == ".."
+        || target.starts_with('/')
+        || target.starts_with("../")
+    {
+        return false;
+    }
+    if target.starts_with("./") {
+        return !target.split('/').any(|segment| segment == "..");
+    }
+    true
+}
+
+fn pattern_key_compare(a: &str, b: &str) -> std::cmp::Ordering {
+    let base_length_a = a.find('*').map_or(-1, |index| index as i32);
+    let base_length_b = b.find('*').map_or(-1, |index| index as i32);
+
+    if base_length_a > base_length_b {
+        std::cmp::Ordering::Less
+    } else if base_length_b > base_length_a {
+        std::cmp::Ordering::Greater
+    } else {
+        b.len().cmp(&a.len())
+    }
 }
 
 /// Where an installed package is installed, and under what name.
@@ -482,9 +713,12 @@ pub(super) fn is_manifest(path: &str) -> bool {
 /// program and its syntax error is reported against the file itself. Reporting
 /// it a second time from here would attach a copy to whoever imported the
 /// package.
-fn parse_manifest(source: &Source<'_>, options: &Options) -> Option<PackageJson> {
+fn parse_manifest(source: &Source<'_>, options: &Options) -> Option<Manifest> {
     let file_key = FileKey::new(FileKeyInner::JsonFile(source.path.to_owned()));
-    parse_package_json_file(options, Ok(source.source), &file_key).ok()
+    Some(Manifest {
+        package: parse_package_json_file(options, Ok(source.source), &file_key).ok()?,
+        imports: PackageImports::parse(source.source),
+    })
 }
 
 /// Split a bare specifier into the package it names and the subpath inside it.
@@ -744,6 +978,70 @@ mod tests {
         )]);
 
         assert_eq!(exact(&packages, "#cell"), "packages/cell/index.js");
+    }
+
+    #[test]
+    fn an_active_null_import_target_blocks_fallback_conditions() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#mode": { "import": null, "default": "./fallback.js" }
+              }
+            }"##,
+        )]);
+
+        assert!(packages.resolve("app.js", "#mode").is_none());
+    }
+
+    #[test]
+    fn an_inactive_null_import_condition_is_skipped() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#mode": { "browser": null, "default": "./fallback.js" }
+              }
+            }"##,
+        )]);
+
+        assert_eq!(exact(&packages, "#mode"), "fallback.js");
+    }
+
+    #[test]
+    fn a_blocked_wildcard_import_does_not_fall_back_to_a_less_specific_pattern() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#feature/private/*": null,
+                "#feature/*": "./features/*.js"
+              }
+            }"##,
+        )]);
+
+        assert!(packages.resolve("app.js", "#feature/private/a").is_none());
+        assert_eq!(exact(&packages, "#feature/public"), "features/public.js");
+    }
+
+    #[test]
+    fn invalid_import_targets_are_ignored() {
+        let packages = packages(&[Source::new(
+            "package.json",
+            r##"{
+              "imports": {
+                "#escape": "../outside.js",
+                "#absolute": "/outside.js",
+                "#dotdot": "./../outside.js",
+                "#inside": "./inside.js"
+              }
+            }"##,
+        )]);
+
+        assert!(packages.resolve("app.js", "#escape").is_none());
+        assert!(packages.resolve("app.js", "#absolute").is_none());
+        assert!(packages.resolve("app.js", "#dotdot").is_none());
+        assert_eq!(exact(&packages, "#inside"), "inside.js");
     }
 
     #[test]
