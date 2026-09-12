@@ -59,8 +59,13 @@ import {
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
 import type { Align, LogicalSide } from "./internal/anchor.js";
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { focusable } from "./internal/focus.js";
 import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
@@ -145,30 +150,29 @@ export component PopoverRoot(
  * trigger is not "outside" for exactly this reason — closing there and letting
  * this click reopen made the press a no-op that flickered.
  */
-export component PopoverTrigger(children: React.Node, ...rest: Rest) {
+export component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const popover = usePopover("Popover.Trigger");
   const passed = withoutComposed(rest, ["onClick", "ref"]);
   usePresence(popover.registerTrigger);
+  const props = withProps(passed, {
+    // Only while it is open: an `aria-controls` naming an element that is not
+    // in the document tells a reader there is somewhere to go and then has
+    // nowhere to send them.
+    "aria-controls": popover.open ? `${popover.base}-body` : undefined,
+    "aria-expanded": popover.open ? "true" : "false",
+    "aria-haspopup": "dialog",
+    children,
+    id: `${popover.base}-trigger`,
+    onClick: composeHandlers(rest.onClick, () => popover.setOpen(!popover.open)),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      popover.triggerRef.current = element;
+    }),
+  });
 
-  return (
-    <button
-      {...passed}
-      // Only while it is open: an `aria-controls` naming an element that is not
-      // in the document tells a reader there is somewhere to go and then has
-      // nowhere to send them.
-      aria-controls={popover.open ? `${popover.base}-body` : undefined}
-      aria-expanded={popover.open ? "true" : "false"}
-      aria-haspopup="dialog"
-      id={`${popover.base}-trigger`}
-      onClick={composeHandlers(rest.onClick, () => popover.setOpen(!popover.open))}
-      ref={composeRefs(rest.ref, (element) => {
-        popover.triggerRef.current = element;
-      })}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -196,6 +200,7 @@ export component PopoverBody(
    * not for the button that steps back a month.
    */
   initialFocus?: { current: HTMLElement | null },
+  render?: RenderProp,
   side?: LogicalSide = "bottom",
   sideOffset?: number = 0,
   ...rest: Rest
@@ -303,37 +308,36 @@ export component PopoverBody(
   // leave the popover announced as its button rather than as itself.
   const named = rest["aria-label"] != null || rest["aria-labelledby"] != null;
 
-  return (
-    <div
-      // `passed` first, then this component's semantics; see
-      // `internal/merge-props.js` for the three bugs that rule is made of.
-      {...passed}
-      aria-labelledby={named || !popover.triggered ? undefined : `${popover.base}-trigger`}
-      data-align={anchored.align}
-      data-side={anchored.side}
-      data-state="open"
-      id={`${popover.base}-body`}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        if (event.key !== "Escape") {
-          return;
-        }
-        event.preventDefault();
-        // This popover, not the dialog around it. Two overlays nest in the
-        // DOM, so without this one Escape closed both.
-        event.stopPropagation();
-        close();
-      })}
-      ref={composeRefs(rest.ref, (element) => {
-        bodyRef.current = element;
-      })}
-      // No `aria-modal`. The page behind a popover is still available, and
-      // saying otherwise is the one lie a screen reader cannot see through.
-      role="dialog"
-      // So the popover can hold focus itself when it contains nothing
-      // focusable, and so Escape has somewhere to be heard.
-      tabIndex={-1}
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(passed, {
+    "aria-labelledby": named || !popover.triggered ? undefined : `${popover.base}-trigger`,
+    children,
+    "data-align": anchored.align,
+    "data-side": anchored.side,
+    "data-state": "open",
+    id: `${popover.base}-body`,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+      event.preventDefault();
+      // This popover, not the dialog around it. Two overlays nest in the
+      // DOM, so without this one Escape closed both.
+      event.stopPropagation();
+      close();
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      bodyRef.current = element;
+    }),
+    // No `aria-modal`. The page behind a popover is still available, and
+    // saying otherwise is the one lie a screen reader cannot see through.
+    role: "dialog",
+    // So the popover can hold focus itself when it contains nothing focusable,
+    // and so Escape has somewhere to be heard.
+    tabIndex: -1,
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
