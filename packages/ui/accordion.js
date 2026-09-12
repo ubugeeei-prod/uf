@@ -90,8 +90,13 @@ import {
   useState,
 } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import { moveOnKey } from "./internal/roving-focus.js";
 import type { RovingSet } from "./internal/roving-focus.js";
 import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
@@ -176,6 +181,7 @@ export component AccordionRoot(
   value?: $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
   measure?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [open, setOpen] = useControlled<$ReadOnlyArray<string>>(value, defaultValue, onValueChange);
@@ -203,22 +209,20 @@ export component AccordionRoot(
     () => ({ open, toggle, closable: type === "multiple" || collapsible, type, measure }),
     [open, toggle, type, collapsible, measure],
   );
-  const passed = withoutComposed(rest, ["onKeyDown"]);
+  const props = withProps(withoutComposed(rest, ["onKeyDown"]), {
+    children,
+    // The name the arrow keys use to tell this accordion's headers from those
+    // of an accordion nested inside one of its panels.
+    "data-accordion": "",
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const stack: $FlowFixMe = event.currentTarget;
+      moveOnKey(event, stack, HEADERS);
+    }),
+  });
 
   return (
     <AccordionContext.Provider value={state}>
-      <div
-        {...passed}
-        // The name the arrow keys use to tell this accordion's headers from
-        // those of an accordion nested inside one of its panels.
-        data-accordion=""
-        onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-          const stack: $FlowFixMe = event.currentTarget;
-          moveOnKey(event, stack, HEADERS);
-        })}
-      >
-        {children}
-      </div>
+      {render == null ? <div {...props} /> : render(props)}
     </AccordionContext.Provider>
   );
 }
@@ -235,6 +239,7 @@ export component AccordionItem(
   value: string,
   children: renders* (AccordionHeader | AccordionContent),
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const accordion = useAccordion("Accordion.Item");
@@ -257,9 +262,11 @@ export component AccordionItem(
     [base, open, toggle, value, accordion.closable, disabled, present],
   );
 
+  const props = withProps(rest, { children });
+
   return (
     <AccordionItemContext.Provider value={state}>
-      <div {...rest}>{children}</div>
+      {render == null ? <div {...props} /> : render(props)}
     </AccordionItemContext.Provider>
   );
 }
@@ -290,35 +297,34 @@ export component AccordionHeader(
  * It carries no `tabIndex` of its own on purpose: every header stays in the
  * page's tab order, which is what makes this an accordion and not a tab list.
  */
-export component AccordionTrigger(children: React.Node, ...rest: Rest) {
+export component AccordionTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const item = useAccordionItem("Accordion.Trigger");
-  const passed = withoutComposed(rest, ["onClick"]);
   // Locked and disabled are two different sentences a reader hears the same
   // way, and both are `aria-disabled` rather than `disabled` so the header
   // stays where they can find it: "this section will not close" and "this
   // section is unavailable".
   const inert = item.locked || item.disabled;
 
-  return (
-    <button
-      {...passed}
-      aria-controls={item.present ? item.contentId : undefined}
-      aria-disabled={inert ? "true" : undefined}
-      aria-expanded={item.open ? "true" : "false"}
-      // What the arrow keys look for. Not a role, because the accordion pattern
-      // has none to look for; see the module header.
-      data-accordion-trigger=""
-      id={item.triggerId}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (!inert) {
-          item.toggle();
-        }
-      })}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+  const props = withProps(withoutComposed(rest, ["onClick"]), {
+    "aria-controls": item.present ? item.contentId : undefined,
+    "aria-disabled": inert ? "true" : undefined,
+    "aria-expanded": item.open ? "true" : "false",
+    children,
+    // What the arrow keys look for. Not a role, because the accordion pattern
+    // has none to look for; see the module header.
+    "data-accordion-trigger": "",
+    id: item.triggerId,
+    onClick: composeHandlers(rest.onClick, () => {
+      if (!inert) {
+        item.toggle();
+      }
+    }),
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <button {...props} type="button" />;
 }
 
 /**
@@ -327,7 +333,7 @@ export component AccordionTrigger(children: React.Node, ...rest: Rest) {
  * `internal/disclosure.js` explains what "stays in the document" is worth and
  * what `hidden` is upgraded to for it.
  */
-export component AccordionContent(children: React.Node, ...rest: Rest) {
+export component AccordionContent(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const accordion = useAccordion("Accordion.Content");
   const item = useAccordionItem("Accordion.Content");
   const contentRef = useRef<HTMLElement | null>(null);
@@ -335,19 +341,20 @@ export component AccordionContent(children: React.Node, ...rest: Rest) {
   useUntilFound(contentRef, item.open);
   useMeasuredHeight(contentRef, accordion.measure);
 
-  return (
-    <div
-      {...withoutComposed(rest, ["ref"])}
-      // The name a reader hears for this landmark is the header they pressed.
-      aria-labelledby={item.triggerId}
-      hidden={!item.open}
-      id={item.contentId}
-      ref={composeRefs(rest.ref, (element) => {
-        contentRef.current = element;
-      })}
-      role="region"
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(withoutComposed(rest, ["ref"]), {
+    // The name a reader hears for this landmark is the header they pressed.
+    "aria-labelledby": item.triggerId,
+    children,
+    hidden: !item.open,
+    id: item.contentId,
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      contentRef.current = element;
+    }),
+    role: "region",
+  });
+
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
