@@ -70,15 +70,16 @@ type Request = {|
  * How long a browser is given to open the page before the run is refused.
  *
  * Generous against a cold Chromium with a cold profile, which is about seven
- * seconds on a laptop and worse in a container, and deliberately *shorter than
- * `uf_test`'s browser file budget* (`BROWSER_FILE_TIMEOUT`, thirty seconds).
+ * seconds on a laptop and much worse in a busy container, and deliberately
+ * *shorter than `uf_test`'s browser file budget* (`BROWSER_FILE_TIMEOUT`, sixty
+ * seconds).
  * That order is the whole point: `uf` is already holding a stopwatch on the
  * first file while this is happening, and whichever of the two fires first is
  * what the report says. A browser that will not start should be reported as a
  * browser that will not start, with its own output attached — not as a file
  * that timed out, which is a sentence about tests that were never reached.
  */
-const START_TIMEOUT_MS = 25_000;
+const START_TIMEOUT_MS = 45_000;
 
 /**
  * The switches a headless run needs, and what each is for.
