@@ -42,7 +42,7 @@ use uf_infra::{FxHashMap, FxHashSet};
 use uf_profiler::profile_span;
 use uf_transform::{ReactCompilerMode, TransformOptions};
 
-use crate::scan::{FileScan, ends_word, next_non_space, starts_word};
+use crate::scan::{FileScan, ends_word, next_non_space, prev_non_space, starts_word};
 use crate::{Diagnostic, push_at, severity};
 
 /// `react/no-derived-state-effect`.
@@ -179,7 +179,10 @@ fn requested_hook_calls(scan: &FileScan<'_>, needs_effects: bool, needs_memo: bo
             // The call-shape check is cheaper than proving the name is not in
             // a string, and it rejects import-only names before `in_string`
             // has to rescan the line prefix.
-            if call_follows_name(code, after) && !line.in_string(at) {
+            if call_follows_name(code, after)
+                && hook_callee_can_match(code, at)
+                && !line.in_string(at)
+            {
                 if matches!(hook, HookCall::State) && !state_setter_binding_before_call(code, at) {
                     continue;
                 }
@@ -223,6 +226,33 @@ fn hook_call_at(
 
 fn hook_name_at(code: &str, at: usize, hook: &str) -> bool {
     code.as_bytes()[at..].starts_with(hook.as_bytes()) && ends_word(code, at + hook.len())
+}
+
+/// Whether a hook-like name is written in a shape the tree rule can report.
+///
+/// The AST-side rules accept bare calls and `React.useX(...)`. A method on
+/// anything else is just a method that happens to share a React hook's name,
+/// and paying for the Babel-shaped tree only to reject it later is the #668
+/// path in miniature.
+fn hook_callee_can_match(code: &str, at: usize) -> bool {
+    let Some((dot, b'.')) = prev_non_space(code, at) else {
+        return true;
+    };
+    react_member_owner_before_dot(code, dot)
+}
+
+fn react_member_owner_before_dot(code: &str, dot: usize) -> bool {
+    let bytes = code.as_bytes();
+    let mut end = dot.min(bytes.len());
+    while end > 0 && bytes[end - 1].is_ascii_whitespace() {
+        end -= 1;
+    }
+    let mut start = end;
+    while start > 0 && crate::scan::is_word_byte(bytes[start - 1]) {
+        start -= 1;
+    }
+    &code[start..end] == "React"
+        && !prev_non_space(code, start).is_some_and(|(_, byte)| byte == b'.')
 }
 
 /// Whether the next non-space token after a name can still be the same call.
@@ -1664,6 +1694,27 @@ export function Page(items: Array<string>) {
 "#;
 
         assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
+    fn methods_that_share_hook_names_do_not_request_the_react_tree_path() {
+        let derived = r#"// @flow
+component Page(cache: Cache, value: number) {
+  const [count, setCount] = cache.useState(0);
+  cache.useEffect(() => setCount(value + 1), [value]);
+  return <main>{count}</main>;
+}
+"#;
+        let memo = r#"// @flow
+component Page(cache: Cache) {
+  const value = cache.useMemo(() => 1, []);
+  const handler = window.React.useCallback(() => value, [value]);
+  return <main>{value}</main>;
+}
+"#;
+
+        assert!(!wants(DERIVED_STATE, derived));
+        assert!(!wants(REDUNDANT_MEMO, memo));
     }
 
     #[test]
