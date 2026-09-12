@@ -1,5 +1,31 @@
 # Changelog
 
+## uf@0.0.0-alpha.33
+
+_2026-09-12_
+
+### Added
+
+- materialize Bun module mock stand-ins (#845)
+- **router**: support templates inside slots (#874)
+- **tui**: support flex auto margins (#815)
+- **ui**: add hover card body render hatch (#867)
+
+### Fixed
+
+- **release**: make temporal front door publishable (#869)
+
+### Performance
+
+- **check**: flatten graph resolution storage (#868)
+- **check**: reuse single-source facts parse (#872)
+- **lint**: skip prose tree markers (#865)
+- **lint**: skip hook-like member calls (#873)
+
+### Internal
+
+- **router**: cover repeated interception markers (#870)
+
 ## uf@0.0.0-alpha.32
 
 _2026-09-12_
