@@ -130,7 +130,7 @@ collects — the records rather than the arguments, which is where redaction and
 truncation have already happened and so the half worth asserting on.
 
 A record's `time` is a `Temporal.Instant`, read through
-`@uniflowed/core/temporal` rather than from `Date.now()`. That is what makes the
+`@uniflowed/temporal` rather than from `Date.now()`. That is what makes the
 timestamp something a test can pin: install a clock with `setClock` and the
 records stamped under it say exactly what you set. `durationMs` on a request
 line is measured with the same clock at both ends, so a `manualClock` you
