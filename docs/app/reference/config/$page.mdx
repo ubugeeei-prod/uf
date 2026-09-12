@@ -62,7 +62,7 @@ which is the fastest way to answer "what is it actually using".
 | `runtime.capabilityJsHost.hosts` | `["node", "deno", "bun"]` | Hosts uf may use |
 | `runtime.capabilityJsHost.autoDetect` | `true` | Pick a host by what is installed |
 | `runtime.deploy.adapter` | none | The deploy target `uf build` writes an artefact for; `--adapter` overrides it |
-| `runtime.deploy.adapters` | `["node", "edge", "serverless", "static", "container"]` | The targets this project may build for. Five by default, because five are implemented; naming `bun` or `deno` is an error that says why ([#391](https://github.com/ubugeeei-prod/uf/issues/391)) |
+| `runtime.deploy.adapters` | `["node", "bun", "deno", "edge", "serverless", "static", "container"]` | The targets this project may build for. All seven are implemented; removing one here refuses that target for this project |
 | `runtime.deploy.enabled` | `true` | Setting it to `false` refuses `--adapter` rather than ignoring it |
 | `react.*` | — | React Compiler mode and React-specific options |
 | `react.strictMode` | `true` | `uf dev` hydrates inside `<StrictMode>`; a build never does ([#516](https://github.com/ubugeeei-prod/uf/issues/516)) |

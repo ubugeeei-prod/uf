@@ -24,23 +24,25 @@
 //! `uf start` answer through. Beside it is one entry that knows which host it
 //! is on, and `static/` is a copy of the output directory.
 //!
-//! That is the seam, and four targets now plug into it. None of them touches
+//! That is the seam, and five targets now plug into it. None of them touches
 //! the application:
 //!
 //! | adapter | the entry beside `handler.js` | where `static/` is answered from | what uf writes for the platform |
 //! | --- | --- | --- | --- |
 //! | `node` | `server.js`, `node:http` | the directory beside it | `package.json` |
+//! | `bun` | `server.js`, `Bun.serve` | the directory beside it | `package.json` |
+//! | `deno` | `server.js`, `Deno.serve` | the directory beside it | `package.json` |
 //! | `container` | the same `server.js` | the same directory | `Dockerfile`, `.dockerignore` |
 //! | `edge` | `worker.js`, `export default { fetch }` | Cloudflare's asset server, through `env.ASSETS` | `wrangler.json` |
 //! | `serverless` | `lambda.js`, `export const handler` | the deployment package | — |
 //!
 //! # And one that is not a seam at all
 //!
-//! `static` is the fifth, and it has no `handler.js` because it has no
+//! `static` is the sixth, and it has no `handler.js` because it has no
 //! application: a static host returns files, and `uf build` has always written
 //! the files. So it links nothing, spawns no bundler, and its output is
 //! `dist/` copied — not `dist/` copied into a `static/` beside a server, the
-//! way the four above carry it, but the directory itself, because the
+//! way the five above carry it, but the directory itself, because the
 //! directory itself is what gets uploaded.
 //!
 //! What it *does* have is the refusal in [`static_host`]. A project with a
@@ -50,10 +52,9 @@
 //! production. `ubugeeei-redundancy.md`: static hosting does not become a
 //! server merely because an adapter exists.
 //!
-//! `bun` and `deno` are not among them, and naming one is an error that says
-//! what it is waiting for — see [`resolve`], and
-//! [`uf_config::DeployAdapter::is_implemented`], which is the single place the
-//! distinction is recorded.
+//! Every adapter named by `uf_config` has an implementation, and each one has
+//! a shape check below so adding the next target cannot quietly become "a
+//! directory with no entry in it".
 //!
 //! # None of these has ever run on the platform it targets
 //!
@@ -151,11 +152,9 @@ pub(crate) fn resolve(
             .map(|candidate| candidate.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        // What it is waiting for, and not merely that it is waiting. For all
-        // three of these the answer is a decision rather than an omission —
-        // `bun` and `deno` want a benchmark first and `static` wants the route
-        // table — and a reader told only "not yet" is a reader who opens the
-        // issue to find out whether to write it themselves.
+        // What it is waiting for, and not merely that it is waiting. A reader
+        // told only "not yet" is a reader who opens the issue to find out
+        // whether to write it themselves.
         let because = adapter.unimplemented_because().unwrap_or(
             "its entry file and its answer for where the static assets live are unwritten",
         );
@@ -258,7 +257,7 @@ pub(crate) fn deploy(
         ],
         env,
         // The same analysis `uf build`'s own Vite run had. `handler.js` is
-        // byte-for-byte identical in all four artefacts, so a `virtual:uf/actions`
+        // byte-for-byte identical in all six artefacts, so a `virtual:uf/actions`
         // generated from no manifest here is every server action answering 404
         // on every deploy target at once.
         &[(RSC_MANIFEST_ENV, rsc_manifest.as_str())],
@@ -362,14 +361,14 @@ pub(crate) struct SiteFacts<'a> {
 /// `uf build --adapter static`: refuse, or copy the site.
 ///
 /// No driver and no second Vite run, which is the whole difference between
-/// this target and the other four: they link an application, and a static host
+/// this target and the other five: they link an application, and a static host
 /// does not run one. `dist/` is copied rather than moved or symlinked, for the
 /// reason every other adapter's output is a copy — `.uf/deploy/<target>` is a
 /// directory a person hands to something else, and one that stopped being
 /// valid the next time `uf build` ran would be a trap.
 ///
 /// The copy lands at the top of the directory rather than in a `static/`
-/// beside a server. The five server targets need both halves and have to keep
+/// beside a server. The six server targets need both halves and have to keep
 /// them apart; here the directory *is* the site, and a `static/` inside it
 /// would put every URL one segment deeper than the build decided.
 ///
@@ -403,7 +402,7 @@ pub(crate) fn deploy_static(
     let compiled = compiled.iter().map(String::as_str).collect::<Vec<_>>();
     copy_tree(out_dir, &directory, &compiled, &mut copied)
         .with_context(|| format!("copying {out_dir} into {directory}"))?;
-    // The one shape check this target has. The other four are checked by
+    // The one shape check this target has. The other five are checked by
     // `entry_files`, which asks whether the link step wrote the entry it
     // promised; nothing links here, so what is left to be wrong is an empty
     // `dist/` — a build that produced no documents at all, reported as a
@@ -435,19 +434,17 @@ pub(crate) fn deploy_static(
 /// thing wrapped around it.
 const fn entry_files(adapter: DeployAdapter) -> &'static [&'static str] {
     match adapter {
-        DeployAdapter::Node | DeployAdapter::Bun | DeployAdapter::Container => {
-            &["handler.js", "server.js"]
-        }
+        DeployAdapter::Node
+        | DeployAdapter::Bun
+        | DeployAdapter::Deno
+        | DeployAdapter::Container => &["handler.js", "server.js"],
         DeployAdapter::Edge => &["handler.js", "worker.js"],
         DeployAdapter::Serverless => &["handler.js", "lambda.js"],
         // `static` links nothing and so promises no entry — it is written by
         // [`deploy_static`], which never reaches this table, and its own shape
         // check is that the copy was not empty.
         //
-        // `deno` is refused in `resolve` before anything is built, so its
-        // empty row is unreachable rather than permissive: reaching it would
-        // make "the adapter wrote nothing" indistinguishable from success.
-        DeployAdapter::Deno | DeployAdapter::Static => &[],
+        DeployAdapter::Static => &[],
     }
 }
 
@@ -634,8 +631,9 @@ pub(crate) fn next_command(adapter: DeployAdapter, root: &Utf8Path, directory: &
         // choosing a hosting company on the reader's behalf, which is the one
         // thing `ubugeeei-redundancy.md` says a deployment must never require.
         DeployAdapter::Static => format!("upload the contents of {directory} to a static host"),
-        // Unreachable: `resolve` refuses this one before anything is built.
-        DeployAdapter::Deno => format!("cd {directory}"),
+        DeployAdapter::Deno => {
+            format!("cd {directory} && deno run --allow-net --allow-read --allow-env server.js")
+        }
     }
 }
 
@@ -723,40 +721,21 @@ mod tests {
         );
     }
 
+    /// Process adapters are no longer refused, and the reason is a measurement.
     #[test]
-    fn an_unwritten_adapter_is_refused_by_name_and_by_issue() {
-        let message = resolve(&config(), Some(DeployAdapter::Deno))
-            .unwrap_err()
-            .to_string();
-        assert!(message.contains("no `deno` deploy adapter"), "{message}");
-        assert!(
-            message.contains("Implemented: node, bun, edge, serverless, static, container"),
-            "{message}"
-        );
-        // Not merely "not yet": `deno` is unwritten because the design says to
-        // measure first, and a reader told only "not yet" is a reader who opens
-        // the issue to find out whether to write it themselves. `bun` had the
-        // same row until that benchmark was run — see ubugeeei-prod/uf#391.
-        assert!(message.contains("benchmark"), "{message}");
-        assert!(message.contains("issues/391"), "{message}");
-    }
-
-    /// `bun` is no longer refused, and the reason is a measurement.
-    #[test]
-    fn the_bun_adapter_is_written_and_no_longer_names_an_issue() {
-        assert_eq!(
-            resolve(&config(), Some(DeployAdapter::Bun)).unwrap(),
-            Some(DeployAdapter::Bun)
-        );
-        assert!(DeployAdapter::Bun.is_implemented());
-        assert_eq!(DeployAdapter::Bun.tracking_issue(), None);
-        assert_eq!(DeployAdapter::Bun.unimplemented_because(), None);
+    fn process_adapters_are_written_and_no_longer_name_an_issue() {
+        for adapter in [DeployAdapter::Bun, DeployAdapter::Deno] {
+            assert_eq!(resolve(&config(), Some(adapter)).unwrap(), Some(adapter));
+            assert!(adapter.is_implemented());
+            assert_eq!(adapter.tracking_issue(), None);
+            assert_eq!(adapter.unimplemented_because(), None);
+        }
     }
 
     #[test]
     fn every_implemented_adapter_has_a_shape_and_a_next_command() {
-        // The four tables an adapter has a row in, checked together, because
-        // adding a fifth means adding a row to each of them and forgetting one
+        // The tables an adapter has a row in, checked together, because
+        // adding another target means adding a row to each of them and forgetting one
         // is a build that reports a directory it did not write.
         for adapter in DeployAdapter::ALL
             .iter()
@@ -869,12 +848,13 @@ mod tests {
         }];
 
         // Every target with somewhere to run one. `edge` hands it to
-        // Cloudflare's scheduler; the other three tick it in the process they
+        // Cloudflare's scheduler; the other four tick it in the process they
         // keep, through the `serve` call uf generates.
         for adapter in [
             DeployAdapter::Edge,
             DeployAdapter::Node,
             DeployAdapter::Bun,
+            DeployAdapter::Deno,
             DeployAdapter::Container,
         ] {
             assert!(

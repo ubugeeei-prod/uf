@@ -533,13 +533,14 @@ fn a_worker_with_no_schedules_declares_and_runs_none() {
     assert_wired(DeployAdapter::Edge, &at(&dir), &[]).expect("nothing declared and nothing run");
 }
 
-/// The three targets with no configuration file to make a disagreement
+/// The four targets with no configuration file to make a disagreement
 /// visible: what has to be true is that the entry carries the declaration.
 #[test]
 fn a_process_entry_that_carries_what_was_declared_is_accepted() {
     for adapter in [
         DeployAdapter::Node,
         DeployAdapter::Bun,
+        DeployAdapter::Deno,
         DeployAdapter::Container,
     ] {
         for written in [process_entry, process_entry_linked] {
@@ -562,6 +563,7 @@ fn a_process_entry_that_lost_a_declaration_is_refused() {
     for adapter in [
         DeployAdapter::Node,
         DeployAdapter::Bun,
+        DeployAdapter::Deno,
         DeployAdapter::Container,
     ] {
         let dir = artefact(&[("server.js", &process_entry(&[]))]);
@@ -653,17 +655,13 @@ fn a_process_entry_with_no_schedules_is_the_file_it_has_always_been() {
     assert_wired(DeployAdapter::Node, &at(&dir), &[]).expect("nothing declared and nothing run");
 }
 
-/// The three that run none. Reaching here with one means [`refuse_unrunnable`]
+/// The two that run none. Reaching here with one means [`refuse_unrunnable`]
 /// was bypassed, which is a fault in uf and is reported as one rather than
 /// quietly accepted.
 #[test]
 fn a_target_that_runs_no_schedule_never_carries_one() {
     let dir = artefact(&[]);
-    for adapter in [
-        DeployAdapter::Serverless,
-        DeployAdapter::Static,
-        DeployAdapter::Deno,
-    ] {
+    for adapter in [DeployAdapter::Serverless, DeployAdapter::Static] {
         assert_wired(adapter, &at(&dir), &[]).expect("a project that declared none");
         let message = assert_wired(adapter, &at(&dir), &[declared("/api/sweep", "* * * * *")])
             .expect_err("a schedule this target would not run")
