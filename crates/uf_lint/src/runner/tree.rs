@@ -50,8 +50,8 @@
 //!
 //! 1. None of the rules is enabled — nothing runs.
 //! 2. The path is not Flow source — nothing runs.
-//! 3. The text holds neither a JSX tag closer (`</`, `/>`) nor `import.meta` —
-//!    nothing runs, because a module without one of those cannot violate any
+//! 3. The code holds neither a JSX tag closer (`</`, `/>`) nor `import.meta`
+//!    — nothing runs, because a module without one of those cannot violate any
 //!    of these rules.
 //! 4. The module is nested or chained past [`uf_flow`]'s parser ceilings —
 //!    nothing runs, because `flow/syntax` has already refused it and a linter
@@ -77,7 +77,7 @@
 //!
 //! So a component module that both renders JSX and calls `useEffect` is parsed
 //! twice, and that is the honest cost. It is bounded by the gates above — a
-//! module with no JSX tag closer and no `import.meta` never reaches this
+//! module with no JSX tag closer and no code `import.meta` never reaches this
 //! runner at all — and `uf lint` over this repository, 422 files, still
 //! finishes in under a second.
 
@@ -132,17 +132,44 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
         return None;
     }
 
-    let source = &scan.file.source;
     // A JSX element either closes (`</p>`) or closes itself (`/>`); a module
     // with neither has no JSX in it. `import.meta` is the other rule's whole
-    // subject. Both are substring tests over the raw source, so a mention
-    // inside a comment or a string costs one parse and no diagnostic.
-    let wants_jsx = levels.any_jsx() && (source.contains("</") || source.contains("/>"));
-    let wants_hot = levels.hot_optional_chaining.is_some() && source.contains("import.meta");
+    // subject. Both gates keep the raw substring bail-out first, then confirm
+    // the marker is code rather than prose in a string or comment before
+    // paying for a parse.
+    let wants_jsx = levels.any_jsx() && has_code_jsx_marker(scan);
+    let wants_hot = levels.hot_optional_chaining.is_some() && has_code_import_meta(scan);
     if !wants_jsx && !wants_hot {
         return None;
     }
     Some(TreeWork { levels, wants_hot })
+}
+
+fn has_code_jsx_marker(scan: &FileScan<'_>) -> bool {
+    let source = &scan.file.source;
+    if !source.contains("</") && !source.contains("/>") {
+        return false;
+    }
+    scan.lines.iter().any(|line| {
+        let code = line.code();
+        let bytes = code.as_bytes();
+        uf_infra::memchr_iter(b'/', bytes).any(|at| {
+            let closes = at > 0 && bytes[at - 1] == b'<';
+            let self_closes = bytes.get(at + 1) == Some(&b'>');
+            (closes || self_closes) && !line.in_string(at)
+        })
+    })
+}
+
+fn has_code_import_meta(scan: &FileScan<'_>) -> bool {
+    if !scan.file.source.contains("import.meta") {
+        return false;
+    }
+    scan.lines.iter().any(|line| {
+        line.code()
+            .match_indices("import.meta")
+            .any(|(at, _)| !line.in_string(at))
+    })
 }
 
 /// Walk a tree somebody else parsed.
@@ -876,3 +903,76 @@ static INTERACTIVE_ELEMENTS: phf::Set<&'static str> = phf::phf_set! {
 
 /// The handlers that answer a key press.
 const KEY_HANDLERS: [&str; 3] = ["onKeyDown", "onKeyUp", "onKeyPress"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::SourceFile;
+    use crate::scan::{FileScan, mask_inline_comments};
+    use uf_config::{RuleLevel, UniflowedConfig};
+    use uf_infra::CompactString;
+
+    fn wants(rule: &'static str, source: &str) -> bool {
+        let file = SourceFile {
+            path: "app/index.js".to_owned(),
+            source: source.to_owned(),
+        };
+        let masked = mask_inline_comments(&file.source);
+        let scan = FileScan::new(&file, &masked);
+        wanted(&scan, &only(rule)).is_some()
+    }
+
+    fn only(rule: &'static str) -> UniflowedConfig {
+        let mut config = UniflowedConfig::default();
+        config.lint.rules.clear();
+        config
+            .lint
+            .rules
+            .insert(CompactString::from(rule), RuleLevel::Error);
+        config
+    }
+
+    #[test]
+    fn jsx_markers_in_comments_and_strings_do_not_request_a_tree() {
+        let source = r#"// @flow
+// <img />
+/* </section> */
+const html = '<img src="/cat.png" />';
+const template = `</article>`;
+"#;
+
+        assert!(!wants(ALT_TEXT, source));
+    }
+
+    #[test]
+    fn jsx_markers_in_code_still_request_a_tree() {
+        let source = r#"// @flow
+component Page() renders React.Node {
+  return <img src="/cat.png" />;
+}
+"#;
+
+        assert!(wants(ALT_TEXT, source));
+    }
+
+    #[test]
+    fn import_meta_in_comments_and_strings_does_not_request_a_tree() {
+        let source = r#"// @flow
+// import.meta.hot.accept();
+const code = `if (import.meta.hot) { import.meta.hot.accept(); }`;
+"#;
+
+        assert!(!wants(HOT_OPTIONAL_CHAINING, source));
+    }
+
+    #[test]
+    fn import_meta_in_code_still_requests_a_tree() {
+        let source = r#"// @flow
+if (import.meta.hot) {
+  import.meta.hot.accept();
+}
+"#;
+
+        assert!(wants(HOT_OPTIONAL_CHAINING, source));
+    }
+}
