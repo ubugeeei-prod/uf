@@ -43,6 +43,7 @@ import {
   parseColor,
   render,
   testRender,
+  useClipboard,
   useKeyboard,
   useRenderer,
   useTerminalSize,
@@ -2708,6 +2709,68 @@ describe("a real terminal, or something that is not one", () => {
     expect(written).toContain("up");
     expect(app.text().split("\n")[0]).toBe("up      ");
 
+    app.stop();
+  });
+
+  it("copies through OSC 52 when an interactive terminal receives the shortcut", () => {
+    const stdout = output({ isTTY: true });
+    const stdin = input();
+
+    component Copier() {
+      const clipboard = useClipboard();
+      const [state, setState] = useState<string>(clipboard.supported ? "ready" : "no");
+      useKeyboard((key) => {
+        if (key.sequence === "c") {
+          setState(clipboard.copy("copy 界") ? "copied" : "refused");
+        }
+      });
+      return <Text wrap="none">{state}</Text>;
+    }
+
+    const app = render(<Copier />, {
+      stdin,
+      stdout,
+      env: { COLORTERM: "truecolor" },
+      alternateScreen: false,
+    });
+    const before = stdout.text().length;
+
+    stdin.type("c");
+    const written = stdout.text().slice(before);
+    expect(written).toContain("\u001b]52;c;Y29weSDnlYw=\u0007");
+    expect(written).toContain("copied");
+    expect(app.text().split("\n")[0]).toBe("copied  ");
+
+    app.stop();
+  });
+
+  it("refuses clipboard writes when there is no terminal transport", () => {
+    const memory: Array<string> = [];
+    component Probe() {
+      const clipboard = useClipboard();
+      useKeyboard(() => {
+        memory.push(String(clipboard.supported));
+        memory.push(String(clipboard.copy("copy me")));
+      });
+      return <Text>probe</Text>;
+    }
+
+    const handle = testRender(<Probe />, { width: 8, height: 1 });
+    handle.press("c");
+    expect(memory).toEqual(["false", "false"]);
+    handle.stop();
+
+    const stdout = output({ isTTY: true });
+    const stdin = input();
+    const app = render(<Probe />, {
+      stdin,
+      stdout,
+      env: { COLORTERM: "truecolor" },
+      clipboard: false,
+    });
+    stdin.type("c");
+    expect(memory).toEqual(["false", "false", "false", "false"]);
+    expect(stdout.text()).not.toContain("\u001b]52;");
     app.stop();
   });
 
