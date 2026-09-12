@@ -30,6 +30,7 @@ import {
   render,
   screen,
   userEvent,
+  waitFor,
   within,
 } from "@uniflowed/react-testing";
 // The clock behind `Temporal.Now`, so that "today" in a calendar is a fact this
@@ -323,6 +324,7 @@ describe("Field", () => {
         <Field.Description render={(props) => <small {...props} />}>
           We will not share it.
         </Field.Description>
+        <Field.Status render={(props) => <output {...props} />}>Checking…</Field.Status>
         <Field.Error render={(props) => <output {...props} />}>
           That is not an email address.
         </Field.Error>
@@ -332,15 +334,51 @@ describe("Field", () => {
     const control = screen.getByRole("textbox", { name: "Email address" });
     const label = screen.getByText("Email address");
     const help = screen.getByText("We will not share it.");
+    const status = screen.getByRole("status");
     const error = screen.getByRole("alert");
     expect(label.tagName).toBe("STRONG");
     expect(help.tagName).toBe("SMALL");
+    expect(status.tagName).toBe("OUTPUT");
     expect(error.tagName).toBe("OUTPUT");
     expect(control.getAttribute("aria-labelledby")).toBe(label.getAttribute("id"));
     const described = control.getAttribute("aria-describedby") ?? "";
     expect(described.split(" ")).toContain(help.getAttribute("id"));
+    expect(described.split(" ")).toContain(status.getAttribute("id"));
     expect(described.split(" ")).toContain(error.getAttribute("id"));
     expect(control).toHaveAttribute("aria-invalid", "true");
+    expect(danglingReferences()).toEqual([]);
+  });
+
+  it("keeps non-error status feedback in a polite region before it changes", async () => {
+    component SavingField() {
+      const [saving, setSaving] = useState(false);
+      return (
+        <div>
+          <Field.Root busy={saving}>
+            <Field.Label>Email address</Field.Label>
+            <Field.Control render={(props) => <input type="email" {...props} />} />
+            <Field.Status>{saving ? "Saving email" : ""}</Field.Status>
+          </Field.Root>
+          <button onClick={() => setSaving(true)} type="button">
+            Save
+          </button>
+        </div>
+      );
+    }
+
+    render(<SavingField />);
+    const control = screen.getByLabelText("Email address");
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect((control.getAttribute("aria-describedby") ?? "").split(" ")).toContain(
+      status.getAttribute("id"),
+    );
+    expect(control).not.toHaveAttribute("aria-busy");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("status").textContent).toBe("Saving email");
+    expect(control).toHaveAttribute("aria-busy", "true");
     expect(danglingReferences()).toEqual([]);
   });
 });
@@ -457,6 +495,49 @@ describe("Field: bound to a form", () => {
     await submit();
     expect(screen.getByLabelText("Email address")).not.toHaveAttribute("aria-invalid");
     expect(screen.queryByRole("alert")).toBe(null);
+  });
+
+  it("marks the bound control busy while the form is submitting", async () => {
+    let release: () => void = () => {};
+
+    component SubmittingForm() {
+      const form = useForm<Signup>({ defaultValues: { email: "" } });
+      const email = useFieldSource(form, "email", { required: "We need an email address" });
+      return (
+        <form
+          onSubmit={form.handleSubmit(
+            () =>
+              new Promise<void>((resolve) => {
+                release = () => resolve();
+              }),
+          )}
+        >
+          <Field.Root field={email}>
+            <Field.Label>Email address</Field.Label>
+            <Field.Control render={(props) => <input type="email" {...props} />} />
+            <Field.Status>Saving email</Field.Status>
+            <Field.Error />
+          </Field.Root>
+          <button type="submit">Save</button>
+        </form>
+      );
+    }
+
+    render(<SubmittingForm />);
+    const control = screen.getByLabelText("Email address");
+    await userEvent.type(control, "someone@example.com");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(control).toHaveAttribute("aria-busy", "true");
+    });
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(control).not.toHaveAttribute("aria-busy");
+    });
   });
 });
 
@@ -8581,6 +8662,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Field.Error",
     "Field.Label",
     "Field.Root",
+    "Field.Status",
     "HoverCard.Trigger",
     "Menu.Body",
     "Menu.CheckboxItem",

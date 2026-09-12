@@ -396,7 +396,14 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from "./drawer.js";
-import { FieldControl, FieldDescription, FieldError, FieldLabel, FieldRoot } from "./field.js";
+import {
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldRoot,
+  FieldStatus,
+} from "./field.js";
 import { HoverCardBody, HoverCardRoot, HoverCardTrigger } from "./hover-card.js";
 import { InputOtpGroup, InputOtpRoot, InputOtpSeparator, InputOtpSlot } from "./input-otp.js";
 import {
@@ -551,14 +558,16 @@ export { dismissAllToasts, dismissToast, toast, updateToast };
  *     <Field.Label>Email</Field.Label>
  *     <Field.Control render={(props) => <input type="email" {...props} />} />
  *     <Field.Description>We will not share it.</Field.Description>
+ *     <Field.Status>{saving ? "Saving…" : ""}</Field.Status>
  *     <Field.Error>{error}</Field.Error>
  *   </Field.Root>
  *
  * Inside a form, `field` replaces the hand-written `invalid`: the form says
  * whether the field is wrong and what the message is, and the field composes
- * every `aria-*` from that in one place. `@uniflowed/form`'s `useFieldSource`
- * is what produces one, and `field.js`'s header says why the hook lives there
- * rather than here.
+ * every `aria-*` from that in one place. It also marks the control busy during
+ * submit, validation, or async default loading. `@uniflowed/form`'s
+ * `useFieldSource` is what produces one, and `field.js`'s header says why the
+ * hook lives there rather than here.
  *
  *   const email = useFieldSource(form, "email", { required: "We need one" });
  *   <Field.Root field={email}>…<Field.Error /></Field.Root>
@@ -573,6 +582,7 @@ export const Field = {
   Label: FieldLabel,
   Control: FieldControl,
   Description: FieldDescription,
+  Status: FieldStatus,
   Error: FieldError,
 };
 

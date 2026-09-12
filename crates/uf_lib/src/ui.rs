@@ -382,7 +382,7 @@ pub fn ui_components() -> Vec<UiComponent> {
         // anything a new part would render.
         UiComponent::new(
             "Field",
-            &["Root", "Label", "Control", "Description", "Error"],
+            &["Root", "Label", "Control", "Description", "Status", "Error"],
             UiRuntime::Client,
         )
         .styled_by(&["fieldStyles"]),
