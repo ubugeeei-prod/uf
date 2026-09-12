@@ -79,7 +79,7 @@ type Request = {|
  * browser that will not start, with its own output attached — not as a file
  * that timed out, which is a sentence about tests that were never reached.
  */
-const START_TIMEOUT_MS = 90_000;
+const START_TIMEOUT_MS = 110_000;
 
 /**
  * The switches a headless run needs, and what each is for.
@@ -119,6 +119,12 @@ function browserArguments(profile: string, url: string): Array<string> {
     `--user-data-dir=${profile}`,
     "--no-first-run",
     "--no-default-browser-check",
+    // CI Chromium may be installed as a system package without a working
+    // namespace sandbox. A layout smoke test should measure the renderer, not
+    // the runner's sandbox configuration.
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--no-zygote",
     // Keep startup deterministic in CI. These cut services Chrome may start
     // before the first page request: extensions, sync, updater probes, and
     // background network clients such as GCM. None of them changes layout or
@@ -130,6 +136,7 @@ function browserArguments(profile: string, url: string): Array<string> {
     "--disable-domain-reliability",
     "--disable-extensions",
     "--disable-sync",
+    "--disable-features=AutofillServerCommunication,BackgroundFetch,BackgroundSync,CertificateTransparencyComponentUpdater,DialMediaRouteProvider,MediaRouter,NotificationTriggers,OptimizationHints,PushMessaging,Translate",
     "--metrics-recording-only",
     // Nothing here paints, and a GPU process is one more thing to fail in a
     // container.
