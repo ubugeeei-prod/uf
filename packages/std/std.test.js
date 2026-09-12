@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Sixteen modules, and what is asserted here is the property that makes each one
+// Seventeen modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -46,6 +46,15 @@ import {
   encodedLength as encodedBase32Length,
   isValid as isValidBase32,
 } from "@uniflowed/std/base32";
+import {
+  BufferedReader,
+  Scanner,
+  TokenTooLongError,
+  newReader as newBufferedReader,
+  scanBytes,
+  scanLines,
+  scanWords,
+} from "@uniflowed/std/bufio";
 import {
   BIG_ENDIAN,
   Cursor,
@@ -1326,6 +1335,122 @@ describe("io", () => {
     await expect(writer.write("not bytes")).rejects.toThrow(TypeError);
 
     expect(out.length()).toBe(0);
+  });
+});
+
+describe("bufio", () => {
+  it("peeks without consuming and owns the peeked bytes", async () => {
+    const reader = new BufferedReader(readerFromBytes(b(1, 2, 3, 4), { chunkSize: 4 }), {
+      bufferSize: 4,
+    });
+
+    const peeked = await reader.peek(2);
+    peeked[0] = 9;
+
+    expect(await reader.read(3)).toEqual({ done: false, value: b(1, 2, 3) });
+    expect(reader.buffered()).toBe(1);
+    expect(await reader.readByte()).toBe(4);
+    expect(await reader.readByte()).toBe(null);
+  });
+
+  it("discards buffered bytes before reading more", async () => {
+    const reader = newBufferedReader(readerFromBytes(b(1, 2, 3, 4, 5), { chunkSize: 2 }), {
+      bufferSize: 2,
+    });
+
+    expect(await reader.discard(3)).toBe(3);
+    expect(Array.from(await readAll(reader))).toEqual([4, 5]);
+    expect(await reader.discard(3)).toBe(0);
+  });
+
+  it("scans lines across reader chunk boundaries", async () => {
+    const scanner = new Scanner(
+      readerFromBytes(fromUtf8("alpha\nbeta\r\ngamma"), { chunkSize: 2 }),
+    );
+    const lines = [];
+
+    while (await scanner.scan()) {
+      lines.push(scanner.text());
+    }
+
+    expect(lines).toEqual(["alpha", "beta", "gamma"]);
+    expect(scanner.error()).toBe(null);
+  });
+
+  it("scans words and bytes with built-in split functions", async () => {
+    const words = new Scanner(readerFromBytes(fromUtf8(" alpha\tbeta\n gamma")), {
+      split: scanWords,
+      bufferSize: 3,
+    });
+    const found = [];
+    while (await words.scan()) {
+      found.push(words.text());
+    }
+
+    expect(found).toEqual(["alpha", "beta", "gamma"]);
+
+    const bytes = new Scanner(readerFromBytes(b(7, 8)), { split: scanBytes });
+    expect(await bytes.scan()).toBe(true);
+    expect(bytes.bytes()).toEqual(b(7));
+    expect(await bytes.scan()).toBe(true);
+    expect(bytes.bytes()).toEqual(b(8));
+    expect(await bytes.scan()).toBe(false);
+  });
+
+  it("accepts custom split functions", async () => {
+    const splitSemicolon = (data, atEof) => {
+      const separator = data.indexOf(0x3b);
+      if (separator >= 0) {
+        return { advance: separator + 1, token: data.subarray(0, separator) };
+      }
+      if (atEof && data.length > 0) {
+        return { advance: data.length, token: data };
+      }
+      return { advance: 0, token: null };
+    };
+    const scanner = new Scanner(readerFromBytes(fromUtf8("red;green;blue")), {
+      split: splitSemicolon,
+    });
+    const values = [];
+
+    while (await scanner.scan()) {
+      values.push(scanner.text());
+    }
+
+    expect(values).toEqual(["red", "green", "blue"]);
+  });
+
+  it("stops when a token grows past the configured maximum", async () => {
+    const scanner = new Scanner(readerFromBytes(fromUtf8("abcdef"), { chunkSize: 2 }), {
+      maxTokenSize: 3,
+    });
+
+    expect(await scanner.scan()).toBe(false);
+    expect(scanner.error()).toBeInstanceOf(TokenTooLongError);
+  });
+
+  it("does not count separators or skipped prefixes against the maximum token size", async () => {
+    const lines = new Scanner(readerFromBytes(fromUtf8("abc\n")), {
+      maxTokenSize: 3,
+    });
+    expect(await lines.scan()).toBe(true);
+    expect(lines.text()).toBe("abc");
+    expect(lines.error()).toBe(null);
+
+    const words = new Scanner(readerFromBytes(fromUtf8("   abc"), { chunkSize: 6 }), {
+      maxTokenSize: 3,
+      split: scanWords,
+    });
+    expect(await words.scan()).toBe(true);
+    expect(words.text()).toBe("abc");
+    expect(words.error()).toBe(null);
+  });
+
+  it("exports line splitting as the default scanner split", async () => {
+    const scanner = new Scanner(readerFromBytes(fromUtf8("one\ntwo")), { split: scanLines });
+
+    expect(await scanner.scan()).toBe(true);
+    expect(scanner.text()).toBe("one");
   });
 });
 

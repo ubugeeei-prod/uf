@@ -29,6 +29,13 @@
 // rather than inside the packages they are about.
 
 import { decode as decodeBase32, encode as encodeBase32 } from "../../packages/std/base32.js";
+import {
+  BufferedReader,
+  Scanner,
+  TokenTooLongError,
+  newReader as newBufferedReader,
+  scanWords,
+} from "../../packages/std/bufio.js";
 import { Cursor, putVarint, uvarint } from "../../packages/std/binary.js";
 import { Builder, compare, equal, split } from "../../packages/std/bytes.js";
 import { background, key, withCancel, withTimeout, withValue } from "../../packages/std/context.js";
@@ -241,6 +248,29 @@ const shortWrite = new ShortWriteError(2, 1);
 // expect: number is incompatible with string
 export const ioShortWriteCountsAreNumbers: string = shortWrite.written;
 
+// --- bufio ------------------------------------------------------------------
+
+const bufferedReader = new BufferedReader(readerFromBytes(left));
+const scanner = new Scanner(readerFromBytes(left), { split: scanWords });
+
+// expect: Promise
+export const bufioPeekIsAsync: Uint8Array = bufferedReader.peek(1);
+
+export const bufioBufferSizeIsNumeric: mixed = new BufferedReader(readerFromBytes(left), {
+  // expect: "large" is incompatible with number
+  bufferSize: "large",
+});
+
+// expect: string is incompatible with number
+export const bufioScannerTextIsString: number = scanner.text();
+
+// expect: Promise
+export const bufioScannerScanIsAsync: boolean = scanner.scan();
+
+const tokenTooLong = new TokenTooLongError(1024);
+// expect: number is incompatible with string
+export const bufioTokenLimitIsNumeric: string = tokenTooLong.limit;
+
 // --- slices -----------------------------------------------------------------
 
 // expect: number is incompatible with string
@@ -352,6 +382,11 @@ export const binaryPutVarint: Uint8Array = putVarint(-1n);
 export const ioReadAllBytes: Promise<Uint8Array> = readAllBytes(readerFromBytes(left));
 export const ioCopyCount: Promise<number> = copyBytes(ioWriter, readerFromBytes(left));
 export const ioBufferBytes: Uint8Array = new BufferWriter().bytes();
+export const bufioReader: BufferedReader = newBufferedReader(readerFromBytes(left));
+export const bufioPeek: Promise<Uint8Array> = bufioReader.peek(1);
+export const bufioScannerBytes: Uint8Array = scanner.bytes();
+export const bufioScannerText: string = scanner.text();
+export const bufioScannerScan: Promise<boolean> = scanner.scan();
 export const searchIndex: number = search(4, (index) => index >= 2);
 export const binarySearchResult: { readonly index: number, readonly found: boolean } = binarySearch(
   sortedNumbers,
