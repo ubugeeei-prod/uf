@@ -2,7 +2,7 @@
 //
 // `@uniflowed/std`: the Go standard library modules that JavaScript is missing.
 //
-// Eighteen modules, and what is asserted here is the property that makes each one
+// Nineteen modules, and what is asserted here is the property that makes each one
 // worth importing rather than the fact that it returns something. A `heap` that
 // pops in the wrong order is a heap; an `errors.is` that hangs on a cycle
 // answers every question correctly until the one that matters; a `Group` that
@@ -130,6 +130,12 @@ import {
   minutes,
   seconds,
 } from "@uniflowed/std/time";
+import {
+  ZipReader,
+  ZipWriter,
+  deflate as zipDeflate,
+  inflate as zipInflate,
+} from "@uniflowed/std/zip";
 
 import { everyMisuseIsReported } from "../../tests/library/type-tests.js";
 
@@ -1518,6 +1524,52 @@ describe("textproto", () => {
     expect(() => parseHeaders("bad key: value\r\n\r\n")).toThrow(InvalidHeaderError);
     expect(() => parseHeaders("ok: value\r\n \u0001folded\r\n\r\n")).toThrow(InvalidHeaderError);
     expect(() => stringifyHeaderBlock({ Ok: ["bad\nvalue"] })).toThrow(InvalidHeaderError);
+  });
+});
+
+describe("zip", () => {
+  it("deflates and inflates raw byte ranges with web streams", async () => {
+    const input = fromUtf8("the quick brown fox ".repeat(20));
+
+    const compressed = await zipDeflate(input);
+    const output = await zipInflate(compressed);
+
+    expect(compressed.length).toBeLessThan(input.length);
+    expect(toUtf8(output)).toBe(toUtf8(input));
+  });
+
+  it("writes a central directory and reads store and deflate entries", async () => {
+    const writer = new ZipWriter();
+    await writer.add("hello.txt", fromUtf8("hello"), { compression: "store" });
+    await writer.add("nested/readme.txt", fromUtf8("read me ".repeat(12)));
+
+    const reader = new ZipReader(writer.bytes());
+
+    expect(reader.entries().map((entry) => [entry.path, entry.compression, entry.size])).toEqual([
+      ["hello.txt", "store", 5],
+      ["nested/readme.txt", "deflate", 96],
+    ]);
+    expect(toUtf8(await reader.read("hello.txt"))).toBe("hello");
+    expect(toUtf8(await reader.read("nested/readme.txt"))).toBe("read me ".repeat(12));
+  });
+
+  it("rejects corrupted entry data instead of returning unchecked bytes", async () => {
+    const writer = new ZipWriter();
+    const payload = fromUtf8("payload");
+    await writer.add("file.txt", payload, { compression: "store" });
+    const archive = writer.bytes();
+    const at = indexOf(archive, payload);
+    expect(at).toBeGreaterThan(-1);
+
+    const corrupted = archive.slice();
+    corrupted[at] ^= 0xff;
+
+    await expect(new ZipReader(corrupted).read("file.txt")).rejects.toThrow("CRC32");
+  });
+
+  it("rejects unsafe paths and unsupported archives", async () => {
+    await expect(new ZipWriter().add("../escape.txt", b(1))).rejects.toThrow("unsafe");
+    expect(() => new ZipReader(b(1, 2, 3))).toThrow("end of central directory");
   });
 });
 

@@ -34,7 +34,7 @@ try {
 
 ## What ships today
 
-Eighteen modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
+Nineteen modules. Each is a separate subpath, so importing `@uniflowed/std/hex`
 brings in a hex codec and nothing else.
 
 | Import | Go's name | What it is |
@@ -57,9 +57,10 @@ brings in a hex codec and nothing else.
 | `@uniflowed/std/io` | `io` | Byte `Reader`/`Writer`, `copy`, `readAll`, `limitReader` and Web Stream adapters |
 | `@uniflowed/std/bufio` | `bufio` | Buffered byte reads plus `Scanner` line, word, byte and custom splits |
 | `@uniflowed/std/textproto` | `net/textproto` | MIME header blocks with canonical keys, repeated values and folded lines |
+| `@uniflowed/std/zip` | `archive/zip` | ZIP central-directory reading and writing over store and web DEFLATE streams |
 
 The root `@uniflowed/std` is unchanged: it is a declaration surface whose
-functions raise `NativeRuntimeRequiredError`, and it is not what these eighteen are.
+functions raise `NativeRuntimeRequiredError`, and it is not what these nineteen are.
 Everything above runs.
 
 ## The types are the point
@@ -226,12 +227,12 @@ on them rather than replacing them.
 ### Missing, and worth having
 
 The first six at the top of this page are tranche 1. `slices`, `base32`, `list`,
-`csv`, `binary`, `path`, `glob`, `hash`, `time`, `io`, `bufio` and `textproto` are the first next-tranche
+`csv`, `binary`, `path`, `glob`, `hash`, `time`, `io`, `bufio`, `textproto` and `zip` are the first next-tranche
 pieces. What remains, roughly in order of value:
 
 | Go | What it would be |
 | --- | --- |
-| `archive/zip`, `archive/tar` | Reading, at least. The compression half is `DecompressionStream`; the container format is not |
+| `archive/tar` | Reading, at least. The container format is not built into the platform |
 
 `sync.RWMutex` is deliberately absent rather than pending: readers and writers
 cannot run at the same time in one runtime, so it would buy a fairness policy
