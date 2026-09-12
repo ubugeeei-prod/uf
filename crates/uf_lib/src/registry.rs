@@ -1100,10 +1100,9 @@ pub const CLIENT_MODULE_PACKAGE: &str = "@uniflowed/ui";
 /// are Server Components, and shipping them to the browser because they came
 /// out of the same package would be exactly the mistake RSC exists to stop.
 ///
-/// uf's own package only. A third party needs a way to *declare* a client root
-/// — a manifest field, or the `react-server` export condition — which is the
-/// other half of #718 and waits on whether a manifest may name a specifier
-/// rather than a path.
+/// uf's own package only. A third party still needs a way to *declare* a
+/// client root — a manifest field, or the `react-server` export condition —
+/// before the same package-specifier boundary can be populated from its data.
 pub const CLIENT_MODULE_SUBPATHS: &[&str] = &[
     "accordion",
     "alert-dialog",

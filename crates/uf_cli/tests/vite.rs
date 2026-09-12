@@ -5460,7 +5460,7 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
         &fs::read_to_string(root.join(".uf/build/meta/uf-rsc-manifest.json")).unwrap(),
     )
     .unwrap();
-    assert_eq!(manifest["version"], serde_json::json!(2));
+    assert_eq!(manifest["version"], serde_json::json!(3));
     let proximity = |path: &str| {
         manifest["modules"]
             .as_array()

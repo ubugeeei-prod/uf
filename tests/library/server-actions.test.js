@@ -702,7 +702,7 @@ describe("the endpoint a server action is dialled at", () => {
 describe("the two tables the manifest becomes", () => {
   const root = "/project";
   const manifest = {
-    version: 2,
+    version: 3,
     serverActions: [
       {
         id: RECORD,
@@ -913,7 +913,7 @@ describe("the module the browser is given in place of a `use server` file", () =
   const root = path.join(repository, "crates", "uf_cli", "tests", "fixtures", "rsc-split-app");
   const action = path.join(root, "app", "counter", "_actions", "tally.js");
   const manifest = {
-    version: 2,
+    version: 3,
     modules: [],
     serverActions: [
       {

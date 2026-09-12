@@ -53,15 +53,15 @@ pub use directive::{
     ModuleEnvironment, module_environment, scan_directives,
 };
 pub use graph::{
-    ClientBoundary, ClientBoundaryProximity, ClientBundleReason, EntryKind, ModuleId,
-    ModuleReachability, RscDiagnostic, RscGraph, RscGraphBuilder, RscModule, RscModuleInput,
-    RscSeverity, SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution, is_inside_project,
-    is_server_only_specifier, normalize_module_path, resolve_specifier,
+    ClientBoundary, ClientBoundaryProximity, ClientBoundaryTarget, ClientBundleReason, EntryKind,
+    ModuleId, ModuleReachability, RscDiagnostic, RscGraph, RscGraphBuilder, RscModule,
+    RscModuleInput, RscSeverity, SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution,
+    is_inside_project, is_server_only_specifier, normalize_module_path, resolve_specifier,
 };
 pub use manifest::{
     RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RSC_MANIFEST_FILE_NAME, RSC_MANIFEST_VERSION,
-    RscManifest, RscManifestAction, RscManifestBoundary, RscManifestDiagnostic, RscManifestModule,
-    write_manifest,
+    RscManifest, RscManifestAction, RscManifestBoundary, RscManifestClientReference,
+    RscManifestDiagnostic, RscManifestModule, write_manifest,
 };
 pub use project::{
     IGNORED_DIRECTORIES, NON_APP_SUFFIXES, ProjectScanOptions, ROUTER_ENTRY_FILES, RscAnalysis,

@@ -232,13 +232,22 @@ impl ClientBoundaryProximity {
     }
 }
 
-/// A server module importing a `"use client"` module.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// The far side of a server-to-client import.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ClientBoundaryTarget {
+    /// A project module the graph scanned.
+    Module(ModuleId),
+    /// A package module the graph knows without walking `node_modules`.
+    Package(CompactString),
+}
+
+/// A server module importing a client module.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ClientBoundary {
     /// The server module that owns the import.
     pub importer: ModuleId,
-    /// The `"use client"` module, which becomes a client bundle root.
-    pub client_module: ModuleId,
+    /// The client module, which becomes a client bundle root.
+    pub target: ClientBoundaryTarget,
 }
 
 /// One module as it is fed into [`RscGraphBuilder`].
@@ -380,7 +389,7 @@ pub struct RscGraph {
     modules: Vec<RscModule>,
     index: FxHashMap<Utf8PathBuf, ModuleId>,
     boundaries: Vec<ClientBoundary>,
-    bundle_roots: Vec<ModuleId>,
+    bundle_roots: Vec<ClientBoundaryTarget>,
     diagnostics: Vec<RscDiagnostic>,
 }
 
@@ -420,7 +429,7 @@ impl RscGraph {
     }
 
     /// Client bundle roots, ordered.
-    pub fn client_bundle_roots(&self) -> &[ModuleId] {
+    pub fn client_bundle_roots(&self) -> &[ClientBoundaryTarget] {
         &self.bundle_roots
     }
 
@@ -501,6 +510,16 @@ impl RscGraph {
         work.push_back(id);
 
         while let Some(current) = work.pop_front() {
+            if let Some(specifier) = self.modules[current.index()]
+                .external_imports
+                .iter()
+                .find(|specifier| uf_lib::is_client_module(specifier))
+            {
+                return ClientBundleReason::ImportsPackage {
+                    chain: self.chain_to(id, current, &predecessor),
+                    specifier: specifier.clone(),
+                };
+            }
             for target in self.modules[current.index()].imports.iter().copied() {
                 if seen[target.index()] {
                     continue;
@@ -537,9 +556,11 @@ impl RscGraph {
 
 /// Why the browser has to be able to evaluate a module.
 ///
-/// The answer [`RscGraph::client_bundle_reason`] gives, and the three shapes it
-/// can take. There is no fourth: a module is a boundary, is above one, or is
-/// not the browser's business.
+/// The answer [`RscGraph::client_bundle_reason`] gives.
+///
+/// A package client module can be the far side of the boundary too, but it is
+/// still the same question: this module is a boundary, is above one, or is not
+/// the browser's business.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ClientBundleReason {
     /// Nothing the browser evaluates reaches this module.
@@ -559,6 +580,16 @@ pub enum ClientBundleReason {
     /// after it. Never empty, and never one element long — a chain of one
     /// would be [`Self::Declared`] said badly.
     Imports(Vec<ModuleId>),
+    /// The module imports a known package client module, through this chain.
+    ///
+    /// The chain names project modules only: the package specifier is not a
+    /// module id because it deliberately was not read from `node_modules`.
+    ImportsPackage {
+        /// Project modules followed to the importer of `specifier`.
+        chain: Vec<ModuleId>,
+        /// Bare specifier imported at the boundary.
+        specifier: CompactString,
+    },
 }
 
 #[cfg(test)]

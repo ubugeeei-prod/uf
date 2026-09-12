@@ -124,7 +124,7 @@ function splitProject(): string {
 }
 
 /** The manifest that project's analysis would produce. */
-function splitManifest(version: number = 2) {
+function splitManifest(version: number = 3) {
   return {
     version,
     engine: "uf-native",
@@ -203,14 +203,13 @@ describe("the client route table", () => {
     expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
   });
 
-  it("ships every page when the manifest is older than the field it needs", () => {
-    // Version 1 published the boundaries and nothing that said which modules
-    // sat above one. Read optimistically it would answer `undefined` for every
-    // module, compare unequal to `"reaches-boundary"`, and drop the whole
-    // application from the browser.
+  it("ships every page when the manifest is older than the package boundary schema", () => {
+    // Version 2 could only name scanned files as client roots. Reading it
+    // optimistically would miss a package client boundary and drop the route
+    // that imported it, so older manifests remove nothing.
     const root = splitProject();
     const table = scanRoutes(path.join(root, "app"));
-    const shipsPage = clientRouteFilter(manifestIn(root, splitManifest(1)), root, table);
+    const shipsPage = clientRouteFilter(manifestIn(root, splitManifest(2)), root, table);
 
     const source = routesModuleSource(table, { shipsPage });
 

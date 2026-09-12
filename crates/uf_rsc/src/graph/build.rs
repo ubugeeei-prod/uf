@@ -21,8 +21,8 @@ use super::resolve::{
     resolve_specifier,
 };
 use super::{
-    ClientBoundary, ClientBoundaryProximity, EntryKind, ModuleId, ModuleReachability, RscGraph,
-    RscModule, RscModuleInput,
+    ClientBoundary, ClientBoundaryProximity, ClientBoundaryTarget, EntryKind, ModuleId,
+    ModuleReachability, RscGraph, RscModule, RscModuleInput,
 };
 
 /// Collects modules and entries, then resolves them into an [`RscGraph`].
@@ -303,7 +303,15 @@ fn collect_boundaries(
             if environments[target.index()] == ModuleEnvironment::Client {
                 boundaries.push(ClientBoundary {
                     importer: ModuleId(position as u32),
-                    client_module: target,
+                    target: ClientBoundaryTarget::Module(target),
+                });
+            }
+        }
+        for import in &edges.external {
+            if uf_lib::is_client_module(&import.specifier) {
+                boundaries.push(ClientBoundary {
+                    importer: ModuleId(position as u32),
+                    target: ClientBoundaryTarget::Package(import.specifier.clone()),
                 });
             }
         }
@@ -353,10 +361,10 @@ fn collect_bundle_roots(
     entries: &[(Utf8PathBuf, EntryKind)],
     index: &FxHashMap<Utf8PathBuf, ModuleId>,
     environments: &[ModuleEnvironment],
-) -> Vec<ModuleId> {
-    let mut roots: Vec<ModuleId> = boundaries
+) -> Vec<ClientBoundaryTarget> {
+    let mut roots: Vec<ClientBoundaryTarget> = boundaries
         .iter()
-        .map(|boundary| boundary.client_module)
+        .map(|boundary| boundary.target.clone())
         .collect();
     for (path, kind) in entries {
         if *kind != EntryKind::Client {
@@ -365,7 +373,7 @@ fn collect_bundle_roots(
         if let Some(id) = index.get(path)
             && environments[id.index()] == ModuleEnvironment::Client
         {
-            roots.push(*id);
+            roots.push(ClientBoundaryTarget::Module(*id));
         }
     }
     roots.sort_unstable();

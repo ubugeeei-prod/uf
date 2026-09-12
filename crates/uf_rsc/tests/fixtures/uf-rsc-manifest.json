@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "engine": "uf-native",
   "buildFingerprint": "71527ae95b8871ca4467cfe1c007937a061888fad13c7da20eb669bacb59fb0b",
   "modules": [
@@ -45,11 +45,17 @@
   "clientBoundaries": [
     {
       "importer": "app/$page.js",
-      "module": "app/client/Counter.js"
+      "target": {
+        "kind": "module",
+        "path": "app/client/Counter.js"
+      }
     }
   ],
   "clientBundleRoots": [
-    "app/client/Counter.js"
+    {
+      "kind": "module",
+      "path": "app/client/Counter.js"
+    }
   ],
   "serverActions": [
     {

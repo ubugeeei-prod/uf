@@ -35,19 +35,65 @@ fn a_client_module_imported_by_a_server_module_is_a_boundary() {
     let graph = builder.build();
 
     assert_eq!(graph.client_boundaries().len(), 1);
-    let boundary = graph.client_boundaries()[0];
+    let boundary = &graph.client_boundaries()[0];
     assert_eq!(
         graph.module_by_id(boundary.importer).unwrap().path,
         "app/page.js"
     );
+    let ClientBoundaryTarget::Module(client_module) = &boundary.target else {
+        panic!(
+            "expected a project module boundary, got {:?}",
+            boundary.target
+        );
+    };
     assert_eq!(
-        graph.module_by_id(boundary.client_module).unwrap().path,
+        graph.module_by_id(*client_module).unwrap().path,
         "app/Counter.js"
     );
     assert_eq!(graph.client_bundle_roots().len(), 1);
     assert_eq!(
         graph.module("app/Counter.js").unwrap().reachability,
         ModuleReachability::ClientOnly
+    );
+}
+
+#[test]
+fn a_known_client_package_module_imported_by_a_server_module_is_a_boundary() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("@uniflowed/ui/switch"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(graph.client_boundaries().len(), 1);
+    assert_eq!(
+        graph.client_boundaries()[0].target,
+        ClientBoundaryTarget::Package(CompactString::const_new("@uniflowed/ui/switch"))
+    );
+    assert_eq!(
+        graph.client_bundle_roots(),
+        &[ClientBoundaryTarget::Package(CompactString::const_new(
+            "@uniflowed/ui/switch"
+        ))]
+    );
+    assert_eq!(
+        graph.module("app/page.js").unwrap().proximity,
+        ClientBoundaryProximity::ReachesBoundary
+    );
+    assert!(
+        graph
+            .module("app/page.js")
+            .unwrap()
+            .requires_client_bundle()
+    );
+    assert_eq!(
+        graph
+            .module("app/page.js")
+            .unwrap()
+            .external_imports
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec![CompactString::const_new("@uniflowed/ui/switch")]
     );
 }
 
@@ -285,13 +331,13 @@ fn a_use_server_module_a_client_module_imports_stays_on_the_server() {
     // It is not a client bundle root and nothing about it is: the reference is
     // what the browser gets, and a reference is not a module of this graph.
     assert_eq!(graph.client_bundle_roots().len(), 1);
-    assert_eq!(
-        graph
-            .module_by_id(graph.client_bundle_roots()[0])
-            .unwrap()
-            .path,
-        "app/Counter.js"
-    );
+    let ClientBoundaryTarget::Module(root) = &graph.client_bundle_roots()[0] else {
+        panic!(
+            "expected a project module root, got {:?}",
+            graph.client_bundle_roots()[0]
+        );
+    };
+    assert_eq!(graph.module_by_id(*root).unwrap().path, "app/Counter.js");
 }
 
 #[test]
@@ -388,6 +434,26 @@ fn a_module_above_a_boundary_names_the_imports_that_reach_it() {
     assert_eq!(
         chain(&graph, "app/section.js"),
         ["app/section.js", "app/Counter.js"]
+    );
+}
+
+#[test]
+fn a_module_above_a_package_boundary_names_the_import_that_reaches_it() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./section.js"));
+    builder.add_module(server("app/section.js").with_import("@uniflowed/ui/switch"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    assert_eq!(
+        reason(&graph, "app/page.js"),
+        ClientBundleReason::ImportsPackage {
+            chain: vec![
+                graph.module_id("app/page.js").unwrap(),
+                graph.module_id("app/section.js").unwrap(),
+            ],
+            specifier: CompactString::const_new("@uniflowed/ui/switch"),
+        }
     );
 }
 
