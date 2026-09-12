@@ -1,5 +1,17 @@
 # Changelog
 
+## uf@0.0.0-alpha.24
+
+_2026-09-12_
+
+### Added
+
+- **ui**: add collapsible render escape hatch (#811)
+
+### Performance
+
+- **lint**: avoid rendering ESTree for derived-state effects (#812)
+
 ## uf@0.0.0-alpha.23
 
 _2026-09-12_
