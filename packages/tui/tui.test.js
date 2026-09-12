@@ -255,6 +255,29 @@ describe("layout is flexbox", () => {
     handle.stop();
   });
 
+  it("lets main-axis auto margins take the free space before justifyContent", () => {
+    const handle = testRender(
+      <Box flexDirection="row" justifyContent="flex-end" width={10}>
+        <Text>ab</Text>
+        <Text marginLeft="auto">cd</Text>
+      </Box>,
+      { width: 10, height: 1 },
+    );
+    expect(rows(handle.frame())).toEqual(["ab      cd"]);
+    handle.stop();
+  });
+
+  it("lets cross-axis auto margins override alignment", () => {
+    const handle = testRender(
+      <Box flexDirection="row" alignItems="flex-start" height={3} width={3}>
+        <Text marginTop="auto">x</Text>
+      </Box>,
+      { width: 3, height: 3 },
+    );
+    expect(rows(handle.frame())).toEqual(["   ", "   ", "x  "]);
+    handle.stop();
+  });
+
   it("resolves a percentage against the containing block", () => {
     const handle = testRender(
       <Box flexDirection="row" height={1} width={10}>
