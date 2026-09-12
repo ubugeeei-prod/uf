@@ -92,6 +92,14 @@ function clientModules(manifest) {
       module.environment === "client" || module.proximity === "reaches-boundary",
     );
   }
+  for (const boundary of manifest.clientBoundaries ?? []) {
+    if (boundary == null || typeof boundary.importer !== "string") continue;
+    modules.set(boundary.importer, true);
+  }
+  for (const root of manifest.clientBundleRoots ?? []) {
+    if (root == null || root.kind !== "module" || typeof root.path !== "string") continue;
+    modules.set(root.path, true);
+  }
   return modules;
 }
 
