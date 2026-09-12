@@ -130,7 +130,10 @@
 // true is the conclusion a reader would draw from it. The work is writing a
 // second implementation against the plugin API, not waiting for Bun.
 
+import fs from "node:fs";
 import * as nodeModule from "node:module";
+import os from "node:os";
+import path from "node:path";
 
 /** The URL parameter carrying `<module epoch>.<mock revision>`. */
 export const REVISION_PARAM = "uf-modules";
@@ -146,6 +149,15 @@ const mocks = new Map();
 
 /** Namespaces handed to a generated module, by the exact URL it was loaded as. */
 const served = new Map();
+
+/** Bun stand-in files, keyed by the mocked module identity they serve. */
+const bunStandins = new Map();
+
+/** Where Bun stand-in modules are written, lazily. */
+let bunStandinRoot = null;
+
+/** How many Bun stand-in files have ever been written in this process. */
+let bunStandinFiles = 0;
 
 /** How many mocks have ever been registered in this process. */
 let revisions = 0;
@@ -264,6 +276,7 @@ export function startModuleEpoch() {
 export function resetModuleMocks() {
   mocks.clear();
   served.clear();
+  bunStandins.clear();
   epoch = 0;
 }
 
@@ -346,6 +359,57 @@ export function mockedSource(url) {
   // the format from the package, and the guess is not always "module".
   lines.push(bindings.length === 0 ? "export {};" : `export { ${bindings.join(", ")} };`);
   return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Write the current stand-in for `url` to a real file Bun can redirect to.
+ *
+ * Node serves generated modules from `loadHook`, but Bun's `onLoad` never sees
+ * the query-carrying identity this file uses. The piece of Bun that does work
+ * is an `onResolve` answer naming another file, so this materializes the same
+ * generated module under a unique path. It is intentionally only a primitive:
+ * Bun still cannot make a direct dynamic import take that redirect, so
+ * `@uniflowed/test` keeps the public API disabled on Bun until that path is
+ * solved too.
+ */
+export function bunMockedModulePath(url) {
+  const record = mocks.get(moduleKey(url));
+  if (record == null) {
+    return null;
+  }
+
+  const identity = mockedModuleIdentity(url, record.revision);
+  let file = bunStandins.get(identity);
+  if (file != null) {
+    return file;
+  }
+
+  const source = mockedSource(identity);
+  if (source == null) {
+    return null;
+  }
+
+  const root = bunStandinDirectory();
+  bunStandinFiles += 1;
+  file = path.join(root, `${bunStandinFiles}.mjs`);
+  fs.writeFileSync(file, source);
+  bunStandins.set(identity, file);
+  return file;
+}
+
+/** The mocked module identity for a registered module. */
+function mockedModuleIdentity(url, revision) {
+  const parsed = new URL(url);
+  parsed.searchParams.set(REVISION_PARAM, `${epoch}.${revision}`);
+  return parsed.href;
+}
+
+/** Directory for generated Bun stand-in files. */
+function bunStandinDirectory() {
+  if (bunStandinRoot == null) {
+    bunStandinRoot = fs.mkdtempSync(path.join(os.tmpdir(), "uf-bun-module-mocks-"));
+  }
+  return bunStandinRoot;
 }
 
 /** How an export is named in an `export {}` clause. */
