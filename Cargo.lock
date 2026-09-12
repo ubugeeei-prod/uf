@@ -3604,6 +3604,7 @@ dependencies = [
  "mimalloc",
  "serde",
  "serde_json",
+ "sha2",
  "similar-asserts",
  "tempfile",
  "uf_assets",
