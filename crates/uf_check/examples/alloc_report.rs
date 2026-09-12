@@ -11,7 +11,10 @@
 //! * **`--batch N`** — the same module N times, which separates the cost paid
 //!   once per *call* (a builtin environment, forced as far as the batch needs
 //!   it) from the cost paid per *module*. Neither is visible on its own: a
-//!   single run reports their sum and says nothing about which is which;
+//!   single run reports their sum and says nothing about which is which. When
+//!   `N` is greater than one, the report measures `1` and `N` in the same
+//!   process and prints the inferred split, so the comparison in #678 is not a
+//!   hand calculation;
 //! * **`--cache`** — the same module through one [`CheckCache`] three times,
 //!   which is the question #678 leaves open. `check_sources_cached` exists for
 //!   the caller that checks one file at a time, and a batch proving cheap says
@@ -99,6 +102,9 @@ fn main() {
         std::hint::black_box(&report);
     });
     print_delta(&delta, runs);
+    if batch > 1 {
+        print_batch_split(&sources[0..1], &delta, batch, runs);
+    }
 
     if phases {
         // A second pass rather than the one above: a span reads the
@@ -219,6 +225,48 @@ fn print_delta(delta: &AllocDelta, runs: u64) {
     println!(
         "peak           {:.2} MiB",
         delta.peak_above_baseline as f64 / (1024.0 * 1024.0)
+    );
+}
+
+/// Estimate the per-call and per-module pieces of a batch report.
+///
+/// The model is deliberately the same one #678 used in the issue body:
+/// `batch_cost = fixed + batch * module`. Measuring a batch of one and the
+/// caller's requested batch in the same process keeps one-time builtin
+/// preparation out of both sides, leaving the split that matters to a cold
+/// `uf check` run.
+fn print_batch_split(single: &[Source<'_>], batch_delta: &AllocDelta, batch: usize, runs: u64) {
+    let single_delta = measure(runs, || {
+        let report = check_sources(single, &[], &CheckLimits::default()).expect("checks");
+        std::hint::black_box(&report);
+    });
+
+    let batch = u64::try_from(batch).expect("batch count fits in u64");
+    let batch_allocations = batch_delta.allocations / runs;
+    let single_allocations = single_delta.allocations / runs;
+    let marginal_allocations =
+        batch_allocations.saturating_sub(single_allocations) / batch.saturating_sub(1);
+    let fixed_allocations = single_allocations.saturating_sub(marginal_allocations);
+
+    let batch_bytes = batch_delta.bytes_allocated / runs;
+    let single_bytes = single_delta.bytes_allocated / runs;
+    let marginal_bytes = batch_bytes.saturating_sub(single_bytes) / batch.saturating_sub(1);
+    let fixed_bytes = single_bytes.saturating_sub(marginal_bytes);
+
+    println!("single allocs  {single_allocations}");
+    println!(
+        "single bytes   {:.2} MiB",
+        single_bytes as f64 / (1024.0 * 1024.0)
+    );
+    println!("fixed allocs   {fixed_allocations}");
+    println!(
+        "fixed bytes    {:.2} MiB",
+        fixed_bytes as f64 / (1024.0 * 1024.0)
+    );
+    println!("module allocs  {marginal_allocations}");
+    println!(
+        "module bytes   {:.2} MiB",
+        marginal_bytes as f64 / (1024.0 * 1024.0)
     );
 }
 
