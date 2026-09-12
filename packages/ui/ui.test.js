@@ -6443,6 +6443,26 @@ describe("Skeleton", () => {
     );
     expect(screen.getByRole("status").textContent).toBe("Chargement…");
   });
+
+  it("hands the busy region and hidden boxes to caller-rendered elements", () => {
+    render(
+      <Skeleton.Root busy={true} render={(props) => <section {...props} data-testid="loading" />}>
+        <Skeleton.Box render={(props) => <span {...props} data-testid="placeholder" />}>
+          Invoice
+        </Skeleton.Box>
+      </Skeleton.Root>,
+    );
+
+    const loading = screen.getByTestId("loading");
+    const placeholder = screen.getByTestId("placeholder");
+    expect(loading.tagName).toBe("SECTION");
+    expect(loading).toHaveAttribute("aria-busy", "true");
+    expect(loading.contains(placeholder)).toBe(true);
+    expect(placeholder.tagName).toBe("SPAN");
+    expect(placeholder).toHaveAttribute("aria-hidden", "true");
+    expect(placeholder.textContent).toBe("Invoice");
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+  });
 });
 
 describe("the five that are one element, audited rather than asserted", () => {
@@ -8379,6 +8399,8 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Sheet.Title",
     "Sheet.Trigger",
     "Sidebar.Item",
+    "Skeleton.Box",
+    "Skeleton.Root",
     "Switch",
     "Tabs.List",
     "Tabs.Panel",
@@ -8487,8 +8509,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Sidebar.Footer",
     "Sidebar.Header",
     "Sidebar.Trigger",
-    "Skeleton.Box",
-    "Skeleton.Root",
     "Slider.Range",
     "Slider.Root",
     "Slider.Thumb",
