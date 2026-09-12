@@ -524,11 +524,10 @@ export type { ToggleGroupType } from "./toggle-group.js";
 /**
  * The five that are one component rather than a namespace of parts.
  *
- * `Switch` and `Checkbox` take `render`, so the control a design system already
- * has — a `<div>` with a knob drawn in it, somebody's `<Pressable>` — keeps the
- * role, the state, the keys and the implicit form submission while being their
- * element. `Progress`, `Separator` and `Toggle` do not have it yet; see the
- * module header and the table in `tests/library/ui.test.js`.
+ * Each takes `render`, so the control or line a design system already has — a
+ * `<div>` with a knob drawn in it, somebody's `<Pressable>`, a presentational
+ * meter shell — keeps the role, state, keys and attributes while being their
+ * element. See the module headers and the table in `packages/ui/ui.test.js`.
  */
 export { Checkbox, Progress, Separator, Switch, Toggle };
 

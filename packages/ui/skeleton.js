@@ -60,7 +60,8 @@
 import * as React from "@uniflowed/react";
 import { useEffect, useRef, useState } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withProps } from "./internal/merge-props.js";
 
 /**
  * The region that is being filled in, and the sentence that says so.
@@ -86,12 +87,17 @@ import type { Rest } from "./internal/merge-props.js";
  *
  * `doneLabel` is announced only after a spell of `busy`, so a region that was
  * never loading never says it has loaded.
+ *
+ * `render` changes the element that owns the busy state. The live region stays
+ * beside it, mounted by this component, because that timing is the accessibility
+ * contract rather than markup the caller can safely recreate by sight.
  */
 export component SkeletonRoot(
   children: React.Node,
   busy?: boolean = true,
   label?: string = "Loading…",
   doneLabel?: string = "Loaded",
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [message, setMessage] = useState("");
@@ -108,11 +114,14 @@ export component SkeletonRoot(
     setMessage(waited.current ? doneLabel : "");
   }, [busy, doneLabel, label]);
 
+  const props = withProps(rest, {
+    "aria-busy": busy ? "true" : undefined,
+    children,
+  });
+
   return (
     <>
-      <div {...rest} aria-busy={busy ? "true" : undefined}>
-        {children}
-      </div>
+      {render == null ? <div {...props} /> : render(props)}
       {/*
         Beside the region rather than inside it, so a reader walking into the
         content does not find a sentence about it sitting among the rows — and
@@ -137,11 +146,14 @@ export component SkeletonRoot(
  * `children` is allowed and is hidden with the rest of it, because sizing a
  * box by putting the text it stands in for inside it is a real technique and
  * there is no reason to make a caller reach for a second element to do it.
+ *
+ * `render` changes the placeholder element, not the fact that it is hidden
+ * from the accessibility tree.
  */
-export component SkeletonBox(children?: React.Node, ...rest: Rest) {
-  return (
-    <div {...rest} aria-hidden="true">
-      {children}
-    </div>
-  );
+export component SkeletonBox(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { "aria-hidden": "true", children });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
