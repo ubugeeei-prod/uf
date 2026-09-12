@@ -2209,6 +2209,9 @@ export component RouteView() {
       );
     }
   }
+  if (needsRootStreamFrame(resolved)) {
+    element = <RootStreamFrame>{element}</RootStreamFrame>;
+  }
   return (
     <>
       <Head metadata={resolved.metadata} />
@@ -2221,6 +2224,28 @@ export component RouteView() {
         <BoundaryReporter path={resolved.path} boundaries={marks} />
       ) : null}
     </>
+  );
+}
+
+/**
+ * Whether the outermost route fallback needs one host element above it.
+ *
+ * React can flush a shell whose suspended boundary is inside any host element,
+ * but not one whose boundary is a direct child of the render root. A route with
+ * no layout and a root `$loading.js` is exactly that second tree: every
+ * framework component above it renders no element, so the fallback waits for
+ * the page it was meant to stand in for. A root layout is already the element
+ * that can carry it, and deeper fallbacks sit inside a layout by construction.
+ */
+function needsRootStreamFrame(resolved: ResolvedRoute): boolean {
+  return resolved.layouts.length === 0 && resolved.loading.some((boundary) => boundary.above === 0);
+}
+
+component RootStreamFrame(children: React.Node) {
+  return (
+    <div data-uf-stream-root="" style={{ display: "contents" }}>
+      {children}
+    </div>
   );
 }
 
@@ -2332,10 +2357,8 @@ component AwaitedPage(loader: Promise<mixed>) {
  * rows rather than one each — the boundaries inside it still resolve
  * independently, since each is its own.
  *
- * The same rule catches a route whose `$loading.js` sits above no layout:
- * `RouteView` puts that boundary in the same position, and it does not stream
- * either. That is a bug this file did not introduce and does not fix; it is
- * written down in ubugeeei-prod/uf#519 rather than left to be rediscovered.
+ * The same rule catches a route whose `$loading.js` sits above no layout, so
+ * `RouteView` wraps that specific root shape in `RootStreamFrame`.
  */
 function payloadElements(data: mixed): React.Node {
   if (data === undefined) {
