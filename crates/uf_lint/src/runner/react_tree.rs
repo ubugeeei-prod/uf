@@ -22,9 +22,9 @@
 //!
 //! 1. Neither rule is enabled — nothing runs.
 //! 2. The path is not Flow source — nothing runs.
-//! 3. The text holds no call-shaped `useEffect`, `useMemo` or `useCallback` —
-//!    nothing runs. A module without one of those calls cannot violate either
-//!    rule.
+//! 3. The text holds no call-shaped `useEffect`, `useMemo` or `useCallback`,
+//!    and the memo rule also sees a Flow `component` or `hook` boundary —
+//!    nothing runs when a module cannot violate either rule.
 //! 4. The module is nested or chained past [`uf_flow`]'s parser ceilings —
 //!    nothing runs, because `flow/syntax` has already refused it and a linter
 //!    must not be the thing that overflows a stack on a minified bundle.
@@ -113,9 +113,10 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
     // point is to decide without parsing. Read the scanner's code slices once
     // and classify every hook-looking call in that pass, so the hot gate does
     // not re-walk the file once per hook name.
-    let calls = requested_hook_calls(scan, derived.is_some(), memo.is_some());
+    let has_compiled_boundary = memo.is_some() && declares_react_compiler_boundary(scan);
+    let calls = requested_hook_calls(scan, derived.is_some(), has_compiled_boundary);
     let wants_effects = derived.is_some() && calls.effect && calls.state;
-    let wants_memo = memo.is_some() && (calls.memo || calls.callback);
+    let wants_memo = memo.is_some() && has_compiled_boundary && (calls.memo || calls.callback);
     if !wants_effects && !wants_memo {
         return None;
     }
@@ -228,6 +229,30 @@ fn hook_name_at(code: &str, at: usize, hook: &str) -> bool {
 /// than paying the #668 path for import-only modules.
 fn call_follows_name(code: &str, after: usize) -> bool {
     next_non_space(code, after).is_some_and(|(_, byte)| matches!(byte, b'(' | b'<'))
+}
+
+/// Whether this module has a declaration the syntax-mode React Compiler reads.
+///
+/// `react/no-redundant-memo` reports memoization only when the compiler removed
+/// it, and syntax mode compiles Flow `component` and `hook` declarations. A
+/// plain helper with a hand-written `useMemo` keeps that memoization, so building
+/// the Babel AST just to learn that is avoidable work.
+fn declares_react_compiler_boundary(scan: &FileScan<'_>) -> bool {
+    scan.facts.declares_component
+        || scan.lines.iter().any(|line| {
+            let code = line.code();
+            code.match_indices("hook").any(|(at, _)| {
+                starts_word(code, at)
+                    && ends_word(code, at + "hook".len())
+                    && !line.in_string(at)
+                    && next_non_space(code, at + "hook".len())
+                        .is_some_and(|(_, byte)| is_identifier_start(byte))
+            })
+        })
+}
+
+fn is_identifier_start(byte: u8) -> bool {
+    byte.is_ascii_alphabetic() || byte == b'_' || byte == b'$'
 }
 
 /// Run whichever of the two rules was asked for, over a tree somebody else
@@ -1519,6 +1544,19 @@ component Page() {
     }
 
     #[test]
+    fn plain_function_memoization_does_not_request_the_react_tree_path() {
+        let source = r#"// @flow
+import { useMemo } from "react";
+export function Page(items: Array<string>) {
+  const sorted = useMemo(() => items.slice(), [items]);
+  return <main>{sorted}</main>;
+}
+"#;
+
+        assert!(!wants(REDUNDANT_MEMO, source));
+    }
+
+    #[test]
     fn hook_calls_still_request_the_react_tree_path() {
         let derived = r#"// @flow
 import { useEffect, useState } from "react";
@@ -1550,11 +1588,18 @@ component Page() {
   return <main />;
 }
 "#;
+        let hook_declaration = r#"// @flow
+import { useCallback } from "react";
+export hook useHandler(id: string): () => void {
+  return useCallback(() => send(id), [id]);
+}
+"#;
 
         assert!(wants(DERIVED_STATE, derived));
         assert!(wants(DERIVED_STATE, derived_member));
         assert!(wants(REDUNDANT_MEMO, memo));
         assert!(wants(REDUNDANT_MEMO, react_member));
+        assert!(wants(REDUNDANT_MEMO, hook_declaration));
     }
 
     #[test]
