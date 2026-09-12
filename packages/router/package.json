@@ -15,6 +15,7 @@
     "./action": "./action.js",
     "./client": "./client.js",
     "./server": "./server.js",
+    "./routing": "./routing.js",
     "./package.json": "./package.json",
     "./handler": "./handler.js",
     "./middleware": "./middleware.js"
@@ -26,6 +27,7 @@
     "index.js",
     "internal",
     "middleware.js",
+    "routing.js",
     "server.js",
     "!*.test.js"
   ],

@@ -1038,13 +1038,13 @@ pub fn find_reserved_file_violations(
 ///
 /// # Why it delegates rather than substitutes
 ///
-/// The body is one call into `@uniflowed/router`, where `buildRoute` is built
+/// The body is one call into `@uniflowed/router/routing`, where `buildRoute` is built
 /// out of the same `compile` the matcher uses. A builder generated here would
 /// be a second implementation of the pattern grammar, and the two would drift
 /// — as a link that 404s, which is the failure typed routes exist to remove.
 pub fn generate_router_flow(routes: &[Route]) -> String {
     let mut output = String::from("// @flow\n\n");
-    output.push_str("import { buildRoute } from \"@uniflowed/router\";\n\n");
+    output.push_str("import { buildRoute } from \"@uniflowed/router/routing\";\n\n");
     output.push_str("export type RoutePath = ");
     if routes.is_empty() {
         output.push_str("empty;\n\n");
