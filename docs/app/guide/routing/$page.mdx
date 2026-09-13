@@ -14,13 +14,14 @@ write and no list to keep in step with the directory.
 
 ## The file names
 
-Eight names are reserved. Everything else in `app/` is an ordinary module.
+Nine names are reserved. Everything else in `app/` is an ordinary module.
 
 | File | What it is |
 | --- | --- |
 | `$page.js` | The page at this path. Its default export is a component. |
 | `$layout.js` | Wraps this path and everything under it. Receives the page as `children`. |
 | `$template.js` | The same wrapper, rebuilt on every navigation instead of persisting. |
+| `$default.js` | Renders in a slot when the URL matches none of that slot's routes. |
 | `$not-found.js` | Rendered when nothing under this path matches. |
 | `$error.js` | Rendered when something under this path throws. |
 | `$loading.js` | Rendered while something under this path is still resolving. |
@@ -66,10 +67,10 @@ really begins with `@`; capture it with a `[param]` instead.
 
 ### One spelling that is refused
 
-A directory named `(.)photo`, `(..)photo`, `(...)photo` or `(..)(..)photo` is
-an **intercepting route**. uf does not have interception — a navigation carries
-where it is going and not where it came from — so the directory is refused by
-name, by `uf build`, by `uf dev` and by `uf lint`.
+A directory named `(.)photo`, `(..)photo`, `(...)photo`, `(..)(..)photo` or
+`(..)(..)(..)photo` is an **intercepting route**. uf does not have interception
+— a navigation carries where it is going and not where it came from — so the
+directory is refused by name, by `uf build`, by `uf dev` and by `uf lint`.
 
 It is refused rather than ignored, and the difference is the point. Until
 [#267](https://github.com/ubugeeei-prod/uf/issues/267) neither this name nor
