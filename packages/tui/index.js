@@ -79,8 +79,8 @@
 //
 // Not here: the repeated-press gestures that widen a selection to a word or a
 // line, images, the rich content components, and everything under OpenTUI's
-// "application APIs" — including the clipboard, which is why
-// `getSelectedText()` hands a string back rather than putting it somewhere.
+// "application APIs" — except for the write-only OSC 52 clipboard — which is
+// why `getSelectedText()` hands a string back and leaves policy to the caller.
 // They are ubugeeei-prod/uf#314, and they are absent rather than present as
 // functions that throw — because a stub is what this package used to be.
 //
@@ -151,6 +151,8 @@ export {
 export type { Color, Frame, Rect, Style } from "./cells.js";
 export { Attributes, INHERIT, frameRow, frameText, parseColor } from "./cells.js";
 
+export type { Clipboard } from "./clipboard.js";
+
 export type {
   AlignItems,
   AlignSelf,
@@ -200,6 +202,7 @@ export {
   Input,
   ScrollBox,
   Text,
+  useClipboard,
   useKeyboard,
   useRenderer,
   useTerminalSize,

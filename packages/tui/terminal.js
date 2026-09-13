@@ -37,6 +37,7 @@ import type { Capabilities, ColorChoice, TerminalEnv } from "./capability.js";
 import { FALLBACK_COLUMNS, FALLBACK_ROWS, detectCapabilities, detectSize } from "./capability.js";
 import type { Frame } from "./cells.js";
 import { frameText } from "./cells.js";
+import { osc52Clipboard } from "./clipboard.js";
 import type { Update } from "./diff.js";
 import type { Renderer } from "./internal/host.js";
 import {
@@ -199,6 +200,14 @@ export type RenderOptions = {
    * told that this window is the one where dragging does nothing.
    */
   readonly mouse?: boolean,
+  /**
+   * Whether `useClipboard()` may ask the terminal to copy text with OSC 52.
+   *
+   * On for interactive terminals, off for redirected output, and explicitly
+   * disableable for applications that prefer to expose "copy failed" over
+   * sending a sequence a terminal policy may reject without acknowledgement.
+   */
+  readonly clipboard?: boolean,
 };
 
 /**
@@ -333,6 +342,9 @@ export function render(element: React.Node, options: RenderOptions = {}): Handle
   const size = detectSize(env, stdout);
   const mouse = (options.mouse ?? false) && interactive;
   const renderer = createRenderer(size.columns, size.rows, capabilities, mouse);
+  if ((options.clipboard ?? true) && interactive) {
+    renderer.clipboard = osc52Clipboard((chunk) => stdout.write(chunk));
+  }
 
   let stopped = false;
   let scheduled = false;

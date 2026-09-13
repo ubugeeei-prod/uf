@@ -806,6 +806,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "render",
                 "selectionContains",
                 "testRender",
+                "useClipboard",
                 "useKeyboard",
                 "useRenderer",
                 "useTerminalSize",

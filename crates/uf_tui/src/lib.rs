@@ -63,9 +63,9 @@ impl Default for TuiFrameworkContract {
             layout: TuiLayoutEngine::FlexboxCells,
             input: TuiInputModel::KeyboardMouseSelectionFocus,
             runtime_binding: TuiRuntimeBinding::FlowReact,
-            // Ten, not twenty-three. Every one of these is exercised by
+            // Eleven, not twenty-three. Every one of these is exercised by
             // `packages/tui/tui.test.js` against a rendered frame; the other
-            // thirteen variants of `TuiFeature` name parts of OpenTUI that uf
+            // twelve variants of `TuiFeature` name parts of OpenTUI that uf
             // does not implement yet, and listing them here is how a reader
             // ends up importing a component that does not exist.
             features: smallvec::smallvec![
@@ -74,6 +74,7 @@ impl Default for TuiFrameworkContract {
                 TuiFeature::Keyboard,
                 TuiFeature::Mouse,
                 TuiFeature::Selection,
+                TuiFeature::Clipboard,
                 TuiFeature::Focus,
                 TuiFeature::RichText,
                 TuiFeature::Scrollback,
@@ -267,6 +268,12 @@ pub enum TuiFeature {
     /// Embedded terminal panes.
     EmbeddedTerminal,
     /// Clipboard API.
+    ///
+    /// `useClipboard()` exposes a write-only clipboard backed by OSC 52 on
+    /// interactive terminals. A copied string is UTF-8/base64 encoded and sent
+    /// to the terminal emulator; there is no read API and no fallback for
+    /// redirected output, because OSC 52 has no acknowledgement and terminal
+    /// policy may still refuse it after uf has written the request.
     Clipboard,
     /// Host notifications.
     Notifications,

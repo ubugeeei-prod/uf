@@ -467,10 +467,16 @@ the application reads them back:
 ```js
 component Output(lines: Array<string>) {
   const renderer = useRenderer();
+  const clipboard = useClipboard();
   const [yanked, setYanked] = useState<string>("");
   useKeyboard((key) => {
     if (key.name === "y" && renderer.hasSelection()) {
-      setYanked(renderer.getSelectedText());
+      const text = renderer.getSelectedText();
+      if (clipboard.copy(text)) {
+        setYanked("copied");
+      } else {
+        setYanked(text);
+      }
       renderer.clearSelection();
     }
   });
@@ -485,10 +491,12 @@ component Output(lines: Array<string>) {
 }
 ```
 
-That example keeps the text rather than copying it, and the reason is that
-there is no clipboard here: `getSelectedText()` hands back a string and
-OpenTUI's clipboard API is still
-[#314](https://github.com/ubugeeei-prod/uf/issues/314). What the renderer owns
+`useClipboard()` is write-only and terminal-shaped. On an interactive terminal
+it sends OSC 52, with the selected string UTF-8 encoded and base64 wrapped for
+the terminal emulator. On redirected output and in memory it reports
+`supported: false`, and `copy()` returns `false`; there is no hidden fallback,
+because OSC 52 has no acknowledgement and a terminal may still refuse the
+request by policy after the sequence has been written. What the renderer owns
 is the selection: one per renderer, because a frame has one way of showing that
 a cell is selected.
 
@@ -624,19 +632,17 @@ behind it, which is the thing this was fixing.
 ## What is not here yet
 
 Key release, images, the rich-content components (`Code`, `Markdown`, `Diff`,
-`TextTable`) and OpenTUI's application APIs — clipboard, notifications, audio,
+`TextTable`) and OpenTUI's remaining application APIs — notifications, audio,
 animation — are not implemented. They are
 [#314](https://github.com/ubugeeei-prod/uf/issues/314), and they are *absent*
 rather than present as functions that throw: `uf inspect` reports four
 components because there are four.
 
-The clipboard is the one to expect next, and it is the half of the section
-above that is missing: `getSelectedText()` hands back a string, and putting a
-string where the reader's next paste will find it is an OSC 52 sequence, a
-terminal that may refuse it, and a fallback nobody has argued out yet. The
-other near one is *item* selection — `Select` and `TabSelect`, which are
-components rather than a renderer capability, and which is why `uf inspect`
-reports text selection as implemented and neither of them as existing.
+The next selection-shaped gap is *item* selection — `Select` and `TabSelect`,
+which are components rather than a renderer capability, and which is why
+`uf inspect` reports text selection as implemented and neither of them as
+existing. Repeated-press gestures that widen a selection to a word or line are
+also still absent.
 
 Nor does uf's own CLI draw through this yet. `uf` is a Rust binary and this is
 JavaScript, and the two cannot meet without either a native bridge uf does not

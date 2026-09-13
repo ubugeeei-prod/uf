@@ -22,6 +22,7 @@ fn claims_only_the_features_the_package_implements() {
         TuiFeature::Keyboard,
         TuiFeature::Mouse,
         TuiFeature::Selection,
+        TuiFeature::Clipboard,
         TuiFeature::Focus,
         TuiFeature::RichText,
         TuiFeature::Scrollback,
@@ -46,7 +47,6 @@ fn claims_only_the_features_the_package_implements() {
         TuiFeature::Ssh,
         TuiFeature::QrCode,
         TuiFeature::EmbeddedTerminal,
-        TuiFeature::Clipboard,
         TuiFeature::Notifications,
         TuiFeature::Animations,
     ] {

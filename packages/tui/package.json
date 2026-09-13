@@ -14,6 +14,7 @@
     ".": "./index.js",
     "./capability": "./capability.js",
     "./cells": "./cells.js",
+    "./clipboard": "./clipboard.js",
     "./components": "./components.js",
     "./diff": "./diff.js",
     "./keys": "./keys.js",
