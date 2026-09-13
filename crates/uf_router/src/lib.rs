@@ -32,6 +32,14 @@ pub const RESERVED_ROUTE_STEM: &str = "$route";
 pub const RESERVED_DEFAULT_STEM: &str = "$default";
 
 const UNSUPPORTED_TEMPLATE_FILES: [&str; 2] = ["template.js", "_uf.template.js"];
+const UNSUPPORTED_SLOT_BOUNDARY_FILES: [(&str, &str); 6] = [
+    ("error.js", "error"),
+    ("loading.js", "loading"),
+    ("not-found.js", "not-found"),
+    ("_uf.error.js", "error"),
+    ("_uf.loading.js", "loading"),
+    ("_uf.not-found.js", "not-found"),
+];
 
 /// What a page may be written in, in the order a directory holding two is
 /// resolved.
@@ -828,6 +836,12 @@ fn unsupported_template_file_reason(file_name: &str) -> String {
     )
 }
 
+fn unsupported_slot_boundary_role(file_name: &str) -> Option<&'static str> {
+    UNSUPPORTED_SLOT_BOUNDARY_FILES
+        .iter()
+        .find_map(|(candidate, role)| (*candidate == file_name).then_some(*role))
+}
+
 /// The first `@slot` segment of a path relative to the router root, if it has
 /// one.
 ///
@@ -914,6 +928,15 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
         }
 
         let file_name = entry.file_name().to_string_lossy().into_owned();
+        if let Some(slot) = slot_in(relative)
+            && let Some(role) = unsupported_slot_boundary_role(&file_name)
+        {
+            return Err(RouterError::BoundaryInsideSlot {
+                role,
+                slot: slot.to_owned(),
+                file: path,
+            });
+        }
         let Some(role) = classify_reserved_file(&file_name)
             .recognized()
             .filter(|file| reserved_file_applies_to_target(*file, target))

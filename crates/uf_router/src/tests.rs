@@ -949,6 +949,12 @@ fn a_boundary_or_a_handler_inside_a_slot_is_refused() {
         ("$loading.js", "loading"),
         ("$error.js", "error"),
         ("$not-found.js", "not-found"),
+        ("loading.js", "loading"),
+        ("error.js", "error"),
+        ("not-found.js", "not-found"),
+        ("_uf.loading.js", "loading"),
+        ("_uf.error.js", "error"),
+        ("_uf.not-found.js", "not-found"),
         ("$route.js", "@team"),
         ("$middleware.js", "@team"),
     ] {
