@@ -91,7 +91,7 @@ jobs:
         run: tools/ci/browser-wrapper.sh
       - run: cargo test --workspace --profile ci
       # Only the packages in `tools/release/published-packages.txt`, which is
-      # the set that is implemented.
+      # the OIDC publish closure this workflow is allowed to send.
       #
       # A name that has not been bound by `tools/release/trust-npm.sh` fails
       # here, and the packages published before it stay published. That is
@@ -134,6 +134,8 @@ jobs:
       # `tools/release/promote-latest.sh`, which reads the registry, leaves
       # alone any name that has a stable release, and is idempotent.
       # `tools/release/preflight.sh` fails on the drift before the next tag.
+      - name: Refuse missing npm names before publishing
+        run: tools/release/publish-names-exist.sh
       - name: Publish
         run: |
           set -eu

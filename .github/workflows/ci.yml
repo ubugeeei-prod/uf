@@ -462,11 +462,15 @@ jobs:
       # every unresolved import as `any` and passes.
       - run: ./target/release/uf run ci:recipes
       - run: ./target/release/uf run ci:recipes:test
-      # And that the set that goes to npm is closed under its own
-      # dependencies. `@uniflowed/stylex` depends on `@uniflowed/core`, so a
-      # release that sends one without the other publishes a package that
-      # resolves to nothing. No network, so it belongs here rather than in the
-      # pre-tag check alone.
+      # And that the publish workflow refuses a missing npm package name before
+      # it starts sending anything. Stubbed, so this needs no npm session and no
+      # network.
+      - run: ./target/release/uf run release:publish-names:test
+      # And that the set that goes to npm is closed under its own dependencies.
+      # `@uniflowed/stylex` depends on `@uniflowed/core`, so a release that
+      # sends one without the other publishes a package that resolves to
+      # nothing. No network, so it belongs here rather than in the pre-tag check
+      # alone.
       - run: ./target/release/uf run release:closure
       # And that a package somebody implemented is on its way to npm at all.
       # Ten were not — about 22,000 lines of Flow that `npm install` answered

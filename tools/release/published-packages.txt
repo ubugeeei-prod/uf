@@ -23,6 +23,7 @@
 # Pair every addition with:
 #
 #   npm login
+#   tools/release/bootstrap-publish.sh
 #   tools/release/trust-npm.sh
 #
 # and run `uf run release:preflight` before tagging to see where things stand.
