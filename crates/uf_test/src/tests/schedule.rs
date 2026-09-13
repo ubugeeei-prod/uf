@@ -1,7 +1,7 @@
 //! Longest-first ordering, and the cold heuristic behind it.
 
 use crate::{
-    COLD_NANOS_PER_BYTE, ScheduleBasis, TestRunner, TestTimings, cold_weight_micros,
+    COLD_NANOS_PER_BYTE, ScheduleBasis, TestFilter, TestRunner, TestTimings, cold_weight_micros,
     makespan_micros, schedule_files,
 };
 
@@ -107,6 +107,37 @@ fn the_cold_weight_saturates_rather_than_overflowing() {
 #[test]
 fn scheduling_nothing_produces_nothing() {
     assert!(schedule_files(&[], &TestTimings::new()).is_empty());
+}
+
+#[test]
+fn running_nothing_needs_no_javascript_host() {
+    let report = TestRunner::new()
+        .run(&[])
+        .expect("an empty schedule does not need a worker");
+
+    assert!(report.files.is_empty());
+    assert!(report.plan.is_empty());
+    assert_eq!(report.summary.files, 0);
+    assert_eq!(report.summary.scheduled_warm, 0);
+    assert_eq!(report.summary.scheduled_cold, 0);
+}
+
+#[test]
+fn filtering_every_file_out_needs_no_javascript_host() {
+    let files = [crate::TestFile::new(
+        "src/example.test.js",
+        "/p/src/example.test.js",
+        "import { it } from '@uniflowed/test'; it('runs', () => {});",
+    )];
+
+    let report = TestRunner::new()
+        .with_filter(TestFilter::new().with_path("other"))
+        .run(&files)
+        .expect("a path filter can make the schedule empty before host startup");
+
+    assert!(report.files.is_empty());
+    assert!(report.plan.is_empty());
+    assert_eq!(report.summary.files, 0);
 }
 
 #[test]

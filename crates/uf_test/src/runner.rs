@@ -189,10 +189,21 @@ impl TestRunner {
         files: &[TestFile],
         observer: &dyn RunObserver,
     ) -> Result<TestRunReport, RunError> {
-        let host = self.host.as_ref().ok_or(RunError::NoHost)?;
         let started = Instant::now();
         let selected = self.select(files);
         let schedule = schedule_files(&sources_of(&selected), &self.timings);
+        if schedule.is_empty() {
+            return Ok(assemble(
+                Vec::new(),
+                selected,
+                &schedule,
+                started,
+                self.options.bail,
+                0,
+            ));
+        }
+
+        let host = self.host.as_ref().ok_or(RunError::NoHost)?;
 
         let state = RunState {
             next: AtomicUsize::new(0),
