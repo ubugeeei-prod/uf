@@ -78,17 +78,20 @@
 // `Menu.Item`. That is the half a copied source cannot keep, and it is what
 // makes "no copy step" a trade rather than a loss.
 //
-// **Where it is, today.** `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Menu`,
-// `ContextMenu`, `Menubar`, `Tabs`, `Tooltip`, `Popover`, `HoverCard`,
-// `Switch` and `Checkbox` are complete —
-// every part of each either takes `render` or renders no element to hand over —
-// along with `Field.Control` and `Sidebar.Item`, which had it first. The rest
-// do not have it yet, and that is the remainder of #303. A documented escape
-// hatch that is not there is worse
-// than an undocumented one that is, so the state of every part is a table in
-// `tests/library/ui.test.js` rather than a claim in this paragraph: it names
-// all of them, in three lists, and four tests hold each list to the files. A
-// part added to this barrel is in none of them and the suite says so.
+// **Where it is, today.** Every fixed-element part has it in `Accordion`,
+// `Alert`, `AlertDialog`, `Avatar`, `Breadcrumb`, `Collapsible`, `Dialog`,
+// `Drawer`, `Menu`, `ContextMenu`, `Menubar`, `Pagination`, `Popover`, `Sheet`,
+// `Skeleton`, `Slider`, `Table`, `Tabs` and `ToggleGroup`; so do the
+// single-part `Checkbox`, `Progress`, `Separator`, `Switch` and `Toggle`.
+// `Field.Root`, `Field.Label`, `Field.Control`, `Field.Description`,
+// `Field.Status` and `Field.Error` take it too, as do `RadioGroup`,
+// `InputOtp.Separator`, `Tooltip.Trigger`, `Tooltip.Body`,
+// `HoverCard.Trigger`, `HoverCard.Body` and `Sidebar.Item`. A documented
+// escape hatch that is not there is worse than an undocumented one that is, so
+// the state of every part is a table in `packages/ui/ui.test.js` rather than a
+// claim in this paragraph: it names each part as implemented, no-element, or
+// fixed remainder, and the suite holds the lists to the exported files. A part
+// added to this barrel is in none of them and the suite says so.
 //
 // **Are the `internal/` modules ever public?** No, and the consequence is
 // worth stating rather than leaving as an omission. `merge-props.js`,

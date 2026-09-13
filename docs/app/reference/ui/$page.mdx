@@ -39,6 +39,7 @@ import { SelectRoot } from "@uniflowed/ui/select";
 | `Menu` | Menu button: arrow keys, typeahead, submenus, `Escape` stacking, checkable items. shadcn's Dropdown Menu is this. | `menu.js` |
 | `ContextMenu` | The same menu opened by the right button, by `Shift+F10` and by a long press, at the pointer | `context-menu.js` |
 | `Menubar` | A row of menus as one control: one tab stop, and arrows that walk between the open ones | `menubar.js` |
+| `NavigationMenu` | Disclosure navigation: a named `<nav>`, expanding groups, ordinary links | `navigation-menu.js` |
 | `Combobox` | Editable combobox: `aria-activedescendant` over a list you filter, in groups or not | `combobox.js` |
 | `Select` | Select-only combobox: typeahead, option groups, a form value | `select.js` |
 | `Popover` | A dialog that is not modal: focus in, `Escape` out, `Tab` leaves | `popover.js` |
@@ -77,6 +78,144 @@ a menu, a render function that returns something that is not a `Toast.Root` —
 beside the composition that must keep compiling, and `uf check` is run over the
 pair. The guarantee that cannot be removed without a test going red is the only
 kind worth stating on this page.
+
+## What the suite holds
+
+The reference below is prose, but the contract is executable. The UI suite is
+structured around the failures these primitives are meant to prevent:
+
+| Contract | Held by |
+| --- | --- |
+| Composition types reject the wrong child before a browser exists | `tests/type-tests/composition.js`, run from `packages/ui/ui.test.js` |
+| Overlay side, alignment, modal role, input alphabet and orientation are checked unions | `tests/type-tests/anchoring.js` and `tests/type-tests/overlays.js` |
+| A caller's `className`, `id`, `data-*`, `aria-*`, handlers and refs arrive without replacing the component's own behaviour | the prop-composition block in `packages/ui/ui.test.js` |
+| `render` exists only where it is implemented, and every exported part is classified | the render-hatch table in `packages/ui/ui.test.js` |
+| No `aria-labelledby`, `aria-describedby`, `aria-controls` or `aria-activedescendant` points at a missing element | the dangling-reference helper used across the suite |
+| Keyboard behaviour is asserted as user-visible focus, state and announcement changes | the component blocks below, one primitive at a time |
+
+Those tests are intentionally not snapshots. A snapshot would preserve markup
+while missing the thing this package exists to preserve: whether a user can
+reach the control, hear its name, move it with the right keys, and leave it
+again.
+
+## Choosing between similar parts
+
+Most mistakes with headless UI happen between two components that look alike in
+the screenshot and mean different things to the browser.
+
+| Use | When the meaning is | Do not reach for |
+| --- | --- | --- |
+| `NavigationMenu` | Site navigation: destinations a reader may open in a new tab, copy, or find in the list of links | `Menu`, whose roles are application commands |
+| `Menu` | Commands such as Export, Duplicate, Mute, Archive | `NavigationMenu`, because links and commands have different keyboard maps |
+| `Select` | The user chooses one fixed value | `Combobox`, unless the input text itself is editable |
+| `Combobox` | The user types, filters, or accepts a suggestion | `Select`, which owns no text cursor |
+| `Tooltip` | A short description of its trigger; it never takes focus | `Popover` or `HoverCard`, if the content has links or buttons |
+| `HoverCard` | A preview that can contain links and is reachable by `Tab` | `Tooltip`, which describes rather than contains |
+| `Dialog` | A modal task with focus trapped inside it | `Popover`, if `Tab` should leave into the page |
+| `Alert` | A visible callout, optionally live when it appears dynamically | `Toast`, if the message is transient and queued outside the page flow |
+| `Switch` | A setting that takes effect when it changes | `Checkbox`, if the control is one answer in a form being submitted |
+| `Toggle` | A pressed/unpressed button state | `Switch`, whose name tells a reader this is on or off |
+
+## What is deliberately not a component
+
+The package refuses a few familiar names on purpose. They are useful surfaces,
+but they are not primitives with a behaviour contract of their own here.
+
+| Name people expect | Use instead | Why it is not exported |
+| --- | --- | --- |
+| `Button` | a real `<button>` plus a style preset | The behaviour is already in HTML; the design decision is visual |
+| `Card`, `Badge`, `Label`, `Input`, `Textarea` | plain elements plus presets | With no styles they are wrappers around one element, and wrappers lose props |
+| `Command` | `Dialog` + `Combobox` + grouped options + `useKeyCombo` | The composition is the feature; a module would duplicate two finished contracts |
+| `DataTable` | `Table` plus your table state and fetching layer | Sorting, selection and row counts are here; query/state orchestration is app-specific |
+| `FormField` | `Field` plus the control you render | The field owns ids and errors; the form library owns values and validation |
+| `RangeDatePicker` | two `DatePicker`s, until range semantics are implemented | A date range is not two strings; it needs its own announcements and keyboard rules |
+
+This is not minimalism for its own sake. A missing component should be a clear
+"compose these parts" or "not implemented yet", never a thin wrapper that looks
+like progress while weakening the guarantees above.
+
+## Import shapes
+
+The root entry exports namespaces for app code:
+
+```js
+import { Dialog, Field, Select } from "@uniflowed/ui";
+```
+
+Every primitive also has a subpath with flat names, which is useful for presets,
+wrappers and tests that want one dependency edge:
+
+```js
+import { DialogRoot, DialogTrigger } from "@uniflowed/ui/dialog";
+```
+
+The subpath names are the module names in the table above. `internal/` is not
+exported; helpers such as roving focus and prop composition are part of the
+primitive contracts, not a public toolkit for building a second library beside
+this one.
+
+## Changing the element
+
+Most UI packages answer "I need this menu item to be a link" with either a copy
+step or an `asChild` clone. uf answers with an explicit `render` prop:
+
+```js
+<Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>
+```
+
+The part still computes the role, ids, state attributes, handlers, refs and
+children. The caller chooses the element and spreads the props onto it. That is
+why this is the escape hatch for a no-copy component library: a `Menu.Item`
+rendered as an `<a>` is still a `Menu.Item` to Flow's `renders*` constraint,
+still participates in the menu's typeahead, and still closes the same menu tree.
+A copied file can change the element, but it cannot keep receiving fixes to the
+shared roving-focus, focus-trap or prop-composition code.
+
+### The rule for `render`
+
+Spread the props onto one focusable element when the part is interactive:
+
+```js
+<Tabs.Tab render={(props) => <a href="#billing" {...props} />}>Billing</Tabs.Tab>
+```
+
+Spread after your own props when uf must own the semantics:
+
+```js
+<Switch
+  render={(props) => <span role="presentation" tabIndex={-1} {...props} />}
+>
+  Email updates
+</Switch>
+```
+
+That renders a switch, not a presentational span, because `role`, `tabIndex`,
+`aria-checked`, keyboard handlers and refs are part of the switch contract. If
+you intentionally need to replace one of those, do it with the same care you
+would use editing a copied component source: you are changing the accessibility
+contract, not the styling hook.
+
+### Where it exists
+
+The exact source of truth is the audited table in `packages/ui/ui.test.js`; it
+fails if a part is exported but not classified. At this release line:
+
+| Coverage | Parts |
+| --- | --- |
+| Every fixed-element part | `Accordion`, `Alert`, `AlertDialog`, `Avatar`, `Breadcrumb`, `Collapsible`, `Dialog`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`, `Pagination`, `Popover`, `Sheet`, `Skeleton`, `Slider`, `Table`, `Tabs`, `ToggleGroup` |
+| Single-element controls | `Checkbox`, `Progress`, `Separator`, `Switch`, `Toggle` |
+| Field and grouped controls | `Field.Root`, `Field.Label`, `Field.Control`, `Field.Description`, `Field.Status`, `Field.Error`, `RadioGroup.Root`, `RadioGroup.Item`, `RadioGroup.Indicator` |
+| Targeted parts | `HoverCard.Trigger`, `HoverCard.Body`, `InputOtp.Separator`, `Sidebar.Item`, `Tooltip.Trigger`, `Tooltip.Body` |
+
+Parts in the no-element column render only context or delegate to another part.
+Examples: `Dialog.Root`, `Menu.Root`, `Tooltip.Provider`, `Collapsible.Root`,
+`Calendar.Next` and `Pagination.Next`. There is no wrapper there to change.
+
+The fixed remainder is deliberately visible rather than implied. `Calendar.Day`,
+`Combobox.Option`, `Select.Option`, `Toast.Root`, `ScrollArea.Viewport` and the
+other remaining rows are still listed in the same test, so adding `render` to
+one of them means moving it in the table and adding the behaviour case in the
+same change.
 
 ## Select
 
