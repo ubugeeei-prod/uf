@@ -35,7 +35,8 @@ Bun.plugin({
   name: "uniflowed-flow",
   setup(build) {
     build.onLoad({ filter: FLOW_MODULE_PATTERN }, async (args) => {
-      const source = await Bun.file(args.path).text();
+      const file = filePath(args.path);
+      const source = await Bun.file(file).text();
 
       // Both checks below are reachable only if the pattern and the two
       // `is_flow_module` implementations behind it ever disagree — the
@@ -46,14 +47,14 @@ Bun.plugin({
       // pattern accepted is uf's own Flow source, which is an ES module
       // already. That it would be wrong for anything else is the reason the
       // agreement is a test rather than a comment.
-      if (!isFlowModule(args.path)) return declined(args.path, source);
-      const out = await transformFlow(source, args.path, {
+      if (!isFlowModule(args.path)) return declined(file, source);
+      const out = await transformFlow(source, file, {
         development: true,
         sourceMap: false,
         inSourceTests: inSourceTests(),
         configBootstrap: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1",
       });
-      if (out == null) return declined(args.path, source);
+      if (out == null) return declined(file, source);
 
       // `js` and not the file's own extension: the transform has already
       // turned the JSX into calls, and asking Bun to parse JSX in the output
@@ -66,4 +67,10 @@ Bun.plugin({
 /** A module that reached the hook and should not have, given back as it was. */
 function declined(path, source) {
   return { contents: source, loader: path.endsWith(".jsx") ? "jsx" : "js" };
+}
+
+/** The real file path behind a Bun module identity. */
+function filePath(id) {
+  const query = id.search(/[?#]/);
+  return query === -1 ? id : id.slice(0, query);
 }

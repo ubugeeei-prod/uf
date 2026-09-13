@@ -139,6 +139,7 @@ import * as nodeModule from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { inSourceTests, transformFlow } from "./transform.js";
 
 /** The URL parameter carrying `<module epoch>.<mock revision>`. */
 export const REVISION_PARAM = "uf-modules";
@@ -148,6 +149,12 @@ export const ACTUAL_PARAM = "uf-actual";
 
 /** This module's own URL, which a generated stand-in imports its values from. */
 const SELF = import.meta.url;
+
+/** Bun-generated modules this plugin owns. */
+const BUN_GENERATED_MODULE_PATTERN = /[/\\]uf-bun-module-mocks-[^/\\]+[/\\](?:\d+|epoch-\d+)\.mjs$/;
+
+/** Bun namespace used for generated module mock files. */
+const BUN_GENERATED_NAMESPACE = "uniflowed-module-mock-generated";
 
 /** Process-global state shared by duplicate imports of this loader module. */
 const STATE_KEY = Symbol.for("@uniflowed/host/module-mocks");
@@ -170,11 +177,23 @@ const served = state.served;
 /** Bun stand-in files, keyed by the mocked module identity they serve. */
 const bunStandins = new Map();
 
+/** Bun epoch files, keyed by the query-carrying module identity they serve. */
+const bunEpochs = new Map();
+
+/** Original source metadata for Bun epoch files, keyed by the generated file. */
+const bunEpochSources = new Map();
+
+/** Generated Bun files that already encode the redirected module identity. */
+const bunGeneratedFiles = new Set();
+
 /** Where Bun stand-in modules are written, lazily. */
 let bunStandinRoot = null;
 
 /** How many Bun stand-in files have ever been written in this process. */
 let bunStandinFiles = 0;
+
+/** How many Bun epoch files have ever been written in this process. */
+let bunEpochFiles = 0;
 
 /** How many mocks have ever been registered in this process. */
 let revisions = 0;
@@ -313,6 +332,12 @@ export function resetModuleMocks() {
     bunStandinRoot = null;
   }
   bunStandins.clear();
+  for (const file of bunEpochs.values()) {
+    fs.rmSync(file, { force: true });
+  }
+  bunEpochs.clear();
+  bunEpochSources.clear();
+  bunGeneratedFiles.clear();
   epoch = 0;
 }
 
@@ -429,6 +454,7 @@ export function bunMockedModulePath(url) {
   const source = standInSource(pathToFileURL(file).href, record);
   fs.writeFileSync(file, source);
   bunStandins.set(identity, file);
+  rememberBunGeneratedFile(file);
   return file;
 }
 
@@ -497,6 +523,9 @@ function installBunInterception() {
     name: "uniflowed-module-mocks",
     setup(build) {
       build.onResolve({ filter: /.*/ }, bunResolveHook);
+      build.onResolve({ filter: /.*/, namespace: BUN_GENERATED_NAMESPACE }, bunResolveHook);
+      build.onLoad({ filter: BUN_GENERATED_MODULE_PATTERN }, bunGeneratedLoadHook);
+      build.onLoad({ filter: /.*/, namespace: BUN_GENERATED_NAMESPACE }, bunGeneratedLoadHook);
     },
   });
   return true;
@@ -514,6 +543,11 @@ function bunResolveHook(args) {
     return;
   }
 
+  const generated = bunImporterFile(args.path);
+  if (generated != null && bunGeneratedFiles.has(generated)) {
+    return { path: generated, namespace: BUN_GENERATED_NAMESPACE };
+  }
+
   const resolved = bunResolve(args.path, args.importer);
   if (resolved == null) {
     return;
@@ -525,21 +559,220 @@ function bunResolveHook(args) {
   return bunLoadPath(redirected);
 }
 
+/** Bun's `onLoad` hook for the generated files its resolver returns. */
+async function bunGeneratedLoadHook(args) {
+  const epochSource = bunEpochSources.get(args.path);
+  if (epochSource == null) {
+    return { contents: fs.readFileSync(args.path, "utf8"), loader: "js" };
+  }
+
+  const source = fs.readFileSync(epochSource.source, "utf8");
+  const out = await transformFlow(source, epochSource.source, {
+    development: true,
+    sourceMap: false,
+    inSourceTests: inSourceTests(),
+    configBootstrap: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1",
+  });
+  return {
+    contents: rewriteBunEpochImports(out?.code ?? source, epochSource.identity, epochSource.source),
+    loader: "js",
+  };
+}
+
+/** Rewrite an epoch module's path imports to the URLs the resolver would return. */
+function rewriteBunEpochImports(code, parentURL, source) {
+  const replacements = [];
+  const tokens = [];
+  let at = 0;
+  while (at < code.length) {
+    const char = code[at];
+    if (isBunWhitespace(char)) {
+      at += 1;
+      continue;
+    }
+    if (char === "/" && code[at + 1] === "/") {
+      at = skipBunLineComment(code, at + 2);
+      continue;
+    }
+    if (char === "/" && code[at + 1] === "*") {
+      at = skipBunBlockComment(code, at + 2);
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      const literal = readBunStringLiteral(code, at, char);
+      if (literal == null) {
+        at += 1;
+        continue;
+      }
+      const specifier =
+        literal.escaped || !isBunImportSpecifier(tokens)
+          ? null
+          : bunEpochSpecifier(literal.value, parentURL, source);
+      if (specifier != null) {
+        replacements.push([at, literal.end, JSON.stringify(specifier)]);
+      }
+      at = literal.end;
+      continue;
+    }
+    if (char === "`") {
+      at = skipBunTemplate(code, at + 1);
+      continue;
+    }
+    if (isBunIdentifierStart(char)) {
+      const start = at;
+      at += 1;
+      while (at < code.length && isBunIdentifierPart(code[at])) {
+        at += 1;
+      }
+      pushBunToken(tokens, code.slice(start, at));
+      continue;
+    }
+    pushBunToken(tokens, char);
+    at += 1;
+  }
+  if (replacements.length === 0) {
+    return code;
+  }
+
+  let out = "";
+  let copied = 0;
+  for (const [start, end, replacement] of replacements) {
+    out += code.slice(copied, start) + replacement;
+    copied = end;
+  }
+  return out + code.slice(copied);
+}
+
+/** The epoch URL a path import should name, or null when it is not a path import. */
+function bunEpochSpecifier(specifier, parentURL, source) {
+  if (!isPathSpecifier(specifier)) {
+    return null;
+  }
+  const resolved = bunResolve(specifier, source);
+  if (resolved == null) {
+    return null;
+  }
+  const redirected = redirect(specifier, parentURL, resolved.url);
+  return redirected === resolved.url ? null : redirected;
+}
+
+/** Whether the string literal just read is an import/export specifier. */
+function isBunImportSpecifier(tokens) {
+  const last = tokens[tokens.length - 1]?.value;
+  const previous = tokens[tokens.length - 2]?.value;
+  const beforePrevious = tokens[tokens.length - 3]?.value;
+  if (last === "from") {
+    return tokens.some((token) => token.value === "import" || token.value === "export");
+  }
+  return last === "import" || (last === "(" && previous === "import" && beforePrevious !== ".");
+}
+
+function pushBunToken(tokens, value) {
+  if (value === ";") {
+    tokens.length = 0;
+    return;
+  }
+  tokens.push({ value });
+  if (tokens.length > 12) {
+    tokens.shift();
+  }
+}
+
+function readBunStringLiteral(code, start, quote) {
+  let escaped = false;
+  let at = start + 1;
+  while (at < code.length) {
+    const char = code[at];
+    if (char === "\\") {
+      escaped = true;
+      at += 2;
+      continue;
+    }
+    if (char === quote) {
+      return { end: at + 1, escaped, value: code.slice(start + 1, at) };
+    }
+    if (char === "\n" || char === "\r") {
+      return null;
+    }
+    at += 1;
+  }
+  return null;
+}
+
+function skipBunLineComment(code, at) {
+  while (at < code.length && code[at] !== "\n" && code[at] !== "\r") {
+    at += 1;
+  }
+  return at;
+}
+
+function skipBunBlockComment(code, at) {
+  while (at < code.length) {
+    if (code[at] === "*" && code[at + 1] === "/") {
+      return at + 2;
+    }
+    at += 1;
+  }
+  return at;
+}
+
+function skipBunTemplate(code, at) {
+  while (at < code.length) {
+    if (code[at] === "\\") {
+      at += 2;
+      continue;
+    }
+    if (code[at] === "`") {
+      return at + 1;
+    }
+    at += 1;
+  }
+  return at;
+}
+
+function isBunWhitespace(char) {
+  return char === " " || char === "\n" || char === "\r" || char === "\t" || char === "\f";
+}
+
+function isBunIdentifierStart(char) {
+  return /[A-Za-z_$]/.test(char);
+}
+
+function isBunIdentifierPart(char) {
+  return /[A-Za-z0-9_$]/.test(char);
+}
+
 /** Resolve a Bun specifier to a file URL and parent URL. */
 function bunResolve(specifier, importer) {
-  const parentURL = importer === "" ? null : bunPathToFileURL(importer);
+  const importerFile = bunImporterFile(importer);
+  const epochSource = importerFile == null ? null : bunEpochSources.get(importerFile);
+  const parentURL = importer === "" ? null : (epochSource?.identity ?? bunPathToFileURL(importer));
   const split = splitBunSpecifier(specifier);
   if (specifier.startsWith("file:")) {
     return { parentURL, url: specifier };
   }
   if (isPathSpecifier(split.path)) {
     if (importer === "") {
+      return path.isAbsolute(split.path)
+        ? { parentURL, url: pathToFileURL(split.path).href + split.suffix }
+        : null;
+    }
+    const bun = globalThis.Bun;
+    if (bun == null || typeof bun.resolveSync !== "function") {
       return null;
     }
-    return {
-      parentURL,
-      url: pathToFileURL(path.resolve(path.dirname(importer), split.path)).href + split.suffix,
-    };
+    try {
+      bunResolving = true;
+      const from = path.dirname(epochSource?.source ?? importerFile ?? importer);
+      return {
+        parentURL,
+        url: pathToFileURL(bun.resolveSync(split.path, from)).href + split.suffix,
+      };
+    } catch {
+      return null;
+    } finally {
+      bunResolving = false;
+    }
   }
 
   const bun = globalThis.Bun;
@@ -548,13 +781,23 @@ function bunResolve(specifier, importer) {
   }
   try {
     bunResolving = true;
-    const from = importer === "" ? process.cwd() : importer;
+    const from = importer === "" ? process.cwd() : (epochSource?.source ?? importer);
     return { parentURL, url: bunPathToFileURL(bun.resolveSync(specifier, from)) };
   } catch {
     return null;
   } finally {
     bunResolving = false;
   }
+}
+
+/** The filesystem path portion of a Bun importer. */
+function bunImporterFile(importer) {
+  if (importer === "") {
+    return null;
+  }
+  const file = splitBunSpecifier(importer).path;
+  const namespace = `${BUN_GENERATED_NAMESPACE}:`;
+  return file.startsWith(namespace) ? file.slice(namespace.length) : file;
 }
 
 /** Turn a redirected file URL into the path form Bun's resolver returns. */
@@ -569,9 +812,48 @@ function bunLoadPath(url) {
   const mocked = mocks.get(moduleKey(url));
   if (mocked != null && parsed.searchParams.has(REVISION_PARAM)) {
     const standIn = bunMockedModulePath(url);
-    return standIn == null ? undefined : { path: standIn };
+    return standIn == null ? undefined : { path: standIn, namespace: BUN_GENERATED_NAMESPACE };
+  }
+  if (parsed.searchParams.has(REVISION_PARAM)) {
+    const epochFile = bunEpochModulePath(parsed);
+    return epochFile == null ? undefined : { path: epochFile, namespace: BUN_GENERATED_NAMESPACE };
   }
   return { path: `${fileURLToPath(parsed)}${parsed.search}${parsed.hash}` };
+}
+
+/** A temp-root copy Bun can load for a query-carrying epoch identity. */
+function bunEpochModulePath(url) {
+  const identity = url.href;
+  let file = bunEpochs.get(identity);
+  if (file != null) {
+    return file;
+  }
+
+  const source = fileURLToPath(url);
+  const root = bunStandinDirectory();
+  bunEpochFiles += 1;
+  file = path.join(root, `epoch-${bunEpochFiles}.mjs`);
+  fs.copyFileSync(source, file);
+  bunEpochs.set(identity, file);
+  rememberBunGeneratedFile(file, { identity, source });
+  return file;
+}
+
+/** Remember a generated file under every filesystem spelling Bun may use. */
+function rememberBunGeneratedFile(file, epochSource = null) {
+  bunGeneratedFiles.add(file);
+  if (epochSource != null) {
+    bunEpochSources.set(file, epochSource);
+  }
+  try {
+    const real = fs.realpathSync(file);
+    bunGeneratedFiles.add(real);
+    if (epochSource != null) {
+      bunEpochSources.set(real, epochSource);
+    }
+  } catch {
+    // If the path cannot be canonicalized, the direct path is still usable.
+  }
 }
 
 /** Split off query/hash before path resolution. */
@@ -612,6 +894,9 @@ function redirect(specifier, parentURL, url) {
   // Already answered: `importActual` names the URL it wants, and a URL that
   // carries a revision was produced by this function on the way in.
   if (parsed.searchParams.has(ACTUAL_PARAM) || parsed.searchParams.has(REVISION_PARAM)) {
+    return url;
+  }
+  if (bunGeneratedFiles.has(fileURLToPath(parsed))) {
     return url;
   }
 

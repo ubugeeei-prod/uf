@@ -605,6 +605,54 @@ fn module_mocking_on_bun_reaches_the_public_test_api() {
     }
 }
 
+/// The epoch copy that lets Bun re-evaluate a graph must still use Bun's own
+/// resolver, including extension inference, for imports inside that graph.
+#[test]
+fn module_mocking_on_bun_preserves_relative_resolution_inside_epoch_graphs() {
+    if !host_ready() || !bun_ready() {
+        return;
+    }
+    if !bun_module_mocking_supported() {
+        return;
+    }
+
+    let project = Project::new(&[
+        (
+            "client.js",
+            "// @flow\nexport const send = (): string => \"real\";\n",
+        ),
+        (
+            "consumer.js",
+            "// @flow\nimport { send } from \"./client\";\n\n\
+             export const greeting: string = send();\n",
+        ),
+        ("main.js", BUN_PUBLIC_MODULE_MOCKING_PROGRAM),
+    ]);
+
+    let run = run_on_bun(&project, "main.js");
+
+    assert_eq!(
+        run.status,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    for expected in [
+        "direct=stand-in",
+        "consumer=stand-in",
+        "direct-after=real",
+        "consumer-after=real",
+    ] {
+        assert!(
+            run.stdout.contains(expected),
+            "missing {expected:?}\nstdout:\n{}\nstderr:\n{}",
+            run.stdout,
+            run.stderr
+        );
+    }
+}
+
 /// The stand-in module `@uniflowed/host` generates can be materialized as a
 /// file, and Bun can route a static import declaration to it through
 /// `Bun.plugin`.

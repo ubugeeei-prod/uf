@@ -64,4 +64,12 @@ describe("browser substitutions", () => {
       }
     }
   });
+
+  it("keeps the node:url browser shim compatible with imported helper names", async () => {
+    const shim = await import(pathToFileURL(path.join(here, "./internal/browser-module.js")).href);
+    const url = shim.pathToFileURL("/tmp/uf module#one.js");
+    expect(url.href).toBe("file:///tmp/uf%20module%23one.js");
+    expect(shim.fileURLToPath(url)).toBe("/tmp/uf module#one.js");
+    expect(shim.fileURLToPath("file:///tmp/uf%20module%23two.js")).toBe("/tmp/uf module#two.js");
+  });
 });
