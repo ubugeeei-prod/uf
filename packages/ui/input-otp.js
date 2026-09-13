@@ -59,8 +59,8 @@
 import * as React from "@uniflowed/react";
 import { createContext, useContext, useMemo, useState } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
 
 /**
@@ -209,10 +209,10 @@ export component InputOtpSlot(children?: React.Node, index: number, ...rest: Res
 }
 
 /** The dash between two groups. Decoration, and it says so. */
-export component InputOtpSeparator(children?: React.Node, ...rest: Rest) {
-  return (
-    <div {...rest} aria-hidden="true">
-      {children}
-    </div>
-  );
+export component InputOtpSeparator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
+  const props = withProps(rest, { "aria-hidden": "true", children });
+  if (render != null) {
+    return render(props);
+  }
+  return <div {...props} />;
 }
