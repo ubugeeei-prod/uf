@@ -20,17 +20,37 @@
 # one's.
 #
 # Every publish is shown before anything is sent, and nothing is sent without
-# an answer. `--yes` skips the question for a non-interactive run.
+# an answer. `--yes` skips the question for a non-interactive run. `--package`
+# narrows the bootstrap to one or more names that are already in a release
+# manifest, which is the safe path when one front-door package blocks a release
+# and the other pending names should stay uncreated.
 set -eu
 
 repo_root="$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$repo_root"
 
 assume_yes=false
-for argument in "$@"; do
-  case "$argument" in
-    -y | --yes) assume_yes=true ;;
-    *) echo "bootstrap-publish: unknown option: $argument" >&2; exit 2 ;;
+selected_packages=""
+add_selected_package() {
+  package="${1#@uniflowed/}"
+  if [ -z "$package" ]; then
+    echo "bootstrap-publish: --package needs a package name" >&2
+    exit 2
+  fi
+  selected_packages="${selected_packages} ${package}"
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -y | --yes) assume_yes=true; shift ;;
+    --package)
+      [ "$#" -ge 2 ] || { echo "bootstrap-publish: --package needs a package name" >&2; exit 2; }
+      add_selected_package "$2"
+      shift 2 ;;
+    --package=*)
+      add_selected_package "${1#--package=}"
+      shift ;;
+    *) echo "bootstrap-publish: unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -74,8 +94,23 @@ release_packages() {
 
 check_release_manifests
 
+target_packages() {
+  if [ -n "$selected_packages" ]; then
+    printf '%s\n' $selected_packages | awk '!seen[$0]++'
+  else
+    release_packages
+  fi
+}
+
+for package in $(target_packages); do
+  release_packages | grep -qx "$package" || {
+    echo "bootstrap-publish: ${package} is not in a release manifest" >&2
+    exit 2
+  }
+done
+
 missing=""
-for package in $(release_packages); do
+for package in $(target_packages); do
   name="@uniflowed/${package}"
   if npm view "$name" name >/dev/null 2>&1; then
     printf '  on npm      %s\n' "$name"
@@ -132,8 +167,19 @@ bootstrap-publish: ${published} published.
 
 Now bind them to the workflow, so every release after this one is the
 workflow's and no token exists anywhere:
+MESSAGE
 
-  tools/release/trust-npm.sh
+if [ -n "$selected_packages" ]; then
+  printf '  tools/release/trust-npm.sh'
+  for package in $(target_packages); do
+    printf ' --package %s' "$package"
+  done
+  printf '\n'
+else
+  echo "  tools/release/trust-npm.sh"
+fi
+
+cat <<MESSAGE
 
 And point 'latest' at them, which publishing on the prerelease tag above does
 not do — it is the tag 'npm install <name>' asks for:
