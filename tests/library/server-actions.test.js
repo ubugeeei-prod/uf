@@ -984,4 +984,74 @@ describe("the module the browser is given in place of a `use server` file", () =
     const forBrowser = flow.load.call({ environment: { name: "client" } }, id, { ssr: false });
     expect(String(forBrowser)).toBe("export const actions = [];\nexport default actions;\n");
   });
+
+  it("invalidates a cached action reference when the dev manifest changes", () => {
+    const flow = flowPlugin();
+    const written = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "uf-actions-")),
+      "uf-rsc-manifest.json",
+    );
+    const actionManifest = (id) => ({
+      ...manifest,
+      serverActions: [
+        {
+          id,
+          module: "app/counter/_actions/tally.js",
+          export: "recordCount",
+          kind: "module-export",
+        },
+      ],
+    });
+    fs.writeFileSync(written, JSON.stringify(actionManifest(RECORD)));
+
+    const was = process.env[RSC_MANIFEST_ENV];
+    process.env[RSC_MANIFEST_ENV] = written;
+    try {
+      expect(
+        String(flow.load.call({ environment: { name: "client" } }, action, { ssr: false })),
+      ).toContain(RECORD);
+
+      const routesId = `\0${VIRTUAL.routes}`;
+      const actionsId = `\0${VIRTUAL.actions}`;
+      const modules: Map<string, { id: string }> = new Map([
+        [action, { id: action }],
+        [routesId, { id: routesId }],
+        [actionsId, { id: actionsId }],
+      ]);
+      const invalidated: Array<string> = [];
+      const events: { [string]: (string) => void } = {};
+      const devServer: $FlowFixMe = {
+        httpServer: { once: () => {} },
+        watcher: {
+          add: () => {},
+          on: (event, callback) => {
+            events[event] = callback;
+          },
+        },
+        moduleGraph: {
+          getModuleById: (id) => modules.get(id) ?? null,
+          invalidateModule: (module) => {
+            invalidated.push(module.id);
+          },
+        },
+        ws: { send: () => {} },
+        middlewares: { use: () => {} },
+      };
+
+      flow.configureServer(devServer);
+      fs.writeFileSync(written, JSON.stringify(actionManifest(OTHER)));
+      events.change(written);
+
+      expect(invalidated).toContain(action);
+      expect(invalidated).toContain(routesId);
+      expect(invalidated).toContain(actionsId);
+      expect(
+        String(flow.load.call({ environment: { name: "client" } }, action, { ssr: false })),
+      ).toContain(OTHER);
+    } finally {
+      if (was == null) delete process.env[RSC_MANIFEST_ENV];
+      else process.env[RSC_MANIFEST_ENV] = was;
+      fs.rmSync(path.dirname(written), { recursive: true, force: true });
+    }
+  });
 });
