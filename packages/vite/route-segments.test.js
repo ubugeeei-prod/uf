@@ -111,6 +111,21 @@ describe("classifying a directory name", () => {
     // organises files and a slot organises rendering, and neither is a URL.
     expect(routeFromSegments(["dashboard", "@team", "members"]).path).toBe("/dashboard/members");
   });
+
+  it("refuses an interception before it can become a helper-built URL", () => {
+    let thrown = null;
+    try {
+      routeFromSegments(["feed", "(.)photo"]);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown instanceof Error).toBe(true);
+    const message = thrown instanceof Error ? thrown.message : "";
+    expect(message).toContain("(.)photo");
+    expect(message).toContain("intercepting route");
+    expect(message).toContain("refused");
+  });
 });
 
 describe("scanning a router root that holds one", () => {
