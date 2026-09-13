@@ -8415,6 +8415,31 @@ describe("Input OTP", () => {
     expect(field).toHaveAttribute("inputmode", "numeric");
   });
 
+  it("lets callers render the separator element without announcing it", () => {
+    render(
+      <InputOtp.Root label="One-time code" length={6}>
+        <InputOtp.Group>
+          <InputOtp.Slot index={0} />
+          <InputOtp.Slot index={1} />
+          <InputOtp.Slot index={2} />
+        </InputOtp.Group>
+        <InputOtp.Separator render={(props) => <span {...props} data-testid="separator" />}>
+          -
+        </InputOtp.Separator>
+        <InputOtp.Group>
+          <InputOtp.Slot index={3} />
+          <InputOtp.Slot index={4} />
+          <InputOtp.Slot index={5} />
+        </InputOtp.Group>
+      </InputOtp.Root>,
+    );
+
+    const separator = screen.getByTestId("separator");
+    expect(separator.tagName).toBe("SPAN");
+    expect(separator).toHaveAttribute("aria-hidden", "true");
+    expect(separator).toHaveTextContent("-");
+  });
+
   it("fills every box from one paste", () => {
     render(<Example />);
     const field = screen.getByRole("textbox", { name: "One-time code" });
@@ -8850,6 +8875,7 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Field.Status",
     "HoverCard.Body",
     "HoverCard.Trigger",
+    "InputOtp.Separator",
     "Menu.Body",
     "Menu.CheckboxItem",
     "Menu.Group",
@@ -8963,7 +8989,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "DatePicker.Root",
     "InputOtp.Group",
     "InputOtp.Root",
-    "InputOtp.Separator",
     "InputOtp.Slot",
     "NavigationMenu.Body",
     "NavigationMenu.Item",
