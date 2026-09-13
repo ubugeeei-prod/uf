@@ -1,0 +1,390 @@
+---
+title: "React Native target · uf"
+description: "Native route files, Metro, navigator events and the test-tree surface."
+---
+
+<p className="eyebrow">Writing code</p>
+
+# React Native target
+
+<div className="lede">
+React Native is a target in uf, not a flag that turns the web app sideways. The
+shared part is the Flow toolchain and the file-system route table; the native
+part is a Metro bundle, platform-specific route files, a navigator contract and
+test-tree queries that do not pretend there is a DOM.
+</div>
+
+## The current line
+
+This is the honest status.
+
+| Piece | Status | What exists |
+| --- | --- | --- |
+| Package facade | Implemented | `@uniflowed/react-native` re-exports the app's real `react-native` peer |
+| Route target | Implemented | `uf build --target native`, `ios` and `android` select native route files |
+| Metro config | Implemented | `@uniflowed/react-native/metro` exports `withUniflowedMetro` |
+| Native router | Implemented as a contract | `@uniflowed/router/native` resolves a uf route into a navigator event |
+| Test queries | Implemented for trees | `@uniflowed/react-native-testing` queries a native renderer's JSON tree |
+| Native renderer | Pending | `render()` still throws until uf has a host config |
+| End-to-end app runtime | Pending | There is no Expo-equivalent application shell, dev client, asset service or native module system |
+
+The important distinction is the one between **contract** and **runtime**. uf
+can already say which route file belongs in a native bundle, what Metro needs
+to resolve, which navigator event a route becomes, and how to query the tree a
+native renderer produced. It cannot yet start that renderer for you or ship a
+complete native app runtime.
+
+That makes this useful for code that wants a Flow-first route and testing
+contract around React Native, and not yet enough for a team expecting Expo's
+finished application platform.
+
+## Configure the target
+
+`app.framework: "react-native"` makes the native target the default application
+target. `app.targets` is the promise the project keeps satisfying; it says the
+project has a React Native surface at all.
+
+```js
+// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    framework: "react-native",
+    targets: ["react-native"],
+  },
+});
+```
+
+Then a build can name the app surface:
+
+<div className="command"><code>uf build --target native</code></div>
+
+or narrow it to one platform:
+
+<div className="command"><code>uf build --target ios</code></div>
+
+<div className="command"><code>uf build --target android</code></div>
+
+`react-native` is accepted as a spelling of the same application target as
+`native`. Without `--target`, a `react-native` framework project builds the
+native route table; a regular uf or React project builds `web`.
+
+`--target` means something different with `--compile`: then it is a standalone
+binary platform triple such as `aarch64-apple-darwin`. The build command keeps
+those meanings apart and says which one you asked for when they are confused.
+
+## Route files
+
+Native routes use the same route root and the same segment grammar as web
+routes. What changes is the reserved file variant the scanner chooses.
+
+```text
+app/
+  $layout.js
+  $page.web.js
+  $page.native.js
+  settings/
+    $page.native.js
+    $page.ios.js
+    $page.android.js
+```
+
+The precedence is target-specific and deliberately the same on the Rust and
+JavaScript scanners:
+
+| Build target | File order |
+| --- | --- |
+| `web` | `$page.web.js`, then `$page.js` |
+| `native` | `$page.native.js`, then `$page.js` |
+| `ios` | `$page.ios.js`, then `$page.native.js`, then `$page.js` |
+| `android` | `$page.android.js`, then `$page.native.js`, then `$page.js` |
+
+Layouts, route handlers, loading boundaries, templates, not-found boundaries
+and error boundaries follow the same suffix rule. A native build therefore does
+not quietly use a web page just because it was the only file in the directory:
+if there is a more specific native file, that is the route.
+
+```js
+// @flow
+// app/settings/$page.native.js
+import { Pressable, Text, View } from "@uniflowed/react-native";
+
+export component Page() {
+  return (
+    <View>
+      <Text>Settings</Text>
+      <Pressable accessibilityRole="button">
+        <Text>Save</Text>
+      </Pressable>
+    </View>
+  );
+}
+```
+
+The package import is a facade over the app's peer dependency. uf does not
+vendor React Native, does not choose the app's native runtime version, and does
+not try to mirror every upstream export in a hand-written list. It re-exports
+the real package so the public surface moves with React Native.
+
+## Metro
+
+Metro still owns the bundle. uf's Metro helper only writes down the resolver
+contract that uf's native target expects:
+
+```js
+// @flow
+// metro.config.js
+import { withUniflowedMetro } from "@uniflowed/react-native/metro";
+
+export default withUniflowedMetro({
+  resolver: {
+    sourceExts: ["tsx"],
+    resolverMainFields: ["expo"],
+  },
+});
+```
+
+The helper preserves what the project already configured and appends the pieces
+uf needs:
+
+| Field | Added values |
+| --- | --- |
+| `resolver.sourceExts` | `js`, `jsx`, `mjs`, `cjs` |
+| `resolver.resolverMainFields` | `react-native`, `browser`, `main` |
+
+Metro already understands `.ios.js`, `.android.js` and `.native.js`. The helper
+does not reimplement platform suffix resolution; it keeps Metro and uf naming
+the same files.
+
+The build manifest records the same answer so a downstream tool can check it:
+
+```json
+{
+  "target": "native",
+  "targetContract": {
+    "runtime": "react-native",
+    "renderer": { "status": "pending" },
+    "router": {
+      "kind": "navigator",
+      "status": "implemented",
+      "package": "@uniflowed/router/native",
+      "helper": "createNativeRouter"
+    },
+    "transform": {
+      "kind": "metro",
+      "platform": "native",
+      "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
+      "config": {
+        "package": "@uniflowed/react-native/metro",
+        "helper": "withUniflowedMetro"
+      }
+    }
+  }
+}
+```
+
+That manifest shape is there because a route-suffixed build is not the same
+thing as a complete native runtime. The renderer row stays `pending` until uf
+can mount the tree on a native host.
+
+## Native navigation
+
+The browser router owns a URL bar and a History API. A native app owns a
+navigator. `@uniflowed/router/native` keeps the shared half small: resolve a uf
+route against the generated table, reject destinations a native bundle cannot
+own, and hand the result to the application's navigator.
+
+```js
+// @flow
+import { createNativeRouter } from "@uniflowed/router/native";
+import type { RouteTable } from "@uniflowed/router/routing";
+
+export function nativeRouter(routeTable: RouteTable) {
+  return createNativeRouter(routeTable, {
+    push(event) {
+      navigation.push(screenFor(event.route), {
+        params: event.params,
+        search: event.search,
+      });
+    },
+    replace(event) {
+      navigation.replace(screenFor(event.route), {
+        params: event.params,
+        search: event.search,
+      });
+    },
+    prefetch(event) {
+      warmScreen(event.route, event.params);
+    },
+  });
+}
+```
+
+The `routeTable` is the generated native table — the same data the web entry
+receives from `virtual:uf/routes`, narrowed by `--target native`, `ios` or
+`android`. The helper is not coupled to a particular navigator:
+
+```js
+const router = nativeRouter(routeTable);
+
+await router.push("/users/42?tab=posts");
+```
+
+Under the hood it calls the methods you supplied:
+
+```js
+createNativeRouter(routeTable, {
+  push(event) {
+    navigation.push(screenFor(event.route), {
+      params: event.params,
+      search: event.search,
+    });
+  },
+  replace(event) {
+    navigation.replace(screenFor(event.route), {
+      params: event.params,
+      search: event.search,
+    });
+  },
+  prefetch(event) {
+    warmScreen(event.route, event.params);
+  },
+});
+```
+
+The event is the contract:
+
+```js
+{
+  kind: "push",
+  href: "/users/42?tab=posts",
+  pathname: "/users/42",
+  search: "?tab=posts",
+  route: "/users/:id",
+  params: { id: "42" },
+}
+```
+
+Four things are refused before they reach your navigator:
+
+| Input | Why it is refused |
+| --- | --- |
+| `https://example.com` | External URLs belong to Linking or the platform, not the app route table |
+| `settings` | A native route has no current document URL to resolve a relative href against |
+| `/users/42#bio` | Native screens do not have document anchors |
+| `/server-only` | The native route table has no page module for that path |
+
+`prefetch()` loads the matched page and layout modules before it calls the
+optional navigator prefetch callback. It does not render the screen and it does
+not guess what navigation library the app uses.
+
+## Testing
+
+`@uniflowed/react-native-testing` queries a tree that already exists:
+
+```js
+// @flow
+import { createNativeScreen } from "@uniflowed/react-native-testing";
+import { expect, it } from "@uniflowed/test";
+
+it("finds the native button by accessible name", () => {
+  const screen = createNativeScreen({
+    type: "Pressable",
+    props: {
+      accessibilityLabel: "Save changes",
+      accessibilityState: { disabled: true },
+    },
+    children: [{ type: "Text", props: {}, children: ["Save"] }],
+  });
+
+  expect(
+    screen.getByRole("button", {
+      name: "Save changes",
+      disabled: true,
+    }).type,
+  ).toBe("Pressable");
+});
+```
+
+The guide to [testing](/guide/testing#react-native-test-trees) has the full
+query contract: `getByText`, `getByRole`, `getByTestId`, `within`, state
+filters, `accessibilityValue` filters and the rules for unknown options.
+
+The renderer is intentionally not faked. `render()` throws
+`NativeTestingUnsupportedError` and names the missing native renderer and host
+config. A test that needs that should be skipped with a reason:
+
+```js
+// @flow
+import { it } from "@uniflowed/test";
+
+it.skipBecause(
+  "renders the settings screen on the native host",
+  "uf can query a native test tree, but this suite needs a React Native renderer and host config.",
+);
+```
+
+That is louder than a TODO and safer than a DOM-rendered substitute.
+
+## Linting native code
+
+`uf lint` includes `react-native/platform-split`, a warning that prefers
+platform files over runtime branches:
+
+```js
+// Warns.
+import { Platform } from "@uniflowed/react-native";
+
+const file = Platform.OS === "ios" ? "haptics-ios" : "haptics-android";
+```
+
+The native route scanner follows the same design. A `.ios.js` / `.android.js`
+pair is a stronger statement than an `if` hidden in the module body, because
+the bundle, the route manifest, Metro and the linter can all see it without
+executing your code.
+
+It is a warning rather than an error. Some branches are genuinely about a
+single expression, and splitting a file to satisfy a tool would make the code
+worse. The rule is there for modules whose real shape is platform-specific.
+
+## Compared with Expo
+
+Expo is a complete application platform. It gives you a dev client, native
+modules, config plugins, over-the-air updates, asset handling, EAS Build,
+submission, and years of React Native production practice. uf has none of that
+today.
+
+What uf is trying to own is different:
+
+| Question | Expo answers | uf answers |
+| --- | --- | --- |
+| How do I build and submit the native app? | Expo and EAS | Not answered |
+| Which native modules exist? | Expo SDK and the React Native ecosystem | Not answered |
+| Which route files belong to iOS, Android and shared native? | Your app's router | The uf route scanner |
+| How does Flow React syntax reach Metro? | Usually by the app's Babel/Metro setup | The uf target contract plus Metro helper |
+| How does a file route become a native navigation event? | App-specific router integration | `@uniflowed/router/native` |
+| How do tests query a native tree without a DOM? | Testing Library / app harness | `@uniflowed/react-native-testing` |
+
+So the short version is: **Expo is what ships the app; uf is the Flow-first
+contract around the code that app runs.** When uf eventually claims more than
+that, this page should get shorter, not vaguer: the pending rows at the top
+should disappear into concrete commands.
+
+## What is still missing
+
+- **A native renderer and host config.** Until this exists, uf cannot mount a
+  component tree in `uf test`, and `@uniflowed/react-native-testing` can only
+  query trees another renderer produced.
+- **An app-owned native router integration.** The navigator contract is
+  implemented, but the package does not bind React Navigation, Expo Router or
+  any other navigator for you.
+- **A Metro transformer contract beyond resolver config.** Flow, the React
+  Compiler and StyleX all need to pass through the native bundle in one
+  defensible order.
+- **A finished runtime story.** No dev client, no native module registry, no
+  asset service, no OTA channel, no submission pipeline.
+
+[#501](https://github.com/ubugeeei-prod/uf/issues/501) tracks this target.
+[Testing](/guide/testing#react-native-test-trees) covers the query surface, and
+[Packages](/reference/packages) lists the packages that exist today.
