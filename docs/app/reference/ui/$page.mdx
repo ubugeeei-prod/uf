@@ -1566,6 +1566,49 @@ links to the fields that failed, and what makes it work is the ids `Field`
 already owns — a component would have to be told what every field on the page is
 called, which is the form's knowledge and not a container's.
 
+## Switch and Checkbox
+
+`Switch` and `Checkbox` are the two controls that look alike and must not be the
+same component. Both render a focusable control with `aria-checked`, both take
+`checked` / `defaultChecked` / `onCheckedChange`, and both accept `render` when
+the app needs to put those semantics on its own element:
+
+```js
+<Switch checked={notifications} onCheckedChange={setNotifications}>
+  Notifications
+</Switch>
+
+<Checkbox indeterminate render={(props) => <span {...props} tabIndex={0} />}>
+  Select all
+</Checkbox>
+```
+
+The role is the contract. `Switch` renders `role="switch"` and never a checkbox:
+screen readers announce it as on or off, because it operates a setting.
+`Checkbox` renders `role="checkbox"` and may be unchecked, checked or mixed,
+because it answers a question. The mixed state is caller-owned through
+`indeterminate`; clicking a mixed checkbox reports `true`, the "select all"
+direction a table header needs.
+
+Keyboard handling follows that split:
+
+| Key | Switch | Checkbox |
+| --- | --- | --- |
+| `Space` | Toggles | Toggles |
+| `Enter` | Toggles | Submits the form implicitly |
+
+The checkbox `Enter` path reproduces native checkbox behaviour rather than the
+button it happens to render. It prevents the button click, leaves the checked
+state alone, and calls `requestSubmit` on the owning form with that form's
+default submit button, including a button outside the form that names it with
+`form="…"`. A buttonless form follows the platform's implicit-submission rule:
+it submits with at most one blocking text-like field and stays quiet with two.
+
+`render` changes the element, not the semantics. A rendered switch is still a
+switch with `aria-checked` and the switch keyboard contract; a rendered checkbox
+keeps `role="checkbox"` and preserves `aria-checked="mixed"` when
+`indeterminate` is set.
+
 ## What this page is
 
 A reference for what `@uniflowed/ui` guarantees, not a gallery. The guarantees
@@ -1573,10 +1616,9 @@ are stated as tests in `packages/ui/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.
 
-Sections for `Dialog`, `Tabs`, `Switch` and `Checkbox` are still to be written,
-and `Combobox` has only its groups and the palette they make possible; until
-they are, each module's header is the documentation, and it is written to be
-read.
+Sections for `Dialog` and `Tabs` are still to be written, and `Combobox` has
+only its groups and the palette they make possible; until they are, each
+module's header is the documentation, and it is written to be read.
 
 For a live region that is *only* a live region — a route change announced, a
 count that updates where nothing visible moves — `Announcer` in
