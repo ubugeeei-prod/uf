@@ -99,12 +99,88 @@ describe("@uniflowed/react-native-testing", () => {
     expect(roleOf(screen.getByTestId("save"))).toBe("button");
   });
 
+  it("queries accessible labels directly", () => {
+    const screen = createNativeScreen(tree);
+
+    expect(screen.getByLabelText("Save changes").props?.testID).toBe("save");
+    expect(screen.queryByLabelText("save")).toBe(null);
+    expect(screen.getByLabelText("save", { exact: false }).props?.testID).toBe("save");
+    expect(screen.getByLabelText("Hello native").type).toBe("Text");
+    expect(screen.queryByLabelText("missing")).toBe(null);
+    expect(
+      screen.getByLabelText((name, node) => name === "Search" && node.type === "TextInput").type,
+    ).toBe("TextInput");
+  });
+
+  it("uses accessibilityLabel before descendant text for label queries", () => {
+    const screen = createNativeScreen({
+      type: "Pressable",
+      props: { accessibilityLabel: "Save changes", testID: "save" },
+      children: ["Save"],
+    });
+
+    expect(screen.getByLabelText("Save changes").props?.testID).toBe("save");
+    expect(screen.queryByLabelText("Save")).toBe(null);
+  });
+
+  it("uses text content as the label fallback for native controls", () => {
+    const screen = createNativeScreen({
+      type: "Pressable",
+      props: { testID: "plain-action" },
+      children: [{ type: "Text", props: {}, children: ["Plain action"] }],
+    });
+
+    expect(screen.getByLabelText("Plain action").props?.testID).toBe("plain-action");
+  });
+
+  it("does not duplicate a roleless container and its text child for label fallback", () => {
+    const screen = createNativeScreen({
+      type: "View",
+      props: {},
+      children: [{ type: "Text", props: {}, children: ["Plain label"] }],
+    });
+
+    const label = screen.getByLabelText("Plain label");
+    expect(label.type).toBe("Text");
+    expect(screen.getAllByLabelText("Plain label").length).toBe(1);
+  });
+
   it("scopes queries with within", () => {
     const root = createNativeScreen(tree).getByTestId("root");
     const scoped = within(root);
 
     expect(scoped.getAllByRole("text").length).toBe(3);
+    expect(scoped.getByLabelText("Search").type).toBe("TextInput");
     expect(textContent(root)).toBe("Hello nativeSave");
+  });
+
+  it("scopes label queries to the subtree passed to within", () => {
+    const screen = createNativeScreen({
+      type: "View",
+      props: {},
+      children: [
+        {
+          type: "View",
+          props: { testID: "inside" },
+          children: [
+            {
+              type: "Pressable",
+              props: { accessibilityLabel: "Inside action" },
+              children: [],
+            },
+          ],
+        },
+        {
+          type: "Pressable",
+          props: { accessibilityLabel: "Outside action" },
+          children: [],
+        },
+      ],
+    });
+    const scoped = within(screen.getByTestId("inside"));
+
+    expect(scoped.getByLabelText("Inside action").type).toBe("Pressable");
+    expect(scoped.queryByLabelText("Outside action")).toBe(null);
   });
 
   it("accepts fragment-shaped root arrays from a native renderer", () => {
@@ -115,6 +191,26 @@ describe("@uniflowed/react-native-testing", () => {
 
     expect(screen.getByText("First").type).toBe("Text");
     expect(screen.getByText("Second").type).toBe("Text");
+  });
+
+  it("uses the same one, optional and many rules for label queries", () => {
+    const screen = createNativeScreen([
+      {
+        type: "Pressable",
+        props: { accessibilityLabel: "Repeat" },
+        children: [],
+      },
+      {
+        type: "Pressable",
+        props: { accessibilityLabel: "Repeat" },
+        children: [],
+      },
+    ]);
+
+    expect(screen.getAllByLabelText("Repeat").length).toBe(2);
+    expect(() => screen.getByLabelText("Repeat")).toThrow("found 2 nodes for label Repeat");
+    expect(() => screen.queryByLabelText("Repeat")).toThrow("found 2 nodes for label Repeat");
+    expect(() => screen.getAllByLabelText("Missing")).toThrow("found nothing for label Missing");
   });
 
   it("refuses unknown native query options", () => {
@@ -137,6 +233,15 @@ describe("@uniflowed/react-native-testing", () => {
     expect(() => screen.getByText("Hello native", { hidden: true } as $FlowFixMe)).toThrow(
       '"hidden" is not an option this query takes',
     );
+    expect(() => screen.getByLabelText("Search", { selector: "TextInput" } as $FlowFixMe)).toThrow(
+      '"selector" is not an option this query takes',
+    );
+    expect(() =>
+      screen.queryByLabelText("Search", { selector: "TextInput" } as $FlowFixMe),
+    ).toThrow('"selector" is not an option this query takes');
+    expect(() =>
+      screen.getAllByLabelText("Search", { selector: "TextInput" } as $FlowFixMe),
+    ).toThrow('"selector" is not an option this query takes');
   });
 
   it("refuses render until a native renderer exists", () => {
