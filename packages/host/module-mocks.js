@@ -149,11 +149,20 @@ export const ACTUAL_PARAM = "uf-actual";
 /** This module's own URL, which a generated stand-in imports its values from. */
 const SELF = import.meta.url;
 
+/** Process-global state shared by duplicate imports of this loader module. */
+const STATE_KEY = Symbol.for("@uniflowed/host/module-mocks");
+
+const state =
+  globalThis[STATE_KEY] ??
+  (globalThis[STATE_KEY] = {
+    served: new Map(),
+  });
+
 /** Registered mocks, by module key. */
 const mocks = new Map();
 
 /** Namespaces handed to a generated module, by the exact URL it was loaded as. */
-const served = new Map();
+const served = state.served;
 
 /** Bun stand-in files, keyed by the mocked module identity they serve. */
 const bunStandins = new Map();
