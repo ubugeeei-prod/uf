@@ -95,6 +95,35 @@ Measured on a 133 kB Flow and JSX file:
 The parser is 58% of that. The target is 10 MB/s end to end, and the printer is
 not what is standing between here and there.
 
+### When format is the slow check
+
+Start with the files, not the formatter. `uf fmt` walks the same project set as
+`uf lint`, `uf check`, `uf test` and `uf doc`: `.gitignore`, `.ignore`,
+`.uf`/`.git`, then the top-level `ignore` list in `uf.config.js`. A generated
+directory in none of those lists is source, so it will be printed.
+
+```sh
+uf fmt --check packages/ui
+uf fmt --check dialog.js
+```
+
+The path arguments are substring filters. They do not use a glob language, and
+they do not silently pass when nothing matched; a filter that reads zero files
+is an error. That makes a slow full-project run easy to cut down without
+creating a second configuration file.
+
+The next thing to check is who is formatting the file. Flow files are always
+printed by uf. JSON, CSS and TypeScript are delegated to
+`fmt.nonFlow.formatter`, Biome by default:
+
+```sh
+uf explain fmt --json
+```
+
+If a slow run is all Flow, the cost is parse plus print. If it is all JSON or
+CSS, the cost belongs to the provider uf started. If it is Markdown, it should
+not be in the run at all — uf does not format Markdown.
+
 ## uf lint
 
 <div className="command"><code>uf lint</code></div>
@@ -106,6 +135,46 @@ Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
 `unnecessary-optional-chain` and the rest — are configured in `uf.config.js`
 alongside uf's rules rather than in a separate `.flowconfig` section, because a
 project should have one place where "this is an error here" is written down.
+
+### What a lint run tells you
+
+`uf lint --json` is the report to feed an editor, CI annotation step, or a
+small script:
+
+```json
+{
+  "command": "uf lint",
+  "filesChecked": 1,
+  "errors": 0,
+  "warnings": 0,
+  "diagnostics": [],
+  "unavailableRules": []
+}
+```
+
+`diagnostics` is the list that should become annotations. `errors` and
+`warnings` are the totals a CI step should branch on. `filesChecked` is a guard
+against a path filter that was too narrow, and `unavailableRules` is part of the
+contract: a rule that needs inference and could not run is named instead of
+quietly disappearing.
+
+`uf explain lint --json` answers a different question:
+
+```json
+{
+  "command": "uf lint",
+  "stages": [
+    { "name": "uf rules", "provider": "Rust", "detail": "63 rules configured" },
+    { "name": "Flow's own lints", "provider": "OfficialFlowRust" }
+  ]
+}
+```
+
+Use the first report when you need findings. Use the second when you need to
+know whose work is in the run before chasing performance. The important part is
+that both are command output rather than documentation promises: if a rule is
+added, disabled or made unavailable, the machine-readable answer changes with
+the command.
 
 ### Fixing what it finds
 
@@ -146,6 +215,28 @@ Anything whose path contains one of the arguments is read and nothing else, so
 `uf fmt dialog.js` is a way to format the file in front of you. A pattern that
 matches nothing is an error rather than a clean run.
 
+### When lint is too expensive
+
+The slowest lint is usually not "the linter"; it is one rule repeatedly asking
+for a shape that should have been computed once. That is the class of bug behind
+[#668](https://github.com/ubugeeei-prod/uf/issues/668): one rule spent most of
+the allocation budget building a Babel AST for a file that uf had already
+parsed.
+
+The public workflow is:
+
+1. Narrow the path until the cost follows a directory or a single large file.
+2. Run `uf lint --json <path>` and confirm `filesChecked` is the number you
+   meant.
+3. Run `uf explain lint --json` to record which lint stages were in the run.
+4. File the slow case with the file size, the rule name if one dominates the
+   findings, and the command output.
+
+There is no `uf profile` subcommand. The repository has profiler support for
+its own benches and allocation reports, but a project run should not depend on
+an internal profiling interface. Until a public profiler exists, the stable
+answers are the narrowed command, the JSON report and the explain output.
+
 ## uf check
 
 <div className="command"><code>uf check</code></div>
@@ -175,11 +266,55 @@ is not part of this project, a file the scan did not walk. Those are `any`, and
 the command names them at the end of its report rather than leaving you to work
 it out.
 
+### Reading the type-check report
+
+`uf check` is `uf lint` plus inference, so its JSON has two diagnostic lists:
+
+```json
+{
+  "command": "uf check",
+  "errors": 0,
+  "diagnostics": [],
+  "typeCheck": {
+    "status": "checked",
+    "backend": "upstream-flow-rust-port",
+    "filesChecked": 1,
+    "filesFromCache": 0,
+    "elapsedMs": 50.2,
+    "builtinsCold": true,
+    "diagnostics": []
+  }
+}
+```
+
+`diagnostics` is lint findings. `typeCheck.diagnostics` is type errors.
+`errors` is the sum. A project can therefore fail `uf check` with an empty
+top-level `diagnostics` array, and a reporter that only reads that field will
+say the wrong thing.
+
+For performance, start with `typeCheck.filesChecked`,
+`typeCheck.filesFromCache`, `typeCheck.elapsedMs` and `typeCheck.builtinsCold`.
+The built-ins are the standard Flow environment; a cold run pays to load them,
+and a warm run should not make that cost look like application inference.
+
 ## In CI
 
 <div className="command"><code>uf fmt --check && uf lint && uf check && uf test</code></div>
 
-Four commands, no configuration, and each one exits non-zero when it should.
+Four commands, no configuration, and each one exits non-zero when it should. Run
+them in that order when you want the cheapest failure first:
+
+| Step | Why it goes there |
+| --- | --- |
+| `uf fmt --check` | cheapest and writes nothing |
+| `uf lint` | catches syntax, framework and policy errors before inference |
+| `uf check` | reruns lint, then adds Flow inference |
+| `uf test` | runs code, so it pays host start-up and fixture cost |
+
+If CI is split into jobs, keep `fmt` and `lint` separate even though `check`
+includes lint. A contributor wants the fast, precise failure when a file only
+needs formatting; the release gate still wants `check` as the command that says
+the project is typed.
 
 Better still, name them once. `uf.config.js` takes tasks, `uf run ci` runs
 them, and the pipeline calls the same thing:
