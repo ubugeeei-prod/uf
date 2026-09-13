@@ -60,11 +60,12 @@ import {
   useState,
 } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
   forwarded,
+  withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
 import { moveOnKey, useFirstItem } from "./internal/roving-focus.js";
@@ -134,6 +135,7 @@ export component ToggleGroupRoot(
   value?: $ReadOnlyArray<string>,
   onValueChange?: (value: $ReadOnlyArray<string>) => void,
   orientation?: Orientation = "horizontal",
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [pressed, setPressed] = useControlled<$ReadOnlyArray<string>>(
@@ -180,6 +182,7 @@ export component ToggleGroupRoot(
           {...forwarded(rest)}
           onValueChange={chooseOne}
           orientation={orientation}
+          render={render}
           value={pressed[0] ?? null}
         >
           {children}
@@ -189,26 +192,25 @@ export component ToggleGroupRoot(
   }
 
   const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
+  const rootProps = withProps(passed, {
+    "aria-orientation": orientation,
+    children,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const group: $FlowFixMe = event.currentTarget;
+      // Moves and nothing else. Pressing every button the arrows pass over
+      // is what a `single` group does, and doing it here would apply half a
+      // dozen commands on the way to the one the reader wanted.
+      moveOnKey(event, group, toggleSet(orientation));
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      rootRef.current = element;
+    }),
+    role: "group",
+  });
 
   return (
     <ToggleGroupContext.Provider value={state}>
-      <div
-        {...passed}
-        aria-orientation={orientation}
-        onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-          const group: $FlowFixMe = event.currentTarget;
-          // Moves and nothing else. Pressing every button the arrows pass over
-          // is what a `single` group does, and doing it here would apply half a
-          // dozen commands on the way to the one the reader wanted.
-          moveOnKey(event, group, toggleSet(orientation));
-        })}
-        ref={composeRefs(rest.ref, (element) => {
-          rootRef.current = element;
-        })}
-        role="group"
-      >
-        {children}
-      </div>
+      {render != null ? render(rootProps) : <div {...rootProps} />}
     </ToggleGroupContext.Provider>
   );
 }
@@ -225,6 +227,7 @@ export component ToggleGroupItem(
   value: string,
   children?: React.Node,
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const group = useToggleGroup("ToggleGroup.Item");
@@ -237,7 +240,7 @@ export component ToggleGroupItem(
     // arrow keys that check as they move all belong to the radio group that
     // `ToggleGroup.Root` rendered around this.
     return (
-      <RadioGroupItem {...forwarded(rest)} disabled={disabled} value={value}>
+      <RadioGroupItem {...forwarded(rest)} disabled={disabled} render={render} value={value}>
         {children}
       </RadioGroupItem>
     );
@@ -246,35 +249,35 @@ export component ToggleGroupItem(
   const on = group.pressed.includes(value);
   const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown"]);
   const setActiveId = group.setActiveId;
-
-  return (
-    <button
-      {...passed}
-      aria-disabled={disabled ? "true" : undefined}
-      aria-pressed={on ? "true" : "false"}
-      id={id}
-      onClick={composeHandlers(rest.onClick, () => {
-        if (!disabled) {
-          group.toggle(value);
-        }
-      })}
-      // The roving tab stop follows real focus rather than leading it, so a
-      // pointer that moves focus and an arrow key that moves focus agree
-      // without the two having to be kept in step by hand.
-      onFocus={composeHandlers(rest.onFocus, () => setActiveId(id))}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-        if (disabled || (event.key !== " " && event.key !== "Enter")) {
-          return;
-        }
-        // Stops `Space` scrolling the page, and stops the browser's own click
-        // arriving afterwards and pressing this back to where it started.
-        event.preventDefault();
+  const itemProps = withProps(passed, {
+    "aria-disabled": disabled ? "true" : undefined,
+    "aria-pressed": on ? "true" : "false",
+    children,
+    id,
+    onClick: composeHandlers(rest.onClick, (_event: PartEvent) => {
+      if (!disabled) {
         group.toggle(value);
-      })}
-      tabIndex={group.activeId === id || (group.activeId == null && group.firstId === id) ? 0 : -1}
-      type="button"
-    >
-      {children}
-    </button>
-  );
+      }
+    }),
+    // The roving tab stop follows real focus rather than leading it, so a
+    // pointer that moves focus and an arrow key that moves focus agree
+    // without the two having to be kept in step by hand.
+    onFocus: composeHandlers(rest.onFocus, (_event: PartEvent) => setActiveId(id)),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      if (disabled || (event.key !== " " && event.key !== "Enter")) {
+        return;
+      }
+      // Stops `Space` scrolling the page, and stops the browser's own click
+      // arriving afterwards and pressing this back to where it started.
+      event.preventDefault();
+      group.toggle(value);
+    }),
+    tabIndex: group.activeId === id || (group.activeId == null && group.firstId === id) ? 0 : -1,
+  });
+
+  if (render != null) {
+    return render(withProps(itemProps, { role: "button" }));
+  }
+
+  return <button {...itemProps} type="button" />;
 }

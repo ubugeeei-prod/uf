@@ -8980,6 +8980,8 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Table.RowSelect",
     "Table.SelectAll",
     "Toggle",
+    "ToggleGroup.Item",
+    "ToggleGroup.Root",
     "Tooltip.Body",
     "Tooltip.Trigger",
   ];
@@ -9065,8 +9067,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Toast.Region",
     "Toast.Root",
     "Toast.Title",
-    "ToggleGroup.Item",
-    "ToggleGroup.Root",
   ];
 
   /** The parts `packages/ui/index.js` names, and the component behind each. */
@@ -9305,6 +9305,34 @@ describe("the escape hatch, exercised", () => {
     await userEvent.keyboard(" ");
     expect(control.getAttribute("aria-checked")).toBe("true");
     expect(changed).toHaveBeenCalledWith(true);
+  });
+
+  it("renders a toggle group through the hatch without losing pressed state", async () => {
+    const changed = fn();
+    render(
+      <ToggleGroup.Root
+        aria-label="Formatting"
+        defaultValue={["bold"]}
+        onValueChange={changed}
+        render={(props) => <section {...props} />}
+        type="multiple"
+      >
+        <ToggleGroup.Item render={(props) => <a href="#bold" {...props} />} value="bold">
+          Bold
+        </ToggleGroup.Item>
+        <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+
+    const group = screen.getByRole("group", { name: "Formatting" });
+    expect(group.tagName).toBe("SECTION");
+    const bold = screen.getByRole("button", { name: "Bold" });
+    expect(bold.tagName).toBe("A");
+    expect(bold.getAttribute("aria-pressed")).toBe("true");
+
+    await userEvent.click(bold);
+    expect(bold.getAttribute("aria-pressed")).toBe("false");
+    expect(changed).toHaveBeenLastCalledWith([]);
   });
 
   it("keeps a checkbox's mixed state when the caller renders a span", () => {
