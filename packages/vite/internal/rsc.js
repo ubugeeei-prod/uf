@@ -187,7 +187,13 @@ export function clientRouteFilter(manifest, root, boundaries = {}) {
  *
  * @param {ReadonlyArray<{
  *   defaultPage: ?string,
- *   routes: ReadonlyArray<{page: string, layouts: ReadonlyArray<string>, slots: ReadonlyArray<*>}>,
+ *   routes: ReadonlyArray<{
+ *     page: string,
+ *     layouts: ReadonlyArray<string>,
+ *     loading?: ReadonlyArray<{module: string}>,
+ *     templates?: ReadonlyArray<{module: string}>,
+ *     slots: ReadonlyArray<*>,
+ *   }>,
  * @param {(file: ?string) => boolean} needed
  * @returns {(slot: *) => boolean}
  */
@@ -205,6 +211,7 @@ function slotPredicate(needed) {
       if (
         needed(route.page) ||
         route.layouts.some(needed) ||
+        (route.loading ?? []).some((entry) => needed(entry.module)) ||
         (route.templates ?? []).some((entry) => needed(entry.module)) ||
         route.slots.some(needsSlot)
       ) {
