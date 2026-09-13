@@ -189,6 +189,23 @@ describe("recording a stream", () => {
     expect(recorder.finish().chunks[1].boundaries[0].built).toEqual(["article.post"]);
   });
 
+  it("names deferred payload rows instead of generic script tags", () => {
+    const time = clock();
+    const recorder = inspectStream(time.now);
+
+    recorder.chunk(SHELL);
+    time.wind(24);
+    recorder.chunk(
+      completion(0, '<script type="application/json" data-uf-row="2">{"value":"ready"}</script>'),
+    );
+    const record = recorder.finish();
+
+    expect(record.chunks[1].boundaries[0].built).toEqual(["deferred payload row 2"]);
+    expect(formatStream("/deferred", record).detail[1]).toContain(
+      "B:0 replaced p.loading with deferred payload row 2",
+    );
+  });
+
   it("reports a chunk it cannot attribute rather than dropping it", () => {
     // A `$RC(` split across two chunks is not attributed, and the bytes and the
     // position are still the truth. Saying nothing about the boundary is the
