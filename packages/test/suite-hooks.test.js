@@ -14,6 +14,8 @@
 // other way.
 
 import { afterAll, beforeAll, describe, expect, it } from "@uniflowed/test";
+import { it as registerCase, reset } from "./internal/registry.js";
+import { type Result, run as runRegistered } from "./internal/run.js";
 
 const order: Array<string> = [];
 
@@ -55,10 +57,31 @@ describe("a suite whose cases are all skipped", () => {
   });
 
   it.skip("does not run", () => {});
+  it.skipBecause("does not run for a named reason", "the skip reason belongs in the report");
 });
 
 describe("what the skipped suite did", () => {
   it("set nothing up, because nothing in it ran", () => {
     expect(order).not.toContain("never");
+  });
+});
+
+describe("a reasoned skip without a body", () => {
+  it("is reported as skipped rather than todo", async () => {
+    const results: Array<Result> = [];
+    reset();
+    registerCase.skipBecause("needs another host", "Deno cannot exercise Node hooks");
+
+    await runRegistered({ file: "virtual.test.js" }, (result) => {
+      results.push(result);
+    });
+
+    expect(results.length).toBe(1);
+    expect(results[0].name).toBe("needs another host");
+    expect(results[0].outcome).toEqual({
+      status: "skipped",
+      reason: "explicit",
+      message: "Deno cannot exercise Node hooks",
+    });
   });
 });

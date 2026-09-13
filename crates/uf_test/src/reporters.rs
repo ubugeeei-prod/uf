@@ -289,11 +289,11 @@ pub fn junit(report: &TestRunReport) -> String {
             );
             match &record.status {
                 TestStatus::Passed => out.push_str("/>\n"),
-                TestStatus::Skipped { reason } => {
+                TestStatus::Skipped { reason, message } => {
                     let _ = writeln!(
                         out,
                         ">\n      <skipped message=\"{}\"/>\n    </testcase>",
-                        skip_reason(*reason)
+                        escape(message.as_deref().unwrap_or(skip_reason(*reason)))
                     );
                 }
                 TestStatus::Todo => {

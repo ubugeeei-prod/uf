@@ -27,7 +27,11 @@ export type Outcome =
       /** Where the failing assertion was written, when the stack says. */
       readonly site: {| readonly line: number, readonly column: number |} | null,
     |}
-  | {| readonly status: "skipped", readonly reason: "explicit" | "not-only" | "filtered" |}
+  | {|
+      readonly status: "skipped",
+      readonly reason: "explicit" | "not-only" | "filtered",
+      readonly message?: string | null,
+    |}
   | {| readonly status: "todo" |};
 
 /** One finished case, as the runner reports it. */
@@ -188,12 +192,17 @@ async function runCase(
     });
   };
 
-  if (test.modifier === "todo" || test.body == null) {
+  if (test.modifier === "todo") {
     report({ status: "todo" });
     return true;
   }
   if (context.skipped || test.modifier === "skip") {
-    report({ status: "skipped", reason: "explicit" });
+    report({ status: "skipped", reason: "explicit", message: test.skipReason });
+    return true;
+  }
+  const body = test.body;
+  if (body == null) {
+    report({ status: "todo" });
     return true;
   }
   if (!context.onlyPath) {
@@ -222,7 +231,7 @@ async function runCase(
       for (const hook of context.beforeEach) {
         await withTimeout(hook, timeoutMs);
       }
-      await withTimeout(test.body, timeoutMs);
+      await withTimeout(body, timeoutMs);
     } catch (thrown) {
       outcome = failure(thrown, options.file ?? null);
     }
@@ -315,7 +324,7 @@ async function runSuite(
             line: child.line,
             column: child.column,
             durationMicros: 0,
-            outcome: failure(thrown),
+            outcome: failure(thrown, options.file ?? null),
           });
           passed = false;
           continue;

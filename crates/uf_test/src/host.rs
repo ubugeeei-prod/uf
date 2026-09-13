@@ -1133,6 +1133,7 @@ fn record_of(file: &str, event: TestEvent) -> TestRecord {
                 Some("filtered") => SkipReason::Filtered,
                 _ => SkipReason::Explicit,
             },
+            message: event.message.filter(|message| !message.is_empty()),
         },
         _ => {
             let site = event.site;
@@ -1718,7 +1719,41 @@ mod tests {
                     generation: 1,
                 },
             );
-            assert_eq!(record.status, TestStatus::Skipped { reason: expected });
+            assert_eq!(
+                record.status,
+                TestStatus::Skipped {
+                    reason: expected,
+                    message: None
+                }
+            );
         }
+    }
+
+    #[test]
+    fn explicit_skip_messages_survive_the_round_trip() {
+        let record = record_of(
+            "a.js",
+            TestEvent {
+                name: String::from("t"),
+                line: 1,
+                column: 1,
+                duration_micros: 0,
+                status: String::from("skipped"),
+                reason: Some(String::from("explicit")),
+                message: Some(String::from("Deno has no synchronous module hook")),
+                stack: None,
+                expected: None,
+                received: None,
+                site: None,
+                generation: 1,
+            },
+        );
+        assert_eq!(
+            record.status,
+            TestStatus::Skipped {
+                reason: SkipReason::Explicit,
+                message: Some(String::from("Deno has no synchronous module hook"))
+            }
+        );
     }
 }

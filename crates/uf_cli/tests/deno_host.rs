@@ -360,6 +360,58 @@ fn uf_test_json_reports_deno_as_an_experimental_aot_host() {
     );
 }
 
+#[test]
+fn uf_test_json_reports_reasoned_deno_skips() {
+    if !deno_ready() {
+        return;
+    }
+    let project = deno_project(&[(
+        "probe.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\n\
+         it(\"runs the host portable half\", () => {\n  expect(21 * 2).toBe(42);\n});\n\n\
+         it.skipBecause(\n\
+         \x20 \"names the Node module hook seam\",\n\
+         \x20 \"Deno uses uf's ahead-of-time loader and import map, so this file cannot test \
+         Node's synchronous module hook. See ubugeeei-prod/uf#246.\",\n\
+         );\n",
+    )]);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--json", "probe.test.js"])
+        .output()
+        .expect("uf runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "a Deno run with a supported test and a reasoned skip must stay green\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    let document: serde_json::Value =
+        serde_json::from_str(&stdout).expect("`uf test --json` is one document");
+    assert_eq!(document["host"]["kind"], serde_json::json!("deno"));
+    assert_eq!(document["passed"], serde_json::json!(1));
+    assert_eq!(document["skipped"], serde_json::json!(1));
+    assert_eq!(document["success"], serde_json::json!(true));
+
+    let tests = document["tests"]
+        .as_array()
+        .expect("the payload carries case records");
+    let skipped = tests
+        .iter()
+        .find(|record| record["name"] == "names the Node module hook seam")
+        .expect("the skipped case is reported");
+    assert_eq!(skipped["status"], serde_json::json!("skipped"));
+    assert!(
+        skipped["skipReason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("ahead-of-time loader")),
+        "{skipped}"
+    );
+}
+
 /// The artefact itself, run by hand, so a failure says *which* half broke.
 ///
 /// The test above is end to end and its failure mode is "the suite did not

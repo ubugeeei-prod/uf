@@ -118,7 +118,7 @@ pub fn discover_tests(file: &str, source: &str) -> TestPlan {
 
             let (modifier, args_from) = match shape {
                 CallShape::Plain => (TestModifier::None, offset + call.len()),
-                CallShape::Property { name, end } => match modifier_for(name) {
+                CallShape::Property { name, end } => match modifier_for(name, kind) {
                     Some(modifier) => (modifier, end),
                     None => {
                         if unsupported.len() < MAX_CASES_PER_FILE {
@@ -194,12 +194,14 @@ fn foreign_runner<'a>(imports: &[crate::scan::ImportedBinding<'a>], call: &str) 
         .filter(|module| FOREIGN_RUNNERS.contains(module))
 }
 
-/// Map a member suffix onto a modifier, or reject it as unexpandable.
-fn modifier_for(property: &str) -> Option<TestModifier> {
-    match property {
-        "only" => Some(TestModifier::Only),
-        "skip" => Some(TestModifier::Skip),
-        "todo" => Some(TestModifier::Todo),
+/// Map a member suffix onto a modifier, or reject it as unexpandable for the
+/// receiver that owns it.
+fn modifier_for(property: &str, kind: TestKind) -> Option<TestModifier> {
+    match (property, kind) {
+        ("only", _) => Some(TestModifier::Only),
+        ("skip", _) => Some(TestModifier::Skip),
+        ("skipBecause", TestKind::Test) => Some(TestModifier::Skip),
+        ("todo", _) => Some(TestModifier::Todo),
         _ => None,
     }
 }

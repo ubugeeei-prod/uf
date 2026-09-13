@@ -139,7 +139,7 @@ fn status_name(status: &FileStatus) -> &'static str {
 }
 
 fn record_payload(record: &TestRecord) -> Value {
-    json!({
+    let mut value = json!({
         "file": record.file,
         "name": record.name,
         "line": record.line,
@@ -155,7 +155,35 @@ fn record_payload(record: &TestRecord) -> Value {
             "expected": failure.expected,
             "received": failure.received,
         })).collect::<Vec<_>>(),
-    })
+    });
+    if let Some(message) = skip_message(&record.status)
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(String::from("skipReason"), json!(message));
+    }
+    value
+}
+
+fn skip_message(status: &TestStatus) -> Option<&str> {
+    match status {
+        TestStatus::Skipped {
+            message: Some(message),
+            ..
+        } => Some(message),
+        TestStatus::Skipped {
+            reason: SkipReason::Explicit,
+            ..
+        } => Some("skipped"),
+        TestStatus::Skipped {
+            reason: SkipReason::NotOnly,
+            ..
+        } => Some("not-only"),
+        TestStatus::Skipped {
+            reason: SkipReason::Filtered,
+            ..
+        } => Some("filtered"),
+        TestStatus::Passed | TestStatus::Failed { .. } | TestStatus::Todo => None,
+    }
 }
 
 fn test_status_name(status: &TestStatus) -> &'static str {
@@ -164,12 +192,15 @@ fn test_status_name(status: &TestStatus) -> &'static str {
         TestStatus::Failed { .. } => "failed",
         TestStatus::Skipped {
             reason: SkipReason::Explicit,
+            ..
         } => "skipped",
         TestStatus::Skipped {
             reason: SkipReason::NotOnly,
+            ..
         } => "not-only",
         TestStatus::Skipped {
             reason: SkipReason::Filtered,
+            ..
         } => "filtered",
         TestStatus::Todo => "todo",
     }
