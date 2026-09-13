@@ -33,6 +33,19 @@ They render semantic elements with the right roles and relationships, handle
 the keyboard the way the platform's own controls do, and have no opinion
 whatsoever about how any of it looks.
 
+Start from the interaction, not the mockup shape:
+
+| If the user is doing this | Start with |
+| --- | --- |
+| Choosing one value from a closed list | `Select` when the text is fixed, `Combobox` when they type or filter |
+| Moving between panels in one surface | `Tabs`, then choose automatic or manual activation |
+| Opening a page-level interruption | `Dialog`; `AlertDialog` only when the action is destructive or must be answered |
+| Opening a narrow-edge surface | `Sheet`; `Drawer` when there is a drag gesture and therefore a keyboard equivalent |
+| Revealing a small anchored surface | `Popover` for focusable content, `Tooltip` for a phrase, `HoverCard` for a preview with links |
+| Listing site destinations behind expanding groups | `NavigationMenu`, not `Menu`; links stay links |
+| Listing application commands | `Menu`, `ContextMenu` or `Menubar`, depending on how the command set opens |
+| Naming a control and its error | `Field`, even when the control itself comes from somewhere else |
+
 There is no stylesheet, no theme prop and no StyleX import. From
 `packages/ui/index.js`:
 
@@ -68,12 +81,17 @@ renders what you wrote between the tags. The part is still the part — a
 `Menu.Item` rendered as an `<a>` is what `Menu.Body`'s `renders*` constraint
 accepts, and that constraint is the thing a copied source cannot keep.
 
+The hatch is broad rather than ornamental. Every fixed-element part has it in
 `Accordion`, `Alert`, `AlertDialog`, `Avatar`, `Breadcrumb`, `Collapsible`,
-`Dialog`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`, `Sheet`, `Skeleton` and
-`Tabs` take it on every fixed-element part, as do the single-part `Checkbox`,
-`Progress`, `Separator`, `Switch` and `Toggle`, along with `Field.Control`,
-`Tooltip.Trigger`, `Tooltip.Body`, `HoverCard.Trigger` and `Sidebar.Item`. The
-table in `packages/ui/ui.test.js` names every part and whether the hatch is
+`Dialog`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`, `Pagination`, `Popover`,
+`Sheet`, `Skeleton`, `Slider`, `Table`, `Tabs` and `ToggleGroup`; so do the
+single-part `Checkbox`, `Progress`, `Separator`, `Switch` and `Toggle`.
+`Field.Root`, `Field.Label`, `Field.Control`, `Field.Description`,
+`Field.Status` and `Field.Error` take it too, as do `RadioGroup`,
+`InputOtp.Separator`, `Tooltip.Trigger`, `Tooltip.Body`, `HoverCard.Trigger`,
+`HoverCard.Body` and `Sidebar.Item`.
+
+The table in `packages/ui/ui.test.js` names every part and whether the hatch is
 implemented, absent because there is no element, or still intentionally absent;
 the suite fails if that table stops matching the files.
 [#303](https://github.com/ubugeeei-prod/uf/issues/303) is the argument, and
@@ -97,12 +115,23 @@ import {
 } from "@uniflowed/ui";
 ```
 
-or from a subpath — `@uniflowed/ui/dialog`, `/menu`, `/combobox`, `/tabs`,
-`/field`, `/checkbox`, `/switch` — which is where the flat names
+or from a subpath — `@uniflowed/ui/dialog`, `/menu`, `/select`, `/combobox`,
+`/tabs`, `/table`, `/toast`, `/field`, `/checkbox`, `/switch`, and the rest of
+the module names in [Components](/reference/ui) — which is where the flat names
 (`DialogRoot`, `MenuSubTrigger`) live. `internal/` has no subpath and is not
 importable, on purpose: it holds the roving-focus reader, the controlled-state
 hook and the prop merger, and each of their headers says why publishing it would
 be a weaker promise than not.
+
+Use the namespace import when a page composes several parts of one primitive;
+it keeps the JSX readable. Use the subpath import when you are writing a small
+wrapper or preset around one primitive and want the dependency edge to name the
+same unit a bundler can keep or drop:
+
+```js
+import { Dialog } from "@uniflowed/ui";
+import { DialogRoot, DialogTrigger } from "@uniflowed/ui/dialog";
+```
 
 Every example on this page was rendered and asserted before it was published;
 the keyboard tables below cite the test in
@@ -111,6 +140,46 @@ that holds each row. `uf test packages/ui/ui.test.js` runs the suite. There is
 exactly one row no test holds, and rather than leaving it to be discovered it is
 named where it appears, under Checkbox — a row with no test is how it came to
 say the wrong thing.
+
+## Building a surface
+
+The package is deliberately lower-level than "settings dialog", "command
+palette" or "data table". Those names are product surfaces: they combine state,
+fetching, layout, persistence and styling. `@uniflowed/ui` owns the parts that
+must stay true no matter what the surface looks like.
+
+The working order is:
+
+| Step | Do this | Because |
+| --- | --- | --- |
+| 1 | Name the user interaction: choose, disclose, navigate, interrupt, resize, announce | The interaction picks the primitive. The screenshot does not |
+| 2 | Pick the primitive whose ARIA meaning matches it | A `Menu` of links and a `NavigationMenu` of commands look alike and say different things |
+| 3 | Own the application state outside the primitive when it is business state | A combobox query, selected table rows, and dialog persistence belong to the app |
+| 4 | Add visual styling with `className`, data attributes and custom properties | The package is headless; styles are an application or preset concern |
+| 5 | Test by role, name, state and keyboard | That is the behaviour the package promises, and the part a visual test cannot see |
+
+For a product UI this usually means a short stack rather than a new component:
+
+| Surface | Compose |
+| --- | --- |
+| Settings | `Dialog` or `Sheet`, `Tabs`, `Field`, `Switch`, `Checkbox`, `Select` |
+| Command palette | `Dialog`, `Combobox`, grouped options, `useKeyCombo` |
+| Data table toolbar | `Table`, `Checkbox`, `Menu`, `Pagination`, `Toast` |
+| Documentation navigation | `NavigationMenu`, `Breadcrumb`, `Sidebar`, `ScrollArea` |
+| Date filter | `Field`, `DatePicker`, `Calendar`, `Popover` |
+
+That is the line `ubugeeei-redundancy.md` draws for the project: do not ship
+thin lookalikes merely because another ecosystem has a named component there.
+Ship the behaviour that would be wrong if every application reimplemented it,
+then show the composition that makes the larger surface obvious.
+
+The same rule explains where styling lives. A button's colour, card padding and
+badge radius are not behaviour, so they belong in the styling layer. A switch's
+`Enter` key, a dialog's focus trap, a toast's live region and a table's
+`aria-rowindex` are behaviour, so they belong here. When in doubt, ask whether
+a screen reader or keyboard user would get a different truth if the component
+were replaced with plain elements. If yes, it is probably `@uniflowed/ui`; if
+not, it is probably a preset or application component.
 
 ### The render hatch is a contract, not a style slot
 
@@ -147,6 +216,12 @@ Two rules make the hatch predictable:
 - **Keep one focusable element.** A render function that returns an anchor
   wrapping a button produces two controls where the part promised one. The
   package cannot make that accessible after the fact.
+- **Keep the returned element mounted where the part is mounted.** Moving it to
+  a portal, delaying it behind another boundary, or splitting its children away
+  from the props turns the ids and refs the part handed you into guesses.
+- **Treat `event.preventDefault()` as the opt-out switch.** Caller handlers run
+  first. If they prevent the default, the component's handler stands down; if
+  they do not, the behaviour in the keyboard table still happens.
 
 `ToggleGroup` is the case that shows why this is not only a DOM convenience.
 `type="single"` delegates to `RadioGroup`, so `render` is passed through to the
