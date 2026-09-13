@@ -60,7 +60,10 @@ macro_rules! node {
         // `mut` is unused for `node!{}` with no fields, which `compiler.rs`
         // writes for an empty `environment`.
         #[allow(unused_mut)]
-        let mut map = ::serde_json::Map::new();
+        let mut map = ::serde_json::Map::with_capacity(0 $(+ {
+            let _ = $key;
+            1usize
+        })*);
         $(
             map.insert(
                 ::std::string::String::from($key),

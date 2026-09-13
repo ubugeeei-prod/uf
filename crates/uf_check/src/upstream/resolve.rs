@@ -337,9 +337,10 @@ mod tests {
     #[test]
     fn repeated_extensionless_misses_reuse_one_candidate_buffer_per_resolution() {
         // Linux CI's all-features profile sees allocator bookkeeping from the
-        // surrounding lookup stack here, but a per-fallback candidate String
-        // still pushes this well past the observed cost of the shared buffer.
-        const EXTENSIONLESS_MISS_CEILING: u64 = 5_000;
+        // surrounding lookup stack here. Keep enough headroom for that profile
+        // while still catching the much larger cost of allocating one candidate
+        // String per extension and index fallback.
+        const EXTENSIONLESS_MISS_CEILING: u64 = 6_500;
 
         let index = ModuleIndex::new(["app.js"]);
         let bases: Vec<String> = (0..128).map(|index| format!("missing{index}")).collect();

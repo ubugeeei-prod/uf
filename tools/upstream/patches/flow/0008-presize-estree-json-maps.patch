@@ -14,9 +14,12 @@ Every ESTree node is a JSON object whose field count is known before insertion:
 properties. The translator was creating those objects with `Map::new()`, then
 letting the backing index map grow while the known fields were inserted. The
 small generic object helper and the nested `loc` position objects did the same.
+The hottest node builders also assembled those known properties in a temporary
+`Vec`, one heap allocation before the map was even built.
 
-This gives each map the capacity the caller already knows. It preserves key
-order and values exactly; measured with:
+This gives each map the capacity the caller already knows, and lets fixed
+property lists use arrays instead of a temporary `Vec`. It preserves key order
+and values exactly; measured with:
 
     cargo run --release --example alloc_report -p uf_transform -- \
       packages/router/internal/runtime.js
@@ -25,21 +28,21 @@ order and values exactly; measured with:
 
 on the #668 router runtime fixture:
 
-    babel_ast allocations/run    324,115 -> 309,468  (-4.5%)
-    bytes allocated/run        34.89 MiB -> 30.26 MiB (-13.3%)
+    babel_ast allocations/run    324,115 -> 305,766  (-5.7%)
+    bytes allocated/run        34.89 MiB -> 29.38 MiB (-15.8%)
 
 The dumped Babel tree stayed byte-identical:
 
     74fccbca85fadb849a21be76f31559b5a07fedf010c86a5c53384e0e0304bd8d
 
 diff --git a/rust_port/crates/flow_parser/src/estree_translator.rs b/rust_port/crates/flow_parser/src/estree_translator.rs
-index 90d02cdb7..c498f3aeb 100644
+index 90d02cdb7c..8a9c2edfb0 100644
 --- a/rust_port/crates/flow_parser/src/estree_translator.rs
 +++ b/rust_port/crates/flow_parser/src/estree_translator.rs
 @@ -60,17 +60,18 @@ fn loc_and_range(
      let js_start_pos = js_position(offset_table, location.start);
      let js_end_pos = js_position(offset_table, location.end);
- 
+
 -    let loc = json!({
 -        "source": source,
 -        "start": {
@@ -63,23 +66,45 @@ index 90d02cdb7..c498f3aeb 100644
 +    loc_object.insert("start".to_string(), position_value(js_start_pos));
 +    loc_object.insert("end".to_string(), position_value(js_end_pos));
 +    let loc = Value::Object(loc_object);
- 
+
      fn offset(
          offset_table: &OffsetTable,
-@@ -184,7 +185,7 @@ fn bool_value(b: bool) -> Value {
+@@ -183,23 +184,37 @@ fn bool_value(b: bool) -> Value {
+     Value::Bool(b)
  }
- 
- fn obj(props: Vec<(&str, Value)>) -> Value {
+
+-fn obj(props: Vec<(&str, Value)>) -> Value {
 -    let mut map = Map::new();
++fn obj<I>(props: I) -> Value
++where
++    I: IntoIterator<Item = (&'static str, Value)>,
++    I::IntoIter: ExactSizeIterator,
++{
++    let props = props.into_iter();
 +    let mut map = Map::with_capacity(props.len());
      for (key, value) in props {
          map.insert(key.to_string(), value);
      }
-@@ -199,7 +200,11 @@ fn node(
+     Value::Object(map)
+ }
+
+-fn node(
++fn node<I>(
+     offset_table: &OffsetTable,
+     config: &Config,
+     node_type: &str,
+     location: &Loc,
      comments: Option<&ast::Syntax<Loc, ()>>,
-     props: Vec<(&str, Value)>,
- ) -> Value {
+-    props: Vec<(&str, Value)>,
+-) -> Value {
 -    let mut obj = Map::new();
++    props: I,
++) -> Value
++where
++    I: IntoIterator<Item = (&'static str, Value)>,
++    I::IntoIter: ExactSizeIterator,
++{
++    let props = props.into_iter();
 +    let comment_fields = comments.map_or(0, |c| {
 +        usize::from(!c.leading.is_empty()) + usize::from(!c.trailing.is_empty())
 +    });
@@ -88,3 +113,300 @@ index 90d02cdb7..c498f3aeb 100644
      obj.insert("type".to_string(), Value::String(node_type.to_string()));
      if let Some(c) = comments {
          match (&c.leading[..], &c.trailing[..]) {
+@@ -307,7 +322,7 @@ fn statement(
+             "ExpressionStatement",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 (
+                     "expression",
+                     expression(offset_table, config, false, &inner.expression),
+@@ -1244,7 +1259,7 @@ pub fn expression(
+                 "ArrayExpression",
+                 loc,
+                 formatted_comments.as_ref(),
+-                vec![
++                [
+                     (
+                         "elements",
+                         array_of_list(&inner.elements, |el| {
+@@ -1263,7 +1278,7 @@ pub fn expression(
+                 "ObjectExpression",
+                 loc,
+                 formatted_comments.as_ref(),
+-                vec![(
++                [(
+                     "properties",
+                     array_of_list(&inner.properties, |p| {
+                         object_property(offset_table, config, p)
+@@ -1293,7 +1308,7 @@ pub fn expression(
+                 "ArrowFunctionExpression",
+                 loc,
+                 comments.as_ref(),
+-                vec![
++                [
+                     ("id", Value::Null),
+                     (
+                         "params",
+@@ -1362,7 +1377,7 @@ pub fn expression(
+             "SequenceExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![(
++            [(
+                 "expressions",
+                 array_of_list(&inner.expressions, |e| {
+                     expression(offset_table, config, false, e)
+@@ -1378,7 +1393,7 @@ pub fn expression(
+                     "AwaitExpression",
+                     loc,
+                     unary.comments.as_ref(),
+-                    vec![(
++                    [(
+                         "argument",
+                         expression(offset_table, config, false, &unary.argument),
+                     )],
+@@ -1389,7 +1404,7 @@ pub fn expression(
+                     "NonNullExpression",
+                     loc,
+                     unary.comments.as_ref(),
+-                    vec![
++                    [
+                         (
+                             "argument",
+                             expression(offset_table, config, false, &unary.argument),
+@@ -1416,7 +1431,7 @@ pub fn expression(
+                         "UnaryExpression",
+                         loc,
+                         unary.comments.as_ref(),
+-                        vec![
++                        [
+                             ("operator", string(operator)),
+                             ("prefix", bool_value(true)),
+                             (
+@@ -1434,7 +1449,7 @@ pub fn expression(
+             "BinaryExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 ("operator", string(inner.operator.as_str())),
+                 ("left", expression(offset_table, config, false, &inner.left)),
+                 (
+@@ -1449,7 +1464,7 @@ pub fn expression(
+             "TypeCastExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 (
+                     "expression",
+                     expression(offset_table, config, false, &inner.expression),
+@@ -1466,7 +1481,7 @@ pub fn expression(
+             "AsExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 (
+                     "expression",
+                     expression(offset_table, config, false, &inner.expression),
+@@ -1483,7 +1498,7 @@ pub fn expression(
+             "SatisfiesExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 (
+                     "expression",
+                     expression(offset_table, config, false, &inner.expression),
+@@ -1500,7 +1515,7 @@ pub fn expression(
+             "AsConstExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![(
++            [(
+                 "expression",
+                 expression(offset_table, config, false, &inner.expression),
+             )],
+@@ -1516,7 +1531,7 @@ pub fn expression(
+                 "AssignmentExpression",
+                 loc,
+                 inner.comments.as_ref(),
+-                vec![
++                [
+                     ("operator", string(operator)),
+                     ("left", pattern(offset_table, config, &inner.left)),
+                     (
+@@ -1537,7 +1552,7 @@ pub fn expression(
+                 "UpdateExpression",
+                 loc,
+                 inner.comments.as_ref(),
+-                vec![
++                [
+                     ("operator", string(operator)),
+                     (
+                         "argument",
+@@ -1559,7 +1574,7 @@ pub fn expression(
+                 "LogicalExpression",
+                 loc,
+                 inner.comments.as_ref(),
+-                vec![
++                [
+                     ("operator", string(operator)),
+                     ("left", expression(offset_table, config, false, &inner.left)),
+                     (
+@@ -1575,7 +1590,7 @@ pub fn expression(
+             "ConditionalExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 ("test", expression(offset_table, config, false, &inner.test)),
+                 (
+                     "consequent",
+@@ -1604,7 +1619,7 @@ pub fn expression(
+                 "NewExpression",
+                 loc,
+                 comments.as_ref(),
+-                vec![
++                [
+                     (
+                         "callee",
+                         expression(offset_table, config, false, &inner.callee),
+@@ -1662,7 +1677,7 @@ pub fn expression(
+                                 "NonNullExpression",
+                                 &loc_outer,
+                                 None,
+-                                vec![("argument", callee), ("chain", bool_value(true))],
++                                [("argument", callee), ("chain", bool_value(true))],
+                             )
+                         });
+                     let mut props =
+@@ -1705,7 +1720,7 @@ pub fn expression(
+                             "ChainExpression",
+                             loc,
+                             None,
+-                            vec![("expression", emit_inner(offset_table, config))],
++                            [("expression", emit_inner(offset_table, config))],
+                         )
+                     }
+                 }
+@@ -1741,7 +1756,7 @@ pub fn expression(
+                                 "NonNullExpression",
+                                 &loc_outer,
+                                 None,
+-                                vec![("argument", receiver), ("chain", bool_value(true))],
++                                [("argument", receiver), ("chain", bool_value(true))],
+                             )
+                         });
+                     let mut props = member_node_properties(
+@@ -1789,7 +1804,7 @@ pub fn expression(
+                             "ChainExpression",
+                             loc,
+                             None,
+-                            vec![("expression", emit_inner(offset_table, config))],
++                            [("expression", emit_inner(offset_table, config))],
+                         )
+                     }
+                 }
+@@ -1801,7 +1816,7 @@ pub fn expression(
+             "YieldExpression",
+             loc,
+             inner.comments.as_ref(),
+-            vec![
++            [
+                 (
+                     "argument",
+                     option(&inner.argument, |e| {
+@@ -2455,7 +2470,7 @@ fn identifier(
+         "Identifier",
+         &id.loc,
+         id.comments.as_ref(),
+-        vec![
++        [
+             ("name", string(&id.name)),
+             ("typeAnnotation", Value::Null),
+             ("optional", bool_value(false)),
+@@ -2474,7 +2489,7 @@ fn private_identifier(
+         "PrivateIdentifier",
+         &name.loc,
+         name.comments.as_ref(),
+-        vec![
++        [
+             ("name", string(&name.name)),
+             ("typeAnnotation", Value::Null),
+             ("optional", bool_value(false)),
+@@ -2501,7 +2516,7 @@ fn pattern_identifier(
+         "Identifier",
+         loc,
+         pattern_id.name.comments.as_ref(),
+-        vec![
++        [
+             ("name", string(&pattern_id.name.name)),
+             ("typeAnnotation", type_annot),
+             ("optional", bool_value(pattern_id.optional)),
+@@ -4523,7 +4538,7 @@ fn number_literal(
+         "Literal",
+         loc,
+         lit.comments.as_ref(),
+-        vec![("value", value), ("raw", string(&lit.raw))],
++        [("value", value), ("raw", string(&lit.raw))],
+     )
+ }
+
+@@ -4546,7 +4561,7 @@ fn bigint_literal(
+         "Literal",
+         loc,
+         lit.comments.as_ref(),
+-        vec![
++        [
+             ("value", Value::Null),
+             ("bigint", string(&bigint)),
+             ("raw", string(&lit.raw)),
+@@ -4566,7 +4581,7 @@ fn string_literal(
+         "Literal",
+         loc,
+         lit.comments.as_ref(),
+-        vec![("value", string(&lit.value)), ("raw", string(&lit.raw))],
++        [("value", string(&lit.value)), ("raw", string(&lit.raw))],
+     )
+ }
+
+@@ -4583,7 +4598,7 @@ fn boolean_literal(
+         "Literal",
+         loc,
+         lit.comments.as_ref(),
+-        vec![("value", bool_value(lit.value)), ("raw", string(raw))],
++        [("value", bool_value(lit.value)), ("raw", string(raw))],
+     )
+ }
+
+@@ -4593,7 +4608,7 @@ fn regexp_literal(
+     loc: &Loc,
+     lit: &ast::RegExpLiteral<Loc>,
+ ) -> Value {
+-    let regex = obj(vec![
++    let regex = obj([
+         ("pattern", string(&lit.pattern)),
+         ("flags", string(&lit.flags)),
+     ]);
+@@ -4623,7 +4638,7 @@ fn null_literal(
+         "Literal",
+         loc,
+         comments,
+-        vec![("value", Value::Null), ("raw", string("null"))],
++        [("value", Value::Null), ("raw", string("null"))],
+     )
+ }
+
+@@ -4712,7 +4727,7 @@ fn variable_declaration(
+         "VariableDeclaration",
+         loc,
+         decl.comments.as_ref(),
+-        vec![
++        [
+             ("kind", string(kind)),
+             (
+                 "declarations",
