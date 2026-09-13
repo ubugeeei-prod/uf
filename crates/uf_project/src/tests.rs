@@ -426,6 +426,73 @@ fn naming_an_ignored_path_is_asking_about_it() {
     assert_eq!(asked.len(), 2, "{asked:?}");
 }
 
+#[test]
+fn scanning_existing_selected_paths_stays_inside_the_named_roots() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src/selected")).unwrap();
+    fs::create_dir_all(root.join("src/other")).unwrap();
+    fs::write(root.join("src/selected/one.test.js"), "// @flow\n").unwrap();
+    fs::write(root.join("src/other/two.test.js"), "// @flow\n").unwrap();
+
+    let asked = scan_existing_selected_source_files(
+        &root,
+        &UniflowedConfig::default(),
+        &["src/selected".to_owned()],
+    )
+    .unwrap()
+    .expect("the selected root exists");
+
+    assert_eq!(
+        asked
+            .files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/selected/one.test.js"]
+    );
+}
+
+#[test]
+fn selected_path_scan_keeps_named_gitignored_files_available() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src/wasm")).unwrap();
+    fs::write(root.join(".gitignore"), "src/wasm\n").unwrap();
+    fs::write(root.join("src/wasm/glue.test.js"), "// @flow\n").unwrap();
+
+    let asked = scan_existing_selected_source_files(
+        &root,
+        &UniflowedConfig::default(),
+        &["src/wasm".to_owned()],
+    )
+    .unwrap()
+    .expect("the selected root exists");
+
+    assert_eq!(
+        asked
+            .files
+            .iter()
+            .map(|file| file.relative_path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/wasm/glue.test.js"]
+    );
+}
+
+#[test]
+fn selected_path_scan_defers_substring_filters_to_the_full_scan() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("src/ui")).unwrap();
+    fs::write(root.join("src/ui/button.test.js"), "// @flow\n").unwrap();
+
+    let asked =
+        scan_existing_selected_source_files(&root, &UniflowedConfig::default(), &["ui".to_owned()])
+            .unwrap();
+
+    assert_eq!(asked, None);
+}
+
 /// Naming a path says "this one too", not "everything uf knows to stay out
 /// of". `.uf` is uf's own working directory and does not become the project's
 /// source by being pointed at.
@@ -441,6 +508,24 @@ fn naming_ufs_own_directory_does_not_open_it() {
         .files;
 
     assert!(asked.is_empty(), "{asked:?}");
+}
+
+#[test]
+fn selected_path_scan_still_refuses_ufs_own_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join(".uf/cache")).unwrap();
+    fs::write(root.join(".uf/cache/thing.js"), "// @flow\n").unwrap();
+
+    let asked = scan_existing_selected_source_files(
+        &root,
+        &UniflowedConfig::default(),
+        &[".uf".to_owned()],
+    )
+    .unwrap()
+    .expect("the selected root exists");
+
+    assert!(asked.files.is_empty(), "{asked:?}");
 }
 
 /// And a negated entry is honoured too, because a `.gitignore` is a program
