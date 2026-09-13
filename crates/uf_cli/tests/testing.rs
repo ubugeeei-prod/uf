@@ -138,6 +138,32 @@ fn json_counts_every_outcome() {
 }
 
 #[test]
+fn json_names_the_host_support_contract() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&MIXED);
+
+    let document = json(project.path(), &[]);
+    let host = &document["host"];
+
+    assert_eq!(host["kind"], serde_json::json!("node"));
+    assert_eq!(host["runtimeHost"], serde_json::json!("node"));
+    assert_eq!(host["loadsFlow"], serde_json::json!(true));
+    assert_eq!(host["collectsCoverage"], serde_json::json!(false));
+    assert_eq!(host["support"]["level"], serde_json::json!("implemented"));
+    assert_eq!(
+        host["support"]["flowLoader"],
+        serde_json::json!("@uniflowed/host/register")
+    );
+    assert_eq!(
+        host["support"]["enforcesPermissions"],
+        serde_json::json!(["read", "write"])
+    );
+    assert_eq!(host["support"]["trackingIssue"], serde_json::Value::Null);
+}
+
+#[test]
 fn json_is_pure_json_even_with_color_forced_on() {
     if !host_ready() {
         return;

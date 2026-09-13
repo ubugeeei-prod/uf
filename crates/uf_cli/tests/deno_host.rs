@@ -312,6 +312,54 @@ fn uf_test_runs_a_flow_suite_on_deno() {
     );
 }
 
+#[test]
+fn uf_test_json_reports_deno_as_an_experimental_aot_host() {
+    if !deno_ready() {
+        return;
+    }
+    let project = deno_project(&[(
+        "probe.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\n\
+         it(\"passes\", () => {\n  expect(1).toBe(1);\n});\n",
+    )]);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--json", "probe.test.js"])
+        .output()
+        .expect("uf runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "a Flow suite must run on Deno\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    let document: serde_json::Value =
+        serde_json::from_str(&stdout).expect("`uf test --json` is one document");
+    let host = &document["host"];
+    assert_eq!(host["kind"], serde_json::json!("deno"));
+    assert_eq!(host["runtimeHost"], serde_json::json!("deno"));
+    assert_eq!(host["loadsFlow"], serde_json::json!(true));
+    assert_eq!(
+        host["denoImportMap"],
+        serde_json::json!(".uf/deno/import-map.json")
+    );
+    assert_eq!(host["support"]["level"], serde_json::json!("experimental"));
+    assert_eq!(
+        host["support"]["flowLoader"],
+        serde_json::json!("uf's ahead-of-time transform and import map")
+    );
+    assert_eq!(host["support"]["trackingIssue"], serde_json::json!(246));
+    assert!(
+        host["support"]["missing"]
+            .as_str()
+            .is_some_and(|missing| missing.contains("module hook")),
+        "{host}"
+    );
+}
+
 /// The artefact itself, run by hand, so a failure says *which* half broke.
 ///
 /// The test above is end to end and its failure mode is "the suite did not
