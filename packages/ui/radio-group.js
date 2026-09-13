@@ -76,8 +76,13 @@
 import * as React from "@uniflowed/react";
 import { createContext, useCallback, useContext, useId, useMemo, useRef } from "@uniflowed/react";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withoutComposed,
+  withProps,
+} from "./internal/merge-props.js";
 import { moveOnKey, useFirstItem } from "./internal/roving-focus.js";
 import type { Orientation, RovingSet } from "./internal/roving-focus.js";
 import { useControlled } from "./internal/controlled-state.js";
@@ -146,6 +151,7 @@ export component RadioGroupRoot(
   onValueChange?: (value: string) => void,
   orientation?: Orientation = "vertical",
   name?: string,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   // `onValueChange` promises a `string` while the group's *state* is
@@ -171,44 +177,46 @@ export component RadioGroupRoot(
 
   const state = useMemo(() => ({ selected, select, firstId }), [selected, select, firstId]);
   const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
+  const content = (
+    <>
+      {children}
+      {/*
+        A form submits `<input>` elements, and none of the parts above is one.
+        Without this the group is a control a reader can operate and a form
+        cannot read, which is the same hole `Combobox` still has.
+
+        `type="hidden"` rather than a visually hidden real radio, because the
+        buttons above already carry the whole of the accessible semantics: a
+        second set of native radios would be announced as a second set of
+        answers, and hiding them from the accessibility tree to stop that
+        leaves elements a form's own validation would then point its
+        "please choose one" at.
+      */}
+      {name == null ? null : <input name={name} type="hidden" value={selected ?? ""} />}
+    </>
+  );
+  const props = withProps(passed, {
+    "aria-orientation": orientation,
+    children: content,
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      const group: $FlowFixMe = event.currentTarget;
+      const next = moveOnKey(event, group, radioSet(orientation));
+      if (next != null) {
+        // Checking in the same key press is not a shortcut, it is the
+        // pattern: a radio group whose arrows moved focus without checking
+        // leaves a reader believing they have answered when they have not.
+        select(next.getAttribute("data-value") ?? "");
+      }
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      rootRef.current = element;
+    }),
+    role: "radiogroup",
+  });
 
   return (
     <RadioGroupContext.Provider value={state}>
-      <div
-        {...passed}
-        // A reader is told which axis this runs along, and it is also what says
-        // which pair of arrow keys is live.
-        aria-orientation={orientation}
-        onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-          const group: $FlowFixMe = event.currentTarget;
-          const next = moveOnKey(event, group, radioSet(orientation));
-          if (next != null) {
-            // Checking in the same key press is not a shortcut, it is the
-            // pattern: a radio group whose arrows moved focus without checking
-            // leaves a reader believing they have answered when they have not.
-            select(next.getAttribute("data-value") ?? "");
-          }
-        })}
-        ref={composeRefs(rest.ref, (element) => {
-          rootRef.current = element;
-        })}
-        role="radiogroup"
-      >
-        {children}
-        {/*
-          A form submits `<input>` elements, and none of the parts above is one.
-          Without this the group is a control a reader can operate and a form
-          cannot read, which is the same hole `Combobox` still has.
-
-          `type="hidden"` rather than a visually hidden real radio, because the
-          buttons above already carry the whole of the accessible semantics: a
-          second set of native radios would be announced as a second set of
-          answers, and hiding them from the accessibility tree to stop that
-          leaves elements a form's own validation would then point its
-          "please choose one" at.
-        */}
-        {name == null ? null : <input name={name} type="hidden" value={selected ?? ""} />}
-      </div>
+      {render == null ? <div {...props} /> : render(props)}
     </RadioGroupContext.Provider>
   );
 }
@@ -226,6 +234,7 @@ export component RadioGroupItem(
   value: string,
   children?: React.Node,
   disabled?: boolean = false,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const group = useRadioGroup("RadioGroup.Item");
@@ -233,41 +242,39 @@ export component RadioGroupItem(
   const checked = group.selected === value;
   const item = useMemo(() => ({ checked }), [checked]);
   const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
+  const props = withProps(passed, {
+    "aria-checked": checked ? "true" : "false",
+    "aria-disabled": disabled ? "true" : undefined,
+    // Read by the group's key handler, which finds items in the document
+    // rather than in a registry and so needs each one to carry its value.
+    "data-value": value,
+    children,
+    id,
+    onClick: composeHandlers(rest.onClick, (_event: PartEvent) => {
+      if (!disabled) {
+        group.select(value);
+      }
+    }),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+      if (disabled || event.key !== " ") {
+        return;
+      }
+      // Stops `Space` scrolling the page — which is what makes a
+      // hand-written radio feel broken even when it works — and stops the
+      // browser's own click arriving afterwards to check this again.
+      event.preventDefault();
+      group.select(value);
+    }),
+    role: "radio",
+    // The roving tab stop: the chosen answer, or the first one while there
+    // is no answer, so `Tab` reaches the group in either state and leaves
+    // it in one press.
+    tabIndex: checked || (group.selected == null && group.firstId === id) ? 0 : -1,
+  });
 
   return (
     <RadioItemContext.Provider value={item}>
-      <button
-        {...passed}
-        aria-checked={checked ? "true" : "false"}
-        aria-disabled={disabled ? "true" : undefined}
-        // Read by the group's key handler, which finds items in the document
-        // rather than in a registry and so needs each one to carry its value.
-        data-value={value}
-        id={id}
-        onClick={composeHandlers(rest.onClick, () => {
-          if (!disabled) {
-            group.select(value);
-          }
-        })}
-        onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
-          if (disabled || event.key !== " ") {
-            return;
-          }
-          // Stops `Space` scrolling the page — which is what makes a
-          // hand-written radio feel broken even when it works — and stops the
-          // browser's own click arriving afterwards to check this again.
-          event.preventDefault();
-          group.select(value);
-        })}
-        role="radio"
-        // The roving tab stop: the chosen answer, or the first one while there
-        // is no answer, so `Tab` reaches the group in either state and leaves
-        // it in one press.
-        tabIndex={checked || (group.selected == null && group.firstId === id) ? 0 : -1}
-        type="button"
-      >
-        {children}
-      </button>
+      {render == null ? <button {...props} type="button" /> : render(props)}
     </RadioItemContext.Provider>
   );
 }
@@ -282,7 +289,7 @@ export component RadioGroupItem(
  * `[aria-checked="true"] > *`, and so the "only while chosen" part is not
  * something each caller reimplements.
  */
-export component RadioGroupIndicator(children?: React.Node, ...rest: Rest) {
+export component RadioGroupIndicator(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const item = useContext(RadioItemContext);
   if (item == null) {
     throw new Error("RadioGroup.Indicator must be rendered inside a RadioGroup.Item");
@@ -290,9 +297,6 @@ export component RadioGroupIndicator(children?: React.Node, ...rest: Rest) {
   if (!item.checked) {
     return null;
   }
-  return (
-    <span {...rest} aria-hidden="true">
-      {children}
-    </span>
-  );
+  const props = withProps(rest, { "aria-hidden": "true", children });
+  return render == null ? <span {...props} /> : render(props);
 }
