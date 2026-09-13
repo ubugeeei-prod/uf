@@ -8,8 +8,10 @@ did.
 
 The source of truth is `uf_runtime::HOSTS`, not this page. Every row below is
 the row in that table; `uf inspect --json` prints the same thing under
-`engines.hostSupport`, and `crates/uf_runtime/src/tests.rs` fails if a row grades
-itself `implemented` without naming the test that starts the runtime.
+`engines.hostSupport`, and the test-runner section repeats the rows for the
+hosts it can start under `engines.testRunner.hostSupport`.
+`crates/uf_runtime/src/tests.rs` fails if a row grades itself `implemented`
+without naming the test that starts the runtime.
 
 ## The matrix
 
