@@ -196,11 +196,28 @@ Four rules, each refused by name rather than by silence:
   layout already receives — `@children` is the tempting one, because `children`
   is what Next.js calls the page, and here the page always is `children`;
 - `$default.js` belongs directly inside a slot directory, and nowhere else;
-- a slot holds pages, layouts, templates, nested slots and one default — a
-  `$loading.js`, `$error.js`, `$not-found.js`, `$route.js` or
-  `$middleware.js` inside one is refused, because uf's slots do not carry
-  boundaries of their own yet
+- a slot holds pages, layouts, templates, loading fallbacks, nested slots and
+  one default — `$error.js`, `$not-found.js`, `$route.js` or `$middleware.js`
+  inside one is refused, because uf's slots do not carry those boundaries or
+  request handlers of their own yet
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
+
+`$loading.js` in a slot is slot-local. It wraps the slot's matched page and the
+layouts under that slot, not the segment's `children`, so a slow side panel can
+stream its placeholder without replacing the main page:
+
+```
+app/dashboard/$layout.js
+app/dashboard/members/$page.js
+app/dashboard/@team/$loading.js
+app/dashboard/@team/members/$page.js
+```
+
+`/dashboard/members` renders the members page immediately and puts the team
+slot behind its own fallback until `@team/members/$page.js` resolves. If the
+fallback should cover the whole dashboard instead, put `$loading.js` beside
+`app/dashboard/$layout.js`; that boundary wraps both `children` and every slot
+the layout receives.
 
 A slot page's `loader` is not run — a slot's data has nowhere to be embedded for
 hydration — and a slot page that exports one says so rather than being handed

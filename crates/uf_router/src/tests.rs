@@ -937,16 +937,16 @@ fn a_slot_named_after_a_layout_prop_is_refused() {
     }
 }
 
-/// What a slot does not have yet, said where somebody writing the file reads
+/// What a slot still does not have, said where somebody writing the file reads
 /// it.
 ///
-/// Per-slot boundaries are the part of parallel routes uf has not built, and
-/// these files would otherwise be opened by nobody — which is exactly the
-/// failure the issue is about, one level down.
+/// Per-slot error and not-found boundaries are the part of parallel routes uf
+/// has not built, and these files would otherwise be opened by nobody — which
+/// is exactly the failure the issue is about, one level down. `$loading.js`
+/// composes like a layout, so it is allowed.
 #[test]
 fn a_boundary_or_a_handler_inside_a_slot_is_refused() {
     for (name, expected) in [
-        ("$loading.js", "loading"),
         ("$error.js", "error"),
         ("$not-found.js", "not-found"),
         ("loading.js", "loading"),
@@ -971,6 +971,22 @@ fn a_boundary_or_a_handler_inside_a_slot_is_refused() {
         let message = error.to_string();
         assert!(message.contains(expected), "{name}: {message}");
     }
+}
+
+#[test]
+fn a_loading_boundary_inside_a_slot_is_discovered() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/@team")).unwrap();
+    fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/$loading.js"), "// @flow\n").unwrap();
+    fs::write(root.join("app/@team/$page.js"), "// @flow\n").unwrap();
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].path, "/");
 }
 
 /// Every interception spelling Next.js defines, refused by the same rule.

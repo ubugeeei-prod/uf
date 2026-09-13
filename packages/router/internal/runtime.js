@@ -465,9 +465,14 @@ export type RouteRecord = RoutingRouteRecord<
   LoadingModule,
 >;
 
-export type SlotRecord = RoutingSlotRecord<PageModule, LayoutModule, TemplateModule>;
+export type SlotRecord = RoutingSlotRecord<PageModule, LayoutModule, TemplateModule, LoadingModule>;
 
-export type SlotRouteRecord = RoutingSlotRouteRecord<PageModule, LayoutModule, TemplateModule>;
+export type SlotRouteRecord = RoutingSlotRouteRecord<
+  PageModule,
+  LayoutModule,
+  TemplateModule,
+  LoadingModule,
+>;
 
 export type TemplateRecord = RoutingTemplateRecord<TemplateModule>;
 
@@ -602,6 +607,7 @@ export type ResolvedSlot = {|
   readonly page: ?PageModule,
   readonly params: RouteParams,
   readonly layouts: $ReadOnlyArray<LayoutModule>,
+  readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
   readonly templates: $ReadOnlyArray<ResolvedTemplate>,
   readonly slots: $ReadOnlyArray<ResolvedSlot>,
 |};
@@ -863,6 +869,7 @@ async function resolveSlot(
     page: null,
     params: fallbackParams,
     layouts: [],
+    loading: [],
     templates: [],
     slots: [],
   };
@@ -896,6 +903,7 @@ async function resolveSlot(
   if (loaded.length !== layouts.length) {
     return empty;
   }
+  const loading = await resolveLoading(route, loaded.length);
   const templates = await resolveTemplateRecords(route.templates ?? [], loaded.length);
   return {
     name: record.name,
@@ -903,6 +911,7 @@ async function resolveSlot(
     page: withoutLoader(page, route.file),
     params: matched.params,
     layouts: loaded,
+    loading,
     templates,
     // The slot's own layouts are what a nested slot is measured against, so
     // the count handed down is this slot's rather than the route's.
@@ -2620,6 +2629,14 @@ component SlotView(slot: ResolvedSlot) {
     templates: slot.templates,
   };
   for (let depth = slot.layouts.length; depth >= 0; depth -= 1) {
+    for (let index = slot.loading.length - 1; index >= 0; index -= 1) {
+      const boundary = slot.loading[index];
+      if (boundary.above !== depth) {
+        continue;
+      }
+      const Fallback = loadingComponent(boundary.module);
+      element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
+    }
     element = insideTemplates(element, templateContext, depth);
     if (depth > 0) {
       const Layout = layoutComponent(slot.layouts[depth - 1]);

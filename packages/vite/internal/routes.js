@@ -194,11 +194,10 @@ const MAX_DEPTH = 32;
 /**
  * One page inside a slot.
  *
- * A `Route` without the parts a slot does not have: no `loading`, and no
- * boundary of its own. Those are the segment's, and they already wrap the
- * layout the slot renders into. A template is the exception because it
- * composes like a layout and carries no data or fallback. Per-slot boundaries
- * are the part of parallel routes uf has not built — see
+ * A `Route` without the parts a slot does not have: no error boundary and no
+ * not-found boundary of its own. Loading boundaries and templates are the
+ * pieces that compose like layouts, so they are carried below. Per-slot error
+ * and not-found boundaries are the part of parallel routes uf has not built — see
  * https://github.com/ubugeeei-prod/uf/issues/267 — and {@link scanRoutes}
  * refuses the files rather than leaving them unopened.
  *
@@ -210,6 +209,8 @@ const MAX_DEPTH = 32;
  * @property {ReadonlyArray<{name: string, catchAll: boolean}>} params
  * @property {string} page absolute path of the page module
  * @property {ReadonlyArray<string>} layouts absolute paths, slot root first
+ * @property {ReadonlyArray<{above: number, module: string}>} loading the
+ *   `$loading.js` fallbacks inside the slot, root first
  * @property {ReadonlyArray<{above: number, module: string}>} templates the
  *   `$template.js` wrappers inside the slot, root first
  * @property {ReadonlyArray<Slot>} slots slots declared inside this slot
@@ -312,9 +313,9 @@ const MAX_DEPTH = 32;
  * A `@slot` directory is a parallel route and is scanned; see {@link Slot}. It
  * throws for the three ways one can be written without being renderable: a
  * slot on a segment with no layout of its own, a `$default.js` that is not
- * directly inside a slot, and a boundary or a handler inside a slot. Each is a
- * file the router would otherwise never open, which is the failure #267 is
- * about.
+ * directly inside a slot, an error/not-found boundary or handler inside a
+ * slot, and boundary-like files with names uf does not open. Each is a file
+ * the router would otherwise never open, which is the failure #267 is about.
  *
  * @param {string} appRoot absolute path of the router root (`app/`)
  * @param {{target?: "web" | "native" | "ios" | "android"}} [options]
@@ -596,17 +597,24 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
   const routes = [];
   const defaultPage = findModule(directory, RESERVED.default, PAGE_EXTENSIONS, target);
 
-  const walkSlot = (current, currentSegments, layouts, templates, atSlotRoot, currentDepth) => {
+  const walkSlot = (
+    current,
+    currentSegments,
+    layouts,
+    loading,
+    templates,
+    atSlotRoot,
+    currentDepth,
+  ) => {
     if (currentDepth > MAX_DEPTH) return;
     const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
       a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
     );
 
     // What a slot does not have, said where somebody writing the file will
-    // read it rather than by never opening it. This is also the list of what
-    // is left of parallel routes; see the issue. A template composes like a
-    // layout, so it is carried below instead of refused here.
-    for (const role of [RESERVED.notFound, RESERVED.error, RESERVED.loading]) {
+    // read it rather than by never opening it. A loading boundary composes
+    // like a layout, so it is carried below instead of refused here.
+    for (const role of [RESERVED.notFound, RESERVED.error]) {
       const found =
         findModule(current, role, MODULE_EXTENSIONS, target) ??
         findModule(current, role, PAGE_EXTENSIONS, target);
@@ -626,10 +634,10 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
       if (role == null) continue;
       const file = path.join(current, entry.name);
       throw new Error(
-        `${file}: \`${entry.name}\` looks like a \`${role}\` boundary for a \`@slot\`, but ` +
-          "uf's parallel routes do not carry per-slot boundaries yet, so this file would never " +
-          `be opened. Put \`$${role}.js\` outside \`${directoryName}\`, where it covers the ` +
-          "whole segment. https://github.com/ubugeeei-prod/uf/issues/267",
+        `${file}: \`${entry.name}\` looks like a \`${role}\` boundary for a \`@slot\`, but it ` +
+          "is not a uf route file there. Use `$loading.js` for slot loading; per-slot error " +
+          "and not-found boundaries are still not implemented. " +
+          "https://github.com/ubugeeei-prod/uf/issues/267",
       );
     }
     for (const role of [RESERVED.route, RESERVED.middleware]) {
@@ -657,6 +665,10 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
 
     const layoutHere = findModule(current, RESERVED.layout, MODULE_EXTENSIONS, target);
     const nextLayouts = layoutHere ? [...layouts, layoutHere] : layouts;
+    const loadingHere = findModule(current, RESERVED.loading, MODULE_EXTENSIONS, target);
+    const nextLoading = loadingHere
+      ? [...loading, { above: nextLayouts.length, module: loadingHere }]
+      : loading;
     const templateHere = findModule(current, RESERVED.template, MODULE_EXTENSIONS, target);
     const nextTemplates = templateHere
       ? [...templates, { above: nextLayouts.length, module: templateHere }]
@@ -693,6 +705,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         params,
         page,
         layouts: nextLayouts,
+        loading: nextLoading,
         templates: nextTemplates,
         slots: nestedSlots,
         mdx: page.endsWith(".mdx"),
@@ -712,6 +725,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         path.join(current, entry.name),
         [...currentSegments, entry.name],
         nextLayouts,
+        nextLoading,
         nextTemplates,
         false,
         currentDepth + 1,
@@ -719,7 +733,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
     }
   };
 
-  walkSlot(directory, segments, [], [], true, depth + 1);
+  walkSlot(directory, segments, [], [], [], true, depth + 1);
 
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
@@ -1068,6 +1082,7 @@ export function routesModuleSource(table, options = {}) {
     const routes = slot.routes.map((route) => {
       slotFiles.add(route.page);
       for (const file of route.layouts) slotFiles.add(file);
+      for (const entry of route.loading ?? []) slotFiles.add(entry.module);
       const nested = route.slots.map(slotId);
       return `    {
       path: ${JSON.stringify(route.path)},
@@ -1076,6 +1091,9 @@ export function routesModuleSource(table, options = {}) {
       file: ${JSON.stringify(displayFile(route.page))},
       page: () => import(${JSON.stringify(route.page)}),
       layouts: [${route.layouts.map(layoutId).join(", ")}],
+      loading: [${(route.loading ?? [])
+        .map((boundary) => `{ above: ${boundary.above}, module: ${loadingId(boundary.module)} }`)
+        .join(", ")}],
       templates: [${(route.templates ?? [])
         .map((entry) => `{ above: ${entry.above}, module: ${templateId(entry.module)} }`)
         .join(", ")}],
@@ -1268,6 +1286,7 @@ function slotModuleFiles(slots) {
       files.push(
         route.page,
         ...route.layouts,
+        ...(route.loading ?? []).map((it) => it.module),
         ...(route.templates ?? []).map((it) => it.module),
         ...slotModuleFiles(route.slots),
       );

@@ -22,6 +22,7 @@ import os from "node:os";
 import path from "node:path";
 
 import * as React from "@uniflowed/react";
+import { use } from "@uniflowed/react";
 import { render, screen, userEvent } from "@uniflowed/react-testing";
 import { RouteView, RouterProvider, resolveMatch, routerView, useRouter } from "@uniflowed/router";
 import { createRenderer } from "@uniflowed/router/server";
@@ -71,6 +72,7 @@ const DASHBOARD = [
   "dashboard/members/$page.js",
   "dashboard/@team/$default.js",
   "dashboard/@team/$layout.js",
+  "dashboard/@team/$loading.js",
   "dashboard/@team/$template.js",
   "dashboard/@team/members/$page.js",
   "dashboard/@analytics/$page.js",
@@ -97,6 +99,10 @@ describe("scanning a router root that holds slots", () => {
     expect(team?.routes.map((route) => route.path)).toEqual(["/dashboard/members"]);
     expect(team?.routes[0].layouts.map((file) => path.relative(root, file))).toEqual([
       path.join("dashboard", "@team", "$layout.js"),
+    ]);
+    expect(team?.routes[0].loading.map((entry) => entry.above)).toEqual([1]);
+    expect(team?.routes[0].loading.map((entry) => path.relative(root, entry.module))).toEqual([
+      path.join("dashboard", "@team", "$loading.js"),
     ]);
     expect(team?.routes[0].templates.map((entry) => entry.above)).toEqual([1]);
     expect(team?.routes[0].templates.map((entry) => path.relative(root, entry.module))).toEqual([
@@ -155,6 +161,7 @@ describe("scanning a router root that holds slots", () => {
     expect(source).toContain("slots: [slot0, slot1]");
     expect(source).toContain('name: "team"');
     expect(source).toContain("defaultPage: () => import(");
+    expect(source).toContain("loading: [{ above: 1, module: loading0 }]");
     expect(source).toContain("templates: [{ above: 1, module: template0 }]");
   });
 
@@ -227,11 +234,11 @@ describe("what a slot may not be written as", () => {
     expect(message ?? "").toContain("deeper");
   });
 
-  it("refuses a boundary inside a slot, naming what is missing", () => {
-    // Per-slot boundaries are the part of parallel routes uf has not built.
+  it("refuses unsupported slot boundary files, naming what is missing", () => {
+    // Per-slot error and not-found boundaries are the part of parallel routes
+    // uf has not built.
     // The refusal is where somebody writing the file finds that out.
     for (const [file, role] of [
-      ["@aside/$loading.js", "loading"],
       ["@aside/$error.js", "error"],
       ["@aside/$not-found.js", "not-found"],
       ["@aside/loading.js", "loading"],
@@ -329,6 +336,24 @@ const table = {
 };
 
 const assets = { scripts: [], styles: [], preloads: [] };
+
+/** Read a streamed document as chunks, recording when each one arrived. */
+async function chunksOf(result: {
+  readonly stream: () => ReadableStream,
+  ...
+}): Promise<Array<{| readonly at: number, readonly text: string |}>> {
+  const started = Date.now();
+  const decoder = new TextDecoder();
+  const reader = result.stream().getReader();
+  const out = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done === true) {
+      return out;
+    }
+    out.push({ at: Date.now() - started, text: decoder.decode(value, { stream: true }) });
+  }
+}
 
 describe("rendering a route that has one", () => {
   it("gives the layout the slot beside its children", async () => {
@@ -450,6 +475,62 @@ describe("rendering a route that has one", () => {
 
     expect(resolved.status).toBe(500);
     expect(resolved.error?.kind).toBe("thrown");
+  });
+
+  it("streams a slot page inside its own loading boundary", async () => {
+    // The segment's fallback already wraps the layout that receives the slot.
+    // This one is lower: it belongs to the slot's own route table, so a slow
+    // slot can show its own placeholder without replacing `children`.
+    let finish: (value: string) => void = () => {};
+    const waited = new Promise<string>((resolve) => {
+      finish = resolve;
+    });
+    component SlowTeam() {
+      return <p>{use(waited)}</p>;
+    }
+    component TeamLoading() {
+      return <p>the team slot is loading</p>;
+    }
+    const slowSlot = {
+      ...slot,
+      defaultPage: null,
+      routes: [
+        {
+          ...slot.routes[0],
+          page: () => Promise.resolve({ default: SlowTeam }),
+          loading: [{ above: 0, module: () => Promise.resolve({ default: TeamLoading }) }],
+        },
+      ],
+    };
+    const tableWithSlowSlot = {
+      routes: [{ ...page("/dashboard/members", "the members page"), slots: [slowSlot] }],
+      notFound: [],
+      errors: [],
+    };
+    const resolved = await resolveMatch(tableWithSlowSlot, "/dashboard/members");
+    expect(resolved.slots[0].loading.length).toBe(1);
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...tableWithSlowSlot,
+    });
+    setTimeout(() => {
+      finish("the slow team is here");
+    }, 300);
+
+    const result = await renderer.render("/dashboard/members", assets);
+
+    expect(result.status).toBe(200);
+    const chunks = await chunksOf(result);
+    const shell = chunks[0];
+    expect(shell.text).toContain("the members page");
+    expect(shell.text).toContain("the team slot is loading");
+    expect(shell.text).not.toContain("the slow team is here");
+
+    const rest = chunks
+      .slice(1)
+      .map((chunk) => chunk.text)
+      .join("");
+    expect(rest).toContain("the slow team is here");
   });
 });
 
