@@ -191,7 +191,9 @@ fn remove_key(node: &mut Value, key: &str) {
 }
 
 fn base(node: &Value, kind: &str) -> Map<String, Value> {
-    let mut map = Map::new();
+    let position_fields =
+        usize::from(node.get("loc").is_some()) + usize::from(node.get("range").is_some());
+    let mut map = Map::with_capacity(1 + position_fields);
     map.insert("type".to_owned(), Value::String(kind.to_owned()));
     for key in ["loc", "range"] {
         if let Some(value) = node.get(key) {
