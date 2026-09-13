@@ -14,11 +14,11 @@ static GLOBAL: CountingAllocator = CountingAllocator::new();
 
 /// Above the current cost on `main` with room for allocator and fixture drift,
 /// below the 293,000-allocation post-#708 figure from #668.
-const RUNTIME_JS_ALLOCATION_CEILING: u64 = 60_000;
+const RUNTIME_JS_ALLOCATIONS_PER_KIB_CEILING: u64 = 256;
 
 /// Above the current 4.14 MiB run with room for fixture drift, below the
 /// 32 MiB post-#708 figure from #668.
-const RUNTIME_JS_BYTE_CEILING: u64 = 8 * 1024 * 1024;
+const RUNTIME_JS_BYTES_PER_BYTE_CEILING: u64 = 40;
 
 #[test]
 fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
@@ -53,24 +53,30 @@ fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
     );
 
     let delta = after.delta_from(&before);
+    let source_bytes = u64::try_from(file.source.len()).expect("source length fits in u64");
+    let source_kib = source_bytes.div_ceil(1024);
+    let allocation_ceiling = source_kib * RUNTIME_JS_ALLOCATIONS_PER_KIB_CEILING;
+    let byte_ceiling = source_bytes * RUNTIME_JS_BYTES_PER_BYTE_CEILING;
     assert!(
-        delta.allocations <= RUNTIME_JS_ALLOCATION_CEILING,
+        delta.allocations <= allocation_ceiling,
         "linting {} bytes of router runtime took {} allocations, over the \
-         {RUNTIME_JS_ALLOCATION_CEILING} ceiling. This usually means the #668 \
-         gate stopped skipping Babel/ESTree work that cannot produce a lint \
-         finding. Run `cargo run --release --example alloc_report -p uf_lint \
-         -- packages/router/internal/runtime.js --phases` to find the phase.",
-        file.source.len(),
-        delta.allocations
+         {allocation_ceiling} ceiling ({RUNTIME_JS_ALLOCATIONS_PER_KIB_CEILING} \
+         allocations per KiB). This usually means the #668 gate stopped \
+         skipping Babel/ESTree work that cannot produce a lint finding. Run \
+         `cargo run --release --example alloc_report -p uf_lint -- \
+         packages/router/internal/runtime.js --phases` to find the phase.",
+        source_bytes,
+        delta.allocations,
     );
     assert!(
-        delta.bytes_allocated <= RUNTIME_JS_BYTE_CEILING,
+        delta.bytes_allocated <= byte_ceiling,
         "linting {} bytes of router runtime allocated {} bytes, over the \
-         {RUNTIME_JS_BYTE_CEILING} ceiling. Run `cargo run --release \
-         --example alloc_report -p uf_lint -- packages/router/internal/runtime.js \
-         --phases` to find the phase.",
-        file.source.len(),
-        delta.bytes_allocated
+         {byte_ceiling} ceiling ({RUNTIME_JS_BYTES_PER_BYTE_CEILING} bytes per \
+         source byte). Run `cargo run --release --example alloc_report -p \
+         uf_lint -- packages/router/internal/runtime.js --phases` to find the \
+         phase.",
+        source_bytes,
+        delta.bytes_allocated,
     );
 }
 
