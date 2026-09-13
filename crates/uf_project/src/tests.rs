@@ -790,6 +790,27 @@ fn paths(scan: &SourceScan) -> Vec<&str> {
         .collect()
 }
 
+#[test]
+fn a_kind_filtered_scan_does_not_read_files_the_caller_cannot_use() {
+    let (_dir, root) = project_root();
+    write(&root, "src/app.js", "// @flow\n");
+    write(&root, "src/data.json", b"{\"broken\":\"\xff\"}");
+    write(&root, "src/styles.css", "button { color: red; }\n");
+
+    let scan =
+        scan_selected_source_files_matching(&root, &UniflowedConfig::default(), &[], |kind| {
+            kind.is_flow() || kind == SourceKind::PackageManifest
+        })
+        .expect("a filtered walk");
+
+    assert_eq!(paths(&scan), ["src/app.js"]);
+    assert!(
+        scan.unreadable.is_empty(),
+        "filtered-out files should not be read: {:?}",
+        scan.unreadable
+    );
+}
+
 /// A project the size of a real monorepo is walked once, and quickly.
 ///
 /// The numbers, so that a regression is a number and not a feeling: twenty

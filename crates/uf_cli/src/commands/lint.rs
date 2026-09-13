@@ -33,7 +33,7 @@ use serde_json::json;
 use uf_config::load_config;
 use uf_infra::FxHashSet;
 use uf_lint::{Diagnostic, LintReport, Severity, SourceFile, lint_sources};
-use uf_project::{SourceKind, scan_selected_source_files};
+use uf_project::{SourceKind, scan_selected_source_files_matching};
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
 };
@@ -170,7 +170,8 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
     // file nobody asked it to read. `package.json` is the exception it already
     // made: the linter reads it, which is why `is_flow` is the wrong question
     // for the formatter and the right one here.
-    let mut scan = scan_selected_source_files(&resolved.root, &resolved.config, paths)?;
+    let mut scan =
+        scan_selected_source_files_matching(&resolved.root, &resolved.config, paths, lint_kind)?;
     // Narrowed before the read failures are rendered as well as before the
     // sources: a file outside what was asked about must not fail the run.
     scan.unreadable
@@ -243,6 +244,10 @@ pub(crate) fn severity_count(report: &LintReport, severity: Severity) -> usize {
         .iter()
         .filter(|diagnostic| diagnostic.severity == severity)
         .count()
+}
+
+fn lint_kind(kind: SourceKind) -> bool {
+    kind.is_flow() || kind == SourceKind::PackageManifest
 }
 
 /// The machine-readable report.

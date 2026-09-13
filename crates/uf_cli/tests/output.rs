@@ -63,6 +63,37 @@ fn lint_json_is_pure_json_even_with_color_forced_on() {
 }
 
 #[test]
+fn lint_does_not_read_non_flow_files_it_will_not_lint() {
+    let dir = tempfile::tempdir().unwrap();
+    let src = dir.path().join("src");
+    let data = dir.path().join("data");
+    fs::create_dir_all(&src).unwrap();
+    fs::create_dir_all(&data).unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nexport const value: number = 1;\n",
+    )
+    .unwrap();
+    fs::write(data.join("broken.json"), b"{\"bad\":\"\xff\"}").unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["lint", "--json"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&stdout).expect("--json must parse");
+    assert_eq!(value["filesChecked"], serde_json::json!(1));
+}
+
+#[test]
 fn check_json_reports_the_same_shape_under_its_own_name() {
     let dir = tempfile::tempdir().unwrap();
     lint_project(dir.path());
