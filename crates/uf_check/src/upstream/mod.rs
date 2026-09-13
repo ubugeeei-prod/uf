@@ -37,6 +37,7 @@ mod resolve;
 
 pub(crate) use convert::error_code;
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 use std::rc::Rc;
@@ -66,7 +67,7 @@ use crate::cache::{CachedAnswer, CheckCache, Digest, Fields, Record, hex};
 use crate::diagnostic::TypeDiagnostic;
 use crate::limits::CHECK_STACK_BYTES;
 use crate::upstream::graph::{Graph, ModuleFacts};
-use crate::upstream::project::{MkBuiltins, ProjectModules};
+use crate::upstream::project::{MkBuiltins, ProjectModules, declaration_probe_needs_builtins};
 use crate::{BuiltinsTiming, CheckError, CheckLimits, CheckReport, Source};
 
 /// The per-call builtin environment, built only if this batch really needs it.
@@ -148,23 +149,51 @@ pub(crate) fn module_closure<'a>(
 ) -> Result<crate::ModuleClosure<'a>, CheckError> {
     let path = seeds.first().copied().unwrap_or("<empty>");
     on_check_thread(path, || {
-        // The builtins are merged here so that a specifier the library
-        // definitions already describe — Flow's own or the project's — is not
-        // handed back as something the caller should go and find. Once per
-        // process and shared, so the check that follows this walk pays nothing
-        // for having asked.
-        builtins::prepare(libs)?;
-        let master_cx = builtins::master_context(libs)?;
         let options = options::options(limits);
-        let base_metadata = flow_typing_context::mk_context_metadata(&options, Arc::default());
-        let mk_builtins = merge::mk_builtins(&base_metadata, &master_cx);
+        let environment = RefCell::new(None::<BatchEnvironment>);
+        let failure = RefCell::new(None);
         // A batch of no files: this exists only to ask what the builtins
         // declare, which is a property of the compiler and not of any source.
-        let probe = ProjectModules::new(&[], options.clone(), Some(mk_builtins), limits);
+        // The builtin environment is installed lazily below, because a
+        // relative-only walk should not pay #678's fixed environment cost just
+        // to assemble the batch.
+        let probe = ProjectModules::new(&[], options.clone(), None, limits);
         let found = closure::closure(seeds, available, &options, &|specifier| {
+            if !declaration_probe_needs_builtins(specifier) {
+                return false;
+            }
+            if failure.borrow().is_some() {
+                return false;
+            }
+            let mut environment = environment.borrow_mut();
+            if environment.is_none() {
+                match builtins::prepare(libs) {
+                    Ok(builtins) => *environment = Some(BatchEnvironment::new(builtins)),
+                    Err(error) => {
+                        *failure.borrow_mut() = Some(error);
+                        return false;
+                    }
+                }
+            }
+            let environment = environment
+                .as_mut()
+                .expect("the environment was installed above");
+            match environment.mk_builtins(libs, &options) {
+                Ok(mk_builtins) => probe.set_mk_builtins(mk_builtins),
+                Err(error) => {
+                    *failure.borrow_mut() = Some(error);
+                    return false;
+                }
+            }
             probe.declared_externally(specifier)
         });
         probe.release();
+        if let Some(error) = failure.into_inner() {
+            return Err(error);
+        }
+        let builtins = environment
+            .into_inner()
+            .map(|environment| environment.builtins);
         Ok(crate::ModuleClosure {
             sources: found
                 .reached
@@ -172,6 +201,7 @@ pub(crate) fn module_closure<'a>(
                 .map(|index| available[index])
                 .collect(),
             unresolved: found.unresolved,
+            builtins,
         })
     })?
 }

@@ -792,7 +792,7 @@ impl ProjectModules {
 
 /// Whether deciding that `specifier` is declared outside the batch has to ask
 /// the merged builtin environment.
-fn declaration_probe_needs_builtins(specifier: &str) -> bool {
+pub(super) fn declaration_probe_needs_builtins(specifier: &str) -> bool {
     if resolve::is_relative(specifier) {
         assets::declared_module_for(specifier).is_some()
     } else {

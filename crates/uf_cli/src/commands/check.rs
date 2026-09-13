@@ -17,7 +17,6 @@ use serde_json::{Value, json};
 use uf_check::{
     BuiltinsTiming, CheckCache, CheckError, CheckLimits, CheckReport, Source, TypeDiagnostic,
     active_backend, backend_name, check_sources_cached, lib_paths, module_closure,
-    prepare_builtins,
 };
 #[cfg(feature = "upstream-typecheck")]
 use uf_infra::FxHashSet;
@@ -52,14 +51,9 @@ struct Batch {
     requested: usize,
     /// Modules in the batch only because those files import them.
     imported: usize,
-    /// What the shared builtin environment cost *this process*.
-    ///
-    /// Taken from the run's own `prepare_builtins` rather than from the
-    /// report, because the report's `cold` says whether the *check* did the
-    /// merge and the walk that assembles the batch now gets there first. A run
-    /// that paid for the merge must not print "warm" because it paid a moment
-    /// earlier than the footer looks.
-    builtins: BuiltinsTiming,
+    /// What the closure walk paid for the shared builtin environment, if it
+    /// needed one before inference did.
+    builtins: Option<BuiltinsTiming>,
     /// How many library definitions the project added to Flow's own.
     ///
     /// Reported because it is the difference between "this project declares
@@ -241,14 +235,6 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
         Err(error) => return TypeCheck::Failed(error),
     };
     let libs: Vec<Source<'_>> = libdefs.iter().map(as_input).collect();
-    // Before the walk, because the walk merges the builtins too and whichever
-    // call gets there first is the one that pays. Asking here is what lets the
-    // footer say which.
-    let builtins = match prepare_builtins(&libs) {
-        Ok(builtins) => builtins,
-        Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
-        Err(error) => return TypeCheck::Failed(error),
-    };
     // A library definition is not a file to check. It *declares* the
     // environment every other file is checked in — `declare module` and a
     // top-level `declare type` are library syntax, and a source file that used
@@ -286,6 +272,7 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
     // for twice and there are finitely many of them.
     let mut installed: Vec<SourceFile> = Vec::new();
     let mut read: FxHashSet<String> = FxHashSet::default();
+    let mut builtins = None;
     let batch_paths = loop {
         // In its own scope: the walk borrows `installed`, and the round that
         // follows it grows `installed`.
@@ -297,14 +284,19 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
                 .map(as_input)
                 .collect();
             match module_closure(&seeds, &pool, &libs, &limits) {
-                Ok(closure) => Ok((
-                    closure
-                        .sources
-                        .iter()
-                        .map(|source| source.path.to_owned())
-                        .collect::<Vec<String>>(),
-                    closure.unresolved,
-                )),
+                Ok(closure) => {
+                    if builtins.is_none() {
+                        builtins = closure.builtins;
+                    }
+                    Ok((
+                        closure
+                            .sources
+                            .iter()
+                            .map(|source| source.path.to_owned())
+                            .collect::<Vec<String>>(),
+                        closure.unresolved,
+                    ))
+                }
                 Err(error) => Err(error),
             }
         };
@@ -407,12 +399,12 @@ fn type_check_payload(types: &TypeCheck) -> Value {
         value["filesSkipped"] = json!(report.files_skipped);
         value["filesFromCache"] = json!(report.files_from_cache);
         value["elapsedMs"] = json!(report.elapsed.as_secs_f64() * 1000.0);
-        value["builtinsMs"] = json!(report.builtins.cold_elapsed.as_secs_f64() * 1000.0);
-        value["builtinsCold"] = json!(
-            types
-                .batch()
-                .map_or(report.builtins.cold, |batch| batch.builtins.cold)
-        );
+        let builtins = types
+            .batch()
+            .and_then(|batch| batch.builtins)
+            .unwrap_or(report.builtins);
+        value["builtinsMs"] = json!(builtins.cold_elapsed.as_secs_f64() * 1000.0);
+        value["builtinsCold"] = json!(builtins.cold);
         value["untypedModules"] = json!(report.untyped_modules);
         value["hostConditionalModules"] = json!(report.host_conditional_modules);
     }
@@ -609,10 +601,11 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                 batch.requested + batch.imported
             );
             let inference = format!("{:.1?}", report.elapsed);
+            let builtins_timing = batch.builtins.unwrap_or(report.builtins);
             let builtins = format!(
                 "{:.1?} ({})",
-                batch.builtins.cold_elapsed,
-                if batch.builtins.cold { "cold" } else { "warm" }
+                builtins_timing.cold_elapsed,
+                if builtins_timing.cold { "cold" } else { "warm" }
             );
             // Only shown when it happened. A project with nothing opted out
             // should not have to read a line saying so.
