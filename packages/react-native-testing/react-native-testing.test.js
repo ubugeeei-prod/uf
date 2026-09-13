@@ -7,6 +7,7 @@ import { describe, expect, it } from "@uniflowed/test";
 import {
   NativeTestingUnsupportedError,
   accessibilityStateOf,
+  accessibilityValueOf,
   accessibleName,
   createNativeScreen,
   render,
@@ -43,6 +44,15 @@ const tree: NativeElement = {
       children: [],
     },
     {
+      type: "View",
+      props: {
+        accessibilityLabel: "Upload",
+        accessibilityRole: "progressbar",
+        accessibilityValue: { min: 0, max: 100, now: 75, text: "75 percent" },
+      },
+      children: [],
+    },
+    {
       type: "TextInput",
       props: { accessibilityLabel: "Search", disabled: false },
       children: [],
@@ -68,6 +78,10 @@ describe("@uniflowed/react-native-testing", () => {
     expect(screen.queryByRole("button", { disabled: false })).toBe(null);
     expect(screen.getByRole("textbox", { name: /Search/ }).type).toBe("TextInput");
     expect(screen.getByRole("switch", { checked: "mixed", selected: true }).type).toBe("Switch");
+    expect(screen.getByRole("progressbar", { value: { now: 75, text: /percent/ } }).type).toBe(
+      "View",
+    );
+    expect(screen.queryByRole("progressbar", { value: { now: 25 } })).toBe(null);
     expect(accessibleName(screen.getByTestId("save"))).toBe("Save changes");
     expect(accessibilityStateOf(screen.getByTestId("save"))).toEqual({
       busy: true,
@@ -75,6 +89,12 @@ describe("@uniflowed/react-native-testing", () => {
       disabled: true,
       expanded: false,
       selected: false,
+    });
+    expect(accessibilityValueOf(screen.getByRole("progressbar"))).toEqual({
+      min: 0,
+      max: 100,
+      now: 75,
+      text: "75 percent",
     });
     expect(roleOf(screen.getByTestId("save"))).toBe("button");
   });
@@ -107,6 +127,12 @@ describe("@uniflowed/react-native-testing", () => {
     }
 
     expect(String(error?.message)).toContain('"pressed" is not an option this query takes');
+    expect(() =>
+      screen.getByRole("progressbar", { value: { percentage: 75 } } as $FlowFixMe),
+    ).toThrow('"percentage" is not an option this query takes');
+    expect(() => screen.getByRole("progressbar", { value: [] } as $FlowFixMe)).toThrow(
+      "getByRole.value: an object was expected",
+    );
 
     expect(() => screen.getByText("Hello native", { hidden: true } as $FlowFixMe)).toThrow(
       '"hidden" is not an option this query takes',

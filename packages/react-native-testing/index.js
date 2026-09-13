@@ -21,10 +21,26 @@ export type NativeAccessibilityState = {
   readonly [key: string]: mixed,
 };
 
+export type NativeAccessibilityValue = {
+  readonly min?: ?number,
+  readonly max?: ?number,
+  readonly now?: ?number,
+  readonly text?: ?string,
+  readonly [key: string]: mixed,
+};
+
+export type NativeAccessibilityValueMatcher = {
+  readonly min?: number,
+  readonly max?: number,
+  readonly now?: number,
+  readonly text?: NativeMatcher,
+};
+
 export type NativeProps = {
   readonly accessibilityLabel?: ?string,
   readonly accessibilityRole?: ?string,
   readonly accessibilityState?: ?NativeAccessibilityState,
+  readonly accessibilityValue?: ?NativeAccessibilityValue,
   readonly disabled?: ?boolean,
   readonly role?: ?string,
   readonly testID?: ?string,
@@ -55,6 +71,7 @@ export type NativeRoleOptions = {
   readonly disabled?: boolean,
   readonly expanded?: boolean,
   readonly selected?: boolean,
+  readonly value?: NativeAccessibilityValueMatcher,
 };
 
 export type NativeQueries = {
@@ -112,15 +129,15 @@ export function within(root: NativeTree): NativeQueries {
       return many(byText(root, matcher, options), "text", describeMatcher(matcher));
     },
     getByRole: (role, options) => {
-      rejectUnknownOptions("getByRole", options, NATIVE_ROLE_OPTION_KEYS);
+      rejectUnknownRoleOptions("getByRole", options);
       return one(byRole(root, role, options), "role", role);
     },
     queryByRole: (role, options) => {
-      rejectUnknownOptions("queryByRole", options, NATIVE_ROLE_OPTION_KEYS);
+      rejectUnknownRoleOptions("queryByRole", options);
       return optional(byRole(root, role, options), "role", role);
     },
     getAllByRole: (role, options) => {
-      rejectUnknownOptions("getAllByRole", options, NATIVE_ROLE_OPTION_KEYS);
+      rejectUnknownRoleOptions("getAllByRole", options);
       return many(byRole(root, role, options), "role", role);
     },
     getByTestId: (testID) => one(byTestId(root, testID), "testID", testID),
@@ -138,7 +155,9 @@ const NATIVE_ROLE_OPTION_KEYS: $ReadOnlyArray<string> = [
   "expanded",
   "name",
   "selected",
+  "value",
 ];
+const NATIVE_ROLE_VALUE_OPTION_KEYS: $ReadOnlyArray<string> = ["max", "min", "now", "text"];
 
 export function textContent(node: NativeTree): string {
   if (Array.isArray(node)) return node.map((child) => textContent(child)).join("");
@@ -185,6 +204,16 @@ export function accessibilityStateOf(node: NativeElement): NativeAccessibilitySt
   };
 }
 
+export function accessibilityValueOf(node: NativeElement): NativeAccessibilityValue {
+  const value = node.props?.accessibilityValue ?? {};
+  return {
+    min: value.min ?? null,
+    max: value.max ?? null,
+    now: value.now ?? null,
+    text: value.text ?? null,
+  };
+}
+
 function rejectUnknownOptions(query: string, options: mixed, known: $ReadOnlyArray<string>): void {
   if (options == null) return;
   if (typeof options !== "object") {
@@ -197,6 +226,16 @@ function rejectUnknownOptions(query: string, options: mixed, known: $ReadOnlyArr
       );
     }
   }
+}
+
+function rejectUnknownRoleOptions(query: string, options: mixed): void {
+  rejectUnknownOptions(query, options, NATIVE_ROLE_OPTION_KEYS);
+  if (options == null || typeof options !== "object") return;
+  const roleOptions: $FlowFixMe = options;
+  if (Array.isArray(roleOptions.value)) {
+    throw new Error(`${query}.value: an object was expected`);
+  }
+  rejectUnknownOptions(`${query}.value`, roleOptions.value, NATIVE_ROLE_VALUE_OPTION_KEYS);
 }
 
 function byText(
@@ -225,6 +264,7 @@ function byRole(
   return allElements(root).filter((node) => {
     if (roleOf(node) !== role) return false;
     if (!stateMatches(node, options)) return false;
+    if (!valueMatches(node, options?.value)) return false;
     return options?.name == null
       ? true
       : matches(options.name, accessibleName(node), node, options.exact ?? true);
@@ -277,6 +317,18 @@ function stateMatches(node: NativeElement, options?: NativeRoleOptions): boolean
     (options.disabled == null || state.disabled === options.disabled) &&
     (options.expanded == null || state.expanded === options.expanded) &&
     (options.selected == null || state.selected === options.selected)
+  );
+}
+
+function valueMatches(node: NativeElement, expected?: NativeAccessibilityValueMatcher): boolean {
+  if (expected == null) return true;
+  const value = accessibilityValueOf(node);
+  return (
+    (expected.min == null || value.min === expected.min) &&
+    (expected.max == null || value.max === expected.max) &&
+    (expected.now == null || value.now === expected.now) &&
+    (expected.text == null ||
+      (value.text != null && matches(expected.text, value.text, node, true)))
   );
 }
 
