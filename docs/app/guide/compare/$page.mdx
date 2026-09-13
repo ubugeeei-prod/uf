@@ -38,11 +38,11 @@ production-server row still belongs to Next.js.
 | What uf loses | To | By how much |
 | --- | --- | --- |
 | Test throughput | `bun test` | 0.20 s against **0.06 s** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
-| Deployment maturity | Next.js | seven adapters and `--compile` are implemented, but no server adapter has been deployed in anger; `serverless` buffers streamed documents, and every hosted target still needs real-world proof ([#391](https://github.com/ubugeeei-prod/uf/issues/391), [Commands](/reference/cli#uf-build-adapter-target)) |
+| Deployment maturity | Next.js | seven adapters and `--compile` are implemented, but no server adapter has been deployed in anger; `serverless` buffers streamed documents, and every hosted target still needs real-world proof ([#391](https://github.com/ubugeeei-prod/uf/issues/391), [Commands](/reference/cli#uf-build---adapter-target)) |
 | Server Components | Next.js | the split is route-level: a route with no `"use client"` boundary in it keeps its page out of the client bundle, but a Server Component above a boundary still ships whole because uf has no Flight payload yet ([#252](https://github.com/ubugeeei-prod/uf/issues/252), [#519](https://github.com/ubugeeei-prod/uf/issues/519)) |
 | The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
 | Being installable | everything | on npm as prereleases, and only the closure a project needs; `@uniflowed/std` is still pending because its root is a declaration surface while several subpaths run ([#710](https://github.com/ubugeeei-prod/uf/issues/710)) |
-| Runtime coverage | Bun, Next.js | Node.js and Bun are the comfortable local hosts; Deno, edge and serverless are deploy artefacts with target limits, not the same complete day-to-day runtime story ([#246](https://github.com/ubugeeei-prod/uf/issues/246), [Commands](/reference/cli#uf-build-adapter-target)) |
+| Runtime coverage | Bun, Next.js | Node.js and Bun are the comfortable local hosts; Deno, edge and serverless are deploy artefacts with target limits, not the same complete day-to-day runtime story ([#246](https://github.com/ubugeeei-prod/uf/issues/246), [Commands](/reference/cli#uf-build---adapter-target)) |
 | Being three years old | all four | pre-release, no stability guarantee, interfaces move without warning |
 
 [What uf does not do](/guide/scope) is the complete version of that list,
@@ -123,7 +123,7 @@ therefore separates "there is code" from "this is mature".
 | Image optimisation | yes, plus a request-time optimizer | build time only: an imported image is resized to the declared widths and gets a real `srcset`, `sizes`, intrinsic dimensions and a blur placeholder. **No AVIF and no lossy WebP** — neither has a pure-Rust encoder uf ships — and no request-time endpoint ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
 | Font self-hosting | yes, downloaded and subsetted at build time | an imported font is self-hosted, content-hashed, declared with `font-display` and paired with a `size-adjust` fallback computed from its own metrics. **Not subsetted**, and not downloaded from a provider ([#273](https://github.com/ubugeeei-prod/uf/issues/273)) |
 | Error boundaries | yes | none ([#257](https://github.com/ubugeeei-prod/uf/issues/257)) |
-| Deployment adapters | many | `node`, `bun`, `deno`, `container`, `edge`, `serverless`, `static`, plus `--compile`; server adapters are tested for identical answers, not proven by real deployments ([Commands](/reference/cli#uf-build-adapter-target)) |
+| Deployment adapters | many | `node`, `bun`, `deno`, `container`, `edge`, `serverless`, `static`, plus `--compile`; server adapters are tested for identical answers, not proven by real deployments ([Commands](/reference/cli#uf-build---adapter-target)) |
 
 **What uf has that Next.js does not.** Flow's React syntax, checked by Flow's
 own inference. A formatter and a linter and a test runner in the same binary,
