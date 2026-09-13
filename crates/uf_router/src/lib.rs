@@ -526,18 +526,7 @@ pub fn discover_routes_for_target(
         return Ok(Vec::new());
     }
 
-    // Before any route is built, because the point is that none is: an
-    // interception used to become a literal URL segment and a live route, and
-    // so did a slot before slots were served.
-    refuse_unsupported_directories(&app_root)?;
-    // A wrong template spelling is the file version of the same failure: the
-    // project asked for remount behaviour and got a file the router never
-    // opens.
-    refuse_unsupported_template_files(&app_root)?;
-    // And before any route is built for the opposite reason: a slot's pages are
-    // routes uf renders, so what is wrong with a slot has to be said here
-    // rather than discovered as a missing prop at render time.
-    check_slots(&app_root, target)?;
+    preflight_router_root(&app_root, target)?;
 
     let mut routes = Vec::new();
     for entry in WalkDir::new(&app_root) {
@@ -701,6 +690,8 @@ pub fn discover_server_modules_for_target(
         return Ok(Vec::new());
     }
 
+    preflight_router_root(&app_root, target)?;
+
     let mut found = Vec::new();
     for entry in WalkDir::new(&app_root).sort_by_file_name() {
         let entry = entry.map_err(|source| RouterError::Walk {
@@ -731,6 +722,28 @@ pub fn discover_server_modules_for_target(
 
     found.sort_by(|a, b| a.path.cmp(&b.path).then(a.file.cmp(&b.file)));
     Ok(found)
+}
+
+/// Validate the router grammar before a caller reads any table from it.
+///
+/// Routes, route handlers and middleware are three views over one filesystem
+/// router. The unsupported spellings have to fail before any of them builds a
+/// table, or one API can reject a directory while another reports the same
+/// directory as a live path.
+fn preflight_router_root(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterError> {
+    // Before any route is built, because the point is that none is: an
+    // interception used to become a literal URL segment and a live route, and
+    // so did a slot before slots were served.
+    refuse_unsupported_directories(app_root)?;
+    // A wrong template spelling is the file version of the same failure: the
+    // project asked for remount behaviour and got a file the router never
+    // opens.
+    refuse_unsupported_template_files(app_root)?;
+    // And before any route is built for the opposite reason: a slot's pages are
+    // routes uf renders, so what is wrong with a slot has to be said here
+    // rather than discovered as a missing prop at render time.
+    check_slots(app_root, target)?;
+    Ok(())
 }
 
 /// Refuse the directory spellings uf reserves without serving.

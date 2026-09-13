@@ -1084,6 +1084,49 @@ fn discovers_the_route_handlers_and_middleware_the_route_table_does_not_carry() 
     assert_eq!(modules[1].kind, ServerModuleKind::Middleware);
 }
 
+/// Server modules are not a back door around the router grammar.
+///
+/// `discover_server_modules` is the API `uf build` and deploy checks use when
+/// they need the request-time table rather than the page table. It still reads
+/// the same router root, so an unsupported directory must fail here too
+/// instead of being reported as a live handler path.
+#[test]
+fn server_modules_refuse_an_intercepting_route_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::create_dir_all(root.join("app/feed/(.)photo")).unwrap();
+    fs::write(root.join("app/feed/(.)photo/$route.js"), "// @flow\n").unwrap();
+
+    let error = discover_server_modules(&root, &UniflowedConfig::default()).unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("(.)photo"), "{message}");
+    assert!(message.contains("intercepting route"), "{message}");
+    assert!(message.contains("refused"), "{message}");
+}
+
+/// A slot contributes no URL, so a handler or guard inside one has no request
+/// of its own even when the caller only asks for server modules.
+#[test]
+fn server_modules_refuse_files_inside_a_slot() {
+    for file in ["$route.js", "$middleware.js"] {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::create_dir_all(root.join("app/@team")).unwrap();
+        fs::write(root.join("app/$layout.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/$page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/@team/$page.js"), "// @flow\n").unwrap();
+        fs::write(root.join("app/@team").join(file), "// @flow\n").unwrap();
+
+        let error = discover_server_modules(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(file), "{file}: {message}");
+        assert!(message.contains("@team"), "{file}: {message}");
+        assert!(message.contains("answers no request"), "{file}: {message}");
+    }
+}
+
 /// One report per directory, whichever spelling the build's router would run.
 ///
 /// `find_module` decides that for pages, and it has to decide it here too: a
