@@ -341,27 +341,40 @@ mod tests {
         // while still catching the much larger cost of allocating one candidate
         // String per extension and index fallback.
         const EXTENSIONLESS_MISS_CEILING: u64 = 6_500;
+        // This is a unit test in a binary whose other tests run in parallel, and
+        // the counting allocator is process-wide. Taking the quietest short
+        // window keeps the budget about this resolver path instead of whichever
+        // unrelated test happened to allocate during one measurement.
+        const MEASUREMENT_ATTEMPTS: usize = 8;
 
         let index = ModuleIndex::new(["app.js"]);
         let bases: Vec<String> = (0..128).map(|index| format!("missing{index}")).collect();
 
         let _window = Window::open();
         CountingAllocator::enable();
-        let before = AllocSnapshot::capture();
-        for base in &bases {
-            assert_eq!(index.resolve_file(base), None);
+        let mut best_allocations = u64::MAX;
+        let mut worst_allocations = 0;
+        for _ in 0..MEASUREMENT_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            let before = AllocSnapshot::capture();
+            for base in &bases {
+                assert_eq!(index.resolve_file(base), None);
+            }
+            let after = AllocSnapshot::capture();
+            let delta = after.delta_from(&before);
+            best_allocations = best_allocations.min(delta.allocations);
+            worst_allocations = worst_allocations.max(delta.allocations);
         }
-        let after = AllocSnapshot::capture();
         CountingAllocator::disable();
 
-        let delta = after.delta_from(&before);
         assert!(
-            delta.allocations <= EXTENSIONLESS_MISS_CEILING,
-            "128 extensionless misses took {} allocations, over the \
+            best_allocations <= EXTENSIONLESS_MISS_CEILING,
+            "128 extensionless misses took {best_allocations} allocations in the \
+             quietest of {MEASUREMENT_ATTEMPTS} measurement windows, over the \
              {EXTENSIONLESS_MISS_CEILING} ceiling. \
+             The noisiest window took {worst_allocations}. \
              That usually means path resolution is allocating a fresh candidate for \
              every extension and index fallback.",
-            delta.allocations,
         );
     }
 
