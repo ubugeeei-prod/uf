@@ -117,6 +117,10 @@ function browserArguments(profile: string, url: string): Array<string> {
     // A scratch profile per run: no extensions, no saved state, no policy from
     // the developer's own browser leaking into what the suite measures.
     `--user-data-dir=${profile}`,
+    // The scratch profile stores no credentials, so keep Chrome off desktop
+    // keyring backends that can hang behind a broken CI DBus session before
+    // the first page request.
+    "--password-store=basic",
     "--no-first-run",
     "--no-default-browser-check",
     // Keep startup deterministic in CI. These cut services Chrome may start
