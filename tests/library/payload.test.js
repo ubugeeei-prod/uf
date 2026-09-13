@@ -67,6 +67,14 @@ async function clientModule() {
   return import("@uniflowed/router/client");
 }
 
+function documentBody(): HTMLBodyElement {
+  const body = globalThis.document.body;
+  if (body == null) {
+    throw new Error("expected the test document to have a body");
+  }
+  return body;
+}
+
 const assets = { scripts: [], styles: [], preloads: [] };
 
 /** A promise with its settle functions in hand. */
@@ -100,21 +108,26 @@ function chunksOf(result: { readonly stream: () => ReadableStream, ... }): {|
 |} {
   const decoder = new TextDecoder();
   const reader = result.stream().getReader();
-  return {
-    async next(): Promise<string> {
+  async function next(): Promise<string> {
+    const { done, value } = await reader.read();
+    return done === true || value == null ? "" : decoder.decode(value, { stream: true });
+  }
+  async function rest(): Promise<Array<string>> {
+    const out: Array<string> = [];
+    let reading = true;
+    while (reading) {
       const { done, value } = await reader.read();
-      return done === true ? "" : decoder.decode(value, { stream: true });
-    },
-    async rest(): Promise<Array<string>> {
-      const out = [];
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done === true) {
-          return out;
-        }
+      if (done === true) {
+        reading = false;
+      } else if (value != null) {
         out.push(decoder.decode(value, { stream: true }));
       }
-    },
+    }
+    return out;
+  }
+  return {
+    next,
+    rest,
   };
 }
 
@@ -238,9 +251,13 @@ describe("the payload format", () => {
       () => null,
       "data",
     );
-    expect(({}: $FlowFixMe).polluted).toBe(undefined);
-    expect(Object.getPrototypeOf(rebuilt)).toBe(Object.getPrototypeOf({}));
-    expect(Object.prototype.hasOwnProperty.call(rebuilt, "__proto__")).toBe(true);
+    if (rebuilt == null || typeof rebuilt !== "object") {
+      throw new Error("expected a rebuilt object");
+    }
+    const object: { [string]: mixed, ... } = rebuilt as $FlowFixMe;
+    expect(({} as $FlowFixMe).polluted).toBe(undefined);
+    expect(Object.getPrototypeOf(object)).toBe(Object.getPrototypeOf({}));
+    expect(Object.hasOwn(object, "__proto__")).toBe(true);
   });
 
   it("reads a row message, and refuses one that says two things or none", () => {
@@ -642,7 +659,7 @@ describe("the browser applying a payload", () => {
     const root = globalThis.document.createElement("div");
     root.id = "uf-root";
     root.innerHTML = rendered?.innerHTML ?? "";
-    globalThis.document.body.replaceChildren(root);
+    documentBody().replaceChildren(root);
     globalThis.window.history.pushState(null, "", "/deferred");
 
     const { hydrate } = await clientModule();
@@ -722,7 +739,7 @@ describe("the browser applying a payload", () => {
     const root = globalThis.document.createElement("div");
     root.id = "uf-root";
     root.innerHTML = rendered?.innerHTML ?? "";
-    globalThis.document.body.replaceChildren(root);
+    documentBody().replaceChildren(root);
     globalThis.window.history.pushState(null, "", "/late");
 
     const { hydrate } = await clientModule();
@@ -741,7 +758,7 @@ describe("the browser applying a payload", () => {
       row.setAttribute("type", "application/json");
       row.setAttribute(PAYLOAD_ROW_ATTRIBUTE, "1");
       row.textContent = `{"value":"the row is here"}`;
-      globalThis.document.body.append(row);
+      documentBody().append(row);
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -750,6 +767,103 @@ describe("the browser applying a payload", () => {
     expect(text).toContain("the row is here");
     expect(text).not.toContain("waiting for the row");
     // And the loader still ran exactly once, on the server.
+    expect(seen.loads).toBe(1);
+  });
+
+  it("sends a rejected row that arrives after hydration through the route error boundary", async () => {
+    // A row that carries a failure must wake the same promise the page is
+    // using. If it only rejected inside the reader, the visible route would
+    // stay on its Suspense fallback forever and the error boundary would never
+    // have a chance to replace it.
+    const late = deferred<string>();
+    const seen = { loads: 0 };
+    component Deferred(value: Promise<string>) {
+      return <p>{use(value)}</p>;
+    }
+    component DataPage(data: mixed) {
+      const answer: $FlowFixMe = data;
+      return (
+        <div>
+          <p>{String(answer.now)}</p>
+          <Suspense fallback={<p>waiting for the row</p>}>
+            <Deferred value={answer.later} />
+          </Suspense>
+        </div>
+      );
+    }
+    component RowError() {
+      return <p>the row reached the error boundary</p>;
+    }
+    const table = {
+      routes: [
+        {
+          path: "/late-error",
+          params: [],
+          mdx: false,
+          file: "app/late-error/$page.js",
+          page: () =>
+            Promise.resolve({
+              default: DataPage,
+              loader: () => {
+                seen.loads += 1;
+                return { now: "the model is here", later: late.promise };
+              },
+            }),
+          layouts: [],
+          loading: [],
+        },
+      ],
+      notFound: [],
+      errors: [
+        {
+          path: "/",
+          file: "app/$error.js",
+          module: () => Promise.resolve({ default: RowError }),
+          layouts: [],
+        },
+      ],
+    };
+
+    const renderer = createRenderer({ App: routerView("./app"), ...table });
+    const result = await renderer.render("/late-error", assets);
+    const stream = chunksOf(result);
+    const shell = await stream.next();
+    expect(shell).toContain("waiting for the row");
+    expect(shell).not.toContain("the row reached the error boundary");
+    late.reject(new Error("the loader could not answer"));
+    await stream.rest();
+
+    installDom();
+    const parsed = new globalThis.DOMParser().parseFromString(shell, "text/html");
+    const rendered = parsed.getElementById("uf-root");
+    const root = globalThis.document.createElement("div");
+    root.id = "uf-root";
+    root.innerHTML = rendered?.innerHTML ?? "";
+    documentBody().replaceChildren(root);
+    globalThis.window.history.pushState(null, "", "/late-error");
+
+    const { hydrate } = await clientModule();
+    await act(async () => {
+      await hydrate({ App: routerView("./app"), ...table });
+    });
+    expect(seen.loads).toBe(1);
+    expect(globalThis.document.getElementById("uf-root")?.textContent ?? "").toContain(
+      "waiting for the row",
+    );
+
+    await act(async () => {
+      const row = globalThis.document.createElement("script");
+      row.setAttribute("type", "application/json");
+      row.setAttribute(PAYLOAD_ROW_ATTRIBUTE, "1");
+      row.textContent = `{"error":"@uniflowed/router: a deferred value failed on the server."}`;
+      documentBody().append(row);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const text = globalThis.document.getElementById("uf-root")?.textContent ?? "";
+    expect(text).toContain("the row reached the error boundary");
+    expect(text).not.toContain("waiting for the row");
     expect(seen.loads).toBe(1);
   });
 });
