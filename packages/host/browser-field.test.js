@@ -29,7 +29,12 @@ function nodeNamedImports(source: string): Map<string, Array<string>> {
   while (match != null) {
     const names = match[1]
       .split(",")
-      .map((entry) => entry.trim().split(/\s+as\s+/u)[0].trim())
+      .map((entry) =>
+        entry
+          .trim()
+          .split(/\s+as\s+/u)[0]
+          .trim(),
+      )
       .filter((entry) => entry !== "");
     const specifier = match[2];
     found.set(specifier, [...(found.get(specifier) ?? []), ...names].sort());

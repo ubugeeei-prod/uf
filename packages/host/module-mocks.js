@@ -368,6 +368,11 @@ export function mockedSource(url) {
     return null;
   }
 
+  return standInSource(url, record);
+}
+
+/** The source of a stand-in whose runtime namespace lookup key is `url`. */
+function standInSource(url, record) {
   served.set(url, record.namespace);
   const lines = [
     `import { namespaceFor } from ${JSON.stringify(SELF)};`,
@@ -402,17 +407,14 @@ export function bunMockedModulePath(url) {
   const identity = mockedModuleIdentity(url, record.revision);
   let file = bunStandins.get(identity);
   if (file != null) {
+    served.set(pathToFileURL(file).href, record.namespace);
     return file;
-  }
-
-  const source = mockedSource(identity);
-  if (source == null) {
-    return null;
   }
 
   const root = bunStandinDirectory();
   bunStandinFiles += 1;
   file = path.join(root, `${bunStandinFiles}.mjs`);
+  const source = standInSource(pathToFileURL(file).href, record);
   fs.writeFileSync(file, source);
   bunStandins.set(identity, file);
   return file;
