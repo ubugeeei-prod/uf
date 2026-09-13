@@ -45,6 +45,16 @@ export function tmpdir() {
   unavailable("the operating system temp directory");
 }
 
+/** A file URL helper, which only the host-side resolver can use. */
+export function fileURLToPath(_url) {
+  unavailable("file URL conversion");
+}
+
+/** @see fileURLToPath */
+export function pathToFileURL(_path) {
+  unavailable("file URL conversion");
+}
+
 export const sep = "/";
 
 export function join(...parts) {
@@ -65,7 +75,9 @@ function normalize(input) {
 
 export default {
   join,
+  fileURLToPath,
   mkdtempSync,
+  pathToFileURL,
   registerHooks,
   sep,
   tmpdir,
