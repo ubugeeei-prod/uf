@@ -52,6 +52,29 @@ fn inspect_reports_zero_config_defaults() {
         value["engines"]["testRunner"]["hosts"],
         serde_json::json!(["node", "deno", "bun"])
     );
+    let runner_hosts = value["engines"]["testRunner"]["hostSupport"]
+        .as_array()
+        .expect("test runner hostSupport");
+    assert_eq!(
+        runner_hosts
+            .iter()
+            .map(|host| host["host"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["node", "deno", "bun"]
+    );
+    let runner_deno = runner_hosts
+        .iter()
+        .find(|host| host["host"] == "deno")
+        .expect("the test runner names Deno");
+    assert_eq!(runner_deno["level"], "experimental");
+    assert!(
+        runner_deno["missing"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("hook"),
+        "{runner_deno}"
+    );
+    assert_eq!(runner_deno["trackingIssue"], 246);
     assert_eq!(
         value["engines"]["testRunner"]["performanceTarget"],
         serde_json::json!("faster-than-bun")

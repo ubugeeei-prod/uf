@@ -16,7 +16,7 @@ use uf_rm::RuntimeManagerPlan;
 use uf_router::discover_routes;
 use uf_runtime::RuntimeContract;
 use uf_term::{KeyValue, Tone};
-use uf_test::NativeTestRunnerPlan;
+use uf_test::{NativeTestRunnerPlan, TestHost};
 
 use crate::support::{DEVELOPMENT, enabled, project_label, relative_to, yes_no};
 use crate::ui::Ui;
@@ -294,6 +294,7 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         .collect::<Vec<_>>();
     let runtime = RuntimeContract::capability_js_hosts();
     let test_runner = NativeTestRunnerPlan::runtime_agnostic();
+    let test_runner = test_runner_report(&test_runner)?;
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
     let package_manager_detection = detect_project_package_manager(resolved);
     let runtime_manager = RuntimeManagerPlan::infer_from_config(&resolved.config)?;
@@ -400,22 +401,57 @@ fn inspected_env(resolved: &ResolvedConfig) -> Result<ProjectEnv, String> {
 /// summarized: "planned" without "planned on what" is the shape of claim this
 /// table replaced.
 fn host_support() -> serde_json::Value {
-    json!(
-        uf_runtime::HOSTS
-            .iter()
-            .map(|support| json!({
-                "host": support.host,
-                "level": support.level.as_str(),
-                "flowLoader": support.flow_loader,
-                "enforcesPermissions": support
-                    .enforces
+    host_support_rows(uf_runtime::HOSTS.iter())
+}
+
+/// The test runner plan, with each host graded beside the list that names it.
+///
+/// `NativeTestRunnerPlan::hosts` says what the runner may start. That list used
+/// to be easy to quote as three equal claims, even though Deno is deliberately
+/// experimental: it runs through an ahead-of-time pass with gaps a user can
+/// meet. Carrying the same `HostSupport` rows here keeps the test runner's
+/// surface from becoming another place where "Deno is in an enum" reads as
+/// "Deno has parity".
+fn test_runner_report(plan: &NativeTestRunnerPlan) -> Result<serde_json::Value> {
+    let mut value = serde_json::to_value(plan)?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            String::from("hostSupport"),
+            host_support_rows(
+                plan.hosts
                     .iter()
-                    .map(|permission| permission.as_str())
-                    .collect::<Vec<_>>(),
-                "verifiedBy": support.verified_by,
-                "missing": support.missing,
-                "trackingIssue": support.tracking_issue,
-            }))
-            .collect::<Vec<_>>()
+                    .map(|host| uf_runtime::HostSupport::for_host(test_host(*host))),
+            ),
+        );
+    }
+    Ok(value)
+}
+
+fn test_host(host: TestHost) -> uf_runtime::RuntimeHost {
+    match host {
+        TestHost::Node => uf_runtime::RuntimeHost::Node,
+        TestHost::Deno => uf_runtime::RuntimeHost::Deno,
+        TestHost::Bun => uf_runtime::RuntimeHost::Bun,
+    }
+}
+
+fn host_support_rows<'a>(
+    rows: impl Iterator<Item = &'a uf_runtime::HostSupport>,
+) -> serde_json::Value {
+    json!(
+        rows.map(|support| json!({
+            "host": support.host,
+            "level": support.level.as_str(),
+            "flowLoader": support.flow_loader,
+            "enforcesPermissions": support
+                .enforces
+                .iter()
+                .map(|permission| permission.as_str())
+                .collect::<Vec<_>>(),
+            "verifiedBy": support.verified_by,
+            "missing": support.missing,
+            "trackingIssue": support.tracking_issue,
+        }))
+        .collect::<Vec<_>>()
     )
 }
