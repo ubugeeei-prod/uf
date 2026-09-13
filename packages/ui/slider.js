@@ -76,8 +76,13 @@ import * as React from "@uniflowed/react";
 import { createContext, useContext, useMemo, useRef } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
-import type { Rest } from "./internal/merge-props.js";
-import { composeHandlers, composeRefs, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import {
+  composeHandlers,
+  composeRefs,
+  withProps,
+  withoutComposed,
+} from "./internal/merge-props.js";
 import type { Orientation } from "./internal/roving-focus.js";
 import { clamp, fraction, isReversed, snap } from "./internal/range.js";
 import { useControlled } from "./internal/controlled-state.js";
@@ -128,6 +133,7 @@ export component SliderRoot(
   orientation?: Orientation = "horizontal",
   disabled?: boolean = false,
   valueText?: (value: number, index: number) => string,
+  render?: RenderProp,
   ...rest: Rest
 ) {
   const [values, setValues] = useControlled(value, defaultValue, onValueChange);
@@ -190,7 +196,7 @@ export component SliderRoot(
 
   return (
     <SliderContext.Provider value={state}>
-      <div {...rest}>{children}</div>
+      {render == null ? <div {...rest}>{children}</div> : render(withProps(rest, { children }))}
     </SliderContext.Provider>
   );
 }
@@ -203,7 +209,7 @@ export component SliderRoot(
  * wanders off the track — which every drag does — keeps arriving here instead
  * of being lost to whatever it wandered over.
  */
-export component SliderTrack(children: React.Node, ...rest: Rest) {
+export component SliderTrack(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Track");
   const passed = withoutComposed(rest, ["onPointerDown", "onPointerMove", "onPointerUp", "ref"]);
   const dragging = useRef<number | null>(null);
@@ -239,35 +245,33 @@ export component SliderTrack(children: React.Node, ...rest: Rest) {
     slider.setAt(at, target);
   };
 
-  return (
-    <div
-      {...passed}
-      onPointerDown={composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
-        if (slider.disabled) {
-          return;
-        }
-        // Otherwise the press selects the page's text on the way past, which
-        // makes a drag paint everything blue.
-        event.preventDefault();
-        event.currentTarget?.setPointerCapture?.(event.pointerId);
-        moveTo(event, null);
-      })}
-      onPointerMove={composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
-        if (dragging.current != null) {
-          moveTo(event, dragging.current);
-        }
-      })}
-      onPointerUp={composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
-        dragging.current = null;
-        event.currentTarget?.releasePointerCapture?.(event.pointerId);
-      })}
-      ref={composeRefs(rest.ref, (element) => {
-        slider.trackRef.current = element;
-      })}
-    >
-      {children}
-    </div>
-  );
+  const props = withProps(passed, {
+    children,
+    onPointerDown: composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
+      if (slider.disabled) {
+        return;
+      }
+      // Otherwise the press selects the page's text on the way past, which
+      // makes a drag paint everything blue.
+      event.preventDefault();
+      event.currentTarget?.setPointerCapture?.(event.pointerId);
+      moveTo(event, null);
+    }),
+    onPointerMove: composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
+      if (dragging.current != null) {
+        moveTo(event, dragging.current);
+      }
+    }),
+    onPointerUp: composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
+      dragging.current = null;
+      event.currentTarget?.releasePointerCapture?.(event.pointerId);
+    }),
+    ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      slider.trackRef.current = element;
+    }),
+  });
+
+  return render == null ? <div {...props} /> : render(props);
 }
 
 /**
@@ -281,24 +285,22 @@ export component SliderTrack(children: React.Node, ...rest: Rest) {
  * is told the value by the thumb and telling them again here would be telling
  * them twice.
  */
-export component SliderRange(...rest: Rest) {
+export component SliderRange(render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Range");
   const passed = withoutComposed(rest, ["style"]);
   const ends = [...slider.values].sort((first, second) => first - second);
   const start = slider.values.length > 1 ? (ends[0] ?? slider.min) : slider.min;
   const end = ends[ends.length - 1] ?? slider.min;
+  const props = withProps(passed, {
+    "aria-hidden": "true",
+    style: {
+      ...(rest.style as $FlowFixMe),
+      "--uf-slider-start": fraction(start, slider.min, slider.max),
+      "--uf-slider-end": fraction(end, slider.min, slider.max),
+    },
+  });
 
-  return (
-    <div
-      {...passed}
-      aria-hidden="true"
-      style={{
-        ...(rest.style as $FlowFixMe),
-        "--uf-slider-start": fraction(start, slider.min, slider.max),
-        "--uf-slider-end": fraction(end, slider.min, slider.max),
-      }}
-    />
-  );
+  return render == null ? <div {...props} /> : render(props);
 }
 
 /**
@@ -315,55 +317,53 @@ export component SliderRange(...rest: Rest) {
  * "Maximum" told apart is the whole difference between a control a reader can
  * operate and two identical "slider"s.
  */
-export component SliderThumb(index?: number = 0, ...rest: Rest) {
+export component SliderThumb(index?: number = 0, render?: RenderProp, ...rest: Rest) {
   const slider = useSlider("Slider.Thumb");
   const passed = withoutComposed(rest, ["onKeyDown", "style"]);
   const value = slider.values[index] ?? slider.min;
   const [lower, upper] = boundsOf(slider.values, index, slider.min, slider.max);
+  const props = withProps(passed, {
+    "aria-disabled": slider.disabled ? "true" : undefined,
+    "aria-orientation": slider.orientation,
+    // The neighbour's value, not the slider's end. A reader told they may
+    // set this thumb to 90 while the control refuses at 60 has been told
+    // something the control disagrees with.
+    "aria-valuemax": upper,
+    "aria-valuemin": lower,
+    "aria-valuenow": value,
+    "aria-valuetext": slider.valueText?.(value, index),
+    onKeyDown: composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
+      if (slider.disabled) {
+        return;
+      }
+      const reversed = isReversed(event.currentTarget, slider.orientation);
+      const move = stepFor(event.key, slider.step, slider.largeStep, reversed);
+      if (move != null) {
+        // Before moving: the arrow keys scroll the page, and a slider that
+        // moves the page under the reader as it moves the value is a control
+        // they cannot watch.
+        event.preventDefault();
+        slider.setAt(index, value + move);
+        return;
+      }
+      if (event.key === "Home" || event.key === "End") {
+        event.preventDefault();
+        // This thumb's own ends, which for the lower thumb of a range is its
+        // neighbour rather than the slider's maximum.
+        slider.setAt(index, event.key === "Home" ? lower : upper);
+      }
+    }),
+    role: "slider",
+    style: {
+      ...(rest.style as $FlowFixMe),
+      "--uf-slider-fraction": fraction(value, slider.min, slider.max),
+    },
+    // In the tab sequence, and out of it while disabled — the browser does
+    // this for a real control and there is no real control here to do it.
+    tabIndex: slider.disabled ? -1 : 0,
+  });
 
-  return (
-    <span
-      {...passed}
-      aria-disabled={slider.disabled ? "true" : undefined}
-      aria-orientation={slider.orientation}
-      // The neighbour's value, not the slider's end. A reader told they may
-      // set this thumb to 90 while the control refuses at 60 has been told
-      // something the control disagrees with.
-      aria-valuemax={upper}
-      aria-valuemin={lower}
-      aria-valuenow={value}
-      aria-valuetext={slider.valueText?.(value, index)}
-      onKeyDown={composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
-        if (slider.disabled) {
-          return;
-        }
-        const reversed = isReversed(event.currentTarget, slider.orientation);
-        const move = stepFor(event.key, slider.step, slider.largeStep, reversed);
-        if (move != null) {
-          // Before moving: the arrow keys scroll the page, and a slider that
-          // moves the page under the reader as it moves the value is a control
-          // they cannot watch.
-          event.preventDefault();
-          slider.setAt(index, value + move);
-          return;
-        }
-        if (event.key === "Home" || event.key === "End") {
-          event.preventDefault();
-          // This thumb's own ends, which for the lower thumb of a range is its
-          // neighbour rather than the slider's maximum.
-          slider.setAt(index, event.key === "Home" ? lower : upper);
-        }
-      })}
-      role="slider"
-      style={{
-        ...(rest.style as $FlowFixMe),
-        "--uf-slider-fraction": fraction(value, slider.min, slider.max),
-      }}
-      // In the tab sequence, and out of it while disabled — the browser does
-      // this for a real control and there is no real control here to do it.
-      tabIndex={slider.disabled ? -1 : 0}
-    />
-  );
+  return render == null ? <span {...props} /> : render(props);
 }
 
 /**
