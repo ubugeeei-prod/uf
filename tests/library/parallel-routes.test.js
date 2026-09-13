@@ -71,6 +71,7 @@ const DASHBOARD = [
   "dashboard/$page.js",
   "dashboard/members/$page.js",
   "dashboard/@team/$default.js",
+  "dashboard/@team/$error.js",
   "dashboard/@team/$layout.js",
   "dashboard/@team/$loading.js",
   "dashboard/@team/$template.js",
@@ -108,6 +109,11 @@ describe("scanning a router root that holds slots", () => {
     expect(team?.routes[0].templates.map((entry) => path.relative(root, entry.module))).toEqual([
       path.join("dashboard", "@team", "$template.js"),
     ]);
+    const teamError = team?.routes[0].errorBoundary;
+    expect(teamError?.above).toBe(1);
+    expect(teamError == null ? null : path.relative(root, teamError.module)).toBe(
+      path.join("dashboard", "@team", "$error.js"),
+    );
   });
 
   it("puts the slot on the layout of the segment that declares it", () => {
@@ -163,6 +169,7 @@ describe("scanning a router root that holds slots", () => {
     expect(source).toContain("defaultPage: () => import(");
     expect(source).toContain("loading: [{ above: 1, module: loading0 }]");
     expect(source).toContain("templates: [{ above: 1, module: template0 }]");
+    expect(source).toContain("errorBoundary: { above: 1, module: () => import(");
   });
 
   it("nests a slot inside a slot", () => {
@@ -235,11 +242,11 @@ describe("what a slot may not be written as", () => {
   });
 
   it("refuses unsupported slot boundary files, naming what is missing", () => {
-    // Per-slot error and not-found boundaries are the part of parallel routes
-    // uf has not built.
+    // `$loading.js` and `$error.js` are the canonical slot files. Other
+    // spellings, and per-slot not-found boundaries, are still files the router
+    // would otherwise never open.
     // The refusal is where somebody writing the file finds that out.
     for (const [file, role] of [
-      ["@aside/$error.js", "error"],
       ["@aside/$not-found.js", "not-found"],
       ["@aside/loading.js", "loading"],
       ["@aside/error.js", "error"],
@@ -531,6 +538,67 @@ describe("rendering a route that has one", () => {
       .map((chunk) => chunk.text)
       .join("");
     expect(rest).toContain("the slow team is here");
+  });
+
+  it("catches a slot render error without replacing the page beside it", async () => {
+    // A slot's `$error.js` is inside the layout that receives the slot. When
+    // the slot subtree throws in the browser, the main page remains mounted
+    // and only the slot's own place is replaced.
+    component BrokenTeam() {
+      throw new Error("team exploded");
+    }
+    component TeamError(error: mixed, reset: () => void) {
+      return <p>the team slot failed</p>;
+    }
+    const brokenSlot = {
+      ...slot,
+      defaultPage: null,
+      routes: [
+        {
+          ...slot.routes[0],
+          page: () => Promise.resolve({ default: BrokenTeam }),
+          errorBoundary: { above: 0, module: () => Promise.resolve({ default: TeamError }) },
+        },
+      ],
+    };
+    const tableWithSlotError = {
+      routes: [{ ...page("/dashboard/members", "the members page"), slots: [brokenSlot] }],
+      notFound: [],
+      errors: [],
+    };
+    const resolved = await resolveMatch(tableWithSlotError, "/dashboard/members");
+
+    const shouldIgnoreExpectedReactLog = (args: $ReadOnlyArray<mixed>) => {
+      const message = String(args[0] ?? "");
+      return (
+        message.includes("team exploded") ||
+        message.includes("Detected multiple renderers concurrently rendering")
+      );
+    };
+    const originalError = console.error;
+    const originalWarn = console.warn;
+    console.error = (...args: $ReadOnlyArray<mixed>) => {
+      if (shouldIgnoreExpectedReactLog(args)) return;
+      originalError(...args);
+    };
+    console.warn = (...args: $ReadOnlyArray<mixed>) => {
+      if (shouldIgnoreExpectedReactLog(args)) return;
+      originalWarn(...args);
+    };
+    try {
+      render(
+        <RouterProvider url="/dashboard/members" initial={resolved}>
+          <RouteView />
+        </RouterProvider>,
+      );
+      expect(screen.getByText("the members page")).not.toBe(null);
+      expect(screen.getByText("the team slot failed")).not.toBe(null);
+      expect(screen.getByText("the sidebar")).not.toBe(null);
+      await Promise.resolve();
+    } finally {
+      console.error = originalError;
+      console.warn = originalWarn;
+    }
   });
 });
 

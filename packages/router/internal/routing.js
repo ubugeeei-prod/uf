@@ -31,14 +31,27 @@ export type LoadingRecord<TLoading = mixed> = {|
   readonly module: RouteModule<TLoading>,
 |};
 
+/** One `$error.js` inside a slot, as the route table carries it. */
+export type SlotErrorBoundaryRecord<TError = mixed> = {|
+  readonly above: number,
+  readonly module: RouteModule<TError>,
+|};
+
 /** One parallel-route slot, as the route table carries it. */
-export type SlotRecord<TPage = mixed, TLayout = mixed, TTemplate = mixed, TLoading = mixed> = {|
+export type SlotRecord<
+  TPage = mixed,
+  TLayout = mixed,
+  TTemplate = mixed,
+  TLoading = mixed,
+  TError = mixed,
+> = {|
   readonly name: string,
   readonly above: number,
   readonly defaultPage: ?RouteModule<TPage>,
   readonly defaultFile?: string,
   readonly defaultMdx?: boolean,
-  readonly routes: $ReadOnlyArray<SlotRouteRecord<TPage, TLayout, TTemplate, TLoading>>,
+  readonly defaultErrorBoundary?: ?SlotErrorBoundaryRecord<TError>,
+  readonly routes: $ReadOnlyArray<SlotRouteRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
 |};
 
 /** One page inside a slot. */
@@ -47,6 +60,7 @@ export type SlotRouteRecord<
   TLayout = mixed,
   TTemplate = mixed,
   TLoading = mixed,
+  TError = mixed,
 > = {|
   readonly path: string,
   readonly params: $ReadOnlyArray<RouteParamSpec>,
@@ -56,11 +70,18 @@ export type SlotRouteRecord<
   readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
   readonly loading?: $ReadOnlyArray<LoadingRecord<TLoading>>,
   readonly templates?: $ReadOnlyArray<TemplateRecord<TTemplate>>,
-  readonly slots: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading>>,
+  readonly errorBoundary?: ?SlotErrorBoundaryRecord<TError>,
+  readonly slots: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
 |};
 
 /** One entry of the generated route table. */
-export type RouteRecord<TPage = mixed, TLayout = mixed, TTemplate = mixed, TLoading = mixed> = {|
+export type RouteRecord<
+  TPage = mixed,
+  TLayout = mixed,
+  TTemplate = mixed,
+  TLoading = mixed,
+  TError = mixed,
+> = {|
   readonly path: string,
   readonly params: $ReadOnlyArray<RouteParamSpec>,
   readonly mdx: boolean,
@@ -69,7 +90,7 @@ export type RouteRecord<TPage = mixed, TLayout = mixed, TTemplate = mixed, TLoad
   readonly layouts: $ReadOnlyArray<RouteModule<TLayout>>,
   readonly loading?: $ReadOnlyArray<LoadingRecord<TLoading>>,
   readonly templates?: $ReadOnlyArray<TemplateRecord<TTemplate>>,
-  readonly slots?: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading>>,
+  readonly slots?: $ReadOnlyArray<SlotRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
 |};
 
 /** One not-found boundary: the page for a path under `path` that matched nothing. */
@@ -97,12 +118,12 @@ export type RouteTable<
   TLoading = mixed,
   TError = mixed,
 > = {|
-  readonly routes: $ReadOnlyArray<RouteRecord<TPage, TLayout, TTemplate, TLoading>>,
+  readonly routes: $ReadOnlyArray<RouteRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
   readonly notFound: $ReadOnlyArray<NotFoundBoundary<TPage, TLayout>>,
   readonly errors: $ReadOnlyArray<ErrorBoundary<TError, TLayout>>,
 |};
 
-type UnknownRouteRecord = RouteRecord<mixed, mixed, mixed, mixed>;
+type UnknownRouteRecord = RouteRecord<mixed, mixed, mixed, mixed, mixed>;
 
 /** A URL matched against a table. */
 export type RouteMatch<TRoute: { +path: string, ... } = UnknownRouteRecord> = {|
