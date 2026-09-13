@@ -197,21 +197,31 @@ own, and hand the result to the application's navigator.
 
 ```js
 // @flow
-import { createNativeRouter } from "@uniflowed/router/native";
+import { createNativeRouter, nativeScreenPayload } from "@uniflowed/router/native";
 import type { RouteTable } from "@uniflowed/router/routing";
+
+const screens = {
+  "/": "Home",
+  "/users/:id": "UserProfile",
+  "/settings": "Settings",
+};
 
 export function nativeRouter(routeTable: RouteTable) {
   return createNativeRouter(routeTable, {
     push(event) {
-      navigation.push(screenFor(event.route), {
-        params: event.params,
-        search: event.search,
+      const next = nativeScreenPayload(event, screens);
+      navigation.push(next.screen, {
+        params: next.params,
+        search: next.search,
+        href: next.href,
       });
     },
     replace(event) {
-      navigation.replace(screenFor(event.route), {
-        params: event.params,
-        search: event.search,
+      const next = nativeScreenPayload(event, screens);
+      navigation.replace(next.screen, {
+        params: next.params,
+        search: next.search,
+        href: next.href,
       });
     },
     prefetch(event) {
@@ -236,15 +246,19 @@ Under the hood it calls the methods you supplied:
 ```js
 createNativeRouter(routeTable, {
   push(event) {
-    navigation.push(screenFor(event.route), {
-      params: event.params,
-      search: event.search,
+    const next = nativeScreenPayload(event, screens);
+    navigation.push(next.screen, {
+      params: next.params,
+      search: next.search,
+      href: next.href,
     });
   },
   replace(event) {
-    navigation.replace(screenFor(event.route), {
-      params: event.params,
-      search: event.search,
+    const next = nativeScreenPayload(event, screens);
+    navigation.replace(next.screen, {
+      params: next.params,
+      search: next.search,
+      href: next.href,
     });
   },
   prefetch(event) {
@@ -265,6 +279,14 @@ The event is the contract:
   params: { id: "42" },
 }
 ```
+
+`nativeScreenPayload(event, screens)` is the optional bridge between uf's route
+name and an app-owned navigator's screen name. It looks up `event.route` in the
+map you provide and returns `{ screen, href, pathname, search, route, params }`;
+if the route is missing, it raises `NativeNavigationError` with
+`code: "missing-screen"` rather than guessing a screen name. That is still a
+contract, not a runtime: the app decides whether `UserProfile` means React
+Navigation, Expo Router, a custom stack or something else.
 
 Four things are refused before they reach your navigator:
 
