@@ -27,7 +27,7 @@
 // lands this is the recorder it is fed to: `inspectStream` takes chunks and
 // knows nothing about who produced them.
 //
-// # It reads React's own markers, and no others
+// # It reads React's markers, plus uf's row marker
 //
 // Fizz writes a suspended boundary into the shell as an empty
 // `<template id="B:0">` followed by the fallback and closed by a `<!--/$-->`
@@ -45,6 +45,11 @@
 // expressions — `docs/security.md`'s rule for text uf did not write, and the
 // content of these chunks is the application's own — with a step limit on every
 // loop for the same reason `./boundaries.js` has a `WALK_LIMIT`.
+//
+// The one uf-owned marker read here is `data-uf-row` on deferred payload row
+// scripts. The inspector does not parse the row JSON or attach semantics to
+// the value; it only keeps the terminal report from saying a row boundary built
+// an anonymous `script`.
 //
 // A marker that a chunk boundary happened to split is not attributed rather
 // than guessed at: the chunk is still counted, still timed, and says so. The
@@ -80,6 +85,8 @@
 // order to report and no part of the tree that arrived separately, and the
 // honest report is silence. That is also what keeps this from being a request
 // log: it fires for the pages the feature is about and for no others.
+
+import { PAYLOAD_ROW_ATTRIBUTE } from "./payload.js";
 
 /** How many chunks of one document are recorded before the rest are counted. */
 const CHUNK_LIMIT = 64;
@@ -412,6 +419,10 @@ function topLevelElements(markup: string, from: number): $ReadOnlyArray<string> 
 export function describeTag(tag: string): string {
   const space = tag.search(/[\s/>]/);
   const name = tag.slice(1, space === -1 ? tag.length : space).toLowerCase();
+  const row = name === "script" ? attribute(tag, PAYLOAD_ROW_ATTRIBUTE) : null;
+  if (row != null && row !== "") {
+    return `deferred payload row ${row}`;
+  }
   const id = attribute(tag, "id");
   if (id != null && id !== "") {
     return `${name}#${id}`;
