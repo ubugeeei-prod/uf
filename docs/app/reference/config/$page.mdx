@@ -83,7 +83,37 @@ which is the fastest way to answer "what is it actually using".
 | `rendering.cache.route`, `.fetch` | `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
 | `rendering.cache.store` | `"memory"` | Where entries live: one process, `"filesystem"`, or a module exporting `createCacheProvider` |
 | `rendering.cache.storeDir` | `.uf/cache/route` | Where `"filesystem"` keeps them |
-| `targets` | — | Runtime targets the build must satisfy |
+| `targets` | `["web", "react-native", "server"]` | Application/runtime surfaces the build must satisfy |
+
+### targets
+
+`app.targets` is an allowlist of surfaces this project claims to keep working,
+not the one build to run when none was requested.
+
+| Value | What it means |
+| --- | --- |
+| `"web"` | React DOM routes and browser navigation |
+| `"react-native"` | Native route files and the React Native target contract |
+| `"server"` | A server-capable application surface |
+| `"hermes"` | Reserved for the native JavaScript engine surface |
+
+An ordinary uf or React project defaults to the web application target. A
+project with `app.framework: "react-native"` defaults to the native target.
+`uf build --target native`, `ios` or `android` is refused unless this list
+contains `"react-native"`, and `uf build --target web` is refused unless it
+contains `"web"`.
+
+```js
+export default defineConfig({
+  app: {
+    framework: "react-native",
+    targets: ["react-native"],
+  },
+});
+```
+
+The React Native guide explains the native half:
+[React Native target](/guide/react-native).
 
 ### rendering.modes
 

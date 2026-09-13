@@ -147,6 +147,11 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
       },
       {
+        href: "/guide/react-native",
+        title: "React Native target",
+        blurb: "Native route files, Metro, navigator events and the test-tree surface.",
+      },
+      {
         href: "/guide/effect",
         title: "Effects",
         blurb: "Failures in the type, and what Flow costs against Effect-TS.",
