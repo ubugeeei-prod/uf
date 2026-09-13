@@ -255,6 +255,133 @@ A synchronous resolver stays synchronous. Awaiting a value that is not a promise
 is a microtask a form in `onChange` mode would pay on every keystroke, so
 `isValidating` only flips when something really is pending.
 
+## Submitting to a server action
+
+There are two useful shapes, and they do different jobs. A native
+`<form action={serverAction}>` belongs to [Server actions](/guide/server-actions):
+React owns the submit, the action receives a `FormData`, and
+`useActionState` owns the result. `@uniflowed/form` owns a different shape:
+validate on the client, submit typed values, and keep every field subscription
+and error message in the form store.
+
+```js
+"use server";
+// @flow
+// app/account/_actions/save-profile.js
+import { email, minLength, object, pipe, safeParse, string } from "@uniflowed/validator";
+
+export const Profile = object({
+  email: pipe(string(), email()),
+  displayName: pipe(string(), minLength(2)),
+});
+
+export type ProfileInput = {|
+  readonly email: string,
+  readonly displayName: string,
+|};
+
+export type ProfileResult =
+  | {| readonly ok: true |}
+  | {|
+      readonly ok: false,
+      readonly fields: {|
+        readonly email?: string,
+        readonly displayName?: string,
+      |},
+    |};
+
+export async function saveProfile(input: ProfileInput): Promise<ProfileResult> {
+  const parsed = safeParse(Profile, input);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      fields: { email: "Use a real address", displayName: "Use at least two characters" },
+    };
+  }
+  await writeProfile(parsed.value);
+  return { ok: true };
+}
+```
+
+```js
+"use client";
+// @flow
+// app/account/_components/ProfileForm.js
+import { useTransition } from "@uniflowed/react";
+import { useForm, validatorResolver } from "@uniflowed/form";
+
+import { Profile, saveProfile } from "../_actions/save-profile.js";
+
+type Values = {|
+  readonly email: string,
+  readonly displayName: string,
+|};
+
+export component ProfileForm(initialValues: Values) {
+  const [pending, startTransition] = useTransition();
+  const { register, handleSubmit, setError, errorProps, formState } = useForm({
+    defaultValues: initialValues,
+    resolver: validatorResolver(Profile),
+  });
+
+  const submit = handleSubmit((values) => {
+    startTransition(async () => {
+      const result = await saveProfile(values);
+      if (!result.ok) {
+        if (result.fields.email != null) {
+          setError("email", { type: "server", message: result.fields.email });
+        }
+        if (result.fields.displayName != null) {
+          setError("displayName", {
+            type: "server",
+            message: result.fields.displayName,
+          });
+        }
+      }
+    });
+  });
+
+  return (
+    <form onSubmit={submit}>
+      <label htmlFor="email">Email</label>
+      <input id="email" {...register("email")} />
+      {formState.errors.email != null && (
+        <p {...errorProps("email")}>{formState.errors.email.message}</p>
+      )}
+
+      <label htmlFor="display-name">Display name</label>
+      <input id="display-name" {...register("displayName")} />
+      {formState.errors.displayName != null && (
+        <p {...errorProps("displayName")}>{formState.errors.displayName.message}</p>
+      )}
+
+      <button type="submit" disabled={pending || formState.isSubmitting}>
+        Save
+      </button>
+    </form>
+  );
+}
+```
+
+`handleSubmit` prevents the native submit and calls the action only after the
+resolver accepts the current values. The action is still the authority: the
+same schema is run again on the server, and anything only the server can know -
+an email that is already taken, a row that changed, a permission that expired -
+comes back through `setError`, so the same `errorProps` wiring announces it.
+
+Do not pass a `FormData` from this form to the action. That throws away the
+typed output the resolver just built, makes transforms invisible to the submit
+handler, and sends every unchecked field as a string-shaped surprise. Use
+`<form action={fn}>` when the action should parse a `FormData`; use
+`handleSubmit` when the form store should own validation, subscriptions and
+field errors.
+
+`useTransition` is optional but useful: it keeps the action call out of the
+input's synchronous update path. It is not a substitute for `formState.isSubmitting`,
+which tracks the submit pipeline itself; in a busy form, a save button usually
+wants both. For optimistic UI, keep the temporary value in the component that
+renders it and let the form keep the editable fields.
+
 ## Subscribe where the value is rendered
 
 This is the performance story, and it is a different one from React Hook Form's.
