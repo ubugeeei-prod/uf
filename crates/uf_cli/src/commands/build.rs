@@ -1081,9 +1081,11 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
                 "reason": "React Native rendering still needs a native test renderer and host config"
             },
             "router": {
-                "status": "pending",
+                "status": "implemented",
                 "kind": "navigator",
-                "reason": "React Native routes need a navigator runtime rather than document URLs"
+                "package": "@uniflowed/router/native",
+                "helper": "createNativeRouter",
+                "reason": "Native rendering still needs the renderer/host-config contract before the navigator can mount screens"
             },
             "transform": {
                 "status": "pending",
@@ -1423,7 +1425,19 @@ mod tests {
             let contract = target_contract(target);
             assert_eq!(contract["runtime"], serde_json::json!("react-native"));
             assert_eq!(contract["renderer"]["status"], serde_json::json!("pending"));
+            assert_eq!(
+                contract["router"]["status"],
+                serde_json::json!("implemented")
+            );
             assert_eq!(contract["router"]["kind"], serde_json::json!("navigator"));
+            assert_eq!(
+                contract["router"]["package"],
+                serde_json::json!("@uniflowed/router/native")
+            );
+            assert_eq!(
+                contract["router"]["helper"],
+                serde_json::json!("createNativeRouter")
+            );
             assert_eq!(
                 contract["transform"]["status"],
                 serde_json::json!("pending")

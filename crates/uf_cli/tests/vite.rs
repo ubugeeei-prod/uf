@@ -362,11 +362,12 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 /// A React Native target is a target contract, not only a route suffix.
 ///
 /// `--target native` already narrows the route table to `$page.native.js`.
-/// Until the renderer, navigator runtime and Metro contract exist, the build
-/// manifest also has to say that those pieces are pending, so a downstream
-/// tool cannot mistake a document build for a complete React Native artefact.
+/// The manifest also names the native pieces a downstream tool has to wire:
+/// the navigator helper exists, while the renderer and Metro transform remain
+/// separately reported so a route-suffixed build is not mistaken for a
+/// complete React Native artefact.
 #[test]
-fn a_native_target_manifest_names_the_pending_native_contract() {
+fn a_native_target_manifest_names_the_native_contract() {
     if !fixture_ready() {
         return;
     }
@@ -406,6 +407,18 @@ fn a_native_target_manifest_names_the_pending_native_contract() {
     assert_eq!(
         manifest["targetContract"]["router"]["kind"],
         serde_json::json!("navigator")
+    );
+    assert_eq!(
+        manifest["targetContract"]["router"]["status"],
+        serde_json::json!("implemented")
+    );
+    assert_eq!(
+        manifest["targetContract"]["router"]["package"],
+        serde_json::json!("@uniflowed/router/native")
+    );
+    assert_eq!(
+        manifest["targetContract"]["router"]["helper"],
+        serde_json::json!("createNativeRouter")
     );
     assert_eq!(
         manifest["targetContract"]["transform"]["kind"],
