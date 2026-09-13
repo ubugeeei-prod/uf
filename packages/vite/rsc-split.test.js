@@ -269,6 +269,46 @@ describe("the client route table", () => {
     );
   });
 
+  it("keeps a route whose only client boundary lives in a slot template", () => {
+    // A slot's `$template.js` remounts inside the page that declares the slot.
+    // If that wrapper reaches the browser, the parent route still has to ship:
+    // hydration re-renders the whole matched tree, including the slot template.
+    const page = "// @flow\nexport default function Page() {}\n";
+    const root = project({
+      "app/$layout.js": page,
+      "app/$page.js": page,
+      "app/docs/$page.js": page,
+      "app/@panel/$default.js": page,
+      "app/@panel/docs/$page.js": page,
+      "app/@panel/docs/$template.js": page,
+    });
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [
+        manifestModule("app/$layout.js", false),
+        manifestModule("app/$page.js", false),
+        manifestModule("app/docs/$page.js", false),
+        manifestModule("app/@panel/$default.js", false),
+        manifestModule("app/@panel/docs/$page.js", false),
+        manifestModule("app/@panel/docs/$template.js", true),
+      ],
+    });
+    const shipsPage = clientRouteFilter(manifest, root, table);
+
+    const source = routesModuleSource(table, { shipsPage });
+
+    expect(table.routes.map((route) => [route.path, shipsPage(route)])).toEqual([
+      ["/", true],
+      ["/docs", true],
+    ]);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
+    expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/docs/$page.js"))})`);
+    expect(source).toContain(
+      `import(${JSON.stringify(path.join(root, "app/@panel/docs/$template.js"))})`,
+    );
+  });
+
   it("ships every page when there is no manifest to read", () => {
     // A project driving Vite itself, with no `uf build` or `uf dev` to write
     // the analysis. It gets the table it has always had rather than a split
