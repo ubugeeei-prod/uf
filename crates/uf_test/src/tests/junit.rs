@@ -77,6 +77,7 @@ fn one_testsuite_per_file_and_one_testcase_per_declaration() {
                 "math > off",
                 TestStatus::Skipped {
                     reason: SkipReason::Explicit,
+                    message: None,
                 },
             ),
             record("math > later", TestStatus::Todo),
@@ -95,6 +96,26 @@ fn one_testsuite_per_file_and_one_testcase_per_declaration() {
     assert!(xml.contains("<skipped message=\"skipped\"/>"));
     assert!(xml.contains("<skipped message=\"todo\"/>"));
     assert!(xml.trim_end().ends_with("</testsuites>"));
+}
+
+#[test]
+fn a_skipped_test_reports_its_explicit_message() {
+    let xml = junit(&report(vec![FileReport {
+        file: String::from("src/a.test.js"),
+        status: FileStatus::Completed,
+        duration_micros: 1,
+        records: vec![record(
+            "host > needs node",
+            TestStatus::Skipped {
+                reason: SkipReason::Explicit,
+                message: Some(String::from("Deno has no synchronous module hook")),
+            },
+        )],
+        output: Vec::new(),
+    }]));
+
+    assert!(xml.contains("<skipped message=\"Deno has no synchronous module hook\"/>"));
+    assert!(!xml.contains("<skipped message=\"skipped\"/>"));
 }
 
 #[test]

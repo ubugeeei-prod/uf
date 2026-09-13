@@ -36,6 +36,7 @@ export type Case = {|
   readonly name: string,
   readonly body: Body | null,
   readonly modifier: Modifier,
+  readonly skipReason: string | null,
   readonly timeoutMs: number | null,
   readonly line: number,
   readonly column: number,
@@ -123,6 +124,7 @@ function addCase(
   body: Body | null,
   modifier: Modifier,
   timeoutMs: number | null,
+  skipReason: string | null = null,
 ): void {
   const position = callSite();
   current.children.push({
@@ -130,6 +132,7 @@ function addCase(
     name,
     body,
     modifier,
+    skipReason,
     timeoutMs,
     line: position.line,
     column: position.column,
@@ -178,6 +181,9 @@ function caseApi(): $FlowFixMe {
   };
   api.skip = (name: string, body?: Body) => {
     addCase(name, body ?? null, "skip", null);
+  };
+  api.skipBecause = (name: string, reason: string, body?: Body) => {
+    addCase(name, body ?? null, "skip", null, reason);
   };
   api.todo = (name: string, body?: Body) => {
     addCase(name, body ?? null, "todo", null);

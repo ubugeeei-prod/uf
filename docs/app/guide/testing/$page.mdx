@@ -38,7 +38,30 @@ transform a build uses.
 
 `describe`, `it`, `test`, `beforeAll`, `beforeEach`, `afterEach` and `afterAll`
 are there, with `.only`, `.skip`, `.todo` and `.each` on `it` and `describe`.
-`expect` has 42 matchers, `.not`, `.resolves`, `.rejects`, and `fn()` for spies.
+`it.skipBecause(name, reason, body?)` is the explicit skip for a case that
+belongs in the suite but cannot run on this host yet. `expect` has 42 matchers,
+`.not`, `.resolves`, `.rejects`, and `fn()` for spies.
+
+Use `skipBecause` when the skipped case is a contract, not a TODO:
+
+```js
+// @flow
+import { expect, it } from "@uniflowed/test";
+
+it("runs the portable half", () => {
+  expect(21 * 2).toBe(42);
+});
+
+it.skipBecause(
+  "uses Node's synchronous module hook",
+  "Deno runs through uf's ahead-of-time loader and import map, so this cannot exercise Node's hook.",
+);
+```
+
+The reason is carried through the terminal report, `uf test --json` as
+`skipReason`, and JUnit as the `<skipped message>`. That matters for ecosystem
+work: a Deno or Bun run can stay green while still saying which Node-only
+contract it deliberately did not execute.
 
 ## A test beside the code it tests
 

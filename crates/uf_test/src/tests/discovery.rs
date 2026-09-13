@@ -2,7 +2,8 @@
 
 use crate::{
     MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, NativeTestRunnerPlan, TestApplicationTarget, TestHost,
-    TestKind, TestPerformanceTarget, TestRuntime, TestScheduler, discover_tests, merge_plans,
+    TestKind, TestModifier, TestPerformanceTarget, TestRuntime, TestScheduler, discover_tests,
+    merge_plans,
 };
 
 fn names(source: &str) -> Vec<String> {
@@ -31,6 +32,31 @@ fn discovers_describe_it_and_test_calls() {
     assert_eq!(plan.cases[0].kind, TestKind::Describe);
     assert_eq!(plan.cases[1].name, "adds values");
     assert_eq!(plan.cases[2].name, "subtracts values");
+}
+
+#[test]
+fn discovers_reasoned_skip_calls_as_explicit_skips() {
+    let plan = discover_tests(
+        "src/deno.test.js",
+        r#"it.skipBecause("needs Node's module hook", "Deno has no synchronous module hook");"#,
+    );
+
+    assert_eq!(plan.cases.len(), 1);
+    assert_eq!(plan.unsupported.len(), 0);
+    assert_eq!(plan.cases[0].name, "needs Node's module hook");
+    assert_eq!(plan.cases[0].modifier, TestModifier::Skip);
+}
+
+#[test]
+fn records_reasoned_suite_skips_as_unsupported() {
+    let plan = discover_tests(
+        "src/suite.test.js",
+        r#"describe.skipBecause("Deno-only suite", "Node-only module hooks", () => {});"#,
+    );
+
+    assert!(plan.cases.is_empty(), "{:?}", plan.cases);
+    assert_eq!(plan.unsupported.len(), 1, "{:?}", plan.unsupported);
+    assert_eq!(plan.unsupported[0].call, "describe.skipBecause");
 }
 
 #[test]

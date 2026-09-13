@@ -471,6 +471,15 @@ fn render_details(
     files: &[ProjectFile],
     record: &TestRecord,
 ) {
+    if let TestStatus::Skipped {
+        message: Some(message),
+        ..
+    } = &record.status
+    {
+        push_spaces(out, 8);
+        renderer.status(out, Status::Skip, message);
+    }
+
     let source = files
         .iter()
         .find(|file| file.relative_path == record.file)

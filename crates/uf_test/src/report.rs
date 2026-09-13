@@ -105,6 +105,9 @@ pub enum TestStatus {
     Skipped {
         /// Why it was excluded.
         reason: SkipReason,
+        /// The reason the test file gave for an explicit skip.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
     },
     /// Declared with `.todo` and never written.
     Todo,
