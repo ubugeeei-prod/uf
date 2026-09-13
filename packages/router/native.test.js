@@ -5,6 +5,8 @@
 import {
   NativeNavigationError,
   createNativeRouter,
+  createNativeScreenRouter,
+  nativeScreenNavigationState,
   nativeScreenPayload,
   resolveNativeNavigation,
 } from "@uniflowed/router/native";
@@ -61,18 +63,25 @@ describe("@uniflowed/router/native", () => {
   it("maps a native route event into an app-owned screen payload", () => {
     const event = resolveNativeNavigation(table(), "/users/42?tab=posts", "replace");
 
-    expect(
-      nativeScreenPayload(event, {
-        "/": "Home",
-        "/users/:id": "UserProfile",
-      }),
-    ).toEqual({
+    const payload = nativeScreenPayload(event, {
+      "/": "Home",
+      "/users/:id": "UserProfile",
+    });
+
+    expect(payload).toEqual({
       screen: "UserProfile",
       href: "/users/42?tab=posts",
       pathname: "/users/42",
       search: "?tab=posts",
       route: "/users/:id",
       params: { id: "42" },
+    });
+    expect(nativeScreenNavigationState(payload)).toEqual({
+      params: { id: "42" },
+      href: "/users/42?tab=posts",
+      pathname: "/users/42",
+      search: "?tab=posts",
+      route: "/users/:id",
     });
   });
 
@@ -141,6 +150,32 @@ describe("@uniflowed/router/native", () => {
     ]);
   });
 
+  it("hands screen names and route state to an app-owned native navigator", async () => {
+    const events = [];
+    const router = createNativeScreenRouter(
+      table(),
+      {
+        "/users/:id": "UserProfile",
+      },
+      {
+        push: (screen, state) => {
+          events.push(["push", screen, state.href, state.params]);
+        },
+        replace: (screen, state) => {
+          events.push(["replace", screen, state.href, state.params]);
+        },
+      },
+    );
+
+    await router.push("/users/1");
+    await router.replace("/users/2?tab=posts");
+
+    expect(events).toEqual([
+      ["push", "UserProfile", "/users/1", { id: "1" }],
+      ["replace", "UserProfile", "/users/2?tab=posts", { id: "2" }],
+    ]);
+  });
+
   it("loads the matched modules before a native prefetch callback", async () => {
     const loaded = [];
     const routes = table().routes.map((route) =>
@@ -176,8 +211,50 @@ describe("@uniflowed/router/native", () => {
     expect(events).toEqual(["/users/42"]);
   });
 
+  it("loads modules before a native screen prefetch callback", async () => {
+    const loaded = [];
+    const routes = table().routes.map((route) =>
+      route.path === "/users/:id"
+        ? {
+            ...route,
+            page: () => {
+              loaded.push("page");
+              return Promise.resolve({ default: "user" });
+            },
+            layouts: [
+              () => {
+                loaded.push("layout");
+                return Promise.resolve({ default: "layout" });
+              },
+            ],
+          }
+        : route,
+    );
+    const events = [];
+    const router = createNativeScreenRouter(
+      { ...table(), routes },
+      { "/users/:id": "UserProfile" },
+      {
+        prefetch: (screen, state) => {
+          events.push([screen, state.href]);
+        },
+      },
+    );
+
+    await router.prefetch("/users/42");
+
+    expect(loaded.sort()).toEqual(["layout", "page"]);
+    expect(events).toEqual([["UserProfile", "/users/42"]]);
+  });
+
   it("reports a missing navigator method before silently dropping a navigation", async () => {
     const router = createNativeRouter(table(), { replace: () => {} });
+
+    await expect(router.push("/users/42")).rejects.toThrow(/does not implement push/);
+  });
+
+  it("reports a missing native screen navigator method", async () => {
+    const router = createNativeScreenRouter(table(), { "/users/:id": "UserProfile" }, {});
 
     await expect(router.push("/users/42")).rejects.toThrow(/does not implement push/);
   });

@@ -36,10 +36,27 @@ export type NativeScreenPayload = {|
   readonly params: RouteParams,
 |};
 
+export type NativeScreenNavigationState = {|
+  readonly params: RouteParams,
+  readonly href: string,
+  readonly pathname: string,
+  readonly search: string,
+  readonly route: string,
+|};
+
 export type NativeNavigator = {|
   readonly push?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
   readonly replace?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
   readonly prefetch?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
+|};
+
+export type NativeScreenNavigator = {|
+  readonly push?: (screen: string, state: NativeScreenNavigationState) => mixed | Promise<mixed>,
+  readonly replace?: (screen: string, state: NativeScreenNavigationState) => mixed | Promise<mixed>,
+  readonly prefetch?: (
+    screen: string,
+    state: NativeScreenNavigationState,
+  ) => mixed | Promise<mixed>,
 |};
 
 export type NativeRouter = {|
@@ -99,6 +116,21 @@ export function createNativeRouter(
   };
 }
 
+export function createNativeScreenRouter(
+  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
+  screens: NativeScreenMap,
+  navigator: NativeScreenNavigator,
+): NativeRouter {
+  return createNativeRouter(table, {
+    push: (event) => invokeScreenNavigator(navigator, screens, event),
+    replace: (event) => invokeScreenNavigator(navigator, screens, event),
+    prefetch: (event) => {
+      if (typeof navigator.prefetch !== "function") return;
+      return invokeScreenNavigator(navigator, screens, event);
+    },
+  });
+}
+
 export function resolveNativeNavigation(
   table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
   to: string,
@@ -156,6 +188,18 @@ export function nativeScreenPayload(
   };
 }
 
+export function nativeScreenNavigationState(
+  payload: NativeScreenPayload,
+): NativeScreenNavigationState {
+  return {
+    params: payload.params,
+    href: payload.href,
+    pathname: payload.pathname,
+    search: payload.search,
+    route: payload.route,
+  };
+}
+
 function normalizeNativeHref(to: string): string {
   if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(to) || to.startsWith("//")) {
     throw new NativeNavigationError(
@@ -207,6 +251,33 @@ function missingMethod(event: NativeNavigationEvent): NativeNavigationError {
     event.href,
     event.route,
   );
+}
+
+async function invokeScreenNavigator(
+  navigator: NativeScreenNavigator,
+  screens: NativeScreenMap,
+  event: NativeNavigationEvent,
+): Promise<void> {
+  const payload = nativeScreenPayload(event, screens);
+  const state = nativeScreenNavigationState(payload);
+  if (event.kind === "push") {
+    if (typeof navigator.push !== "function") {
+      throw missingMethod(event);
+    }
+    await navigator.push(payload.screen, state);
+    return;
+  }
+  if (event.kind === "replace") {
+    if (typeof navigator.replace !== "function") {
+      throw missingMethod(event);
+    }
+    await navigator.replace(payload.screen, state);
+    return;
+  }
+  if (typeof navigator.prefetch !== "function") {
+    throw missingMethod(event);
+  }
+  await navigator.prefetch(payload.screen, state);
 }
 
 async function loadNativeRoute(
