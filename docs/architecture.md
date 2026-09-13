@@ -14,6 +14,89 @@ while using Vite Task for cached task execution and beating Bun Test/Vitest on
 native test throughput, runtime startup, package manager performance, and
 integrated feature coverage.
 
+## Performance Contracts
+
+The performance target is not a slogan in this repository. Hot paths get
+budgets that fail CI when a change spends more than the design allows, and the
+budget is written beside the code path it protects rather than in a benchmark
+dashboard somebody has to remember to open.
+
+The current shape is three layers:
+
+| Layer | What it protects | Example |
+| --- | --- | --- |
+| Command budget | A whole user-visible command stays below a cost envelope for a real fixture | `crates/uf_check/tests/allocation_budget.rs` and `crates/uf_lint/tests/allocation_budget.rs` measure `packages/router/internal/runtime.js` |
+| Phase budget | A known internal phase does not drift back to the allocation profile it had before a fix | `crates/uf_check/tests/upstream_patch_allocations.rs` guards the Flow SSA patch |
+| Cache budget | A warm path stays warm instead of rebuilding work under a successful answer | `crates/uf_check/tests/cache_hit_allocations.rs` guards full cache hits, parse-error misses and closure walks |
+
+Those layers are meant to cover user-facing product areas, not only crates:
+
+| Area | Contract |
+| --- | --- |
+| Framework | Router, RSC, server-action and middleware fixtures are large enough to make Flow inference, module resolution and route graph work show up in the same command that users run |
+| UI | Headless primitives are judged by behavior and accessibility tests first; styling freedom is a public API, so render escape hatches must preserve ids, handlers, refs and Flow `renders*` constraints |
+| Test runner | Rust owns discovery, scheduling, timeouts and reporting; JavaScript hosts run test bodies, and unsupported hosts fail with a reasoned skip or error instead of a late syntax failure |
+| Check and lint | A pass should share parser, resolution and Flow context work wherever the project boundary allows it; a diagnostic should not become the hot path for a clean file |
+
+Allocation budgets are deliberately fixture-backed. A synthetic ten-line file
+can make any runner look good; the router runtime is large enough to exercise
+module resolution, Flow inference and framework rules the way a real uf app
+does. When a file is expected to grow, the guard is written as a ratio against
+source bytes or KiB, not as a frozen number that turns every legitimate feature
+into a perf test rewrite.
+
+The failure message is part of the contract. It names the command to run next
+— usually an `alloc_report` example with `--phases` — and says which historical
+failure mode the ceiling is meant to catch. A red allocation test should leave
+a maintainer choosing between "the code regressed" and "the budget is now
+stale", not between a number and a blank wall.
+
+When one of those guards fails, read it in this order:
+
+1. **Did the protected fixture change?** If the source file grew because the
+   framework gained a feature, compare the allocation ratio, not only the raw
+   number. A larger file that keeps the same bytes-per-byte slope is usually a
+   budget update; the same file that spends more is a regression.
+2. **Did a cache stop being shared?** `uf lint`, `uf check`, `uf transform` and
+   `uf dev` should not independently rediscover the same parse or resolution
+   result once they are inside one project. A warm-path failure usually means a
+   tree, module candidate list, closure walk or Flow context escaped the cache
+   boundary.
+3. **Did a diagnostic path become the hot path?** Better messages are worth
+   paying for only after the command knows it is failing. The success path for
+   a large framework file should not format candidate lists, clone source text
+   or allocate spans for an error it never emits.
+
+New guards are expected when a performance fix has a clear shape but the final
+optimisation will take more than one PR. Add the guard beside the crate whose
+public command regressed, point it at a real package fixture when possible, and
+write the panic text as a next-step note to the next maintainer. Avoid a guard
+that only proves a microbenchmark got faster; the product promise is command
+latency and memory pressure on framework and UI code users actually run.
+
+A guard is ready to merge when it answers five questions without the reader
+opening the profiler first:
+
+1. **Which user command got slower?** The test name should say `check`, `lint`,
+   `test`, `build` or the exact public path that regressed.
+2. **Which real fixture exercises it?** Prefer `packages/router`,
+   `packages/ui`, the documentation app, or a library fixture over generated
+   text. Use a generated file only when the bug is about scale itself.
+3. **Which slope is protected?** If a legitimate feature grows the fixture,
+   the test should make it obvious whether the bytes-per-byte or
+   allocations-per-module slope changed.
+4. **Which cache or phase should have caught it?** Name the parser, resolver,
+   Flow context, transform cache, worker pool or diagnostic builder that should
+   have stayed cold.
+5. **What should the next maintainer run?** The panic text should include the
+   narrow command and the profiling flag that makes the failure explainable.
+
+This is why small guard PRs can merge before the deeper optimisation is done.
+For #668 and #678, one PR can ratchet the known-good bound so future work does
+not erase the improvement, while a later PR removes the remaining duplicated
+tree or inference cost. The first PR is not the fix; it is the line that keeps
+the fix from leaking away while the next slice is being cut.
+
 ## Crates
 
 - `uf_cli`: command router for `uf`

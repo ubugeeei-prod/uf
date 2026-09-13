@@ -103,6 +103,33 @@ unable to target anything new:
 All three differ in an ordinary build: a native binary driving Vite on Node.js
 to produce a bundle for a Cloudflare Worker.
 
+## Performance is part of the architecture
+
+uf's performance promise is written as failing tests, not as a sentence on the
+home page. The same rule applies to framework code, UI primitives, linting,
+checking and the test runner: if a path is important enough for users to feel,
+it needs a fixture and a budget that go red when the path drifts.
+
+| Surface | What must stay true | Where the evidence lives |
+| --- | --- | --- |
+| `uf check` | Flow inference, module resolution and closure walks cannot allocate in proportion to the same work being rediscovered | `crates/uf_check/tests/allocation_budget.rs`, `crates/uf_check/tests/cache_hit_allocations.rs` |
+| `uf lint` | Framework rules run on the shared parse and route knowledge, not on another private pass over the same project | `crates/uf_lint/tests/allocation_budget.rs` |
+| `uf test` | Rust owns discovery, scheduling, timeouts and reports; hosts execute test bodies and unsupported hosts say why they skipped | [Testing](/guide/testing) and `packages/test` |
+| Framework | Router, RSC, server actions and middleware are tested as one application graph instead of isolated helpers | [Routing](/guide/routing), [Server Components](/guide/server-components), [Server Actions](/guide/server-actions) |
+| UI | The public API is behavior, accessibility and styling freedom; render escape hatches keep ids, handlers, refs and Flow constraints intact | [Headless components](/guide/ui) and `packages/ui/ui.test.js` |
+
+That is why performance work often lands in two small pieces. The first piece
+adds or tightens the guard around the user-visible command, so the repository
+cannot slide backwards while the deeper cache or data-structure work is still
+being split. The second piece removes the duplicated parse, allocation, worker
+startup or diagnostic work that made the guard necessary.
+
+When a budget fails, read it as an architectural failure before reading it as a
+number. A larger router fixture may need a new ceiling; the same fixture
+allocating more usually means a cache stopped being shared. A better diagnostic
+may justify work on the error path; a clean file paying to format candidate
+lists is a bug.
+
 ## Where uf does not yet comply
 
 A list of rules with no audit against it is decoration.
