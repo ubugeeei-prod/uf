@@ -24,7 +24,7 @@ use uf_config::{
     FrameworkPreset, NativeTestApplicationTarget, Permissions, ToolchainAccess, UniflowedConfig,
     load_config,
 };
-use uf_project::{ProjectFile, scan_selected_source_files};
+use uf_project::{ProjectFile, scan_existing_selected_source_files, scan_selected_source_files};
 use uf_runtime::RuntimeHost;
 use uf_term::PhaseTimer;
 use uf_test::{
@@ -162,10 +162,29 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
     // `packages/test/module-mock.test.js` does, so a killed run leaves nothing
     // behind — still has to be runnable by name.
-    let scan = scan_selected_source_files(&root, &resolved.config, &args.paths)?;
+    //
+    // A one-shot, non-coverage run over an existing path can stay inside that
+    // path. Watch mode still needs the whole import graph so edits to a shared
+    // dependency re-run the selected tests, and coverage still needs every
+    // JavaScript file so "not covered" means something.
+    let needs_project_scan = args.watch || args.coverage || resolved.config.test.coverage.enabled;
+    let (scan, selected_path_scan) = if needs_project_scan {
+        (
+            scan_selected_source_files(&root, &resolved.config, &args.paths)?,
+            false,
+        )
+    } else {
+        match scan_existing_selected_source_files(&root, &resolved.config, &args.paths)? {
+            Some(scan) => (scan, true),
+            None => (
+                scan_selected_source_files(&root, &resolved.config, &args.paths)?,
+                false,
+            ),
+        }
+    };
     render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));
     let unreadable = unreadable_lines(&scan.unreadable);
-    let files = scan.files;
+    let mut files = scan.files;
     // Before anything is run. A file uf could not read might have been a test,
     // and a test that silently did not run is the worst thing a runner can do.
     if !unreadable.is_empty() {
@@ -244,6 +263,18 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
              saying so.",
             host_kind.name()
         );
+    }
+    if selected_path_scan && host_kind == HostKind::Deno {
+        // Deno has no runtime Flow hook. Its AOT tree must contain every
+        // project file a selected test could import, not just the selected
+        // path itself.
+        let scan = scan_selected_source_files(&root, &resolved.config, &args.paths)?;
+        let unreadable = unreadable_lines(&scan.unreadable);
+        if !unreadable.is_empty() {
+            crate::commands::lint::render_unreadable(ui, &unreadable);
+            bail!("{} could not be read", plural(unreadable.len(), "file"));
+        }
+        files = scan.files;
     }
 
     let mut host = test_host_with_resolved_host(

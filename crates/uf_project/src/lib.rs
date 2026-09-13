@@ -371,58 +371,7 @@ pub fn scan_selected_source_files(
         if !start.exists() {
             continue;
         }
-        let root_path = root.as_std_path().to_path_buf();
-        let walk = WalkBuilder::new(&start)
-            .hidden(false)
-            .git_ignore(false)
-            .git_global(false)
-            .git_exclude(false)
-            .ignore(false)
-            .parents(false)
-            .filter_entry(move |entry| {
-                entry.path() == root_path
-                    || !entry.file_type().is_some_and(|kind| kind.is_dir())
-                    || !entry.path().join(".git").exists()
-            })
-            .build();
-        for entry in walk.flatten() {
-            if !entry.file_type().is_some_and(|kind| kind.is_file()) {
-                continue;
-            }
-            let Ok(path) = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()) else {
-                continue;
-            };
-            // `ALWAYS_IGNORED` and `ignore` still apply: naming a path
-            // says "this one too", not "everything uf knows to stay out of".
-            let Some(kind) = SourceKind::from_path(&path) else {
-                continue;
-            };
-            if is_ignored(root, &path, config) {
-                continue;
-            }
-            let relative_path = path
-                .strip_prefix(root)
-                .map(|path| path.as_str().to_string())
-                .unwrap_or_else(|_| path.as_str().to_string());
-            if files
-                .iter()
-                .any(|file: &ProjectFile| file.relative_path == relative_path)
-            {
-                continue;
-            }
-            match fs::read_to_string(&path) {
-                Ok(source) => files.push(ProjectFile {
-                    kind,
-                    absolute_path: path,
-                    relative_path,
-                    source,
-                }),
-                Err(error) => unreadable.push(UnreadableFile {
-                    relative_path,
-                    reason: error.to_string(),
-                }),
-            }
-        }
+        scan_named_tree(root, config, &start, &mut files, &mut unreadable)?;
     }
 
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -430,6 +379,131 @@ pub fn scan_selected_source_files(
     unreadable.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     unreadable.dedup_by(|a, b| a.relative_path == b.relative_path);
     Ok(SourceScan { files, unreadable })
+}
+
+/// Scan only the existing paths a caller named, when every selector is a path.
+///
+/// `uf test packages/foo.test.js` does not need a project-wide walk before it
+/// can import that one file: the JavaScript host resolves that file's imports
+/// at runtime. This helper exists for that shape. It deliberately returns
+/// [`None`] when a selector is not an existing root-relative path, because the
+/// command-line path language is still substring matching: `uf test ui` may
+/// mean every file whose path contains `ui`, and that still needs the full
+/// project scan.
+///
+/// Naming a path keeps the same override as [`scan_selected_source_files`]:
+/// `.gitignore` is not applied under that selected root, while uf's own
+/// never-source directories and project `ignore` entries still are.
+pub fn scan_existing_selected_source_files(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    selected: &[String],
+) -> Result<Option<SourceScan>, ProjectError> {
+    if selected.is_empty() {
+        return Ok(None);
+    }
+
+    let starts: Vec<Utf8PathBuf> = selected
+        .iter()
+        .map(|named| root.join(named.trim_start_matches("./")))
+        .collect();
+    if starts.iter().any(|start| !start.exists()) {
+        return Ok(None);
+    }
+
+    let mut files = Vec::new();
+    let mut unreadable = Vec::new();
+    for start in starts {
+        scan_named_tree(root, config, &start, &mut files, &mut unreadable)?;
+    }
+    files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    files.dedup_by(|a, b| a.relative_path == b.relative_path);
+    unreadable.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    unreadable.dedup_by(|a, b| a.relative_path == b.relative_path);
+    Ok(Some(SourceScan { files, unreadable }))
+}
+
+fn scan_named_tree(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    start: &Utf8Path,
+    files: &mut Vec<ProjectFile>,
+    unreadable: &mut Vec<UnreadableFile>,
+) -> Result<(), ProjectError> {
+    let root_path = root.as_std_path().to_path_buf();
+    let walk = WalkBuilder::new(start)
+        .hidden(false)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
+        .ignore(false)
+        .parents(false)
+        .filter_entry(move |entry| {
+            entry.path() == root_path
+                || !entry.file_type().is_some_and(|kind| kind.is_dir())
+                || !entry.path().join(".git").exists()
+        })
+        .build();
+
+    for entry in walk {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                let reason = error.to_string();
+                let named = match &error {
+                    ignore::Error::WithPath { path, .. } => Some(path.clone()),
+                    _ => None,
+                };
+                let Some(path) = named else {
+                    return Err(ProjectError::Walk {
+                        path: start.to_path_buf(),
+                        source: error.into_io_error().unwrap_or_else(|| {
+                            std::io::Error::other("the selected path could not be walked")
+                        }),
+                    });
+                };
+                let relative = path.strip_prefix(root.as_std_path()).unwrap_or(&path);
+                unreadable.push(UnreadableFile {
+                    relative_path: relative.display().to_string(),
+                    reason,
+                });
+                continue;
+            }
+        };
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+            continue;
+        }
+        let path = Utf8PathBuf::from_path_buf(entry.path().to_path_buf()).map_err(|path| {
+            ProjectError::Read {
+                path: Utf8PathBuf::from(path.display().to_string()),
+                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "path is not UTF-8"),
+            }
+        })?;
+        let Some(kind) = SourceKind::from_path(&path) else {
+            continue;
+        };
+        if is_ignored(root, &path, config) {
+            continue;
+        }
+        let relative_path = path
+            .strip_prefix(root)
+            .map(|path| path.as_str().to_string())
+            .unwrap_or_else(|_| path.as_str().to_string());
+        match fs::read_to_string(&path) {
+            Ok(source) => files.push(ProjectFile {
+                absolute_path: path,
+                relative_path,
+                source,
+                kind,
+            }),
+            Err(error) => unreadable.push(UnreadableFile {
+                relative_path,
+                reason: error.to_string(),
+            }),
+        }
+    }
+
+    Ok(())
 }
 
 fn write_generated_file(path: &Utf8Path, contents: &str, force: bool) -> Result<(), ProjectError> {
