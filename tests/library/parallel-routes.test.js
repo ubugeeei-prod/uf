@@ -234,6 +234,12 @@ describe("what a slot may not be written as", () => {
       ["@aside/$loading.js", "loading"],
       ["@aside/$error.js", "error"],
       ["@aside/$not-found.js", "not-found"],
+      ["@aside/loading.js", "loading"],
+      ["@aside/error.js", "error"],
+      ["@aside/not-found.js", "not-found"],
+      ["@aside/_uf.loading.js", "loading"],
+      ["@aside/_uf.error.js", "error"],
+      ["@aside/_uf.not-found.js", "not-found"],
     ]) {
       const message = refusal(["$layout.js", "$page.js", "@aside/$page.js", file]);
 

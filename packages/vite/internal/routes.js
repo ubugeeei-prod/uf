@@ -78,6 +78,16 @@ export const LAYOUT_PROP_NAMES = Object.freeze(["children", "params"]);
 /** Template spellings that look conventional elsewhere but uf will not open. */
 const UNSUPPORTED_TEMPLATE_FILES = Object.freeze(["template.js", "_uf.template.js"]);
 
+/** Boundary spellings a slot might look for, but uf does not open. */
+const UNSUPPORTED_SLOT_BOUNDARY_FILES = Object.freeze({
+  "error.js": "error",
+  "loading.js": "loading",
+  "not-found.js": "not-found",
+  "_uf.error.js": "error",
+  "_uf.loading.js": "loading",
+  "_uf.not-found.js": "not-found",
+});
+
 /** Extensions a page or layout may use; `.mdx` is a page written as content. */
 const PAGE_EXTENSIONS = [".js", ".jsx", ".mdx"];
 const MODULE_EXTENSIONS = [".js", ".jsx"];
@@ -588,6 +598,10 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
 
   const walkSlot = (current, currentSegments, layouts, templates, atSlotRoot, currentDepth) => {
     if (currentDepth > MAX_DEPTH) return;
+    const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+    );
+
     // What a slot does not have, said where somebody writing the file will
     // read it rather than by never opening it. This is also the list of what
     // is left of parallel routes; see the issue. A template composes like a
@@ -605,6 +619,18 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
             "https://github.com/ubugeeei-prod/uf/issues/267",
         );
       }
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const role = unsupportedSlotBoundaryRole(entry.name);
+      if (role == null) continue;
+      const file = path.join(current, entry.name);
+      throw new Error(
+        `${file}: \`${entry.name}\` looks like a \`${role}\` boundary for a \`@slot\`, but ` +
+          "uf's parallel routes do not carry per-slot boundaries yet, so this file would never " +
+          `be opened. Put \`$${role}.js\` outside \`${directoryName}\`, where it covers the ` +
+          "whole segment. https://github.com/ubugeeei-prod/uf/issues/267",
+      );
     }
     for (const role of [RESERVED.route, RESERVED.middleware]) {
       const found = findModule(current, role, MODULE_EXTENSIONS, target);
@@ -635,10 +661,6 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
     const nextTemplates = templateHere
       ? [...templates, { above: nextLayouts.length, module: templateHere }]
       : templates;
-
-    const entries = readdirSync(current, { withFileTypes: true }).sort((a, b) =>
-      a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-    );
 
     refuseUnsupportedTemplateFiles(current, entries);
 
@@ -749,6 +771,10 @@ function unsupportedTemplateFileReason(fileName) {
     "`$template.js`. This file would be ignored rather than remounting the route, so it is " +
     "refused; rename it to `$template.js`. https://github.com/ubugeeei-prod/uf/issues/267"
   );
+}
+
+function unsupportedSlotBoundaryRole(fileName) {
+  return UNSUPPORTED_SLOT_BOUNDARY_FILES[fileName] ?? null;
 }
 
 /**
