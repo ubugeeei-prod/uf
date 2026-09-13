@@ -363,9 +363,9 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 ///
 /// `--target native` already narrows the route table to `$page.native.js`.
 /// The manifest also names the native pieces a downstream tool has to wire:
-/// the navigator helper and Metro transform contract exist, while the renderer
-/// remains separately reported so a route-suffixed build is not mistaken for a
-/// complete React Native artefact.
+/// the navigator helpers and Metro transform contract exist, while the
+/// renderer remains separately reported so a route-suffixed build is not
+/// mistaken for a complete React Native artefact.
 #[test]
 fn a_native_target_manifest_names_the_native_contract() {
     if !fixture_ready() {
@@ -418,7 +418,11 @@ fn a_native_target_manifest_names_the_native_contract() {
     );
     assert_eq!(
         manifest["targetContract"]["router"]["helper"],
-        serde_json::json!("createNativeRouter")
+        serde_json::json!("createNativeScreenRouter")
+    );
+    assert_eq!(
+        manifest["targetContract"]["router"]["screenManifestHelper"],
+        serde_json::json!("createNativeScreenManifest")
     );
     assert_eq!(
         manifest["targetContract"]["transform"]["kind"],

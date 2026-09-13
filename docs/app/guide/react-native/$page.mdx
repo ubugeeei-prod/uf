@@ -48,7 +48,7 @@ thing that creates, serves, builds and submits the app for you.
 | --- | --- | --- |
 | Keep web and native routes in one file tree | `$page.native.js`, `$page.ios.js`, `$page.android.js` | Screen registration and app bootstrap |
 | Make Metro understand uf's package and file conventions | `withUniflowedMetro` | Metro cache policy, native module config, asset plugins |
-| Turn a uf path into a native screen call | `createNativeScreenRouter` or `createNativeRouter` | React Navigation, Expo Router, or a custom navigator |
+| Turn a uf path into a native screen call | `createNativeScreenManifest`, `createNativeScreenRouter` or `createNativeRouter` | React Navigation, Expo Router, or a custom navigator |
 | Query or mount a native test tree | `render`, `createNativeScreen`, `within`, `getByRole`, `getByLabelText` | The real native host, layout and platform views |
 | Keep unsupported native tests visible | `it.skipBecause` | The future host config and renderer |
 
@@ -216,7 +216,8 @@ The build manifest records the same answer so a downstream tool can check it:
       "kind": "navigator",
       "status": "implemented",
       "package": "@uniflowed/router/native",
-      "helper": "createNativeRouter"
+      "helper": "createNativeScreenRouter",
+      "screenManifestHelper": "createNativeScreenManifest"
     },
     "transform": {
       "kind": "metro",
@@ -250,17 +251,21 @@ own, and hand the result to the application's navigator.
 
 ```js
 // @flow
-import { createNativeScreenRouter } from "@uniflowed/router/native";
+import {
+  createNativeScreenManifest,
+  createNativeScreenRouter,
+  nativeScreenName,
+} from "@uniflowed/router/native";
 import type { RouteTable } from "@uniflowed/router/routing";
 
-const screens = {
-  "/": "Home",
-  "/users/:id": "UserProfile",
-  "/settings": "Settings",
-};
-
 export function nativeRouter(routeTable: RouteTable) {
-  return createNativeScreenRouter(routeTable, screens, {
+  const manifest = createNativeScreenManifest(routeTable, {
+    name(route) {
+      return route.path === "/users/:id" ? "UserProfile" : nativeScreenName(route.path);
+    },
+  });
+
+  return createNativeScreenRouter(routeTable, manifest.screens, {
     push(screen, state) {
       navigation.push(screen, {
         ...state.params,
@@ -295,7 +300,9 @@ await router.push("/users/42?tab=posts");
 Under the hood it calls the methods you supplied:
 
 ```js
-createNativeScreenRouter(routeTable, screens, {
+const manifest = createNativeScreenManifest(routeTable);
+
+createNativeScreenRouter(routeTable, manifest.screens, {
   push(screen, state) {
     navigation.push(screen, state.params);
   },
@@ -317,6 +324,28 @@ facts beside the params:
   route: "/users/:id",
 }
 ```
+
+`createNativeScreenManifest(routeTable)` walks the generated native route table,
+keeps only routes that have a page in the native bundle, and returns both a
+`screens` map for the router and an ordered `entries` list for registration:
+
+```js
+{
+  screens: {
+    "/": "Home",
+    "/users/:id": "UsersById",
+  },
+  entries: [
+    { screen: "Home", route: "/", file: "app/$page.native.js" },
+    { screen: "UsersById", route: "/users/:id", file: "app/users/[id]/$page.native.js" },
+  ],
+}
+```
+
+If the generated names do not match the app's navigator, pass `name(route)`.
+Two routes resolving to the same screen name are refused with
+`NativeNavigationError` and `code: "duplicate-screen"` so the app does not
+register a screen table whose last route silently wins.
 
 If a navigator needs the lower-level event instead, use `createNativeRouter()`.
 The event is the contract:

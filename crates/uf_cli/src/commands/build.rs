@@ -1084,7 +1084,8 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
                 "status": "implemented",
                 "kind": "navigator",
                 "package": "@uniflowed/router/native",
-                "helper": "createNativeRouter",
+                "helper": "createNativeScreenRouter",
+                "screenManifestHelper": "createNativeScreenManifest",
                 "reason": "Native rendering still needs the renderer/host-config contract before the navigator can mount screens"
             },
             "transform": {
@@ -1441,7 +1442,11 @@ mod tests {
             );
             assert_eq!(
                 contract["router"]["helper"],
-                serde_json::json!("createNativeRouter")
+                serde_json::json!("createNativeScreenRouter")
+            );
+            assert_eq!(
+                contract["router"]["screenManifestHelper"],
+                serde_json::json!("createNativeScreenManifest")
             );
             assert_eq!(contract["transform"]["kind"], serde_json::json!("metro"));
             assert_eq!(
