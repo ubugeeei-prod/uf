@@ -5,6 +5,7 @@
 import {
   NativeNavigationError,
   createNativeRouter,
+  nativeScreenPayload,
   resolveNativeNavigation,
 } from "@uniflowed/router/native";
 import { describe, expect, it } from "@uniflowed/test";
@@ -57,6 +58,40 @@ describe("@uniflowed/router/native", () => {
     });
   });
 
+  it("maps a native route event into an app-owned screen payload", () => {
+    const event = resolveNativeNavigation(table(), "/users/42?tab=posts", "replace");
+
+    expect(
+      nativeScreenPayload(event, {
+        "/": "Home",
+        "/users/:id": "UserProfile",
+      }),
+    ).toEqual({
+      screen: "UserProfile",
+      href: "/users/42?tab=posts",
+      pathname: "/users/42",
+      search: "?tab=posts",
+      route: "/users/:id",
+      params: { id: "42" },
+    });
+  });
+
+  it("refuses a native route event whose screen mapping is missing", () => {
+    const event = resolveNativeNavigation(table(), "/users/42");
+    let thrown: ?NativeNavigationError = null;
+    try {
+      nativeScreenPayload(event, { "/": "Home" });
+    } catch (error) {
+      if (error instanceof NativeNavigationError) {
+        thrown = error;
+      }
+    }
+
+    expect(thrown?.code).toBe("missing-screen");
+    expect(thrown?.route).toBe("/users/:id");
+    expect(thrown?.href).toBe("/users/42");
+  });
+
   it("refuses destinations a native navigator cannot own", () => {
     expect(() => resolveNativeNavigation(table(), "settings")).toThrow(/relative/);
     expect(() => resolveNativeNavigation(table(), "https://example.com/users/42")).toThrow(
@@ -85,12 +120,15 @@ describe("@uniflowed/router/native", () => {
 
   it("hands push and replace to the native navigator", async () => {
     const events = [];
+    const screens = { "/users/:id": "UserProfile" };
     const router = createNativeRouter(table(), {
       push: (event) => {
-        events.push(["push", event.href, event.route, event.params]);
+        const payload = nativeScreenPayload(event, screens);
+        events.push(["push", payload.screen, payload.href, payload.params]);
       },
       replace: (event) => {
-        events.push(["replace", event.href, event.route, event.params]);
+        const payload = nativeScreenPayload(event, screens);
+        events.push(["replace", payload.screen, payload.href, payload.params]);
       },
     });
 
@@ -98,8 +136,8 @@ describe("@uniflowed/router/native", () => {
     await router.replace("/users/2?tab=posts");
 
     expect(events).toEqual([
-      ["push", "/users/1", "/users/:id", { id: "1" }],
-      ["replace", "/users/2?tab=posts", "/users/:id", { id: "2" }],
+      ["push", "UserProfile", "/users/1", { id: "1" }],
+      ["replace", "UserProfile", "/users/2?tab=posts", { id: "2" }],
     ]);
   });
 

@@ -23,6 +23,19 @@ export type NativeNavigationEvent = {|
   readonly params: RouteParams,
 |};
 
+export type NativeScreenMap = {
+  readonly [route: string]: string,
+};
+
+export type NativeScreenPayload = {|
+  readonly screen: string,
+  readonly href: string,
+  readonly pathname: string,
+  readonly search: string,
+  readonly route: string,
+  readonly params: RouteParams,
+|};
+
 export type NativeNavigator = {|
   readonly push?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
   readonly replace?: (event: NativeNavigationEvent) => mixed | Promise<mixed>,
@@ -41,6 +54,7 @@ export type NativeNavigationErrorCode =
   | "fragment"
   | "relative-url"
   | "missing-route"
+  | "missing-screen"
   | "server-only-route"
   | "missing-navigator-method";
 
@@ -116,6 +130,29 @@ export function resolveNativeNavigation(
     search,
     route: matched.route.path,
     params: matched.params,
+  };
+}
+
+export function nativeScreenPayload(
+  event: NativeNavigationEvent,
+  screens: NativeScreenMap,
+): NativeScreenPayload {
+  const screen = screens[event.route];
+  if (typeof screen !== "string" || screen === "") {
+    throw new NativeNavigationError(
+      "missing-screen",
+      `@uniflowed/router/native: ${event.route} has no native screen mapping`,
+      event.href,
+      event.route,
+    );
+  }
+  return {
+    screen,
+    href: event.href,
+    pathname: event.pathname,
+    search: event.search,
+    route: event.route,
+    params: event.params,
   };
 }
 
