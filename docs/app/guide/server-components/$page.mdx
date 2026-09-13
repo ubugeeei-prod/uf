@@ -17,6 +17,25 @@ anything smaller than a route, and that is written down here rather than left
 for you to discover by measuring `dist/`.
 </div>
 
+## The current contract
+
+The RSC work is deliberately documented as a contract with a missing half, not
+as a finished Next.js-equivalent implementation.
+
+| Area | Today | Missing before the claim changes |
+| --- | --- | --- |
+| Directive parsing | `"use client"` and `"use server"` are read by the same directive-prologue rules React and bundlers use | no known gap |
+| Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call |
+| Route-level split | a route with no reachable client boundary can be removed from the client route table | splitting a Server Component above a boundary out of the client bundle |
+| HTML streaming | Suspense boundaries stream through the document renderer | client-side reconstruction of the streamed Server Component tree |
+| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references and native form progressive enhancement |
+| Flight payload | not implemented | the payload format, client references, chunk ids and a second React environment |
+
+That table is the difference between "RSC analysis exists" and "uf has React
+Server Components as a full app model". The first is true now. The second waits
+on the Flight payload and the bundler environment that can build React under
+the `react-server` condition separately from the client.
+
 ## Three kinds of module
 
 A module's environment is decided by its first statement and by nothing else.

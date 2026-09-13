@@ -38,6 +38,35 @@ That makes this useful for code that wants a Flow-first route and testing
 contract around React Native, and not yet enough for a team expecting Expo's
 finished application platform.
 
+## The usable slice
+
+Use the native target today when the app already owns its native runtime and
+needs uf to keep Flow, routes, Metro and tests aligned. Do not use it yet as the
+thing that creates, serves, builds and submits the app for you.
+
+| You want to | Use | Still app-owned |
+| --- | --- | --- |
+| Keep web and native routes in one file tree | `$page.native.js`, `$page.ios.js`, `$page.android.js` | Screen registration and app bootstrap |
+| Make Metro understand uf's package and file conventions | `withUniflowedMetro` | Metro cache policy, native module config, asset plugins |
+| Turn a uf path into a native navigation event | `createNativeRouter` | React Navigation, Expo Router, or a custom navigator |
+| Query an existing native render tree | `createNativeScreen`, `within`, `getByRole`, `getByLabelText` | The renderer that produced the tree |
+| Keep unsupported native tests visible | `it.skipBecause` | The future host config and renderer |
+
+That boundary is intentionally narrow. It lets a Flow-first codebase move native
+work out of ad-hoc conventions without pretending uf has a dev client, native
+module registry, OTA story or store-submission pipeline.
+
+The smallest useful proof is:
+
+```console
+$ uf build --target native
+$ uf test packages/router/native.test.js packages/react-native-testing/react-native-testing.test.js
+```
+
+The first command proves the route table and manifest can be generated for the
+native target. The second should query trees and navigator payloads; it should
+not fake a host renderer until the renderer exists.
+
 ## Configure the target
 
 `app.framework: "react-native"` makes the native target the default application
@@ -394,6 +423,21 @@ So the short version is: **Expo is what ships the app; uf is the Flow-first
 contract around the code that app runs.** When uf eventually claims more than
 that, this page should get shorter, not vaguer: the pending rows at the top
 should disappear into concrete commands.
+
+The path toward an Expo-level claim is therefore not a slogan; it is a list of
+missing commands and contracts:
+
+| Missing before uf can make a platform claim | What would make the row real |
+| --- | --- |
+| Native renderer | `@uniflowed/react-native-testing/render` mounting a component tree on a host config |
+| App shell | a generated native entry that can run the route table without hand-written glue |
+| Asset service | image, font and static asset handling that agrees with Metro and uf's manifest |
+| Native module policy | a documented boundary for modules that require platform installation |
+| Build and submit | a reproducible local or remote build story rather than a note to use someone else's |
+
+Until those rows exist, the honest recommendation is to pair uf with an
+existing native app platform and let uf own the Flow-specific contracts inside
+that app.
 
 ## What is still missing
 

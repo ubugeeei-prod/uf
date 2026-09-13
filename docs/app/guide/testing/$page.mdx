@@ -13,6 +13,38 @@ what order, on how many cores, and what the report says; the host runs the
 bodies, because running JavaScript is the one thing Rust cannot do.
 </div>
 
+## The performance model
+
+The runner is split so the expensive and unstable work is isolated. Rust owns
+the project walk, declaration discovery, scheduling, retries, reporters and
+coverage thresholds. A JavaScript host owns module evaluation and the test body.
+That gives uf a place to keep improving the loop without changing the API a test
+imports.
+
+| Phase | Runs in | What costs time | What the report exposes |
+| --- | --- | --- | --- |
+| Project discovery | Rust | walking files, applying ignore rules, reading timings | path-filter errors, file counts |
+| Test discovery | Rust | parsing Flow and finding declarations | `uf test --list` statuses |
+| Scheduling | Rust | sorting by recorded duration or file size | warm and cold schedule counts |
+| Execution | Node, Bun or Deno | importing transformed files and running cases | per-file duration, attempts, host |
+| Reporting | Rust | JSON, JUnit, coverage summaries and terminal output | `run` versus `total` time |
+
+An empty schedule is not a JavaScript problem. If a path filter, name filter or
+list-only run leaves no test files to execute, uf returns before resolving or
+starting a JS host. That makes mistakes cheap and makes host failures easier to
+read: a missing Node binary should not be able to break `uf test --list` over
+zero selected files.
+
+When a run feels slow, first decide which number moved:
+
+| Symptom | First thing to inspect |
+| --- | --- |
+| `total` is high and `run` is low | project discovery, host resolution, reporters or coverage setup |
+| One worker is still busy after the rest finished | `.uf/test-timings.json` and the slowest-files table |
+| A tiny suite is slower with all cores | lower `-j`; worker startup can dominate short runs |
+| The selected suite is empty | `uf test --list <path> -t <name>` before running the host |
+| Browser mode is slow | reduce `-j`; each worker is a browser process |
+
 ## Writing a test
 
 ```js
