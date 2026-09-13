@@ -489,6 +489,7 @@ function loaderTable(
   options?: {|
     readonly loading?: boolean,
     readonly generateMetadata?: boolean,
+    readonly layout?: boolean,
   |},
 ) {
   component DataPage(data: mixed) {
@@ -522,11 +523,16 @@ function loaderTable(
         mdx: false,
         file: "app/slow/$page.js",
         page: () => Promise.resolve(page),
-        layouts: [() => Promise.resolve({ default: SiteLayout })],
+        layouts: options?.layout === false ? [] : [() => Promise.resolve({ default: SiteLayout })],
         loading:
           options?.loading === false
             ? []
-            : [{ above: 1, module: () => Promise.resolve({ default: Loading }) }],
+            : [
+                {
+                  above: options?.layout === false ? 0 : 1,
+                  module: () => Promise.resolve({ default: Loading }),
+                },
+              ],
       },
     ],
     notFound: [],
@@ -561,6 +567,34 @@ describe("rendering a route whose loader is slow", () => {
     const chunks = await chunksOf(result);
     const shell = chunks[0];
     expect(shell.text).toContain("the layout is here");
+    expect(shell.text).toContain("the fallback is here");
+    expect(shell.text).not.toContain("the page is here");
+    expect(shell.at < 120).toBe(true);
+
+    const rest = chunks
+      .slice(1)
+      .map((chunk) => chunk.text)
+      .join("");
+    expect(rest).toContain("the page is here");
+  });
+
+  it("sends a root fallback before a root loader resolves even without a layout", async () => {
+    const waited = deferred();
+    const renderer = createRenderer({
+      App: routerView("./app"),
+      ...loaderTable(waited.promise, { layout: false }),
+    });
+
+    let settled = false;
+    setTimeout(() => {
+      settled = true;
+      waited.resolve();
+    }, 120);
+    const result = await renderer.render("/slow", assets);
+
+    expect(settled).toBe(false);
+    const chunks = await chunksOf(result);
+    const shell = chunks[0];
     expect(shell.text).toContain("the fallback is here");
     expect(shell.text).not.toContain("the page is here");
     expect(shell.at < 120).toBe(true);
