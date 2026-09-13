@@ -45,12 +45,10 @@ pub struct ModuleClosure<'a> {
     /// Specifiers no source answered, each beside the file that imported it,
     /// sorted and de-duplicated.
     ///
-    /// Not all of these are holes. `react` is Flow's own `declare module` and
-    /// `node:fs` is a builtin; the walk has no builtin environment to ask, and
-    /// giving it one would make assembling a batch depend on merging the
-    /// library definitions. This list is for the caller that can go and find
-    /// more sources — reading `node_modules` for a bare specifier, say — and
-    /// then ask again.
+    /// A Flow builtin such as `react` or a project libdef is filtered out here
+    /// after the walk asks the builtin environment about the specifier. This
+    /// list is for the caller that can go and find more sources — reading
+    /// `node_modules` for a bare specifier, say — and then ask again.
     ///
     /// The importer is here and not deduplicated away because *where* a
     /// specifier was written decides what it means: Node resolves a bare
@@ -60,6 +58,14 @@ pub struct ModuleClosure<'a> {
     /// A caller handed a bare set of names could only ever find one copy.
     /// ubugeeei-prod/uf#486.
     pub unresolved: Vec<UnresolvedImport>,
+    /// What the walk paid to ask Flow's library definitions about imports.
+    ///
+    /// The closure does not need the builtin environment for relative imports
+    /// that resolve inside the batch, so this stays [`None`] until it sees a
+    /// specifier whose answer depends on Flow's libdefs. A caller that runs a
+    /// check after the walk can report this timing instead of the check's
+    /// timing, because whichever phase asks first is the one that pays.
+    pub builtins: Option<BuiltinsTiming>,
 }
 
 /// A specifier nothing in the batch answered, and the file that wrote it.

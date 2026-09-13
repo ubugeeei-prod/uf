@@ -11,7 +11,9 @@
 #![cfg(feature = "upstream-typecheck")]
 
 use tempfile::TempDir;
-use uf_check::{CheckCache, CheckLimits, Source, check_sources_cached, prepare_builtins};
+use uf_check::{
+    CheckCache, CheckLimits, Source, check_sources_cached, module_closure, prepare_builtins,
+};
 use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
 
 #[global_allocator]
@@ -28,6 +30,9 @@ const BATCH_CEILING: u64 = 4_100;
 /// Above the parser's own broken-file cost, below that cost plus rebuilding
 /// the per-call builtin environment.
 const PARSE_ERROR_CEILING: u64 = 500_000;
+
+/// Above a two-file closure walk, below #678's fixed per-call environment.
+const RELATIVE_CLOSURE_CEILING: u64 = 100_000;
 
 #[test]
 fn a_full_cache_hit_does_not_rebuild_the_check_environment() {
@@ -131,6 +136,44 @@ fn a_parse_error_cache_miss_does_not_build_the_check_environment() {
         "a parse-error cache miss took {} allocations, over the {PARSE_ERROR_CEILING} ceiling. \
          That usually means check::environment was rebuilt before the parser found there was \
          no file to infer.",
+        delta.allocations,
+    );
+}
+
+#[test]
+fn a_relative_only_module_closure_does_not_build_the_check_environment() {
+    let limits = CheckLimits::default().without_timeout();
+    let sources = [
+        Source::new("app.js", "// @flow\nimport { value } from './value.js';\n"),
+        Source::new("value.js", "// @flow\nexport const value: number = 42;\n"),
+    ];
+
+    let _window = Window::open();
+    CountingAllocator::enable();
+    let before = AllocSnapshot::capture();
+    let closure = module_closure(&["app.js"], &sources, &[], &limits).expect("closure");
+    let after = AllocSnapshot::capture();
+    CountingAllocator::disable();
+
+    assert_eq!(
+        closure
+            .sources
+            .iter()
+            .map(|source| source.path)
+            .collect::<Vec<_>>(),
+        ["app.js", "value.js"]
+    );
+    assert!(
+        closure.builtins.is_none(),
+        "relative-only closure should not merge builtins"
+    );
+
+    let delta = after.delta_from(&before);
+    assert!(
+        delta.allocations <= RELATIVE_CLOSURE_CEILING,
+        "a relative-only closure took {} allocations, over the {RELATIVE_CLOSURE_CEILING} \
+         ceiling. That usually means the walk rebuilt check::environment before seeing an \
+         import that needed Flow's libdefs.",
         delta.allocations,
     );
 }
