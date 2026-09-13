@@ -669,7 +669,10 @@ fn shipped_package_contains_no_flow_declaration_files() {
 fn shipped_package_contains_only_modules_and_manifests() {
     let offenders = shipped_files()
         .into_iter()
-        .filter(|path| path.extension() != Some("js") && path.file_name() != Some("package.json"))
+        .filter(|path| {
+            !matches!(path.extension(), Some("js" | "cjs"))
+                && path.file_name() != Some("package.json")
+        })
         .collect::<Vec<_>>();
 
     assert!(

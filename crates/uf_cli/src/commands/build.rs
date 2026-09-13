@@ -1088,15 +1088,20 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
                 "reason": "Native rendering still needs the renderer/host-config contract before the navigator can mount screens"
             },
             "transform": {
-                "status": "pending",
+                "status": "implemented",
                 "kind": "metro",
                 "platform": target.as_str(),
                 "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
+                "pipeline": ["flow", "react-compiler", "stylex-css-refusal", "metro-babel"],
                 "config": {
                     "package": "@uniflowed/react-native/metro",
-                    "helper": "withUniflowedMetro"
+                    "helper": "withUniflowedMetro",
+                    "transformer": "@uniflowed/react-native/metro-transformer.cjs"
                 },
-                "reason": "React Native builds still need a Metro/native transformer contract"
+                "stylex": {
+                    "css": "refused",
+                    "reason": "React Native Metro bundles cannot attach StyleX CSS output yet"
+                }
             },
         }),
     }
@@ -1438,18 +1443,27 @@ mod tests {
                 contract["router"]["helper"],
                 serde_json::json!("createNativeRouter")
             );
-            assert_eq!(
-                contract["transform"]["status"],
-                serde_json::json!("pending")
-            );
             assert_eq!(contract["transform"]["kind"], serde_json::json!("metro"));
             assert_eq!(
                 contract["transform"]["platform"],
                 serde_json::json!(platform)
             );
             assert_eq!(
+                contract["transform"]["status"],
+                serde_json::json!("implemented")
+            );
+            assert_eq!(
                 contract["transform"]["sourceExtensions"],
                 serde_json::json!(["js", "jsx", "mjs", "cjs"])
+            );
+            assert_eq!(
+                contract["transform"]["pipeline"],
+                serde_json::json!([
+                    "flow",
+                    "react-compiler",
+                    "stylex-css-refusal",
+                    "metro-babel"
+                ])
             );
             assert_eq!(
                 contract["transform"]["config"]["package"],
@@ -1458,6 +1472,14 @@ mod tests {
             assert_eq!(
                 contract["transform"]["config"]["helper"],
                 serde_json::json!("withUniflowedMetro")
+            );
+            assert_eq!(
+                contract["transform"]["config"]["transformer"],
+                serde_json::json!("@uniflowed/react-native/metro-transformer.cjs")
+            );
+            assert_eq!(
+                contract["transform"]["stylex"]["css"],
+                serde_json::json!("refused")
             );
         }
     }
