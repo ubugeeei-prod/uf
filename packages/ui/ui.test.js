@@ -8879,6 +8879,9 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Popover.Body",
     "Popover.Trigger",
     "Progress",
+    "RadioGroup.Indicator",
+    "RadioGroup.Item",
+    "RadioGroup.Root",
     "Separator",
     "Sheet.Body",
     "Sheet.Close",
@@ -8968,9 +8971,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "NavigationMenu.List",
     "NavigationMenu.Root",
     "NavigationMenu.Trigger",
-    "RadioGroup.Indicator",
-    "RadioGroup.Item",
-    "RadioGroup.Root",
     "Resizable.Handle",
     "Resizable.Panel",
     "Resizable.PanelGroup",
@@ -9322,6 +9322,38 @@ describe("the escape hatch, exercised", () => {
     file.focus();
     fireEvent.keyDown(screen.getByRole("menubar"), { key: "ArrowRight" });
     expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveFocus();
+  });
+
+  it("renders a radio group through the hatch without losing its answer", async () => {
+    render(
+      <form data-testid="signup">
+        <RadioGroup.Root
+          aria-label="Plan"
+          defaultValue="free"
+          name="plan"
+          render={(props) => <section {...props} />}
+        >
+          <RadioGroup.Item render={(props) => <a href="#free" {...props} />} value="free">
+            Free
+            <RadioGroup.Indicator render={(props) => <i {...props} />}>chosen</RadioGroup.Indicator>
+          </RadioGroup.Item>
+          <RadioGroup.Item value="pro">Pro</RadioGroup.Item>
+        </RadioGroup.Root>
+      </form>,
+    );
+
+    const group = screen.getByRole("radiogroup", { name: "Plan" });
+    expect(group.tagName).toBe("SECTION");
+    const free = screen.getByRole("radio", { name: /Free/ });
+    expect(free.tagName).toBe("A");
+    expect(free.getAttribute("tabindex")).toBe("0");
+    expect(screen.getByText("chosen").tagName).toBe("I");
+    expect(screen.getByText("chosen")).toHaveAttribute("aria-hidden", "true");
+
+    await userEvent.click(screen.getByRole("radio", { name: "Pro" }));
+    expect(screen.getByRole("radio", { name: "Pro" })).toHaveAttribute("aria-checked", "true");
+    const form: $FlowFixMe = screen.getByTestId("signup");
+    expect(new form.ownerDocument.defaultView.FormData(form).get("plan")).toBe("pro");
   });
 });
 
