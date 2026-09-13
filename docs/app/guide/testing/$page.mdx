@@ -147,6 +147,79 @@ the other. The linter reads JSX that was never rendered and can see that an
 `<img>` has no `alt`; the audit reads what React produced and can see that the
 heading levels the component *actually* emitted skip a step.
 
+## React Native test trees
+
+`@uniflowed/react-native-testing` is for the half of React Native testing uf can
+state honestly today: querying a native renderer's JSON tree. It does **not**
+render React Native components yet. `render()` throws and says the missing
+piece is the native renderer and host config, so a test cannot silently pass
+through a DOM renderer and call itself native.
+
+What it accepts is the tree a host, app-owned harness or React Test Renderer
+already produced:
+
+```js
+// @flow
+import { createNativeScreen } from "@uniflowed/react-native-testing";
+import { expect, it } from "@uniflowed/test";
+
+const tree = {
+  type: "View",
+  props: { testID: "root" },
+  children: [
+    {
+      type: "Pressable",
+      props: {
+        accessibilityLabel: "Save changes",
+        accessibilityState: { busy: true, disabled: true },
+        testID: "save",
+      },
+      children: [{ type: "Text", props: {}, children: ["Save"] }],
+    },
+    {
+      type: "Switch",
+      props: {
+        accessibilityLabel: "Enabled",
+        accessibilityState: { checked: "mixed", selected: true },
+      },
+      children: [],
+    },
+  ],
+};
+
+it("queries the native tree by role and state", () => {
+  const screen = createNativeScreen(tree);
+
+  expect(screen.getByRole("button", { name: "Save changes", disabled: true }).props?.testID).toBe(
+    "save",
+  );
+  expect(screen.getByRole("switch", { checked: "mixed", selected: true }).type).toBe("Switch");
+});
+```
+
+The role mapping is intentionally small and visible: `Pressable` and `Button`
+are `button`, `Switch` is `switch`, `TextInput` is `textbox`, `Image` is
+`image`, and `Text` is `text`. `accessibilityRole` or `role` wins over that
+default. The accessible name is `accessibilityLabel` first, then the text
+content of the node's descendants.
+
+`getByRole` takes the state filters React Native exposes through
+`accessibilityState`: `busy`, `checked`, `disabled`, `expanded` and `selected`.
+`disabled` also reads the top-level `disabled` prop, because native components
+commonly put it there. A missing state reads as false, not as "unknown", so
+`queryByRole("button", { disabled: false })` is the way to ask for an enabled
+button.
+
+The helpers accept a single root or a fragment-shaped array of roots. Text
+queries avoid the duplicate parent-and-child match: a `Text` node whose child
+already matches the string is not reported a second time for the same visible
+text.
+
+Unknown options are refused. `pressed` is not silently ignored on a native role
+query, because a test that asks for a pressed button and gets any button back
+has already lost the thing it meant to assert. Add the state to the helper
+first, or assert on the returned props yourself.
+
 ## Replacing a module
 
 `fn()` and `uft.spyOn` replace a method on an object a test can reach. A

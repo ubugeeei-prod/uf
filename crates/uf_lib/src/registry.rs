@@ -170,6 +170,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             Stability::Experimental,
             &[
                 "NativeTestingUnsupportedError",
+                "accessibilityStateOf",
                 "accessibleName",
                 "createNativeScreen",
                 "render",

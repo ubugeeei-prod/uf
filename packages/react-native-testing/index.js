@@ -10,9 +10,22 @@
 
 export type NativeText = string | number;
 
+export type NativeCheckedState = boolean | "mixed";
+
+export type NativeAccessibilityState = {
+  readonly busy?: ?boolean,
+  readonly checked?: ?NativeCheckedState,
+  readonly disabled?: ?boolean,
+  readonly expanded?: ?boolean,
+  readonly selected?: ?boolean,
+  readonly [key: string]: mixed,
+};
+
 export type NativeProps = {
   readonly accessibilityLabel?: ?string,
   readonly accessibilityRole?: ?string,
+  readonly accessibilityState?: ?NativeAccessibilityState,
+  readonly disabled?: ?boolean,
   readonly role?: ?string,
   readonly testID?: ?string,
   readonly [key: string]: mixed,
@@ -26,6 +39,8 @@ export type NativeElement = {
 
 export type NativeNode = null | void | boolean | NativeText | NativeElement;
 
+export type NativeTree = NativeNode | $ReadOnlyArray<NativeNode>;
+
 export type NativeMatcher = string | RegExp | ((value: string, node: NativeElement) => boolean);
 
 export type NativeQueryOptions = {
@@ -35,6 +50,11 @@ export type NativeQueryOptions = {
 export type NativeRoleOptions = {
   readonly name?: NativeMatcher,
   readonly exact?: boolean,
+  readonly busy?: boolean,
+  readonly checked?: NativeCheckedState,
+  readonly disabled?: boolean,
+  readonly expanded?: boolean,
+  readonly selected?: boolean,
 };
 
 export type NativeQueries = {
@@ -73,31 +93,59 @@ export function render(): empty {
   );
 }
 
-export function createNativeScreen(root: NativeNode): NativeQueries {
+export function createNativeScreen(root: NativeTree): NativeQueries {
   return within(root);
 }
 
-export function within(root: NativeNode): NativeQueries {
+export function within(root: NativeTree): NativeQueries {
   return {
-    getByText: (matcher, options) =>
-      one(byText(root, matcher, options), "text", describeMatcher(matcher)),
-    queryByText: (matcher, options) =>
-      optional(byText(root, matcher, options), "text", describeMatcher(matcher)),
-    getAllByText: (matcher, options) =>
-      many(byText(root, matcher, options), "text", describeMatcher(matcher)),
-    getByRole: (role, options) => one(byRole(root, role, options), "role", role),
-    queryByRole: (role, options) => optional(byRole(root, role, options), "role", role),
-    getAllByRole: (role, options) => many(byRole(root, role, options), "role", role),
+    getByText: (matcher, options) => {
+      rejectUnknownOptions("getByText", options, NATIVE_QUERY_OPTION_KEYS);
+      return one(byText(root, matcher, options), "text", describeMatcher(matcher));
+    },
+    queryByText: (matcher, options) => {
+      rejectUnknownOptions("queryByText", options, NATIVE_QUERY_OPTION_KEYS);
+      return optional(byText(root, matcher, options), "text", describeMatcher(matcher));
+    },
+    getAllByText: (matcher, options) => {
+      rejectUnknownOptions("getAllByText", options, NATIVE_QUERY_OPTION_KEYS);
+      return many(byText(root, matcher, options), "text", describeMatcher(matcher));
+    },
+    getByRole: (role, options) => {
+      rejectUnknownOptions("getByRole", options, NATIVE_ROLE_OPTION_KEYS);
+      return one(byRole(root, role, options), "role", role);
+    },
+    queryByRole: (role, options) => {
+      rejectUnknownOptions("queryByRole", options, NATIVE_ROLE_OPTION_KEYS);
+      return optional(byRole(root, role, options), "role", role);
+    },
+    getAllByRole: (role, options) => {
+      rejectUnknownOptions("getAllByRole", options, NATIVE_ROLE_OPTION_KEYS);
+      return many(byRole(root, role, options), "role", role);
+    },
     getByTestId: (testID) => one(byTestId(root, testID), "testID", testID),
     queryByTestId: (testID) => optional(byTestId(root, testID), "testID", testID),
     getAllByTestId: (testID) => many(byTestId(root, testID), "testID", testID),
   };
 }
 
-export function textContent(node: NativeNode): string {
+const NATIVE_QUERY_OPTION_KEYS: $ReadOnlyArray<string> = ["exact"];
+const NATIVE_ROLE_OPTION_KEYS: $ReadOnlyArray<string> = [
+  "busy",
+  "checked",
+  "disabled",
+  "exact",
+  "expanded",
+  "name",
+  "selected",
+];
+
+export function textContent(node: NativeTree): string {
+  if (Array.isArray(node)) return node.map((child) => textContent(child)).join("");
   if (typeof node === "string" || typeof node === "number") return String(node);
-  if (!isElement(node)) return "";
-  return (node.children ?? []).map((child) => textContent(child)).join("");
+  const element = elementOf(node);
+  if (element == null) return "";
+  return (element.children ?? []).map((child) => textContent(child)).join("");
 }
 
 export function accessibleName(node: NativeElement): string {
@@ -125,8 +173,34 @@ export function roleOf(node: NativeElement): string | null {
   }
 }
 
+export function accessibilityStateOf(node: NativeElement): NativeAccessibilityState {
+  const state = node.props?.accessibilityState ?? {};
+  const disabled = state.disabled ?? node.props?.disabled;
+  return {
+    busy: state.busy ?? false,
+    checked: state.checked ?? false,
+    disabled: disabled ?? false,
+    expanded: state.expanded ?? false,
+    selected: state.selected ?? false,
+  };
+}
+
+function rejectUnknownOptions(query: string, options: mixed, known: $ReadOnlyArray<string>): void {
+  if (options == null) return;
+  if (typeof options !== "object") {
+    throw new Error(`${query}: the options are ${String(options)}, and an object was expected`);
+  }
+  for (const key of Object.keys(options)) {
+    if (!known.includes(key)) {
+      throw new Error(
+        `${query}: "${key}" is not an option this query takes. It takes ${known.join(", ")}.`,
+      );
+    }
+  }
+}
+
 function byText(
-  root: NativeNode,
+  root: NativeTree,
   matcher: NativeMatcher,
   options?: NativeQueryOptions,
 ): $ReadOnlyArray<NativeElement> {
@@ -134,43 +208,53 @@ function byText(
     const value = textContent(node);
     if (value === "") return false;
     if (!matches(matcher, value, node, options?.exact ?? true)) return false;
-    return !(node.children ?? []).some(
-      (child) =>
-        isElement(child) && matches(matcher, textContent(child), child, options?.exact ?? true),
-    );
+    return !(node.children ?? []).some((child) => {
+      const element = elementOf(child);
+      return (
+        element != null && matches(matcher, textContent(element), element, options?.exact ?? true)
+      );
+    });
   });
 }
 
 function byRole(
-  root: NativeNode,
+  root: NativeTree,
   role: string,
   options?: NativeRoleOptions,
 ): $ReadOnlyArray<NativeElement> {
   return allElements(root).filter((node) => {
     if (roleOf(node) !== role) return false;
+    if (!stateMatches(node, options)) return false;
     return options?.name == null
       ? true
       : matches(options.name, accessibleName(node), node, options.exact ?? true);
   });
 }
 
-function byTestId(root: NativeNode, testID: string): $ReadOnlyArray<NativeElement> {
+function byTestId(root: NativeTree, testID: string): $ReadOnlyArray<NativeElement> {
   return allElements(root).filter((node) => node.props?.testID === testID);
 }
 
-function allElements(root: NativeNode): Array<NativeElement> {
-  const found = [];
-  const visit = (node: NativeNode) => {
-    if (!isElement(node)) return;
-    found.push(node);
-    for (const child of node.children ?? []) visit(child);
+function allElements(root: NativeTree): Array<NativeElement> {
+  const found: Array<NativeElement> = [];
+  const visit = (node: NativeTree) => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child);
+      return;
+    }
+    const element = elementOf(node);
+    if (element == null) return;
+    found.push(element);
+    for (const child of element.children ?? []) visit(child);
   };
   visit(root);
   return found;
 }
 
-function isElement(node: NativeNode): boolean %checks {
-  return node !== null && typeof node === "object" && typeof node.type === "string";
+function elementOf(node: NativeNode): NativeElement | null {
+  if (node === null || typeof node !== "object") return null;
+  const candidate: $FlowFixMe = node;
+  return typeof candidate.type === "string" ? candidate : null;
 }
 
 function matches(
@@ -182,6 +266,18 @@ function matches(
   if (typeof matcher === "function") return matcher(value, node);
   if (matcher instanceof RegExp) return matcher.test(value);
   return exact ? value === matcher : value.toLowerCase().includes(matcher.toLowerCase());
+}
+
+function stateMatches(node: NativeElement, options?: NativeRoleOptions): boolean {
+  if (options == null) return true;
+  const state = accessibilityStateOf(node);
+  return (
+    (options.busy == null || state.busy === options.busy) &&
+    (options.checked == null || state.checked === options.checked) &&
+    (options.disabled == null || state.disabled === options.disabled) &&
+    (options.expanded == null || state.expanded === options.expanded) &&
+    (options.selected == null || state.selected === options.selected)
+  );
 }
 
 function one(values: $ReadOnlyArray<NativeElement>, kind: string, label: string): NativeElement {
