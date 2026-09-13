@@ -34,6 +34,11 @@ const PARSE_ERROR_CEILING: u64 = 500_000;
 /// Above a two-file closure walk, below #678's fixed per-call environment.
 const RELATIVE_CLOSURE_CEILING: u64 = 100_000;
 
+/// Above the nightly/all-features extensionless-miss closure cost, below the
+/// fixed environment cost #678 is about. `resolve::tests` keeps the narrower
+/// per-fallback candidate allocation guard.
+const EXTENSIONLESS_MISS_CLOSURE_CEILING: u64 = 10_000;
+
 #[test]
 fn a_full_cache_hit_does_not_rebuild_the_check_environment() {
     let project = TempDir::new().unwrap();
@@ -174,6 +179,46 @@ fn a_relative_only_module_closure_does_not_build_the_check_environment() {
         "a relative-only closure took {} allocations, over the {RELATIVE_CLOSURE_CEILING} \
          ceiling. That usually means the walk rebuilt check::environment before seeing an \
          import that needed Flow's libdefs.",
+        delta.allocations,
+    );
+}
+
+#[test]
+fn an_extensionless_missing_closure_reuses_resolution_candidate_storage() {
+    let limits = CheckLimits::default().without_timeout();
+    let imports = (0..128)
+        .map(|index| format!("import './missing{index}';\n"))
+        .collect::<String>();
+    let source = format!("// @flow\n{imports}");
+    let sources = [Source::new("app.js", &source)];
+
+    let _window = Window::open();
+    CountingAllocator::enable();
+    let before = AllocSnapshot::capture();
+    let closure = module_closure(&["app.js"], &sources, &[], &limits).expect("closure");
+    let after = AllocSnapshot::capture();
+    CountingAllocator::disable();
+
+    assert_eq!(
+        closure
+            .sources
+            .iter()
+            .map(|source| source.path)
+            .collect::<Vec<_>>(),
+        ["app.js"]
+    );
+    assert_eq!(closure.unresolved.len(), 128);
+    assert!(
+        closure.builtins.is_none(),
+        "extensionless relative misses should not merge builtins"
+    );
+
+    let delta = after.delta_from(&before);
+    assert!(
+        delta.allocations <= EXTENSIONLESS_MISS_CLOSURE_CEILING,
+        "an extensionless-missing closure took {} allocations, over the \
+         {EXTENSIONLESS_MISS_CLOSURE_CEILING} ceiling. That usually means path resolution is \
+         allocating a fresh candidate for every extension and index fallback.",
         delta.allocations,
     );
 }

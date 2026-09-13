@@ -123,15 +123,31 @@ impl ModuleIndex {
     /// `exports` map names goes through [`Self::lookup`] instead, because that
     /// is a file rather than a path to search from.
     pub(super) fn resolve_file(&self, base: &str) -> Option<usize> {
-        self.lookup(base)
-            .or_else(|| self.with_suffixes(base, &IMPLICIT_EXTENSIONS, ""))
-            .or_else(|| self.with_suffixes(base, &INDEX_BASENAMES, "/"))
+        if let Some(index) = self.lookup(base) {
+            return Some(index);
+        }
+
+        let mut candidate = String::with_capacity(base.len() + 1 + "index.jsx".len());
+        self.with_suffixes(base, &IMPLICIT_EXTENSIONS, "", &mut candidate)
+            .or_else(|| self.with_suffixes(base, &INDEX_BASENAMES, "/", &mut candidate))
     }
 
-    fn with_suffixes(&self, base: &str, suffixes: &[&str], separator: &str) -> Option<usize> {
-        suffixes
-            .iter()
-            .find_map(|suffix| self.lookup(&format!("{base}{separator}{suffix}")))
+    fn with_suffixes(
+        &self,
+        base: &str,
+        suffixes: &[&str],
+        separator: &str,
+        candidate: &mut String,
+    ) -> Option<usize> {
+        candidate.clear();
+        candidate.push_str(base);
+        candidate.push_str(separator);
+        let prefix_len = candidate.len();
+        suffixes.iter().find_map(|suffix| {
+            candidate.truncate(prefix_len);
+            candidate.push_str(suffix);
+            self.lookup(candidate)
+        })
     }
 
     /// The source at exactly this path: no extension, no `index`.
@@ -177,6 +193,10 @@ fn normalize(path: &str) -> CompactString {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+
+    #[global_allocator]
+    static GLOBAL: CountingAllocator = CountingAllocator::new();
 
     #[test]
     fn a_sibling_resolves_against_the_importing_directory() {
@@ -312,6 +332,30 @@ mod tests {
         let index = ModuleIndex::new(["a.js"]);
 
         assert_eq!(index.resolve("a.js", "./missing.js"), None);
+    }
+
+    #[test]
+    fn repeated_extensionless_misses_reuse_one_candidate_buffer_per_resolution() {
+        let index = ModuleIndex::new(["app.js"]);
+        let bases: Vec<String> = (0..128).map(|index| format!("missing{index}")).collect();
+
+        let _window = Window::open();
+        CountingAllocator::enable();
+        let before = AllocSnapshot::capture();
+        for base in &bases {
+            assert_eq!(index.resolve_file(base), None);
+        }
+        let after = AllocSnapshot::capture();
+        CountingAllocator::disable();
+
+        let delta = after.delta_from(&before);
+        assert!(
+            delta.allocations <= 160,
+            "128 extensionless misses took {} allocations, over the 160 ceiling. \
+             That usually means path resolution is allocating a fresh candidate for \
+             every extension and index fallback.",
+            delta.allocations,
+        );
     }
 
     #[test]
