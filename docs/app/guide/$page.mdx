@@ -49,6 +49,41 @@ runner and the formatter together.
 **One command.** `uf dev`, `uf build`, `uf test`, `uf fmt`, `uf lint`,
 `uf check` — nothing to add to `package.json` for any of them.
 
+## The quality bar
+
+uf is not trying to win by adding a wrapper around every tool people already
+run. The bar is that the surfaces a Flow React project touches all agree about
+the same source file, and that the agreement is visible from commands you can
+put in CI.
+
+| Surface | What should be true | How to check it |
+| --- | --- | --- |
+| Formatting | Flow syntax is printed by the same parser that the rest of the toolchain reads | `uf fmt --check` |
+| Linting | Framework mistakes are reported before a browser or bundler can hide them | `uf lint --json` |
+| Type checking | Package exports, route declarations and generated surfaces resolve through Flow, not a parallel type story | `uf check` |
+| Testing | Discovery, scheduling and reporting are owned by Rust; JavaScript only runs the test bodies | `uf test --list`, then `uf test` |
+| Building | The Vite graph receives the same transforms, routes and RSC analysis the other commands saw | `uf build --size-report` |
+
+That is why the docs are intentionally specific about losses and gaps. A page
+that says "implemented" should point at a command, a fixture, or a public package
+contract. A page that says "pending" should say what is missing, not turn a
+roadmap item into a feature by changing the tense.
+
+For day-to-day work, the tight loop is:
+
+```console
+$ uf fmt --check
+$ uf lint --json
+$ uf check
+$ uf test --list
+$ uf test
+```
+
+Those commands do not prove a deployment platform, a native app shell or a
+Flight payload. They prove the part uf owns: one parser, one route model, one
+set of framework diagnostics, one test schedule, and one report a machine can
+read.
+
 ## What it does not do
 
 uf does not replace Vite, and does not want to. The dev server and the
