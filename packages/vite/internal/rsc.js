@@ -202,7 +202,12 @@ function slotPredicate(needed) {
     }
     for (const route of slot.routes) {
       if (answer) break;
-      if (needed(route.page) || route.layouts.some(needed) || route.slots.some(needsSlot)) {
+      if (
+        needed(route.page) ||
+        route.layouts.some(needed) ||
+        (route.templates ?? []).some((entry) => needed(entry.module)) ||
+        route.slots.some(needsSlot)
+      ) {
         answer = true;
       }
     }
