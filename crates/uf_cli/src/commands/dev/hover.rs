@@ -245,8 +245,12 @@ fn describe_native_module(module: &NativeModule) -> String {
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_else(|| String::from("unknown"));
+    let segment = serde_json::to_value(module.segment)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| String::from("uncategorized"));
 
-    let mut markdown = format!("A uf `{kind}` module, {stability}.");
+    let mut markdown = format!("A uf `{kind}` module in the `{segment}` segment, {stability}.");
     if !module.flow_exports.is_empty() {
         let exports = module
             .flow_exports

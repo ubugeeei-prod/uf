@@ -11,6 +11,14 @@ use uf_infra::InlineVec;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
+pub enum NativeModuleSegment {
+    Core,
+    Toolchain,
+    Framework,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum NativeModuleKind {
     Data,
     Effect,
@@ -35,6 +43,7 @@ pub enum Stability {
 #[serde(rename_all = "camelCase")]
 pub struct NativeModule {
     pub specifier: CompactString,
+    pub segment: NativeModuleSegment,
     pub kind: NativeModuleKind,
     pub stability: Stability,
     pub flow_exports: InlineVec<CompactString, 8>,
@@ -49,6 +58,7 @@ impl NativeModule {
     ) -> Self {
         Self {
             specifier: specifier.to_compact_string(),
+            segment: segment_for(specifier, kind),
             kind,
             stability,
             flow_exports: exports
@@ -56,6 +66,42 @@ impl NativeModule {
                 .map(ToCompactString::to_compact_string)
                 .collect(),
         }
+    }
+}
+
+fn segment_for(specifier: &str, kind: NativeModuleKind) -> NativeModuleSegment {
+    match specifier {
+        "@uniflowed/core"
+        | "@uniflowed/config"
+        | "@uniflowed/host"
+        | "@uniflowed/jsx-runtime"
+        | "@uniflowed/lib"
+        | "@uniflowed/runtime"
+        | "@uniflowed/std" => NativeModuleSegment::Core,
+        "@uniflowed/browser"
+        | "@uniflowed/cli"
+        | "@uniflowed/lint"
+        | "@uniflowed/mock"
+        | "@uniflowed/pm"
+        | "@uniflowed/prepare"
+        | "@uniflowed/react-native-testing"
+        | "@uniflowed/react-testing"
+        | "@uniflowed/rm"
+        | "@uniflowed/story"
+        | "@uniflowed/test"
+        | "@uniflowed/testing"
+        | "@uniflowed/vite"
+        | "@uniflowed/vrt" => NativeModuleSegment::Toolchain,
+        _ => match kind {
+            NativeModuleKind::Runtime | NativeModuleKind::Std => NativeModuleSegment::Core,
+            NativeModuleKind::Testing => NativeModuleSegment::Toolchain,
+            NativeModuleKind::Data
+            | NativeModuleKind::Effect
+            | NativeModuleKind::Framework
+            | NativeModuleKind::Hooks
+            | NativeModuleKind::Style
+            | NativeModuleKind::Ui => NativeModuleSegment::Framework,
+        },
     }
 }
 

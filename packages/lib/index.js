@@ -18,8 +18,11 @@ export type NativeModuleKind =
   | "testing"
   | "ui";
 
+export type NativeModuleSegment = "core" | "toolchain" | "framework";
+
 export type NativeModule = {
   readonly specifier: string,
+  readonly segment: NativeModuleSegment,
   readonly kind: NativeModuleKind,
   readonly stability: "experimental" | "planned" | "stable",
   readonly flowExports: $ReadOnlyArray<string>,

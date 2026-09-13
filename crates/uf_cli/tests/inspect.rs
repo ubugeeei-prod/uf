@@ -121,6 +121,19 @@ fn inspect_reports_zero_config_defaults() {
             .iter()
             .any(|module| module["specifier"] == "@uniflowed/std/tui")
     );
+    let native_modules = value["nativeModules"].as_array().unwrap();
+    let segment_of = |specifier: &str| {
+        native_modules
+            .iter()
+            .find(|module| module["specifier"] == specifier)
+            .unwrap_or_else(|| panic!("nativeModules names {specifier}"))["segment"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(segment_of("@uniflowed/core"), "core");
+    assert_eq!(segment_of("@uniflowed/test"), "toolchain");
+    assert_eq!(segment_of("@uniflowed/router"), "framework");
     assert_eq!(value["config"]["config_path"], serde_json::Value::Null);
     assert_eq!(
         value["config"]["config"]["pm"]["packageManager"],

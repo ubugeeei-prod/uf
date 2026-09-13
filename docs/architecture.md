@@ -14,6 +14,19 @@ while using Vite Task for cached task execution and beating Bun Test/Vitest on
 native test throughput, runtime startup, package manager performance, and
 integrated feature coverage.
 
+## Package Segments
+
+The public `@uniflowed/*` catalogue is split into three product segments. The
+segment is emitted by `uf inspect --json` beside each native module so docs,
+editor hover, release triage and issue planning read the same shape instead of
+reconstructing it from package names.
+
+| Segment | Owns | Examples |
+| --- | --- | --- |
+| Core | Project model, Flow semantics, resolver data, capability host, config, diagnostics and task graph foundations | `@uniflowed/core`, `@uniflowed/config`, `@uniflowed/runtime`, `@uniflowed/std` |
+| Toolchain | The commands a developer runs: dev, build, check, lint, fmt, test, package management and runtime management | `@uniflowed/cli`, `@uniflowed/lint`, `@uniflowed/test`, `@uniflowed/pm`, `@uniflowed/prepare` |
+| Framework | The application layer: router, RSC, server actions, rendering modes, data, forms, state, a11y, UI and deployment-facing app APIs | `@uniflowed/router`, `@uniflowed/server`, `@uniflowed/query`, `@uniflowed/form`, `@uniflowed/ui` |
+
 ## Performance Contracts
 
 The performance target is not a slogan in this repository. Hot paths get

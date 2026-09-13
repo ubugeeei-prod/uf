@@ -10,8 +10,9 @@ mod registry;
 mod ui;
 
 pub use descriptor::{
-    FormContract, FormMutationPhase, HookDescriptor, NativeModule, NativeModuleKind, SchemaKind,
-    Stability, UiComponent, UiReadiness, UiRuntime, ValidationStep,
+    FormContract, FormMutationPhase, HookDescriptor, NativeModule, NativeModuleKind,
+    NativeModuleSegment, SchemaKind, Stability, UiComponent, UiReadiness, UiRuntime,
+    ValidationStep,
 };
 pub use registry::{
     CLIENT_MODULE_PACKAGE, CLIENT_MODULE_SUBPATHS, builtin_modules, hook_descriptors,

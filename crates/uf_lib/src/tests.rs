@@ -34,6 +34,7 @@ fn includes_react_flow_app_builtins() {
         .collect::<Vec<_>>();
 
     assert!(specs.contains(&"@uniflowed/router"));
+    assert!(specs.contains(&"@uniflowed/config"));
     assert!(specs.contains(&"@uniflowed/react"));
     assert!(specs.contains(&"@uniflowed/react-native"));
     assert!(specs.contains(&"@uniflowed/react-native-testing"));
@@ -67,6 +68,50 @@ fn includes_react_flow_app_builtins() {
     assert!(specs.contains(&"@uniflowed/motion"));
     assert!(specs.contains(&"@uniflowed/tui"));
     assert!(specs.contains(&"@uniflowed/cli"));
+}
+
+#[test]
+fn modules_are_grouped_into_issue_933_segments() {
+    let modules = builtin_modules();
+    let module = |specifier: &str| {
+        modules
+            .iter()
+            .find(|module| module.specifier == specifier)
+            .unwrap_or_else(|| panic!("registry names {specifier}"))
+    };
+
+    for specifier in ["@uniflowed/core", "@uniflowed/config", "@uniflowed/runtime"] {
+        assert_eq!(
+            module(specifier).segment,
+            NativeModuleSegment::Core,
+            "{specifier} belongs to the core segment"
+        );
+    }
+    for specifier in [
+        "@uniflowed/cli",
+        "@uniflowed/lint",
+        "@uniflowed/pm",
+        "@uniflowed/test",
+    ] {
+        assert_eq!(
+            module(specifier).segment,
+            NativeModuleSegment::Toolchain,
+            "{specifier} belongs to the toolchain segment"
+        );
+    }
+    for specifier in [
+        "@uniflowed/router",
+        "@uniflowed/react-native",
+        "@uniflowed/query",
+        "@uniflowed/form",
+        "@uniflowed/ui",
+    ] {
+        assert_eq!(
+            module(specifier).segment,
+            NativeModuleSegment::Framework,
+            "{specifier} belongs to the framework segment"
+        );
+    }
 }
 
 #[test]

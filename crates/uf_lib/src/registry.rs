@@ -60,6 +60,12 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             ],
         ),
         NativeModule::new(
+            "@uniflowed/config",
+            NativeModuleKind::Runtime,
+            Stability::Experimental,
+            &["defineConfig"],
+        ),
+        NativeModule::new(
             "@uniflowed/react",
             NativeModuleKind::Framework,
             Stability::Experimental,
