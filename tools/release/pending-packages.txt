@@ -48,6 +48,7 @@ i18n
 immer
 mock
 react-native
+react-native-testing
 state
 std
 story

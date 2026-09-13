@@ -37,7 +37,7 @@ case "$1" in
   view)
     [ -n "${NPM_ALL_PRESENT:-}" ] && { echo "$2"; exit 0; }
     case "$2" in
-      @uniflowed/react-native | @uniflowed/temporal | @uniflowed/std) exit 1 ;;
+      @uniflowed/react-native | @uniflowed/react-native-testing | @uniflowed/temporal | @uniflowed/std) exit 1 ;;
       *) echo "$2"; exit 0 ;;
     esac ;;
   publish) ;;
@@ -83,6 +83,12 @@ grep -q '^dry-run @uniflowed/react-native ' "${work}/pending.npm" \
 $(cat "${work}/pending.npm")"
 grep -q '^publish @uniflowed/react-native ' "${work}/pending.npm" \
   || fail "react-native was not published:
+$(cat "${work}/pending.npm")"
+grep -q '^dry-run @uniflowed/react-native-testing ' "${work}/pending.npm" \
+  || fail "react-native-testing was not dry-run packed:
+$(cat "${work}/pending.npm")"
+grep -q '^publish @uniflowed/react-native-testing ' "${work}/pending.npm" \
+  || fail "react-native-testing was not published:
 $(cat "${work}/pending.npm")"
 grep -q '^dry-run @uniflowed/temporal ' "${work}/pending.npm" \
   || fail "temporal was not dry-run packed:
