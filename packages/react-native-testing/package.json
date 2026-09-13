@@ -13,16 +13,24 @@
   "exports": {
     ".": "./index.js"
   },
+  "browser": {
+    "./internal/test-renderer.js": "./internal/browser/test-renderer.js"
+  },
   "files": [
     "index.js",
+    "internal",
     "!*.test.js"
   ],
   "peerDependencies": {
-    "react": ">=19",
-    "react-native": ">=0.87"
+    "react": "^19.3.0",
+    "react-native": ">=0.87",
+    "react-test-renderer": "^19.3.0"
   },
   "peerDependenciesMeta": {
     "react-native": {
+      "optional": true
+    },
+    "react-test-renderer": {
       "optional": true
     }
   }

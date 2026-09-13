@@ -3,9 +3,10 @@
 // `@uniflowed/react-native-testing` queries React Native test trees without
 // going through a DOM renderer.
 
-import { describe, expect, it } from "@uniflowed/test";
+import { createElement } from "react";
+import type * as React from "react";
+import { describe, expect, it, uft } from "@uniflowed/test";
 import {
-  NativeTestingUnsupportedError,
   accessibilityStateOf,
   accessibilityValueOf,
   accessibleName,
@@ -60,7 +61,70 @@ const tree: NativeElement = {
   ],
 };
 
+const hostElement: $FlowFixMe = createElement;
+
 describe("@uniflowed/react-native-testing", () => {
+  it("renders React elements with React Test Renderer into native queries", () => {
+    const screen = renderQuietly(
+      hostElement(
+        "Pressable",
+        {
+          accessibilityLabel: "Save changes",
+          accessibilityState: { disabled: true },
+          testID: "save",
+        },
+        hostElement("Text", null, "Save"),
+      ),
+    );
+
+    expect(screen.getByRole("button", { name: "Save changes", disabled: true }).props?.testID).toBe(
+      "save",
+    );
+    expect(screen.getByLabelText("Save changes").type).toBe("Pressable");
+    expect(screen.getByText("Save").type).toBe("Text");
+    expect(screen.toJSON()).toEqual({
+      type: "Pressable",
+      props: {
+        accessibilityLabel: "Save changes",
+        accessibilityState: { disabled: true },
+        testID: "save",
+      },
+      children: [{ type: "Text", props: {}, children: ["Save"] }],
+    });
+
+    screen.unmount();
+  });
+
+  it("keeps native queries fresh after rerender", () => {
+    const screen = renderQuietly(
+      hostElement("Text", { accessibilityLabel: "Status", testID: "status" }, "Loading"),
+    );
+
+    expect(screen.getByText("Loading").props?.testID).toBe("status");
+    screen.rerender(
+      hostElement("Text", { accessibilityLabel: "Status", testID: "status" }, "Done"),
+    );
+
+    expect(screen.queryByText("Loading")).toBe(null);
+    expect(screen.getByText("Done").props?.testID).toBe("status");
+    expect(screen.getByLabelText("Status").children).toEqual(["Done"]);
+
+    screen.unmount();
+  });
+
+  it("unmounts a rendered native tree", () => {
+    const screen = renderQuietly(hostElement("Text", null, "Gone"));
+
+    expect(screen.getByText("Gone").type).toBe("Text");
+    screen.unmount();
+
+    expect(screen.toJSON()).toBe(null);
+    expect(screen.queryByText("Gone")).toBe(null);
+    expect(() => screen.rerender(hostElement("Text", null, "Again"))).toThrow(
+      "cannot rerender an unmounted tree",
+    );
+  });
+
   it("queries text from a React Native test tree", () => {
     const screen = createNativeScreen(tree);
 
@@ -243,16 +307,13 @@ describe("@uniflowed/react-native-testing", () => {
       screen.getAllByLabelText("Search", { selector: "TextInput" } as $FlowFixMe),
     ).toThrow('"selector" is not an option this query takes');
   });
-
-  it("refuses render until a native renderer exists", () => {
-    let error = null;
-    try {
-      render();
-    } catch (caught) {
-      error = caught;
-    }
-
-    expect(error instanceof NativeTestingUnsupportedError).toBe(true);
-    expect(String(error?.message)).toContain("native renderer and host config");
-  });
 });
+
+function renderQuietly(ui: React.Node) {
+  const error = uft.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    return render(ui);
+  } finally {
+    error.mockRestore();
+  }
+}

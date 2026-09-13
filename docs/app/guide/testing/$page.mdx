@@ -205,13 +205,15 @@ heading levels the component *actually* emitted skip a step.
 ## React Native test trees
 
 `@uniflowed/react-native-testing` is for the half of React Native testing uf can
-state honestly today: querying a native renderer's JSON tree. It does **not**
-render React Native components yet. `render()` throws and says the missing
-piece is the native renderer and host config, so a test cannot silently pass
-through a DOM renderer and call itself native.
+state honestly today: querying a native renderer's JSON tree. It can also mount
+through React Test Renderer when the suite installs the optional
+`react-test-renderer` peer from the same React 19.3 release line declared by
+the package. That adapter is
+useful for component-level checks, but it is still JSON, not a native host
+config, layout engine, device, Expo app or React Navigation runtime.
 
-What it accepts is the tree a host, app-owned harness or React Test Renderer
-already produced:
+When another host, app-owned harness or renderer already produced the tree,
+pass that JSON directly:
 
 ```js
 // @flow
@@ -286,6 +288,59 @@ it("queries the native tree by role, state and value", () => {
 });
 ```
 
+When the matching React 19.3 `react-test-renderer` peer is present, `render(ui)`
+mounts the element through that JSON renderer and returns the same queries plus
+`rerender`, `unmount` and `toJSON`:
+
+```js
+// @flow
+import * as React from "react";
+import { render } from "@uniflowed/react-native-testing";
+import { expect, it } from "@uniflowed/test";
+
+it("queries a rendered native component", () => {
+  const screen = render(
+    React.createElement(
+      "Pressable",
+      {
+        accessibilityLabel: "Save changes",
+        accessibilityState: { disabled: true },
+        testID: "save",
+      },
+      React.createElement("Text", null, "Save"),
+    ),
+  );
+
+  expect(
+    screen.getByRole("button", {
+      name: "Save changes",
+      disabled: true,
+    }).props?.testID,
+  ).toBe("save");
+
+  screen.rerender(React.createElement("Text", null, "Saved"));
+  expect(screen.queryByText("Save")).toBe(null);
+  expect(screen.getByText("Saved").type).toBe("Text");
+  screen.unmount();
+});
+```
+
+`render()` deliberately refuses to hide the optional peer boundary. Without
+`react-test-renderer`, it raises `NativeTestingUnsupportedError` and asks the
+suite to install that peer or pass an already-produced tree to
+`createNativeScreen()`. Even with the peer installed, tests that need real
+native behaviour should be reported as an explicit host gap:
+
+```js
+// @flow
+import { it } from "@uniflowed/test";
+
+it.skipBecause(
+  "renders the settings screen on the native host",
+  "uf can query React Test Renderer JSON, but this suite needs a native host config.",
+);
+```
+
 The query contract is deliberately narrower than Testing Library's DOM contract,
 because the input is a React Native JSON tree rather than a document:
 
@@ -332,23 +387,10 @@ for a pressed button or a percentage and gets any matching role back has already
 lost the thing it meant to assert. Add the state or value field to the helper
 first, or assert on the returned props yourself.
 
-Until uf can start a native renderer, tests that need one should be reported as
-an explicit host gap rather than hidden inside a passing suite:
-
-```js
-// @flow
-import { it } from "@uniflowed/test";
-
-it.skipBecause(
-  "renders the settings screen on the native host",
-  "uf can query a native test tree, but this suite needs a React Native renderer and host config.",
-);
-```
-
 That shows up as a skipped test with the reason in the terminal report,
-`uf test --json` and JUnit. The query tests that can run on Node stay green, and
-the native-renderer contract is still visible instead of being translated into
-a TODO comment or a DOM-rendered substitute.
+`uf test --json` and JUnit. The JSON-level tests that can run on Node stay
+green, and the native-host contract is still visible instead of being translated
+into a TODO comment or a DOM-rendered substitute.
 
 ## Replacing a module
 

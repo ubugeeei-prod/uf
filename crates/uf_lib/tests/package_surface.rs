@@ -1240,11 +1240,14 @@ fn a_client_entry_never_imports_a_node_builtin() {
     /// a browser, where the DOM is already there. `story/collect.js` walks a
     /// project directory to find story files, which a browser has no way to do
     /// and no reason to want — the rendering half of that package imports
-    /// nothing from here.
+    /// nothing from here. `react-native-testing/internal/test-renderer.js`
+    /// keeps the optional React Test Renderer `createRequire` call behind a
+    /// browser-mapped helper so the package entry stays browser-clean.
     const SERVER_MODULES: &[&str] = &[
         "router/server.js",
         "router/handler.js",
         "react-testing/internal/render.js",
+        "react-native-testing/internal/test-renderer.js",
         "story/collect.js",
     ];
 

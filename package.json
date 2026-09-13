@@ -9,6 +9,7 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.12",
-    "axe-core": "^4.13.0"
+    "axe-core": "^4.13.0",
+    "react-test-renderer": "^19.3.0"
   }
 }
