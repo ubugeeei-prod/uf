@@ -157,6 +157,7 @@ app/dashboard/$layout.js            the frame, which renders both
 app/dashboard/$page.js              →  /dashboard          as `children`
 app/dashboard/members/$page.js      →  /dashboard/members  as `children`
 app/dashboard/@team/$default.js     the team slot when the URL says nothing
+app/dashboard/@team/$error.js       the team slot when it throws in the page
 app/dashboard/@team/members/$page.js  /dashboard/members   as `team`
 ```
 
@@ -198,9 +199,9 @@ Four rules, each refused by name rather than by silence:
   is what Next.js calls the page, and here the page always is `children`;
 - `$default.js` belongs directly inside a slot directory, and nowhere else;
 - a slot holds pages, layouts, templates, loading fallbacks, nested slots and
-  one default — `$error.js`, `$not-found.js`, `$route.js` or `$middleware.js`
-  inside one is refused, because uf's slots do not carry those boundaries or
-  request handlers of their own yet
+  one default — `$not-found.js`, `$route.js` or `$middleware.js` inside one is
+  refused, because uf's slots do not carry those request-level answers of
+  their own yet
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
 
 `$loading.js` in a slot is slot-local. It wraps the slot's matched page and the
@@ -219,6 +220,14 @@ slot behind its own fallback until `@team/members/$page.js` resolves. If the
 fallback should cover the whole dashboard instead, put `$loading.js` beside
 `app/dashboard/$layout.js`; that boundary wraps both `children` and every slot
 the layout receives.
+
+`$error.js` in a slot is slot-local in the browser. It catches an exception
+while that slot subtree renders and replaces only the slot's page, leaving the
+segment's `children` and the layout that received the slot mounted. Put the
+file beside the slot page it should guard, or higher inside the slot to cover
+everything below that point. A server render failure still resolves through the
+route's ordinary `$error.js`, because React's server renderer does not run class
+error boundaries during the shell render.
 
 A slot page's `loader` is not run — a slot's data has nowhere to be embedded for
 hydration — and a slot page that exports one says so rather than being handed

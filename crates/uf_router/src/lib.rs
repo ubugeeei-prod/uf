@@ -458,12 +458,13 @@ pub enum RouterError {
         /// The slot directory it is under, as it is written.
         slot: String,
     },
-    /// A boundary inside a `@slot` that still has no slot-local answer.
+    /// A not-found boundary inside a `@slot` that still has no slot-local
+    /// answer.
     ///
     /// A slot renders a page and the layouts under the slot. It may carry a
-    /// `$loading.js`, but it still has no error boundary of its own and no 404
-    /// of its own. Next.js gives a slot all three, and this is the part of
-    /// parallel routes uf has not built.
+    /// `$loading.js` and `$error.js`, but it still has no 404 of its own.
+    /// Next.js gives a slot all three, and this is the part of parallel routes
+    /// uf has not built.
     ///
     /// Refused rather than ignored, because the whole of ubugeeei-prod/uf#267
     /// is that a file the router never opens must not look like one it does.
@@ -471,8 +472,8 @@ pub enum RouterError {
     /// somebody writing the file will read it.
     #[error(
         "{file}: a `@slot` renders a page and the layouts inside the slot, and has no `{role}` of \
-         its own — uf's parallel routes do not carry per-slot boundaries yet, so this file would \
-         never be opened. Put it outside `{slot}`, where it covers the whole segment. \
+         its own — uf's parallel routes do not carry per-slot not-found boundaries yet, so this \
+         file would never be opened. Put it outside `{slot}`, where it covers the whole segment. \
          https://github.com/ubugeeei-prod/uf/issues/267"
     )]
     BoundaryInsideSlot {
@@ -486,8 +487,9 @@ pub enum RouterError {
     /// A boundary-like spelling inside a `@slot` that is not a uf route file.
     #[error(
         "{file}: `{file_name}` looks like a `{role}` boundary for a `@slot`, but it is not a uf \
-         route file there. Use `$loading.js` for slot loading; per-slot error and not-found \
-         boundaries are still not implemented. https://github.com/ubugeeei-prod/uf/issues/267"
+         route file there. Use `$loading.js` for slot loading and `$error.js` for slot errors; \
+         per-slot not-found boundaries are still not implemented. \
+         https://github.com/ubugeeei-prod/uf/issues/267"
     )]
     UnsupportedSlotBoundaryFile {
         /// The file, as it is written on disk.
@@ -881,9 +883,9 @@ fn slot_in(relative: &Utf8Path) -> Option<&str> {
 /// that layout receives, and it needs a name that is not one of the props the
 /// layout already has. A `$default.js` needs to be directly inside a slot,
 /// because that is the only question it answers. A `$route.js` or
-/// `$middleware.js` inside a slot has no request to see, and `$error.js` and
-/// `$not-found.js` still have no slot-local runtime to render into. `$loading.js`
-/// composes like a layout, so it is allowed.
+/// `$middleware.js` inside a slot has no request to see, and `$not-found.js`
+/// still has no slot-local runtime to render into. `$loading.js` and
+/// `$error.js` compose like layouts, so they are allowed.
 ///
 /// Private directories are pruned for the reason
 /// [`refuse_unsupported_directories`] prunes them: a leading `.` or `_` is a
@@ -989,9 +991,9 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
                 }
             }
             // What a slot does not have yet. `layout`, `template`, `loading`,
-            // `page` and `default` are what it does have, and a `story` is not
-            // the router's at all.
-            ReservedRole::NotFound | ReservedRole::Error => {
+            // `error`, `page` and `default` are what it does have, and a
+            // `story` is not the router's at all.
+            ReservedRole::NotFound => {
                 if let Some(slot) = slot_in(relative) {
                     return Err(RouterError::BoundaryInsideSlot {
                         role: role.as_str(),
@@ -1003,6 +1005,7 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
             ReservedRole::Layout
             | ReservedRole::Template
             | ReservedRole::Loading
+            | ReservedRole::Error
             | ReservedRole::Page
             | ReservedRole::Default
             | ReservedRole::Story => {}

@@ -463,15 +463,23 @@ export type RouteRecord = RoutingRouteRecord<
   LayoutModule,
   TemplateModule,
   LoadingModule,
+  ErrorModule,
 >;
 
-export type SlotRecord = RoutingSlotRecord<PageModule, LayoutModule, TemplateModule, LoadingModule>;
+export type SlotRecord = RoutingSlotRecord<
+  PageModule,
+  LayoutModule,
+  TemplateModule,
+  LoadingModule,
+  ErrorModule,
+>;
 
 export type SlotRouteRecord = RoutingSlotRouteRecord<
   PageModule,
   LayoutModule,
   TemplateModule,
   LoadingModule,
+  ErrorModule,
 >;
 
 export type TemplateRecord = RoutingTemplateRecord<TemplateModule>;
@@ -495,6 +503,16 @@ export type RouteMatch = RoutingRouteMatch<RouteRecord>;
 type ResolvedTemplate = {|
   readonly above: number,
   readonly module: TemplateModule,
+|};
+
+type ResolvedSlotErrorBoundary = {|
+  readonly above: number,
+  readonly module: ?ErrorModule,
+|};
+
+type SlotErrorBoundaryLoader = {|
+  readonly above: number,
+  readonly module: () => Promise<ErrorModule>,
 |};
 
 /**
@@ -609,6 +627,7 @@ export type ResolvedSlot = {|
   readonly layouts: $ReadOnlyArray<LayoutModule>,
   readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
   readonly templates: $ReadOnlyArray<ResolvedTemplate>,
+  readonly errorBoundary: ?ResolvedSlotErrorBoundary,
   readonly slots: $ReadOnlyArray<ResolvedSlot>,
 |};
 
@@ -871,6 +890,7 @@ async function resolveSlot(
     layouts: [],
     loading: [],
     templates: [],
+    errorBoundary: null,
     slots: [],
   };
 
@@ -886,7 +906,11 @@ async function resolveSlot(
     if (module == null) {
       return empty;
     }
-    return { ...empty, page: withoutLoader(module, record.defaultFile ?? record.name) };
+    return {
+      ...empty,
+      page: withoutLoader(module, record.defaultFile ?? record.name),
+      errorBoundary: await resolveSlotErrorBoundary(record.defaultErrorBoundary ?? null, 0),
+    };
   }
 
   const route = matched.route;
@@ -903,8 +927,9 @@ async function resolveSlot(
   if (loaded.length !== layouts.length) {
     return empty;
   }
-  const loading = await resolveLoading(route, loaded.length);
+  const loading = await resolveLoadingRecords(route.loading ?? [], loaded.length);
   const templates = await resolveTemplateRecords(route.templates ?? [], loaded.length);
+  const errorBoundary = await resolveSlotErrorBoundary(route.errorBoundary ?? null, loaded.length);
   return {
     name: record.name,
     above,
@@ -913,10 +938,29 @@ async function resolveSlot(
     layouts: loaded,
     loading,
     templates,
+    errorBoundary,
     // The slot's own layouts are what a nested slot is measured against, so
     // the count handed down is this slot's rather than the route's.
     slots: await resolveSlots(route.slots, pathname, loaded.length, matched.params),
   };
+}
+
+async function resolveSlotErrorBoundary(
+  boundary: ?SlotErrorBoundaryLoader,
+  layoutCount: number,
+): Promise<?ResolvedSlotErrorBoundary> {
+  if (boundary == null) {
+    return null;
+  }
+  const above = Math.min(boundary.above, layoutCount);
+  try {
+    return { module: await loadOnce(boundary.module), above };
+  } catch {
+    // Keep the declared depth even when the custom file fails to import. The
+    // framework fallback still contains the slot instead of escalating the
+    // page beside it.
+    return { module: null, above };
+  }
 }
 
 /**
@@ -1021,7 +1065,13 @@ async function resolveLoading(
   route: RouteRecord,
   layoutCount: number,
 ): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
-  const records = route.loading ?? [];
+  return resolveLoadingRecords(route.loading ?? [], layoutCount);
+}
+
+async function resolveLoadingRecords(
+  records: $ReadOnlyArray<LoadingRecord>,
+  layoutCount: number,
+): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
   if (records.length === 0) {
     return [];
   }
@@ -2636,6 +2686,17 @@ component SlotView(slot: ResolvedSlot) {
       }
       const Fallback = loadingComponent(boundary.module);
       element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
+    }
+    const errorBoundary = slot.errorBoundary;
+    if (errorBoundary != null && errorBoundary.above === depth) {
+      element = (
+        <RouteErrorBoundary
+          module={errorBoundary.module}
+          resetKey={`${resolved.pathname}:${slot.name}`}
+        >
+          {element}
+        </RouteErrorBoundary>
+      );
     }
     element = insideTemplates(element, templateContext, depth);
     if (depth > 0) {
