@@ -459,6 +459,163 @@ The frame points at the Flow source: the transform emits a source map, the
 worker runs with source maps on, and the runner's own stack frames are trimmed
 out so the top frame is yours.
 
+The summary is meant to be read after the run, not decoded:
+
+```text
+slowest files
+file                    duration
+app/TopicTabs.test.js      1.38s
+app/AddArticle.test.js     1.38s
+app/articles.test.js       267ms
+
+run   ························ 1.39s
+total ························ 1.39s
+
+passed    7
+failed    0
+skipped   1
+todo      0
+files     3
+workers   8
+schedule  2 recorded, 1 by size
+timings   .uf/test-timings.json
+host      node
+```
+
+`run` is the suite itself. `total` includes the surrounding work: reading the
+project, resolving the host, loading timings, writing reporters, and drawing the
+report. A gap between the two says "the tests were not the slow part". The
+`schedule` row tells you whether this was a warm schedule from recorded
+durations or a cold one from file size, and `host` names where the test bodies
+actually ran.
+
+### What runs where
+
+`uf test` keeps orchestration in Rust and execution in JavaScript:
+
+1. Rust reads the project and scans Flow source for declarations without
+   importing the modules.
+2. It applies path filters, `-t`, `.only`, `.skip` and `.todo`, then sorts files
+   longest-expected-first.
+3. It starts one worker per core by default, or the number from `-j`.
+4. Each worker imports a file through the same `uf transform` path the build
+   uses, runs the declarations, and streams structured events back.
+5. Rust owns retries, bail, file timeouts, the report, JUnit, JSON and coverage
+   threshold failures.
+
+That split is why a syntax or transform bug fails in the same place in tests and
+builds, while scheduling and reporting stay deterministic enough to compare in
+CI. A worker may serve more than one file, but every file starts from the same
+test state: spies are cleared, fake timers are restored, module stand-ins are
+dropped, and `stubEnv` / `stubGlobal` writes are put back.
+
+### Keeping the loop fast
+
+The fast local loop is usually three commands:
+
+```console
+$ uf test --list
+$ uf test app/cart -t "discount"
+$ uf test --watch app/cart
+```
+
+`--list` is not a dry run of the worker; it is the discovery view. It tells you
+which declarations are runnable, skipped, filtered, unsupported, or from
+another runner before a host is started. That is the cheap way to catch a bad
+path, a misspelled filter, or a `node:test` import that would otherwise look
+like "nothing ran".
+
+Path arguments are substring filters over files, and `-t` is a substring filter
+over the fully qualified name, including `describe` parents. Named paths
+override `.gitignore` on purpose, so an ignored fixture directory can still be
+tested by name; a path that matches no project file is refused, because a green
+run over a typo is worse than a red one.
+
+`--watch` re-runs what the changed file invalidated. It is for answering "did
+my edit break the nearby tests?", not for whole-project proof, so it cannot be
+combined with `--json` or `--coverage`: both promise a single report about one
+complete suite.
+
+### Timings and scheduling
+
+After a run, uf records completed file durations in
+`.uf/test-timings.json`. The next run uses those numbers to put expensive files
+first, because the slowest worker decides when a parallel suite finishes. A new
+file, or a run with no timings yet, falls back to source size. The summary says
+how many files were scheduled from each source.
+
+The timings file is a cache, not an input you have to curate. If it is missing,
+corrupt, too large, or contains a path or duration uf will not believe, the run
+schedules cold and says so. It is rewritten with only files still in the
+project, and failure to write it is a note rather than a failed test run.
+
+When a suite is short, `-j` is a performance knob rather than an automatic win:
+
+```console
+$ uf test -j 1      # serial, easiest to debug ordering-sensitive failures
+$ uf test -j 4      # often faster than all cores for tiny suites
+$ uf test --browser -j 2
+```
+
+Browser workers are full browser processes with scratch profiles, so `-j 2` may
+be the right CI value even on an eight-core runner. The terminal summary tells
+you how many workers actually ran and which files dominated the wall clock.
+
+### Host choice and skips
+
+The default host is the project's Capability JS Host:
+`app.runtime.capabilityJsHost.default`, with auto-detection if the project kept
+that on. `uf version` prints the host the project resolves to, and
+`uf explain test` is the fuller answer when a permission, loader or runtime
+question is involved.
+
+A missing host, a host without the requested capability, or a feature that would
+be silently partial is a command refusal. A test case that belongs in the suite
+but cannot run on the current host is a skip:
+
+```js
+it.skipBecause(
+  "collects coverage on Bun",
+  "coverage is V8 data written by Node today; keep the Bun contract visible until the host can provide it.",
+);
+```
+
+That distinction is the useful one in ecosystem work. Refusals say "this run
+would lie"; `skipBecause` says "this known contract is still absent here", and
+the reason survives in the terminal report, `--json` and JUnit.
+
+### Reports for CI
+
+CI usually wants two outputs:
+
+```console
+$ uf test --json > test-results.json
+$ uf test --reporter junit --reporter-outfile junit.xml
+```
+
+`--json` is uf's full document. It includes the resolved host, whether that host
+loads Flow and collects coverage, warm/cold scheduling counts, file statuses,
+case statuses, attempts, durations, captured output and unsupported
+declarations. Durations live in `durationMicros` fields so a program can ignore
+only those when comparing two runs.
+
+JUnit is intentionally narrower: one `testsuite` per file, one `testcase` per
+declaration, failures as `<failure>`, import/time-out/host failures as
+`<error>`, and skips with the skip reason as the `<skipped message>`. Use it
+for pull request annotations and CI test tabs; use `--json` when a job needs to
+make a policy decision.
+
+For coverage in CI, keep the project policy in `uf.config.js` and let the
+command only choose whether to measure:
+
+```console
+$ uf test --coverage --coverage-reporter lcov --coverage-reporter cobertura
+```
+
+Threshold misses fail with the same non-zero exit as a failing test. LCOV and
+Cobertura are files for other services; the JSON report grows a `coverage`
+object only when coverage was actually collected.
+
 ## Flags worth knowing
 
 | Flag | What it does |
@@ -466,13 +623,17 @@ out so the top frame is yours.
 | `-t PATTERN` | Only tests whose full name contains PATTERN |
 | `PATH...` | Only files whose path contains one of these |
 | `--watch` | Re-run what the change affected |
+| `--watch-interval MS` | Poll for watched changes at this interval |
 | `--bail[=N]` | Stop after N failures; N defaults to 1 |
 | `--retry N` | Re-run a failing test up to N more times |
-| `-j N` | Run at most N files at once; defaults to one per core |
+| `-j N`, `--threads N` | Run at most N files at once; defaults to one per core |
 | `--list` | Print what would run without running it |
 | `--json` | The whole report, machine-readable |
+| `--mode MODE` | Load `.env.<mode>` instead of `.env.test` |
 | `--browser` | Run every file in a real browser instead of a DOM shim |
 | `--coverage` | Measure which Flow lines the suite executed |
+| `--coverage-reporter FORMAT` | Write `text`, `lcov` or `cobertura`; repeat for more than one |
+| `--coverage-dir DIR` | Put coverage files somewhere other than `coverage/` |
 | `--reporter junit --reporter-outfile FILE` | Write the results as JUnit XML |
 
 ## Browser mode
