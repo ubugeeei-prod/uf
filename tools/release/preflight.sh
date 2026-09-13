@@ -58,11 +58,12 @@ send it. The binding is made as you, not as the workflow, so it is one command
 on a machine you are logged in on:
 
   npm login
+  tools/release/bootstrap-publish.sh
   tools/release/trust-npm.sh
 
-It is idempotent — a name that is already bound is reported and left alone —
-and it binds names that have never been published, which is what lets the first
-release go out over OIDC like every one after it.
+The bootstrap creates names that have never been published, and the trust step
+binds those names to this repository's workflow. Both are idempotent for names
+that are already in the state they need.
 
 Tagging before that leaves a release half-sent: the bound names publish and the
 first unbound one fails the job.

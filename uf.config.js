@@ -545,6 +545,18 @@ export default defineConfig({
     // it after publishing, because `uf@0.0.0-alpha.2` had a tag, a GitHub
     // release and nothing on npm, and nothing noticed. See #142.
     "release:verify": "tools/release/verify-npm.sh",
+    // The publish workflow cannot prove trusted-publisher bindings, but it can
+    // refuse a package name that is not on npm before any earlier package is
+    // sent. That keeps a missing bootstrap from becoming a half-sent release.
+    "release:publish-names": "tools/release/publish-names-exist.sh",
+    "release:publish-names:test": {
+      command: "tools/release/test-publish-names-exist.sh",
+      inputs: [
+        "tools/release/publish-names-exist.sh",
+        "tools/release/test-publish-names-exist.sh",
+        "tools/release/published-packages.txt",
+      ],
+    },
     // The offline half of it: a published package whose dependency is not
     // published resolves to nothing. No network, so `ci` runs it.
     "release:closure": {
@@ -900,6 +912,7 @@ export default defineConfig({
         "integrations",
         "ci:recipes",
         "ci:recipes:test",
+        "release:publish-names:test",
         "release:closure",
         "publishable",
         "publishable:test",
