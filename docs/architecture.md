@@ -817,11 +817,13 @@ uf's tree is a direct child of the *root* segment, and a document with one
 streams nothing at all: measured against React 19.2.8, `[<div>, <Suspense>]`
 writes its first byte when the boundary resolves, and the same tree with the
 boundary inside any host element writes it immediately. The payload's rows are
-inside a `<span hidden>` for that reason. A route whose `$loading.js` sits
-above no layout is in exactly the same position and is still affected;
-ubugeeei-prod/uf#519 carries it.
+inside a `<span hidden>` for that reason. A route whose `$loading.js` sits above
+no layout is the same shape, so `RouteView` gives that specific root fallback a
+minimal host frame before the stream reaches React. The element payload remains
+the open part of ubugeeei-prod/uf#519; the root fallback flush is not waiting on
+that graph split.
 
-Until that lands, which modules the browser gets is a decision a reader has to
+Which modules the browser gets is therefore still a decision a reader has to
 be able to see, and `"use client"` is a directive whose cost is invisible until
 somebody measures a bundle: it moves the module it is on and every module above
 it, and "every module above it" is a property of the whole graph rather than of
