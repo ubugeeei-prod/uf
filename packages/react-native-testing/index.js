@@ -84,6 +84,15 @@ export type NativeQueries = {
     matcher: NativeMatcher,
     options?: NativeQueryOptions,
   ) => $ReadOnlyArray<NativeElement>,
+  readonly getByLabelText: (matcher: NativeMatcher, options?: NativeQueryOptions) => NativeElement,
+  readonly queryByLabelText: (
+    matcher: NativeMatcher,
+    options?: NativeQueryOptions,
+  ) => NativeElement | null,
+  readonly getAllByLabelText: (
+    matcher: NativeMatcher,
+    options?: NativeQueryOptions,
+  ) => $ReadOnlyArray<NativeElement>,
   readonly getByRole: (role: string, options?: NativeRoleOptions) => NativeElement,
   readonly queryByRole: (role: string, options?: NativeRoleOptions) => NativeElement | null,
   readonly getAllByRole: (
@@ -127,6 +136,18 @@ export function within(root: NativeTree): NativeQueries {
     getAllByText: (matcher, options) => {
       rejectUnknownOptions("getAllByText", options, NATIVE_QUERY_OPTION_KEYS);
       return many(byText(root, matcher, options), "text", describeMatcher(matcher));
+    },
+    getByLabelText: (matcher, options) => {
+      rejectUnknownOptions("getByLabelText", options, NATIVE_QUERY_OPTION_KEYS);
+      return one(byLabelText(root, matcher, options), "label", describeMatcher(matcher));
+    },
+    queryByLabelText: (matcher, options) => {
+      rejectUnknownOptions("queryByLabelText", options, NATIVE_QUERY_OPTION_KEYS);
+      return optional(byLabelText(root, matcher, options), "label", describeMatcher(matcher));
+    },
+    getAllByLabelText: (matcher, options) => {
+      rejectUnknownOptions("getAllByLabelText", options, NATIVE_QUERY_OPTION_KEYS);
+      return many(byLabelText(root, matcher, options), "label", describeMatcher(matcher));
     },
     getByRole: (role, options) => {
       rejectUnknownRoleOptions("getByRole", options);
@@ -256,6 +277,33 @@ function byText(
   });
 }
 
+function byLabelText(
+  root: NativeTree,
+  matcher: NativeMatcher,
+  options?: NativeQueryOptions,
+): $ReadOnlyArray<NativeElement> {
+  const exact = options?.exact ?? true;
+  const found: Array<NativeElement> = [];
+  const visit = (node: NativeTree, insideMatch: boolean) => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, insideMatch);
+      return;
+    }
+    const element = elementOf(node);
+    if (element == null) return;
+    const value = accessibleName(element);
+    const matched = value !== "" && matches(matcher, value, element, exact);
+    const queryable = hasExplicitLabel(element) || roleOf(element) != null;
+    const current = matched && queryable && !insideMatch;
+    if (current) {
+      found.push(element);
+    }
+    for (const child of element.children ?? []) visit(child, insideMatch || current);
+  };
+  visit(root, false);
+  return found;
+}
+
 function byRole(
   root: NativeTree,
   role: string,
@@ -273,6 +321,11 @@ function byRole(
 
 function byTestId(root: NativeTree, testID: string): $ReadOnlyArray<NativeElement> {
   return allElements(root).filter((node) => node.props?.testID === testID);
+}
+
+function hasExplicitLabel(node: NativeElement): boolean {
+  const label = node.props?.accessibilityLabel;
+  return typeof label === "string" && label !== "";
 }
 
 function allElements(root: NativeTree): Array<NativeElement> {

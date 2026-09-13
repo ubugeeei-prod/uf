@@ -235,6 +235,7 @@ it("queries the native tree by role, state and value", () => {
   });
 
   expect(save.props?.testID).toBe("save");
+  expect(screen.getByLabelText("Save changes").props?.testID).toBe("save");
   expect(screen.queryByRole("button", { disabled: false })).toBe(null);
   expect(screen.getByRole("textbox", { name: /Search/ }).type).toBe("TextInput");
   expect(
@@ -264,6 +265,14 @@ because the input is a React Native JSON tree rather than a document:
 - Text queries read React Native text content and avoid the duplicate
   parent-and-child match: a `Text` node whose child already matches the string
   is not reported a second time for the same visible text.
+- Label queries read the accessible name directly, so
+  `getByLabelText("Save changes")` finds the same node that
+  `getByRole("button", { name: "Save changes" })` narrows to, and still works
+  when the role is not what the test is about.
+  They take only `exact`, just like text queries. A label query includes nodes
+  with an explicit `accessibilityLabel` and nodes with a native role; a plain
+  `View` whose name only came from a child `Text` is not reported again beside
+  that child.
 - Role queries use the small default map uf can defend today: `Pressable` and
   `Button` are `button`, `Switch` is `switch`, `TextInput` is `textbox`,
   `Image` is `image`, and `Text` is `text`. `accessibilityRole` or `role` wins

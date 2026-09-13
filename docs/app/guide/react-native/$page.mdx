@@ -304,12 +304,14 @@ it("finds the native button by accessible name", () => {
       disabled: true,
     }).type,
   ).toBe("Pressable");
+  expect(screen.getByLabelText("Save changes").type).toBe("Pressable");
 });
 ```
 
 The guide to [testing](/guide/testing#react-native-test-trees) has the full
-query contract: `getByText`, `getByRole`, `getByTestId`, `within`, state
-filters, `accessibilityValue` filters and the rules for unknown options.
+query contract: `getByText`, `getByLabelText`, `getByRole`, `getByTestId`,
+`within`, state filters, `accessibilityValue` filters and the rules for unknown
+options.
 
 The renderer is intentionally not faked. `render()` throws
 `NativeTestingUnsupportedError` and names the missing native renderer and host
