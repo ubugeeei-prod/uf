@@ -86,7 +86,18 @@
 import * as React from "react";
 import { useEffect, useState } from "react";
 
+import { SYNTHESISED_SOURCE } from "./boundary-data.js";
 import { reportDiagnostic } from "./diagnostics.js";
+import type { RouteBoundary } from "./boundary-data.js";
+
+export type { BoundaryKind, RouteBoundary } from "./boundary-data.js";
+export {
+  ROOT_ERROR_ID,
+  ROUTE_ERROR_ID,
+  SYNTHESISED_SOURCE,
+  routeBoundaries,
+  suspenseId,
+} from "./boundary-data.js";
 
 /** The attribute a mark carries its boundary's id in. */
 export const BOUNDARY_ATTRIBUTE: string = "data-uf-boundary";
@@ -99,116 +110,6 @@ export const SOURCE_ATTRIBUTE: string = "data-uf-boundary-source";
 
 /** The name `uf dev` installs the on-demand report under. */
 export const BOUNDARY_GLOBAL: string = "__ufBoundaries";
-
-/**
- * What `file` says for the error boundary the build synthesises.
- *
- * `routesModuleSource` writes this string where a declared boundary has a path,
- * because the record has no module to name — the framework's own error page
- * renders in its place. Written out again rather than imported for the reason
- * `./devtools.js` gives about `DEVTOOLS_HOOK`: `@uniflowed/vite` is plain
- * JavaScript loaded by Vite before any Flow transform exists, so the import
- * cannot go either way. `boundaries.test.js` holds the two spellings together.
- */
-export const SYNTHESISED_SOURCE: string = "@uniflowed/router";
-
-/** Which kind of boundary a mark belongs to. */
-export type BoundaryKind = "suspense" | "error";
-
-/**
- * One boundary of a resolved route, as the marks and the report name it.
- *
- * `id` pairs the two marks and is stable for a boundary across renders, so a
- * navigation that keeps a boundary keeps its marks mounted. `above` is how many
- * of the route's layouts are outside it — the same number, spelled the same
- * way, that `ResolvedRoute["errorBoundary"].above` and every `loading` entry
- * carry, because there is no second vocabulary for where a thing sits in the
- * stack.
- *
- * `source` is the file it was declared in, and is `null` for every `<Suspense>`
- * boundary. That asymmetry is the route table's rather than this module's: an
- * error boundary is matched by path, so the table carries its `file`, while a
- * `$loading.js` is carried by depth alone. Adding a path to the loading
- * records would put one in every visitor's bundle to serve a report only
- * `uf dev` reads.
- */
-export type RouteBoundary = {|
-  readonly id: string,
-  readonly kind: BoundaryKind,
-  readonly above: number,
-  readonly source: ?string,
-|};
-
-/** The id of the `<Suspense>` boundary at `index` of a route's `loading`. */
-export function suspenseId(index: number): string {
-  return `suspense:${index}`;
-}
-
-/** The id of the boundary a route's own `$error.js` renders. */
-export const ROUTE_ERROR_ID: string = "error:route";
-
-/**
- * The id of the boundary that stands outside every layout.
- *
- * It has no module and renders the framework's page; it is what is between a
- * throw in a root layout, or in the error component itself, and an unmounted
- * document. Marked like any other, because "which subtree does the last resort
- * own" is exactly as unanswerable from the page as the rest.
- */
-export const ROOT_ERROR_ID: string = "error:root";
-
-/** The part of a resolved route this module reads. */
-type BoundedRoute = {
-  readonly errorBoundary: { readonly above: number, ... },
-  readonly loading: $ReadOnlyArray<{ readonly above: number, ... }>,
-  readonly error: mixed,
-  ...
-};
-
-/**
- * Every boundary a resolved route renders, in the order they nest.
- *
- * A `Map` rather than a list because it is read both ways: `RouteView` asks for
- * one by id as it builds the stack, and the report walks the values. One
- * function answering both is the point — an id `RouteView` marks and the report
- * cannot find is a boundary that silently disappears from the map, and
- * ubugeeei-prod/uf#636 made the same argument about an explanation that can
- * disagree with the thing it explains.
- *
- * The route's own error boundary is absent when the route *is* its error page,
- * which is exactly when `RouteView` does not render one: wrapping that page in
- * the boundary whose component it is would answer a throw inside it with
- * itself.
- *
- * @param resolved the route being rendered
- * @param errorSource the `file` of the nearest `$error.js`, when the table
- *   has one; `null` leaves the boundary named by its depth alone
- */
-export function routeBoundaries(
-  resolved: BoundedRoute,
-  errorSource: ?string,
-): Map<string, RouteBoundary> {
-  const found: Map<string, RouteBoundary> = new Map();
-  found.set(ROOT_ERROR_ID, {
-    id: ROOT_ERROR_ID,
-    kind: "error",
-    above: 0,
-    source: SYNTHESISED_SOURCE,
-  });
-  if (resolved.error == null) {
-    found.set(ROUTE_ERROR_ID, {
-      id: ROUTE_ERROR_ID,
-      kind: "error",
-      above: resolved.errorBoundary.above,
-      source: errorSource,
-    });
-  }
-  resolved.loading.forEach((boundary, index) => {
-    const id = suspenseId(index);
-    found.set(id, { id, kind: "suspense", above: boundary.above, source: null });
-  });
-  return found;
-}
 
 /**
  * Whether an edge that mounts now should be in the DOM immediately.
