@@ -152,11 +152,14 @@ const SELF = import.meta.url;
 /** Process-global state shared by duplicate imports of this loader module. */
 const STATE_KEY = Symbol.for("@uniflowed/host/module-mocks");
 
-const state =
-  globalThis[STATE_KEY] ??
-  (globalThis[STATE_KEY] = {
+const state = globalThis.process?.[STATE_KEY] ??
+  globalThis[STATE_KEY] ?? {
     served: new Map(),
-  });
+  };
+globalThis[STATE_KEY] = state;
+if (globalThis.process != null) {
+  globalThis.process[STATE_KEY] = state;
+}
 
 /** Registered mocks, by module key. */
 const mocks = new Map();
