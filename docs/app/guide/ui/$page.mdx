@@ -88,6 +88,49 @@ exactly one row no test holds, and rather than leaving it to be discovered it is
 named where it appears, under Checkbox — a row with no test is how it came to
 say the wrong thing.
 
+### The render hatch is a contract, not a style slot
+
+A `render` function receives the props that make the part work. It should
+spread them onto one element, and that element is the part as far as the rest of
+the package is concerned:
+
+```js
+<ToggleGroup.Root
+  aria-label="Formatting"
+  defaultValue={["bold"]}
+  render={(props) => <section {...props} />}
+  type="multiple"
+>
+  <ToggleGroup.Item render={(props) => <a href="#bold" {...props} />} value="bold">
+    Bold
+  </ToggleGroup.Item>
+  <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
+</ToggleGroup.Root>
+```
+
+The group is still a `role="group"` with `aria-orientation` and the roving
+keyboard handler; the custom item is still a `role="button"` with
+`aria-pressed`, `aria-disabled`, the tab stop, the click handler and the key
+handler. If you drop a prop, you dropped that behavior. uf does not try to
+recover it by reaching into the element afterwards.
+
+Two rules make the hatch predictable:
+
+- **Spread last when you mean uf to own the semantics.** `render={(props) =>
+  <a href="/settings" {...props} />}` keeps the menu item's role, ids and event
+  composition. Spreading first and writing `role` later is an override, not a
+  style.
+- **Keep one focusable element.** A render function that returns an anchor
+  wrapping a button produces two controls where the part promised one. The
+  package cannot make that accessible after the fact.
+
+`ToggleGroup` is the case that shows why this is not only a DOM convenience.
+`type="single"` delegates to `RadioGroup`, so `render` is passed through to the
+radio parts and the group keeps `radiogroup` / `radio` semantics. `type="multiple"`
+is a real toggle-button group, so `ToggleGroup.Item` adds `role="button"` when
+you replace the native `<button>` with something else. The two modes look
+similar, but they tell assistive technology different truths.
+
 ## Field
 
 A label, a control, help text and an error message, wired to each other. The
