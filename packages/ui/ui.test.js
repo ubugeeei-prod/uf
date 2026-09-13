@@ -5659,6 +5659,46 @@ describe("Slider", () => {
     fireEvent.pointerDown(track, { clientX: 150, clientY: 5 });
     expect(now(screen.getByRole("slider"))).toBe("75");
   });
+
+  it("hands root, track, range and thumb behaviour to caller-rendered elements", async () => {
+    render(
+      <Slider.Root
+        defaultValue={[20]}
+        render={(props) => <section {...props} data-testid="slider-root" />}
+      >
+        <Slider.Track
+          data-testid="track"
+          render={(props) => <article {...props} data-testid="track" />}
+        >
+          <Slider.Range render={(props) => <strong {...props} data-testid="range" />} />
+        </Slider.Track>
+        <Slider.Thumb
+          aria-label="Volume"
+          render={(props) => <button {...props} data-testid="thumb" type="button" />}
+        />
+      </Slider.Root>,
+    );
+
+    expect(screen.getByTestId("slider-root").tagName).toBe("SECTION");
+    const track = screen.getByTestId("track");
+    expect(track.tagName).toBe("ARTICLE");
+    const range = screen.getByTestId("range");
+    expect(range.tagName).toBe("STRONG");
+    expect(range).toHaveAttribute("aria-hidden", "true");
+    expect(range.style.getPropertyValue("--uf-slider-end")).toBe("0.2");
+
+    const thumb = screen.getByRole("slider", { name: "Volume" });
+    expect(thumb.tagName).toBe("BUTTON");
+    expect(thumb).toHaveAttribute("aria-valuenow", "20");
+
+    measure(track, { left: 0, width: 200, top: 0, height: 10 });
+    fireEvent.pointerDown(track, { clientX: 150, clientY: 5 });
+    expect(screen.getByRole("slider", { name: "Volume" })).toHaveAttribute("aria-valuenow", "75");
+
+    screen.getByRole("slider", { name: "Volume" }).focus();
+    await userEvent.keyboard("{ArrowLeft}");
+    expect(screen.getByRole("slider", { name: "Volume" })).toHaveAttribute("aria-valuenow", "74");
+  });
 });
 
 describe("Slider: a range is two sliders", () => {
@@ -8920,6 +8960,10 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Sidebar.Item",
     "Skeleton.Box",
     "Skeleton.Root",
+    "Slider.Range",
+    "Slider.Root",
+    "Slider.Thumb",
+    "Slider.Track",
     "Switch",
     "Tabs.List",
     "Tabs.Panel",
@@ -9015,10 +9059,6 @@ describe("the escape hatch: which part hands its element to the caller", () => {
     "Sidebar.Footer",
     "Sidebar.Header",
     "Sidebar.Trigger",
-    "Slider.Range",
-    "Slider.Root",
-    "Slider.Thumb",
-    "Slider.Track",
     "Toast.Action",
     "Toast.Close",
     "Toast.Description",
