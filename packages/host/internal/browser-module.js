@@ -30,6 +30,29 @@ function unavailable(what) {
 /** Node's synchronous module hooks, which a page does not have. */
 export const registerHooks = undefined;
 
+/** Process spawning, which only the host can perform. */
+export function spawn(_command, _args, _options) {
+  unavailable("process spawning");
+}
+
+/** A readline interface, which only the host transform service uses. */
+export function createInterface(_options) {
+  unavailable("readline");
+}
+
+/** Filesystem permission constants used by the host transform service. */
+export const constants = { X_OK: 0 };
+
+/** Filesystem access checks, which only the host can perform. */
+export function accessSync(_path, _mode) {
+  unavailable("the filesystem");
+}
+
+/** Filesystem stat checks, which only the host can perform. */
+export function statSync(_path) {
+  unavailable("the filesystem");
+}
+
 /** A filesystem write, which only the host can perform. */
 export function mkdtempSync(_prefix) {
   unavailable("the filesystem");
@@ -43,6 +66,22 @@ export function writeFileSync(_path, _contents) {
 /** A process temp directory, which only the host owns. */
 export function tmpdir() {
   unavailable("the operating system temp directory");
+}
+
+/** Convert a browser-resolved file URL the same way the host-side resolver does. */
+export function fileURLToPath(url) {
+  const parsed = url instanceof URL ? url : new URL(String(url));
+  if (parsed.protocol !== "file:" || (parsed.host !== "" && parsed.host !== "localhost")) {
+    unavailable("file URL conversion");
+  }
+  return decodeURIComponent(parsed.pathname);
+}
+
+/** @see fileURLToPath */
+export function pathToFileURL(file) {
+  const path = String(file);
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return new URL(`file://${encoded.startsWith("/") ? "" : "/"}${encoded}`);
 }
 
 export const sep = "/";
@@ -64,10 +103,17 @@ function normalize(input) {
 }
 
 export default {
+  accessSync,
+  constants,
+  createInterface,
   join,
+  fileURLToPath,
   mkdtempSync,
+  pathToFileURL,
   registerHooks,
   sep,
+  spawn,
+  statSync,
   tmpdir,
   writeFileSync,
 };

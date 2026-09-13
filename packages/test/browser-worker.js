@@ -227,6 +227,11 @@ async function main(): Promise<void> {
   const child = spawn(browser, browserArguments(profile, server.url), {
     stdio: ["ignore", "pipe", "pipe", "pipe", "pipe"],
   });
+  // The DevTools pipe is a lifeline, not a protocol this driver speaks. Chrome
+  // can still write target bookkeeping to fd 4 before the page asks for work;
+  // drain it so a full pipe cannot block startup before the first HTTP request.
+  const devtoolsOutput = child.stdio[4];
+  devtoolsOutput?.on("data", () => {});
   // Kept, not printed. A Chromium writes a dozen lines about GPU probing and
   // Vulkan on a healthy start, and forwarding those to a passing run's report
   // would be noise; they are the whole of the evidence when it does not start,

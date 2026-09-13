@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "@uniflowed/test";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -22,8 +22,29 @@ function nodeImports(source: string): Array<string> {
   return [...found].sort();
 }
 
+function nodeNamedImports(source: string): Map<string, Array<string>> {
+  const found = new Map();
+  const pattern = /\bimport\s+\{([^}]+)\}\s+from\s+["'](node:[^"']+)["']/g;
+  let match = pattern.exec(source);
+  while (match != null) {
+    const names = match[1]
+      .split(",")
+      .map((entry) =>
+        entry
+          .trim()
+          .split(/\s+as\s+/u)[0]
+          .trim(),
+      )
+      .filter((entry) => entry !== "");
+    const specifier = match[2];
+    found.set(specifier, [...(found.get(specifier) ?? []), ...names].sort());
+    match = pattern.exec(source);
+  }
+  return found;
+}
+
 describe("browser substitutions", () => {
-  it("cover every Node builtin module-mocks imports", () => {
+  it("cover every Node builtin module-mocks imports", async () => {
     const manifest = readJson(path.join(here, "package.json"));
     const browser = manifest.browser;
     if (browser == null || typeof browser !== "object" || Array.isArray(browser)) {
@@ -31,10 +52,24 @@ describe("browser substitutions", () => {
     }
 
     const source = fs.readFileSync(path.join(here, "module-mocks.js"), "utf8");
+    const named = nodeNamedImports(source);
     for (const specifier of nodeImports(source)) {
       const target = (browser: $FlowFixMe)[specifier];
       expect(typeof target).toBe("string");
-      expect(fs.existsSync(path.join(here, target))).toBe(true);
+      const file = path.join(here, target);
+      expect(fs.existsSync(file)).toBe(true);
+      const exports = await import(pathToFileURL(file).href);
+      for (const name of named.get(specifier) ?? []) {
+        expect(name in exports).toBe(true);
+      }
     }
+  });
+
+  it("keeps the node:url browser shim compatible with imported helper names", async () => {
+    const shim = await import(pathToFileURL(path.join(here, "./internal/browser-module.js")).href);
+    const url = shim.pathToFileURL("/tmp/uf module#one.js");
+    expect(url.href).toBe("file:///tmp/uf%20module%23one.js");
+    expect(shim.fileURLToPath(url)).toBe("/tmp/uf module#one.js");
+    expect(shim.fileURLToPath("file:///tmp/uf%20module%23two.js")).toBe("/tmp/uf module#two.js");
   });
 });

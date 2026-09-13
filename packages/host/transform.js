@@ -47,7 +47,7 @@ export function isFlowModule(id) {
 }
 
 function stripQuery(id) {
-  const at = id.indexOf("?");
+  const at = id.search(/[?#]/);
   return at === -1 ? id : id.slice(0, at);
 }
 
@@ -90,17 +90,19 @@ function stripQuery(id) {
  * makes them not one; the extension list is shared rather than repeated for
  * the same reason.
  *
- * The two exclusions are outside the contract because they cannot arrive
- * here: a NUL-prefixed id is a bundler's synthetic module and a query string
- * is a bundler's parameter, and neither is a path a host asks its filesystem
- * about. `isFlowModule` remains the authority for those callers.
+ * The NUL-prefixed exclusion is outside the contract because it cannot arrive
+ * here: it is a bundler's synthetic module rather than a path a host asks its
+ * filesystem about. A query string can arrive on Bun when module mocking gives
+ * a path import an epoch identity, so the pattern accepts query-carrying file
+ * paths while still deciding from the path itself.
  */
 export const FLOW_MODULE_PATTERN = new RegExp(
   // Reject when the *last* `/node_modules/` on the path is not followed by
   // `@uniflowed/`, which is `isFlowModule`'s `lastIndexOf` written as a
   // lookahead: the inner negative lookahead is what pins "last".
-  String.raw`^(?!.*/node_modules/(?!.*/node_modules/)(?!@uniflowed/))` +
-    String.raw`.*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})$`,
+  String.raw`^(?![^?#]*/node_modules/(?![^?#]*/node_modules/)(?!@uniflowed/))` +
+    String.raw`[^?#]*\.(?:${FLOW_EXTENSIONS.map((extension) => extension.slice(1)).join("|")})` +
+    String.raw`(?:[?#].*)?$`,
 );
 
 /**

@@ -20,10 +20,13 @@
     "./write-atomically": "./write-atomically.js"
   },
   "browser": {
+    "node:child_process": "./internal/browser-module.js",
     "node:fs": "./internal/browser-module.js",
     "node:module": "./internal/browser-module.js",
     "node:os": "./internal/browser-module.js",
-    "node:path": "./internal/browser-module.js"
+    "node:path": "./internal/browser-module.js",
+    "node:readline": "./internal/browser-module.js",
+    "node:url": "./internal/browser-module.js"
   },
   "files": [
     "register.js",

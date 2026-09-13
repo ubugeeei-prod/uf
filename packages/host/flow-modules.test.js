@@ -16,15 +16,16 @@
 // See ubugeeei-prod/uf#418.
 //
 // Two spellings of one rule is a drift risk, and this file is what makes it
-// not one. The contract is equality, not approximation: for every path with no
-// query string and no leading NUL the two must give the same answer, because
-// the pattern is what decides whether the function is ever consulted. A
-// pattern that under-matched would leave a `@uniflowed` package's Flow source
-// to Bun's own parser; one that over-matched would put a CommonJS dependency
-// through `onLoad`, and anything that leaves `onLoad` is an ES module to Bun
-// whatever its contents say — so `import dep from "dep"` would stop finding a
-// default export. Neither failure names this file when it happens, which is
-// why the table below is as long as it is.
+// not one. The contract is equality, not approximation: for every filesystem
+// path with no leading NUL, including a path with a query or fragment carrying
+// a module identity, the two must give the same answer, because the pattern is
+// what decides whether the function is ever consulted. A pattern that
+// under-matched would leave a `@uniflowed` package's Flow source to Bun's own
+// parser; one that over-matched would put a CommonJS dependency through
+// `onLoad`, and anything that leaves `onLoad` is an ES module to Bun whatever
+// its contents say — so `import dep from "dep"` would stop finding a default
+// export. Neither failure names this file when it happens, which is why the
+// table below is as long as it is.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,12 +52,15 @@ const host = await import(TRANSFORM);
  */
 const table: $ReadOnlyArray<[string, boolean]> = [
   ["/p/app.js", true],
+  ["/p/app.js?uf-modules=1.0", true],
+  ["/p/app.js#uf-modules", true],
   ["/p/app.jsx", true],
   ["/p/app.mjs", true],
   ["/p/app.cjs", true],
   ["/p/app.ts", false],
   ["/p/app.json", false],
   ["/p/app.css", false],
+  ["/p/app.css?inline.js", false],
   ["/p/app", false],
   ["/p/.js", true],
   // A directory whose name merely contains the word.
@@ -65,9 +69,11 @@ const table: $ReadOnlyArray<[string, boolean]> = [
   // And a scope whose name merely starts with it.
   ["/p/node_modules/@uniflowedish/x.js", false],
   ["/p/node_modules/dep/index.js", false],
+  ["/p/node_modules/dep/index.js?uf-modules=1.0", false],
   ["/p/node_modules/@uniflowed/core/index.js", true],
   ["/p/node_modules/@uniflowed/core/node_modules/dep/index.js", false],
   ["/p/node_modules/dep/node_modules/@uniflowed/core/index.js", true],
+  ["/p/node_modules/dep/node_modules/@uniflowed/core/index.js?uf-modules=1.0", true],
   ["/node_modules/@uniflowed/core/a/b/c.cjs", true],
 ];
 
@@ -93,13 +99,10 @@ describe("which modules uf is responsible for", () => {
   });
 
   it("leaves a bundler's own ids to the function", () => {
-    // The two cases outside the pattern's contract, and the reason it has one:
-    // a NUL-prefixed id is a synthetic module and `?raw` is a bundler's
-    // parameter. Neither is a path a host asks a filesystem about, so the
-    // pattern is never asked — but `isFlowModule` still is, by the Vite
-    // plugin, and it still has to be right about them.
+    // The case outside the pattern's contract, and the reason it has one: a
+    // NUL-prefixed id is a synthetic module rather than a path a host asks a
+    // filesystem about, so the pattern is never asked — but `isFlowModule`
+    // still is, by the Vite plugin, and it still has to be right about it.
     expect(host.isFlowModule("\0uf:virtual.js")).toBe(false);
-    expect(host.isFlowModule("/p/app.js?raw")).toBe(true);
-    expect(host.isFlowModule("/p/style.css?inline.js")).toBe(false);
   });
 });
