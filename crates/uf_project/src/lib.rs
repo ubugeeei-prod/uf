@@ -243,6 +243,22 @@ pub fn scan_selected_source_files(
     config: &UniflowedConfig,
     selected: &[String],
 ) -> Result<SourceScan, ProjectError> {
+    scan_selected_source_files_matching(root, config, selected, |_| true)
+}
+
+/// The same walk as [`scan_selected_source_files`], but only reads files whose
+/// kind the caller can use.
+///
+/// Discovery still walks the same roots and keeps the same ignore semantics;
+/// the filter is applied after a path has been classified and before its bytes
+/// are read. That lets commands such as `uf lint` and `uf check` skip large
+/// JSON, CSS or TypeScript files they would only discard after reading them.
+pub fn scan_selected_source_files_matching(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    selected: &[String],
+    include: impl Fn(SourceKind) -> bool + Copy,
+) -> Result<SourceScan, ProjectError> {
     let mut files = Vec::new();
     let mut unreadable = Vec::new();
     // `.gitignore` is the list the project already keeps of what is not its
@@ -334,6 +350,9 @@ pub fn scan_selected_source_files(
         let Some(kind) = SourceKind::from_path(&path) else {
             continue;
         };
+        if !include(kind) {
+            continue;
+        }
 
         let relative_path = path
             .strip_prefix(root)
@@ -371,7 +390,7 @@ pub fn scan_selected_source_files(
         if !start.exists() {
             continue;
         }
-        scan_named_tree(root, config, &start, &mut files, &mut unreadable)?;
+        scan_named_tree(root, config, &start, include, &mut files, &mut unreadable)?;
     }
 
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
@@ -399,6 +418,17 @@ pub fn scan_existing_selected_source_files(
     config: &UniflowedConfig,
     selected: &[String],
 ) -> Result<Option<SourceScan>, ProjectError> {
+    scan_existing_selected_source_files_matching(root, config, selected, |_| true)
+}
+
+/// The selected-path-only scan with the same kind filter as
+/// [`scan_selected_source_files_matching`].
+pub fn scan_existing_selected_source_files_matching(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    selected: &[String],
+    include: impl Fn(SourceKind) -> bool + Copy,
+) -> Result<Option<SourceScan>, ProjectError> {
     if selected.is_empty() {
         return Ok(None);
     }
@@ -414,7 +444,7 @@ pub fn scan_existing_selected_source_files(
     let mut files = Vec::new();
     let mut unreadable = Vec::new();
     for start in starts {
-        scan_named_tree(root, config, &start, &mut files, &mut unreadable)?;
+        scan_named_tree(root, config, &start, include, &mut files, &mut unreadable)?;
     }
     files.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
     files.dedup_by(|a, b| a.relative_path == b.relative_path);
@@ -427,6 +457,7 @@ fn scan_named_tree(
     root: &Utf8Path,
     config: &UniflowedConfig,
     start: &Utf8Path,
+    include: impl Fn(SourceKind) -> bool + Copy,
     files: &mut Vec<ProjectFile>,
     unreadable: &mut Vec<UnreadableFile>,
 ) -> Result<(), ProjectError> {
@@ -482,6 +513,9 @@ fn scan_named_tree(
         let Some(kind) = SourceKind::from_path(&path) else {
             continue;
         };
+        if !include(kind) {
+            continue;
+        }
         if is_ignored(root, &path, config) {
             continue;
         }
