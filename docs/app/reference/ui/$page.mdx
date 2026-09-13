@@ -207,9 +207,15 @@ fails if a part is exported but not classified. At this release line:
 | Field and grouped controls | `Field.Root`, `Field.Label`, `Field.Control`, `Field.Description`, `Field.Status`, `Field.Error`, `RadioGroup.Root`, `RadioGroup.Item`, `RadioGroup.Indicator` |
 | Targeted parts | `HoverCard.Trigger`, `HoverCard.Body`, `InputOtp.Separator`, `Sidebar.Item`, `Tooltip.Trigger`, `Tooltip.Body` |
 
+`Pagination.Item`, `Pagination.Previous` and `Pagination.Next` are included in
+the `Pagination` row. They render through the shared `PageLink` helper, but the
+public parts still forward `render` to the link element; a design-system link can
+therefore sit inside the pagination contract without copying the pagination
+source.
+
 Parts in the no-element column render only context or delegate to another part.
 Examples: `Dialog.Root`, `Menu.Root`, `Tooltip.Provider`, `Collapsible.Root`,
-`Calendar.Next` and `Pagination.Next`. There is no wrapper there to change.
+`Calendar.Next` and `Carousel.Next`. There is no wrapper there to change.
 
 The fixed remainder is deliberately visible rather than implied. `Calendar.Day`,
 `Combobox.Option`, `Select.Option`, `Toast.Root`, `ScrollArea.Viewport` and the
