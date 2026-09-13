@@ -7,17 +7,26 @@
 //! obeys the same rule: percentages are formatted to two places rather than
 //! carried as full-precision floats.
 
+use camino::Utf8Path;
 use serde_json::{Value, json};
 use uf_test::{
-    Coverage, FileReport, FileStatus, OutputChunk, SkipReason, TestRecord, TestRunReport,
-    TestStatus,
+    Coverage, FileReport, FileStatus, HostCommand, OutputChunk, SkipReason, TestRecord,
+    TestRunReport, TestStatus,
 };
 
+use super::runtime_host;
+
 /// Build the document.
-pub(super) fn test_payload(report: &TestRunReport, coverage: Option<&Coverage>) -> Value {
+pub(super) fn test_payload(
+    root: &Utf8Path,
+    host: &HostCommand,
+    report: &TestRunReport,
+    coverage: Option<&Coverage>,
+) -> Value {
     let summary = &report.summary;
     let mut document = json!({
         "command": "uf test",
+        "host": host_payload(root, host),
         "files": summary.files,
         "passed": summary.passed,
         "failed": summary.failed,
@@ -51,6 +60,41 @@ pub(super) fn test_payload(report: &TestRunReport, coverage: Option<&Coverage>) 
         object.insert(String::from("coverage"), super::coverage::payload(coverage));
     }
     document
+}
+
+fn host_payload(root: &Utf8Path, host: &HostCommand) -> Value {
+    let support = uf_runtime::HostSupport::for_host(runtime_host(host.kind));
+    let mut value = json!({
+        "kind": host.kind,
+        "runtimeHost": support.host,
+        "support": {
+            "level": support.level.as_str(),
+            "flowLoader": support.flow_loader,
+            "enforcesPermissions": support
+                .enforces
+                .iter()
+                .map(|permission| permission.as_str())
+                .collect::<Vec<_>>(),
+            "verifiedBy": support.verified_by,
+            "missing": support.missing,
+            "trackingIssue": support.tracking_issue,
+        },
+        "loadsFlow": host.loads_flow(),
+        "collectsCoverage": host.collects_coverage(),
+    });
+    if let Some(import_map) = &host.deno_import_map
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(
+            String::from("denoImportMap"),
+            json!(relative_path(root, import_map)),
+        );
+    }
+    value
+}
+
+fn relative_path(root: &Utf8Path, path: &Utf8Path) -> String {
+    path.strip_prefix(root).unwrap_or(path).to_string()
 }
 
 fn file_payload(file: &FileReport) -> Value {

@@ -307,6 +307,8 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let recorded = record_timings(&root, timings, &report, &files);
     if args.json {
         ui.json(&test_payload(
+            &root,
+            &host,
             &report,
             collected.as_ref().map(|(coverage, _)| coverage),
         ))?;
