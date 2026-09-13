@@ -525,7 +525,16 @@ Nothing in that surface has to know about the other parts to stay accessible:
 The test reads like the behaviour a user gets, not like markup trivia:
 
 ```js
-render(<WorkspaceSettings />);
+render(
+  <WorkspaceSettings
+    compactRows={false}
+    email="person@example.com"
+    notifications={true}
+    setCompactRows={() => {}}
+    setEmail={() => {}}
+    setNotifications={() => {}}
+  />,
+);
 
 await userEvent.click(screen.getByRole("button", { name: "Preferences" }));
 expect(screen.getByRole("dialog", { name: "Preferences" })).toBeInTheDocument();
