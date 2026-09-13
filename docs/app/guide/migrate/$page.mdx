@@ -184,7 +184,7 @@ The conventions line up more closely than the capabilities do:
 | `app/api/x/route.ts` | `app/api/x/$route.js` — `Request` in, `Response` out, **`uf dev` only** |
 | `not-found.tsx` | `$not-found.js`, a segment file resolved by the nearest one above the path; a project that declares none gets uf's page inside the root's layouts |
 | `template.tsx` | `$template.js` — a layout that remounts, keyed on the pathname |
-| `@slot/` | `@slot/` — a parallel route: the segment's own layout receives it as a prop beside `children`, and the slot's pages are matched against the same URL. No per-slot `loading`, `error` or `template` yet ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
+| `@slot/` | `@slot/` — a parallel route: the segment's own layout receives it as a prop beside `children`, and the slot's pages are matched against the same URL. Slot-local `loading` and `template` files compose inside the slot; per-slot `error` and `not-found` are still refused ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
 | `(.)folder/` | **refused by name.** uf has no intercepting routes: a navigation carries where it is going and not where it came from ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
 | `default.tsx` | `$default.js`, directly inside the `@slot` it belongs to. There is no `default` for `children`: a URL that matches no page is a 404 |
 | `middleware.ts` | `$middleware.js`, never called |

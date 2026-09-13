@@ -458,12 +458,12 @@ pub enum RouterError {
         /// The slot directory it is under, as it is written.
         slot: String,
     },
-    /// A boundary or a template inside a `@slot`.
+    /// A boundary inside a `@slot` that still has no slot-local answer.
     ///
-    /// A slot renders a page and the layouts under the slot, and nothing else
-    /// yet: it has no `<Suspense>` of its own, no error boundary of its own and
-    /// no 404 of its own. Next.js gives a slot all three, and that is the part
-    /// of parallel routes uf has not built.
+    /// A slot renders a page and the layouts under the slot. It may carry a
+    /// `$loading.js`, but it still has no error boundary of its own and no 404
+    /// of its own. Next.js gives a slot all three, and this is the part of
+    /// parallel routes uf has not built.
     ///
     /// Refused rather than ignored, because the whole of ubugeeei-prod/uf#267
     /// is that a file the router never opens must not look like one it does.
@@ -479,6 +479,22 @@ pub enum RouterError {
         /// The file, as it is written on disk.
         file: Utf8PathBuf,
         /// The role, as it is written in the name.
+        role: &'static str,
+        /// The slot directory it is under, as it is written.
+        slot: String,
+    },
+    /// A boundary-like spelling inside a `@slot` that is not a uf route file.
+    #[error(
+        "{file}: `{file_name}` looks like a `{role}` boundary for a `@slot`, but it is not a uf \
+         route file there. Use `$loading.js` for slot loading; per-slot error and not-found \
+         boundaries are still not implemented. https://github.com/ubugeeei-prod/uf/issues/267"
+    )]
+    UnsupportedSlotBoundaryFile {
+        /// The file, as it is written on disk.
+        file: Utf8PathBuf,
+        /// The file name, as it is written.
+        file_name: String,
+        /// The role the unsupported spelling resembles.
         role: &'static str,
         /// The slot directory it is under, as it is written.
         slot: String,
@@ -860,13 +876,14 @@ fn slot_in(relative: &Utf8Path) -> Option<&str> {
 
 /// What a `@slot` needs to be a slot, checked before any route is built.
 ///
-/// Four rules, and each is a file that would otherwise be opened by nobody. A
-/// slot needs a layout at the segment that declares it, because a slot *is* a
-/// prop that layout receives, and it needs a name that is not one of the props
-/// the layout already has. A `$default.js` needs to be directly inside a
-/// slot, because that is the only question it answers. A `$route.js` or
-/// `$middleware.js` inside a slot has no request to see, and the path it
-/// would appear to claim belongs to the segment above.
+/// Each rule names a file that would otherwise be opened by nobody. A slot
+/// needs a layout at the segment that declares it, because a slot *is* a prop
+/// that layout receives, and it needs a name that is not one of the props the
+/// layout already has. A `$default.js` needs to be directly inside a slot,
+/// because that is the only question it answers. A `$route.js` or
+/// `$middleware.js` inside a slot has no request to see, and `$error.js` and
+/// `$not-found.js` still have no slot-local runtime to render into. `$loading.js`
+/// composes like a layout, so it is allowed.
 ///
 /// Private directories are pruned for the reason
 /// [`refuse_unsupported_directories`] prunes them: a leading `.` or `_` is a
@@ -931,9 +948,10 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
         if let Some(slot) = slot_in(relative)
             && let Some(role) = unsupported_slot_boundary_role(&file_name)
         {
-            return Err(RouterError::BoundaryInsideSlot {
+            return Err(RouterError::UnsupportedSlotBoundaryFile {
                 role,
                 slot: slot.to_owned(),
+                file_name,
                 file: path,
             });
         }
@@ -970,10 +988,10 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
                     });
                 }
             }
-            // What a slot does not have yet. `layout`, `template`, `page` and
-            // `default` are what it does have, and a `story` is not the
-            // router's at all.
-            ReservedRole::NotFound | ReservedRole::Error | ReservedRole::Loading => {
+            // What a slot does not have yet. `layout`, `template`, `loading`,
+            // `page` and `default` are what it does have, and a `story` is not
+            // the router's at all.
+            ReservedRole::NotFound | ReservedRole::Error => {
                 if let Some(slot) = slot_in(relative) {
                     return Err(RouterError::BoundaryInsideSlot {
                         role: role.as_str(),
@@ -984,6 +1002,7 @@ fn check_slots(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterErr
             }
             ReservedRole::Layout
             | ReservedRole::Template
+            | ReservedRole::Loading
             | ReservedRole::Page
             | ReservedRole::Default
             | ReservedRole::Story => {}
