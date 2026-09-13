@@ -8,6 +8,10 @@
 // config, React Test Renderer, or app-owned harness can hand us the JSON tree it
 // produced, and tests can query that tree without pretending a DOM exists.
 
+import type * as React from "react";
+
+import { loadTestRenderer } from "./internal/test-renderer.js";
+
 export type NativeText = string | number;
 
 export type NativeCheckedState = boolean | "mixed";
@@ -104,6 +108,13 @@ export type NativeQueries = {
   readonly getAllByTestId: (testID: string) => $ReadOnlyArray<NativeElement>,
 };
 
+export type NativeRenderResult = {
+  ...NativeQueries,
+  readonly rerender: (ui: React.Node) => void,
+  readonly unmount: () => void,
+  readonly toJSON: () => NativeTree,
+};
+
 export class NativeTestingUnsupportedError extends Error {
   constructor(message: string) {
     super(message);
@@ -111,12 +122,41 @@ export class NativeTestingUnsupportedError extends Error {
   }
 }
 
-export function render(): empty {
-  throw new NativeTestingUnsupportedError(
-    "@uniflowed/react-native-testing cannot render React Native components yet: " +
-      "uf still needs a native renderer and host config. Use createNativeScreen() " +
-      "or within() with an existing native test tree.",
-  );
+export function render(ui: React.Node): NativeRenderResult {
+  const testRenderer = requireTestRenderer();
+  installReactActEnvironment();
+
+  let renderer: ReactTestRendererInstance | null = null;
+  testRenderer.act(() => {
+    renderer = testRenderer.create(ui);
+  });
+
+  const currentTree = () => {
+    const current = renderer;
+    return current == null ? null : nativeTreeOf(current.toJSON());
+  };
+
+  return {
+    ...liveWithin(currentTree),
+    rerender: (next: React.Node) => {
+      const current = renderer;
+      if (current == null) {
+        throw new Error("@uniflowed/react-native-testing: cannot rerender an unmounted tree");
+      }
+      testRenderer.act(() => {
+        current.update(next);
+      });
+    },
+    unmount: () => {
+      const current = renderer;
+      if (current == null) return;
+      testRenderer.act(() => {
+        current.unmount();
+      });
+      renderer = null;
+    },
+    toJSON: currentTree,
+  };
 }
 
 export function createNativeScreen(root: NativeTree): NativeQueries {
@@ -124,46 +164,50 @@ export function createNativeScreen(root: NativeTree): NativeQueries {
 }
 
 export function within(root: NativeTree): NativeQueries {
+  return liveWithin(() => root);
+}
+
+function liveWithin(root: () => NativeTree): NativeQueries {
   return {
     getByText: (matcher, options) => {
       rejectUnknownOptions("getByText", options, NATIVE_QUERY_OPTION_KEYS);
-      return one(byText(root, matcher, options), "text", describeMatcher(matcher));
+      return one(byText(root(), matcher, options), "text", describeMatcher(matcher));
     },
     queryByText: (matcher, options) => {
       rejectUnknownOptions("queryByText", options, NATIVE_QUERY_OPTION_KEYS);
-      return optional(byText(root, matcher, options), "text", describeMatcher(matcher));
+      return optional(byText(root(), matcher, options), "text", describeMatcher(matcher));
     },
     getAllByText: (matcher, options) => {
       rejectUnknownOptions("getAllByText", options, NATIVE_QUERY_OPTION_KEYS);
-      return many(byText(root, matcher, options), "text", describeMatcher(matcher));
+      return many(byText(root(), matcher, options), "text", describeMatcher(matcher));
     },
     getByLabelText: (matcher, options) => {
       rejectUnknownOptions("getByLabelText", options, NATIVE_QUERY_OPTION_KEYS);
-      return one(byLabelText(root, matcher, options), "label", describeMatcher(matcher));
+      return one(byLabelText(root(), matcher, options), "label", describeMatcher(matcher));
     },
     queryByLabelText: (matcher, options) => {
       rejectUnknownOptions("queryByLabelText", options, NATIVE_QUERY_OPTION_KEYS);
-      return optional(byLabelText(root, matcher, options), "label", describeMatcher(matcher));
+      return optional(byLabelText(root(), matcher, options), "label", describeMatcher(matcher));
     },
     getAllByLabelText: (matcher, options) => {
       rejectUnknownOptions("getAllByLabelText", options, NATIVE_QUERY_OPTION_KEYS);
-      return many(byLabelText(root, matcher, options), "label", describeMatcher(matcher));
+      return many(byLabelText(root(), matcher, options), "label", describeMatcher(matcher));
     },
     getByRole: (role, options) => {
       rejectUnknownRoleOptions("getByRole", options);
-      return one(byRole(root, role, options), "role", role);
+      return one(byRole(root(), role, options), "role", role);
     },
     queryByRole: (role, options) => {
       rejectUnknownRoleOptions("queryByRole", options);
-      return optional(byRole(root, role, options), "role", role);
+      return optional(byRole(root(), role, options), "role", role);
     },
     getAllByRole: (role, options) => {
       rejectUnknownRoleOptions("getAllByRole", options);
-      return many(byRole(root, role, options), "role", role);
+      return many(byRole(root(), role, options), "role", role);
     },
-    getByTestId: (testID) => one(byTestId(root, testID), "testID", testID),
-    queryByTestId: (testID) => optional(byTestId(root, testID), "testID", testID),
-    getAllByTestId: (testID) => many(byTestId(root, testID), "testID", testID),
+    getByTestId: (testID) => one(byTestId(root(), testID), "testID", testID),
+    queryByTestId: (testID) => optional(byTestId(root(), testID), "testID", testID),
+    getAllByTestId: (testID) => many(byTestId(root(), testID), "testID", testID),
   };
 }
 
@@ -179,6 +223,96 @@ const NATIVE_ROLE_OPTION_KEYS: $ReadOnlyArray<string> = [
   "value",
 ];
 const NATIVE_ROLE_VALUE_OPTION_KEYS: $ReadOnlyArray<string> = ["max", "min", "now", "text"];
+
+type ReactTestJSONNode =
+  | string
+  | {
+      readonly type: string,
+      readonly props: NativeProps,
+      readonly children?: null | $ReadOnlyArray<ReactTestJSONNode>,
+    };
+
+type ReactTestJSONTree = null | ReactTestJSONNode | $ReadOnlyArray<ReactTestJSONNode>;
+
+type ReactTestRendererInstance = {|
+  readonly toJSON: () => ReactTestJSONTree,
+  update(ui: React.Node): void,
+  unmount(): void,
+|};
+
+type ReactTestRendererModule = {|
+  readonly act: <T>(() => T) => T,
+  readonly create: (ui: React.Node) => ReactTestRendererInstance,
+|};
+
+let testRendererModule: ReactTestRendererModule | null = null;
+
+function requireTestRenderer(): ReactTestRendererModule {
+  if (testRendererModule == null) {
+    try {
+      testRendererModule = assertTestRendererModule(loadTestRenderer());
+    } catch (error) {
+      if (isMissingTestRenderer(error)) {
+        throw new NativeTestingUnsupportedError(
+          "@uniflowed/react-native-testing render() needs the optional peer " +
+            "`react-test-renderer`. Install the `react-test-renderer` release that " +
+            "matches your React version, or pass an existing native test tree to " +
+            "createNativeScreen().",
+        );
+      }
+      throw error;
+    }
+  }
+  return testRendererModule;
+}
+
+function assertTestRendererModule(value: mixed): ReactTestRendererModule {
+  if (value == null || typeof value !== "object") {
+    throw new NativeTestingUnsupportedError(
+      "@uniflowed/react-native-testing expected react-test-renderer to export create() and act().",
+    );
+  }
+  const module: $FlowFixMe = value;
+  if (typeof module.create !== "function" || typeof module.act !== "function") {
+    throw new NativeTestingUnsupportedError(
+      "@uniflowed/react-native-testing expected react-test-renderer to export create() and act().",
+    );
+  }
+  return module;
+}
+
+function isMissingTestRenderer(error: mixed): boolean {
+  if (error == null || typeof error !== "object") return false;
+  const moduleError: $FlowFixMe = error;
+  return (
+    moduleError.code === "MODULE_NOT_FOUND" &&
+    typeof moduleError.message === "string" &&
+    moduleError.message.includes("react-test-renderer")
+  );
+}
+
+function installReactActEnvironment(): void {
+  const global: $FlowFixMe = globalThis;
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+}
+
+function nativeTreeOf(tree: ReactTestJSONTree): NativeTree {
+  if (Array.isArray(tree)) {
+    return tree.map((child) => nativeNodeOf(child));
+  }
+  return nativeNodeOf(tree);
+}
+
+function nativeNodeOf(node: null | ReactTestJSONNode): NativeNode {
+  if (node == null || typeof node === "string") {
+    return node;
+  }
+  return {
+    type: node.type,
+    props: node.props,
+    children: node.children == null ? [] : node.children.map((child) => nativeNodeOf(child)),
+  };
+}
 
 export function textContent(node: NativeTree): string {
   if (Array.isArray(node)) return node.map((child) => textContent(child)).join("");
