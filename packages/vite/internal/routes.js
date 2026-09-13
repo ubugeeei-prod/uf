@@ -853,6 +853,9 @@ export function routeFromSegments(segments) {
       out.push(`:${classified.name}`);
       continue;
     }
+    if (classified.kind === "interception") {
+      throw new Error(unsupportedSegmentReason(segment));
+    }
     out.push(segment);
   }
   const routePath = out.length === 0 ? "/" : `/${out.join("/")}`;
