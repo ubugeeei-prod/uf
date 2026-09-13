@@ -1,0 +1,29 @@
+{
+  "name": "@uniflowed/react-native-testing",
+  "version": "0.0.0-alpha.32",
+  "description": "React Native test-tree queries for the Unified Toolchain for Flow.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ubugeeei-prod/uf.git",
+    "directory": "packages/react-native-testing"
+  },
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "!*.test.js"
+  ],
+  "peerDependencies": {
+    "react": ">=19",
+    "react-native": ">=0.87"
+  },
+  "peerDependenciesMeta": {
+    "react-native": {
+      "optional": true
+    }
+  }
+}

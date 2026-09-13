@@ -165,6 +165,20 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             ],
         ),
         NativeModule::new(
+            "@uniflowed/react-native-testing",
+            NativeModuleKind::Testing,
+            Stability::Experimental,
+            &[
+                "NativeTestingUnsupportedError",
+                "accessibleName",
+                "createNativeScreen",
+                "render",
+                "roleOf",
+                "textContent",
+                "within",
+            ],
+        ),
+        NativeModule::new(
             "@uniflowed/hooks",
             NativeModuleKind::Hooks,
             Stability::Experimental,

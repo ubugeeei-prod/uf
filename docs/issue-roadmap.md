@@ -247,6 +247,9 @@
       text, placeholder and test id, and tells React it is a test — so
       `act` warnings mean something rather than arriving on every render.
 - [ ] Implement native React Native testing utilities.
+      First contract in place: `@uniflowed/react-native-testing` can query an
+      existing React Native test tree by text, role and testID, while `render`
+      still refuses until the native renderer and host config exist.
 - [x] Add watch mode with dependency-aware reruns.
 - [x] Add strict CLI integration tests for every command.
       `crates/uf_cli/tests/every_command.rs` takes `uf --help` as its checklist
