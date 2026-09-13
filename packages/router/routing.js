@@ -22,6 +22,14 @@ export type {
   SlotRouteRecord,
   TemplateRecord,
 } from "./internal/routing.js";
+export type {
+  ResolvedBoundarySummary,
+  ResolvedErrorBoundarySummary,
+  ResolvedRouteErrorSummary,
+  ResolvedRouteSummary,
+  ResolvedSlotSummary,
+  ResolvedTemplateSummary,
+} from "./internal/resolved-summary.js";
 
 export {
   ForbiddenError,
@@ -40,3 +48,4 @@ export {
   splitUrl,
   unauthorized,
 } from "./internal/routing.js";
+export { summarizeResolvedRoute } from "./internal/resolved-summary.js";
