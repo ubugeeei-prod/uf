@@ -65,6 +65,24 @@ page or a deferred loader value is still pending. When the promise resolves,
 React fills that boundary. On `uf build`, there is no first paint to improve, so
 the prerender waits and writes the finished document.
 
+The boundary's position is the contract. A `$loading.js` beside a segment wraps
+that segment's page and everything below it; layouts above the segment stay
+visible, and layouts inside the segment wait with the page. The route tree is
+therefore also the streaming tree:
+
+```text
+app/$layout.js                 always in the shell
+app/articles/$loading.js       fallback in the shell
+app/articles/[slug]/$layout.js streamed with the page when ready
+app/articles/[slug]/$page.js   streamed with the page when ready
+```
+
+A root `$loading.js` works even when the app has no root layout. That edge is
+easy to get wrong because `<Suspense>` renders no element of its own, and React
+cannot flush a boundary that is a direct child of the render root. uf adds the
+minimal host frame for that no-layout root case, so the fallback still leaves in
+the first chunk rather than waiting for the page it was supposed to replace.
+
 The same route can still use a local boundary when only part of the page waits:
 
 ```js
