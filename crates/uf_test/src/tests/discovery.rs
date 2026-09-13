@@ -1,8 +1,8 @@
 //! What discovery finds, and what it refuses to find.
 
 use crate::{
-    MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, NativeTestRunnerPlan, TestHost, TestKind,
-    TestPerformanceTarget, TestRuntime, TestScheduler, discover_tests, merge_plans,
+    MAX_CASES_PER_FILE, MAX_SOURCE_BYTES, NativeTestRunnerPlan, TestApplicationTarget, TestHost,
+    TestKind, TestPerformanceTarget, TestRuntime, TestScheduler, discover_tests, merge_plans,
 };
 
 fn names(source: &str) -> Vec<String> {
@@ -98,6 +98,7 @@ fn merging_no_plans_produces_an_empty_plan() {
 fn runner_plan_is_runtime_agnostic_and_faster_than_bun_targeted() {
     let plan = NativeTestRunnerPlan::runtime_agnostic();
 
+    assert_eq!(plan.application_target, TestApplicationTarget::Web);
     assert_eq!(plan.runtime, TestRuntime::CapabilityJsHost);
     assert_eq!(
         plan.hosts.as_slice(),
@@ -115,6 +116,18 @@ fn runner_plan_is_runtime_agnostic_and_faster_than_bun_targeted() {
     // render, so a component test needs nothing configured for it.
     assert!(plan.react_testing_library_native);
     assert!(plan.official_flow_parser);
+}
+
+#[test]
+fn runner_plan_names_the_react_native_application_target() {
+    let plan = NativeTestRunnerPlan::for_application_target(TestApplicationTarget::ReactNative);
+
+    assert_eq!(plan.application_target, TestApplicationTarget::ReactNative);
+    assert_eq!(plan.runtime, TestRuntime::CapabilityJsHost);
+    assert_eq!(
+        plan.performance_target,
+        TestPerformanceTarget::FasterThanBun
+    );
 }
 
 #[test]

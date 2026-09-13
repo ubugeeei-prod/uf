@@ -293,7 +293,9 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         })
         .collect::<Vec<_>>();
     let runtime = RuntimeContract::capability_js_hosts();
-    let test_runner = NativeTestRunnerPlan::runtime_agnostic();
+    let test_runner = NativeTestRunnerPlan::for_application_target(
+        crate::commands::test::test_application_target(&resolved.config),
+    );
     let test_runner = test_runner_report(&test_runner)?;
     let package_manager = PackageManagerPlan::infer_from_config(&resolved.config);
     let package_manager_detection = detect_project_package_manager(resolved);

@@ -1277,3 +1277,32 @@ test("a case uf lists but does not run", () => {
     assert_eq!(document["foreignDeclarations"], 1);
     assert_eq!(document["success"], false);
 }
+
+#[test]
+fn a_react_native_project_refuses_the_web_document_test_runner() {
+    let project = Project::new(&[(
+        "src/native.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"runs\", () => { expect(1).toBe(1); });\n",
+    )]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ app: { framework: \"react-native\" } });\n",
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "native.test.js"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        !output.status.success(),
+        "React Native tests must not fall through to the web runner:\n{stdout}\n{stderr}"
+    );
+    assert!(stderr.contains("applicationTarget"), "{stderr}");
+    assert!(stderr.contains("react-native"), "{stderr}");
+    assert!(stderr.contains("document shim"), "{stderr}");
+}

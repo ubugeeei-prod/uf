@@ -112,8 +112,8 @@ pub use crate::runner::{
     LockedObserver, RunError, RunObserver, SilentObserver, TestFile, TestRunner, run_tests,
 };
 pub use crate::runner_plan::{
-    NativeTestRunnerPlan, TestHost, TestHostList, TestImportList, TestPerformanceTarget,
-    TestRuntime, TestScheduler,
+    NativeTestRunnerPlan, TestApplicationTarget, TestHost, TestHostList, TestImportList,
+    TestPerformanceTarget, TestRuntime, TestScheduler,
 };
 pub use crate::schedule::{
     COLD_NANOS_PER_BYTE, ScheduleBasis, ScheduleEntry, cold_weight_micros, makespan_micros,
