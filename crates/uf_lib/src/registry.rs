@@ -171,6 +171,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             &[
                 "NativeTestingUnsupportedError",
                 "accessibilityStateOf",
+                "accessibilityValueOf",
                 "accessibleName",
                 "createNativeScreen",
                 "render",

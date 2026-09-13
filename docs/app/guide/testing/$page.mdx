@@ -207,16 +207,28 @@ const tree = {
       },
       children: [],
     },
+    {
+      type: "View",
+      props: {
+        accessibilityLabel: "Upload",
+        accessibilityRole: "progressbar",
+        accessibilityValue: { min: 0, max: 100, now: 75, text: "75 percent" },
+      },
+      children: [],
+    },
   ],
 };
 
-it("queries the native tree by role and state", () => {
+it("queries the native tree by role, state and value", () => {
   const screen = createNativeScreen(tree);
 
   expect(screen.getByRole("button", { name: "Save changes", disabled: true }).props?.testID).toBe(
     "save",
   );
   expect(screen.getByRole("switch", { checked: "mixed", selected: true }).type).toBe("Switch");
+  expect(screen.getByRole("progressbar", { value: { now: 75, text: /percent/ } }).type).toBe(
+    "View",
+  );
 });
 ```
 
@@ -231,7 +243,9 @@ content of the node's descendants.
 `disabled` also reads the top-level `disabled` prop, because native components
 commonly put it there. A missing state reads as false, not as "unknown", so
 `queryByRole("button", { disabled: false })` is the way to ask for an enabled
-button.
+button. It also takes `value` filters for `accessibilityValue`: `min`, `max`,
+`now` and `text`, so progress bars and adjustable controls can be narrowed by
+the value a native accessibility tree reports.
 
 The helpers accept a single root or a fragment-shaped array of roots. Text
 queries avoid the duplicate parent-and-child match: a `Text` node whose child
