@@ -349,6 +349,107 @@ results. That is a question about `Dialog` — a modal with nothing to reach is
 the general case — and it is open rather than answered by a component that
 would only look as though it had.
 
+## Tabs
+
+Tabs are a set of panels with one selected, and one tab stop for the whole list.
+That second half is the component: a row of twelve buttons is twelve `Tab`
+presses before the reader reaches the panel, while a tab list is one stop and
+the arrow keys do the movement inside it.
+
+```js
+<Tabs.Root defaultValue="overview">
+  <Tabs.List>
+    <Tabs.Tab value="overview">Overview</Tabs.Tab>
+    <Tabs.Tab value="activity">Activity</Tabs.Tab>
+    <Tabs.Tab value="billing" disabled>Billing</Tabs.Tab>
+  </Tabs.List>
+  <Tabs.Panel value="overview">The summary.</Tabs.Panel>
+  <Tabs.Panel value="activity">The recent events.</Tabs.Panel>
+</Tabs.Root>
+```
+
+### Parts
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Tabs.Root` | `div` | `defaultValue` is required. Controlled the moment `value` is given |
+| `Tabs.List` | `div role="tablist"` | `renders* Tabs.Tab`; owns the arrow-key handler |
+| `Tabs.Tab` | `button role="tab"` | `value`, optional `disabled`; exactly one tab has `tabIndex={0}` |
+| `Tabs.Panel` | `div role="tabpanel"` | Rendered only while its value is selected, and labelled by its tab |
+
+The root can be rendered as another element, but it is not the interesting
+part. The contract is between the list, the tabs and the mounted panel:
+`aria-selected` says which tab is active, `aria-labelledby` points the panel
+back to that tab, and `aria-controls` only appears while the panel it names is
+actually in the document. A tab that points at a missing panel tells a reader
+there is somewhere to go and then has nowhere to send them.
+
+`Tabs.List` is one of the places composition is checked rather than wished for:
+it accepts `renders* Tabs.Tab`. A stray `<button>` in the list is a type error,
+because it would be announced as a button among tabs and the keyboard handler
+would still be trying to treat it as part of the tab set.
+
+### The keyboard
+
+Only the selected tab is in the page's tab order. `Tab` moves into that tab, and
+the next `Tab` moves into the selected panel. The arrows move between tabs
+without making the reader visit every tab as a separate stop.
+
+| Key | Horizontal list | Vertical list |
+| --- | --- | --- |
+| `ArrowRight` / `ArrowLeft` | Previous or next tab, mirrored in right-to-left pages | Left to the page |
+| `ArrowDown` / `ArrowUp` | Left to the page | Next or previous tab |
+| `Home` / `End` | First or last tab | First or last tab |
+| `Enter`, `Space` | Select the focused tab | Select the focused tab |
+
+The keys the component does **not** take are as important as the keys it does.
+`ArrowDown` in a horizontal tab list scrolls or reads the page; swallowing it
+would make a tab component break a reader's ordinary way through the document.
+Disabled tabs stay in the accessibility tree with `aria-disabled="true"`, so a
+reader hears that the section exists and is unavailable, and the roving focus
+steps over them.
+
+### Automatic and manual activation
+
+The default is automatic activation:
+
+```js
+<Tabs.Root defaultValue="preview">
+  …
+</Tabs.Root>
+```
+
+When focus moves to a tab, that tab is selected. This is the right default for
+panels that are already present and cheap to show: reaching the panel is one
+arrow key, not an arrow key and then a second confirmation.
+
+Manual activation is for a panel that costs something to reveal:
+
+```js
+<Tabs.Root activationMode="manual" defaultValue="preview">
+  …
+</Tabs.Root>
+```
+
+There the arrows move focus only, and `Enter` or `Space` selects. A reader
+arrowing from the first tab to the fourth should not start three fetches, mount
+three expensive trees, or hear three panels they were only crossing on the way.
+That is why this is a prop on the root rather than a styling convention: it is
+a behaviour decision, not a presentation decision.
+
+### Panels are mounted facts
+
+A `Tabs.Panel` returns `null` when it is not selected. When it is selected, it
+registers itself with the root, and that registration is what lets its tab write
+`aria-controls`. The root does not assume a panel exists because a tab with the
+same value exists; callers may render only a subset, wait for data, or put a tab
+in the list before its panel is ready.
+
+The panel itself has `tabIndex={0}`. That is deliberate even when the panel only
+contains prose: `Tab` out of the tab list lands on the content the tab selected,
+which is where the reader expects to go. If the panel contains controls, the
+browser moves on from the panel to the controls normally.
+
 ## Toast
 
 Notifications, and the live region that was watching before them.
@@ -1190,6 +1291,129 @@ ends announced, `aria-selected` across everything between them and a second set
 of keyboard rules for extending it; none of that is written, and a `value` that
 quietly accepted a pair would be the lookalike this package refuses.
 
+## Dialog
+
+A modal dialog is the component whose broken version looks most correct. The
+backdrop darkens, the box is centred, the close button works with a pointer —
+and a keyboard reader can still leave it, lose the page behind it, or come back
+from it at the top of the document. `Dialog` is the part that makes "modal" true
+to someone who cannot see the dim.
+
+```js
+<Dialog.Root>
+  <Dialog.Trigger>Edit profile</Dialog.Trigger>
+  <Dialog.Overlay />
+  <Dialog.Body>
+    <Dialog.Header>
+      <Dialog.Title>Edit profile</Dialog.Title>
+      <Dialog.Description>Change the public details for this account.</Dialog.Description>
+    </Dialog.Header>
+    <Dialog.Footer>
+      <Dialog.Close>Cancel</Dialog.Close>
+      <button type="submit">Save</button>
+    </Dialog.Footer>
+  </Dialog.Body>
+</Dialog.Root>
+```
+
+### Parts
+
+| Part | Renders | Notes |
+| --- | --- | --- |
+| `Dialog.Root` | No element | `open`, `defaultOpen`, `onOpenChange`; owns the ids and open state |
+| `Dialog.Trigger` | `button` | Opens the dialog, carries `aria-haspopup="dialog"`, and receives focus back |
+| `Dialog.Overlay` | `div aria-hidden` | Rendered only while open; decoration, not the dismissal logic |
+| `Dialog.Body` | `div role="dialog"` | `aria-modal="true"`, focus trap, outside press, `Escape`, scroll lock |
+| `Dialog.Title` | `h2` | The accessible name when present |
+| `Dialog.Description` | `p` | The announced description when present |
+| `Dialog.Header`, `Dialog.Footer` | `div` | Styling hooks, deliberately not landmarks |
+| `Dialog.Close` | `button` | Closes the dialog |
+
+`Dialog.Title` and `Dialog.Description` register themselves, so `Dialog.Body`
+only writes `aria-labelledby` and `aria-describedby` when the elements they name
+exist. A conditional title that is not currently rendered is not a label; an id
+that points at nothing is worse than falling back to an `aria-label` the caller
+passed to the body.
+
+`Dialog.Header` renders a `div`, not a `<header>`. A header inside a dialog is a
+landmark, and a second banner in the landmark list is not a service to a reader.
+The part exists because styling a dialog's top and bottom is common; it adds no
+semantics because there are none to add.
+
+### The modal promises
+
+Opening a dialog does four things at once:
+
+- **Focus moves in.** The target is `initialFocus` when that ref points inside
+  the body, otherwise the first focusable element, otherwise the body itself.
+- **Focus cannot leave by `Tab`.** The first and last stops wrap, and a dialog
+  with no focusable children keeps focus on the body instead of letting `Tab`
+  reach the page behind it.
+- **The page behind is gone.** Everything outside the dialog is marked
+  `aria-hidden` and `inert`, so it is hidden from the accessibility tree and
+  from the browser's own focus and pointer model.
+- **Focus comes back.** Closing restores the outside page first, then focuses the
+  trigger or whatever element had focus when the self-opening dialog appeared.
+
+The hiding walks from the dialog up the tree and marks each level's siblings,
+rather than hiding the body's children once. That is what keeps stacked dialogs
+honest: an inner dialog can hide the outer dialog's other content without
+hiding itself, and closing it restores the exact attributes the outer dialog
+had already set.
+
+The page is scroll-locked while the dialog is open. This is not cosmetic. A
+wheel event over a modal that scrolls the document behind it changes the reader's
+place in a page they cannot currently reach.
+
+### Closing it
+
+`Escape` closes the dialog and stops there. The stop matters when dialogs are
+stacked: one key press dismisses the one the reader is in, not every ancestor
+that also heard the key.
+
+A press outside closes by default, but the behaviour belongs to `Dialog.Body`,
+not `Dialog.Overlay`. The overlay is only the visible rectangle; the body is the
+part that knows what "outside" means. The listener runs in capture, so a menu or
+popover inside the dialog cannot accidentally hide the press from it, and a
+press on the trigger is ignored so a click does not close and immediately reopen
+the same dialog.
+
+`dismissOnOutsidePress={false}` leaves `Escape` alone. That is the line between a
+dialog and a trap: an alert-style confirmation may refuse a stray pointer press,
+but a keyboard reader still needs a way to decline.
+
+```js
+const cancelRef = useRef<HTMLElement | null>(null);
+
+<Dialog.Root open={open} onOpenChange={setOpen}>
+  <Dialog.Trigger>Delete project</Dialog.Trigger>
+  <Dialog.Overlay />
+  <Dialog.Body dismissOnOutsidePress={false} initialFocus={cancelRef}>
+    <Dialog.Title>Delete this project?</Dialog.Title>
+    <Dialog.Description>This cannot be undone.</Dialog.Description>
+    <Dialog.Close ref={cancelRef}>Cancel</Dialog.Close>
+    <button type="button" onClick={remove}>Delete</button>
+  </Dialog.Body>
+</Dialog.Root>
+```
+
+That example is exactly why `AlertDialog` exists: it fixes the role, the
+outside-press rule and the initial focus for the confirmation case. `Dialog`
+keeps the lower-level controls because `Sheet`, `Drawer`, `Sidebar` and custom
+modals need the same machinery without the same bundle of choices.
+
+### No portal
+
+The body renders where it is written. A portal solves a CSS stacking problem by
+moving the dialog somewhere else in the document, and this component is about
+the accessibility tree before it is about stacking. Keeping the dialog beside
+its trigger preserves that tree; making the rest of the page inert provides the
+modal guarantee without moving the node.
+
+Use CSS to put it where it should appear. The component contributes ids, roles,
+focus movement, scroll locking and page hiding; it does not own the fixed
+positioning, the backdrop colour, or the animation.
+
 ## The four built on `Dialog`
 
 `AlertDialog`, `Sheet`, `Drawer` and `Sidebar` are all `Dialog` underneath, and
@@ -1616,9 +1840,9 @@ are stated as tests in `packages/ui/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.
 
-Sections for `Dialog` and `Tabs` are still to be written, and `Combobox` has
-only its groups and the palette they make possible; until they are, each
-module's header is the documentation, and it is written to be read.
+`Combobox` still has only its groups and the palette they make possible; until
+the rest of it is written here, its module header is the documentation, and it
+is written to be read.
 
 For a live region that is *only* a live region — a route change announced, a
 count that updates where nothing visible moves — `Announcer` in
