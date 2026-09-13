@@ -262,7 +262,47 @@ fn react_member_owner_before_dot(code: &str, dot: usize) -> bool {
 /// across lines, this errs toward skipping the expensive optional rule rather
 /// than paying the #668 path for import-only modules.
 fn call_follows_name(code: &str, after: usize) -> bool {
-    next_non_space(code, after).is_some_and(|(_, byte)| matches!(byte, b'(' | b'<'))
+    match next_non_space(code, after) {
+        Some((_, b'(')) => true,
+        Some((at, b'<')) if at == after => generic_call_follows_name(code, at),
+        _ => false,
+    }
+}
+
+fn generic_call_follows_name(code: &str, open: usize) -> bool {
+    let bytes = code.as_bytes();
+    let mut depth = 0u32;
+    let mut at = open;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'<' => depth += 1,
+            b'"' | b'\'' => at = skip_quoted_type_literal(bytes, at),
+            b'>' if at > 0 && bytes[at - 1] == b'=' => {}
+            b'>' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return next_non_space(code, at + 1).is_some_and(|(_, byte)| byte == b'(');
+                }
+            }
+            b';' if depth > 0 => return false,
+            _ => {}
+        }
+        at += 1;
+    }
+    false
+}
+
+fn skip_quoted_type_literal(bytes: &[u8], quote: usize) -> usize {
+    let mut at = quote + 1;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'\\' => at = (at + 1).min(bytes.len()),
+            byte if byte == bytes[quote] => return at,
+            _ => {}
+        }
+        at += 1;
+    }
+    bytes.len()
 }
 
 /// Whether a `useState` call is initialized into the array destructuring shape
@@ -1765,14 +1805,34 @@ export hook useHandler(id: string): () => void {
 
     #[test]
     fn generic_hook_calls_still_request_the_react_tree_path() {
-        let source = r#"// @flow
+        let simple = r#"// @flow
 import { useMemo } from "react";
 component Page() {
   const value = useMemo<number>(() => 1, []);
   return <main>{value}</main>;
 }
 "#;
+        let object_type = r#"// @flow
+import { useMemo } from "react";
+component Page() {
+  const value = useMemo<{kind: "ready"}>(() => ({kind: "ready"}), []);
+  return <main>{value.kind}</main>;
+}
+"#;
 
-        assert!(wants(REDUNDANT_MEMO, source));
+        assert!(wants(REDUNDANT_MEMO, simple));
+        assert!(wants(REDUNDANT_MEMO, object_type));
+    }
+
+    #[test]
+    fn less_than_expressions_do_not_request_the_memo_tree_path() {
+        let source = r#"// @flow
+component Page(useMemo: number, limit: number) {
+  const value = useMemo < limit ? useMemo : limit;
+  return <main>{value}</main>;
+}
+"#;
+
+        assert!(!wants(REDUNDANT_MEMO, source));
     }
 }
