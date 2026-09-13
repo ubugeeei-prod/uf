@@ -1,6 +1,6 @@
 ---
 title: "Headless components · uf"
-description: "Seven primitives: the keyboard, the ARIA, and no styles at all."
+description: "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all."
 ---
 
 <p className="eyebrow">Writing code</p>
@@ -8,17 +8,29 @@ description: "Seven primitives: the keyboard, the ARIA, and no styles at all."
 # Headless components
 
 <div className="lede">
-`@uniflowed/ui` is seven primitives that ship behaviour and no styles: the
-roving tab stop, the focus trap, the typeahead, the ARIA — everything a `div`
-that looks the same does not do. It has no dependency on a styling system, and
-119 tests hold it in place.
+`@uniflowed/ui` is the headless half of a Flow React design system: roving tab
+stops, focus traps, typeahead, live regions, form wiring, range controls,
+modals, overlays, tables and the ARIA that makes each one true. It has no
+dependency on a styling system, and the UI suite now holds the contracts with
+500-plus behaviour tests.
 </div>
 
 ## What you get, and what you do not
 
-Seven modules: `Field`, `Tabs`, `Dialog`, `Menu`, `Combobox`, `Checkbox` and
-`Switch`. They render semantic elements with the right roles and relationships,
-handle the keyboard the way the platform's own controls do, and have no opinion
+The package root exports more than thirty primitive families and five
+single-element controls. The full per-part reference is
+[Components](/reference/ui); this page is the shorter path through the pieces
+you are most likely to compose first.
+
+| Family | Reach for it when |
+| --- | --- |
+| `Field`, `Checkbox`, `Switch`, `RadioGroup`, `Toggle`, `ToggleGroup`, `Slider`, `InputOtp`, `Calendar`, `DatePicker` | a value has to be named, validated, changed, submitted, or announced |
+| `Dialog`, `AlertDialog`, `Sheet`, `Drawer`, `Sidebar`, `Popover`, `Tooltip`, `HoverCard`, `Collapsible`, `Accordion` | some part of the page appears, disappears, traps focus, or must not trap it |
+| `Tabs`, `Menu`, `ContextMenu`, `Menubar`, `NavigationMenu`, `Breadcrumb`, `Pagination`, `Carousel`, `ScrollArea` | movement is the feature: within panels, menus, pages, slides, or scrollable regions |
+| `Combobox`, `Select`, `Table`, `Resizable`, `Progress`, `Toast`, `Alert`, `Avatar`, `Separator`, `Skeleton` | the browser has a related primitive, but the app needs a richer contract around it |
+
+They render semantic elements with the right roles and relationships, handle
+the keyboard the way the platform's own controls do, and have no opinion
 whatsoever about how any of it looks.
 
 There is no stylesheet, no theme prop and no StyleX import. From
@@ -60,17 +72,29 @@ accepts, and that constraint is the thing a copied source cannot keep.
 `Dialog`, `Drawer`, `Menu`, `ContextMenu`, `Menubar`, `Sheet`, `Skeleton` and
 `Tabs` take it on every fixed-element part, as do the single-part `Checkbox`,
 `Progress`, `Separator`, `Switch` and `Toggle`, along with `Field.Control`,
-`Tooltip.Trigger`, `Tooltip.Body`, `HoverCard.Trigger` and `Sidebar.Item`. The rest of the
-package does not have it yet; the table in `packages/ui/ui.test.js` names every
-part and which of the three states it is in, and the suite fails if that table
-stops matching the files.
+`Tooltip.Trigger`, `Tooltip.Body`, `HoverCard.Trigger` and `Sidebar.Item`. The
+table in `packages/ui/ui.test.js` names every part and whether the hatch is
+implemented, absent because there is no element, or still intentionally absent;
+the suite fails if that table stops matching the files.
 [#303](https://github.com/ubugeeei-prod/uf/issues/303) is the argument, and
 `packages/ui/index.js`'s header is where the decision is recorded.
 
 Import from the package root, where each family is a namespace:
 
 ```js
-import { Checkbox, Combobox, Dialog, Field, Menu, Switch, Tabs } from "@uniflowed/ui";
+import {
+  AlertDialog,
+  Checkbox,
+  Combobox,
+  Dialog,
+  Field,
+  Menu,
+  Select,
+  Sheet,
+  Switch,
+  Tabs,
+  Toast,
+} from "@uniflowed/ui";
 ```
 
 or from a subpath — `@uniflowed/ui/dialog`, `/menu`, `/combobox`, `/tabs`,
@@ -420,13 +444,122 @@ again what the native control does. *"submits the form on Enter rather than
 toggling itself"* is the test, and it presses `Enter` on a **focused** control,
 because that is the only version of it that would ever have failed.
 
-## Four rules that hold across all seven
+## A complete settings surface
+
+The pieces are meant to be composed. A settings dialog is not a new component in
+this package; it is the exact point where the existing contracts meet:
+
+```js
+// @flow
+import { Checkbox, Dialog, Field, Switch, Tabs } from "@uniflowed/ui";
+
+component WorkspaceSettings(
+  email: string,
+  setEmail: (string) => mixed,
+  notifications: boolean,
+  setNotifications: (boolean) => mixed,
+  compactRows: boolean,
+  setCompactRows: (boolean) => mixed,
+) {
+  return (
+    <Dialog.Root>
+      <Dialog.Trigger>Preferences</Dialog.Trigger>
+      <Dialog.Overlay />
+      <Dialog.Body>
+        <Dialog.Header>
+          <Dialog.Title>Preferences</Dialog.Title>
+          <Dialog.Description>Choose how this workspace behaves.</Dialog.Description>
+        </Dialog.Header>
+
+        <Tabs.Root activationMode="manual" defaultValue="account">
+          <Tabs.List aria-label="Preference sections">
+            <Tabs.Tab value="account">Account</Tabs.Tab>
+            <Tabs.Tab value="display">Display</Tabs.Tab>
+          </Tabs.List>
+
+          <Tabs.Panel value="account">
+            <Field.Root>
+              <Field.Label>Email</Field.Label>
+              <Field.Control
+                render={(props) => (
+                  <input
+                    {...props}
+                    onChange={(event) => setEmail(event.currentTarget.value)}
+                    type="email"
+                    value={email}
+                  />
+                )}
+              />
+              <Field.Description>Used for billing and security messages.</Field.Description>
+            </Field.Root>
+            <Switch checked={notifications} onCheckedChange={setNotifications}>
+              Email notifications
+            </Switch>
+          </Tabs.Panel>
+
+          <Tabs.Panel value="display">
+            <Checkbox checked={compactRows} onCheckedChange={setCompactRows}>
+              Use compact table rows
+            </Checkbox>
+          </Tabs.Panel>
+        </Tabs.Root>
+
+        <Dialog.Footer>
+          <Dialog.Close>Done</Dialog.Close>
+        </Dialog.Footer>
+      </Dialog.Body>
+    </Dialog.Root>
+  );
+}
+```
+
+Nothing in that surface has to know about the other parts to stay accessible:
+
+- `Dialog` owns modality, focus restore, scroll locking and the page it hides.
+- `Tabs` keeps one tab stop for the section list and mounts only the active
+  panel.
+- `Field` owns the ids connecting the label, help text and input.
+- `Switch` and `Checkbox` say different things to a reader and use different
+  `Enter` semantics.
+
+The test reads like the behaviour a user gets, not like markup trivia:
+
+```js
+render(
+  <WorkspaceSettings
+    compactRows={false}
+    email="person@example.com"
+    notifications={true}
+    setCompactRows={() => {}}
+    setEmail={() => {}}
+    setNotifications={() => {}}
+  />,
+);
+
+await userEvent.click(screen.getByRole("button", { name: "Preferences" }));
+expect(screen.getByRole("dialog", { name: "Preferences" })).toBeInTheDocument();
+
+await userEvent.click(screen.getByRole("tab", { name: "Display" }));
+expect(screen.getByRole("checkbox", { name: "Use compact table rows" })).toHaveAttribute(
+  "aria-checked",
+  "false",
+);
+
+await userEvent.keyboard("{Escape}");
+expect(screen.getByRole("button", { name: "Preferences" })).toHaveFocus();
+```
+
+That is the testing style the package itself uses: query by role and name, press
+the keys real users press, and assert the ARIA state or focus movement that
+would be broken by a lookalike component.
+
+## Four rules that hold across the package
 
 **No attribute ever names a missing element.** A helper in the test file walks
 every `aria-labelledby`, `aria-describedby`, `aria-controls` and
 `aria-activedescendant` in the document and asserts the id it names exists. It
-runs in seven places, and it is the single most valuable assertion in the suite:
-a dangling reference does not look broken, it just makes a screen reader say
+runs across the suite, and it is the single most valuable assertion in it: a
+dangling reference does not look broken, it just makes a screen reader say
 nothing.
 
 **One `Escape` is one dismissal.** A menu inside a dialog closes the menu and
@@ -444,14 +577,17 @@ which items are there, because mount order stops being document order the moment
 a list is filtered or reordered — and a registry that disagrees with the page
 sends the arrow keys somewhere the reader is not.
 
-## What is not there yet
+## What to read next
 
-| Missing | Why it matters | Tracked |
-| --- | --- | --- |
-| Right-to-left | The horizontal arrow keys are hard-coded left-to-right | [#253](https://github.com/ubugeeei-prod/uf/issues/253) |
-| Alert Dialog, Sheet, Drawer, Sidebar | Three fixed lines in `dialog.js` are what stand in the way | [#284](https://github.com/ubugeeei-prod/uf/issues/284) |
-| The other 44 components | The registry names 51 and the package ships seven | [#249](https://github.com/ubugeeei-prod/uf/issues/249) |
-| Live examples | These pages show code; a story that runs as a test is what keeps it true | [#301](https://github.com/ubugeeei-prod/uf/issues/301) |
+| Need | Next page |
+| --- | --- |
+| Every part, prop and keyboard table | [Components](/reference/ui) |
+| A route, data loader, form, UI, tests and build in one app | [Build a reading list](/guide/tutorial) |
+| Styling these primitives without coupling the package to a theme | [Styling and content](/guide/styling) |
+| Querying the behaviour from tests | [Testing](/guide/testing) |
 
-Nothing here is a placeholder: each of the seven is finished behaviour with a
-test suite, and the list above is what has not been started.
+Nothing here is a placeholder: each primitive is finished behaviour with a test
+suite, and the intentionally missing part is visual style. A card border, a
+pressed colour or an animation curve belongs to the application or to a preset;
+the package owns the behaviour that should survive when that styling is
+replaced.

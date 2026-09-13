@@ -133,7 +133,8 @@ export const sections: $ReadOnlyArray<Section> = [
       {
         href: "/guide/ui",
         title: "Headless components",
-        blurb: "Seven primitives: the keyboard, the ARIA, and no styles at all.",
+        blurb:
+          "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all.",
       },
       {
         href: "/guide/state",
