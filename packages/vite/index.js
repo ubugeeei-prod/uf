@@ -291,6 +291,12 @@ function flowPlugin({
   const forgetActions = () => {
     actionMemo = null;
   };
+  const invalidateActionModules = (moduleGraph, modules) => {
+    for (const id of modules.keys()) {
+      const module = moduleGraph.getModuleById(id);
+      if (module) moduleGraph.invalidateModule(module);
+    }
+  };
   const actionTables = () => {
     const file = process.env[RSC_MANIFEST_ENV];
     const key = rscManifestKey(file);
@@ -581,11 +587,15 @@ function flowPlugin({
         devServer.watcher.add(manifestPath);
         const onManifest = (file) => {
           if (path.resolve(file) !== manifestPath) return;
+          const previousActions = actionTables().modules;
           // The action tables are read from the same file and are memoised on
           // its size and modification time, which is a pair two writes inside
           // one millisecond can share. This is the answer that does not
           // depend on a clock.
           forgetActions();
+          const nextActions = actionTables().modules;
+          invalidateActionModules(devServer.moduleGraph, previousActions);
+          invalidateActionModules(devServer.moduleGraph, nextActions);
           const routes = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.routes));
           if (routes) devServer.moduleGraph.invalidateModule(routes);
           const actions = devServer.moduleGraph.getModuleById(resolved(VIRTUAL.actions));
