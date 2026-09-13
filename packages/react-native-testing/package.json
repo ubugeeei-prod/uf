@@ -22,9 +22,9 @@
     "!*.test.js"
   ],
   "peerDependencies": {
-    "react": ">=19",
+    "react": "^19.3.0",
     "react-native": ">=0.87",
-    "react-test-renderer": ">=19"
+    "react-test-renderer": "^19.3.0"
   },
   "peerDependenciesMeta": {
     "react-native": {

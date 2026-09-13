@@ -388,10 +388,10 @@ query contract: `getByText`, `getByLabelText`, `getByRole`, `getByTestId`,
 `within`, state filters, `accessibilityValue` filters and the rules for unknown
 options.
 
-If the suite installs the optional `react-test-renderer` peer that matches its
-React version, `render()` can mount the element into React Test Renderer's JSON
-tree and then expose the same native queries plus `rerender`, `unmount` and
-`toJSON`:
+If the suite installs the optional `react-test-renderer` peer from the same
+React 19.3 release line declared by `@uniflowed/react-native-testing`,
+`render()` can mount the element into React Test Renderer's JSON tree and then
+expose the same native queries plus `rerender`, `unmount` and `toJSON`:
 
 ```js
 // @flow

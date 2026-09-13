@@ -207,7 +207,8 @@ heading levels the component *actually* emitted skip a step.
 `@uniflowed/react-native-testing` is for the half of React Native testing uf can
 state honestly today: querying a native renderer's JSON tree. It can also mount
 through React Test Renderer when the suite installs the optional
-`react-test-renderer` peer that matches its React version. That adapter is
+`react-test-renderer` peer from the same React 19.3 release line declared by
+the package. That adapter is
 useful for component-level checks, but it is still JSON, not a native host
 config, layout engine, device, Expo app or React Navigation runtime.
 
@@ -287,9 +288,9 @@ it("queries the native tree by role, state and value", () => {
 });
 ```
 
-When a matching `react-test-renderer` is present, `render(ui)` mounts the
-element through that JSON renderer and returns the same queries plus `rerender`,
-`unmount` and `toJSON`:
+When the matching React 19.3 `react-test-renderer` peer is present, `render(ui)`
+mounts the element through that JSON renderer and returns the same queries plus
+`rerender`, `unmount` and `toJSON`:
 
 ```js
 // @flow

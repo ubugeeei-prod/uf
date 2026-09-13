@@ -255,8 +255,8 @@ function requireTestRenderer(): ReactTestRendererModule {
       if (isMissingTestRenderer(error)) {
         throw new NativeTestingUnsupportedError(
           "@uniflowed/react-native-testing render() needs the optional peer " +
-            "`react-test-renderer`. Install the `react-test-renderer` release that " +
-            "matches your React version, or pass an existing native test tree to " +
+            "`react-test-renderer`. Install the 19.3.x `react` and " +
+            "`react-test-renderer` releases together, or pass an existing native test tree to " +
             "createNativeScreen().",
         );
       }
