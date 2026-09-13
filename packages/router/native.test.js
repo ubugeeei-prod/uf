@@ -4,8 +4,10 @@
 
 import {
   NativeNavigationError,
+  createNativeScreenManifest,
   createNativeRouter,
   createNativeScreenRouter,
+  nativeScreenName,
   nativeScreenNavigationState,
   nativeScreenPayload,
   resolveNativeNavigation,
@@ -83,6 +85,78 @@ describe("@uniflowed/router/native", () => {
       search: "?tab=posts",
       route: "/users/:id",
     });
+  });
+
+  it("derives a native screen manifest from the route table", () => {
+    const manifest = createNativeScreenManifest(table(), {
+      name: (route) => (route.path === "/users/:id" ? "UserProfile" : nativeScreenName(route.path)),
+    });
+
+    expect(manifest).toEqual({
+      screens: {
+        "/": "Home",
+        "/users/:id": "UserProfile",
+      },
+      entries: [
+        { screen: "Home", route: "/", file: "app/$page.native.js" },
+        {
+          screen: "UserProfile",
+          route: "/users/:id",
+          file: "app/users/[id]/$page.native.js",
+        },
+      ],
+    });
+  });
+
+  it("uses the generated screen manifest with the native screen router", async () => {
+    const events = [];
+    const manifest = createNativeScreenManifest(table(), {
+      name: (route) => (route.path === "/users/:id" ? "UserProfile" : nativeScreenName(route.path)),
+    });
+    const router = createNativeScreenRouter(table(), manifest.screens, {
+      push: (screen, state) => {
+        events.push([screen, state.href, state.params]);
+      },
+    });
+
+    await router.push("/users/42?tab=posts");
+
+    expect(events).toEqual([["UserProfile", "/users/42?tab=posts", { id: "42" }]]);
+  });
+
+  it("names routes predictably when an app does not supply screen names", () => {
+    expect(nativeScreenName("/")).toBe("Home");
+    expect(nativeScreenName("/settings")).toBe("Settings");
+    expect(nativeScreenName("/users/:id")).toBe("UsersById");
+    expect(nativeScreenName("/docs/:slug*")).toBe("DocsAllSlug");
+  });
+
+  it("refuses duplicate generated native screen names", () => {
+    let thrown: ?NativeNavigationError = null;
+    try {
+      createNativeScreenManifest(table(), { name: () => "Screen" });
+    } catch (error) {
+      if (error instanceof NativeNavigationError) {
+        thrown = error;
+      }
+    }
+
+    expect(thrown?.code).toBe("duplicate-screen");
+    expect(thrown?.route).toBe("/users/:id");
+  });
+
+  it("refuses empty generated native screen names", () => {
+    let thrown: ?NativeNavigationError = null;
+    try {
+      createNativeScreenManifest(table(), { name: () => "" });
+    } catch (error) {
+      if (error instanceof NativeNavigationError) {
+        thrown = error;
+      }
+    }
+
+    expect(thrown?.code).toBe("missing-screen");
+    expect(thrown?.route).toBe("/");
   });
 
   it("refuses a native route event whose screen mapping is missing", () => {

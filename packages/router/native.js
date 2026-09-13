@@ -9,7 +9,7 @@
 // own navigation runtime. Rendering the tree is still the renderer/host-config
 // half of the React Native target.
 
-import type { RouteParams, RouteTable } from "./internal/routing.js";
+import type { RouteParams, RouteRecord, RouteTable } from "./internal/routing.js";
 import { hasClientPage, matchRoute, splitUrl } from "./internal/routing.js";
 
 export type NativeNavigationKind = "push" | "replace" | "prefetch";
@@ -26,6 +26,26 @@ export type NativeNavigationEvent = {|
 export type NativeScreenMap = {
   readonly [route: string]: string,
 };
+
+export type NativeScreenEntry = {|
+  readonly screen: string,
+  readonly route: string,
+  readonly file: string,
+|};
+
+export type NativeScreenManifest = {|
+  readonly screens: NativeScreenMap,
+  readonly entries: $ReadOnlyArray<NativeScreenEntry>,
+|};
+
+export type NativeScreenNameRoute = {|
+  readonly path: string,
+  readonly file: string,
+|};
+
+export type NativeScreenManifestOptions = {|
+  readonly name?: (route: NativeScreenNameRoute) => string,
+|};
 
 export type NativeScreenPayload = {|
   readonly screen: string,
@@ -67,6 +87,7 @@ export type NativeRouter = {|
 |};
 
 export type NativeNavigationErrorCode =
+  | "duplicate-screen"
   | "external-url"
   | "fragment"
   | "relative-url"
@@ -129,6 +150,53 @@ export function createNativeScreenRouter(
       return invokeScreenNavigator(navigator, screens, event);
     },
   });
+}
+
+export function createNativeScreenManifest(
+  table: RouteTable<mixed, mixed, mixed, mixed, mixed>,
+  options?: NativeScreenManifestOptions,
+): NativeScreenManifest {
+  const screens: { [string]: string } = {};
+  const entries: Array<NativeScreenEntry> = [];
+  const seen = new Map<string, string>();
+  for (const route of table.routes) {
+    if (!hasClientPage(route)) {
+      continue;
+    }
+    const screen = screenNameFor(route, options);
+    const already = seen.get(screen);
+    if (already != null) {
+      throw new NativeNavigationError(
+        "duplicate-screen",
+        `@uniflowed/router/native: ${route.path} and ${already} both map to native screen ${screen}`,
+        route.path,
+        route.path,
+      );
+    }
+    seen.set(screen, route.path);
+    screens[route.path] = screen;
+    entries.push({ screen, route: route.path, file: route.file });
+  }
+  return { screens, entries };
+}
+
+export function nativeScreenName(routePath: string): string {
+  const segments = routePath.split("/").filter((segment) => segment !== "");
+  if (segments.length === 0) {
+    return "Home";
+  }
+  const name = segments
+    .map((segment) => {
+      if (segment.startsWith(":") && segment.endsWith("*")) {
+        return `All${titlePart(segment.slice(1, -1))}`;
+      }
+      if (segment.startsWith(":")) {
+        return `By${titlePart(segment.slice(1))}`;
+      }
+      return titlePart(segment);
+    })
+    .join("");
+  return name === "" ? "Screen" : name;
 }
 
 export function resolveNativeNavigation(
@@ -223,6 +291,37 @@ function normalizeNativeHref(to: string): string {
     );
   }
   return splitUrl(to).pathname + splitUrl(to).search;
+}
+
+function screenNameFor(
+  route: RouteRecord<mixed, mixed, mixed, mixed, mixed>,
+  options?: NativeScreenManifestOptions,
+): string {
+  const screen =
+    options?.name?.({ path: route.path, file: route.file }) ?? nativeScreenName(route.path);
+  if (screen === "") {
+    throw new NativeNavigationError(
+      "missing-screen",
+      `@uniflowed/router/native: ${route.path} mapped to an empty native screen name`,
+      route.path,
+      route.path,
+    );
+  }
+  return screen;
+}
+
+function titlePart(segment: string): string {
+  const cleaned = segment
+    .replace(/^\[+|\]+$/g, "")
+    .replace(/[^A-Za-z0-9]+/g, " ")
+    .trim();
+  if (cleaned === "") {
+    return "Segment";
+  }
+  return cleaned
+    .split(/\s+/)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join("");
 }
 
 async function invokeNavigator(
