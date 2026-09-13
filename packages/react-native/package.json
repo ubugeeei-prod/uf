@@ -12,13 +12,18 @@
   },
   "exports": {
     ".": "./index.js",
-    "./metro": "./metro.js"
+    "./metro": "./metro.js",
+    "./metro-transformer.cjs": "./metro-transformer.cjs"
   },
   "files": [
     "index.js",
     "metro.js",
+    "metro-transformer.cjs",
     "!*.test.js"
   ],
+  "dependencies": {
+    "@uniflowed/host": "0.0.0-alpha.32"
+  },
   "peerDependencies": {
     "react": ">=19.2.3",
     "react-native": ">=0.87"

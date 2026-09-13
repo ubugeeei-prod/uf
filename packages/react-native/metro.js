@@ -13,8 +13,14 @@ export type MetroResolverConfig = {
   readonly [key: string]: mixed,
 };
 
+export type MetroTransformerConfig = {
+  readonly babelTransformerPath?: string,
+  readonly [key: string]: mixed,
+};
+
 export type MetroConfig = {
   readonly resolver?: MetroResolverConfig,
+  readonly transformer?: MetroTransformerConfig,
   readonly [key: string]: mixed,
 };
 
@@ -24,24 +30,46 @@ export const metroResolverMainFields: $ReadOnlyArray<string> = Object.freeze([
   "browser",
   "main",
 ]);
+export const metroTransformPipeline: $ReadOnlyArray<string> = Object.freeze([
+  "flow",
+  "react-compiler",
+  "stylex-css-refusal",
+  "metro-babel",
+]);
+export const metroTransformerPath: string = filePathFromFileUrl(
+  new URL("./metro-transformer.cjs", import.meta.url),
+);
 
 /**
- * Add uf's Flow-first JavaScript extensions to a Metro config.
+ * Add uf's Flow-first JavaScript extensions and transformer to a Metro config.
  *
  * Metro already owns platform suffix resolution (`.ios.js`, `.android.js`,
  * `.native.js`). uf's route scanner and build manifest use the same suffixes,
- * so this helper only names the source extensions and resolver main fields a
- * Metro app needs to consume `@uniflowed/*` Flow packages without dropping any
- * app-specific extensions the project already configured.
+ * so this helper names the source extensions, resolver main fields and the
+ * single Metro Babel transformer that runs uf's Flow pipeline before Metro's
+ * React Native Babel pass.
  */
 export function withUniflowedMetro(config?: MetroConfig = {} as MetroConfig): MetroConfig {
-  const resolver = config.resolver ?? {};
+  const resolver: MetroResolverConfig = config.resolver ?? {};
+  const transformer: MetroTransformerConfig = config.transformer ?? {};
+  const existing = transformer.babelTransformerPath;
+  if (existing != null && existing !== metroTransformerPath) {
+    throw new Error(
+      "@uniflowed/react-native/metro: transformer.babelTransformerPath is already set. " +
+        "Metro accepts one Babel transformer, so compose that transformer with " +
+        "@uniflowed/react-native/metro-transformer.cjs instead of silently replacing it.",
+    );
+  }
   return {
     ...config,
     resolver: {
       ...resolver,
       sourceExts: mergeUnique(resolver.sourceExts, metroSourceExts),
       resolverMainFields: mergeUnique(resolver.resolverMainFields, metroResolverMainFields),
+    },
+    transformer: {
+      ...transformer,
+      babelTransformerPath: metroTransformerPath,
     },
   };
 }
@@ -58,4 +86,11 @@ function mergeUnique(
     merged.push(value);
   }
   return merged;
+}
+
+function filePathFromFileUrl(fileUrl: URL): string {
+  const pathname = decodeURIComponent(fileUrl.pathname);
+  if (fileUrl.hostname !== "") return `//${fileUrl.hostname}${pathname}`;
+  if (/^\/[A-Za-z]:\//.test(pathname)) return pathname.slice(1);
+  return pathname;
 }

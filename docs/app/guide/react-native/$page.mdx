@@ -158,8 +158,8 @@ the real package so the public surface moves with React Native.
 
 ## Metro
 
-Metro still owns the bundle. uf's Metro helper only writes down the resolver
-contract that uf's native target expects:
+Metro still owns the bundle. uf's Metro helper writes down the resolver and
+transformer contract that uf's native target expects:
 
 ```js
 // @flow
@@ -181,10 +181,28 @@ uf needs:
 | --- | --- |
 | `resolver.sourceExts` | `js`, `jsx`, `mjs`, `cjs` |
 | `resolver.resolverMainFields` | `react-native`, `browser`, `main` |
+| `transformer.babelTransformerPath` | `@uniflowed/react-native/metro-transformer.cjs` |
 
 Metro already understands `.ios.js`, `.android.js` and `.native.js`. The helper
 does not reimplement platform suffix resolution; it keeps Metro and uf naming
 the same files.
+
+The transformer runs uf's Flow pipeline first, then hands the result back to
+Metro's React Native Babel transformer:
+
+```text
+Flow lowering -> React Compiler -> StyleX CSS refusal -> Metro Babel
+```
+
+The StyleX entry is a refusal on purpose. `uf transform` can produce CSS from
+`stylex.create`, but a native Metro bundle has nowhere to attach that CSS yet.
+The transformer raises instead of dropping the stylesheet and shipping class
+names that resolve to nothing.
+
+Metro accepts one `babelTransformerPath`. If a project already set one,
+`withUniflowedMetro()` refuses rather than replacing it quietly; compose the
+custom transformer with `@uniflowed/react-native/metro-transformer.cjs` so the
+order stays visible.
 
 The build manifest records the same answer so a downstream tool can check it:
 
@@ -202,11 +220,17 @@ The build manifest records the same answer so a downstream tool can check it:
     },
     "transform": {
       "kind": "metro",
+      "status": "implemented",
       "platform": "native",
       "sourceExtensions": ["js", "jsx", "mjs", "cjs"],
+      "pipeline": ["flow", "react-compiler", "stylex-css-refusal", "metro-babel"],
       "config": {
         "package": "@uniflowed/react-native/metro",
-        "helper": "withUniflowedMetro"
+        "helper": "withUniflowedMetro",
+        "transformer": "@uniflowed/react-native/metro-transformer.cjs"
+      },
+      "stylex": {
+        "css": "refused"
       }
     }
   }
@@ -447,9 +471,6 @@ that app.
 - **An app-owned native router integration.** The navigator contract is
   implemented, but the package does not bind React Navigation, Expo Router or
   any other navigator for you.
-- **A Metro transformer contract beyond resolver config.** Flow, the React
-  Compiler and StyleX all need to pass through the native bundle in one
-  defensible order.
 - **A finished runtime story.** No dev client, no native module registry, no
   asset service, no OTA channel, no submission pipeline.
 

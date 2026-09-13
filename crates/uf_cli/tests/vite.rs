@@ -363,8 +363,8 @@ fn minimal_app() -> Vec<(&'static str, &'static str)> {
 ///
 /// `--target native` already narrows the route table to `$page.native.js`.
 /// The manifest also names the native pieces a downstream tool has to wire:
-/// the navigator helper exists, while the renderer and Metro transform remain
-/// separately reported so a route-suffixed build is not mistaken for a
+/// the navigator helper and Metro transform contract exist, while the renderer
+/// remains separately reported so a route-suffixed build is not mistaken for a
 /// complete React Native artefact.
 #[test]
 fn a_native_target_manifest_names_the_native_contract() {
@@ -425,6 +425,10 @@ fn a_native_target_manifest_names_the_native_contract() {
         serde_json::json!("metro")
     );
     assert_eq!(
+        manifest["targetContract"]["transform"]["status"],
+        serde_json::json!("implemented")
+    );
+    assert_eq!(
         manifest["targetContract"]["transform"]["platform"],
         serde_json::json!("native")
     );
@@ -433,12 +437,29 @@ fn a_native_target_manifest_names_the_native_contract() {
         serde_json::json!(["js", "jsx", "mjs", "cjs"])
     );
     assert_eq!(
+        manifest["targetContract"]["transform"]["pipeline"],
+        serde_json::json!([
+            "flow",
+            "react-compiler",
+            "stylex-css-refusal",
+            "metro-babel"
+        ])
+    );
+    assert_eq!(
         manifest["targetContract"]["transform"]["config"]["package"],
         serde_json::json!("@uniflowed/react-native/metro")
     );
     assert_eq!(
         manifest["targetContract"]["transform"]["config"]["helper"],
         serde_json::json!("withUniflowedMetro")
+    );
+    assert_eq!(
+        manifest["targetContract"]["transform"]["config"]["transformer"],
+        serde_json::json!("@uniflowed/react-native/metro-transformer.cjs")
+    );
+    assert_eq!(
+        manifest["targetContract"]["transform"]["stylex"]["css"],
+        serde_json::json!("refused")
     );
     assert_eq!(
         manifest["routes"][0]["page"],
