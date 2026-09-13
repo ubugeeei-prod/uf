@@ -726,6 +726,7 @@ export type UniflowedConfig = {
   readonly test?: {
     readonly module?: "@uniflowed/test",
     readonly runner?: {
+      readonly applicationTarget?: "auto" | "web" | "react-native",
       readonly runtime?: "vite-task" | "capability-js-host" | "uf-self-hosted",
       readonly jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
       readonly scheduler?: "vite-task-cache" | "native-work-stealing",

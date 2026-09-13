@@ -20,14 +20,17 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
-use uf_config::{Permissions, ToolchainAccess, load_config};
+use uf_config::{
+    FrameworkPreset, NativeTestApplicationTarget, Permissions, ToolchainAccess, UniflowedConfig,
+    load_config,
+};
 use uf_project::{ProjectFile, scan_selected_source_files};
 use uf_runtime::RuntimeHost;
 use uf_term::PhaseTimer;
 use uf_test::{
     Bail, Concurrency, FileStatus, HostCommand, HostKind, LockedObserver, NativeTestRunnerPlan,
-    RetryPolicy, RunOptions, TestFile, TestFilter, TestRunReport, TestRunner, TestTimings,
-    WatchOptions, load_timings, save_timings,
+    RetryPolicy, RunOptions, TestApplicationTarget, TestFile, TestFilter, TestRunReport,
+    TestRunner, TestTimings, WatchOptions, load_timings, save_timings,
 };
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
@@ -192,6 +195,8 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     if args.list {
         return render_list(ui, &root, &files, &args.filter());
     }
+    let application_target = test_application_target(&resolved.config);
+    refuse_unsupported_test_target(application_target)?;
     // `test` rather than `development`, so `.env.test` is a file that means
     // something — the mode Vitest runs in, for the same reason: a suite that
     // talks to the development database is a suite that can destroy it.
@@ -962,6 +967,30 @@ pub(crate) fn runner_plan() -> NativeTestRunnerPlan {
     NativeTestRunnerPlan::self_hosted()
 }
 
+/// Resolve the concrete application runtime a test run targets.
+pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicationTarget {
+    match config.test.runner.application_target {
+        NativeTestApplicationTarget::Web => TestApplicationTarget::Web,
+        NativeTestApplicationTarget::ReactNative => TestApplicationTarget::ReactNative,
+        NativeTestApplicationTarget::Auto => match config.app.framework {
+            FrameworkPreset::ReactNative => TestApplicationTarget::ReactNative,
+            FrameworkPreset::Uniflowed | FrameworkPreset::React => TestApplicationTarget::Web,
+        },
+    }
+}
+
+fn refuse_unsupported_test_target(target: TestApplicationTarget) -> Result<()> {
+    match target {
+        TestApplicationTarget::Web => Ok(()),
+        TestApplicationTarget::ReactNative => bail!(
+            "`uf test` resolved `test.runner.applicationTarget` to `react-native`, but the \
+             runner has no React Native renderer or host config yet. It refuses here instead \
+             of running the suite on the web document shim. Set `test.runner.applicationTarget` \
+             to `web` only for tests that intentionally target a document."
+        ),
+    }
+}
+
 /// Turn a report into the command's exit status.
 ///
 /// A coverage threshold fails the run exactly as a failing test does, and it is
@@ -1043,6 +1072,34 @@ mod tests {
             .map(|file| file.relative_path.as_str())
             .collect();
         assert_eq!(kept, vec!["loop.test.js", "plain.test.js"]);
+    }
+
+    #[test]
+    fn auto_test_application_target_follows_the_framework() {
+        let mut config = UniflowedConfig::default();
+
+        assert_eq!(test_application_target(&config), TestApplicationTarget::Web);
+
+        config.app.framework = FrameworkPreset::ReactNative;
+        assert_eq!(
+            test_application_target(&config),
+            TestApplicationTarget::ReactNative
+        );
+    }
+
+    #[test]
+    fn explicit_test_application_target_wins_over_the_framework() {
+        let mut config = UniflowedConfig::default();
+        config.app.framework = FrameworkPreset::ReactNative;
+        config.test.runner.application_target = NativeTestApplicationTarget::Web;
+
+        assert_eq!(test_application_target(&config), TestApplicationTarget::Web);
+
+        config.test.runner.application_target = NativeTestApplicationTarget::ReactNative;
+        assert_eq!(
+            test_application_target(&config),
+            TestApplicationTarget::ReactNative
+        );
     }
 
     /// A `PATH` that holds exactly one answer, for the argv[0] route.

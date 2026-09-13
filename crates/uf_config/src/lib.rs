@@ -1361,6 +1361,7 @@ pub enum CoverageReporterConfig {
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct NativeTestRunnerConfig {
+    pub application_target: NativeTestApplicationTarget,
     pub runtime: NativeTestRuntimeConfig,
     pub scheduler: NativeTestSchedulerConfig,
     pub performance_target: NativeTestPerformanceTarget,
@@ -1371,6 +1372,7 @@ pub struct NativeTestRunnerConfig {
 impl Default for NativeTestRunnerConfig {
     fn default() -> Self {
         Self {
+            application_target: NativeTestApplicationTarget::Auto,
             runtime: NativeTestRuntimeConfig::CapabilityJsHost,
             scheduler: NativeTestSchedulerConfig::NativeWorkStealing,
             performance_target: NativeTestPerformanceTarget::FasterThanBun,
@@ -1382,6 +1384,15 @@ impl Default for NativeTestRunnerConfig {
             official_flow_parser: true,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NativeTestApplicationTarget {
+    #[default]
+    Auto,
+    Web,
+    ReactNative,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

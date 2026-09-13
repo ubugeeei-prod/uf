@@ -177,6 +177,10 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
     assert_eq!(
+        config.test.runner.application_target,
+        NativeTestApplicationTarget::Auto
+    );
+    assert_eq!(
         config.test.runner.runtime,
         NativeTestRuntimeConfig::CapabilityJsHost
     );
@@ -341,6 +345,7 @@ fn extracts_vite_style_define_config_object() {
           },
           test: {
             runner: {
+              applicationTarget: "react-native",
               runtime: "capability-js-host",
               performanceTarget: "faster-than-bun",
               jsHosts: ["node", "deno", "bun"],
@@ -386,6 +391,10 @@ fn extracts_vite_style_define_config_object() {
     assert_eq!(parsed.tasks["storybook"].command(), "vite --host 0.0.0.0");
     assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!parsed.task_runner.allow_package_scripts);
+    assert_eq!(
+        parsed.test.runner.application_target,
+        NativeTestApplicationTarget::ReactNative
+    );
     assert_eq!(
         parsed.test.runner.performance_target,
         NativeTestPerformanceTarget::FasterThanBun
@@ -897,6 +906,7 @@ fn parses_runtime_agnostic_tooling_surface() {
           },
           test: {
             runner: {
+              applicationTarget: "web",
               runtime: "capability-js-host",
               jsHosts: ["node", "deno", "bun"],
             },
@@ -930,6 +940,10 @@ fn parses_runtime_agnostic_tooling_surface() {
     assert_eq!(parsed.lint.engine, LintEngine::Rust);
     assert_eq!(parsed.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
     assert_eq!(parsed.lint.flow.parser, FlowLintParser::OfficialFlowRust);
+    assert_eq!(
+        parsed.test.runner.application_target,
+        NativeTestApplicationTarget::Web
+    );
     assert_eq!(
         parsed.test.runner.runtime,
         NativeTestRuntimeConfig::CapabilityJsHost

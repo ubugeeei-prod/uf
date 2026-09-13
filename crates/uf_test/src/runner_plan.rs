@@ -20,6 +20,8 @@ pub type TestHostList = SmallVec<[TestHost; 4]>;
 pub struct NativeTestRunnerPlan {
     /// Package specifier for the native test runtime surface.
     pub module: CompactString,
+    /// Application runtime the runner is allowed to exercise.
+    pub application_target: TestApplicationTarget,
     /// Execution backend.
     pub runtime: TestRuntime,
     /// Capability JavaScript hosts the runner can drive without changing config.
@@ -43,6 +45,7 @@ impl Default for NativeTestRunnerPlan {
     fn default() -> Self {
         Self {
             module: CompactString::const_new("@uniflowed/test"),
+            application_target: TestApplicationTarget::Web,
             runtime: TestRuntime::CapabilityJsHost,
             hosts: smallvec::smallvec![TestHost::Node, TestHost::Deno, TestHost::Bun],
             scheduler: TestScheduler::NativeWorkStealing,
@@ -72,10 +75,28 @@ impl NativeTestRunnerPlan {
         Self::default()
     }
 
+    /// Return a runner plan for the concrete application target.
+    pub fn for_application_target(target: TestApplicationTarget) -> Self {
+        Self {
+            application_target: target,
+            ..Self::default()
+        }
+    }
+
     /// Return whether the runner accepts the given builtin import specifier.
     pub fn accepts_import(&self, specifier: &str) -> bool {
         self.imports.iter().any(|import| import == specifier)
     }
+}
+
+/// Application runtime a test run targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TestApplicationTarget {
+    /// Browser and document-shaped React tests.
+    Web,
+    /// React Native tests, once a native renderer and host config exist.
+    ReactNative,
 }
 
 /// Execution backend for native tests.
