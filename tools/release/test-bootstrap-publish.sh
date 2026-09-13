@@ -116,7 +116,30 @@ grep -q "nothing to do" "${work}/settled.log" \
 $(cat "${work}/settled.log")"
 pass "already-created names are left alone"
 
-# 3. The dry run phase covers every missing name before any real publish, so a
+# 3. A targeted bootstrap publishes only that package. This is the #560 path:
+#    create the temporal front door without also creating every package still
+#    waiting in `pending-packages.txt`.
+run missing-pending temporal-only --yes --package temporal \
+  || fail "targeted temporal bootstrap failed:
+$(cat "${work}/temporal-only.log")"
+grep -q '^dry-run @uniflowed/temporal ' "${work}/temporal-only.npm" \
+  || fail "temporal was not dry-run packed:
+$(cat "${work}/temporal-only.npm")"
+grep -q '^publish @uniflowed/temporal ' "${work}/temporal-only.npm" \
+  || fail "temporal was not published:
+$(cat "${work}/temporal-only.npm")"
+grep -q '@uniflowed/std' "${work}/temporal-only.npm" \
+  && fail "targeted temporal bootstrap also touched std:
+$(cat "${work}/temporal-only.npm")"
+grep -q '@uniflowed/react-native' "${work}/temporal-only.npm" \
+  && fail "targeted temporal bootstrap also touched react-native:
+$(cat "${work}/temporal-only.npm")"
+grep -q 'trust-npm.sh --package temporal' "${work}/temporal-only.log" \
+  || fail "targeted bootstrap did not print the matching trust command:
+$(cat "${work}/temporal-only.log")"
+pass "one missing name can be bootstrapped by itself"
+
+# 4. The dry run phase covers every missing name before any real publish, so a
 #    bad tarball cannot leave the registry half-created.
 if (NPM_REFUSE_DRY_RUN=@uniflowed/std; run missing-pending dry-fails --yes); then
   fail "a dry-run failure reported success:
@@ -127,7 +150,7 @@ grep -q '^publish ' "${work}/dry-fails.npm" \
 $(cat "${work}/dry-fails.npm")"
 pass "a dry-run failure stops before real publish"
 
-# 4. No npm session, no names created.
+# 5. No npm session, no names created.
 if (NPM_NO_LOGIN=1; run missing-pending no-login --yes); then
   fail "not logged in reported success:
 $(cat "${work}/no-login.log")"

@@ -42,8 +42,21 @@ Create them once from a logged-in npm session, bind them to this repository's
 publish workflow, then rerun the publish:
 
   npm login
-  tools/release/bootstrap-publish.sh
-  tools/release/trust-npm.sh
+MESSAGE
+
+  printf '  tools/release/bootstrap-publish.sh' >&2
+  for package in $missing; do
+    printf ' --package %s' "$package" >&2
+  done
+  printf '\n' >&2
+
+  printf '  tools/release/trust-npm.sh' >&2
+  for package in $missing; do
+    printf ' --package %s' "$package" >&2
+  done
+  printf '\n' >&2
+
+  cat >&2 <<MESSAGE
 
 Failing here is deliberately before any package is published. Without this, the
 publish job would send every earlier package and then fail at the missing name.

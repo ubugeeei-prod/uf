@@ -69,6 +69,12 @@ $(cat "${work}/missing.log")"
 grep -q "before any package is published" "${work}/missing.log" \
   || fail "failure did not explain why it is before publish:
 $(cat "${work}/missing.log")"
+grep -q "bootstrap-publish.sh --package temporal --package vite" "${work}/missing.log" \
+  || fail "failure did not print the targeted bootstrap:
+$(cat "${work}/missing.log")"
+grep -q "trust-npm.sh --package temporal --package vite" "${work}/missing.log" \
+  || fail "failure did not print the targeted trust command:
+$(cat "${work}/missing.log")"
 pass "every missing name is reported before publish"
 
 echo "test-publish-names-exist: ok"

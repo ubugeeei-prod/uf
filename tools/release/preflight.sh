@@ -58,8 +58,21 @@ send it. The binding is made as you, not as the workflow, so it is one command
 on a machine you are logged in on:
 
   npm login
-  tools/release/bootstrap-publish.sh
-  tools/release/trust-npm.sh
+MESSAGE
+
+  printf '  tools/release/bootstrap-publish.sh' >&2
+  for package in $missing; do
+    printf ' --package %s' "$package" >&2
+  done
+  printf '\n' >&2
+
+  printf '  tools/release/trust-npm.sh' >&2
+  for package in $missing; do
+    printf ' --package %s' "$package" >&2
+  done
+  printf '\n' >&2
+
+  cat >&2 <<MESSAGE
 
 The bootstrap creates names that have never been published, and the trust step
 binds those names to this repository's workflow. Both are idempotent for names

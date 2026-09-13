@@ -24,6 +24,10 @@
 # Safe to re-run. A name that is already bound is skipped when `npm trust list`
 # can read it, and re-bound harmlessly when it cannot — which is the usual
 # case, because that read needs the one-time password too.
+#
+# Pass `--package <name>` to bind only selected names from the release
+# manifests. That keeps a fix for one missing front-door name from also creating
+# or binding every package still waiting in `pending-packages.txt`.
 set -eu
 
 repo_root="$(CDPATH= cd "$(dirname "$0")/../.." && pwd)"
@@ -31,6 +35,28 @@ cd "$repo_root"
 
 repository="${UF_TRUST_REPOSITORY:-ubugeeei-prod/uf}"
 workflow="${UF_TRUST_WORKFLOW:-publish.yml}"
+selected_packages=""
+add_selected_package() {
+  package="${1#@uniflowed/}"
+  if [ -z "$package" ]; then
+    echo "trust-npm: --package needs a package name" >&2
+    exit 2
+  fi
+  selected_packages="${selected_packages} ${package}"
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --package)
+      [ "$#" -ge 2 ] || { echo "trust-npm: --package needs a package name" >&2; exit 2; }
+      add_selected_package "$2"
+      shift 2 ;;
+    --package=*)
+      add_selected_package "${1#--package=}"
+      shift ;;
+    *) echo "trust-npm: unknown option: $1" >&2; exit 2 ;;
+  esac
+done
 
 command -v npm >/dev/null 2>&1 || { echo "trust-npm: missing npm" >&2; exit 1; }
 npm_version="$(npm --version 2>/dev/null || echo unknown)"
@@ -95,7 +121,22 @@ release_packages() {
 
 check_release_manifests
 
-first="$(release_packages | head -1)"
+target_packages() {
+  if [ -n "$selected_packages" ]; then
+    printf '%s\n' $selected_packages | awk '!seen[$0]++'
+  else
+    release_packages
+  fi
+}
+
+for package in $(target_packages); do
+  release_packages | grep -qx "$package" || {
+    echo "trust-npm: ${package} is not in a release manifest" >&2
+    exit 2
+  }
+done
+
+first="$(target_packages | head -1)"
 
 # What this npm calls "may publish".
 #
@@ -192,7 +233,7 @@ is_published() {
 # configuration is this repository's workflow, so the one that says so is
 # asked for and checked. `set -eu` would stop the run on the first of these,
 # which is what it did.
-for package in $(release_packages); do
+for package in $(target_packages); do
   name="@uniflowed/${package}"
 
   # Nothing to bind yet. `npm trust` binds a name the registry has; it does
@@ -248,10 +289,20 @@ ${unpublished}
 
 \`npm trust\` binds a name the registry has; it does not create one. Publish
 them once, then run this again:
-
-  tools/release/bootstrap-publish.sh
-
 MESSAGE
+
+  if [ -n "$selected_packages" ]; then
+    {
+      printf '  tools/release/bootstrap-publish.sh'
+      for package in $(target_packages); do
+        printf ' --package %s' "$package"
+      done
+      printf '\n'
+    } >&2
+  else
+    echo "  tools/release/bootstrap-publish.sh" >&2
+  fi
+  echo >&2
 fi
 if [ -n "$mismatched" ]; then
   cat >&2 <<MESSAGE

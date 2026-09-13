@@ -143,14 +143,17 @@ EOF
 }
 
 run() {
-  make_npm "$1"
-  PATH="${work}/$1:$PATH" sh "$script" >"${work}/$1.log" 2>&1
+  flavour="$1"
+  label="$2"
+  shift 2
+  make_npm "$flavour"
+  PATH="${work}/${flavour}:$PATH" sh "$script" "$@" >"${work}/${label}.log" 2>&1
 }
 
 # 1 and 2. Both flag sets bind every name. The script asks the help which one
 #          this npm speaks rather than assuming either.
 for flavour in strict permissive; do
-  run "$flavour" || fail "${flavour}: the script failed:
+  run "$flavour" "$flavour" || fail "${flavour}: the script failed:
 $(cat "${work}/${flavour}.log")"
   # The summary, not a per-line count: npm's own output goes to the terminal
   # now — that is the point of the change that made the one-time-password
@@ -166,7 +169,7 @@ done
 # 3. A name that already has this repository's configuration answers E409,
 #    which is "already done" and not a failure. `set -eu` used to stop the
 #    whole run on the first one.
-run existing || fail "existing: E409 should not stop the run:
+run existing existing || fail "existing: E409 should not stop the run:
 $(cat "${work}/existing.log")"
 grep -q "already points at publish.yml" "${work}/existing.log" \
   || fail "existing: it did not say the configuration is the right one:
@@ -178,7 +181,7 @@ pass "a name that is already configured for this workflow is reported, not fatal
 
 # 4. And one whose configuration names something else is a problem, because a
 #    publish from this repository will be refused for it.
-if run conflicting; then
+if run conflicting conflicting; then
   fail "conflicting: a configuration for another workflow should fail:
 $(cat "${work}/conflicting.log")"
 fi
@@ -190,7 +193,7 @@ pass "a configuration pointing somewhere else fails and names the fix"
 # 5. A name the registry does not have answers E404. `npm trust` binds a name
 #    the registry already has; it cannot create one. That is a different job,
 #    named, rather than the end of this one.
-if run unpublished; then
+if run unpublished unpublished; then
   fail "unpublished: E404 should end in a non-zero exit:
 $(cat "${work}/unpublished.log")"
 fi
@@ -207,18 +210,51 @@ missing="$(grep -c 'is not on the registry yet' "${work}/unpublished.log")"
 $(cat "${work}/unpublished.log")"
 pass "every unpublished name is reported, and the bootstrap is named"
 
-# 6. npm's own output reaches the terminal. Binding is an account change, so
+# 6. A targeted trust binds only that package. This lets #560 bind the temporal
+#    front door without also walking every name still in the pending room.
+run strict temporal-only --package temporal || fail "targeted temporal trust failed:
+$(cat "${work}/temporal-only.log")"
+grep -q 'trust-npm: binding @uniflowed/temporal' "${work}/temporal-only.log" \
+  || fail "targeted trust did not bind temporal:
+$(cat "${work}/temporal-only.log")"
+grep -q 'trust-npm: binding @uniflowed/core' "${work}/temporal-only.log" \
+  && fail "targeted trust also bound core:
+$(cat "${work}/temporal-only.log")"
+grep -q '1 bound, 0 already configured, 0 not on the registry' "${work}/temporal-only.log" \
+  || fail "targeted trust summary was wrong:
+$(cat "${work}/temporal-only.log")"
+pass "one package can be trusted by itself"
+
+# 7. A targeted trust against an unpublished package names only that package and
+#    prints the matching targeted bootstrap.
+if run unpublished temporal-unpublished --package temporal; then
+  fail "targeted unpublished temporal reported success:
+$(cat "${work}/temporal-unpublished.log")"
+fi
+missing="$(grep -c 'is not on the registry yet' "${work}/temporal-unpublished.log")"
+[ "$missing" = 1 ] \
+  || fail "targeted unpublished run reported ${missing} names:
+$(cat "${work}/temporal-unpublished.log")"
+grep -q '@uniflowed/temporal is not on the registry yet' "${work}/temporal-unpublished.log" \
+  || fail "targeted unpublished run did not name temporal:
+$(cat "${work}/temporal-unpublished.log")"
+grep -q 'bootstrap-publish.sh --package temporal' "${work}/temporal-unpublished.log" \
+  || fail "targeted unpublished run did not print the matching bootstrap:
+$(cat "${work}/temporal-unpublished.log")"
+pass "one unpublished package is reported by itself"
+
+# 8. npm's own output reaches the terminal. Binding is an account change, so
 #    npm asks for a one-time password and prints a URL to open — and a run
 #    that captured that to classify the failure left the URL in a file
 #    nobody was looking at.
-run otp && fail "otp: an npm that refuses should not report success"
+run otp otp && fail "otp: an npm that refuses should not report success"
 grep -q 'https://www.npmjs.com/auth/cli/' "${work}/otp.log" \
   || fail "otp: the URL a person has to open did not reach the output:
 $(cat "${work}/otp.log")"
 pass "npm's authentication prompt is not swallowed"
 
-# 7. An npm without the subcommand stops, binds nothing, and says what to do.
-if run ancient; then
+# 9. An npm without the subcommand stops, binds nothing, and says what to do.
+if run ancient ancient; then
   fail "ancient: the script should have stopped:
 $(cat "${work}/ancient.log")"
 fi
