@@ -187,8 +187,8 @@ import { createNativeScreen } from "@uniflowed/react-native-testing";
 import { expect, it } from "@uniflowed/test";
 
 const tree = {
-  type: "View",
-  props: { testID: "root" },
+  type: "ScrollView",
+  props: { testID: "settings-screen" },
   children: [
     {
       type: "Pressable",
@@ -200,20 +200,26 @@ const tree = {
       children: [{ type: "Text", props: {}, children: ["Save"] }],
     },
     {
-      type: "Switch",
+      type: "View",
       props: {
-        accessibilityLabel: "Enabled",
-        accessibilityState: { checked: "mixed", selected: true },
+        accessibilityLabel: "Upload photo",
+        accessibilityRole: "progressbar",
+        accessibilityValue: { min: 0, max: 100, now: 75, text: "75 percent" },
       },
       children: [],
     },
     {
       type: "View",
       props: {
-        accessibilityLabel: "Upload",
-        accessibilityRole: "progressbar",
-        accessibilityValue: { min: 0, max: 100, now: 75, text: "75 percent" },
+        accessibilityLabel: "Volume",
+        accessibilityRole: "adjustable",
+        accessibilityValue: { min: 0, max: 10, now: 6, text: "6 of 10" },
       },
+      children: [],
+    },
+    {
+      type: "TextInput",
+      props: { accessibilityLabel: "Search settings", disabled: false },
       children: [],
     },
   ],
@@ -222,40 +228,86 @@ const tree = {
 it("queries the native tree by role, state and value", () => {
   const screen = createNativeScreen(tree);
 
-  expect(screen.getByRole("button", { name: "Save changes", disabled: true }).props?.testID).toBe(
-    "save",
-  );
-  expect(screen.getByRole("switch", { checked: "mixed", selected: true }).type).toBe("Switch");
-  expect(screen.getByRole("progressbar", { value: { now: 75, text: /percent/ } }).type).toBe(
-    "View",
-  );
+  const save = screen.getByRole("button", {
+    name: "Save changes",
+    busy: true,
+    disabled: true,
+  });
+
+  expect(save.props?.testID).toBe("save");
+  expect(screen.queryByRole("button", { disabled: false })).toBe(null);
+  expect(screen.getByRole("textbox", { name: /Search/ }).type).toBe("TextInput");
+  expect(
+    screen.getByRole("progressbar", {
+      name: "Upload photo",
+      value: { min: 0, max: 100, now: 75, text: /percent/ },
+    }).type,
+  ).toBe("View");
+  expect(
+    screen.getByRole("adjustable", {
+      name: "Volume",
+      value: { now: 6, text: "6 of 10" },
+    }).type,
+  ).toBe("View");
+  expect(screen.queryByRole("progressbar", { value: { now: 25 } })).toBe(null);
 });
 ```
 
-The role mapping is intentionally small and visible: `Pressable` and `Button`
-are `button`, `Switch` is `switch`, `TextInput` is `textbox`, `Image` is
-`image`, and `Text` is `text`. `accessibilityRole` or `role` wins over that
-default. The accessible name is `accessibilityLabel` first, then the text
-content of the node's descendants.
+The query contract is deliberately narrower than Testing Library's DOM contract,
+because the input is a React Native JSON tree rather than a document:
+
+- `createNativeScreen(root)` and `within(root)` take one root or a
+  fragment-shaped array of roots. They do not mount, flush effects, compute
+  layout, hide nodes or inspect native platform views.
+- `getBy*` returns exactly one match and throws on zero or many. `queryBy*`
+  returns `null` on zero and still throws on many. `getAllBy*` throws on zero.
+- Text queries read React Native text content and avoid the duplicate
+  parent-and-child match: a `Text` node whose child already matches the string
+  is not reported a second time for the same visible text.
+- Role queries use the small default map uf can defend today: `Pressable` and
+  `Button` are `button`, `Switch` is `switch`, `TextInput` is `textbox`,
+  `Image` is `image`, and `Text` is `text`. `accessibilityRole` or `role` wins
+  over that default.
+- The accessible name is `accessibilityLabel` first, then descendant text.
+  Matchers may be strings, regular expressions or predicates.
 
 `getByRole` takes the state filters React Native exposes through
 `accessibilityState`: `busy`, `checked`, `disabled`, `expanded` and `selected`.
 `disabled` also reads the top-level `disabled` prop, because native components
 commonly put it there. A missing state reads as false, not as "unknown", so
 `queryByRole("button", { disabled: false })` is the way to ask for an enabled
-button. It also takes `value` filters for `accessibilityValue`: `min`, `max`,
-`now` and `text`, so progress bars and adjustable controls can be narrowed by
-the value a native accessibility tree reports.
+button.
 
-The helpers accept a single root or a fragment-shaped array of roots. Text
-queries avoid the duplicate parent-and-child match: a `Text` node whose child
-already matches the string is not reported a second time for the same visible
-text.
+It also takes `value` filters for `accessibilityValue`: `min`, `max`, `now` and
+`text`. Those are exact numeric comparisons for the numbers and the same string,
+regular expression or predicate matching for `text`, so progress bars,
+steppers, sliders and other adjustable controls can be narrowed by the value a
+native accessibility tree reports. A missing value field reads as `null`, which
+means `value: { now: 0 }` finds a real zero and not "no value reported".
 
 Unknown options are refused. `pressed` is not silently ignored on a native role
-query, because a test that asks for a pressed button and gets any button back
-has already lost the thing it meant to assert. Add the state to the helper
+query, and `value: { percentage: 75 }` is refused too, because a test that asks
+for a pressed button or a percentage and gets any matching role back has already
+lost the thing it meant to assert. Add the state or value field to the helper
 first, or assert on the returned props yourself.
+
+Until uf can start a native renderer, tests that need one should be reported as
+an explicit host gap rather than hidden inside a passing suite:
+
+```js
+// @flow
+import { it } from "@uniflowed/test";
+
+it.skipBecause(
+  "renders the settings screen on the native host",
+  "uf can query a native test tree, but this suite needs a React Native renderer and host config.",
+);
+```
+
+That shows up as a skipped test with the reason in the terminal report,
+`uf test --json` and JUnit. The query tests that can run on Node stay green, and
+the native-renderer contract is still visible instead of being translated into
+a TODO comment or a DOM-rendered substitute.
 
 ## Replacing a module
 
