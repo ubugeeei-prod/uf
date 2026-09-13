@@ -23,7 +23,7 @@ This is the honest status.
 | Package facade | Implemented | `@uniflowed/react-native` re-exports the app's real `react-native` peer |
 | Route target | Implemented | `uf build --target native`, `ios` and `android` select native route files |
 | Metro config | Implemented | `@uniflowed/react-native/metro` exports `withUniflowedMetro` |
-| Native router | Implemented as a contract | `@uniflowed/router/native` resolves a uf route into a navigator event |
+| Native router | Implemented as a contract | `@uniflowed/router/native` resolves a uf route into a navigator event or screen call |
 | Test queries | Implemented for trees | `@uniflowed/react-native-testing` queries a native renderer's JSON tree |
 | Native renderer | Pending | `render()` still throws until uf has a host config |
 | End-to-end app runtime | Pending | There is no Expo-equivalent application shell, dev client, asset service or native module system |
@@ -48,7 +48,7 @@ thing that creates, serves, builds and submits the app for you.
 | --- | --- | --- |
 | Keep web and native routes in one file tree | `$page.native.js`, `$page.ios.js`, `$page.android.js` | Screen registration and app bootstrap |
 | Make Metro understand uf's package and file conventions | `withUniflowedMetro` | Metro cache policy, native module config, asset plugins |
-| Turn a uf path into a native navigation event | `createNativeRouter` | React Navigation, Expo Router, or a custom navigator |
+| Turn a uf path into a native screen call | `createNativeScreenRouter` or `createNativeRouter` | React Navigation, Expo Router, or a custom navigator |
 | Query an existing native render tree | `createNativeScreen`, `within`, `getByRole`, `getByLabelText` | The renderer that produced the tree |
 | Keep unsupported native tests visible | `it.skipBecause` | The future host config and renderer |
 
@@ -250,7 +250,7 @@ own, and hand the result to the application's navigator.
 
 ```js
 // @flow
-import { createNativeRouter, nativeScreenPayload } from "@uniflowed/router/native";
+import { createNativeScreenRouter } from "@uniflowed/router/native";
 import type { RouteTable } from "@uniflowed/router/routing";
 
 const screens = {
@@ -260,25 +260,23 @@ const screens = {
 };
 
 export function nativeRouter(routeTable: RouteTable) {
-  return createNativeRouter(routeTable, {
-    push(event) {
-      const next = nativeScreenPayload(event, screens);
-      navigation.push(next.screen, {
-        params: next.params,
-        search: next.search,
-        href: next.href,
+  return createNativeScreenRouter(routeTable, screens, {
+    push(screen, state) {
+      navigation.push(screen, {
+        ...state.params,
+        href: state.href,
+        search: state.search,
       });
     },
-    replace(event) {
-      const next = nativeScreenPayload(event, screens);
-      navigation.replace(next.screen, {
-        params: next.params,
-        search: next.search,
-        href: next.href,
+    replace(screen, state) {
+      navigation.replace(screen, {
+        ...state.params,
+        href: state.href,
+        search: state.search,
       });
     },
-    prefetch(event) {
-      warmScreen(event.route, event.params);
+    prefetch(screen, state) {
+      warmScreen(screen, state.params);
     },
   });
 }
@@ -297,29 +295,30 @@ await router.push("/users/42?tab=posts");
 Under the hood it calls the methods you supplied:
 
 ```js
-createNativeRouter(routeTable, {
-  push(event) {
-    const next = nativeScreenPayload(event, screens);
-    navigation.push(next.screen, {
-      params: next.params,
-      search: next.search,
-      href: next.href,
-    });
+createNativeScreenRouter(routeTable, screens, {
+  push(screen, state) {
+    navigation.push(screen, state.params);
   },
-  replace(event) {
-    const next = nativeScreenPayload(event, screens);
-    navigation.replace(next.screen, {
-      params: next.params,
-      search: next.search,
-      href: next.href,
-    });
-  },
-  prefetch(event) {
-    warmScreen(event.route, event.params);
+  replace(screen, state) {
+    navigation.replace(screen, state.params);
   },
 });
 ```
 
+The `screen` is the mapped app-owned name. The `state` object keeps the uf route
+facts beside the params:
+
+```js
+{
+  params: { id: "42" },
+  href: "/users/42?tab=posts",
+  pathname: "/users/42",
+  search: "?tab=posts",
+  route: "/users/:id",
+}
+```
+
+If a navigator needs the lower-level event instead, use `createNativeRouter()`.
 The event is the contract:
 
 ```js
@@ -333,13 +332,14 @@ The event is the contract:
 }
 ```
 
-`nativeScreenPayload(event, screens)` is the optional bridge between uf's route
-name and an app-owned navigator's screen name. It looks up `event.route` in the
-map you provide and returns `{ screen, href, pathname, search, route, params }`;
-if the route is missing, it raises `NativeNavigationError` with
-`code: "missing-screen"` rather than guessing a screen name. That is still a
-contract, not a runtime: the app decides whether `UserProfile` means React
-Navigation, Expo Router, a custom stack or something else.
+`nativeScreenPayload(event, screens)` is still available when an adapter wants
+to work at that level. It looks up `event.route` in the map you provide and
+returns `{ screen, href, pathname, search, route, params }`; if the route is
+missing, it raises `NativeNavigationError` with `code: "missing-screen"` rather
+than guessing a screen name. `nativeScreenNavigationState(payload)` drops the
+screen name and returns the state object passed by `createNativeScreenRouter()`.
+That is still a contract, not a runtime: the app decides whether `UserProfile`
+means React Navigation, Expo Router, a custom stack or something else.
 
 Four things are refused before they reach your navigator:
 
@@ -440,7 +440,7 @@ What uf is trying to own is different:
 | Which native modules exist? | Expo SDK and the React Native ecosystem | Not answered |
 | Which route files belong to iOS, Android and shared native? | Your app's router | The uf route scanner |
 | How does Flow React syntax reach Metro? | Usually by the app's Babel/Metro setup | The uf target contract plus Metro helper |
-| How does a file route become a native navigation event? | App-specific router integration | `@uniflowed/router/native` |
+| How does a file route become a native screen call? | App-specific router integration | `@uniflowed/router/native` |
 | How do tests query a native tree without a DOM? | Testing Library / app harness | `@uniflowed/react-native-testing` |
 
 So the short version is: **Expo is what ships the app; uf is the Flow-first
