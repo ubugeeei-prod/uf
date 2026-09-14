@@ -1736,9 +1736,11 @@ pub enum ConfigError {
     },
     /// A runtime named as this project's, with no host behind the name.
     ///
-    /// `uf`, `edge`, `serverless` and `container` parse here and are graded
-    /// `planned` with no Flow loader in `uf_runtime::HOSTS`, so a project that
-    /// names one cannot import its own first file there. Naming one changed
+    /// `uf`, `edge`, `serverless` and `container` parse here and have no Flow
+    /// loader in `uf_runtime::HOSTS`, so a project that names one cannot
+    /// import its own first file there. The loader is the test, not the
+    /// grade — `edge` is graded *experimental* for a built worker that runs
+    /// under Wrangler, and is refused here all the same. Naming one changed
     /// nothing a command does and two things a reader sees — `uf explain`
     /// printed it as the JavaScript host, and `.uf/install.json` recorded it
     /// among the hosts that must be available — which is the failure

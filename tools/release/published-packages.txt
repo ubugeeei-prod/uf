@@ -40,7 +40,6 @@ relay
 router
 server
 stylex
-temporal
 test
 validator
 vite

@@ -704,13 +704,19 @@ fn the_runtimes_a_project_may_name_are_the_ones_with_a_host() {
 /// wrote `edge` here meant one of them.
 #[test]
 fn refuses_a_runtime_it_has_no_host_for() {
-    for (key, body, issue) in [
-        ("app.runtime.default", "default: \"edge\"", "246"),
+    for (key, body, engine, issue) in [
+        (
+            "app.runtime.default",
+            "default: \"edge\"",
+            RuntimeEngine::Edge,
+            "246",
+        ),
         // A different row, so the issue in the message is the one the table
         // records for *that* host rather than a constant written beside it.
         (
             "app.runtime.compatibility",
             "compatibility: [\"node\", \"serverless\"]",
+            RuntimeEngine::Serverless,
             "391",
         ),
     ] {
@@ -730,7 +736,14 @@ fn refuses_a_runtime_it_has_no_host_for() {
         );
         let message = error.to_string();
         assert!(message.contains(key), "{message}");
-        assert!(message.contains("planned"), "{message}");
+        // The grade is read from the table rather than written here, so
+        // promoting a row — `edge` went from `planned` to `experimental` when
+        // the worker smoke started running — carries this assertion with it
+        // instead of failing a test that is about something else.
+        let level = uf_runtime::HostSupport::for_host(engine.host())
+            .level
+            .as_str();
+        assert!(message.contains(level), "{level}: {message}");
         // The key that chooses a host, and the key that chooses a deployment
         // target. Between them they are what the refused name was reaching for.
         assert!(

@@ -940,7 +940,8 @@ them does today is a different question and is answered in one place,
 [`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
 test that starts the binary; Deno has no module hook to install one in, so uf
 compiles the project ahead of time and hands it an import map, which runs a
-suite and leaves a named gap; and the edge runtimes have no host at all.
+suite and leaves a named gap; and Edge starts the generated Cloudflare Worker
+under Wrangler local while still lacking a source-level host or Flow loader.
 Reading the host set as a support matrix is how "uf runs on Deno" came to be
 written down; the matrix is the matrix.
 

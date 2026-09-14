@@ -205,6 +205,16 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // A generated Edge deployment has a second contract after the adapter's
+    // in-process tests: Cloudflare's local Worker runtime must accept the
+    // emitted `worker.js`, `wrangler.json` and assets binding and answer the
+    // same fixture over HTTP. No `inputs`, for the same reason as `test:lib`:
+    // Wrangler, Node and the installed package tree are part of the check.
+    "edge:smoke": {
+      command: "tools/ci/edge-worker-smoke.sh",
+      dependsOn: ["build"],
+    },
+
     // The linter, over this repository's own Flow. uf is the only thing that
     // can lint uf's packages, so a regression here is invisible to every other
     // check in the pipeline — which is why it is now in `ci` rather than
@@ -897,6 +907,7 @@ export default defineConfig({
         "fmt:check",
         "check:lib",
         "test:lib",
+        "edge:smoke",
         "docs:build",
         "rust:metadata",
         "rust:lints",
