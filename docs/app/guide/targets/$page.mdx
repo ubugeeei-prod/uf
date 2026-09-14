@@ -1,0 +1,64 @@
+---
+title: "Targets · uf"
+description: "Where a uf application runs: a server or a static host, a single file, a phone, a terminal."
+---
+
+import { SectionContents } from "../../_design/parts.js";
+
+<p className="eyebrow">Targets</p>
+
+# Targets
+
+<div className="lede">
+For a reader whose application builds and now has to run somewhere other than
+`uf dev`. The web is the target every other guide assumes, and this section is
+where it gets deployed — and where the two targets that are not a browser are
+covered: a phone, and a terminal.
+</div>
+
+## What you need first
+
+An application that builds — [Build an app](/guide/build-an-app). React Native
+and the terminal each say on their own page what else they need.
+
+## The web, deployed
+
+`uf build` writes the client bundle, the prerendered documents and a server
+bundle. Four ways to serve them are in the binary, and they differ in what the
+machine that answers a request has to have — not in the answer, which is the
+same from all four:
+
+| Command | What you get | The host needs |
+| --- | --- | --- |
+| [`uf preview`](/reference/cli#uf-preview) | Vite's preview server over the build, to check it before you deploy | the project, its dependencies and Vite |
+| [`uf start`](/reference/cli#uf-start) | uf's own server, with no bundler in the process | a JavaScript host, `node_modules` and the build |
+| [`uf build --adapter`](/reference/cli#uf-build---adapter-target) | a directory for one platform: `node`, `bun`, `deno`, `container`, `edge` for Cloudflare Workers, `serverless` for AWS Lambda, or `static` | whatever that platform is |
+| [`uf build --compile`](/reference/cli#uf-build---compile) | one executable file with the runtime inside it | nothing |
+
+Which of them a project may use is decided by its routes. A route handler, a
+middleware or a server action the browser can call needs a server, and a static
+host has none: [Choosing a deployment shape](/guide/rendering#choosing-a-deployment-shape)
+is the table, and `uf build --adapter static` refuses a project that has any of
+them, by name.
+
+What is established is written down beside the commands. The command reference
+says that no server adapter's output has been deployed to a real platform yet,
+and what the tests prove instead. There is no guide to deploying yet: the
+reference is where the detail is, and
+[#955](https://github.com/ubugeeei-prod/uf/issues/955) is the guide.
+
+## A phone, and a terminal
+
+<SectionContents section="Targets" />
+
+[React Native target](/guide/react-native) is a target rather than a flag:
+native route files, Metro, a navigator contract, and test-tree queries that do
+not pretend there is a DOM. It is the least finished part of this section — uf
+cannot mount into a real native host yet — and the page opens with what works
+today. [Terminal UI](/guide/tui) is React with a terminal for a host: the same
+components and hooks, laid out with flexbox and drawn as cells.
+
+## When you are done
+
+[The toolchain](/guide/toolchain) is the commands you run against all of this:
+the tests, the environments they run on, and the pipeline that runs them.
