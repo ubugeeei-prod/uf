@@ -79,6 +79,7 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
 
     let host = resolve_host(&resolved.config)?;
     let builder = builder::resolve(&root, &resolved.config)?;
+    crate::support::render_deprecations(ui, resolved.config.builder_module_deprecation());
     let _ = write_router_manifest(&root, &resolved.config)?;
 
     let mut env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;

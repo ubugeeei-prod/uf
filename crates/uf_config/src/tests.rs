@@ -176,21 +176,22 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(config.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
+    assert_eq!(config.test.runner, None);
     assert_eq!(
-        config.test.runner.application_target,
+        config.test.native_runner().application_target,
         NativeTestApplicationTarget::Auto
     );
     assert_eq!(
-        config.test.runner.runtime,
+        config.test.native_runner().runtime,
         NativeTestRuntimeConfig::CapabilityJsHost
     );
     assert_eq!(
-        config.test.runner.performance_target,
+        config.test.native_runner().performance_target,
         NativeTestPerformanceTarget::FasterThanBun
     );
-    assert!(config.test.runner.official_flow_parser);
+    assert!(config.test.native_runner().official_flow_parser);
     assert_eq!(
-        config.test.runner.js_hosts,
+        config.test.native_runner().js_hosts,
         vec![
             CapabilityJsHost::Node,
             CapabilityJsHost::Deno,
@@ -392,15 +393,15 @@ fn extracts_vite_style_define_config_object() {
     assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!parsed.task_runner.allow_package_scripts);
     assert_eq!(
-        parsed.test.runner.application_target,
+        parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::ReactNative
     );
     assert_eq!(
-        parsed.test.runner.performance_target,
+        parsed.test.native_runner().performance_target,
         NativeTestPerformanceTarget::FasterThanBun
     );
     assert_eq!(
-        parsed.test.runner.js_hosts,
+        parsed.test.native_runner().js_hosts,
         vec![
             CapabilityJsHost::Node,
             CapabilityJsHost::Deno,
@@ -495,7 +496,8 @@ fn parses_an_evaluated_config_projection() {
 
     assert_eq!(config.dev.port, 4173);
     assert_eq!(config.tasks["hello"].command(), "echo hi");
-    assert_eq!(config.builder.module, "@uniflowed/vite");
+    assert_eq!(config.builder.module, None);
+    assert_eq!(config.builder_tool().spec.module(), "@uniflowed/vite");
     assert_eq!(
         config.app.runtime.capability_js_host.default,
         CapabilityJsHost::Node
@@ -954,11 +956,11 @@ fn parses_runtime_agnostic_tooling_surface() {
     assert_eq!(parsed.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
     assert_eq!(parsed.lint.flow.parser, FlowLintParser::OfficialFlowRust);
     assert_eq!(
-        parsed.test.runner.application_target,
+        parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::Web
     );
     assert_eq!(
-        parsed.test.runner.runtime,
+        parsed.test.native_runner().runtime,
         NativeTestRuntimeConfig::CapabilityJsHost
     );
 }

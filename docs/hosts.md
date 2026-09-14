@@ -138,25 +138,31 @@ than reporting a run of zeroes.
 
 ## Deno
 
-A uf project runs on Deno 2.8 and newer through the same kind of loader Node and
-Bun have: a hook that transforms each module as the runtime asks for it.
-`@uniflowed/host/deno-preload` installs it through `node:module`'s
-`registerHooks`, which Deno implemented in 2.8 — `deno run --preload
-<path>/deno-preload.js app.js`, with a path, because Deno reads `--preload` as
-one. `uf test` starts every worker that way, and `@uniflowed/vite`'s driver —
-`uf dev`, `uf build`, `uf preview` and `uf start` — installs the same hooks
-itself, at the moment it installs Node's.
+A uf project runs on Deno 2.8 and newer through **the same loader** a Node new
+enough for `registerHooks` uses: `@uniflowed/host`'s in-thread hooks,
+`packages/host/internal/sync-hooks.js`. Deno implemented `node:module`'s
+`registerHooks` in 2.8 and has never implemented `register()`, so the in-thread
+hooks are the only ones it can take — and they are the ones Node prefers anyway.
+`deno run --preload <path>/deno-preload.js app.js` installs them, with a path,
+because Deno reads `--preload` as one. `uf test` starts every worker that way,
+and `@uniflowed/vite`'s driver — `uf dev`, `uf build`, `uf preview` and
+`uf start` — installs the same hooks itself on Deno, at the moment it installs
+Node's.
 
-The difference from Node is one word: **synchronous**. Node's `register()` runs
-asynchronous hooks on a loader thread of their own; Deno has never implemented
-`register()`, and `registerHooks` runs in the importing thread and has to return
-a module's source rather than a promise of it. uf's transform service answers
-over a pipe that is read asynchronously, so a module the cache does not already
-hold is compiled by one short-lived `uf transform` — the same binary and the
-same protocol — which costs about ten milliseconds a module on a cold cache and
-nothing on a warm one. The cache is the Node loader's: one key and one framing,
-in `packages/host/internal/transform-cache.js`, so a module either host compiled
-is one the other reads.
+What that loader does is Node's, unchanged. `registerHooks` runs in the
+importing thread and has to return a module's source rather than a promise of
+it, so a module already in `.uf/cache/transform` is a file read, and a miss is
+handed to a transform thread that owns the `uf transform` process while the
+importing thread sleeps on a shared cell — on Deno exactly as on Node. The cache
+is shared too, one key and one framing in `packages/host/internal/flow-cache.js`,
+so a module either runtime compiled is one the other reads.
+
+Two things were Deno's to add, and both are about its sandbox. The variables
+the loader reads are read so that one a worker was not granted counts as unset
+rather than throwing `NotCapable`. And the check that `uf` is executable reads
+the file's mode bits when Deno refuses `access(2)` without `--allow-sys`;
+without that, a sandboxed Deno could not name its compiler, and a loader that
+cannot name its compiler never reads or writes the cache.
 
 ### What the hook closed
 
@@ -382,8 +388,11 @@ receives. That asymmetry is why `--compile` on Bun refuses rather than warns.
 On Node, uf's own Flow loader needs two grants that Node itself warns about at
 startup:
 
-- `--allow-worker`, because `register()` runs module hooks on a loader thread,
-  and without it the very first import fails with `ERR_ACCESS_DENIED`;
+- `--allow-worker`, because the Flow loader compiles on a thread: on a cold
+  cache the in-thread hooks hand each module to a transform thread, and a Node
+  without `registerHooks` runs the hooks themselves on the loader thread
+  `register()` starts. Without it the first module that has to be compiled
+  fails with `ERR_ACCESS_DENIED`;
 - `--allow-child-process`, because every Flow module is transformed by a
   `uf transform` child.
 

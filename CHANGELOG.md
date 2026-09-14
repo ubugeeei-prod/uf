@@ -1,5 +1,113 @@
 # Changelog
 
+## uf@0.0.0-alpha.33
+
+_2026-09-14_
+
+Seventy-six changes, two days after alpha.32, and the release that was held
+back for most of them. The router grew slots all the way through — error
+boundaries, templates and loading boundaries inside a `@slot`, streamed — and
+the React Native target gained its contracts: a navigator, native screen
+manifests derived from the route table, a Metro transform contract, and
+queries over native renderer trees. `uf check` and `uf lint` got faster across
+eleven changes, each held by an allocation budget so it stays fast, and the
+edge adapter's worker is now smoke-tested under `wrangler dev` rather than only
+driven in Node. `@uniflowed/temporal` is not in this release: #869 put it in
+the published closure before npm could accept the name, which blocked every
+release behind it, and #952 took it back out — import Temporal from
+`@uniflowed/core/temporal` until its first publish (#560).
+
+### Added
+
+- **router**: derive native screen manifests (#937)
+- **router**: summarize resolved route state (#936)
+- **react-native-testing**: render native trees with test renderer (#932)
+- **tui**: support OSC 52 clipboard writes (#821)
+- **router**: add native screen router helper (#930)
+- **router**: support slot error boundaries (#929)
+- **react-native**: add Metro transform contract (#928)
+- **router**: map native routes to screens (#923)
+- **react-native-testing**: query native trees by label (#922)
+- **test**: report reasoned host skips (#902)
+- **router**: stream slot loading boundaries (#903)
+- **react-native**: filter native queries by accessibility state (#897)
+- **ui**: add toggle group render escape hatch (#899)
+- **ui**: add slider render escape hatch (#895)
+- **host**: support Bun module mock redirects (#875)
+- **react-native**: add native testing tree queries (#892)
+- **ui**: add Input OTP separator render hatch (#891)
+- **router**: add native navigator contract (#884)
+- **ui**: add radio group render escape hatch (#882)
+- **target**: define react native test target (#877)
+- **inspect**: expose test runner host support (#876)
+- **router**: support templates inside slots (#874)
+- materialize Bun module mock stand-ins (#845)
+- **tui**: support flex auto margins (#815)
+- **ui**: add hover card body render hatch (#867)
+
+### Fixed
+
+- **release**: keep @uniflowed/temporal out of the published closure until npm binds it (#952)
+- **router**: name deferred payload rows in stream inspector (#926)
+- **release**: target npm bootstrap packages (#925)
+- **test**: skip host startup for empty schedules (#924)
+- **rsc**: keep slot loading boundaries in client routes (#921)
+- **rsc**: keep slot templates in client routes (#906)
+- **rsc**: refresh action references on manifest change (#904)
+- **release**: gate npm publish on existing names (#894)
+- **router**: refuse slot boundary convention files (#893)
+- **router**: refuse helper-built interception paths (#888)
+- **router**: validate server module route grammar (#879)
+- **release**: make temporal front door publishable (#869)
+
+### Performance
+
+- **check**: skip non-flow reads during lint scan (#938)
+- **test**: scan selected paths directly (#935)
+- **transform**: reduce ESTree JSON allocations (#905)
+- **transform**: pre-size ESTree JSON maps (#890)
+- **check**: reuse module resolution candidates (#887)
+- **lint**: skip comparison-like memo names (#886)
+- **check**: defer closure builtin environment (#881)
+- **lint**: skip hook-like member calls (#873)
+- **check**: reuse single-source facts parse (#872)
+- **check**: flatten graph resolution storage (#868)
+- **lint**: skip prose tree markers (#865)
+
+### Documentation
+
+- **architecture**: clarify root loading streaming (#931)
+- **framework**: clarify quality contracts (#927)
+- **ui**: enrich render hatch guidance (#920)
+- **react-native**: add native target guide (#919)
+- **rendering**: explain route deployment decisions (#918)
+- **form**: explain server action submissions (#916)
+- **ui**: refresh headless component guide (#911)
+- **test**: enrich runner workflow guide (#917)
+- **compare**: refresh framework parity (#915)
+- **format**: explain tooling observability (#914)
+- **router**: explain loading stream boundaries (#913)
+- **test**: expand native accessibility queries (#912)
+- **ui**: document dialog and tabs primitives (#910)
+- **router**: document slot default file (#908)
+- **architecture**: describe performance ratchets (#901)
+- **ui**: document switch and checkbox guarantees (#889)
+
+### Internal
+
+- **edge**: smoke generated worker under wrangler dev (#939)
+- **lib**: segment native module catalogue (#934)
+- **react-native**: filter native queries by accessibility value (#907)
+- **check**: stabilize resolve allocation budget (#909)
+- **router**: guard root loader streaming without layout (#900)
+- **lint**: ratchet router runtime allocation budget (#898)
+- **check**: guard router runtime allocation budget (#896)
+- isolate browser password store in CI (#885)
+- **cli**: report test host support in json (#883)
+- **lint**: guard router runtime allocation budget (#880)
+- **router**: cover rejected payload rows after hydration (#878)
+- **router**: cover repeated interception markers (#870)
+
 ## uf@0.0.0-alpha.32
 
 _2026-09-12_

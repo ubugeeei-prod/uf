@@ -3,7 +3,7 @@ title: "Install · uf"
 description: "One binary, three runtimes, no plugins to add."
 ---
 
-<p className="eyebrow">Getting started</p>
+<p className="eyebrow">Start</p>
 
 # Install
 
@@ -145,7 +145,7 @@ the rest to a host:
 
 | Host | Dev and build | Tests | Notes |
 | --- | --- | --- | --- |
-| Node.js | yes | yes | The default. Flow modules load through `module.register()`. |
+| Node.js | yes | yes | The default. Flow modules load through `module.registerHooks()`, or `module.register()` on a Node older than 22.15. |
 | Bun | yes | yes | Flow modules load through a `--preload` plugin. |
 | Deno | yes, from 2.8 | yes, from 2.8 | Flow modules load through `node:module`'s `registerHooks`, which Deno implemented in 2.8; an older Deno is refused by version. `uf test --coverage` is Node's, and a test that imports a package with a native addon fails on Deno, which is Deno's to fix. See [#246](https://github.com/ubugeeei-prod/uf/issues/246). |
 

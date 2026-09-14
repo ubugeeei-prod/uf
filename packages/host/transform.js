@@ -13,7 +13,7 @@
 // preload, the config loader — goes through here, which is what makes them
 // all produce the same module from the same source.
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -113,7 +113,7 @@ export const FLOW_MODULE_PATTERN = new RegExp(
  * started by hand finds `uf` on PATH, which is what the installer arranges.
  */
 export function ufBinary() {
-  return process.env.UF_BINARY ?? "uf";
+  return environmentVariable("UF_BINARY") ?? "uf";
 }
 
 /**
@@ -129,7 +129,67 @@ export function ufBinary() {
  * installed before `uf` has told the process anything.
  */
 export function inSourceTests() {
-  return process.env.UF_IN_SOURCE_TESTS === "1";
+  return environmentVariable("UF_IN_SOURCE_TESTS") === "1";
+}
+
+/**
+ * One environment variable, or `undefined` when it is unset *or* this process
+ * may not read it.
+ *
+ * Deno denies by default, and a worker `uf test` starts there is granted the
+ * variables uf set on it and nothing else. Reading any other throws
+ * `NotCapable` rather than answering `undefined` — measured on Deno 2.9 — and
+ * every variable this package reads on the way to a module is one it only
+ * consults: a loader that took the process down over one would be failing a
+ * suite over nothing. On Node and Bun this is `process.env[name]` and no more.
+ */
+export function environmentVariable(name) {
+  try {
+    return process.env[name];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The names a `uf transform` child inherits when the whole environment may not
+ * be read.
+ *
+ * `PATH`, because `uf transform` may start a host of its own to evaluate
+ * `uf.config.js`; `HOME` and `TMPDIR`, which the platform's own libraries read;
+ * and uf's three, which are what the transform is about.
+ */
+const SANDBOXED_TRANSFORM_ENVIRONMENT = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "UF_BINARY",
+  "UF_PROJECT_ROOT",
+  "UF_IN_SOURCE_TESTS",
+];
+
+/**
+ * The environment a `uf transform` child starts with: this process's.
+ *
+ * All of it where the host lets it be enumerated, which is every host that does
+ * not sandbox the environment. Deno does, and spreading `process.env` there is
+ * a request for every variable at once, refused as `NotCapable` — measured on
+ * Deno 2.9, from the transform thread's first compile. So a refusal falls back
+ * to the names above, each read on its own and skipped when that one is
+ * withheld too. The child is `uf`, not the project's code, and a transform
+ * needs nothing a test's sandbox keeps from it.
+ */
+function inheritedEnvironment() {
+  try {
+    return { ...process.env };
+  } catch {
+    const env = {};
+    for (const name of SANDBOXED_TRANSFORM_ENVIRONMENT) {
+      const value = environmentVariable(name);
+      if (value != null) env[name] = value;
+    }
+    return env;
+  }
 }
 
 /**
@@ -173,7 +233,7 @@ export function ufBinaryIdentity(command = ufBinary()) {
     // Whole milliseconds, because hosts disagree below that: Node reports the
     // filesystem's nanosecond timestamp as a fraction and Deno reports whole
     // milliseconds. Node's and Deno's loaders share one cache
-    // (`./internal/transform-cache.js`), and two spellings of one binary's
+    // (`./internal/flow-cache.js`), and two spellings of one binary's
     // identity would be two keys for every module either host compiled. A
     // rebuild that lands in the same millisecond at the same size is not a
     // rebuild anybody runs.
@@ -235,7 +295,7 @@ function resolveExecutable(command) {
   // either way, so a path that is a directory or is not executable is no more
   // trusted than a bare name that resolves to one.
   if (path.basename(command) !== command) return command;
-  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+  for (const directory of (environmentVariable("PATH") ?? "").split(path.delimiter)) {
     if (directory === "") continue;
     const candidate = path.join(directory, command);
     try {
@@ -278,10 +338,12 @@ export class TransformError extends Error {
  * hooks and the Bun preload both take it and neither has an "afterwards" to
  * close it in — so on Bun `bun --preload @uniflowed/host/bun-preload app.js`
  * ran the program, printed its output, and then sat there forever. Node hides
- * this: its module hooks run on a loader thread of their own, and the process
- * exits with the main thread whatever that thread is still holding. That
- * accident is the only reason it was ever invisible, and it is not something
- * the second host can be asked to reproduce.
+ * this: its loaders keep the service on a thread of their own — the loader
+ * thread `register()` starts, or the transform thread
+ * `./internal/sync-hooks.js` starts on a cache miss — and the process exits
+ * with the main thread whatever that thread is still holding. That accident is
+ * the only reason it was ever invisible, and it is not something the second
+ * host can be asked to reproduce.
  *
  * So the service holds its host open for exactly as long as it owes an
  * answer: referenced when a request joins an empty queue, unreferenced when
@@ -324,7 +386,7 @@ export class TransformService {
     // binary earlier and wrote under that would file build B's output under
     // build A's name, which is the original defect with a smaller window.
     this.#identity = ufBinaryIdentity(command);
-    const env = { ...process.env };
+    const env = inheritedEnvironment();
     if (options.configBootstrap === true) {
       env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
     } else {
@@ -440,7 +502,28 @@ export class TransformService {
       this.#pending.push({
         id,
         reject,
-        resolve: (reply) => resolve(answerOf(reply)),
+        resolve: (reply) => {
+          if (reply.code == null) {
+            resolve(null);
+            return;
+          }
+          // Named field by field rather than passed through, so a host reads
+          // the protocol rather than whatever `uf transform` happens to send —
+          // which means every field the protocol grows has to be added here,
+          // and one was not. `css` arrived with the StyleX compiler and this
+          // object did not mention it, so `out.css` was `undefined` in every
+          // host: the Vite plugin's `if (out.css != null)` never ran, no module
+          // ever imported its own stylesheet, and an application styled with
+          // `stylex.create` shipped class names and no CSS. The transform was
+          // right the whole time; the shim in front of it was returning three
+          // quarters of the answer. See ubugeeei-prod/uf#306.
+          resolve({
+            code: reply.code,
+            map: reply.map ?? null,
+            css: reply.css ?? null,
+            diagnostics: reply.diagnostics ?? [],
+          });
+        },
       });
       this.#child.stdin.write(`${JSON.stringify({ id, code, options })}\n`);
     });
@@ -468,33 +551,6 @@ export class TransformService {
   }
 }
 
-/**
- * One reply, as the object every host reads: `{ code, map, css, diagnostics }`,
- * or `null` for a module that is not uf's to transform.
- *
- * Named field by field rather than passed through, so a host reads the
- * protocol rather than whatever `uf transform` happens to send — which means
- * every field the protocol grows has to be added here, and one was not. `css`
- * arrived with the StyleX compiler and this object did not mention it, so
- * `out.css` was `undefined` in every host: the Vite plugin's
- * `if (out.css != null)` never ran, no module ever imported its own
- * stylesheet, and an application styled with `stylex.create` shipped class
- * names and no CSS. The transform was right the whole time; the shim in front
- * of it was returning three quarters of the answer. See ubugeeei-prod/uf#306.
- *
- * One function for the service and for `transformFlowSync`, so the two ways in
- * cannot disagree about what an answer contains.
- */
-function answerOf(reply) {
-  if (reply.code == null) return null;
-  return {
-    code: reply.code,
-    map: reply.map ?? null,
-    css: reply.css ?? null,
-    diagnostics: reply.diagnostics ?? [],
-  };
-}
-
 let shared = null;
 let sharedForConfigBootstrap = null;
 
@@ -508,13 +564,13 @@ export function sharedService(root, options = {}) {
   const entry = options.configBootstrap === true ? "bootstrap" : "project";
   if (entry === "bootstrap") {
     sharedForConfigBootstrap ??= new TransformService({
-      root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd(),
+      root: root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd(),
       configBootstrap: true,
     });
     return sharedForConfigBootstrap;
   }
   shared ??= new TransformService({
-    root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd(),
+    root: root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd(),
   });
   return shared;
 }
@@ -529,141 +585,4 @@ export function transformFlow(code, filename, options = {}) {
   return sharedService(options.root, {
     configBootstrap: options.configBootstrap === true,
   }).transform(filename, code, options);
-}
-
-/**
- * The most bytes one reply may be.
- *
- * `spawnSync` buffers the child's whole output and needs a ceiling to do it
- * with; its default is one megabyte, which a large module and the source map
- * appended to it can pass. Sixty-four is far above any module uf's own
- * transform ceilings let through, and still a ceiling.
- */
-const MAX_SYNC_REPLY_BYTES = 64 * 1024 * 1024;
-
-/**
- * The variables a synchronous transform's child is given, when the host will
- * not say what the whole environment is.
- *
- * `PATH` because `uf transform` may start a host of its own to evaluate
- * `uf.config.js`, `HOME` and `TMPDIR` because the platform's own libraries
- * read them, and uf's three because they are what the transform is about.
- */
-const SYNC_TRANSFORM_ENVIRONMENT = [
-  "PATH",
-  "HOME",
-  "TMPDIR",
-  "UF_BINARY",
-  "UF_PROJECT_ROOT",
-  "UF_IN_SOURCE_TESTS",
-];
-
-/**
- * The environment a synchronous transform's child starts with.
- *
- * The whole of this process's, where the host lets it be read — which is what
- * `TransformService` hands its child, so the two paths agree on every host
- * that does not sandbox the environment. Deno does: a run `uf test` starts is
- * granted the variables it names and nothing else, and spreading
- * `process.env` there is a request for all of them, refused as `NotCapable`.
- * So a refusal falls back to the names above, each read on its own and
- * skipped if that one is refused too. The child is `uf`, not the project's
- * code, and a transform needs nothing a test's sandbox withholds.
- */
-function syncTransformEnvironment(configBootstrap) {
-  let env;
-  try {
-    env = { ...process.env };
-  } catch {
-    env = {};
-    for (const name of SYNC_TRANSFORM_ENVIRONMENT) {
-      try {
-        const value = process.env[name];
-        if (value != null) env[name] = value;
-      } catch {
-        // Not granted to this process, so not ours to pass on.
-      }
-    }
-  }
-  if (configBootstrap) {
-    env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
-  } else {
-    delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
-  }
-  return env;
-}
-
-/**
- * Transform one Flow module and wait for the answer, for a loader that cannot
- * wait any other way.
- *
- * Returns what `transformFlow` resolves to — `{ code, map, css, diagnostics }`,
- * or `null` for a module that is not uf's to transform — and throws what it
- * rejects with, a `TransformError` carrying the position included.
- *
- * # Why a second way in exists
- *
- * Deno's module hooks are `node:module`'s `registerHooks`: synchronous, and run
- * in the thread that is doing the importing (`./deno-preload.js`). A hook of
- * that kind has to return the module's source, not a promise of it, and the
- * service above answers through a pipe it reads *asynchronously* — so there is
- * no way to wait on it from inside the hook without blocking the very event
- * loop that would deliver the reply.
- *
- * So each module is one short-lived `uf transform`: one request written to its
- * stdin, stdin closed, one reply read back, the process gone. It is the same
- * protocol and the same binary as the service — `uf transform` serves requests
- * until its stdin closes, and here that is after the first — so the compiled
- * module cannot differ between the two paths. What it costs is a process per
- * module that is not already in the on-disk cache, which measured at about ten
- * milliseconds for a warm binary; a fully warm run starts none, because the
- * loader reads the cache before it gets here.
- *
- * @param {string} code the Flow source
- * @param {string} filename absolute path, used for the map and for errors
- * @param {object} [options] as for `transformFlow`, plus `command`
- */
-export function transformFlowSync(code, filename, options = {}) {
-  const command = options.command ?? ufBinary();
-  const root = options.root ?? process.env.UF_PROJECT_ROOT ?? process.cwd();
-  // Which binary to run is this process's business and not the compiler's.
-  const requestOptions = { ...options };
-  delete requestOptions.command;
-  const result = spawnSync(command, ["--cwd", root, "transform"], {
-    input: `${JSON.stringify({ id: filename, code, options: requestOptions })}\n`,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "inherit"],
-    env: syncTransformEnvironment(options.configBootstrap === true),
-    maxBuffer: MAX_SYNC_REPLY_BYTES,
-  });
-  if (result.error != null) {
-    throw new Error(`could not run \`${command} transform\`: ${result.error.message}`);
-  }
-  // A spawn a sandbox refuses is not an error on every host. Measured on Deno
-  // 2.9: a program its permission set does not name comes back with no
-  // `error`, no status and no output at all, and reading a reply out of that is
-  // a `TypeError` about `undefined` that names neither the binary nor the
-  // grant. Both are known here, so the refusal is said here.
-  if (typeof result.stdout !== "string") {
-    throw new Error(
-      `could not run \`${command} transform\` for ${filename}: no process started, which is ` +
-        `how a sandbox answers a program it was not told about — on Deno, \`--allow-run\` has ` +
-        `to name ${command}`,
-    );
-  }
-  const newline = result.stdout.indexOf("\n");
-  const line = newline === -1 ? result.stdout : result.stdout.slice(0, newline);
-  if (line.trim() === "") {
-    throw new Error(`uf transform exited (${result.status}) without answering for ${filename}`);
-  }
-  let reply;
-  try {
-    reply = JSON.parse(line);
-  } catch {
-    throw new Error(`uf transform sent a malformed reply: ${line}`);
-  }
-  if (reply.error != null) {
-    throw new TransformError(filename, reply.error, reply.line, reply.column);
-  }
-  return answerOf(reply);
 }

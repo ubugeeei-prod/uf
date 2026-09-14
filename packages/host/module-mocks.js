@@ -10,18 +10,18 @@
 //
 // # Why these are *synchronous* hooks
 //
-// `./register.js` installs Node's asynchronous customization hooks, and those
-// run on a loader thread of their own. That is right for the transform, which
-// only needs the file's bytes — and useless for a mock, which is a value the
-// test built: a spy the test holds a reference to cannot be sent to another
-// thread, and a registry written on the main thread is not a registry the
-// loader thread can read.
+// A mock is a value the test built: a spy the test holds a reference to cannot
+// be sent to another thread, and a registry written on the main thread is not a
+// registry a loader thread can read. So interception has to run in the thread
+// that is doing the importing, which is what `node:module`'s `registerHooks`
+// does, and these see this module's `mocks` map directly.
 //
-// So interception uses `node:module`'s `registerHooks`, which run in the thread
-// that is doing the importing. They see this module's `mocks` map directly, and
-// they chain into the asynchronous hooks for everything they do not claim — so
-// a module that is not mocked is still transformed, still cached on disk, and
-// still costs exactly what it cost before.
+// They chain into the Flow loader for everything they do not claim, so a module
+// that is not mocked is still transformed, still cached on disk, and still
+// costs exactly what it cost before. `./register.js` installs that loader before
+// the first test file is imported and these arrive with the first `uft.mock`,
+// and Node runs the most recently registered hooks first — which is the order
+// that makes a mock win and everything else fall through to the transform.
 //
 // # Why a mocked module gets a URL of its own
 //

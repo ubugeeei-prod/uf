@@ -42,7 +42,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { builtinModules, register } from "node:module";
-import { registerDenoFlowHooks } from "@uniflowed/host/internal/deno-hooks.js";
+import { installFlowHooks } from "@uniflowed/host/internal/sync-hooks.js";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -101,14 +101,16 @@ process.env.UF_PROJECT_ROOT = root;
 // Rolldown's binding. The static imports above have already loaded Vite by
 // this line, binding included, so hooks installed now see only what is
 // imported after them: the config, and the `@uniflowed/*` modules this driver
-// reaches dynamically. See `@uniflowed/host/internal/deno-hooks.js`.
+// reaches dynamically. They are the in-thread hooks a new enough Node takes
+// through `@uniflowed/host/register` too; see
+// `@uniflowed/host/internal/sync-hooks.js`.
 //
 // The hooks live in `@uniflowed/host` rather than here: they are how Flow runs
 // on a Capability JS Host, and nothing in them is Vite's. `uf test` reaches for
 // the same package, which is what stopped a test run from depending on a
 // bundler it never loads.
 if (typeof Deno !== "undefined") {
-  registerDenoFlowHooks({ root });
+  installFlowHooks(root);
 } else if (typeof Bun === "undefined") {
   register("@uniflowed/host/internal/node-hooks.js", import.meta.url, { data: { root } });
 }
@@ -1367,9 +1369,9 @@ async function deploy() {
  * out — `server.js` below does exactly that through
  * `@uniflowed/server/node`, and a worker hands `settle` to `ctx.waitUntil`.
  * It comes from the bundle rather than from the host's own
- * `@uniflowed/server`, because the request lives in an `AsyncLocalStorage`
- * belonging to a module instance and the instance the application reads is the
- * one inlined here. See ubugeeei-prod/uf#389.
+ * `@uniflowed/server`, because the request store is shared only by copies of
+ * one release of that package and the release the application reads is the one
+ * inlined here. See ubugeeei-prod/uf#389.
  *
  * The document's script and stylesheet URLs are baked in here because they
  * come from the client manifest, which exists at this moment and not in the

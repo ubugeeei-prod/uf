@@ -44,11 +44,19 @@
 //
 // # Which module's copy
 //
-// This one holds an `AsyncLocalStorage`, so the context is only shared by code
-// that resolved to the *same* copy of it. A host that serves a bundled
-// application must therefore take `beginRequest` from that bundle —
-// `virtual:uf/server` re-exports it for exactly this reason — and not from its
-// own `node_modules`, where it would be a second storage that sees nothing.
+// The request store behind these functions is the process's rather than this
+// module's: `./internal/process-state.js` keeps one per process, so every copy
+// of this release of the package reads the request any other copy began —
+// including the second copy held by the module graph that renders React Server
+// Components. It used to be one store per copy, and a host that began a request
+// through its own copy began it somewhere no page could see.
+//
+// A host that serves a bundled application still takes `beginRequest` from that
+// bundle — `virtual:uf/server` re-exports it — and not from its own
+// `node_modules`, because its own copy is not necessarily this *release*. Two
+// releases whose request context differs in shape keep separate stores on
+// purpose, and the bundle's copy is the one that is certainly the release the
+// application reads.
 
 export type {
   CookieStore,

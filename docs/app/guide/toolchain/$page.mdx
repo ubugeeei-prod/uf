@@ -1,0 +1,57 @@
+---
+title: "The toolchain · uf"
+description: "One guide per command: what it runs, what it reads, what it refuses, and how to put it in CI."
+---
+
+import { SectionContents } from "../../_design/parts.js";
+
+<p className="eyebrow">The toolchain</p>
+
+# The toolchain
+
+<div className="lede">
+For a reader who runs uf rather than writes the application: the person who pins
+the runtimes, owns the pipeline, tunes the linter and decides what is cached. One
+guide per command, each saying what the command runs, what it reads and what it
+refuses.
+</div>
+
+## What you need first
+
+A project, or a repository you are adding uf to — [Start](/guide/start) makes
+one. [uf in CI](/guide/ci) has a recipe for GitHub Actions, GitLab CI and
+CircleCI, and the rules under the recipes apply to any other system.
+
+## The pages, in order
+
+<SectionContents section="The toolchain" />
+
+The commands you run all day come first — the dev server and the build, the
+formatter and the linter, the tests — then what they run on: which Node.js,
+which Bun, which package manager, pinned. [uf in CI](/guide/ci) is last because
+it is all of the above, run by a machine.
+
+## Which page covers which command
+
+| Command | Guide |
+| --- | --- |
+| `uf dev`, `uf build` | [Dev and build](/guide/dev) |
+| `uf preview`, `uf start`, `uf build --adapter`, `uf build --compile` | [Targets](/guide/targets) |
+| `uf fmt`, `uf lint` | [Formatting and linting](/guide/format) |
+| `uf check` | [Formatting and linting](/guide/format#uf-check) |
+| `uf test` | [Testing](/guide/testing) |
+| `uf env`, `uf use` | [Environments](/guide/env) |
+| `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf ls`, `uf audit`, `uf search` | [Dependencies](/reference/cli#dependencies), in the command reference |
+| `uf run`, `ufx` | [`uf run`](/reference/cli#uf-run-script-args) and [`tasks`](/reference/config#tasks-and-plugins), in the reference |
+| `uf lsp`, `uf mcp` | none yet |
+
+Type checking, packages, tasks, editors and agents have no guide of their own
+yet. They are being written under
+[#943](https://github.com/ubugeeei-prod/uf/issues/943), and until they land the
+[command reference](/reference/cli) is what documents those commands. Every
+command not in the table is there too.
+
+## When you are done
+
+[Reference](/reference) is the whole surface of each command — every flag, every
+config key and its default — for when a guide has told you which one you need.

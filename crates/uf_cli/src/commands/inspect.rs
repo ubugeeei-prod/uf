@@ -41,8 +41,11 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
     let server_engine = format!("{:?}", resolved.config.server.engine);
     let adapters = resolved.config.server.native.adapters.len().to_string();
     let task_engine = format!("{:?}", resolved.config.task_runner.engine);
-    let test_runtime = format!("{:?}", resolved.config.test.runner.runtime);
-    let test_target = format!("{:?}", resolved.config.test.runner.performance_target);
+    let test_runtime = format!("{:?}", resolved.config.test.native_runner().runtime);
+    let test_target = format!(
+        "{:?}",
+        resolved.config.test.native_runner().performance_target
+    );
     let pm_resolver = format!("{:?}", resolved.config.pm.resolver);
     let pm_lockfile = resolved.config.pm.lockfile.to_string();
     let detected = detection.package_manager.to_string();
@@ -180,6 +183,26 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
                 ),
             ],
         );
+        renderer.blank(out);
+
+        // Which tool each command runs, and the key that said so. Declared,
+        // not resolved: `uf inspect` reads the configuration, and a version a
+        // prefix resolves to is `uf.lock`'s answer, not this file's.
+        renderer.heading(out, 2, "tools");
+        let tools = resolved.config.tool_declarations();
+        let summaries: Vec<String> = tools
+            .iter()
+            .map(uf_config::ToolDeclaration::summary)
+            .collect();
+        let rows: Vec<_> = tools
+            .iter()
+            .zip(&summaries)
+            .map(|(tool, summary)| KeyValue::new(tool.label, summary))
+            .collect();
+        renderer.key_values(out, 4, &rows);
+        for deprecation in resolved.config.tool_deprecations() {
+            renderer.status(out, uf_term::Status::Warn, &deprecation);
+        }
         renderer.blank(out);
 
         renderer.heading(out, 2, "package manager");
@@ -326,6 +349,12 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
             }),
             Err(reason) => json!({ "error": reason }),
         },
+        // Which tool each command runs and the key it came from, and the
+        // sentence for every tool key this project still writes in a spelling
+        // that has been replaced. Declared rather than resolved, like the
+        // `config` beside it: what a prefix resolves to is `uf.lock`'s answer.
+        "tools": resolved.config.tool_declarations(),
+        "toolDeprecations": resolved.config.tool_deprecations(),
         "plugins": pipeline.report(),
         "routes": routes,
         "nativeModules": builtin_modules(),

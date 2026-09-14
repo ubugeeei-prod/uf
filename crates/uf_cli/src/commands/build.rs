@@ -649,6 +649,9 @@ pub(crate) fn build(
         Vec::new()
     };
     let mut warnings = vite.warnings.clone();
+    // In the report rather than before the build, where a line on stdout would
+    // be drawn over by the progress on stderr.
+    warnings.extend(resolved.config.builder_module_deprecation());
     // Said rather than assumed. A project with a `public/robots.txt` gets the
     // one it wrote, and the silent version of that is a person reading
     // `site.robots` in `uf.config.js` and wondering why none of it applies.

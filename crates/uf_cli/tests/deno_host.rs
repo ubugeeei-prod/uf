@@ -344,7 +344,7 @@ fn a_module_already_compiled_is_read_rather_than_compiled_again() {
 
 /// Node and Deno share one transform cache, and agree on what is in it.
 ///
-/// `packages/host/internal/transform-cache.js` is one key and one framing for
+/// `packages/host/internal/flow-cache.js` is one key and one framing for
 /// both loaders. So a module the *Node* loader compiled is one Deno reads
 /// without compiling — which it has to, because this Deno run may not start
 /// the compiler. Two copies of the key that had drifted would fail here as a

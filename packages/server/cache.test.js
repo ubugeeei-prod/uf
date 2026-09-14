@@ -58,6 +58,9 @@ import { beginRequest } from "@uniflowed/server/host";
 // place `rendering.cache` becomes a store for those two commands, so it is
 // reached by path here for the same reason it is there.
 import { createApplicationHandler, providerSpecifier } from "../../packages/vite/internal/serve.js";
+// The store's own scope, by path, so the case at the end of this file can tell
+// its second copy apart from this one.
+import { runInScope } from "./internal/cache-store.js";
 
 const assets = { scripts: ["/assets/client.js"], styles: [], preloads: [] };
 
@@ -1757,5 +1760,28 @@ export function createCacheProvider() {
     expect(app.renders.length).toBe(1);
     expect(fs.readdirSync(directory)).toEqual([]);
     fs.rmSync(directory, { recursive: true, force: true });
+  });
+});
+
+describe("a second copy of this package", () => {
+  // The route cache opens its scope in the module graph that renders HTML, and
+  // a server component calls `cacheLife` from the one that renders React Server
+  // Components: two copies of `internal/cache-store.js` in one process.
+  // `server.test.js` asks the same question of the request, and
+  // `internal/process-state.js` is the answer to both.
+  it("declares into the scope the other copy opened", async () => {
+    const copy = await import(
+      new URL("./internal/cache-store.js?a-second-copy", import.meta.url).href
+    );
+    expect(copy.runInScope).not.toBe(runInScope);
+    const scope = copy.newScope({ key: ["a-second-copy"] });
+
+    await copy.runInScope(scope, async () => {
+      cacheLife({ revalidate: 30 });
+      cacheTag("posts");
+    });
+
+    expect(scope.lifetime).toEqual({ revalidate: 30 });
+    expect(scope.tags).toEqual(["posts"]);
   });
 });

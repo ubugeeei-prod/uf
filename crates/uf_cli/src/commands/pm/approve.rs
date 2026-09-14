@@ -83,6 +83,7 @@ pub(crate) fn approve_builds(
 ) -> Result<()> {
     uf_pm::check_operands(names)?;
     let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
     let root = resolved.root.clone();
     let detection =
         detect_package_manager_with(&root, &DetectionOptions::from_config(&resolved.config));

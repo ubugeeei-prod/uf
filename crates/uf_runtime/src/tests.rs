@@ -210,9 +210,9 @@ mod permissions {
                 String::from("--allow-fs-read=/home/me/fixtures"),
                 String::from("--allow-fs-write=/project/.uf"),
                 String::from("--allow-fs-write=/tmp/out"),
-                // Because Node runs the module hooks on a loader thread, and
-                // because the loader starts `uf transform` — and Node can say
-                // neither which thread nor which program.
+                // Because Node's Flow loader compiles on a thread, and because
+                // the loader starts `uf transform` — and Node can say neither
+                // which thread nor which program.
                 String::from("--allow-worker"),
                 String::from("--allow-child-process"),
             ]
