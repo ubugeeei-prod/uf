@@ -56,12 +56,35 @@ fn enum_arguments_complete_to_their_variants() {
         complete_line(&["release", ""]),
         vec!["alpha", "patch", "minor", "major"]
     );
-    assert_eq!(complete_line(&["create", ""]), vec!["app", "lib"]);
-    assert_eq!(complete_line(&["env", ""]), vec!["doctor", "use"]);
-    assert_eq!(complete_line(&["i18n", ""]), vec!["extract", "merge"]);
-    assert_eq!(complete_line(&["routes", ""]), vec!["list", "add"]);
-    assert_eq!(complete_line(&["ui", ""]), vec!["add", "list", "diff"]);
     assert!(complete_line(&["explain", ""]).contains(&"build".to_string()));
+}
+
+/// `uf env <TAB>` offers the toolchain commands `uf env` has, not the two a
+/// hand-written list had (ubugeeei-prod/uf#1012), and every other parent offers
+/// its own the same way — `help` included, because clap accepts `uf env help`.
+#[test]
+fn a_parent_completes_to_its_subcommands() {
+    let env = complete_line(&["env", ""]);
+    for command in ["doctor", "use", "install", "list", "update", "exec", "gc"] {
+        assert!(
+            env.contains(&command.to_string()),
+            "`uf env {command}` is not offered"
+        );
+    }
+    assert_eq!(complete_line(&["env", "u"]), vec!["use", "update"]);
+
+    assert_eq!(complete_line(&["create", ""]), vec!["app", "lib", "help"]);
+    assert_eq!(
+        complete_line(&["i18n", ""]),
+        vec!["extract", "merge", "help"]
+    );
+    assert_eq!(complete_line(&["routes", ""]), vec!["list", "add", "help"]);
+    assert_eq!(
+        complete_line(&["ui", ""]),
+        vec!["add", "list", "diff", "help"]
+    );
+    assert_eq!(complete_line(&["pm", ""]), vec!["approve-builds", "help"]);
+    assert_eq!(complete_line(&["catalog", ""]), vec!["set", "help"]);
 }
 
 /// `uf ui add <TAB>` offers the components this binary carries, and keeps
@@ -160,35 +183,66 @@ fn an_empty_word_list_offers_the_subcommands() {
     assert!(candidates(&[], TASKS).contains(&"build".to_string()));
 }
 
-/// The hand-written table has to be clap's, or completion offers a command
-/// that does not exist and hides one that does.
+/// Every parent, at every depth, offers exactly what the parser accepts under
+/// it — completion offering a command that does not exist, or hiding one that
+/// does, is the whole failure this guards.
 ///
-/// Hidden commands are deliberately absent: `uf transform` is spawned by the
-/// Vite plugin and `uf __complete` by a completion script, and neither is a
-/// thing a person types. `help` is present and is clap's own, which is why it
-/// is added here rather than found among the subcommands.
+/// The test that stood here compared the top-level list with clap and nothing
+/// below it, so `env`'s list fell five subcommands behind with every test
+/// green, and the test beside that list asserted the subset
+/// (ubugeeei-prod/uf#1012). This walks the whole tree instead, hidden parents
+/// included: `uf create` is hidden from `--help` and can still be typed.
+///
+/// Both directions. A visible subcommand that is not offered is a command
+/// nobody finds by TAB; an offered word the parser has no subcommand for is a
+/// command line that fails on Enter. Hidden commands are the one deliberate
+/// absence — `uf transform` is spawned by the Vite plugin and `uf __complete`
+/// by a completion script, and neither is a thing a person types — and `help`
+/// is present because the parser accepts it under every parent.
 #[test]
-fn the_command_list_matches_the_argument_parser() {
-    let command = crate::Cli::command();
-    let mut from_clap = command
-        .get_subcommands()
-        .filter(|sub| !sub.is_hide_set())
-        .flat_map(|sub| {
-            std::iter::once(sub.get_name().to_owned())
-                .chain(sub.get_all_aliases().map(ToOwned::to_owned))
-        })
-        .collect::<std::collections::BTreeSet<_>>();
-    from_clap.insert("help".to_owned());
+fn every_parent_offers_exactly_the_parsers_subcommands() {
+    let mut parser = crate::Cli::command();
+    parser.build();
 
-    let ours = COMMANDS
-        .iter()
-        .map(ToString::to_string)
-        .collect::<std::collections::BTreeSet<_>>();
+    let mut walked = Vec::new();
+    let mut pending = vec![(Vec::<&str>::new(), &parser)];
+    while let Some((path, command)) = pending.pop() {
+        for sub in command.get_subcommands() {
+            let mut deeper = path.clone();
+            deeper.push(sub.get_name());
+            pending.push((deeper, sub));
+        }
 
-    assert_eq!(
-        ours, from_clap,
-        "the completion command list and the parser disagree"
-    );
+        let accepted = command
+            .get_subcommands()
+            .filter(|sub| !sub.is_hide_set())
+            .flat_map(|sub| std::iter::once(sub.get_name()).chain(sub.get_all_aliases()))
+            .map(ToOwned::to_owned)
+            .collect::<std::collections::BTreeSet<_>>();
+        if accepted.is_empty() {
+            continue;
+        }
+
+        let mut line = path.clone();
+        line.push("");
+        let offered = complete_line(&line)
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            offered,
+            accepted,
+            "`uf {} <TAB>` and the parser disagree",
+            path.join(" ")
+        );
+        walked.push(path.join(" "));
+    }
+
+    for parent in ["", "env", "create", "ui", "help"] {
+        assert!(
+            walked.iter().any(|path| path == parent),
+            "the walk never reached `uf {parent}`, so it proves nothing about it"
+        );
+    }
 }
 
 // --- the shipped scripts -----------------------------------------------

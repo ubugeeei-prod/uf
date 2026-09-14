@@ -38,12 +38,14 @@
 mod cache;
 mod command;
 mod digest;
+mod environment;
 mod graph;
 mod inputs;
 mod runner;
 
 pub use crate::cache::{Change, TaskCache};
 pub use crate::command::{Command, Direct, ShellSyntax, parse};
+pub use crate::environment::Environment;
 pub use crate::graph::{Plan, PlanError, PlanNode};
 pub use crate::inputs::InputError;
 pub use crate::runner::{

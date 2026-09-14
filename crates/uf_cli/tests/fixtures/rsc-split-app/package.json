@@ -12,6 +12,7 @@
     "@uniflowed/validator": "0.0.0-alpha.5",
     "@uniflowed/vite": "0.0.0-alpha.5",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "react-server-dom-parcel": "^19.3.0"
   }
 }

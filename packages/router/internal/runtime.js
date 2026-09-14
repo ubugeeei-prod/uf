@@ -1,13 +1,24 @@
 // @flow
 //
-// The router runtime: matching, loading, navigation, and the React binding.
+// The router runtime: the browser's binding.
+//
+// A client module, and the directive is load-bearing rather than descriptive:
+// in the module graph React Server Components render in, every export of this
+// file is a client reference — `Link` renders as markup on the server and runs
+// in the browser — and `../server-components.js` is what that graph gets for
+// the hooks instead. Everywhere else the directive changes nothing.
 //
 // A route table is data — the virtual module `virtual:uf/routes` that
 // `@uniflowed/vite` generates from the `app/` directory — and this module is
-// everything that turns it into a running application. The same code runs on
-// the server (`./server.js` renders one URL) and in the browser (`./client.js`
-// hydrates it and then navigates), so a page's loader, layouts and metadata
-// resolve identically in both places.
+// what turns it into a running application in a page: the provider that holds
+// the current route, the hooks that read it, navigation, view transitions and
+// `Link`. What a URL resolves to is `./resolve.js`, the tree a resolved route
+// renders is `./compose.js`, and the metadata elements are `./head.js`; the
+// three are split out because none of them may reach a hook, a context or a
+// class component, which is what lets a server graph resolved under React's
+// `react-server` condition import them (ubugeeei-prod/uf#519).
+
+"use client";
 
 import * as React from "react";
 import {
@@ -60,41 +71,22 @@ import {
 // safe here where `../client.js` needs a dynamic one — a component cannot be
 // awaited in the middle of a render, and `false` folds the references away
 // before the bundler is asked to keep the module. See [`BOUNDARY_MARKS`].
+import { BoundaryReporter } from "./boundaries.js";
+import { routeBoundaries } from "./boundary-data.js";
+import { composeRoute, pageComponent } from "./compose.js";
+import { type FetchedFlight, fetchFlight } from "./flight-browser.js";
+import { type FlightRoot, type RouteState, routeState } from "./flight.js";
+import { Head } from "./head.js";
+import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
+import type { RouteParams, SearchParams } from "./routing.js";
 import {
-  BoundaryReporter,
-  ROOT_ERROR_ID,
-  ROUTE_ERROR_ID,
-  insideBoundary,
-  routeBoundaries,
-  suspenseId,
-} from "./boundaries.js";
-import {
-  ForbiddenError,
-  NotFoundError,
-  RedirectError,
-  UnauthorizedError,
-  hasClientPage,
-  matchIn,
-  matchRoute,
-  nearestBoundary,
-  parseSearch,
-  routeErrorStatus,
-  splitUrl,
-} from "./routing.js";
-import type {
-  ErrorBoundary as RoutingErrorBoundary,
-  LoadingRecord as RoutingLoadingRecord,
-  NotFoundBoundary as RoutingNotFoundBoundary,
-  RouteError,
-  RouteMatch as RoutingRouteMatch,
-  RouteParams,
-  RouteRecord as RoutingRouteRecord,
-  RouteTable as RoutingRouteTable,
-  SearchParams,
-  SlotRecord as RoutingSlotRecord,
-  SlotRouteRecord as RoutingSlotRouteRecord,
-  TemplateRecord as RoutingTemplateRecord,
-} from "./routing.js";
+  beneath,
+  interceptingRoutes,
+  loadOnce,
+  resolveInterception,
+  resolveMatch,
+} from "./resolve.js";
+import type { Metadata, ResolvedRoute, RouteTable } from "./resolve.js";
 
 export type { RouteError, RouteParamSpec, RouteParams, SearchParams } from "./routing.js";
 
@@ -116,1736 +108,34 @@ export {
   unauthorized,
 } from "./routing.js";
 
-/**
- * A component found in a route module.
- *
- * `React.ComponentType<empty>` is "some React component", and it is a claim
- * rather than a shrug. `ComponentType` is contravariant in its props — Flow's
- * library definition writes it `component(...P)` with `in P` — so `empty` is
- * the *top* of the component types: every component is one, and nothing may be
- * passed to one until a caller has said which props it is passing. That is
- * exactly what is known here. The router finds these by dynamic import, and
- * nobody has told it what a page's props are.
- *
- * It cannot be `React.ComponentType<PageRenderProps>`, the props the router
- * actually passes, because Flow's `component` syntax gives a component *exact*
- * props and a page is free to want none of them. This repository's own pages
- * and layouts are `component NotFound()` and
- * `component Layout(children: React.Node)`, and against the props the router
- * hands them that reads:
- *
- *     error[incompatible-type]: property `data`, property `params`, and
- *     property `searchParams` are extra in `PageRenderProps` but missing in
- *     `props of component NotFound`. Exact objects do not accept extra props.
- *
- * React passing a component a prop it did not declare is allowed and always
- * has been. `renderable` is the one line that says so.
- */
-type RouteComponent = React.ComponentType<empty>;
-
-/**
- * The props `RouteView` gives the page it renders.
- *
- * The same three as the public `PageProps` in `../index.js`, at the arguments
- * the runtime instantiates it with: the runtime knows the parameters as
- * strings and the loader's data as `mixed`, and a page narrows both by
- * annotating its own props.
- */
-type PageRenderProps = {|
-  readonly params: RouteParams,
-  readonly searchParams: SearchParams,
-  readonly data: mixed,
-|};
-
-/**
- * The props `RouteView` gives each layout, outermost first.
- *
- * Inexact, and that is the parallel routes reaching the type: a layout on a
- * segment that declares `@team` is handed a `team` prop beside `children`, and
- * the names are the project's rather than this file's. Every extra prop is a
- * `React.Node` — a rendered slot, or `null` when the URL addressed neither the
- * slot's routes nor a `$default.js`.
- *
- * The exactness is not lost so much as moved: what a layout may be *given* is
- * open, and what it *declares* is still its own exact props type, which is
- * where a typo in a slot name shows up.
- */
-type LayoutRenderProps = {
-  readonly params: RouteParams,
-  readonly children: React.Node,
-  ...
-};
-
-/** What a page module may export. The component is `default` or `Page`. */
-export type PageModule = {
-  readonly default?: RouteComponent,
-  readonly Page?: RouteComponent,
-  readonly loader?: (args: LoaderArgs) => mixed | Promise<mixed>,
-  readonly metadata?: Metadata,
-  readonly generateMetadata?: (args: MetadataArgs) => Metadata | Promise<Metadata>,
-  readonly generateStaticParams?: () =>
-    | $ReadOnlyArray<RouteParams>
-    | Promise<$ReadOnlyArray<RouteParams>>,
-  readonly frontmatter?: { readonly title?: string, readonly description?: string, ... },
-  /**
-   * What a stylesheet calls the transition this route arrives under.
-   *
-   * Not a switch. Every client navigation opts into a view transition where
-   * the browser has one, and this is how one arrival is told from another —
-   * the name reaches CSS as an attribute on the document element for as long
-   * as the transition runs:
-   *
-   *     html[data-uf-view-transition="manual"]::view-transition-old(root) { … }
-   *
-   * A layout may declare one too, and then it covers every route under it; the
-   * page's own wins. That is the rule `metadata` already follows, and there is
-   * no reason for a second one — "the nearest declaration" is how everything
-   * else in a route module is resolved.
-   */
-  readonly viewTransition?: string,
-  ...
-};
-
-/** What a layout module may export. The component is `default` or `Layout`. */
-export type LayoutModule = {
-  readonly default?: RouteComponent,
-  readonly Layout?: RouteComponent,
-  readonly metadata?: Metadata,
-  /** A transition name for every route under this layout; see [`PageModule`]. */
-  readonly viewTransition?: string,
-  ...
-};
-
-/**
- * What a template module may export. The component is `default` or `Template`.
- *
- * A layout's shape without its `metadata`, and the omission is the type saying
- * what a template is for. A layout persists across navigation, so a title it
- * declares is a claim about a section of the site; a template is thrown away
- * and built again on every navigation, so a title on one would be a claim
- * about nothing. Titles come from the page and the layouts above it.
- */
-export type TemplateModule = {
-  readonly default?: RouteComponent,
-  readonly Template?: RouteComponent,
-  ...
-};
-
-/**
- * What an error module may export. The component is `default` or `Error`.
- *
- * `Error` shadows the global inside the file that writes it, which is the
- * cost of naming the export after what it is; a file that needs the
- * constructor still has `globalThis.Error`. The alternative was a name the
- * convention would have to explain — `ErrorPage`, `Boundary` — for a file
- * whose whole job is already in its name.
- */
-export type ErrorModule = {
-  readonly default?: RouteComponent,
-  readonly Error?: RouteComponent,
-  readonly metadata?: Metadata,
-  ...
-};
-
-/**
- * What a loading module may export. The component is `default` or `Loading`.
- *
- * No `metadata`, and that is the type saying something true rather than an
- * omission. A fallback renders while the route is still resolving, and the
- * route's metadata was decided before the first byte — a title on a file that
- * renders after the head has gone could never be used. `packages/web/head.js`
- * documents the same constraint from the other side.
- */
-export type LoadingModule = {
-  readonly default?: RouteComponent,
-  readonly Loading?: RouteComponent,
-  ...
-};
-
-/**
- * How a Twitter card is laid out, which is the whole of what `card` may be.
- *
- * A union rather than a string: every one of the four is spelled exactly this
- * way and a fifth value is silently ignored by the crawler, so a typo in it
- * costs a card and produces no error anywhere.
- */
-export type TwitterCard = "summary" | "summary_large_image" | "app" | "player";
-
-/**
- * What a crawler may do with a page.
- *
- * Four fields rather than the whole `robots` vocabulary, and the omissions are
- * the argument. `index` and `follow` are the two directives a page has an
- * opinion about; `maxSnippet` and `maxImagePreview` are the two that change
- * what a result *looks* like and have no other spelling. `nosnippet` is not
- * here because `maxSnippet: 0` is the same instruction, and a type with two
- * ways to say one thing is a type somebody will eventually ask which of them
- * wins.
- *
- * Every field is optional and every one is only emitted when it is declared,
- * because "index, follow" is what a document with no `robots` meta already
- * says — the tag exists to say something else.
- */
-export type Robots = {
-  readonly index?: boolean,
-  readonly follow?: boolean,
-  /** The longest snippet a result may quote; `0` is none, `-1` is no limit. */
-  readonly maxSnippet?: number,
-  readonly maxImagePreview?: "none" | "standard" | "large",
-};
-
-/**
- * One JSON-LD object, as a page hands it over.
- *
- * `mixed` values rather than a schema.org type, because there is no useful
- * middle: the vocabulary is hundreds of types deep, it grows without asking
- * anyone, and a partial transcription of it would reject correct documents far
- * more often than it caught wrong ones. What this type does claim is the part
- * uf is answerable for — that the thing is an object, and therefore that it
- * serialises into one `<script>`.
- */
-export type JsonLd = { readonly [string]: mixed };
-
-/** Document metadata a page or layout declares. */
-export type Metadata = {
-  readonly title?: string,
-  readonly description?: string,
-  /**
-   * The absolute URL every other URL here is resolved against.
-   *
-   * Open Graph and Twitter both require absolute image URLs, and a route
-   * module has no way to know the host it will be served from — so without
-   * this, `openGraph.images: ["/og.png"]` ships exactly as written and is not
-   * a valid `og:image`. Declare it once on the root layout and every
-   * descendant inherits it through the same merge as everything else.
-   *
-   * Resolution is the URL standard's, so `"/og.png"` is resolved against the
-   * *origin* and `"og.png"` against the base's own path — not against the
-   * page's URL, which `Head` does not know.
-   */
-  readonly metadataBase?: string,
-  /**
-   * This page's canonical URL, for `<link rel="canonical">` and `og:url`.
-   *
-   * Relative to `metadataBase` when it is not absolute. A page
-   * reachable at more than one path — a query a filter added, a duplicate
-   * under a second section — is one page, and this is how it says so.
-   */
-  readonly canonical?: string,
-  /**
-   * What a crawler may do with this page. See [`Robots`].
-   *
-   * The one field here that is usually declared on a *layout*: a staging
-   * section, a preview tree or an account area is `index: false` for
-   * everything under it, and saying so once is the only version of that which
-   * stays true when a page is added.
-   */
-  readonly robots?: Robots,
-  /**
-   * The other addresses this same page is published at.
-   *
-   * `languages` maps a BCP 47 tag to that translation's URL and becomes one
-   * `<link rel="alternate" hreflang>` each. The set has to be reciprocal —
-   * every page in it lists every other one *and itself*, which is what makes a
-   * search engine read them as translations rather than as duplicates — so it
-   * is usually the same map on every page of the set, declared on the layout
-   * they share. `"x-default"` is a tag like any other here, and names what a
-   * reader whose language is not in the set should be given.
-   *
-   * Nested under `alternates` rather than sitting at the top level as
-   * `languages`, because `alternate` is the link relation and a language is
-   * only one kind of alternate; the outer name is a fact about the wire rather
-   * than a shape invented here.
-   */
-  readonly alternates?: {
-    readonly languages?: { readonly [string]: string },
-  },
-  /**
-   * The pages either side of this one in a sequence.
-   *
-   * `<link rel="prev">` and `<link rel="next">`, resolved against
-   * `metadataBase` like every other URL here. A page four of a list, and a
-   * chapter in the middle of a manual, are the same statement: this document
-   * is one of a series and here is where the series continues.
-   *
-   * `canonical` still belongs to the page itself. Pointing every page of a
-   * paginated list at page one is the mistake this pair exists to make
-   * unnecessary — it tells a search engine that pages two onwards are
-   * duplicates of page one, and everything only reachable from them stops
-   * being reachable at all.
-   */
-  readonly pagination?: {
-    readonly prev?: string,
-    readonly next?: string,
-  },
-  /**
-   * Structured data, as JSON-LD.
-   *
-   * One `<script type="application/ld+json">` per entry. Unlike everything
-   * else here it *accumulates* down the tree rather than being replaced by the
-   * nearest declaration: an `Organization` on the root layout and an `Article`
-   * on the page are two statements about one page, not two answers to one
-   * question, and replacing would mean a page that describes itself silently
-   * deletes the site's description of itself.
-   *
-   * The scripts are rendered with the rest of the route rather than hoisted
-   * into `<head>`, because React hoists `<title>`, `<meta>` and `<link>` and
-   * not a script it has to keep the body of. JSON-LD is read from anywhere in
-   * the document, so this costs nothing; it is worth knowing when reading the
-   * markup.
-   */
-  readonly jsonLd?: $ReadOnlyArray<JsonLd>,
-  readonly openGraph?: {
-    /**
-     * The title a share card shows.
-     *
-     * Falls back to `title`, because a page that has said what it is called
-     * has said what its card is called — and a site made to write it twice
-     * writes it twice once and then lets them drift.
-     */
-    readonly title?: string,
-    /** The description a share card shows. Falls back to `description`. */
-    readonly description?: string,
-    /**
-     * The Open Graph object type. `website` unless a page says otherwise.
-     *
-     * Defaulted rather than omitted because `og:type` is one of the four
-     * properties Open Graph requires, and a document without it is not an
-     * Open Graph document at all — so leaving it to every project to remember
-     * is leaving most of them without one.
-     */
-    readonly type?: string,
-    /**
-     * The name of the site the page belongs to, which a card prints above the
-     * title. Declared once on the root layout.
-     */
-    readonly siteName?: string,
-    readonly images?: $ReadOnlyArray<string>,
-    /**
-     * What the card's image shows, for a reader who cannot see it.
-     *
-     * One description rather than one per image: a card shows one image, and
-     * the array exists so a site can offer a crawler a choice of sizes rather
-     * than so it can show several.
-     */
-    readonly imageAlt?: string,
-  },
-  readonly twitter?: {
-    readonly card?: TwitterCard,
-    readonly site?: string,
-    readonly creator?: string,
-    /** Falls back to `openGraph.title`, and then to `title`. */
-    readonly title?: string,
-    /** Falls back to `openGraph.description`, and then to `description`. */
-    readonly description?: string,
-    readonly images?: $ReadOnlyArray<string>,
-    /** Falls back to `openGraph.imageAlt`. */
-    readonly imageAlt?: string,
-  },
-};
-
-/** Arguments a loader receives. */
-export type LoaderArgs = {|
-  readonly params: RouteParams,
-  readonly searchParams: SearchParams,
-  readonly pathname: string,
-|};
-
-/** Arguments `generateMetadata` receives. */
-export type MetadataArgs = {|
-  readonly params: RouteParams,
-  readonly searchParams: SearchParams,
-  readonly data: mixed,
-|};
-
-export type RouteRecord = RoutingRouteRecord<
-  PageModule,
-  LayoutModule,
-  TemplateModule,
-  LoadingModule,
+export type {
+  ErrorBoundary,
   ErrorModule,
->;
-
-export type SlotRecord = RoutingSlotRecord<
-  PageModule,
+  Interception,
+  JsonLd,
   LayoutModule,
-  TemplateModule,
+  LoaderArgs,
   LoadingModule,
-  ErrorModule,
->;
-
-export type SlotRouteRecord = RoutingSlotRouteRecord<
+  LoadingRecord,
+  Metadata,
+  MetadataArgs,
+  NotFoundBoundary,
   PageModule,
-  LayoutModule,
+  ResolveOptions,
+  ResolvedRoute,
+  ResolvedSlot,
+  Robots,
+  RouteMatch,
+  RouteRecord,
+  RouteTable,
+  SlotRecord,
+  SlotRouteRecord,
   TemplateModule,
-  LoadingModule,
-  ErrorModule,
->;
-
-export type TemplateRecord = RoutingTemplateRecord<TemplateModule>;
-
-export type LoadingRecord = RoutingLoadingRecord<LoadingModule>;
-
-export type NotFoundBoundary = RoutingNotFoundBoundary<PageModule, LayoutModule>;
-
-export type ErrorBoundary = RoutingErrorBoundary<ErrorModule, LayoutModule>;
-
-export type RouteTable = RoutingRouteTable<
-  PageModule,
-  LayoutModule,
-  TemplateModule,
-  LoadingModule,
-  ErrorModule,
->;
-
-export type RouteMatch = RoutingRouteMatch<RouteRecord>;
-
-type ResolvedTemplate = {|
-  readonly above: number,
-  readonly module: TemplateModule,
-|};
-
-type ResolvedSlotErrorBoundary = {|
-  readonly above: number,
-  readonly module: ?ErrorModule,
-|};
-
-type SlotErrorBoundaryLoader = {|
-  readonly above: number,
-  readonly module: () => Promise<ErrorModule>,
-|};
-
-/**
- * A match whose modules are loaded and whose loader has run or is running — or,
- * when `error` is set, the error page that stands in for it.
- */
-export type ResolvedRoute = {|
-  readonly pathname: string,
-  readonly search: string,
-  readonly path: string,
-  readonly params: RouteParams,
-  readonly searchParams: SearchParams,
-  readonly page: PageModule,
-  readonly layouts: $ReadOnlyArray<LayoutModule>,
-  /** What the loader returned, once it has. `undefined` while `deferred` is set. */
-  readonly data: mixed,
-  /**
-   * The loader still running, when the router handed the page its promise
-   * rather than its value. `null` on every other path, which is most of them.
-   *
-   * Two fields rather than a `data` that is sometimes a promise, because a
-   * loader is free to return something with a `then` on it and no duck test
-   * could tell that apart from a deferral. This one is the router's own answer
-   * to a question the router asked, so it says so.
-   *
-   * Set only by a streaming render of a route that declares a
-   * `$loading.js` and generates no metadata from its data — the two
-   * conditions under which deferring buys anything and costs nothing that was
-   * not already spent. [`resolveRoute`] is where that is decided and argued.
-   */
-  readonly deferred: ?Promise<mixed>,
-  readonly metadata: Metadata,
-  /**
-   * What a stylesheet calls the transition this route arrives under, or `null`
-   * when neither the page nor a layout above it named one.
-   *
-   * Resolved with the route rather than looked up at the moment of the
-   * navigation, because by then the answer is a property of the destination's
-   * modules and those are exactly what has just been loaded. A server render
-   * carries it and never reads it; see "View transitions".
-   */
-  readonly viewTransition: ?string,
-  readonly status: 200 | 401 | 403 | 404 | 500,
-  /**
-   * Set when this resolution *is* the error page: the loader threw, or the
-   * server render did and the renderer resolved again. `null` on the ordinary
-   * path.
-   */
-  readonly error: ?RouteError,
-  /**
-   * The boundary that would catch a throw while rendering this route.
-   *
-   * Always present, because every route has an answer for a throw: `module`
-   * is `null` when the project declares no `$error.js` above the path, and
-   * the framework's own error page renders instead. `above` is how many of
-   * `layouts` are outside the boundary — the ones that stay mounted, which is
-   * what "the rest of the document is still interactive" means.
-   */
-  readonly errorBoundary: {|
-    readonly module: ?ErrorModule,
-    readonly above: number,
-  |},
-  /**
-   * The loading boundaries around this route, root first, already imported.
-   *
-   * Imported rather than lazy: React decides to render a fallback
-   * synchronously, during the render that suspended, so a module that is still
-   * being fetched is a module that is not there at the only moment it is
-   * wanted. Empty for a route with no `$loading.js` above it, which is the
-   * ordinary case and renders exactly the tree it did before.
-   */
-  readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
-  /**
-   * The templates around this route, root first, already imported.
-   *
-   * Empty for a route with no `$template.js` above it, which is the
-   * ordinary case and renders exactly the tree it did before templates
-   * existed. Empty too on a resolution that *is* a boundary — a not-found or
-   * an error page — for the reason its `loading` is: those are matched rather
-   * than walked to, and templates are accumulated on the walk down to a route
-   * the URL never reached.
-   */
-  readonly templates: $ReadOnlyArray<ResolvedTemplate>,
-  /**
-   * The slots this route renders, outermost first, already imported.
-   *
-   * Empty for a route with no slot above it, and empty on a resolution that
-   * *is* a boundary — a not-found or an error page — for the reason its
-   * `templates` is: a boundary is matched rather than walked to, and a slot
-   * belongs to the segment the walk went through.
-   */
-  readonly slots: $ReadOnlyArray<ResolvedSlot>,
-  /**
-   * Set when a client navigation was intercepted: this is then the route the
-   * navigation came from, still on screen, with the intercepting route in one
-   * of its slots.
-   *
-   * `null` or absent on every other resolution — which includes every one a
-   * server makes, because a document request is never intercepted. See
-   * [`resolveInterception`].
-   */
-  readonly interception?: ?Interception,
-|};
-
-/**
- * What an intercepted navigation went to, and what it went there from.
- *
- * A route is resolved *for* a URL, and an intercepted navigation is the one
- * case where the URL in the address bar is not the URL the page on screen was
- * resolved for. The `ResolvedRoute` that carries this is the page the
- * navigation started on — its `pathname`, `params` and `data` are that page's,
- * because that page is what `children` still renders and what `useRoute()`
- * still describes — and this is the other half: where the address bar went.
- *
- * `base` is the same page as it was before anything intercepted it. Kept rather
- * than re-derived, because a second interception from inside the first — the
- * next photo, from a photo already open in the modal — has to start from the
- * page underneath rather than from a page that already has a modal in it, and
- * going back from the second to the first has to find that page where it left
- * it.
- */
-export type Interception = {|
-  /** The URL the navigation went to: the one in the address bar. */
-  readonly pathname: string,
-  readonly search: string,
-  /** The route the navigation came from, as it was before it was intercepted. */
-  readonly base: ResolvedRoute,
-|};
-
-/**
- * One slot, matched against the URL and imported.
- *
- * `page` is `null` for a slot the URL addressed and that declares no
- * `$default.js`, and the layout receives `null` rather than nothing at all:
- * a layout that declares a slot always gets that prop, so a project can write
- * `{team ?? <Empty />}` and mean it.
- *
- * `params` are the slot's own. A slot matches the same URL by its own patterns,
- * so `@team/[member]` captures `member` while the page beside it captures
- * nothing — which is the point of matching twice rather than sharing one match.
- */
-export type ResolvedSlot = {|
-  readonly name: string,
-  readonly above: number,
-  readonly page: ?PageModule,
-  readonly params: RouteParams,
-  readonly layouts: $ReadOnlyArray<LayoutModule>,
-  readonly loading: $ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>,
-  readonly templates: $ReadOnlyArray<ResolvedTemplate>,
-  readonly errorBoundary: ?ResolvedSlotErrorBoundary,
-  readonly slots: $ReadOnlyArray<ResolvedSlot>,
-  /**
-   * The table record this slot was resolved from.
-   *
-   * Carried so a client navigation can ask the slots *on screen* whether they
-   * intercept where it is going. Interception is a question about the page a
-   * navigation starts on, and this is that page's own answer rather than a
-   * second match of the table that could arrive at different slots. Absent on
-   * a slot written by hand, which then intercepts nothing.
-   */
-  readonly record?: SlotRecord,
-  /**
-   * Set when this slot renders an intercepting route, or sits inside one: the
-   * URL that was intercepted.
-   *
-   * The slot's keys and its page's `searchParams` come from here rather than
-   * from the route on screen, because the route on screen is the page the
-   * navigation started on. Keying the modal's templates on that page's
-   * pathname would leave the second photo mounted as the first one.
-   */
-  readonly intercepted?: ?InterceptedUrl,
-|};
-
-/** The URL an intercepting route was matched against. */
-type InterceptedUrl = {|
-  readonly pathname: string,
-  readonly searchParams: SearchParams,
-|};
-
-// ---------------------------------------------------------------------------
-// Loading
-// ---------------------------------------------------------------------------
-
-const moduleCache: Map<() => Promise<mixed>, Promise<mixed>> = new Map();
-
-function loadOnce<T>(load: () => Promise<T>): Promise<T> {
-  let pending = moduleCache.get(load);
-  if (pending == null) {
-    pending = load();
-    moduleCache.set(load, pending);
-  }
-  // $FlowFixMe[incompatible-return] the cache is keyed by the loader, whose result type it stores.
-  return pending;
-}
-
-/**
- * Load a match's modules and run its loader.
- *
- * `data` is what the loader returned; on the client after hydration it is the
- * value the server embedded, so the loader does not run twice for the first
- * page.
- *
- * # This resolves or redirects; it does not reject
- *
- * Everything a route can go wrong with is a route to render: no match and
- * `notFound()` are the not-found boundary, a loader that threw and
- * `forbidden()`/`unauthorized()` are the error boundary. Only `redirect()`
- * comes back out, because a redirect is a response rather than a page and the
- * caller is what has one to send.
- *
- * That guarantee is the point rather than a convenience. `hydrate` awaits this
- * before `hydrateRoot`, so a rejection there is not an error page — it is no
- * `hydrateRoot` call at all, and the document the server sent stays on screen
- * with nothing attached to it.
- *
- * # `onMatch`
- *
- * Called with the route pattern the moment the URL matches one, before any
- * module is imported and before the loader runs. It exists because the server
- * has something to do with that fact and does it too late otherwise: the route
- * a request turned out to be is what its log line carries, and a loader is
- * inside this call, so a server that recorded the route after this resolved
- * would have every line a loader wrote saying it belonged to no route.
- *
- * A callback rather than a return value because both callers already have one
- * — the pattern is on the `ResolvedRoute` this hands back — and only one of
- * them needs it *early*. The browser passes nothing and pays nothing.
- */
-export async function resolveMatch(
-  table: RouteTable,
-  url: string,
-  options?: ResolveOptions,
-): Promise<ResolvedRoute> {
-  try {
-    return await resolveRoute(table, url, options);
-  } catch (error) {
-    if (error instanceof RedirectError) {
-      throw error;
-    }
-    return resolveFailure(table, url, error);
-  }
-}
-
-/** What a caller may tell [`resolveMatch`] about the resolution it wants. */
-export type ResolveOptions = {|
-  /** The loader's answer, already in hand — the value the server embedded. */
-  readonly data?: mixed,
-  /** Do not run the loader at all; `data` is the answer. */
-  readonly skipLoader?: boolean,
-  /**
-   * Whether the caller can render a route whose loader has not answered yet.
-   *
-   * Only a streaming server render can, and that is the whole of why this is
-   * a caller's choice rather than the router's. `createRenderer`'s `render`
-   * sends a `<Suspense>` fallback now and the content when it arrives, so
-   * deferring is what turns a slow loader from a delay before the first byte
-   * into a fallback the reader is already looking at.
-   *
-   * Nothing else is in that position, and each for its own reason. `prerender`
-   * writes a file, which has no first paint to improve and no reader to show a
-   * fallback to. `hydrate` has the server's answer already. A client
-   * navigation has a page on screen that stays interactive while the next one
-   * resolves, which is the browser's version of the same idea and does not
-   * need this one.
-   *
-   * It costs the loader its say in the response: a status is decided when the
-   * shell goes out, so a deferred `notFound()` reaches the error boundary
-   * rather than the 404 page, and the document is a 200. That is inherent to
-   * streaming rather than a shortcut — the bytes have gone — and it is the
-   * reason this is off unless a caller asks.
-   */
-  readonly defer?: boolean,
-  /** The route pattern, the moment the URL matches one; see [`resolveMatch`]. */
-  readonly onMatch?: (pattern: string) => void,
-|};
-
-async function resolveRoute(
-  table: RouteTable,
-  url: string,
-  options?: ResolveOptions,
-): Promise<ResolvedRoute> {
-  const { pathname, search } = splitUrl(url);
-  const searchParams = parseSearch(search);
-  const matched = matchRoute(table.routes, pathname);
-
-  if (matched != null) {
-    options?.onMatch?.(matched.route.path);
-  }
-
-  if (matched == null) {
-    return resolveNotFound(table, pathname, search, searchParams);
-  }
-
-  const load = matched.route.page;
-  if (load == null) {
-    // Reachable only by asking this table to render a route it was built
-    // without. `hydrate` and every navigation check `hasClientPage` first and
-    // hand the URL to the browser instead, so arriving here means a caller
-    // went around them — and the honest answer is to say so rather than to
-    // render an empty page.
-    throw new Error(
-      `@uniflowed/router: ${matched.route.path} has no page in this route table; it ships no ` +
-        "client JavaScript, so the browser navigates to it rather than rendering it",
-    );
-  }
-  const [page, ...layouts] = await Promise.all([
-    loadOnce(load),
-    ...matched.route.layouts.map((layout) => loadOnce(layout)),
-  ]);
-  // Started here and awaited at the end: the boundary's module does not depend
-  // on the loader, so importing it alongside costs a navigation nothing. It
-  // never rejects, so an early throw below leaves no unhandled rejection.
-  const boundary = resolveErrorBoundary(table, pathname, matched.route.layouts.length);
-  // Started alongside for the same reason, and awaited at the end: a fallback
-  // depends on nothing the loader produces.
-  const loading = resolveLoading(matched.route, matched.route.layouts.length);
-  const templates = resolveTemplates(matched.route, matched.route.layouts.length);
-  // Started alongside and awaited at the end, for the reason the boundaries
-  // are: a slot is matched against the URL and depends on nothing the loader
-  // produces, so the second match and its imports overlap the first page's
-  // loader rather than following it.
-  const slots = resolveSlots(
-    matched.route.slots ?? [],
-    pathname,
-    matched.route.layouts.length,
-    matched.params,
-  );
-
-  // The loader, run here and awaited below — or not awaited at all.
-  //
-  // A page that suspends while *rendering* has always streamed; a page waiting
-  // on its loader could not, because this function awaited the loader before it
-  // returned and by the time React saw the tree the data was already in hand.
-  // The fallback beside such a page showed for zero milliseconds, which made
-  // `$loading.js` useful for the one case a page usually is not slow for.
-  //
-  // Two things stand in the way of simply not awaiting, and both are about the
-  // document rather than about the route. Metadata goes in the head and the
-  // head is written before the body, so a title computed from the data
-  // genuinely cannot be deferred — that is a rule worth stating rather than a
-  // limitation to hide, and it is the `generateMetadata` half of the condition
-  // below. The other is that a route with no `<Suspense>` above it has nothing
-  // to defer *into*: React holds the whole shell for a page that suspends with
-  // no boundary, which is the same wait by another name, with an unresolved
-  // promise flowing through the tree for nothing. So the loader is deferred
-  // exactly when there is a boundary to defer it into.
-  //
-  // See ubugeeei-prod/uf#373, and `ResolveOptions.defer` for who asks.
-  let data: mixed = options?.data;
-  let deferred: ?Promise<mixed> = null;
-  if (options?.skipLoader !== true && typeof page.loader === "function") {
-    const running = page.loader({ params: matched.params, searchParams, pathname });
-    const canDefer =
-      options?.defer === true &&
-      (matched.route.loading ?? []).length > 0 &&
-      typeof page.generateMetadata !== "function";
-    if (canDefer) {
-      // `Promise.resolve`, because a loader may return a plain value and `use`
-      // wants a promise either way. A loader that answered without waiting
-      // costs one microtask and renders in the same pass.
-      deferred = Promise.resolve(running);
-    } else {
-      data = await running;
-    }
-  }
-
-  const metadata = await resolveMetadata(page, layouts, {
-    params: matched.params,
-    searchParams,
-    data,
-  });
-  return {
-    pathname,
-    search,
-    path: matched.route.path,
-    params: matched.params,
-    searchParams,
-    page,
-    layouts,
-    data,
-    deferred,
-    metadata,
-    viewTransition: resolveViewTransition(page, layouts),
-    status: 200,
-    error: null,
-    errorBoundary: await boundary,
-    loading: await loading,
-    templates: await templates,
-    slots: await slots,
-  };
-}
-
-/**
- * The route's slots, matched against the URL and imported.
- *
- * The second matching pass parallel routes are, and it is a pass rather than a
- * branch of the first: a slot has its own patterns over the same path, so
- * `/dashboard/members` can be `[member]` to one slot, a static segment to
- * another and nothing at all to a third, at once.
- *
- * A slot that will not load renders nothing rather than taking the page with
- * it, which is the judgement `resolveTemplates` and `resolveLoading` already
- * make: a slot is a second thing beside the page, and a broken second thing
- * must not become a broken route. The entry stays in the list with `page:
- * null`, so the layout still receives the prop it declares.
- */
-async function resolveSlots(
-  records: $ReadOnlyArray<SlotRecord>,
-  pathname: string,
-  layoutCount: number,
-  fallbackParams: RouteParams,
-  intercepted?: ?InterceptedUrl,
-): Promise<$ReadOnlyArray<ResolvedSlot>> {
-  if (records.length === 0) {
-    return [];
-  }
-  return Promise.all(
-    records.map((record) =>
-      resolveSlot(record, pathname, layoutCount, fallbackParams, intercepted),
-    ),
-  );
-}
-
-async function resolveSlot(
-  record: SlotRecord,
-  pathname: string,
-  layoutCount: number,
-  fallbackParams: RouteParams,
-  intercepted?: ?InterceptedUrl,
-): Promise<ResolvedSlot> {
-  // Clamped exactly as a template's `above` is, and for the same reason: a
-  // hand-written table, or a `(group)` between the layout and the route, can
-  // leave a route with fewer layouts than the slot was declared above.
-  const above = Math.min(record.above, layoutCount);
-  const empty: ResolvedSlot = {
-    name: record.name,
-    above,
-    page: null,
-    params: fallbackParams,
-    layouts: [],
-    loading: [],
-    templates: [],
-    errorBoundary: null,
-    slots: [],
-    record,
-    intercepted,
-  };
-
-  const matched = matchIn(record.routes, pathname);
-  if (matched == null) {
-    // The URL says nothing about this slot. `$default.js` is what it says
-    // instead, and a slot that declares none renders nothing at all.
-    const load = record.defaultPage;
-    if (load == null) {
-      return empty;
-    }
-    const module = await loadOrNull(load);
-    if (module == null) {
-      return empty;
-    }
-    return {
-      ...empty,
-      page: withoutLoader(module, record.defaultFile ?? record.name),
-      errorBoundary: await resolveSlotErrorBoundary(record.defaultErrorBoundary ?? null, 0),
-    };
-  }
-
-  return (await resolveSlotRoute(record, matched, above, pathname, intercepted)) ?? empty;
-}
-
-/**
- * One route inside a slot, imported: what the slot renders for a match.
- *
- * Shared by the two ways a slot comes to render a route — one of its own
- * `routes`, matched against the URL, and one of its `intercepts`, matched
- * against where a client navigation is going — so an intercepting page is
- * composed exactly the way every other slot page is: inside its own layouts,
- * fallbacks, templates and error boundary, with the slots those layouts
- * declare.
- *
- * `null` when the page or a layout will not import, and what that means is the
- * caller's to say. For a match it is an empty slot, for the reason
- * [`resolveSlots`] gives; for an interception it is no interception, and the
- * navigation goes where the URL says instead.
- */
-async function resolveSlotRoute(
-  record: SlotRecord,
-  matched: RoutingRouteMatch<SlotRouteRecord>,
-  above: number,
-  pathname: string,
-  intercepted: ?InterceptedUrl,
-): Promise<?ResolvedSlot> {
-  const route = matched.route;
-  // Started together and awaited apart, so the two `await`s are not a
-  // waterfall and each keeps the type its loader had.
-  const pending = loadOrNull(route.page);
-  const pendingLayouts = Promise.all(route.layouts.map((layout) => loadOrNull(layout)));
-  const page = await pending;
-  const layouts = await pendingLayouts;
-  if (page == null) {
-    return null;
-  }
-  const loaded = layouts.filter(Boolean);
-  if (loaded.length !== layouts.length) {
-    return null;
-  }
-  const loading = await resolveLoadingRecords(route.loading ?? [], loaded.length);
-  const templates = await resolveTemplateRecords(route.templates ?? [], loaded.length);
-  const errorBoundary = await resolveSlotErrorBoundary(route.errorBoundary ?? null, loaded.length);
-  return {
-    name: record.name,
-    above,
-    page: withoutLoader(page, route.file),
-    params: matched.params,
-    layouts: loaded,
-    loading,
-    templates,
-    errorBoundary,
-    // The slot's own layouts are what a nested slot is measured against, so
-    // the count handed down is this slot's rather than the route's. A slot
-    // nested inside an interception is matched against the intercepted URL,
-    // and keyed on it, for the same reason the interception is.
-    slots: await resolveSlots(route.slots, pathname, loaded.length, matched.params, intercepted),
-    record,
-    intercepted,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Interception
-// ---------------------------------------------------------------------------
-
-/**
- * The page underneath: `resolved` itself, or what it was before an interception
- * put something in one of its slots.
- *
- * Every question about where a navigation *starts* is asked of this rather than
- * of the route on screen, because an interception is not a place a navigation
- * can start from. The next photo, opened from inside the modal, is intercepted
- * from the feed.
- */
-function beneath(resolved: ResolvedRoute): ResolvedRoute {
-  return resolved.interception?.base ?? resolved;
-}
-
-/**
- * The intercepting routes the slots on screen have for `pathname`.
- *
- * Only the slots on screen, and that is the whole of what "a navigation from
- * inside `/feed`" means. A page under `app/feed/$layout.js` renders the layout
- * that declares `@modal`, so the slot is in its tree and so are the slot's
- * `intercepts`. A page outside that segment has no such slot in its tree —
- * which is why a link to `/feed/photo/1` from `/about` is an ordinary
- * navigation to the photo page, not an interception with nowhere to render.
- *
- * A slot that intercepts `pathname` is not looked inside: what it holds is
- * about to be replaced, nested slots and all.
- */
-function interceptingRoutes(
-  slots: $ReadOnlyArray<ResolvedSlot>,
-  pathname: string,
-): $ReadOnlyArray<SlotRouteRecord> {
-  const found: Array<SlotRouteRecord> = [];
-  for (const slot of slots) {
-    const matched = matchIn(slot.record?.intercepts ?? [], pathname);
-    if (matched != null) {
-      found.push(matched.route);
-    } else {
-      found.push(...interceptingRoutes(slot.slots, pathname));
-    }
-  }
-  return found;
-}
-
-/**
- * `base`, with every slot on it that intercepts `url` rendering what it
- * intercepts — or `null` when none of them does.
- *
- * # What stays, and what does not
- *
- * Everything that is not an intercepting slot stays exactly as it was, and that
- * is the feature rather than a shortcut. `children` goes on rendering the page
- * the reader navigated *from* — its data, its scroll position, whatever state
- * its components are holding — and every other slot keeps what it was showing.
- * An intercepted navigation changes the address bar and the slots that
- * intercept it, and nothing else. Matching the rest against the new URL would
- * be an ordinary navigation with a modal on top of it: the page underneath
- * swapped for the page the URL names, which is precisely what interception
- * exists not to do.
- *
- * Every slot that intercepts the URL renders it, not only the first, because
- * slots are independent of each other: two named places may each have
- * something to show for one URL, the way two slots each match one URL by their
- * own routes.
- *
- * # Never on a server
- *
- * Nothing on the server calls this. A document request for an intercepted URL
- * resolves the ordinary page, because a request carries where it is going and
- * not what was on screen when it was made — which is what a reload, a shared
- * link and a crawler all are.
- *
- * # When the interception cannot render
- *
- * A slot whose intercepting page will not import keeps what it had, and when no
- * slot could render the interception this answers `null`: the navigation goes
- * ahead as an ordinary one, and the reader gets the page the URL names — what a
- * reload would have given them — rather than a click that did nothing. An
- * intercepting page that exports a `loader`, which no slot page may, is the
- * error boundary for the URL, the way any other slot page's is.
- */
-async function resolveInterception(
-  table: RouteTable,
-  base: ResolvedRoute,
-  url: string,
-): Promise<?ResolvedRoute> {
-  const { pathname, search } = splitUrl(url);
-  const intercepted: InterceptedUrl = { pathname, searchParams: parseSearch(search) };
-  // The first slot that renders the interception, for the transition's name.
-  let first: ?ResolvedSlot = null;
-  const visit = (slots: $ReadOnlyArray<ResolvedSlot>): Promise<$ReadOnlyArray<ResolvedSlot>> =>
-    Promise.all(
-      slots.map(async (slot): Promise<ResolvedSlot> => {
-        const record = slot.record;
-        const matched = record == null ? null : matchIn(record.intercepts ?? [], pathname);
-        if (record == null || matched == null) {
-          return slot.slots.length === 0 ? slot : { ...slot, slots: await visit(slot.slots) };
-        }
-        const rendered = await resolveSlotRoute(record, matched, slot.above, pathname, intercepted);
-        if (rendered == null) {
-          return slot;
-        }
-        first = first ?? rendered;
-        return rendered;
-      }),
-    );
-
-  let slots: $ReadOnlyArray<ResolvedSlot>;
-  try {
-    slots = await visit(base.slots);
-  } catch (error) {
-    return resolveFailure(table, url, error);
-  }
-  if (first == null) {
-    return null;
-  }
-  return {
-    ...base,
-    slots,
-    // The intercepting page's own name, where it or a layout inside the slot
-    // declares one, so a stylesheet can tell a modal opening from a page
-    // arriving. The page underneath has not moved, so its name would say
-    // nothing about this arrival.
-    viewTransition: resolveViewTransition(first.page ?? {}, first.layouts),
-    interception: { pathname, search, base },
-  };
-}
-
-/**
- * The key an intercepted navigation writes into its history entry.
- *
- * One string in `history.state` rather than the resolved route, because the
- * browser structured-clones the state and keeps it across a reload: it can hold
- * a URL and nothing with a module in it. A URL is also all the entry needs —
- * where the navigation came from, resolved again when that page is not the one
- * on screen, and the entry's own URL for what intercepted it.
- */
-const INTERCEPTED_FROM = "uf:intercepted-from";
-
-/**
- * The state a history entry for `resolved` is written with.
- *
- * `null` for a navigation nothing intercepted, which is what every entry this
- * router wrote was before interception existed.
- */
-function historyStateFor(resolved: ResolvedRoute): mixed {
-  const interception = resolved.interception;
-  if (interception == null) {
-    return null;
-  }
-  return { [INTERCEPTED_FROM]: interception.base.pathname + interception.base.search };
-}
-
-/** Where the history entry holding `state` was intercepted from, if it was. */
-function interceptedFrom(state: mixed): ?string {
-  if (state == null || typeof state !== "object" || Array.isArray(state)) {
-    return null;
-  }
-  const from = state[INTERCEPTED_FROM];
-  return typeof from === "string" ? from : null;
-}
-
-/**
- * `state` without the interception in it.
- *
- * What is left is handed back rather than cleared, because an entry's state is
- * not only this router's to write: another library may have put something
- * beside it.
- */
-function withoutInterception(state: mixed): mixed {
-  if (state == null || typeof state !== "object" || Array.isArray(state)) {
-    return state;
-  }
-  const rest: { [string]: mixed } = {};
-  for (const key of Object.keys(state)) {
-    if (key !== INTERCEPTED_FROM) {
-      rest[key] = state[key];
-    }
-  }
-  return Object.keys(rest).length === 0 ? null : rest;
-}
-
-async function resolveSlotErrorBoundary(
-  boundary: ?SlotErrorBoundaryLoader,
-  layoutCount: number,
-): Promise<?ResolvedSlotErrorBoundary> {
-  if (boundary == null) {
-    return null;
-  }
-  const above = Math.min(boundary.above, layoutCount);
-  try {
-    return { module: await loadOnce(boundary.module), above };
-  } catch {
-    // Keep the declared depth even when the custom file fails to import. The
-    // framework fallback still contains the slot instead of escalating the
-    // page beside it.
-    return { module: null, above };
-  }
-}
-
-/**
- * A module, or `null` when it would not import.
- *
- * The judgement [`resolveTemplates`] and [`resolveLoading`] already make, at
- * the granularity a slot needs it: a slot is a second thing beside the page, so
- * a slot whose module is missing renders nothing rather than taking the route
- * down with it — and the import error surfaces where it belongs, the next time
- * the module is asked for.
- */
-async function loadOrNull<TModule>(load: () => Promise<TModule>): Promise<?TModule> {
-  try {
-    return await loadOnce(load);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The same page module, having said out loud that a slot's loader does not run.
- *
- * A slot page is a component. It is *not* handed data, and this throws rather
- * than passing `undefined` to a page that asked for some, because a slot whose
- * loader is quietly skipped is exactly the failure ubugeeei-prod/uf#267 is
- * about — a file written to a convention, and nothing that reads it.
- *
- * Why not run it. A page's loader answer is embedded in the document for the
- * browser to hydrate from, once, under one id; a slot's would have nowhere to
- * go, so it would run on the server and again in the browser on the way in.
- * That is not merely two fetches: a loader that reads `cookies()` succeeds on
- * the server and throws in the browser, and the slot would render on one side
- * and not the other — a hydration mismatch produced by the router. So the rule
- * is the narrow one, and lifting it means embedding per-slot data, which is
- * named in the issue as what is left.
- */
-function withoutLoader(module: PageModule, file: string): PageModule {
-  if (typeof module.loader === "function") {
-    throw new Error(
-      `@uniflowed/router: ${file} is inside a \`@slot\` and exports a \`loader\`, which the ` +
-        "router does not run — a slot's data has nowhere to be embedded for hydration, so it " +
-        "would be fetched again in the browser and a server-only loader would render one tree " +
-        "on the server and another in the page. Fetch inside the component, or move the data to " +
-        "the page the URL names. https://github.com/ubugeeei-prod/uf/issues/267",
-    );
-  }
-  return module;
-}
-
-/**
- * The route's templates, imported.
- *
- * A template that will not load is dropped, the way a fallback is: it is a
- * wrapper around the page, not the page, so a broken wrapper must not become a
- * broken route. The tree renders without it — the page keeps the layout it was
- * inside, and loses only the remount — and the import error surfaces where it
- * belongs, when the module is next asked for.
- */
-async function resolveTemplates(
-  route: RouteRecord,
-  layoutCount: number,
-): Promise<$ReadOnlyArray<ResolvedTemplate>> {
-  return resolveTemplateRecords(route.templates ?? [], layoutCount);
-}
-
-async function resolveTemplateRecords(
-  records: $ReadOnlyArray<TemplateRecord>,
-  layoutCount: number,
-): Promise<$ReadOnlyArray<ResolvedTemplate>> {
-  if (records.length === 0) {
-    return [];
-  }
-  const loaded = await Promise.all(
-    records.map(async (record) => {
-      try {
-        return {
-          // Clamped exactly as the error and loading boundaries' are: a
-          // `(group)` directory can leave a route with fewer layouts than the
-          // template declared above it.
-          above: Math.min(record.above, layoutCount),
-          module: await loadOnce(record.module),
-        };
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return loaded.filter(Boolean);
-}
-
-/**
- * The route's loading boundaries, imported.
- *
- * A boundary whose module will not load is dropped rather than thrown for, and
- * this is the same judgement `resolveErrorBoundary` makes one function above: a
- * fallback is what the router shows while it does not yet have the page, so a
- * broken fallback must not become a broken page. The route renders without that
- * boundary — the next one out, or the shell, waits for it instead — and the
- * import error surfaces where it belongs, when the module is next asked for.
- */
-async function resolveLoading(
-  route: RouteRecord,
-  layoutCount: number,
-): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
-  return resolveLoadingRecords(route.loading ?? [], layoutCount);
-}
-
-async function resolveLoadingRecords(
-  records: $ReadOnlyArray<LoadingRecord>,
-  layoutCount: number,
-): Promise<$ReadOnlyArray<{| readonly above: number, readonly module: LoadingModule |}>> {
-  if (records.length === 0) {
-    return [];
-  }
-  const loaded = await Promise.all(
-    records.map(async (record) => {
-      try {
-        return {
-          // Clamped exactly as the error boundary's is, and for the same
-          // reason: a `(group)` directory can leave a route with fewer layouts
-          // than the boundary that covers it.
-          above: Math.min(record.above, layoutCount),
-          module: await loadOnce(record.module),
-        };
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return loaded.filter(Boolean);
-}
-
-/**
- * The route to render after something threw.
- *
- * Two callers, one behaviour: [`resolveMatch`] when a loader or a module
- * import threw, and `createRenderer` when the *render* did — React's error
- * boundaries do not run in `renderToString`, so the server has to catch it
- * itself and resolve again.
- */
-export async function resolveFailure(
-  table: RouteTable,
-  url: string,
-  error: mixed,
-): Promise<ResolvedRoute> {
-  const { pathname, search } = splitUrl(url);
-  const searchParams = parseSearch(search);
-  if (error instanceof NotFoundError) {
-    try {
-      return await resolveNotFound(table, pathname, search, searchParams);
-    } catch (failure) {
-      // The not-found page itself would not load. Falling through to the error
-      // boundary rather than rethrowing is what keeps the promise above: the
-      // page a project wrote to explain a 404 is not more load-bearing than
-      // the document staying on screen.
-      return resolveError(table, pathname, search, searchParams, routeErrorFor(failure));
-    }
-  }
-  return resolveError(table, pathname, search, searchParams, routeErrorFor(error));
-}
-
-/** What a thrown value means to the router. */
-function routeErrorFor(error: mixed): RouteError {
-  if (error instanceof UnauthorizedError) {
-    return { kind: "unauthorized" };
-  }
-  if (error instanceof ForbiddenError) {
-    return { kind: "forbidden" };
-  }
-  return { kind: "thrown", error };
-}
-
-/**
- * The error boundary a route renders inside, loaded with the route rather than
- * when it is needed.
- *
- * React decides to show a boundary's fallback synchronously, during the render
- * that threw. A module that still has to be imported is a module that is not
- * there at the only moment it can be used, so this is one more dynamic import
- * per navigation and not a lazy one.
- *
- * `above` is the boundary's own layout count, clamped to the route's. The
- * first attempt compared the two layout arrays for a shared prefix, which is
- * more precise when a `(group)` directory puts a boundary beside a route
- * rather than above it — and it worked by *reference identity* of the loader
- * functions, which holds only because `routesModuleSource` deduplicates them
- * by file. A rule that depends on an invisible property of the generated
- * module is a rule that reads as zero the moment a table is built any other
- * way, and it did: it put the boundary outside the layouts it was written
- * inside. Nesting a boundary per group needs parallel-route trees (#267);
- * until then this is the honest approximation, and it is stated rather than
- * inferred.
- */
-async function resolveErrorBoundary(
-  table: RouteTable,
-  pathname: string,
-  layoutCount: number,
-): Promise<{| readonly module: ?ErrorModule, readonly above: number |}> {
-  const boundary = nearestBoundary(table.errors, pathname);
-  if (boundary == null) {
-    return { module: null, above: 0 };
-  }
-  // Clamped, because a route group can leave a route with fewer layouts than
-  // the boundary covering it, and an `above` past the end would compose the
-  // layouts out of nothing.
-  const above = Math.min(boundary.layouts.length, layoutCount);
-  const load = boundary.module;
-  // The synthesised root record, which names layouts and no module: the
-  // framework's page renders, and `above` still says where — inside the site's
-  // own layouts rather than outside everything. See [`NotFoundBoundary`]`.page`.
-  if (load == null) {
-    return { module: null, above };
-  }
-  try {
-    return { module: await loadOnce(load), above };
-  } catch {
-    // A boundary whose module will not load cannot be the answer to a throw,
-    // and this is why the field is nullable: containment must not itself
-    // depend on an import working. The depth is kept, because the layouts the
-    // boundary named are still there and the framework's page is better inside
-    // them than outside them.
-    return { module: null, above };
-  }
-}
-
-/**
- * The error page for `pathname`, inside the layouts above the boundary that
- * answers it.
- *
- * The layouts are the boundary's, for the same reason [`resolveNotFound`]
- * gives: they are what stays mounted around the error, and the layouts below
- * the boundary belong to the subtree that just stopped.
- */
-async function resolveError(
-  table: RouteTable,
-  pathname: string,
-  search: string,
-  searchParams: SearchParams,
-  routeError: RouteError,
-): Promise<ResolvedRoute> {
-  const boundary = nearestBoundary(table.errors, pathname);
-  let module: ?ErrorModule = null;
-  let layouts: $ReadOnlyArray<LayoutModule> = [];
-  if (boundary != null) {
-    const load = boundary.module;
-    try {
-      // The layouts whether or not there is a module, because the synthesised
-      // root record has layouts and no module and its whole purpose is that
-      // the framework's error page renders inside them: a site whose root
-      // layout owns the masthead and the stylesheet answered a 500 with
-      // neither. See ubugeeei-prod/uf#351.
-      layouts = await Promise.all(boundary.layouts.map((layout) => loadOnce(layout)));
-      module = load == null ? null : await loadOnce(load);
-    } catch {
-      // See `resolveErrorBoundary`: the framework's own page answers instead.
-      module = null;
-      layouts = [];
-    }
-  }
-
-  const declared = await resolveMetadata(
-    module?.metadata != null ? { metadata: module.metadata } : {},
-    layouts,
-    { params: {}, searchParams, data: undefined },
-  );
-  return {
-    pathname,
-    search,
-    path: "*",
-    params: {},
-    searchParams,
-    page: { default: ResolvedErrorPage },
-    layouts,
-    data: undefined,
-    deferred: null,
-    metadata: declared.title != null ? declared : { ...declared, title: errorTitle(routeError) },
-    // The boundary's own layouts may name one; the page cannot, because the
-    // page here is this module's. An error arriving under the section's
-    // transition is the same answer as a page arriving under it.
-    viewTransition: resolveViewTransition({}, layouts),
-    status: routeErrorStatus(routeError),
-    error: routeError,
-    // All of the boundary's layouts are above it, and no inner boundary is
-    // inserted around a page that already is one; see `RouteView`.
-    errorBoundary: { module, above: layouts.length },
-    // An error page has nothing left to wait for: it renders the value it was
-    // resolved with. A fallback around it would be a boundary that can never
-    // show, which is worse than none.
-    loading: [],
-    templates: [],
-    // And slots for the third time: a slot belongs to the segment the walk went
-    // through, and an error page is matched rather than walked to. A layout
-    // that declares one is still mounted above the boundary, holding the slot
-    // it was rendered with — the boundary replaces what is under it.
-    slots: [],
-  };
-}
-
-/**
- * The not-found page for `pathname`, inside the layouts above the boundary
- * that answers it.
- *
- * The layouts are the *boundary's*, not the ones the URL had already matched.
- * Taking the matched route's layouts was the other candidate and it is wrong
- * in both directions: for an unmatched URL there is no matched route to take
- * them from, and for `notFound()` thrown from a page they would keep the
- * layouts *below* the boundary — so `app/guide/[slug]/$layout.js` would
- * wrap a 404 that `app/guide/$not-found.js` answered, which is the layout
- * of the page that just said it does not exist.
- *
- * # The record with no page
- *
- * A project that declares no `$not-found.js` anywhere still has a record —
- * the one the build synthesises for the router root — and it names the root's
- * layouts and no module. Before that record existed this function answered
- * with `layouts: []`, so a site whose root layout owns the masthead, the
- * stylesheet and often `<html>` itself answered an unmatched URL with a white
- * page carrying `404` and no way to leave it. That was not the nearest-ancestor
- * rule failing; it was the fallback having no record to take layouts from, and
- * giving it one is the whole of ubugeeei-prod/uf#351.
- *
- * The framework's page then merges its title over the layouts' metadata like
- * any page would, so a `metadataBase` or an `og:site_name` declared on the root
- * layout still applies to the 404.
- */
-async function resolveNotFound(
-  table: RouteTable,
-  pathname: string,
-  search: string,
-  searchParams: SearchParams,
-): Promise<ResolvedRoute> {
-  const record = nearestBoundary(table.notFound, pathname);
-  const load = record?.page;
-  const [page, ...layouts] = await Promise.all([
-    load == null
-      ? Promise.resolve<PageModule>({ default: DefaultNotFound, metadata: { title: "Not found" } })
-      : loadOnce(load),
-    ...(record?.layouts ?? []).map((layout) => loadOnce(layout)),
-  ]);
-  const metadata = await resolveMetadata(page, layouts, {
-    params: {},
-    searchParams,
-    data: undefined,
-  });
-  return {
-    pathname,
-    search,
-    path: "*",
-    params: {},
-    searchParams,
-    page,
-    layouts,
-    data: undefined,
-    deferred: null,
-    metadata,
-    viewTransition: resolveViewTransition(page, layouts),
-    status: 404,
-    error: null,
-    // A not-found page is a page: one that throws is contained like any other.
-    errorBoundary: await resolveErrorBoundary(table, pathname, layouts.length),
-    // A not-found boundary is matched, not nested: `nearestBoundary` picked one
-    // record and the loading files are a property of the route that was walked
-    // to, which this URL never reached. Nothing to wait for, so no boundary.
-    loading: [],
-    // Templates are accumulated on that same walk, and for the same reason.
-    templates: [],
-    // Slots too: a URL that matched no route addressed no slot either.
-    slots: [],
-  };
-}
-
-/**
- * The route's metadata: each declaration merged over the ones outside it.
- *
- * Per key, so a page that declares only `canonical` keeps the title its layout
- * set — with one exception, and it is deliberate. `jsonLd` is gathered along
- * the way instead of merged, because a nearer declaration of it is an addition
- * rather than a correction; [`Metadata`] has the argument.
- */
-async function resolveMetadata(
-  page: PageModule,
-  layouts: $ReadOnlyArray<LayoutModule>,
-  args: MetadataArgs,
-): Promise<Metadata> {
-  let merged: Metadata = {};
-  let structured: $ReadOnlyArray<JsonLd> = [];
-  const take = (declared: Metadata) => {
-    if (declared.jsonLd != null) {
-      structured = [...structured, ...declared.jsonLd];
-    }
-    merged = { ...merged, ...declared };
-  };
-
-  for (const layout of layouts) {
-    if (layout.metadata != null) {
-      take(layout.metadata);
-    }
-  }
-  if (page.frontmatter != null) {
-    const { title, description } = page.frontmatter;
-    merged = {
-      ...merged,
-      ...(title != null ? { title } : {}),
-      ...(description != null ? { description } : {}),
-    };
-  }
-  if (page.metadata != null) {
-    take(page.metadata);
-  }
-  if (typeof page.generateMetadata === "function") {
-    take(await page.generateMetadata(args));
-  }
-  return structured.length === 0 ? merged : { ...merged, jsonLd: structured };
-}
-
-/** A module that may name the transition its route arrives under. */
-type Transitioning = { readonly viewTransition?: string, ... };
-
-/**
- * What a stylesheet calls this route's arrival: the nearest declaration wins.
- *
- * The same walk `resolveMetadata` does one function above, and stated as its
- * own function rather than folded into that one because the two answer
- * different questions and only one of them is a document. Layouts are root
- * first, so overwriting as it descends leaves the innermost, and the page has
- * the last word.
- *
- * The parameters say what is read rather than naming `PageModule` and
- * `LayoutModule`, which is the shape `nearestBoundary` already takes for the
- * same reason: this reads one optional field, so requiring the whole of either
- * type would be a claim it does not need and cannot use.
- */
-function resolveViewTransition(
-  page: Transitioning,
-  layouts: $ReadOnlyArray<Transitioning>,
-): ?string {
-  let name: ?string = null;
-  for (const layout of layouts) {
-    if (layout.viewTransition != null) {
-      name = layout.viewTransition;
-    }
-  }
-  return page.viewTransition ?? name;
-}
-
-component DefaultNotFound() {
-  return (
-    <main>
-      <title>Not found</title>
-      <h1>404</h1>
-      <p>This page does not exist.</p>
-    </main>
-  );
-}
-
-/** The document title an error page gets when nothing declared one. */
-function errorTitle(error: RouteError): string {
-  return match (error) {
-    {kind: "unauthorized"} => "Sign in required",
-    {kind: "forbidden"} => "Not allowed",
-    {kind: "thrown"} => "Something went wrong",
-  };
-}
-
-/**
- * The framework's error page, for a project that declares no `$error.js`.
- *
- * It says which of the three happened and offers the reset, and it does *not*
- * print the thrown error: on the server that message is written for whoever
- * deployed the application — a query, a path, a token in a stack — and this
- * markup is sent to whoever asked for the page. `uf dev` reports the throw in
- * the terminal and `uf build` fails the route, which are the places the person
- * who can act on it is looking.
- */
-component DefaultRouteError(error: RouteError, reset: () => void) {
-  const title = errorTitle(error);
-  const detail = match (error) {
-    {kind: "unauthorized"} => "This page needs you to be signed in.",
-    {kind: "forbidden"} => "You do not have access to this page.",
-    {kind: "thrown"} => "This page could not be rendered.",
-  };
-  return (
-    <main>
-      <title>{title}</title>
-      <h1>{title}</h1>
-      <p>{detail}</p>
-      <button type="button" onClick={reset}>
-        Try again
-      </button>
-    </main>
-  );
-}
-
-/** The component an error module renders: `default`, or the named `Error`. */
-function errorComponent(module: ErrorModule): React.ComponentType<ErrorRenderProps> {
-  const component = module.default ?? module.Error;
-  if (component == null) {
-    throw new Error(
-      "@uniflowed/router: an error module must export a component as `default` or `Error`",
-    );
-  }
-  return renderable(component);
-}
-
-/** The props an error boundary's component receives. */
-type ErrorRenderProps = {|
-  readonly error: RouteError,
-  readonly reset: () => void,
-|};
-
-/**
- * The error UI, from whichever module is in scope.
- *
- * One component for both ways in — the class boundary below, which catches a
- * throw while the browser renders, and `ResolvedErrorPage`, which is what the
- * server renders because React's boundaries do not run in `renderToString`.
- * Two paths to the same screen is exactly the pair that drifts.
- */
-component RouteErrorView(module: ?ErrorModule, error: RouteError, reset: () => void) {
-  if (module == null) {
-    return <DefaultRouteError error={error} reset={reset} />;
-  }
-  const Boundary = errorComponent(module);
-  return <Boundary error={error} reset={reset} />;
-}
-
-/**
- * The page of a route that resolved to an error.
- *
- * A resolved error route carries the error and the module on the route itself,
- * so this is a static component rather than a closure the resolver builds:
- * `RouteView` composes it in its layouts exactly like a page, which is what
- * makes "inside the layouts above the boundary" one code path and not two.
- *
- * `reset()` here is `router.refresh()` — this route resolved to an error
- * because a loader or an import threw, so re-running the resolution is what
- * trying again means. On the server `refresh` does nothing, which is correct:
- * a static render has nothing to re-run.
- */
-component ResolvedErrorPage() {
-  const { resolved, router } = useRouterState();
-  const reset = () => {
-    router.refresh().catch(() => {});
-  };
-
-  if (resolved.error == null) {
-    // Unreachable: this module is only ever the page of a resolved error route.
-    return null;
-  }
-  return (
-    <RouteErrorView module={resolved.errorBoundary.module} error={resolved.error} reset={reset} />
-  );
-}
-
-type RouteErrorBoundaryProps = {|
-  readonly module: ?ErrorModule,
-  readonly resetKey: string,
-  readonly children: React.Node,
-|};
-
-type RouteErrorBoundaryState = {| readonly error: ?RouteError |};
-
-/**
- * The boundary that catches a throw while the browser renders the subtree.
- *
- * A class, because `getDerivedStateFromError` is React's contract for this and
- * there is no hook that does it — this is the one place in the router where
- * following React's public contract means not using a function component.
- *
- * Recovering on navigation is `componentDidUpdate` watching `resetKey`, not
- * `key={pathname}` on the boundary. Keying it remounts the subtree on *every*
- * navigation, error or not, and everything below the boundary goes with it —
- * which is the layouts, whose whole purpose is to survive navigation with
- * their scroll position and their open sections intact.
- */
-class RouteErrorBoundary extends React.Component<RouteErrorBoundaryProps, RouteErrorBoundaryState> {
-  constructor(props: RouteErrorBoundaryProps) {
-    super(props);
-    this.state = { error: null };
-  }
-
-  static getDerivedStateFromError(error: mixed): RouteErrorBoundaryState {
-    return { error: routeErrorFor(error) };
-  }
-
-  componentDidUpdate(previous: RouteErrorBoundaryProps) {
-    if (this.state.error != null && previous.resetKey !== this.props.resetKey) {
-      this.setState({ error: null });
-    }
-  }
-
-  render(): React.Node {
-    const { error } = this.state;
-    if (error == null) {
-      return this.props.children;
-    }
-    return (
-      <RouteErrorView
-        module={this.props.module}
-        error={error}
-        reset={() => this.setState({ error: null })}
-      />
-    );
-  }
-}
+  TemplateRecord,
+  TwitterCard,
+} from "./resolve.js";
+
+export { resolveFailure, resolveMatch } from "./resolve.js";
 
 // ---------------------------------------------------------------------------
 // View transitions
@@ -2048,12 +338,27 @@ export type RouteInfo = {|
  */
 export type Navigation = "client" | "document";
 
+/**
+ * What the router holds, and what every hook and `RouteView` read.
+ *
+ * Two halves, because a route arrives two ways. `route` is what a hook reads —
+ * the path, the parameters, the loader's answer — and it is the same shape
+ * whichever way the route was rendered. `view` is what `RouteView` renders:
+ * the tree a server composed for React Server Components, or a route resolved
+ * from its modules, which the browser composes itself.
+ */
 type RouterState = {|
-  readonly resolved: ResolvedRoute,
+  readonly route: RouteState,
+  readonly view: RouteViewState,
   readonly router: Router,
   readonly pending: boolean,
   readonly navigation: Navigation,
 |};
+
+/** What `RouteView` renders: a server's tree, or a route to compose. */
+type RouteViewState =
+  | {| readonly kind: "flight", readonly tree: React.Node |}
+  | {| readonly kind: "modules", readonly resolved: ResolvedRoute |};
 
 const RouterContext: React.Context<?RouterState> = createContext(null);
 
@@ -2107,10 +412,19 @@ export function routeTable(): RouteTable {
   return installedTable;
 }
 
-/** Props the app root receives from the client and server entries. */
+/**
+ * Props the app root receives from the client and server entries.
+ *
+ * One of `flight` and `initial`. A document React Server Components rendered
+ * hands the root its payload, on the server and again in the browser, so both
+ * sides render the same tree from the same bytes. A single-page application —
+ * and a project that turned `app.rsc` off — hands it a route resolved from its
+ * modules instead. See ubugeeei-prod/uf#519.
+ */
 export type AppProps = {|
   readonly url: string,
-  readonly initial: ResolvedRoute,
+  readonly initial?: ResolvedRoute,
+  readonly flight?: Promise<FlightRoot>,
 |};
 
 /**
@@ -2135,9 +449,13 @@ function isBrowser(): boolean {
  * Provides the current route to the tree and performs navigation.
  *
  * On the server the route is fixed for the request. In the browser the
- * provider listens to history and to `Link` clicks; a navigation resolves the
- * next route (loading its chunks and running its loader) *before* committing,
- * inside a transition, so the previous page stays interactive meanwhile.
+ * provider listens to history and to `Link` clicks; a navigation fetches the
+ * next route's payload — or, for a route resolved from its modules, loads its
+ * chunks and runs its loader — *before* committing, inside a transition, so the
+ * previous page stays interactive meanwhile.
+ *
+ * Which of the two it does is decided by what it was started with: a Flight
+ * payload is [`FlightRouter`], and a resolved route is [`ModuleRouter`].
  *
  * # Unless the application asked the browser to do it
  *
@@ -2155,7 +473,92 @@ function isBrowser(): boolean {
  * reads it in step with this one, which is four things to keep in step for one
  * that actually differs.
  */
-export component RouterProvider(url: string, initial: ResolvedRoute, children: React.Node) {
+export component RouterProvider(
+  url: string,
+  initial?: ResolvedRoute,
+  flight?: Promise<FlightRoot>,
+  children: React.Node,
+) {
+  if (flight != null) {
+    return <FlightRouter flight={flight}>{children}</FlightRouter>;
+  }
+  if (initial == null) {
+    throw new Error(
+      "@uniflowed/router: RouterProvider was given neither a Flight payload nor a resolved route " +
+        "to start from. `virtual:uf/client` and `virtual:uf/server` hand it one of the two.",
+    );
+  }
+  return (
+    <ModuleRouter url={url} initial={initial}>
+      {children}
+    </ModuleRouter>
+  );
+}
+
+/**
+ * The key an intercepted navigation writes into its history entry.
+ *
+ * One string in `history.state` rather than the resolved route, because the
+ * browser structured-clones the state and keeps it across a reload: it can hold
+ * a URL and nothing with a module in it. A URL is also all the entry needs —
+ * where the navigation came from, resolved again when that page is not the one
+ * on screen, and the entry's own URL for what intercepted it.
+ */
+const INTERCEPTED_FROM = "uf:intercepted-from";
+
+/**
+ * The state a history entry for `resolved` is written with.
+ *
+ * `null` for a navigation nothing intercepted, which is what every entry this
+ * router wrote was before interception existed.
+ */
+function historyStateFor(resolved: ResolvedRoute): mixed {
+  const interception = resolved.interception;
+  if (interception == null) {
+    return null;
+  }
+  return { [INTERCEPTED_FROM]: interception.base.pathname + interception.base.search };
+}
+
+/** Where the history entry holding `state` was intercepted from, if it was. */
+function interceptedFrom(state: mixed): ?string {
+  if (state == null || typeof state !== "object" || Array.isArray(state)) {
+    return null;
+  }
+  const from = state[INTERCEPTED_FROM];
+  return typeof from === "string" ? from : null;
+}
+
+/**
+ * `state` without the interception in it.
+ *
+ * What is left is handed back rather than cleared, because an entry's state is
+ * not only this router's to write: another library may have put something
+ * beside it.
+ */
+function withoutInterception(state: mixed): mixed {
+  if (state == null || typeof state !== "object" || Array.isArray(state)) {
+    return state;
+  }
+  const rest: { [string]: mixed } = {};
+  for (const key of Object.keys(state)) {
+    if (key !== INTERCEPTED_FROM) {
+      rest[key] = state[key];
+    }
+  }
+  return Object.keys(rest).length === 0 ? null : rest;
+}
+
+/**
+ * The provider for a route resolved from its modules: a single-page
+ * application, and a project that turned `app.rsc` off.
+ *
+ * It is also the provider that intercepts. Whether a navigation is intercepted
+ * is a question about the slots on screen, and only a router holding a route
+ * resolved from its modules has them to ask; a payload holds a rendered tree.
+ * See [`resolveInterception`].
+ */
+component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node) {
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
   const [pending, setPending] = useState<boolean>(false);
   // Read once per render rather than per navigation: it is installed by the
@@ -2417,11 +820,246 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     },
   };
 
-  const value: RouterState = { resolved, router, pending, navigation };
+  const value: RouterState = {
+    route: routeState(resolved),
+    view: { kind: "modules", resolved },
+    router,
+    pending,
+    navigation,
+  };
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
 }
 
-hook useRouterState(): RouterState {
+/**
+ * The provider for a route React Server Components rendered.
+ *
+ * What it holds is the payload rather than a resolved route: `use` reads its
+ * root — the route a hook reads and the tree `RouteView` renders — and a
+ * navigation fetches the next route's payload and swaps the promise. The
+ * browser resolves nothing and imports no page, layout or loader; the server
+ * did all three, and a component that needs the browser arrived as a client
+ * reference inside the tree.
+ *
+ * A navigation reads the next payload's root before it commits, for the reason
+ * [`ModuleRouter`] resolves the next route before it commits: the page on
+ * screen stays interactive while the next one is on its way, and a commit
+ * inside a view transition is synchronous, so a root that had not arrived would
+ * show nothing rather than the page being left. What may still suspend after
+ * the commit is a `$loading.js` boundary inside the new tree, which is what that
+ * file is for.
+ */
+component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
+  const [current, setCurrent] = useState<Promise<FlightRoot>>(flight);
+  const [pending, setPending] = useState<boolean>(false);
+  const root = use(current);
+  // Read once per render, for the reason `ModuleRouter` reads it once.
+  const navigation = navigationMode();
+
+  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
+    if (!isBrowser()) {
+      return;
+    }
+    const target = new URL(to, window.location.href);
+    const next = target.pathname + target.search;
+    // The browser's job in this application; `ModuleRouter` has the argument.
+    if (navigation === "document") {
+      if (options?.replace === true) {
+        window.location.replace(target.href);
+      } else {
+        window.location.assign(target.href);
+      }
+      return;
+    }
+    setPending(true);
+    try {
+      const fetched = await (takePrefetched(next) ?? fetchFlight(next));
+      // Not a payload: a redirect off this origin, or a host that has no payload
+      // for this URL. The browser loads it as a document, which is what the
+      // anchor would have done.
+      if (fetched.kind === "document") {
+        window.location.assign(fetched.url);
+        return;
+      }
+      const payload = fetched.root;
+      const nextRoot = await payload;
+      // The URL the payload came from, which is a redirect's target when the
+      // route redirected: the history entry is where the visitor ended up.
+      const landed = fetched.url + target.hash;
+      if (options?.replace === true) {
+        window.history.replaceState(null, "", landed);
+      } else {
+        window.history.pushState(null, "", landed);
+      }
+      const commit = () => {
+        setCurrent(payload);
+        setPending(false);
+      };
+      if (options?.transition === false) {
+        startTransition(commit);
+      } else {
+        withViewTransition(nextRoot.route.viewTransition, commit);
+      }
+      if (options?.scroll !== false) {
+        if (target.hash !== "") {
+          const element = document.getElementById(target.hash.slice(1));
+          if (element != null) {
+            element.scrollIntoView();
+            return;
+          }
+        }
+        window.scrollTo(0, 0);
+      }
+    } catch (error) {
+      setPending(false);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    if (!isBrowser()) {
+      return undefined;
+    }
+    // No history entry was pushed, so there is nothing to pop back into; see
+    // `ModuleRouter`.
+    if (navigation === "document") {
+      return undefined;
+    }
+    const onPopState = () => {
+      const next = window.location.pathname + window.location.search;
+      // The history entry already moved; a payload that cannot be had for it is
+      // a document to load, and a reload is the browser's way to load it.
+      fetchFlight(next).then(
+        (fetched) => {
+          if (fetched.kind === "document") {
+            window.location.reload();
+            return;
+          }
+          const payload = fetched.root;
+          payload.then(
+            (nextRoot) => {
+              withViewTransition(nextRoot.route.viewTransition, () => {
+                setCurrent(payload);
+              });
+            },
+            () => {
+              window.location.reload();
+            },
+          );
+        },
+        () => {
+          window.location.reload();
+        },
+      );
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
+
+  const router: Router = {
+    push: (to, options) => navigate(to, options),
+    replace: (to) => navigate(to, { replace: true }),
+    prefetch: async (to) => {
+      // Under document navigation there is no next render in this page to
+      // fetch a payload for; see `ModuleRouter`'s prefetch.
+      if (!isBrowser() || navigation === "document") {
+        return;
+      }
+      const target = new URL(to, window.location.href);
+      if (target.origin !== window.location.origin) {
+        return;
+      }
+      await prefetchFlight(target.pathname + target.search);
+    },
+    refresh: async () => {
+      if (!isBrowser()) {
+        return;
+      }
+      if (navigation === "document") {
+        window.location.reload();
+        return;
+      }
+      const fetched = await fetchFlight(window.location.pathname + window.location.search);
+      if (fetched.kind === "document") {
+        window.location.reload();
+        return;
+      }
+      const payload = fetched.root;
+      await payload;
+      // No view transition: a refresh is the same URL rendered again. See
+      // `ModuleRouter`'s refresh.
+      startTransition(() => {
+        setCurrent(payload);
+      });
+    },
+    back: () => {
+      if (isBrowser()) {
+        window.history.back();
+      }
+    },
+    forward: () => {
+      if (isBrowser()) {
+        window.history.forward();
+      }
+    },
+  };
+
+  const value: RouterState = {
+    route: root.route,
+    view: { kind: "flight", tree: root.tree },
+    router,
+    pending,
+    navigation,
+  };
+  return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
+}
+
+/**
+ * Payloads a `Link` fetched on intent, kept for the navigation that follows it.
+ *
+ * Bounded and short-lived, because a payload is the rendering of a route at one
+ * moment: one old enough to disagree with the server is one a navigation should
+ * not show, and a page with a hundred links hovered over must not hold a hundred
+ * renderings. Taken rather than read, so a prefetched payload serves exactly one
+ * navigation and the next visit to the same URL asks again.
+ */
+const PREFETCH_LIMIT = 32;
+const PREFETCH_LIFETIME_MS = 30000;
+const prefetchedFlights: Map<
+  string,
+  {| readonly fetched: Promise<FetchedFlight>, readonly at: number |},
+> = new Map();
+
+function prefetchFlight(url: string): Promise<FetchedFlight> {
+  const existing = prefetchedFlights.get(url);
+  if (existing != null && Date.now() - existing.at < PREFETCH_LIFETIME_MS) {
+    return existing.fetched;
+  }
+  if (existing == null && prefetchedFlights.size >= PREFETCH_LIMIT) {
+    const oldest = prefetchedFlights.keys().next();
+    if (oldest.done !== true) {
+      prefetchedFlights.delete(oldest.value);
+    }
+  }
+  const fetched = fetchFlight(url);
+  prefetchedFlights.set(url, { fetched, at: Date.now() });
+  fetched.catch(() => {
+    prefetchedFlights.delete(url);
+  });
+  return fetched;
+}
+
+function takePrefetched(url: string): Promise<FetchedFlight> | null {
+  const entry = prefetchedFlights.get(url);
+  prefetchedFlights.delete(url);
+  if (entry == null || Date.now() - entry.at >= PREFETCH_LIFETIME_MS) {
+    return null;
+  }
+  return entry.fetched;
+}
+
+export hook useRouterState(): RouterState {
   const state = useContext(RouterContext);
   if (state == null) {
     throw new Error(
@@ -2433,13 +1071,13 @@ hook useRouterState(): RouterState {
 
 /** The current route. */
 export hook useRoute(): RouteInfo {
-  const { resolved, pending } = useRouterState();
+  const { route, pending } = useRouterState();
   return {
-    path: resolved.path,
-    pathname: resolved.pathname,
-    params: resolved.params,
-    searchParams: resolved.searchParams,
-    data: useResolvedData(resolved),
+    path: route.path,
+    pathname: route.pathname,
+    params: route.params,
+    searchParams: route.searchParams,
+    data: useResolvedData(route),
     pending,
   };
 }
@@ -2460,9 +1098,9 @@ export hook useRoute(): RouteInfo {
  * it is a benefit not taken rather than a regression, and it is visible: the
  * fallback does not appear.
  */
-hook useResolvedData(resolved: ResolvedRoute): mixed {
-  const loader = resolved.deferred;
-  return loader == null ? resolved.data : use(loader);
+hook useResolvedData(route: RouteState): mixed {
+  const loader = route.deferred;
+  return loader == null ? route.data : use(loader);
 }
 
 /** Navigation. */
@@ -2491,7 +1129,7 @@ export hook useRouter(): Router {
  * same file, keyed by route. Until it is there, this says what is true.
  */
 export hook useLoaderData(): mixed {
-  return useResolvedData(useRouterState().resolved);
+  return useResolvedData(useRouterState().route);
 }
 
 /**
@@ -2517,178 +1155,44 @@ const BOUNDARY_MARKS: boolean = import.meta.hot != null;
  * Renders the matched page inside its layouts, innermost last, with the
  * document metadata as hoistable head elements.
  *
- * # One walk down the layouts, not three
- *
- * The layouts, the error boundary and the `<Suspense>` boundaries all have to
- * be threaded into the same stack at the depth each was declared at, so this
- * is one descending loop over that depth rather than a pass per kind. `depth`
- * counts the layouts still *outside* the element built so far, which is what
- * `above` means on both a route's `errorBoundary` and each of its `loading`
- * entries — one number, one meaning, one place it is compared.
- *
- * # Where the error boundaries go
- *
- * Two, and they are not the same thing twice. The inner one is the project's
- * `$error.js`, placed at the depth the file sits at, so the layouts above
- * it stay mounted and interactive while the subtree below is replaced — that
- * placement *is* the feature. The outer one has no module and so renders the
- * framework's page; it is what stands between a throw in a root layout, or in
- * the error component itself, and an unmounted document. A single boundary
- * cannot be both: put it outside and a page's throw takes the navigation down
- * with it; put it inside and nothing catches the layout above.
- *
- * # Where the loading boundaries go
- *
- * Inside the layout of the segment that declared the file and outside
- * everything under it, which is what makes the shell arrive first: a renderer
- * streaming this tree can send every layout down to the boundary, and the
- * fallback, before whatever the page is waiting for has resolved. A segment
- * with no `$loading.js` contributes no boundary at all — it is not wrapped
- * in a `<Suspense fallback={null}>` on the way past — so a project that
- * declares none renders the tree it rendered before this existed, and a page
- * that suspends without a boundary above it still fails the way React says it
- * should rather than silently rendering nothing.
- *
- * The error boundary goes *outside* the fallback at the same depth. A throw
- * while the page is resolving has to reach a boundary that is still mounted,
- * and the `<Suspense>` is part of what the throw came out of.
- *
- * # Where the templates go
- *
- * Inside their own segment's layout and outside everything else at that depth
- * — the error boundary, the fallback and the page — which is what makes a
- * template's remount mean "this segment and what is under it" and a layout's
- * persistence mean "this segment's frame". The two files are the same wrapper
- * with opposite answers to one question, so they are one line apart here, and
- * the whole of the difference is the `key` — see [`insideTemplates`], which is
- * that line's other half.
- *
- * # Where the boundary marks go
- *
- * Inside each boundary and around nothing else, under `uf dev` only. A
- * `<Suspense>` and a class boundary each render no element of their own, so the
- * run of nodes one owns is indistinguishable on the page from the layout's own
- * nodes beside it — the marks are what distinguish it, and this loop is the
- * only place that knows which boundary is which. `./boundaries.js` has the
- * mechanism and the argument; every reference to it here is inside a
- * [`BOUNDARY_MARKS`] branch, so a build has none of it. See
- * ubugeeei-prod/uf#520.
+ * The walk itself is `composeRoute` in `./compose.js`, which has the whole
+ * argument for where each boundary goes. What is left here is the half that
+ * reads the router: which route, the page element that carries the loader's
+ * answer and the payload the browser hydrates it from, and — under `uf dev` —
+ * the boundary marks and the report that watches them. See ubugeeei-prod/uf#520.
  */
 export component RouteView() {
-  const { resolved } = useRouterState();
-  const { module, above } = resolved.errorBoundary;
+  const { view } = useRouterState();
+  // A tree a server composed for React Server Components is the whole of it:
+  // the boundaries, the fallbacks, the marks and the head were placed by
+  // `composeRoute` on the server, before any of it was written into the payload.
+  if (view.kind === "flight") {
+    return view.tree;
+  }
+  const resolved = view.resolved;
   const loader = resolved.deferred;
-  // The route's boundaries, named once and read by both the marks below and the
-  // report that watches them. `installedTable` rather than [`routeTable`],
-  // which throws: a test may render this view without an entry having installed
-  // a table, and an error boundary named by its depth alone is worth less than
-  // one named by its file rather than wrong.
+  // The route's boundaries, named once and read by both the marks the
+  // composition places and the report that watches them. `installedTable`
+  // rather than [`routeTable`], which throws: a test may render this view
+  // without an entry having installed a table, and an error boundary named by
+  // its depth alone is worth less than one named by its file rather than wrong.
   const marks = BOUNDARY_MARKS
     ? routeBoundaries(
         resolved,
         nearestBoundary(installedTable?.errors ?? [], resolved.pathname)?.file,
       )
     : null;
-  // The innermost element, so the `use` inside `AwaitedPage` suspends below
-  // every boundary the loop below adds — which is what makes the layouts and
-  // the fallback the shell rather than something waiting behind the loader.
-  let element: React.Node =
+  const page =
     loader == null ? <RenderedPage data={resolved.data} /> : <AwaitedPage loader={loader} />;
-
-  for (let depth = resolved.layouts.length; depth >= 0; depth -= 1) {
-    // Backwards over a root-first list, so the deepest segment's fallback ends
-    // up closest to the page. Two segments land on the same depth whenever the
-    // inner one declares no layout of its own, and then this order is the only
-    // thing that keeps them nested the way the directories are.
-    for (let index = resolved.loading.length - 1; index >= 0; index -= 1) {
-      const boundary = resolved.loading[index];
-      if (boundary.above !== depth) {
-        continue;
-      }
-      const Fallback = loadingComponent(boundary.module);
-      element = (
-        <Suspense fallback={<Fallback />}>
-          {BOUNDARY_MARKS ? insideBoundary(marks?.get(suspenseId(index)), element) : element}
-        </Suspense>
-      );
-    }
-    // Placed on `above` alone, and not on there being a module: a `null` one is
-    // the framework's own error page, and where it renders is exactly the
-    // question ubugeeei-prod/uf#351 asks. A project that declares no
-    // `$error.js` has the record the build synthesises for the router root,
-    // whose `above` is the root's layouts — so the framework's page appears
-    // inside the masthead rather than in place of the document. A table with no
-    // record at all answers 0, which puts this boundary outside every layout,
-    // where the outer one below already stood.
-    //
-    // Not around a route that already resolved to its error page: that page is
-    // the boundary's own component, and wrapping it in the same boundary would
-    // answer a throw inside it with itself.
-    if (depth === above && resolved.error == null) {
-      element = (
-        <RouteErrorBoundary module={module} resetKey={resolved.pathname}>
-          {BOUNDARY_MARKS ? insideBoundary(marks?.get(ROUTE_ERROR_ID), element) : element}
-        </RouteErrorBoundary>
-      );
-    }
-    element = insideTemplates(element, resolved, depth);
-    if (depth > 0) {
-      const Layout = layoutComponent(resolved.layouts[depth - 1]);
-      // The slots declared on this layout's own segment, beside `children`.
-      // Spread rather than passed as one `slots` object, because a slot is a
-      // prop a layout declares by name — `component Dashboard(children, team)`
-      // — and a bag would make every layout destructure a map to find out
-      // whether the router had anything for it.
-      // The spread first and `params` after it, so that a slot named after a
-      // prop the layout already has loses rather than wins. `@params` and
-      // `@children` are refused by the scan, and this is the second line of
-      // that defence for a table written by hand: losing a slot is a hole in
-      // the page, and overwriting `params` is every route in the segment
-      // rendering against the wrong parameters.
-      element = (
-        <Layout {...slotsAt(resolved.slots, depth)} params={resolved.params}>
-          {element}
-        </Layout>
-      );
-    }
-  }
-  if (needsRootStreamFrame(resolved)) {
-    element = <RootStreamFrame>{element}</RootStreamFrame>;
-  }
   return (
     <>
-      <Head metadata={resolved.metadata} />
-      <RouteErrorBoundary module={null} resetKey={resolved.pathname}>
-        {BOUNDARY_MARKS ? insideBoundary(marks?.get(ROOT_ERROR_ID), element) : element}
-      </RouteErrorBoundary>
+      {composeRoute(resolved, { page, marks })}
       {/* After the tree rather than before it, so its effect runs once every
           mark below has had its own — which is the commit the marks are in. */}
       {BOUNDARY_MARKS && marks != null ? (
         <BoundaryReporter path={resolved.path} boundaries={marks} />
       ) : null}
     </>
-  );
-}
-
-/**
- * Whether the outermost route fallback needs one host element above it.
- *
- * React can flush a shell whose suspended boundary is inside any host element,
- * but not one whose boundary is a direct child of the render root. A route with
- * no layout and a root `$loading.js` is exactly that second tree: every
- * framework component above it renders no element, so the fallback waits for
- * the page it was meant to stand in for. A root layout is already the element
- * that can carry it, and deeper fallbacks sit inside a layout by construction.
- */
-function needsRootStreamFrame(resolved: ResolvedRoute): boolean {
-  return resolved.layouts.length === 0 && resolved.loading.some((boundary) => boundary.above === 0);
-}
-
-component RootStreamFrame(children: React.Node) {
-  return (
-    <div data-uf-stream-root="" style={{ display: "contents" }}>
-      {children}
-    </div>
   );
 }
 
@@ -2711,7 +1215,12 @@ component RootStreamFrame(children: React.Node) {
  * read out of those very elements.
  */
 component RenderedPage(data: mixed) {
-  const { resolved } = useRouterState();
+  const { view } = useRouterState();
+  // Only ever rendered by `RouteView` for a route resolved from its modules.
+  if (view.kind !== "modules") {
+    return null;
+  }
+  const resolved = view.resolved;
   const Page = pageComponent(resolved.page);
   return (
     <>
@@ -2909,445 +1418,6 @@ function rowFailure(error: mixed): string {
 }
 
 /**
- * The component a page module renders: its default export, or the named
- * `Page` that `uf create` scaffolds. An MDX page always has a default export.
- */
-function pageComponent(module: PageModule): React.ComponentType<PageRenderProps> {
-  const component = module.default ?? module.Page;
-  if (component == null) {
-    throw new Error(
-      "@uniflowed/router: a page module must export a component as `default` or `Page`",
-    );
-  }
-  return renderable(component);
-}
-
-/**
- * The component a loading module renders: `default`, or the named `Loading`.
- *
- * No props, unlike a page or a layout. A fallback is what the router shows
- * when it does not have the route's answer yet, so there is nothing it could
- * be handed that would be true — not `data`, which is the thing being waited
- * for, and not `children`, because it renders instead of them.
- */
-function loadingComponent(module: LoadingModule): React.ComponentType<{||}> {
-  const component = module.default ?? module.Loading;
-  if (component == null) {
-    throw new Error(
-      "@uniflowed/router: a loading module must export a component as `default` or `Loading`",
-    );
-  }
-  return renderable(component);
-}
-
-/**
- * `element`, wrapped in every template declared at `depth`.
- *
- * Outside the boundaries at that depth and inside the layout below it, and
- * backwards over a root-first list for the reason the fallbacks are: two
- * segments share a depth whenever the inner one declares no layout, and this
- * order is what keeps them nested the way the directories are.
- *
- * A function beside `RouteView` rather than a third loop inside it, and that
- * is not only for reading: a third nested loop assigning to `element` is what
- * the React Compiler's aliasing inference gave up on, and a component it
- * cannot compile is a component it does not memoise.
- */
-function insideTemplates(
-  element: React.Node,
-  resolved: {
-    readonly pathname: string,
-    readonly params: RouteParams,
-    readonly templates: $ReadOnlyArray<ResolvedTemplate>,
-    ...
-  },
-  depth: number,
-): React.Node {
-  let out = element;
-  for (let index = resolved.templates.length - 1; index >= 0; index -= 1) {
-    const entry = resolved.templates[index];
-    if (entry.above !== depth) {
-      continue;
-    }
-    const Template = templateComponent(entry.module);
-    // Keyed on the pathname, which is the whole difference between this file
-    // and `$layout.js`: React throws the subtree away and builds it again
-    // whenever the key changes, and a navigation that changes only the query
-    // string leaves it alone.
-    out = (
-      <Template key={resolved.pathname} params={resolved.params}>
-        {out}
-      </Template>
-    );
-  }
-  return out;
-}
-
-/**
- * The slots declared at `depth`, as the props the layout there receives.
- *
- * One object per layout rather than one lookup per slot, so the common case —
- * a project with no slots at all — allocates nothing and spreads nothing.
- *
- * A slot the URL addressed and that has no `$default.js` is `null` rather
- * than absent: a layout that declares `team` receives `team` on every route,
- * so `{team ?? <Empty />}` is a thing a project can write and rely on.
- */
-function slotsAt(
-  slots: $ReadOnlyArray<ResolvedSlot>,
-  depth: number,
-): { readonly [string]: React.Node } {
-  if (slots.length === 0) {
-    return EMPTY_SLOTS;
-  }
-  const props: { [string]: React.Node } = {};
-  for (const slot of slots) {
-    if (slot.above === depth) {
-      // `null` rather than an element that renders nothing, and the difference
-      // is the whole of what the prop is for: `{team ?? <Empty />}` has to be
-      // able to tell "this slot has nothing in it" from "this slot rendered
-      // something empty", and an element is never `null`.
-      props[slot.name] = slot.page == null ? null : <SlotView slot={slot} />;
-    }
-  }
-  return props;
-}
-
-/** One object for every layout on a project that declares no slot. */
-const EMPTY_SLOTS: { readonly [string]: React.Node } = Object.freeze({});
-
-/**
- * One slot's tree: its page, inside the layouts declared under the slot, with
- * the slots those layouts declare in turn.
- *
- * The same composition [`RouteView`] does and deliberately not the same
- * function. A route's tree carries the things a slot does not have — the error
- * boundary, the `<Suspense>` fallbacks, the templates, the head — and folding
- * a second, simpler case into that loop would be four `if`s asking which of the
- * two this is. What the two share is the *order*, page innermost and layouts
- * backwards over a root-first list, and that is short enough to be right twice.
- *
- * A slot with no page is never rendered through this component at all —
- * [`slotsAt`] hands the layout `null` instead, so the layout can tell an empty
- * slot from one that rendered something empty. The guard below is what makes
- * that a fact about one place rather than a convention two places share.
- */
-component SlotView(slot: ResolvedSlot) {
-  // Before the early return, because a hook after one is a hook that runs on
-  // some renders and not others. The search string is the route's — a slot
-  // matches the path and the query belongs to the URL, not to either match.
-  const { resolved } = useRouterState();
-  const page = slot.page;
-  if (page == null) {
-    return null;
-  }
-  // Except in an interception, whose URL is not the one the route on screen was
-  // resolved for. The page it renders reads the intercepted URL's query, and
-  // its templates and error boundary are keyed on the intercepted pathname — so
-  // a second photo opened in the modal remounts what the first one mounted, the
-  // way a navigation between two pages does.
-  const pathname = slot.intercepted?.pathname ?? resolved.pathname;
-  const searchParams = slot.intercepted?.searchParams ?? resolved.searchParams;
-  const Page = pageComponent(page);
-  let element: React.Node = (
-    <Page params={slot.params} searchParams={searchParams} data={undefined} />
-  );
-  const templateContext = {
-    pathname,
-    params: slot.params,
-    templates: slot.templates,
-  };
-  for (let depth = slot.layouts.length; depth >= 0; depth -= 1) {
-    for (let index = slot.loading.length - 1; index >= 0; index -= 1) {
-      const boundary = slot.loading[index];
-      if (boundary.above !== depth) {
-        continue;
-      }
-      const Fallback = loadingComponent(boundary.module);
-      element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
-    }
-    const errorBoundary = slot.errorBoundary;
-    if (errorBoundary != null && errorBoundary.above === depth) {
-      element = (
-        <RouteErrorBoundary module={errorBoundary.module} resetKey={`${pathname}:${slot.name}`}>
-          {element}
-        </RouteErrorBoundary>
-      );
-    }
-    element = insideTemplates(element, templateContext, depth);
-    if (depth > 0) {
-      const Layout = layoutComponent(slot.layouts[depth - 1]);
-      element = (
-        <Layout {...slotsAt(slot.slots, depth)} params={slot.params}>
-          {element}
-        </Layout>
-      );
-    }
-  }
-  return element;
-}
-
-/**
- * The component a template module renders: `default`, or the named `Template`.
- *
- * The same props a layout receives, because it is a layout in every way but
- * one: it wraps `children`, it may read the route's parameters, and the only
- * difference is that `RouteView` gives the element a `key` so React builds it
- * again on every navigation.
- */
-function templateComponent(module: TemplateModule): React.ComponentType<LayoutRenderProps> {
-  const component = module.default ?? module.Template;
-  if (component == null) {
-    throw new Error(
-      "@uniflowed/router: a template module must export a component as `default` or `Template`",
-    );
-  }
-  return renderable(component);
-}
-
-/** The component a layout module renders: `default`, or the named `Layout`. */
-function layoutComponent(module: LayoutModule): React.ComponentType<LayoutRenderProps> {
-  const component = module.default ?? module.Layout;
-  if (component == null) {
-    throw new Error(
-      "@uniflowed/router: a layout module must export a component as `default` or `Layout`",
-    );
-  }
-  return renderable(component);
-}
-
-/**
- * A route module's component, as the router is about to render it.
- *
- * # The one cast in this file, and why it is here rather than in six places
- *
- * A `RouteComponent` is a component about whose props nothing was claimed, and
- * `RouteView` is about to pass it three. React allows that — a component
- * receives the props its parent wrote and ignores the ones it did not declare
- * — but Flow cannot be told it: a page's props are exact, so no props type but
- * that page's own is assignable, and the router does not know which page it
- * has. `React.ComponentType<any>` on the module types was this same
- * unsoundness spread over six declarations, where it also stopped anyone from
- * checking that `RouteView` passes the props a page is documented to receive.
- * Here it is one line, and everything on either side of it is checked: what a
- * module may export, and what a page is handed. Suppressed by name so that
- * `check:lib` can gate CI without this file being the thing that stops it; the
- * directive names the rule, and this is the argument for escaping it.
- */
-function renderable<TProps extends { ... }>(
-  component: RouteComponent,
-): React.ComponentType<TProps> {
-  // uf-lint-disable-next-line flow/unclear-type
-  return component as any;
-}
-
-/**
- * One URL from a route's metadata, made absolute if it can be.
- *
- * Open Graph, Twitter and `rel="canonical"` all want an absolute URL, and a
- * route module cannot know the host it is served from — so `metadataBase` is
- * how a site says it once, and this is where it is applied.
- *
- * Three things it deliberately does not do. It does not resolve against the
- * *page's* URL: `Head` renders inside the route and does not know it, and a
- * `metadataBase` is a site-wide fact rather than a per-page one. It does not
- * invent a base: with none declared the value is emitted exactly as written,
- * which is what every page that predates this field already gets. And it does
- * not throw — a `metadataBase` that is not a URL is a mistake in one field,
- * and turning it into a blank page would be a worse answer than an unresolved
- * `og:image`.
- */
-function absoluteUrl(value: string, base: void | string): string {
-  if (base == null) return value;
-  try {
-    return new URL(value, base).href;
-  } catch {
-    return value;
-  }
-}
-
-/**
- * The `robots` directives, as one `content` string, or `null` for none.
- *
- * `null` rather than an empty string, so a page that declared nothing gets no
- * tag at all: "index, follow" is what a document with no `robots` meta already
- * means, and writing it out tells a crawler what it had already assumed.
- *
- * Each declared field contributes its directive and no field implies another.
- * `index: true` therefore emits `index` rather than nothing — the value is
- * there to overrule a section that said otherwise, and a directive that
- * disappeared because it agreed with the default would be a page saying
- * something and no evidence of it in the markup.
- */
-function robotsContent(robots: void | Robots): ?string {
-  if (robots == null) {
-    return null;
-  }
-  const directives: Array<string> = [];
-  if (robots.index != null) {
-    directives.push(robots.index ? "index" : "noindex");
-  }
-  if (robots.follow != null) {
-    directives.push(robots.follow ? "follow" : "nofollow");
-  }
-  if (robots.maxSnippet != null) {
-    directives.push(`max-snippet:${robots.maxSnippet}`);
-  }
-  if (robots.maxImagePreview != null) {
-    directives.push(`max-image-preview:${robots.maxImagePreview}`);
-  }
-  return directives.length === 0 ? null : directives.join(", ");
-}
-
-/**
- * One JSON-LD object as the text of a `<script>`.
- *
- * `<` is escaped so a string inside the data holding `</script>` cannot end
- * the element early — the same escape `server.js` applies to the embedded
- * loader data, and for the same reason: the text is the application's and the
- * element it lands in is terminated by a character sequence rather than by a
- * length. `dataScript` also escapes U+2028 and U+2029; those are about a
- * string being parsed as JavaScript source, and this one never is.
- */
-function jsonLdText(entry: JsonLd): string {
-  return JSON.stringify(entry).replace(/</g, "\\u003c");
-}
-
-/**
- * One JSON-LD object, as the element that carries it.
- *
- * A function rather than an element written inline, because the suppression
- * needs a line of its own; `docs/app/$layout.js` has the same shape for the
- * same reason. `security/no-dangerously-set-inner-html` is about markup that
- * came from somewhere and has to be sanitized before a browser parses it as
- * HTML, and its escape hatch is a `@uniflowed/markdown` sanitizer — the right
- * answer for markup and no answer at all for JSON. This string is
- * `JSON.stringify`'s output with `<` escaped, so nothing in it can close the
- * element, and it is never parsed as HTML. There is also no other spelling:
- * React escapes a text child, so `{"@type":"Article"}` would reach the page as
- * `&quot;@type&quot;`, which is not JSON-LD any more.
- */
-function jsonLdScript(entry: JsonLd): React.Node {
-  const text = jsonLdText(entry);
-  const html = { __html: text };
-  // uf-lint-disable-next-line security/no-dangerously-set-inner-html
-  return <script key={text} type="application/ld+json" dangerouslySetInnerHTML={html} />;
-}
-
-component Head(metadata: Metadata) {
-  const { title, description, metadataBase, canonical, robots } = metadata;
-  const { alternates, pagination, jsonLd, openGraph, twitter } = metadata;
-  const href = canonical != null ? absoluteUrl(canonical, metadataBase) : null;
-  const crawler = robotsContent(robots);
-  // Read out of `alternates` once rather than through it at every use: the map
-  // is read inside a callback, and a refinement of `alternates.languages` does
-  // not survive being carried into one.
-  const languages = alternates?.languages;
-  // A page that said what it is called has said what its card is called. Every
-  // site that had to write both wrote the same string twice, and the second
-  // one is the one that goes stale — the docs site shipped thirty pages whose
-  // share cards carried an image and no title at all.
-  //
-  // `??`, not `||`: an empty string is a decision, and a page that deliberately
-  // has no card title should get none rather than the document's.
-  const cardTitle = openGraph?.title ?? title;
-  const cardDescription = openGraph?.description ?? description;
-  // `og:type` is one of the four properties Open Graph requires. A default is
-  // the difference between a document with a card and a document without one,
-  // and `website` is right for everything that is not an article or a video.
-  const cardType = openGraph?.type ?? "website";
-  // Only when the card was asked for. A page with no `twitter.card` gets no
-  // Twitter tags at all, which is what a site that never wanted one meant.
-  const twitterTitle = twitter != null ? (twitter.title ?? cardTitle) : null;
-  const twitterDescription = twitter != null ? (twitter.description ?? cardDescription) : null;
-  const twitterImageAlt = twitter != null ? (twitter.imageAlt ?? openGraph?.imageAlt) : null;
-  return (
-    <>
-      {title != null ? <title>{title}</title> : null}
-      {description != null ? <meta name="description" content={description} /> : null}
-      {crawler != null ? <meta name="robots" content={crawler} /> : null}
-      {href != null ? <link rel="canonical" href={href} /> : null}
-      {/* The set is reciprocal and includes this page, so a `hreflang` list is
-          usually the same list on every page of it — which is why it belongs
-          on the layout they share rather than on each of them.
-
-          `hrefLang` is React's spelling and it reaches the markup unchanged,
-          which is worth knowing before grepping a document for `hreflang` and
-          concluding it is missing. HTML attribute names are case-insensitive,
-          so the parser every crawler runs reads it as the same attribute; the
-          lowercase spelling is the one React warns about. */}
-      {languages != null
-        ? Object.keys(languages).map((language) => (
-            <link
-              key={language}
-              rel="alternate"
-              hrefLang={language}
-              href={absoluteUrl(languages[language], metadataBase)}
-            />
-          ))
-        : null}
-      {pagination?.prev != null ? (
-        <link rel="prev" href={absoluteUrl(pagination.prev, metadataBase)} />
-      ) : null}
-      {pagination?.next != null ? (
-        <link rel="next" href={absoluteUrl(pagination.next, metadataBase)} />
-      ) : null}
-      {/* `og:url` *is* the canonical URL of the page, in Open Graph's own
-          words, so one declaration answers both rather than asking a project
-          to write the same URL twice and keep them in step. */}
-      {href != null ? <meta property="og:url" content={href} /> : null}
-      {cardTitle != null ? <meta property="og:title" content={cardTitle} /> : null}
-      {cardDescription != null ? (
-        <meta property="og:description" content={cardDescription} />
-      ) : null}
-      {/* Only alongside something else. A document with `og:type` and nothing
-          more is not a card; it is one meta tag saying the page is a page. */}
-      {cardTitle != null || cardDescription != null || openGraph?.images != null ? (
-        <meta property="og:type" content={cardType} />
-      ) : null}
-      {openGraph?.siteName != null ? (
-        <meta property="og:site_name" content={openGraph.siteName} />
-      ) : null}
-      {openGraph?.images != null
-        ? openGraph.images.map((image) => (
-            <meta key={image} property="og:image" content={absoluteUrl(image, metadataBase)} />
-          ))
-        : null}
-      {openGraph?.imageAlt != null && openGraph?.images != null ? (
-        <meta property="og:image:alt" content={openGraph.imageAlt} />
-      ) : null}
-      {/* `name`, not `property`: Open Graph is RDFa and Twitter's cards are
-          not, and a `property="twitter:card"` is ignored by the crawler that
-          reads it. */}
-      {twitter?.card != null ? <meta name="twitter:card" content={twitter.card} /> : null}
-      {twitter?.site != null ? <meta name="twitter:site" content={twitter.site} /> : null}
-      {twitter?.creator != null ? <meta name="twitter:creator" content={twitter.creator} /> : null}
-      {/* X reads the `og:` tags when these are absent, so these are not
-          required — and every validator asks for them anyway, which is a good
-          enough reason when the value is one the page has already given. They
-          fall back through the card's title to the document's. */}
-      {twitterTitle != null ? <meta name="twitter:title" content={twitterTitle} /> : null}
-      {twitterDescription != null ? (
-        <meta name="twitter:description" content={twitterDescription} />
-      ) : null}
-      {twitter?.images != null
-        ? twitter.images.map((image) => (
-            <meta key={image} name="twitter:image" content={absoluteUrl(image, metadataBase)} />
-          ))
-        : null}
-      {twitterImageAlt != null && twitter?.images != null ? (
-        <meta name="twitter:image:alt" content={twitterImageAlt} />
-      ) : null}
-      {/* Last, and not hoisted into `<head>` with the rest: React hoists a
-          `<title>`, a `<meta>` and a `<link>`, and not a script whose body it
-          would have to carry. JSON-LD is read from anywhere in the document,
-          so these render where the route does. */}
-      {jsonLd != null ? jsonLd.map(jsonLdScript) : null}
-    </>
-  );
-}
-
-/**
  * Head elements a component contributes while it is rendering.
  *
  * `metadata` and `generateMetadata` are how a *route* says what it is, and
@@ -3382,8 +1452,8 @@ component Head(metadata: Metadata) {
  * relative URLs written here are resolved.
  */
 export hook useSeo(seo: Metadata): React.Node {
-  const { resolved } = useRouterState();
-  const base = seo.metadataBase ?? resolved.metadata.metadataBase;
+  const { route } = useRouterState();
+  const base = seo.metadataBase ?? route.metadata.metadataBase;
   return <Head metadata={base == null ? seo : { ...seo, metadataBase: base }} />;
 }
 
@@ -3518,10 +1588,10 @@ function isExternal(to: string): boolean {
  */
 export function routerView(root: string): React.ComponentType<AppProps> {
   void root;
-  component App(url: string, initial: ResolvedRoute) {
+  component App(url: string, initial?: ResolvedRoute, flight?: Promise<FlightRoot>) {
     return (
       <RenderProvider>
-        <RouterProvider url={url} initial={initial}>
+        <RouterProvider url={url} initial={initial} flight={flight}>
           <RouteView />
         </RouterProvider>
       </RenderProvider>

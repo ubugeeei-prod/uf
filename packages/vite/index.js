@@ -86,6 +86,27 @@ import {
   serverModuleSource,
 } from "./internal/routes.js";
 import { TransformService, isFlowModule } from "@uniflowed/host/transform";
+import {
+  DEV_RSC_HOOK,
+  FLIGHT_VIRTUAL,
+  RSC_ENVIRONMENT,
+  builtBridgeSource,
+  builtReferencesSource,
+  clientManifestSource,
+  clientReferencePlugin,
+  compilerRuntimeSource,
+  createFlightState,
+  devBridgeSource,
+  devReferencesSource,
+  devStylesheets,
+  flightClientSource,
+  flightDocumentPath,
+  flightServerSource,
+  linkStylesheets,
+  rendersFlight,
+  rscEntrySource,
+  rscEnvironment,
+} from "./internal/flight.js";
 import { createChannelMiddleware } from "./internal/diagnostics.js";
 import { devtoolsPreamble } from "./internal/devtools.js";
 import { send, toRequest } from "./internal/http.js";
@@ -93,7 +114,7 @@ import { beginRequest } from "./internal/serve.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
-const VIRTUAL_IDS = new Set(Object.values(VIRTUAL));
+const VIRTUAL_IDS = new Set([...Object.values(VIRTUAL), ...Object.values(FLIGHT_VIRTUAL)]);
 
 /**
  * Prefix of the virtual module that carries one source module's StyleX rules.
@@ -152,6 +173,15 @@ export default function uniflowed(options = {}) {
   // and a driver started by hand on a config `uf` never validated gets the same
   // answer for the same reason a project would want.
   const mount = (app.rendering?.modes ?? []).includes("csr") ? "render" : "hydrate";
+  // Whether routes render as React Server Components, which is the default: a
+  // second module graph resolved under `react-server`, a document carrying the
+  // Flight payload it was rendered from, and a browser that hydrates that
+  // payload rather than importing routes. `app.rsc: false` is the application
+  // rendered from its modules, as every uf application was before
+  // ubugeeei-prod/uf#519. See `./internal/flight.js`.
+  const flightState = rendersFlight(app, { mount, routeTarget })
+    ? createFlightState({ root: options.root ?? process.cwd() })
+    : null;
 
   const accessibility = ufConfig.accessibility ?? {};
 
@@ -163,9 +193,11 @@ export default function uniflowed(options = {}) {
       strictMode,
       navigation,
       mount,
+      flightState,
       command: options.command,
       accessibility,
     }),
+    ...(flightState == null ? [] : [clientReferencePlugin(flightState)]),
     mdxPlugin(markdown),
     assetPlugin({
       images: builtins.images ?? {},
@@ -184,6 +216,7 @@ function flowPlugin({
   strictMode,
   navigation,
   mount,
+  flightState,
   command,
   accessibility,
 }) {
@@ -314,10 +347,16 @@ function flowPlugin({
   return {
     name: "uf:flow",
     enforce: "pre",
+    // What `driver.js` runs the three builds with; `null` for an application
+    // rendered from its modules. See `./internal/flight.js`.
+    api: { flight: flightState },
 
     config(userConfig, env) {
       const projectRoot = path.resolve(userConfig.root ?? process.cwd());
       isProduction = env.mode === "production" || env.command === "build";
+      // A reference names the client manifest only in a build, where a client
+      // build writes the chunks it names; a dev server names the URL it serves.
+      if (flightState != null) flightState.production = env.command === "build";
       // Decided here rather than in `configResolved`, because the answer has to
       // reach `optimizeDeps.include` below and that is written in this hook.
       auditsPage =
@@ -357,12 +396,29 @@ function flowPlugin({
           // externalised.
           noExternal: [/^@uniflowed\//],
         },
+        // The graph React Server Components render in, beside the two Vite
+        // always has — declared only for an application that renders them, so
+        // `app.rsc: false` is a Vite configuration with nothing added.
+        ...(flightState == null
+          ? {}
+          : {
+              environments: {
+                [RSC_ENVIRONMENT]: rscEnvironment({
+                  production: env.command === "build",
+                  exclude: uniflowedPackages(projectRoot),
+                }),
+              },
+            }),
       };
     },
 
     configResolved(config) {
       root = config.root;
       base = config.base;
+      if (flightState != null) {
+        flightState.root = config.root;
+        flightState.base = config.base;
+      }
       appRoot = path.resolve(root, routerRoot);
       entryPath = path.resolve(root, appEntry);
     },
@@ -372,11 +428,42 @@ function flowPlugin({
     },
 
     resolveId(id, importer, resolveOptions) {
-      if (id === "@uniflowed/react" && !isSsr(this, resolveOptions)) {
+      // The client's graph, and the rsc graph too. `@uniflowed/react` is
+      // `export * from "react"`, and the rsc graph pre-bundles React's CommonJS
+      // under `react-server`: a star re-export of that namespace names nothing
+      // Vite's module runner can forward, so under `uf dev` every hook a server
+      // component imported from `@uniflowed/react` was `undefined` — `use` first.
+      // Importing `react` itself is the module those names are on. The ssr graph
+      // keeps its own resolution, because React is external there and Node's
+      // interop forwards the names.
+      if (
+        id === "@uniflowed/react" &&
+        (this.environment?.name === RSC_ENVIRONMENT || !isSsr(this, resolveOptions))
+      ) {
         return this.resolve("react", importer, { ...resolveOptions, skipSelf: true });
       }
       if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
       if (id === AUDIT_PUBLIC_PATH) return AUDIT_RESOLVED_ID;
+      // The rsc build cannot know a client chunk's URL, because the client
+      // build that writes the chunks runs after it. It leaves the manifest as an
+      // import, and the ssr build — which bundles the rsc output in — resolves it.
+      if (
+        id === FLIGHT_VIRTUAL.manifest &&
+        flightState?.production === true &&
+        this.environment?.name === RSC_ENVIRONMENT
+      ) {
+        return { id, external: true };
+      }
+      // The React Compiler's runtime, which reads the client's internals and so
+      // cannot run where `react` resolved under `react-server`; see
+      // `compilerRuntimeSource`.
+      if (
+        id === "react/compiler-runtime" &&
+        flightState != null &&
+        this.environment?.name === RSC_ENVIRONMENT
+      ) {
+        return resolved(FLIGHT_VIRTUAL.compilerRuntime);
+      }
       if (VIRTUAL_IDS.has(id)) return resolved(id);
       // A module's own stylesheet, which `transform` below asked for by
       // importing this id. Returning it unchanged marks it resolved without
@@ -390,6 +477,18 @@ function flowPlugin({
       if (id === AUDIT_RESOLVED_ID) return auditRuntimeSource(accessibility?.axe);
       if (id === resolved(VIRTUAL.routes)) {
         const table = scanRoutes(appRoot, { target: routeTarget });
+        // Under React Server Components the table is split by graph rather than
+        // filtered. The rsc graph renders routes, so it gets every route and
+        // boundary and no handler or middleware: those answer a request, and
+        // importing one here would resolve its dependencies under
+        // `react-server` for nothing. The ssr graph gets exactly those two,
+        // because every route it renders reaches it as a payload.
+        if (flightState != null && this.environment?.name === RSC_ENVIRONMENT) {
+          return routesModuleSource({ ...table, handlers: [], middleware: [] });
+        }
+        if (flightState != null && isSsr(this, loadOptions)) {
+          return routesModuleSource({ ...table, routes: [], notFound: [], errors: [] });
+        }
         // The server renders every route, so the server's table is the whole
         // one and is generated with no filter at all. Only the browser's copy
         // is split.
@@ -404,6 +503,12 @@ function flowPlugin({
       // deliberately: it is what a link does, and a dev server whose links
       // behave differently from the deployment is the wrong thing to be
       // looking at. See `clientModuleSource`.
+      if (id === resolved(VIRTUAL.client) && flightState != null) {
+        return flightClientSource(entryPath, {
+          strictMode: strictMode && !isProduction,
+          navigation,
+        });
+      }
       if (id === resolved(VIRTUAL.client)) {
         return clientModuleSource(entryPath, {
           strictMode: strictMode && !isProduction,
@@ -411,7 +516,33 @@ function flowPlugin({
           mount,
         });
       }
-      if (id === resolved(VIRTUAL.server)) return serverModuleSource(entryPath);
+      if (id === resolved(VIRTUAL.server)) {
+        return flightState == null
+          ? serverModuleSource(entryPath)
+          : flightServerSource(entryPath, VIRTUAL.routes, VIRTUAL.actions);
+      }
+      if (flightState != null) {
+        if (id === resolved(FLIGHT_VIRTUAL.entry)) return rscEntrySource(VIRTUAL.routes);
+        if (id === resolved(FLIGHT_VIRTUAL.compilerRuntime)) return compilerRuntimeSource();
+        if (id === resolved(FLIGHT_VIRTUAL.bridge)) {
+          if (server != null) return devBridgeSource();
+          if (flightState.rscOutput == null) {
+            throw new Error(
+              "uf: the server bundle was asked to bundle the rsc graph before it was built. " +
+                "`uf build` builds `virtual:uf/rsc` first; a build started some other way has to as well.",
+            );
+          }
+          return builtBridgeSource(flightState.rscOutput);
+        }
+        if (id === resolved(FLIGHT_VIRTUAL.manifest)) {
+          return clientManifestSource(flightState.chunkUrls);
+        }
+        if (id === resolved(FLIGHT_VIRTUAL.references)) {
+          return server != null
+            ? devReferencesSource(root, base)
+            : builtReferencesSource(flightState.chunkUrls);
+        }
+      }
       // Only `virtual:uf/server` imports this, so it is only ever asked for in
       // the server environment — but the table it carries is every callable
       // endpoint of the build, so it is worth saying that a browser asking for
@@ -438,7 +569,10 @@ function flowPlugin({
       // and an import of anything else is a build error rather than a silent
       // `undefined`. `crates/uf_rsc/src/graph/build.rs` colours these modules
       // server for the same reason, so the analysis and the bundle agree.
-      if (!isSsr(this, loadOptions)) {
+      //
+      // Nor in the rsc graph: a server component that calls an action is calling
+      // a function on the server, and it gets the function.
+      if (!isSsr(this, loadOptions) && this.environment?.name !== RSC_ENVIRONMENT) {
         const references = actionTables().modules.get(cleanId(id));
         if (references != null) return actionReferenceSource(references);
       }
@@ -447,7 +581,10 @@ function flowPlugin({
 
     async transform(code, id, transformOptions) {
       if (!isFlowModule(id)) return null;
-      const ssr = transformOptions?.ssr === true || this.environment?.name === "ssr";
+      // Both server graphs: neither gets a refresh wrapper, and the rsc graph's
+      // findings are reported as that graph's.
+      const rsc = this.environment?.name === RSC_ENVIRONMENT;
+      const ssr = transformOptions?.ssr === true || this.environment?.name === "ssr" || rsc;
       const refresh = !isProduction && !ssr && server != null;
       const out = await ensureService().transform(cleanId(id), code, {
         development: !isProduction,
@@ -459,7 +596,7 @@ function flowPlugin({
         id: cleanId(id),
         root,
         diagnostics: out.diagnostics,
-        environment: ssr ? "ssr" : "client",
+        environment: rsc ? RSC_ENVIRONMENT : ssr ? "ssr" : "client",
         reported,
         suppressed,
       });
@@ -546,8 +683,27 @@ function flowPlugin({
       return tags;
     },
 
+    // An edit to a server component changes what the rsc graph renders and no
+    // module the browser holds, so Vite has nothing to tell the browser. It is
+    // reloaded, which renders the edit; an edit to a client module — which the
+    // rsc graph only holds references to — is left to Fast Refresh.
+    hotUpdate({ modules }) {
+      if (flightState == null || server == null) return;
+      if (this.environment?.name !== RSC_ENVIRONMENT) return;
+      const serverSide = modules.some((module) => {
+        const file = module.file ?? cleanId(module.id ?? "");
+        return file !== "" && !flightState.clientModules.has(file);
+      });
+      if (serverSide) server.environments.client.hot.send({ type: "full-reload", path: "*" });
+    },
+
     configureServer(devServer) {
       server = devServer;
+      // The ssr graph's way into the rsc graph; see `devBridgeSource`.
+      if (flightState != null) {
+        globalThis[Symbol.for(DEV_RSC_HOOK)] = () =>
+          devServer.environments[RSC_ENVIRONMENT].runner.import(FLIGHT_VIRTUAL.entry);
+      }
       devServer.httpServer?.once("close", () => {
         service?.close();
         service = null;
@@ -713,6 +869,29 @@ function flowPlugin({
               // and a `<form action>` navigation both send `Accept:
               // text/html`, and both want the handler's answer — which is the
               // whole of ubugeeei-prod/uf#349.
+              // A browser that is navigating, asking for the next route's
+              // payload: after the guard and before the handlers, for the
+              // reasons `@uniflowed/server`'s `internal/flight.js` gives.
+              const payloadFor =
+                entry.flight == null ? null : flightDocumentPath(url.split("?")[0]);
+              if (payloadFor != null && (request.method === "GET" || request.method === "HEAD")) {
+                const query = url.includes("?") ? url.slice(url.indexOf("?")) : "";
+                const target = payloadFor + query;
+                const answered = await entry.flight(target, {
+                  onError: (error) => reportRenderError(devServer, target, error),
+                });
+                if (answered.error != null) reportRenderError(devServer, target, answered.error);
+                if (request.method === "HEAD") await answered.stream?.cancel();
+                await send(
+                  response,
+                  new Response(request.method === "HEAD" ? null : answered.stream, {
+                    status: answered.status,
+                    headers: answered.headers,
+                  }),
+                );
+                return true;
+              }
+
               const handled = await entry.dispatch(asRequest);
               if (handled != null) {
                 await send(response, handled);
@@ -778,7 +957,18 @@ function flowPlugin({
                   onError: (error) => reportRenderError(devServer, url, error),
                   // Vite sees the head and only the head. That is what lets the
                   // development server stream like every other host — see below.
-                  transformHead: (head) => devServer.transformIndexHtml(url, head),
+                  //
+                  // Under React Server Components it is also where a server
+                  // component's stylesheets are linked in development: they are
+                  // in the rsc graph, which the browser never loads, and they
+                  // enter it when the route's modules are imported — after this
+                  // call and before the head is written, which is when this
+                  // runs. See `devStylesheets`.
+                  transformHead: (head) =>
+                    devServer.transformIndexHtml(
+                      url,
+                      flightState == null ? head : linkStylesheets(head, devStylesheets(devServer)),
+                    ),
                   // And what the streaming actually did, when it changed. The
                   // router has already decided there is something worth saying
                   // and written the words — see its `internal/inspector.js`,
