@@ -149,6 +149,7 @@ const READ_ONLY: &[&[&str]] = &[
     &["info"],
     &["inspect"],
     &["lint"],
+    &["lint", "--rules"],
     &["routes", "list"],
     &["ui", "list"],
     &["ui", "diff"],
