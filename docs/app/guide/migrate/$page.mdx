@@ -207,7 +207,7 @@ The conventions line up more closely than the capabilities do:
 | `not-found.tsx` | `$not-found.js`, a segment file resolved by the nearest one above the path; a project that declares none gets uf's page inside the root's layouts |
 | `template.tsx` | `$template.js` — a layout that remounts, keyed on the pathname |
 | `@slot/` | `@slot/` — a parallel route: the segment's own layout receives it as a prop beside `children`, and the slot's pages are matched against the same URL. Slot-local `loading`, `template` and browser `error` files compose inside the slot; per-slot `not-found` is still refused ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
-| `(.)folder/` | **refused by name.** uf has no intercepting routes: a navigation carries where it is going and not where it came from ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
+| `(.)folder/` | `@slot/(.)folder/` — an intercepting route, inside the slot it renders into: a client navigation from a page the slot is on shows it there, and a reload renders the page the URL names. Outside a slot it is refused, and so is one whose URL has no page of its own; see [Intercepting routes](/guide/routing#intercepting-routes) |
 | `default.tsx` | `$default.js`, directly inside the `@slot` it belongs to. There is no `default` for `children`: a URL that matches no page is a 404 |
 | `middleware.ts` | `$middleware.js`, never called |
 | `generateStaticParams` | `generateStaticParams` |

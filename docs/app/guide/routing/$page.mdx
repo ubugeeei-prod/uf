@@ -63,23 +63,18 @@ app/docs/[...path]/$page.js    →  /docs/a/b/c
 
 A directory named `@team` is a [parallel-route slot](#parallel-routes): it is
 not a URL segment at all. There is no escape hatch for a URL segment that
-really begins with `@`; capture it with a `[param]` instead.
+really begins with `@`; capture it with a `[param]` instead. Inside a slot, a
+directory named `(.)photo` is an [intercepting route](#intercepting-routes),
+and it is not a URL segment either.
 
-### One spelling that is refused
-
-A directory named `(.)photo`, `(..)photo`, `(...)photo`, `(..)(..)photo` or
-`(..)(..)(..)photo` is an **intercepting route**. uf does not have interception
-— a navigation carries where it is going and not where it came from — so the
-directory is refused by name, by `uf build`, by `uf dev` and by `uf lint`.
-
-It is refused rather than ignored, and the difference is the point. Until
-[#267](https://github.com/ubugeeei-prod/uf/issues/267) neither this name nor
-`@team` meant anything to the router, so both fell through to "an ordinary URL
-segment": `app/@team/$page.js` served `/@team`,
-`app/feed/(.)photo/$page.js` served `/feed/(.)photo` — a `(group)` is a
-segment that *ends* in `)`, which `(.)photo` does not — and both went into the
-generated `RoutePath`, so `route("/@team", …)` type checked. A person migrating
-from Next.js got a project that looked like it worked.
+Until [#267](https://github.com/ubugeeei-prod/uf/issues/267) neither spelling
+meant anything to the router, so both fell through to "an ordinary URL
+segment": `app/@team/$page.js` served `/@team`, `app/feed/(.)photo/$page.js`
+served `/feed/(.)photo` — a `(group)` is a segment that *ends* in `)`, which
+`(.)photo` does not — and both went into the generated `RoutePath`, so
+`route("/@team", …)` type checked. A person migrating from Next.js got a project
+that looked like it worked. Both are routes now, and what is spelled like one
+without being one is refused by name rather than served as a URL.
 
 A `(group)` is untouched: it ends in `)` and always did.
 
@@ -198,11 +193,11 @@ Four rules, each refused by name rather than by silence:
   layout already receives — `@children` is the tempting one, because `children`
   is what Next.js calls the page, and here the page always is `children`;
 - `$default.js` belongs directly inside a slot directory, and nowhere else;
-- a slot holds pages, layouts, templates, loading fallbacks, nested slots and
-  one default — `$not-found.js`, `$route.js` or `$middleware.js` inside one is
-  refused, because uf's slots do not carry those request-level answers of
-  their own yet
-  ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
+- a slot holds pages, layouts, templates, loading fallbacks, nested slots,
+  [intercepting routes](#intercepting-routes) and one default —
+  `$not-found.js`, `$route.js` or `$middleware.js` inside one is refused,
+  because uf's slots do not carry those request-level answers of their own
+  yet ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
 
 `$loading.js` in a slot is slot-local. It wraps the slot's matched page and the
 layouts under that slot, not the segment's `children`, so a slow side panel can
@@ -233,6 +228,168 @@ A slot page's `loader` is not run — a slot's data has nowhere to be embedded f
 hydration — and a slot page that exports one says so rather than being handed
 `undefined`. Fetch inside the component, or put the data on the page the URL
 names.
+
+## Intercepting routes
+
+A directory inside a slot whose name starts with a marker — `(.)photo`,
+`(..)photo`, `(...)photo` — is an **intercepting route**: what the slot shows
+when a client navigation reaches the URL it names, *instead of* the page that
+URL names. The modal that opens over a feed, with the photo's own address in
+the bar, is the shape it exists for:
+
+```
+app/feed/$layout.js                     the frame, which renders `modal`
+app/feed/$page.js                    →  /feed
+app/feed/photo/[id]/$page.js         →  /feed/photo/:id   the photo page
+app/feed/@modal/(.)photo/[id]/$page.js  /feed/photo/:id   in `modal`, over the feed
+```
+
+```js
+// @flow
+// app/feed/$layout.js
+import * as React from "react";
+
+export default component Feed(children: React.Node, modal: React.Node) {
+  return (
+    <>
+      <main>{children}</main>
+      {modal}
+    </>
+  );
+}
+```
+
+**Two ways to arrive at one URL, and two answers.**
+
+- A **client navigation** that starts on a page the slot is on — any page
+  under `app/feed/$layout.js` — renders the intercepting page in `modal`. The
+  address bar says `/feed/photo/1`. Everything else stays exactly where it
+  was: `children` goes on rendering the page the reader came from, with its
+  data, its scroll position and the state its components were holding, and
+  every other slot keeps what it was showing.
+- **Everything else** — a reload, a link somebody was sent, a new tab, a
+  crawler, `uf build`'s prerender — renders `app/feed/photo/[id]/$page.js`.
+  A request carries where it is going and not what was on screen when it was
+  made, so the server never renders an intercepting page, and the document for
+  `/feed/photo/1` is always the photo page.
+
+A navigation from a page the slot is *not* on — `/about`, which renders no
+feed layout — is an ordinary navigation to the photo page: there is no
+`modal` on screen for it to render into.
+
+### What the marker counts
+
+The marker says which URL the directory stands in for, counted in **URL
+segments** from where the directory sits — not in directories. A `@slot` and a
+`(group)` contribute no URL segment, so they are not levels to climb past.
+
+| Directory | Intercepts |
+| --- | --- |
+| `app/feed/@modal/(.)photo/` | `/feed/photo` — the level the directory is at |
+| `app/feed/@modal/(..)photo/` | `/photo` — one URL segment up |
+| `app/shop/[category]/@modal/(..)(..)photo/` | `/photo` — two up |
+| `app/shop/[category]/@modal/(...)photo/` | `/photo` — from the router root, however deep |
+| `app/feed/@modal/(.)[id]/` | `/feed/:id` — a parameter is a segment like any other |
+
+Everything below the marked directory is ordinary: `(.)photo/[id]/` stands in
+for `/feed/photo/:id`, and a `$layout.js`, `$loading.js`, `$template.js` or
+`$error.js` inside the slot wraps an intercepting page exactly as it wraps any
+other page in the slot.
+
+### Back, forward, reload
+
+The history entry an interception writes remembers where the navigation came
+from, so the back and forward buttons put the same screen back: back from the
+modal is the feed with nothing in the slot, and forward is the modal over the
+same feed again. A second interception from inside the first — the next photo,
+opened from the modal — is intercepted from the feed too, so back from the
+second photo is the first.
+
+A reload of an intercepted entry renders the photo page, because a reload is a
+request. The entry forgets it was intercepted, so coming back to it later
+renders the photo page again rather than a modal over a page the reader never
+saw one on.
+
+A few things follow from "the page underneath stays":
+
+- `useRoute()` describes the page `children` renders — during an interception,
+  the page the navigation came from. The intercepting page gets its own
+  `params`, and the intercepted URL's `searchParams`.
+- An intercepted navigation does not scroll the window; the modal opens over
+  the post that was clicked. Pass `scroll: true` to `router.push` to scroll
+  anyway.
+- `router.refresh()` refreshes both halves: the page underneath and the
+  interception over it.
+- A `Link` prefetches what the next render will need, which for an
+  interceptable URL is the intercepting page.
+- The document title stays the page underneath's. A slot page contributes no
+  metadata, and an intercepting page is a slot page.
+- An interception arrives under the intercepting page's own
+  [`viewTransition`](#view-transitions), or that of a layout inside the slot,
+  so a stylesheet can animate a modal opening differently from a page
+  arriving. Back arrives under the page underneath's, as any navigation
+  arrives under its destination's.
+
+To close the modal, navigate back — `router.back()` — or link to where the
+reader came from.
+
+### What is refused
+
+Each of these is refused by name rather than served. The first four are about
+how a directory is spelled and where it is, so `uf lint`
+(`router/unsupported-segment`) reports them with the sentence `uf build` and
+`uf dev` give. The last two are about the route table as a whole, so they are
+refused wherever the table is read — `uf build`, `uf dev`, `uf routes`,
+`uf inspect` — and not by `uf lint`, which reads one file at a time.
+
+| Written | Why it is refused |
+| --- | --- |
+| `app/feed/(.)photo/` — outside a slot | there is no named place for it to render into |
+| `(....)photo`, `(.)(.)photo`, `(...)(..)photo` | a marker uf does not read; `(.)` and `(...)` stand alone, and `(..)` repeats |
+| `(.)(gallery)`, `(.)@photo` | no URL segment after the marker for it to stand in for |
+| `app/@modal/(..)photo/` | it climbs above the router root, and there is no URL up there |
+| `app/feed/@modal/(.)photo/[id]/` with no `app/feed/photo/[id]/$page.js` | nothing serves the URL it intercepts, so a reload of the address the modal put in the bar would be a 404 |
+| `app/docs/[...path]/@panel/(.)edit/` | the URL it stands in for has a catch-all before `edit`, and no URL can reach a segment after a catch-all |
+
+"Serves" means every URL the interception matches: `app/docs/[...path]/$page.js`
+serves what `app/docs/@panel/(.)[slug]/` intercepts, and
+`app/photo/[id]/$page.js` does not serve what `app/photo/@panel/(.)[...rest]/`
+intercepts, because that also matches `/photo/a/b`.
+
+An intercepting page is a slot page, so the slot rules apply to it too: it
+takes no `loader` — fetch inside the component, or put the data on the page
+the URL names — and `uf routes add` does not write one, because an
+intercepting route is not a URL.
+
+### Where it needs the client router
+
+Interception is something a client navigation does, so it needs a page that
+the client router is running on:
+
+- A route under a slot that intercepts always ships its page to the browser,
+  even when nothing in it is a `"use client"` module. A page served as a
+  document with nothing hydrated on it starts no client navigation, and the
+  interception would never render.
+- Under `app.rendering.navigation: "document"` every navigation is a document
+  request, so an intercepting route never renders and the page its URL names
+  always does. Nothing breaks; the modal is simply not there.
+- `@uniflowed/router/native` does not intercept. A native navigator has no
+  address bar for the screen to disagree with, and already presents a screen
+  modally over the one below it — so `/feed/photo/1` resolves to the ordinary
+  route, and presenting it as a modal is the navigator's decision.
+
+### Coming from Next.js
+
+The markers mean what they mean in Next.js, counted in route segments the same
+way. Two things are stricter here, on purpose:
+
+- **Only inside a slot.** Next.js also lets an interception replace
+  `children` outright. Here an interception is always something shown in a
+  named place, over a page that is still there.
+- **The page it stands in for has to exist.** An interception with no page at
+  its URL works for the reader who clicked and is a 404 for everybody they
+  send the link to, so it is refused where the file is rather than found out
+  from a reload.
 
 ## Not found nests too
 
@@ -649,6 +806,10 @@ renders would have done on its own. Nothing about writing the link changes,
 and the page it lands on is the same page; the difference is a full load
 rather than a transition. `useRouter().push()` and the back button do the same
 thing for the same reason.
+
+A `Link` to a URL that a slot on screen intercepts is the other exception: it
+renders the intercepting page into that slot and leaves the page it was clicked
+on where it was — see [Intercepting routes](#intercepting-routes).
 
 ### View transitions
 
