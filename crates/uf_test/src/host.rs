@@ -352,9 +352,9 @@ impl HostCommand {
 
     /// Whether this host can collect coverage at all.
     ///
-    /// Node only, and the reason is not a missing feature of uf's: Bun's
-    /// preload transforms with `sourceMap: false` and implements no
-    /// `NODE_V8_COVERAGE`, and Deno's ahead-of-time loader has no equivalent
+    /// Node only, and the reason is not a missing feature of uf's: Bun
+    /// implements no `NODE_V8_COVERAGE`, and Deno's ahead-of-time loader has no
+    /// equivalent
     /// coverage flush or source-map cache to read back. A caller is expected to
     /// say so rather than report a run of zeroes.
     ///
