@@ -478,6 +478,21 @@ strong {
   font-weight: 560;
 }
 
+/* A section's heading is the link to its landing page. It keeps the heading's
+   type — small, mono, uppercase — rather than the page links' rule and indent,
+   so the list under it still reads as what the heading contains. */
+.manual-nav h2 a {
+  border-left: 0;
+  color: inherit;
+  display: inline;
+  padding: 0;
+}
+
+.manual-nav h2 a:hover,
+.manual-nav h2 a[aria-current="page"] {
+  color: var(--doc-ink);
+}
+
 .contents {
   font-size: 0.85rem;
 }
@@ -753,56 +768,15 @@ tbody tr:last-child :is(td, th) {
   margin-top: 0;
 }
 
-.hero-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.4rem;
-  margin-top: 2.2rem;
-}
-
-.button {
-  background: var(--doc-ink);
-  border: 1px solid var(--doc-ink);
-  color: var(--doc-paper);
-  display: inline-block;
-  font-size: 0.95rem;
-  font-weight: 560;
-  padding: 0.55rem 1.15rem;
-  text-decoration: none;
-}
-
-.button:visited {
-  color: var(--doc-paper);
-}
-
-.button:hover {
-  background: transparent;
-  color: var(--doc-ink);
-}
-
-.button-quiet {
-  background: transparent;
-  border-color: var(--doc-rule-strong);
-  color: var(--doc-ink);
-}
-
-.button-quiet:visited {
-  color: var(--doc-ink);
-}
-
-.button-quiet:hover {
-  border-color: var(--doc-ink);
-}
-
-/* The claims list: each row is a claim and the page that proves it. No
-   icons, no cards — a claim and its evidence, which is a definition list. */
-.claims {
+/* The home page's paths: each row is the question a reader arrives with and
+   the section of the manual that answers it. No icons and no cards — a
+   question and where it is answered, which is a definition list. */
+.paths {
   border-top: 1px solid var(--doc-rule);
-  margin: 3.5rem 0 0;
+  margin: 2rem 0 0;
 }
 
-.claims > div {
+.paths > div {
   border-bottom: 1px solid var(--doc-rule);
   display: grid;
   gap: 0.35rem 2.5rem;
@@ -810,26 +784,31 @@ tbody tr:last-child :is(td, th) {
 }
 
 @media (min-width: 48rem) {
-  .claims > div {
-    grid-template-columns: 15rem minmax(0, 1fr);
+  .paths > div {
+    grid-template-columns: 19rem minmax(0, 1fr);
   }
 }
 
-.claims dt {
+.paths dt {
   font-family: var(--uf-font-display);
   font-size: 1rem;
   font-weight: 620;
   letter-spacing: -0.015em;
 }
 
-.claims dd {
+.paths dd {
   color: var(--doc-ink-muted);
+  display: grid;
+  gap: 0.2rem;
   margin: 0;
   max-width: 60ch;
 }
 
-.claims dd a {
-  white-space: nowrap;
+/* The section's name on a line of its own, above the sentence that says
+   whether it is the right one. */
+.paths dd a {
+  font-weight: 560;
+  justify-self: start;
 }
 
 /* A warning banner for the one thing a visitor must know before trying
@@ -924,15 +903,6 @@ tbody tr:last-child :is(td, th) {
     font-size: 1.1rem;
   }
 
-  .hero-actions {
-    gap: 0.75rem;
-  }
-
-  .button {
-    flex: 1 1 auto;
-    text-align: center;
-  }
-
   /* A code block on a phone is read by scrolling it, so it may use the full
      width of the screen rather than sitting inside the gutter. */
   pre,
@@ -952,7 +922,7 @@ tbody tr:last-child :is(td, th) {
   }
 
   /* A definition list cannot be two columns in 375px. */
-  .claims > div {
+  .paths > div {
     gap: 0.3rem;
   }
 
@@ -1015,6 +985,53 @@ tbody tr:last-child :is(td, th) {
 
 .not-found li:first-child {
   border-top: 1px solid var(--doc-rule);
+}
+
+/* ------------------------------------------------------------------ *
+ * A section's landing page
+ * ------------------------------------------------------------------ */
+
+/* The section's pages, numbered because the order is the advice: a rule
+   between each, the page's title, and the one line that says whether to open
+   it. `.prose` is in the selector because a list in the prose column is
+   indented and spaced for running text, and this one is a table of contents. */
+.prose .section-contents {
+  border-top: 1px solid var(--doc-rule);
+  counter-reset: page;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.prose .section-contents li {
+  border-bottom: 1px solid var(--doc-rule);
+  counter-increment: page;
+  display: grid;
+  gap: 0.15rem 1rem;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  margin: 0;
+  padding: 0.85rem 0;
+}
+
+.prose .section-contents li::before {
+  color: var(--doc-ink-faint);
+  content: counter(page, decimal-leading-zero);
+  font-family: var(--uf-font-mono);
+  font-size: 0.78rem;
+  grid-row: span 2;
+  padding-top: 0.2rem;
+}
+
+.prose .section-contents a {
+  font-family: var(--uf-font-display);
+  font-weight: 600;
+  justify-self: start;
+  letter-spacing: -0.015em;
+}
+
+.prose .section-contents span {
+  color: var(--doc-ink-muted);
+  font-size: 0.95rem;
 }
 
 /* The home page is one seam from the masthead to the colophon — the whole
