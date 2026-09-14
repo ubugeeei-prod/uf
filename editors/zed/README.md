@@ -64,7 +64,8 @@ Once the Rust half exists, `uf lsp` answers exactly this much, and
 * **Hover**: the rule behind a diagnostic, what an import specifier names, what
   a rule id in a suppression comment means, and a key of `uf.config.js`.
 * **Completion** in `uf.config.js`: the keys valid at the cursor with their
-  documentation and type, and the values of a key whose type is a fixed set.
+  documentation and type, the values of a key whose type is a fixed set, and
+  a tool spec's names and, after `@`, its versions.
 
 Not go-to-definition, rename, references, completion in any other file, or the
 type at a position. `uf lsp` advertises none of them.

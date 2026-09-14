@@ -43,7 +43,7 @@ server and asserts each of these.
 | Quick fixes | `M-x eglot-code-actions` on a diagnostic. |
 | Fix all | `(eglot-code-actions (point-min) (point-max) "source.fixAll" t)`, which applies every mechanical fix in the file at once. `M-x eglot-code-actions` also lists it. |
 | Hover | `M-x eldoc`, or `eldoc-mode` in the echo area, including over a key of `uf.config.js`. |
-| Completion | In `uf.config.js`: `completion-at-point` (`C-M-i`), which Eglot feeds from the server, or Company or Corfu on top of it. The keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. |
+| Completion | In `uf.config.js`: `completion-at-point` (`C-M-i`), which Eglot feeds from the server, or Company or Corfu on top of it. The keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
 
 Format on save is off. The hook to add is written out in `uf.el`.
 
