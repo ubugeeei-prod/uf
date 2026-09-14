@@ -5,12 +5,12 @@
 ;; of them from the same crates `uf lint' and `uf fmt' use.
 ;;
 ;; The part that matters is the project root.  `uf lsp' reads `uf.config.js'
-;; from its own working directory, once, at start-up, and that read is where a
-;; project's formatter width, quote style and lint levels come from.  Eglot
-;; starts a server with `default-directory' set to the project root, so making
-;; project.el agree that a directory with a `uf.config.js' is a project is what
-;; makes the server read the right file.  `uf lsp --cwd' is not an alternative:
-;; the flag is accepted and ignored.
+;; once, at start-up -- from the directory `--cwd' names, or else from its own
+;; working directory -- and that read is where a project's formatter width,
+;; quote style and lint levels come from.  Eglot starts a server with
+;; `default-directory' set to the project root, so making project.el agree that
+;; a directory with a `uf.config.js' is a project is what makes the server read
+;; the right file, with no `--cwd' needed.
 
 ;;; Code:
 
