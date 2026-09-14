@@ -64,12 +64,12 @@
 // settles it on the line after the last byte.
 //
 // It has to be the *entry's* `beginRequest` rather than one imported here: the
-// request lives in an `AsyncLocalStorage` belonging to one copy of
-// `@uniflowed/server`, and the copy that matters is the one inside the
-// application bundle. A host that resolved its own would begin a request the
-// application cannot see, and nothing would fail loudly — the guard would run,
-// the page would render, and every `cookies()` in it would throw as though no
-// host had run at all. See ubugeeei-prod/uf#389.
+// request store is shared by every copy of one release of `@uniflowed/server`,
+// and the release that matters is the one inside the application bundle. A
+// host that resolved its own could be holding another release, would begin a
+// request the application cannot see, and nothing would fail loudly — the
+// guard would run, the page would render, and every `cookies()` in it would
+// throw as though no host had run at all. See ubugeeei-prod/uf#389.
 
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -348,10 +348,10 @@ export function assetsFromManifest(manifest) {
  * its callback whether the render threw or not, and `drainDeferred` already
  * reports a failing task rather than propagating it.
  *
- * `entry.beginRequest` and not an import: the request lives in an
- * `AsyncLocalStorage` belonging to one copy of `@uniflowed/server`, and the
- * copy that matters is the one inside the application bundle. See
- * `serverModuleSource` in `./routes.js`.
+ * `entry.beginRequest` and not an import: the request store is shared by every
+ * copy of one release of `@uniflowed/server`, and the release that matters is
+ * the one inside the application bundle. See `serverModuleSource` in
+ * `./routes.js`.
  *
  * The one case this cannot be exact about is a request uf hands back rather
  * than answers: a caller whose `catch` is `next(error)` gives the response to
@@ -385,10 +385,10 @@ export async function withRequest(entry, request, body) {
  * `finally` here. A caller that always answers should use [`withRequest`] and
  * not think about it.
  *
- * `entry.beginRequest` and not an import: the request lives in an
- * `AsyncLocalStorage` belonging to one copy of `@uniflowed/server`, and the
- * copy that matters is the one inside the application bundle. See
- * `serverModuleSource` in `./routes.js`.
+ * `entry.beginRequest` and not an import: the request store is shared by every
+ * copy of one release of `@uniflowed/server`, and the release that matters is
+ * the one inside the application bundle. See `serverModuleSource` in
+ * `./routes.js`.
  *
  * What this host can do is put on the request the way `createFetchHandler`
  * puts it on the one it owns. `uf dev` and `uf build --compile` reach a route

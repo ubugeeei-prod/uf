@@ -33,14 +33,15 @@
 //
 // `beginRequest` is passed in rather than imported from `./internal/context.js`
 // beside this file, and that is the one thing about this module that looks
-// wrong and is not. The request lives in an `AsyncLocalStorage` belonging to a
-// module *instance*, and the instance the application reads is the one bundled
-// into `.uf/build/server/server.js` — not the one this file resolves from the
-// host's `node_modules`. A host that began a request in the wrong storage
-// would fail silently: the guard would run, the page would render, and every
-// `cookies()` in it would throw as though no host had run at all. So the
-// bundle hands it out, `@uniflowed/router/server` re-exports it, and a caller
-// passes it here. See ubugeeei-prod/uf#389.
+// wrong and is not. Every copy of one release of `@uniflowed/server` shares the
+// process's request store (`./internal/process-state.js`), but the copy this
+// file resolves from the host's `node_modules` need not be the release bundled
+// into `.uf/build/server/server.js` — and two releases keep two stores on
+// purpose, because their request contexts may differ in shape. A host that
+// began a request in the wrong store would fail silently: the guard would run,
+// the page would render, and every `cookies()` in it would throw as though no
+// host had run at all. So the bundle hands it out, `@uniflowed/router/server`
+// re-exports it, and a caller passes it here. See ubugeeei-prod/uf#389.
 //
 // # The order is Vite's
 //

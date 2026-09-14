@@ -32,6 +32,28 @@ pub(crate) fn render_ignore_deprecation(ui: &mut Ui, deprecation: Option<&str>) 
     });
 }
 
+/// Tell a project still writing a tool key ubugeeei-prod/uf#940 replaced which
+/// key replaced it.
+///
+/// The same shape as [`render_ignore_deprecation`], for `env.toolchain`,
+/// `builder.module`, `pm.packageManager` and the object form of `test.runner`.
+/// Each command passes the sentences for the keys it reads, so a deprecation
+/// appears where the old key is still doing something — `uf install` says
+/// nothing about `builder.module` — and nothing is printed for a project that
+/// never wrote one.
+pub(crate) fn render_deprecations(ui: &mut Ui, deprecations: impl IntoIterator<Item = String>) {
+    let deprecations: Vec<String> = deprecations.into_iter().collect();
+    if deprecations.is_empty() {
+        return;
+    }
+    ui.render(|renderer, out| {
+        for deprecation in &deprecations {
+            renderer.status(out, Status::Warn, deprecation);
+        }
+        renderer.blank(out);
+    });
+}
+
 /// The sentence [`render_ignore_deprecation`] prints, for this project.
 pub(crate) fn ignore_deprecation(config: &uf_config::UniflowedConfig) -> Option<&'static str> {
     config.project_ignore().source.deprecation()

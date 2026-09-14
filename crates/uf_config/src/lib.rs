@@ -16,6 +16,8 @@ mod lint;
 pub mod plugins;
 mod rendering;
 mod runtime;
+pub mod schema;
+pub mod tools;
 
 pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
@@ -36,6 +38,11 @@ pub use runtime::{
     CapabilityJsHost, CapabilityJsHostConfig, DeployAdapter, DeployAnywhereConfig,
     NativeServerAdapter, NativeServerConfig, RuntimeConfig, RuntimeEngine, ServerConfig,
     ServerEngine,
+};
+pub use tools::{
+    BUN_TEST_RUNNER_ISSUE, BuilderSpec, DeclaredTool, PackageManagerName, PackageManagerSpec,
+    ParseSpec, RuntimeSpec, SpecError, TestRunnerConfig, TestRunnerSpec, ToolDeclaration, ToolName,
+    ToolRole, ToolSource, ToolSpec, ToolVersion, VITE_BUILDER_MODULE, Written,
 };
 
 pub const CONFIG_FILES: &[&str] = &["uf.config.js"];
@@ -74,6 +81,15 @@ pub struct UniflowedConfig {
     pub ignore: Option<Vec<CompactString>>,
     pub lint: LintConfig,
     pub package: PackageConfig,
+    /// The package manager `uf install`, `uf add`, `uf update` and the rest
+    /// drive, and optionally which release of it: `"pnpm@12.0.0"`.
+    ///
+    /// `None` — the key absent — is the detection uf has always done:
+    /// `pm.packageManager`, then `package.json#packageManager`, then the
+    /// lockfile. Present, it comes before all three, and `pm.packageManager`
+    /// is its deprecated spelling. See [`tools`] for the grammar and
+    /// [`UniflowedConfig::package_manager_tool`] for the lookup.
+    pub package_manager: Option<Written<PackageManagerSpec>>,
     /// What the project's own code may reach, or `None` for no limit.
     ///
     /// `None` — the key absent — is the toolchain uf has always been: a test,
@@ -97,6 +113,16 @@ pub struct UniflowedConfig {
     pub publish: PublishConfig,
     pub release: ReleaseConfig,
     pub rm: RuntimeManagerConfig,
+    /// The runtime every command runs on unless a section names its own, and
+    /// optionally which release of it: `"node@26"`.
+    ///
+    /// `uf start`, `uf run` and `uf exec` read it directly; `uf dev`,
+    /// `uf build` and `uf preview` read it after `build.runtime`; `uf test`
+    /// after `test.runtime` and the runtime its runner brings. `None` is the
+    /// host selection uf has always made — `app.runtime.capabilityJsHost`, on
+    /// `PATH` — so a project that writes none of these runs on what it ran on.
+    /// See [`tools`].
+    pub runtime: Option<Written<RuntimeSpec>>,
     pub server: ServerConfig,
     pub site: SiteConfig,
     pub std: StdConfig,
@@ -222,7 +248,9 @@ impl AxeConfig {
 /// at all — `@uniflowed/vite` was not one implementation of a contract, it was
 /// reached by name from four commands.
 ///
-/// [`module`](Self::module) is a module specifier resolved the way any other
+/// The builder is named by `build.builder` now — [`BuildConfig::builder`] —
+/// beside the build it describes, and this section is the spelling that came
+/// first. Either way the name is a module specifier resolved the way any other
 /// provider is: a package name found by walking up `node_modules`, or a path
 /// starting with `.` or `/` that must stay inside the project. What is found
 /// has to satisfy the contract in `docs/architecture.md` — a driver executable
@@ -232,26 +260,24 @@ impl AxeConfig {
 /// This is not an `eject`. Red line 4 forbids one, and this is its opposite:
 /// the seam a project reaches for when the default is wrong is a *provider*
 /// swap, and it is reversible by deleting one line.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct BuilderConfig {
-    /// The module that implements the builder contract.
+    /// The module that implements the builder contract, in the spelling that
+    /// came before `build.builder`.
     ///
-    /// `"@uniflowed/vite"` unless a project says otherwise. A relative path is
-    /// resolved from the project root and may not climb out of it, which is
-    /// the same rule `uf_plugin` applies to a plugin: a config file is
-    /// untrusted input, and "run this file as the toolchain" is the most
-    /// dangerous thing it can say.
-    pub module: CompactString,
-}
-
-impl Default for BuilderConfig {
-    fn default() -> Self {
-        Self {
-            module: CompactString::const_new("@uniflowed/vite"),
-        }
-    }
+    /// **Deprecated**, and read only when `build.builder` is absent; see
+    /// [`UniflowedConfig::builder_tool`]. `None` rather than
+    /// `"@uniflowed/vite"` when absent, because the deprecation is for a
+    /// project that wrote the key, and a filled-in default cannot tell a line
+    /// a project wrote from one it did not.
+    ///
+    /// A relative path is resolved from the project root and may not climb out
+    /// of it, which is the same rule `uf_plugin` applies to a plugin: a config
+    /// file is untrusted input, and "run this file as the toolchain" is the
+    /// most dangerous thing it can say.
+    pub module: Option<CompactString>,
 }
 
 impl UniflowedConfig {
@@ -410,6 +436,12 @@ pub struct ProjectIgnore<'a> {
 #[non_exhaustive]
 pub struct BuildConfig {
     pub budgets: BundleBudgets,
+    /// Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive:
+    /// `"vite"`, or a module specifier.
+    ///
+    /// `None` falls back to `builder.module`, this key's deprecated spelling,
+    /// and then to `@uniflowed/vite`. See [`UniflowedConfig::builder_tool`].
+    pub builder: Option<Written<BuilderSpec>>,
     pub entries: Vec<CompactString>,
     pub hooks: BTreeMap<CompactString, TaskDefinition>,
     /// What a library build writes, or `None` for a project that said nothing.
@@ -424,6 +456,13 @@ pub struct BuildConfig {
     /// application instead of resolving the contradiction by precedence.
     pub lib: Option<LibraryConfig>,
     pub out_dir: CompactString,
+    /// What `uf dev`, `uf build` and `uf preview` run on, when it is not the
+    /// top-level `runtime`: `"node@26"`.
+    ///
+    /// Read before [`UniflowedConfig::runtime`], which is what lets a project
+    /// build on Node and test on Bun. See
+    /// [`UniflowedConfig::build_runtime_tool`].
+    pub runtime: Option<Written<RuntimeSpec>>,
     pub static_build: bool,
     pub sourcemap: bool,
 }
@@ -434,10 +473,12 @@ impl Default for BuildConfig {
             // Budgets stay unset by default: failing a build nobody asked us to
             // police is worse than reporting and moving on.
             budgets: BundleBudgets::default(),
+            builder: None,
             entries: vec![CompactString::const_new("app.js")],
             hooks: BTreeMap::new(),
             lib: None,
             out_dir: CompactString::const_new("dist"),
+            runtime: None,
             static_build: false,
             sourcemap: true,
         }
@@ -607,6 +648,18 @@ pub struct EnvConfig {
     pub files: Vec<CompactString>,
     /// The JavaScript runtimes and package managers this project uses, by
     /// name and exact version — `{ node: "24.14.0", pnpm: "9.15.0" }`.
+    ///
+    /// **Deprecated.** It says which tools a project has and not what each is
+    /// for, so a project that builds on Node and tests on Bun could not write
+    /// that down — and no command read it: a pinned Node was used under
+    /// `uf env exec` and nowhere else. Each tool is declared where it is used
+    /// now, as `name@version`: [`UniflowedConfig::runtime`],
+    /// [`BuildConfig::runtime`], [`TestConfig::runtime`] and
+    /// [`UniflowedConfig::package_manager`]. See ubugeeei-prod/uf#940.
+    ///
+    /// It keeps working for `uf env install` and `uf env exec`, which say so
+    /// once, and a pin here that disagrees with one of those keys is an error
+    /// naming both rather than a precedence rule.
     ///
     /// Exact, because a range is not an environment: a lockfile that can
     /// resolve differently tomorrow does not answer "what is this built
@@ -897,6 +950,15 @@ pub struct PackageManagerConfig {
     pub lockfile: CompactString,
     pub store_dir: CompactString,
     pub allow_lifecycle_scripts: bool,
+    /// Which package manager drives the project, in the spelling that came
+    /// before the top-level `packageManager`.
+    ///
+    /// **Deprecated** for the four managers [`UniflowedConfig::package_manager`]
+    /// can name, and read only when that key is absent; the two naming
+    /// different managers is an error. `auto` is the default and `uf` — uf's
+    /// own resolver, which has no release to pin — has no other spelling, so
+    /// neither is deprecated. See
+    /// [`UniflowedConfig::package_manager_deprecation`].
     pub package_manager: PackageManagerPreference,
     /// The registry uf *reads* from: packuments, provenance attestations, and
     /// the versions `uf update` reports against.
@@ -1260,7 +1322,19 @@ pub struct VrtConfig {
 #[non_exhaustive]
 pub struct TestConfig {
     pub module: CompactString,
-    pub runner: NativeTestRunnerConfig,
+    /// What `uf test` runs on, when it is neither the runtime the runner
+    /// brings nor the top-level `runtime`: `"node@26"`.
+    ///
+    /// See [`UniflowedConfig::test_runtime_tool`] for the order, and
+    /// [`ConfigError::TestRuntimeContradictsRunner`] for the one combination
+    /// that is refused.
+    pub runtime: Option<Written<RuntimeSpec>>,
+    /// What runs the suite: `"uf"` or `"bun[@version]"` — or, deprecated, the
+    /// object that described uf's own runner field by field.
+    ///
+    /// `None` is uf's own runner. See [`UniflowedConfig::test_runner_tool`],
+    /// and [`TestConfig::native_runner`] for the object's fields.
+    pub runner: Option<TestRunnerConfig>,
     pub react_testing_library_native: bool,
     pub coverage: CoverageConfig,
 }
@@ -1269,7 +1343,8 @@ impl Default for TestConfig {
     fn default() -> Self {
         Self {
             module: CompactString::const_new("@uniflowed/test"),
-            runner: NativeTestRunnerConfig::default(),
+            runtime: None,
+            runner: None,
             react_testing_library_native: true,
             coverage: CoverageConfig::default(),
         }
@@ -1766,6 +1841,71 @@ pub enum ConfigError {
         /// Where the rest of the answer is.
         tracking: String,
     },
+    /// A tool spec uf cannot read: a name the key's role does not take, a
+    /// range or a tag where a version belongs, or nothing after an `@`.
+    ///
+    /// Its own variant rather than [`ConfigError::Parse`], and that matters
+    /// beyond the message: `uf dev` and `uf build` answer a parse failure by
+    /// starting a JavaScript host to evaluate the config instead, which for a
+    /// typo in a version would start a process for nothing and then report a
+    /// config that could not be evaluated. See [`tools`].
+    #[error("{path}: {key} is `{written}`, {reason}")]
+    ToolSpec {
+        path: Utf8PathBuf,
+        /// The key, as a project writes it: `build.runtime`.
+        key: &'static str,
+        /// What was written there.
+        written: String,
+        /// Why it was refused, and what to write instead.
+        reason: String,
+    },
+    /// `test.runtime` beside a runner that brings a different runtime.
+    ///
+    /// `test: { runtime: "node@26", runner: "bun@1.4" }`: a Bun runner runs on
+    /// the Bun it names, so one of the two lines is false, and which one is not
+    /// a question uf gets to answer by precedence.
+    #[error(
+        "{path}: test.runtime is `{runtime}` and test.runner is `{runner}`, and those cannot both \
+         be true: a Bun runner runs on the Bun it names. Drop `test.runtime`, which the runner \
+         already decides, or write `test.runtime: \"{runner}\"`."
+    )]
+    TestRuntimeContradictsRunner {
+        path: Utf8PathBuf,
+        /// What `test.runtime` says.
+        runtime: String,
+        /// What `test.runner` says.
+        runner: String,
+    },
+    /// A deprecated tool key beside the key that replaced it, saying something
+    /// else.
+    ///
+    /// `builder.module`, `pm.packageManager` and `env.toolchain` keep working,
+    /// and a project half way through moving has both spellings at once, which
+    /// is fine while they agree. When they do not, whichever were read second
+    /// would silently win — the failure ubugeeei-prod/uf#385 is about, with
+    /// different keys.
+    ///
+    /// What to do about it is worked out when the message is written rather
+    /// than carried, because every `Result` in this crate is as large as its
+    /// largest error and the sentence is a function of the fields.
+    #[error(
+        "{path}: {key} is `{written}` and {legacy_key} is `{legacy_written}` — two spellings of \
+         one tool that disagree, and uf does not pick one. {legacy_key} is the deprecated \
+         spelling: {fix}.",
+        fix = tools::disagreement_fix(.key, .legacy_key, .legacy_written)
+    )]
+    ToolKeysDisagree {
+        path: Utf8PathBuf,
+        /// The key that replaced the deprecated one.
+        key: &'static str,
+        /// What it says.
+        written: String,
+        /// The deprecated key: `builder.module`, `pm.packageManager`,
+        /// `env.toolchain.node`.
+        legacy_key: String,
+        /// What it says.
+        legacy_written: String,
+    },
     /// A `rendering.modes` that leaves the build with nothing it can do.
     ///
     /// The list is an allowlist, so naming a strategy uf has not written is
@@ -1991,6 +2131,10 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     // `app.router.enabled: false` makes the project a library, and `build.lib`
     // describes a build only a library has. See ubugeeei-prod/uf#268.
     library::check(path, config)?;
+    // And which tool each command runs: every spec in a form uf can read, no
+    // test runtime its runner contradicts, and no deprecated tool key saying
+    // something other than the key that replaced it. See ubugeeei-prod/uf#940.
+    tools::check(path, config)?;
     Ok(())
 }
 

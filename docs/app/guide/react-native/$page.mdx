@@ -3,7 +3,7 @@ title: "React Native target · uf"
 description: "Native route files, Metro, navigator events and the test-tree surface."
 ---
 
-<p className="eyebrow">Writing code</p>
+<p className="eyebrow">Targets</p>
 
 # React Native target
 
@@ -22,7 +22,7 @@ This is the honest status.
 | --- | --- | --- |
 | Package facade | Implemented | `@uniflowed/react-native` re-exports the app's real `react-native` peer |
 | Route target | Implemented | `uf build --target native`, `ios` and `android` select native route files |
-| Metro config | Implemented | `@uniflowed/react-native/metro` exports `withUniflowedMetro` |
+| Metro config | Implemented | `withUniflowedMetro` composes with Expo's and React Native's default Metro configs, and loads in the plain Node Metro runs |
 | Native router | Implemented as a contract | `@uniflowed/router/native` resolves a uf route into a navigator event or screen call |
 | Test queries | Implemented for trees and renderer JSON | `@uniflowed/react-native-testing` queries native JSON trees, and `render()` can mount through optional `react-test-renderer` |
 | Native host renderer | Pending | `render()` is a JSON test adapter, not a React Native host config, layout engine or app shell |
@@ -158,51 +158,90 @@ the real package so the public surface moves with React Native.
 
 ## Metro
 
-Metro still owns the bundle. uf's Metro helper writes down the resolver and
-transformer contract that uf's native target expects:
+Metro still owns the bundle, the dev server and Fast Refresh. What uf adds is a
+Babel transformer that runs Flow, the React Compiler and the StyleX policy
+before the transformer the project already had, and a helper that wires it in.
+
+Compose the config the project already has. In an Expo project:
 
 ```js
-// @flow
 // metro.config.js
-import { withUniflowedMetro } from "@uniflowed/react-native/metro";
+const { getDefaultConfig } = require("expo/metro-config");
+const { withUniflowedMetro } = require("@uniflowed/react-native/metro");
 
-export default withUniflowedMetro({
-  resolver: {
-    sourceExts: ["tsx"],
-    resolverMainFields: ["expo"],
-  },
-});
+module.exports = withUniflowedMetro(getDefaultConfig(__dirname));
 ```
 
-The helper preserves what the project already configured and appends the pieces
-uf needs:
+In a React Native CLI project:
 
-| Field | Added values |
+```js
+// metro.config.js
+const { getDefaultConfig, mergeConfig } = require("@react-native/metro-config");
+const { withUniflowedMetro } = require("@uniflowed/react-native/metro");
+
+module.exports = withUniflowedMetro(mergeConfig(getDefaultConfig(__dirname), {}));
+```
+
+Both files are CommonJS, and so is the helper. Metro evaluates its config in
+plain Node — under `expo start`, `react-native start`, Xcode's and Gradle's
+bundle phases, and on EAS Build — where none of uf's loader hooks are
+installed, so this is the one `@uniflowed/*` module that is not Flow. A config
+written as an ES module can `import { withUniflowedMetro }` from the same
+specifier.
+
+The helper keeps everything the config already says and adds what uf needs:
+
+| Field | What the helper does |
 | --- | --- |
-| `resolver.sourceExts` | `js`, `jsx`, `mjs`, `cjs` |
-| `resolver.resolverMainFields` | `react-native`, `browser`, `main` |
-| `transformer.babelTransformerPath` | `@uniflowed/react-native/metro-transformer.cjs` |
+| `resolver.sourceExts` | appends `js`, `jsx`, `mjs` and `cjs` where they are missing |
+| `resolver.resolverMainFields` | appends `react-native`, `browser` and `main` where they are missing |
+| `transformer.babelTransformerPath` | points at `@uniflowed/react-native/metro-transformer.cjs`, and keeps the transformer that was there as the one that runs next |
 
 Metro already understands `.ios.js`, `.android.js` and `.native.js`. The helper
 does not reimplement platform suffix resolution; it keeps Metro and uf naming
 the same files.
 
-The transformer runs uf's Flow pipeline first, then hands the result back to
-Metro's React Native Babel transformer:
+Every real config already names a Babel transformer — `getDefaultConfig()`
+names Expo's in an Expo project and React Native's in a bare one — and that
+transformer is not replaced. For a module uf owns, the chain is:
 
 ```text
-Flow lowering -> React Compiler -> StyleX CSS refusal -> Metro Babel
+Flow lowering -> React Compiler -> StyleX CSS refusal -> the project's transformer
 ```
+
+The project's transformer is what applies `babel-preset-expo` or React Native's
+preset: the module system, platform inlining, and the React Refresh
+registrations Fast Refresh needs. All of that stays exactly as it was. A module
+uf does not own — anything under `node_modules` except `@uniflowed/*` — goes
+straight to it.
+
+That includes one gap which is upstream's rather than uf's. React Native
+0.87.1's transformer registers components for React Refresh only when Metro
+passes it `hot`, and Metro 0.87.1 no longer passes it, so a development bundle
+served by `react-native start` registers none — for a TypeScript component with
+no uf in the Metro config exactly as for a Flow one with it. Expo's transformer
+is not affected. [#990](https://github.com/ubugeeei-prod/uf/issues/990) tracks
+what `uf dev` does about it. A transformer the config names by package is resolved from the
+project root while the config loads, so one that is not installed is an error
+there rather than halfway through the first bundle, and
+`UF_METRO_UPSTREAM_TRANSFORMER` overrides the choice when a person needs to.
 
 The StyleX entry is a refusal on purpose. `uf transform` can produce CSS from
 `stylex.create`, but a native Metro bundle has nowhere to attach that CSS yet.
 The transformer raises instead of dropping the stylesheet and shipping class
 names that resolve to nothing.
 
-Metro accepts one `babelTransformerPath`. If a project already set one,
-`withUniflowedMetro()` refuses rather than replacing it quietly; compose the
-custom transformer with `@uniflowed/react-native/metro-transformer.cjs` so the
-order stays visible.
+The transformer compiles with the `uf` binary, found in this order: `UF_BINARY`,
+which `uf` sets to itself for every process it starts; `uf` on `PATH`; and the
+installer's directory, `UF_BIN_DIR` or `~/.local/bin`. The last is for the
+processes with no shell in front of them — Xcode's bundle phase runs with a
+minimal `PATH` — and when none of the three has `uf`, the error names all of
+them. Metro's cache key includes that binary, so upgrading `uf` does not leave
+Metro serving what the previous build compiled.
+
+Source maps are not composed yet: a stack frame in a Flow module points into
+uf's output rather than at the Flow source. [#988](https://github.com/ubugeeei-prod/uf/issues/988)
+tracks it.
 
 The build manifest records the same answer so a downstream tool can check it:
 

@@ -12,12 +12,12 @@
   },
   "exports": {
     ".": "./index.js",
-    "./metro": "./metro.js",
+    "./metro": "./metro.cjs",
     "./metro-transformer.cjs": "./metro-transformer.cjs"
   },
   "files": [
     "index.js",
-    "metro.js",
+    "metro.cjs",
     "metro-transformer.cjs",
     "!*.test.js"
   ],
@@ -26,7 +26,7 @@
   },
   "peerDependencies": {
     "react": ">=19.2.3",
-    "react-native": ">=0.87"
+    "react-native": ">=0.86"
   },
   "peerDependenciesMeta": {
     "react-native": {

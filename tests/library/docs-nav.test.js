@@ -2,21 +2,27 @@
 //
 // The manual's table of contents, checked against itself and against the tree.
 //
-// `docs/app/_design/nav.js` is not decoration: its own comment says one list
-// in reading order *is* the navigation model — the sidebar renders it, the
-// masthead highlights a section from it, and `nextAfter` walks it to produce
-// the "next page" link at the foot of every page. That makes two properties
-// load-bearing, and neither is visible by reading the list.
+// `docs/app/_design/nav.js` is not decoration: its own comment says the list
+// *is* the navigation model — the sidebar renders it, "next page" walks it,
+// the home page offers its sections as paths, and each landing page lists its
+// section from it. That makes three properties load-bearing, and none of them
+// is visible by reading the list.
 //
 // The first is that an `href` appears once. A page listed twice is listed
-// twice in the sidebar, and `nextAfter` — which finds the *first* match —
+// twice in the sidebar, and "next page" — which finds the *first* match —
 // turns the run between the two entries into a cycle: a reader following
 // "next" through it arrives back where they were and never reaches the pages
 // after the second entry at all. `/guide/state` was listed twice, so
 // Effects pointed back at State, State pointed forward to Forms, and Terminal
 // UI and everything after it was unreachable by reading the manual in order.
 //
-// The second is that every entry names a page that exists and every page is
+// The second is that reading ends. The last page of a section points at the
+// landing page of the section its reader goes to next, so the same cycle can
+// be made out of sections instead of pages: "Why uf" sending its reader to
+// "Start" is right, and "Start" sending them back to "Why uf" would be a loop
+// that no single page shows.
+//
+// The third is that every entry names a page that exists and every page is
 // named — a nav that has drifted from `docs/app` either links to a 404 or
 // hides a page nobody can navigate to.
 //
@@ -88,23 +94,53 @@ describe("the manual's navigation", () => {
     expect(twice).toEqual([]);
   });
 
-  it("walks every page exactly once and stops", () => {
+  it("walks each section from its landing page to its last page, and then on", () => {
     // The property a duplicate breaks, stated as the reader experiences it:
-    // start at the top and follow "next page" to the end. There are as many
-    // steps as there are pages, no page is visited twice, and the last page
-    // has no next.
-    const visited = [];
-    let at = pages[0].href;
-    for (let step = 0; step < pages.length * 2; step += 1) {
-      visited.push(at);
-      const next = nextAfter(at);
-      if (next == null) {
-        break;
+    // open a section's landing page and follow "next page". Every page in the
+    // section is visited once, in the order it is listed, and the step after
+    // the last one leaves for the landing page the section names — or, at the
+    // end of the manual, for nothing.
+    for (const section of sections) {
+      const listed = [section.landing, ...section.pages].map((page) => page.href);
+      const visited = [];
+      let at: ?string = listed[0];
+      while (at != null && visited.length < listed.length) {
+        visited.push(at);
+        at = nextAfter(at)?.href;
       }
-      at = next.href;
+      expect({ section: section.title, visited }).toEqual({
+        section: section.title,
+        visited: listed,
+      });
+      expect({ section: section.title, then: at ?? null }).toEqual({
+        section: section.title,
+        then: section.then,
+      });
     }
-    expect(visited).toEqual(pages.map((page) => page.href));
-    expect(nextAfter(pages[pages.length - 1].href)).toBe(null);
+  });
+
+  it("sends every section's reader somewhere that ends", () => {
+    // `then` names a landing page, and following it from any section reaches
+    // the end of the manual without passing through a section twice — the
+    // cycle #586 made out of pages, made out of sections instead.
+    const byLanding = new Map(sections.map((section) => [section.landing.href, section]));
+    const dangling = sections
+      .filter((section) => section.then != null && !byLanding.has(section.then))
+      .map((section) => section.title);
+    expect(dangling).toEqual([]);
+
+    for (const section of sections) {
+      const route = [];
+      let at = section;
+      while (at != null && !route.includes(at.title)) {
+        route.push(at.title);
+        at = at.then == null ? null : byLanding.get(at.then);
+      }
+      expect({ from: section.title, loops: at != null }).toEqual({
+        from: section.title,
+        loops: false,
+      });
+    }
   });
 
   it("names only pages that exist", () => {
@@ -112,8 +148,9 @@ describe("the manual's navigation", () => {
   });
 
   it("names every page that exists", () => {
-    // `/` is the landing page and deliberately outside the manual: it is not a
-    // step in the reading order, and `entryFor` returns `null` for it.
+    // `/` is the home page and deliberately outside the manual: it is not a
+    // step in any section's reading order, and `entryFor` returns `null` for
+    // it.
     const listed = new Set(pages.map((page) => page.href));
     const missing = routesOnDisk()
       .filter((href) => !listed.has(href))
@@ -138,7 +175,7 @@ describe("the manual's navigation", () => {
   });
 
   it("puts every page in exactly one section", () => {
-    const total = sections.reduce((sum, section) => sum + section.pages.length, 0);
+    const total = sections.reduce((sum, section) => sum + 1 + section.pages.length, 0);
     expect(total).toBe(pages.length);
     expect(sections.map((section) => section.title).length).toBe(
       new Set(sections.map((section) => section.title)).size,
