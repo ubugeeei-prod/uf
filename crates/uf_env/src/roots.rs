@@ -111,6 +111,45 @@ impl Roots {
             .map_err(|source| EnvError::Write { path: file, source })
     }
 
+    /// Record that `repository` uses `entries` as well as what it used before.
+    ///
+    /// What a command installing a tool on first use calls. [`Self::register`]
+    /// replaces the list, which is right for `uf env install` — it has just
+    /// resolved every tool the project declares — and wrong for `uf build`,
+    /// which knows only the runtime it runs on and would leave the project's
+    /// other tools for collection to delete.
+    ///
+    /// Nothing is written when the root already lists every entry, so a
+    /// command that runs a hundred times writes this file once.
+    ///
+    /// # Errors
+    ///
+    /// When the existing root cannot be read or parsed — replacing a root that
+    /// does not parse would drop entries nobody can name, the thing
+    /// [`Self::all`] refuses for the same reason — or the root cannot be
+    /// written.
+    pub fn add(&self, repository: &Utf8Path, entries: &[String]) -> Result<(), EnvError> {
+        let file = self.file_for(repository);
+        let existing = match fs::read_to_string(&file) {
+            Ok(body) => {
+                let root: Root =
+                    serde_json::from_str(&body).map_err(|source| EnvError::Decode {
+                        path: file.clone(),
+                        source,
+                    })?;
+                root.entries
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(source) => return Err(EnvError::Read { path: file, source }),
+        };
+        if entries.iter().all(|entry| existing.contains(entry)) && file.is_file() {
+            return Ok(());
+        }
+        let mut all = existing;
+        all.extend(entries.iter().cloned());
+        self.register(repository, &all)
+    }
+
     /// Every root, with the file it came from.
     ///
     /// A file that does not parse is reported rather than skipped: it is

@@ -36,7 +36,8 @@ use uf_test::{
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
 use crate::commands::deno_loader;
-use crate::commands::vite::{Host, find_program, resolve_host};
+use crate::commands::runtimes;
+use crate::commands::vite::{Host, find_program};
 
 use crate::support::{
     TEST, ignore_deprecation, plural, project_env, quoted_list, render_ignore_deprecation, selects,
@@ -222,8 +223,16 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // something — the mode Vitest runs in, for the same reason: a suite that
     // talks to the development database is a suite that can destroy it.
     let env = project_env(&resolved, args.mode.as_deref(), TEST)?;
+    // The runtime the suite runs on: `test.runtime`, then the runtime the
+    // runner brings, then `runtime`, then the host uf has always found.
+    // Resolved once, before the watch loop and the one-shot run part ways, so
+    // a first run on a version downloads it in one place and says so once.
+    let runtime = runtimes::resolve(&resolved, runtimes::Role::Test, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+    })?;
+    let env = runtime.environment(env);
     if args.watch {
-        return watch::watch(ui, &root, resolved.config, &env, args);
+        return watch::watch(ui, &root, resolved.config, &env, runtime.host, args);
     }
 
     // A snapshot is a file beside the test that took it, and a page has no
@@ -254,7 +263,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         );
     }
 
-    let resolved_host = resolve_host(&resolved.config)?;
+    let resolved_host = runtime.host;
     let host_kind = test_host_kind(resolved_host.kind, args.browser);
     let settings = &resolved.config.test.coverage;
     if (args.coverage || settings.enabled) && !host_kind_can_collect_coverage(host_kind) {
@@ -279,7 +288,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         files = scan.files;
     }
 
-    let mut host = test_host_with_resolved_host(
+    let mut host = test_host(
         &root,
         &resolved.config,
         &env,
@@ -415,18 +424,11 @@ fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport
 /// the one kind `sources` says nothing about — a page is served its modules
 /// through the same `uf transform` the Node loader calls, one request at a
 /// time, so there is no ahead-of-time pass to give a file list to.
+///
+/// `host` is the runtime [`runtimes::resolve`] settled for the suite, resolved
+/// by the caller rather than here so a watch session and a one-shot run share
+/// one answer, and a first run on a version downloads it once.
 pub(crate) fn test_host(
-    root: &Utf8Path,
-    config: &uf_config::UniflowedConfig,
-    env: &ProjectEnv,
-    sources: &[ProjectFile],
-    browser: bool,
-) -> Result<HostCommand> {
-    let host = resolve_host(config)?;
-    test_host_with_resolved_host(root, config, env, sources, browser, host)
-}
-
-fn test_host_with_resolved_host(
     root: &Utf8Path,
     config: &uf_config::UniflowedConfig,
     env: &ProjectEnv,

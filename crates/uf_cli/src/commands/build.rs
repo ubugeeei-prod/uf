@@ -49,8 +49,9 @@ use crate::commands::builder;
 use crate::commands::compile;
 use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
+use crate::commands::runtimes;
 use crate::commands::vite::{
-    Driver, Event, LinkContext, load_project_config, render_error, render_log, resolve_host,
+    Driver, Event, LinkContext, load_project_config, render_error, render_log,
 };
 use crate::support::{
     PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
@@ -234,13 +235,19 @@ pub(crate) fn build(
     let rsc_input = uf_rsc::write_manifest(&root.join(RSC_MANIFEST_BUILD_DIR), &rsc.manifest())?;
 
     progress.tick("resolving the JavaScript host");
-    let host = resolve_host(&resolved.config)?;
+    // The progress line is finished before anything is said, or the sentence
+    // would be written onto the end of the spinner's line.
+    let runtime = runtimes::resolve(&resolved, runtimes::Role::Build, &mut |message| {
+        progress.finish();
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })?;
+    let host = runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
     // `production` unless the project or the command line said another mode,
     // which is what selects `.env.production` over `.env.development` — the
     // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
     // about the same variable.
-    let env = project_env(&resolved, requested_mode, PRODUCTION)?;
+    let env = runtime.environment(project_env(&resolved, requested_mode, PRODUCTION)?);
 
     // Asked for before anything is built. `--compile` on a machine with no
     // usable backend fails either way; failing now costs the user nothing, and

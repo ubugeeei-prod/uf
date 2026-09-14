@@ -41,8 +41,9 @@ use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
 use crate::commands::lint::identifier_span;
+use crate::commands::runtimes;
 use crate::commands::vite::{
-    Driver, Event, load_project_config, render_diagnostic, render_error, render_log, resolve_host,
+    Driver, Event, load_project_config, render_diagnostic, render_error, render_log,
 };
 use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label, relative_to};
 use crate::ui::Ui;
@@ -82,12 +83,17 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
         );
     }
 
-    let host = resolve_host(&resolved.config)?;
+    // `build.runtime`, then `runtime`, then the host uf has always found — and
+    // on the first run on a version, the one time it is downloaded.
+    let runtime = runtimes::resolve(&resolved, runtimes::Role::Build, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })?;
+    let host = runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
     crate::support::render_deprecations(ui, resolved.config.builder_module_deprecation());
     let _ = write_router_manifest(&root, &resolved.config)?;
 
-    let mut env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
+    let mut env = runtime.environment(project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?);
     // Before the driver, not after: `@uniflowed/vite` reads the analysis to
     // decide which routes keep a page in the client route table, and it reads
     // it as it generates that table — which happens on the first request. A
@@ -169,7 +175,9 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
                 &format!("{named} changed; restarting with the new environment"),
             );
         });
-        env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
+        // Read again, and on the same runtime: a reload that dropped it from
+        // `PATH` would restart the server with its children on another Node.
+        env = runtime.environment(project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?);
     }
 }
 
