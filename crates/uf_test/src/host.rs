@@ -864,6 +864,29 @@ impl Worker {
         if let Some(directory) = &command.coverage_dir {
             process.env("NODE_V8_COVERAGE", directory.as_str());
         }
+        // Deno will not let a process whose run permission names programs
+        // start one while a dynamic-loader variable is in its environment —
+        // `LD_LIBRARY_PATH`, `LD_PRELOAD`, `DYLD_*` — unless `--allow-run` is
+        // unscoped, and uf's never is. Measured on Deno 2.9.6: `spawnSync` then
+        // answers with no process at all, so every module the transform cache
+        // does not hold fails to load. `cargo test` sets `LD_LIBRARY_PATH` on
+        // Linux for the process it tests, which is how CI met it, and a shell
+        // that exports one for a native toolchain meets it the same way. A
+        // worker has no use for them, because Deno has already loaded its own
+        // libraries, so none is passed on — whether uf's environment or the
+        // project's supplied it.
+        if matches!(command.kind, HostKind::Deno) {
+            let inherited = std::env::vars_os().map(|(name, _)| name);
+            let declared = command
+                .env
+                .iter()
+                .map(|(name, _)| std::ffi::OsString::from(name));
+            for name in inherited.chain(declared) {
+                if is_loader_variable(&name) {
+                    process.env_remove(name);
+                }
+            }
+        }
 
         let mut child = process.spawn().map_err(|error| SpawnError {
             message: format!("could not start `{}`: {error}", command.program),
@@ -1196,9 +1219,35 @@ fn record_of(file: &str, event: TestEvent) -> TestRecord {
     }
 }
 
+/// Whether `name` is a variable the platform's dynamic loader reads.
+///
+/// The `LD_` and `DYLD_` families, which Deno will not pass to a child started
+/// under a scoped `--allow-run`; see [`Worker::spawn`].
+fn is_loader_variable(name: &std::ffi::OsStr) -> bool {
+    name.to_str()
+        .is_some_and(|name| name.starts_with("LD_") || name.starts_with("DYLD_"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The variables a Deno worker is started without, and nothing else: a
+    /// name that merely contains `LD` is somebody's own.
+    #[test]
+    fn loader_variables_are_the_ld_and_dyld_families() {
+        for name in [
+            "LD_LIBRARY_PATH",
+            "LD_PRELOAD",
+            "DYLD_FALLBACK_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+        ] {
+            assert!(is_loader_variable(std::ffi::OsStr::new(name)), "{name}");
+        }
+        for name in ["PATH", "OLDPWD", "LDFLAGS", "UF_BINARY", "BUILD_LD_PATH"] {
+            assert!(!is_loader_variable(std::ffi::OsStr::new(name)), "{name}");
+        }
+    }
 
     #[test]
     fn a_node_command_registers_the_flow_loader() {

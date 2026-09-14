@@ -49,8 +49,23 @@ struct Run {
 }
 
 /// Run `entry` under `deno run`, with `flags` before it and `env` set.
+///
+/// Without the dynamic-loader variables this process inherited, which is what
+/// `uf test` does for its own Deno workers: `cargo test` sets `LD_LIBRARY_PATH`
+/// on Linux, and Deno will not start `uf transform` under a scoped
+/// `--allow-run` while one is set. A test that means to pass one names it in
+/// `env`, which is applied after.
 fn deno(project: &Project, flags: &[String], entry: &str, env: &[(&str, String)]) -> Run {
-    let output = Command::new("deno")
+    let mut command = Command::new("deno");
+    for (name, _) in std::env::vars_os() {
+        if name
+            .to_str()
+            .is_some_and(|name| name.starts_with("LD_") || name.starts_with("DYLD_"))
+        {
+            command.env_remove(name);
+        }
+    }
+    let output = command
         .arg("run")
         .args(flags)
         .arg(project.path().join(entry))
@@ -259,6 +274,41 @@ fn deno_rejects_flow_syntax_without_the_loader() {
     );
 }
 
+/// A dynamic-loader variable in Deno's environment is named in the error.
+///
+/// Deno will not let a process whose `--allow-run` names programs start one
+/// while `LD_LIBRARY_PATH` or another `LD_*` or `DYLD_*` variable is set, and
+/// `node:child_process` answers that refusal with no process and no reason.
+/// `uf test` leaves such variables out of its workers; a Deno somebody starts
+/// with the preload themselves has to have them unset, and this is what tells
+/// them which one. A fresh project, so its cache is empty and the loader has to
+/// start `uf transform`.
+#[test]
+fn a_loader_variable_deno_refuses_is_named() {
+    if !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = Project::new(&[("entry.js", RELATIVE_ONLY), ("double.js", DOUBLE)]);
+    let mut env = loader_env(&project);
+    env.push((
+        "LD_LIBRARY_PATH",
+        String::from("/nonexistent/uf-deno-host-test"),
+    ));
+
+    let run = deno(&project, &loader_flags(&project, true), "entry.js", &env);
+
+    assert!(
+        !run.success,
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout, run.stderr
+    );
+    assert!(
+        run.stderr.contains("LD_LIBRARY_PATH"),
+        "the error has to name the variable in the way\nstderr:\n{}",
+        run.stderr
+    );
+}
+
 /// And with it, every kind of import compiles — under the permission set uf
 /// translates, not under `-A`.
 ///
@@ -426,6 +476,13 @@ it("compiles a module reached by a computed path", async () => {
         .arg("--cwd")
         .arg(project.path())
         .args(["test", "probe.test.js"])
+        // What `cargo test` sets on Linux for the process it tests, set here so
+        // the condition is the same on every machine. Deno refuses to start a
+        // child under a scoped `--allow-run` while it is in the environment,
+        // so a worker that inherited it could compile nothing; `uf test` has to
+        // leave it out. A directory that does not exist, so it changes nothing
+        // else about the processes that do see it.
+        .env("LD_LIBRARY_PATH", "/nonexistent/uf-deno-host-test")
         .output()
         .expect("uf runs");
 
@@ -433,7 +490,8 @@ it("compiles a module reached by a computed path", async () => {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
-        "a Flow suite must run on Deno\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        "a Flow suite must run on Deno, with a loader variable in uf's environment\n\
+         stdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(
         stderr.contains("2 passed") || stdout.contains("2 passed"),

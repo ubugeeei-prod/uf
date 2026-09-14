@@ -598,6 +598,33 @@ export function transformFlow(code, filename, options = {}) {
 const MAX_SYNC_REPLY_BYTES = 64 * 1024 * 1024;
 
 /**
+ * Why Deno would refuse to start `command`, in Deno's own words, or `null`.
+ *
+ * `node:child_process`'s `spawnSync` on Deno answers a refused spawn with no
+ * error and no output, so the reason is asked for again through `Deno.Command`,
+ * which throws it. Measured on Deno 2.9.6, there are two: a program
+ * `--allow-run` does not name, and a dynamic-loader variable such as
+ * `LD_LIBRARY_PATH` in the environment, which Deno will not pass to a child
+ * unless `--allow-run` is unscoped. `null` off Deno, and when Deno would start
+ * the program after all.
+ */
+function denoRefusal(command) {
+  const deno = globalThis.Deno;
+  if (deno == null) return null;
+  try {
+    new deno.Command(command, {
+      args: ["--version"],
+      stdin: "null",
+      stdout: "null",
+      stderr: "null",
+    }).outputSync();
+    return null;
+  } catch (error) {
+    return typeof error?.message === "string" ? error.message : null;
+  }
+}
+
+/**
  * Transform one Flow module in a short-lived `uf transform`, and wait for it.
  *
  * Resolves nothing and returns what `transformFlow` resolves to —
@@ -646,9 +673,11 @@ export function transformFlowSync(code, filename, options = {}) {
   // a `TypeError` about `undefined` naming neither the binary nor the grant.
   if (typeof result.stdout !== "string") {
     throw new Error(
-      `could not run \`${command} transform\` for ${filename}: no process started, which is ` +
-        "how a sandbox answers a program it was not told about — on Deno, `--allow-run` has " +
-        `to name ${command}`,
+      `could not run \`${command} transform\` for ${filename}: ${
+        denoRefusal(command) ??
+        "no process started, which is how a sandbox answers a program it was not told about " +
+          `— on Deno, \`--allow-run\` has to name ${command}`
+      }`,
     );
   }
   const newline = result.stdout.indexOf("\n");

@@ -213,6 +213,15 @@ with the pass:
   worker's hooks are installed before its first import. That one is Deno's to
   fix — its `load` chain has to leave an addon loadable — and uf's side of it is
   tracked by ubugeeei-prod/uf#246.
+* **A dynamic-loader variable in the environment of a Deno you start yourself.**
+  Deno will not let a process whose `--allow-run` names programs start one while
+  `LD_LIBRARY_PATH`, `LD_PRELOAD` or any other `LD_*` or `DYLD_*` variable is set,
+  and `node:child_process` then answers with no process at all (measured on Deno
+  2.9.6). The loader starts `uf transform` for every module its cache does not
+  hold, so under a scoped grant nothing new would compile. `uf test` leaves those
+  variables out of every Deno worker it starts. A `deno run --preload
+  @uniflowed/host/deno-preload` of your own needs them unset, and the error names
+  the variable in the way.
 
 ### What a real Deno is started to check
 
