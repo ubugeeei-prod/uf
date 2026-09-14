@@ -1167,6 +1167,63 @@ it("is handed a document nobody else has written to", () => {
     assert_eq!(record.status, TestStatus::Passed, "{record:?}");
 }
 
+/// A file that changes the process the way a test is allowed to, and never
+/// changes it back.
+///
+/// Every change goes through `uft`, because that is the promise under test:
+/// what a file changes through the test API does not outlive the file. Each
+/// change is one ubugeeei-prod/uf#417, #581 or #607 found leaking. The
+/// assertions come first, so whichever of two such files runs second is the
+/// one that fails if anything leaked — and the order two files take through one
+/// worker is the schedule's business, not this test's.
+fn changes_process_state(name: &str) -> String {
+    format!(
+        r#"// @flow
+import {{ expect, it, uft }} from "@uniflowed/test";
+
+it("starts from the state every file starts from, and leaves it changed", async () => {{
+  expect(process.env.UF_ISOLATION_PROBE).toBe(undefined);
+  expect(globalThis.ufIsolationProbe).toBe(undefined);
+  // Before the await, deliberately: under a leaked fake clock the timer below
+  // never fires, and neither does the one the runner races the case against,
+  // so a leak has to be named here or it is a hang.
+  expect(uft.isFakeTimers()).toBe(false);
+  await new Promise((resolve) => setTimeout(resolve, 1));
+
+  uft.stubEnv("UF_ISOLATION_PROBE", "{name}");
+  uft.stubGlobal("ufIsolationProbe", "{name}");
+  uft.useFakeTimers();
+  expect(process.env.UF_ISOLATION_PROBE).toBe("{name}");
+}});
+"#
+    )
+}
+
+#[test]
+fn two_files_that_change_the_process_in_one_worker_each_start_clean() {
+    if !host_ready() {
+        return;
+    }
+    // ubugeeei-prod/uf#944 is about keeping workers warm, and a warm worker is
+    // one process serving file after file — which is the shape #417, #581 and
+    // #607 each leaked through, one piece of process state at a time. The
+    // tests above hold the worker to each piece with the protocol driven by
+    // hand; this one holds the whole command to all of them at once: the real
+    // `uf test`, the real loader, and `-j 1`, which is the only way to be sure
+    // two files share a worker rather than hoping the schedule put them
+    // together.
+    let project = Project::new(&[
+        ("src/first.test.js", &changes_process_state("first")),
+        ("src/second.test.js", &changes_process_state("second")),
+    ]);
+
+    let document = json(project.path(), &["-j", "1"]);
+
+    assert_eq!(document["failed"], 0, "{document}");
+    assert_eq!(document["failedFiles"], 0, "{document}");
+    assert_eq!(document["passed"], 2, "{document}");
+}
+
 #[test]
 fn a_file_that_registers_nothing_fails_rather_than_passing() {
     if !host_ready() {
@@ -1331,4 +1388,40 @@ fn a_react_native_project_refuses_the_web_document_test_runner() {
     assert!(stderr.contains("applicationTarget"), "{stderr}");
     assert!(stderr.contains("react-native"), "{stderr}");
     assert!(stderr.contains("document shim"), "{stderr}");
+}
+
+/// A Bun runner parses, and `uf test` refuses it with the issue that will run
+/// it rather than running uf's own suite in its place.
+///
+/// Answering for a suite by rules the project did not choose is worse than not
+/// answering. ubugeeei-prod/uf#940 declares the runner; ubugeeei-prod/uf#942
+/// runs it.
+#[test]
+fn a_bun_test_runner_is_refused_with_the_issue_that_will_run_it() {
+    let project = Project::new(&[(
+        "src/sum.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => { expect(1 + 1).toBe(2); });\n",
+    )]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runner: \"bun@1.4\" } });\n",
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("test")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        !output.status.success(),
+        "a Bun runner must not fall through to uf's own:\n{stdout}\n{stderr}"
+    );
+    assert!(stderr.contains("`test.runner` is `bun@1.4`"), "{stderr}");
+    assert!(stderr.contains("ubugeeei-prod/uf#942"), "{stderr}");
+    // Refused before anything ran, so no case was reported.
+    assert!(!stdout.contains("adds"), "{stdout}");
 }

@@ -3514,7 +3514,7 @@ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
 
 [[package]]
 name = "uf_assets"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "ab_glyph",
  "base64",
@@ -3536,7 +3536,7 @@ dependencies = [
 
 [[package]]
 name = "uf_bundle"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "base64",
  "brotli",
@@ -3554,7 +3554,7 @@ dependencies = [
 
 [[package]]
 name = "uf_check"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "bumpalo",
  "compact_str",
@@ -3591,7 +3591,7 @@ dependencies = [
 
 [[package]]
 name = "uf_cli"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -3639,7 +3639,7 @@ dependencies = [
 
 [[package]]
 name = "uf_config"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3658,7 +3658,7 @@ dependencies = [
 
 [[package]]
 name = "uf_doc"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "serde",
@@ -3672,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "uf_env"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "uf_flow"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "flow_parser",
  "thiserror",
@@ -3694,7 +3694,7 @@ dependencies = [
 
 [[package]]
 name = "uf_fmt"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3712,7 +3712,7 @@ dependencies = [
 
 [[package]]
 name = "uf_i18n"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "serde",
@@ -3726,7 +3726,7 @@ dependencies = [
 
 [[package]]
 name = "uf_infra"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "bumpalo",
  "compact_str",
@@ -3740,7 +3740,7 @@ dependencies = [
 
 [[package]]
 name = "uf_lib"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3755,7 +3755,7 @@ dependencies = [
 
 [[package]]
 name = "uf_lint"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "criterion",
  "phf",
@@ -3773,7 +3773,7 @@ dependencies = [
 
 [[package]]
 name = "uf_plugin"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3789,7 +3789,7 @@ dependencies = [
 
 [[package]]
 name = "uf_pm"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "base64",
  "camino",
@@ -3805,7 +3805,7 @@ dependencies = [
 
 [[package]]
 name = "uf_prepare"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3818,14 +3818,14 @@ dependencies = [
 
 [[package]]
 name = "uf_profiler"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "uf_project"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3840,7 +3840,7 @@ dependencies = [
 
 [[package]]
 name = "uf_react_compiler"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "compact_str",
  "criterion",
@@ -3857,7 +3857,7 @@ dependencies = [
 
 [[package]]
 name = "uf_rm"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "compact_str",
  "serde",
@@ -3868,7 +3868,7 @@ dependencies = [
 
 [[package]]
 name = "uf_router"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3883,7 +3883,7 @@ dependencies = [
 
 [[package]]
 name = "uf_rsc"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3902,7 +3902,7 @@ dependencies = [
 
 [[package]]
 name = "uf_runtime"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "serde",
  "smallvec",
@@ -3910,7 +3910,7 @@ dependencies = [
 
 [[package]]
 name = "uf_std"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "compact_str",
  "rustc-hash",
@@ -3924,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "uf_stylex"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "compact_str",
  "criterion",
@@ -3940,7 +3940,7 @@ dependencies = [
 
 [[package]]
 name = "uf_task"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "base64",
  "camino",
@@ -3958,14 +3958,14 @@ dependencies = [
 
 [[package]]
 name = "uf_term"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "criterion",
 ]
 
 [[package]]
 name = "uf_test"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "camino",
  "compact_str",
@@ -3983,7 +3983,7 @@ dependencies = [
 
 [[package]]
 name = "uf_transform"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "criterion",
  "flow_parser",
@@ -4010,7 +4010,7 @@ dependencies = [
 
 [[package]]
 name = "uf_tui"
-version = "0.0.0-alpha.32"
+version = "0.0.0-alpha.33"
 dependencies = [
  "compact_str",
  "serde",

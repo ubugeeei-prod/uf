@@ -66,10 +66,11 @@ The specific shape of "alpha", so you can decide before you spend an afternoon:
   Deno runs a uf project too, by a different road — it has no module hook, so
   uf compiles ahead of time and hands it an import map — which is why it is
   graded *experimental*: a module uf could not enumerate is still Flow to Deno.
-  The edge runtimes have no host at all
-  ([#246](https://github.com/ubugeeei-prod/uf/issues/246)). The per-host
-  matrix — what works, what does not, and what each gap is waiting for — is
-  [`docs/hosts.md`](./docs/hosts.md).
+  Edge is experimental too: CI starts the generated Cloudflare Worker under
+  Wrangler's local runtime, but there is still no source-level host or Flow
+  loader there ([#246](https://github.com/ubugeeei-prod/uf/issues/246)). The
+  per-host matrix — what works, what does not, and what each gap is waiting for
+  — is [`docs/hosts.md`](./docs/hosts.md).
 - **Deployment.** `uf build --adapter` writes for `node`, `container`, `edge`,
   `serverless` and `static`, all five against one `@uniflowed/server/fetch`
   handler, and `--compile` writes a single executable file — with Bun or with

@@ -95,12 +95,13 @@ export type Application = {|
    * `after()` means by "sent" and is a different line in every host.
    *
    * It is on the bundle rather than importable beside this type, and that is
-   * the one thing about it that looks wrong and is not: the request lives in an
-   * `AsyncLocalStorage` belonging to a module *instance*, and the instance the
-   * application reads is the one bundled into its own `server.js`. A host that
-   * began a request in any other copy would fail silently — the guard would
-   * run, the page would render, and every `cookies()` in it would throw as
-   * though no host had run at all. See ubugeeei-prod/uf#389.
+   * the one thing about it that looks wrong and is not: the request store is
+   * shared by every copy of one release of this package (see
+   * `./process-state.js`), and the release the application reads is the one
+   * bundled into its own `server.js`. A host that began a request through a
+   * copy of another release would fail silently — the guard would run, the page
+   * would render, and every `cookies()` in it would throw as though no host had
+   * run at all. See ubugeeei-prod/uf#389.
    */
   readonly beginRequest: (request: Request) => RequestLifecycle,
 |};

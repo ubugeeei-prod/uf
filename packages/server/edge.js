@@ -39,10 +39,9 @@
 // one behavioural difference between this target and the other three.
 //
 // `beginRequest` is passed in rather than imported, for the reason `./node.js`
-// gives at length: the request lives in an `AsyncLocalStorage` belonging to a
-// module instance, and the instance the application reads is the one bundled
-// into the `handler.js` beside the generated `worker.js`. See
-// ubugeeei-prod/uf#389.
+// gives at length: the request store is shared by every copy of one release of
+// this package, and the release the application reads is the one bundled into
+// the `handler.js` beside the generated `worker.js`. See ubugeeei-prod/uf#389.
 
 import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
@@ -128,6 +127,37 @@ function isDocument(response: Response): boolean {
   return type != null && type.toLowerCase().startsWith("text/html");
 }
 
+/**
+ * Cloudflare's static assets binding redirects a directory index request like
+ * `/guide` to `/guide/`. Node's front door answers that same build artefact
+ * directly, so uf follows only that one internal redirect before deciding that
+ * the asset has answered.
+ */
+function directoryRedirectRequest(request: Request, response: Response): Request | null {
+  if (![301, 302, 307, 308].includes(response.status)) {
+    return null;
+  }
+
+  const location = response.headers.get("location");
+  if (location == null) {
+    return null;
+  }
+
+  const current = new URL(request.url);
+  const next = new URL(location, current);
+  if (next.origin !== current.origin) {
+    return null;
+  }
+  if (next.pathname !== `${current.pathname}/`) {
+    return null;
+  }
+
+  return new Request(next, {
+    method: request.method,
+    headers: request.headers,
+  });
+}
+
 /** Everything the worker half needs to answer a request. */
 export type WorkerHandlerOptions = {|
   /** The application, from the generated `handler.js`. */
@@ -182,7 +212,12 @@ export function createWorkerFetch(
         const assets = env?.ASSETS;
         const method = request.method.toUpperCase();
         if (assets != null && (method === "GET" || method === "HEAD")) {
-          const asset = await assets.fetch(request);
+          let asset = await assets.fetch(request);
+          const redirected = directoryRedirectRequest(request, asset);
+          if (redirected != null) {
+            await asset.body?.cancel("uf: following the assets binding's directory redirect");
+            asset = await assets.fetch(redirected);
+          }
           if (asset.status !== 404) {
             if (prerenderedMayAnswer(request.headers.get("cookie")) || !isDocument(asset)) {
               return asset;

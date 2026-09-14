@@ -120,6 +120,7 @@ import type { CacheKey } from "./cache-key.js";
 import { hashCacheKey, hashDurableCacheKey } from "./cache-key.js";
 import type { CacheProvider } from "./cache-provider.js";
 import { decodeCacheValue, encodeCacheValue } from "./cache-provider.js";
+import { processWide } from "./process-state.js";
 
 /** How long an entry stays fresh, and how long it may be served at all. */
 export type CacheLifetime = {|
@@ -327,7 +328,19 @@ function assertProvider(provider: CacheProvider): void {
   }
 }
 
-const scopes: AsyncLocalStorage<CacheScope> = new AsyncLocalStorage();
+/**
+ * The fill a declaration lands in: one store for the process, not one per copy.
+ *
+ * For the reason `./context.js` keeps its request store in `./process-state.js`.
+ * A `cacheLife()` called by a component rendered through a second copy of this
+ * package — the module graph React Server Components render in is one — would
+ * otherwise declare into a scope nothing opened, and the route cache filling
+ * around it would see a render that stated no lifetime and refuse to keep it.
+ */
+const scopes: AsyncLocalStorage<CacheScope> = processWide(
+  "cache-scope@1",
+  () => new AsyncLocalStorage(),
+);
 
 /**
  * The fill this call is inside, or `null`.

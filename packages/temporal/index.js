@@ -6,8 +6,8 @@
 // door, which is not indirection: `uf_lib`'s registry promises the specifier
 // `@uniflowed/temporal`, and where the code lives is a packaging question that
 // an application should not have to know the answer to. It lives in
-// `@uniflowed/core` so the shared clock and native-runtime bridge still have
-// one owner, while this package is the public Temporal name other packages use.
+// `@uniflowed/core` because `@uniflowed/hooks` reads the same clock and is on
+// npm, and a published package may not depend on one that is not.
 //
 // # What still needs the native runtime
 //
@@ -22,10 +22,10 @@
 // caller who never mentions a calendar never reaches it: everything in
 // `Temporal` below is ISO 8601, which is what a timestamp on a page is.
 //
-// That is also why this package is publishable rather than private. The useful
-// Temporal surface is implemented and should have its own installable name; the
-// one non-ISO calendar seam remains an explicit native-runtime boundary instead
-// of pretending to work.
+// That is also why this package is on the release bootstrap's pending list
+// rather than private. The useful Temporal surface is implemented and should
+// have its own installable name; the one non-ISO calendar seam remains an
+// explicit native-runtime boundary instead of pretending to work.
 
 import { nativeRuntimeRequired } from "@uniflowed/core/native";
 import { Temporal as implementation, isLite } from "@uniflowed/core/temporal";

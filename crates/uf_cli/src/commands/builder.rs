@@ -107,13 +107,20 @@ impl Builder {
 ///   before it is published, and the refusal is the same rule `uf_plugin`
 ///   applies for the same reason: `uf.config.js` is untrusted input, and "run
 ///   this file as the toolchain" is the most dangerous sentence in it.
+///
+/// The name comes from `build.builder`, then from `builder.module` — the
+/// spelling it replaced — and then it is uf's own, `@uniflowed/vite`. A message
+/// about the specifier names whichever of the two keys supplied it, because
+/// that is the line of the config a reader has to change.
 pub(crate) fn resolve(root: &Utf8Path, config: &UniflowedConfig) -> Result<Builder> {
-    let module = config.builder.module.as_str();
+    let tool = config.builder_tool();
+    let module = tool.spec.module();
+    let key = tool.source.key().unwrap_or("build.builder");
     if module.is_empty() {
-        bail!("`builder.module` is empty in uf.config.js; name a builder or remove the key");
+        bail!("`{key}` is empty in uf.config.js; name a builder or remove the key");
     }
     let directory = if module.starts_with('.') || module.starts_with('/') {
-        project_directory(root, module)?
+        project_directory(root, key, module)?
     } else {
         installed_package(root, module)?
     };
@@ -196,17 +203,17 @@ fn describe(module: &str, directory: Utf8PathBuf) -> Result<Builder> {
 /// what is being refused is a *config file* that points the toolchain
 /// somewhere else, and a symlink inside a project the user already trusts is
 /// not that. The check that matters is that the string cannot climb out.
-fn project_directory(root: &Utf8Path, module: &str) -> Result<Utf8PathBuf> {
+fn project_directory(root: &Utf8Path, key: &str, module: &str) -> Result<Utf8PathBuf> {
     let candidate = root.join(module);
     let normalised = normalise(&candidate);
     if !normalised.starts_with(root) {
         bail!(
-            "`builder.module` is {module}, which resolves outside {root}. A builder given as a \
-             path has to be inside the project; publish it and name it as a package otherwise."
+            "`{key}` is {module}, which resolves outside {root}. A builder given as a path has \
+             to be inside the project; publish it and name it as a package otherwise."
         );
     }
     if !normalised.is_dir() {
-        bail!("`builder.module` is {module}, and there is no directory at {normalised}");
+        bail!("`{key}` is {module}, and there is no directory at {normalised}");
     }
     Ok(normalised)
 }

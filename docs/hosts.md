@@ -20,7 +20,7 @@ without naming the test that starts the runtime.
 | Node.js | **implemented** | `@uniflowed/host/register` | `read`, `write` | `crates/uf_cli/tests/testing.rs`, `crates/uf_cli/tests/permissions.rs`, and the whole library suite |
 | Bun | **implemented** | `@uniflowed/host/bun-preload` | none | `crates/uf_cli/tests/bun_host.rs` |
 | Deno | **experimental** | uf's ahead-of-time transform and import map | all five | `crates/uf_cli/tests/deno_host.rs` |
-| Edge / workers | planned | — | none expressible | — |
+| Edge / workers | experimental | — | none expressible | `tools/ci/edge-worker-smoke.sh` |
 | Serverless | planned | — | none expressible | — |
 | Container | planned | — | none expressible | — |
 | `uf` (self-hosted) | planned | — | — | — |
@@ -36,6 +36,12 @@ never exited. That is what an unchecked row is worth.
 Deno's row is *experimental* rather than implemented, which is the distinction
 the middle grade exists for: a uf project runs there, and the way it is made to
 run has a gap a person can meet. See [Deno](#deno) for what the gap is.
+
+Edge is experimental in the same deliberately narrow sense. `uf build --adapter
+edge` writes a Cloudflare Worker and CI starts that generated deployment under
+Wrangler's local runtime. What does **not** exist yet is a source-level host:
+there is no Flow loader hook, no `uf test --runtime edge`, and no remote worker
+coverage.
 
 ## The browser, which is a different question
 
@@ -132,8 +138,8 @@ than reporting a run of zeroes.
 ## Deno
 
 A uf project runs on Deno, and it gets there by a different road from the other
-two. Node has `register()` and Bun has `Bun.plugin`; **Deno has no module hook
-at all**, so nothing can be installed in it that transforms a module as the
+two. Node has module hooks — `registerHooks`, or `register()` on a Node too old
+for it — and Bun has `Bun.plugin`; **Deno has no module hook at all**, so nothing can be installed in it that transforms a module as the
 runtime asks for it. The transform has to have already happened.
 
 So `uf test` on Deno runs an **ahead-of-time pass** before the host starts. It
@@ -235,12 +241,12 @@ for.
 
 ## Edge and worker runtimes
 
-Cloudflare Workers, Vercel Edge, Deno Deploy: **there is no host at all**, and
-none of the machinery the other three use would apply. A worker runtime has no
-loader hook, no child process to run `uf transform` in, and no filesystem, so
-the transform must happen at deploy time and the permission set has nothing to
-translate into — the platform's sandbox *is* the permission model, and it is not
-uf's to configure.
+Cloudflare Workers, Vercel Edge, Deno Deploy: these are not source-level hosts
+in the way Node, Bun and Deno are. A worker runtime has no loader hook, no
+child process to run `uf transform` in, and no filesystem, so the transform
+must happen at deploy time and the permission set has nothing to translate into
+— the platform's sandbox *is* the permission model, and it is not uf's to
+configure.
 
 `infra/cloudflare/` is the documentation site's own deployment and is not an
 application target; it should not be read as one.
@@ -248,27 +254,27 @@ application target; it should not be read as one.
 This is the same ahead-of-time question Deno's loader asks, and answering it
 once serves both. Tracked by ubugeeei-prod/uf#246.
 
-### Nothing here has been checked on a worker runtime
+### What the worker smoke checks
 
 Worth stating in the column's own terms rather than leaving as an em dash.
 `uf build --adapter edge` does write a Cloudflare Worker — `worker.js`,
 `wrangler.json` and `static/` — and `tests/library/deploy.test.js` drives that
-handler's answers and compares them with `uf start`'s. **None of that starts a
-worker runtime.** The handler runs in Node, in process, and a `wrangler.json`
-being the shape Cloudflare documents is not the same claim as Cloudflare
-accepting it.
+handler's answers and compares them with `uf start`'s. That is still a Node
+test, not a Worker test.
 
-Nor could it be checked here yet. No test in this repository starts `workerd`,
-`wrangler dev` or any other worker runtime; the machine uf is developed on has
-none installed; and CI installs Node, Bun and Deno and nothing else — see
-`.github/workflows/ci.yml`. The one place `wrangler` is run at all is
-`docs.yml`, which deploys the documentation site, and a `--dry-run` there
-bundles a script rather than executing one.
+`tools/ci/edge-worker-smoke.sh` is the Worker test. It builds the same
+`served-app` fixture with `--adapter edge`, starts the generated deployment with
+`wrangler dev --local`, then requests the home page, a prerendered page, a
+dynamic route, both `GET` and `POST` route handlers, and the app's not-found
+boundary. This is the first proof that the emitted Worker, config and asset
+binding are accepted by a Worker runtime and can answer real HTTP requests.
 
-So this row stays **planned** with an empty "Checked by", which is what that
-column is for. Grading it on the strength of an in-process handler test would
-be the same move Bun's row made for a year on the strength of a README
-sentence, and [the matrix](#the-matrix) says what that was worth.
+That is enough for **experimental**, not complete support. The smoke uses
+Wrangler's local runtime, not a remote Cloudflare deployment; it checks the
+built output, not a `uf test --runtime edge` host; and a Worker has no loader
+hook or child process to teach it Flow after it starts. Edge still depends on
+the ahead-of-time transform, and a Flow module the build cannot enumerate is
+still outside the claim.
 
 Tracked by ubugeeei-prod/uf#246, which is also where the shape a real edge host
 would take is written down.
@@ -357,8 +363,11 @@ receives. That asymmetry is why `--compile` on Bun refuses rather than warns.
 On Node, uf's own Flow loader needs two grants that Node itself warns about at
 startup:
 
-- `--allow-worker`, because `register()` runs module hooks on a loader thread,
-  and without it the very first import fails with `ERR_ACCESS_DENIED`;
+- `--allow-worker`, because the Flow loader compiles on a thread: on a cold
+  cache the in-thread hooks hand each module to a transform thread, and a Node
+  without `registerHooks` runs the hooks themselves on the loader thread
+  `register()` starts. Without it the first module that has to be compiled
+  fails with `ERR_ACCESS_DENIED`;
 - `--allow-child-process`, because every Flow module is transformed by a
   `uf transform` child.
 

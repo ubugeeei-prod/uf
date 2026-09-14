@@ -129,14 +129,19 @@ component Masthead() {
         uf
         <span className="version">{VERSION}</span>
       </Link>
+      {/*
+        Two doors into the manual, each opening on a landing page. "Guide"
+        opens Start, the one section that assumes nothing, with every other
+        section a reader might have meant listed in the sidebar beside it;
+        "Reference" opens the reference's own landing page rather than the
+        first reference page. Which one is highlighted is read from the URL,
+        and every guide section lives under `/guide`.
+      */}
       <nav className="masthead-nav" aria-label="Site">
-        <Link to="/guide" aria-current={section(pathname) === "guide" ? "page" : undefined}>
+        <Link to="/guide/start" aria-current={section(pathname) === "guide" ? "page" : undefined}>
           Guide
         </Link>
-        <Link
-          to="/reference/cli"
-          aria-current={section(pathname) === "reference" ? "page" : undefined}
-        >
+        <Link to="/reference" aria-current={section(pathname) === "reference" ? "page" : undefined}>
           Reference
         </Link>
         <a href="https://github.com/ubugeeei-prod/uf">Source</a>

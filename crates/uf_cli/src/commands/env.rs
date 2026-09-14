@@ -49,6 +49,7 @@ fn declared(cwd: &Utf8Path) -> Result<(uf_config::ResolvedConfig, Vec<uf_env::Pi
 /// Install everything `uf.config.js` declares, and link it into the project.
 fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let (resolved, pins) = declared(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.toolchain_deprecation());
     if pins.is_empty() {
         ui.render(|renderer, out| {
             renderer.banner(out, "uf env install", Some(project_label(&resolved.root)));
@@ -128,6 +129,7 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 /// What this project declares, and what the store holds for everybody.
 fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let (resolved, pins) = declared(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.toolchain_deprecation());
     let store = uf_env::Store::discover()?;
     let mine: Vec<String> = pins
         .iter()
