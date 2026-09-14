@@ -23,6 +23,9 @@ before the subcommand; a subcommand's own flags come after it.
 
 ## Project
 
+[Your first project](/guide/project) is the guide to `uf new` and `uf init`, and
+[Routing](/guide/routing) to the route table `uf routes` prints and extends.
+
 ### uf new PATH [TEMPLATE]
 
 Scaffolds an application into a new directory: `uf.config.js`, `app.js`, a
@@ -147,6 +150,10 @@ stops has written none of its files.
 next run of it.
 
 ## Running and building
+
+[Dev and build](/guide/dev) is the guide to `uf dev` and `uf build`,
+[Targets](/guide/targets) to serving and deploying a build, and
+[Tasks](/guide/tasks) to `uf run` and `uf exec`.
 
 ### uf dev
 
@@ -736,6 +743,10 @@ here, and it delegates to whichever package manager the project uses (`npx
 
 ## Correctness
 
+[Type checking](/guide/check) is the guide to `uf check`,
+[Formatting and linting](/guide/format) to `uf lint` and `uf fmt`, and
+[Testing](/guide/testing) to `uf test`.
+
 ### uf check
 
 Type-checks the project with Flow. `--json` for the machine-readable report.
@@ -1007,7 +1018,10 @@ one place this repository implements it.
 
 ## Dependencies
 
-Five commands, all of them the project's own package manager. uf's resolver
+[Dependencies](/guide/dependencies) is the guide to these commands, with what each
+one printed.
+
+Most of them run the project's own package manager. uf's resolver
 reaches no registry yet, so each one detects whether the project is npm, pnpm,
 Yarn or Bun and runs that — while keeping the three things a bare `npm install`
 would skip: lifecycle scripts stay refused, a manifest that declares scripts of
@@ -1338,6 +1352,8 @@ A configured `outDir` outside the project is refused rather than removed:
 be one typo away from taking a directory nobody named.
 
 ## Environment
+
+[Environments](/guide/env) is the guide to these commands.
 
 ### uf use TOOLCHAIN
 
