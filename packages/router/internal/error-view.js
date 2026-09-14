@@ -1,4 +1,3 @@
-"use client";
 // @flow
 //
 // Internal to `@uniflowed/router`: what renders in place of a subtree that threw.
@@ -10,6 +9,8 @@
 // retry is a navigation, so none of this can run in a graph resolved under
 // React's `react-server` condition — which is why it is out of `./runtime.js`'s
 // top half and in a module of its own. See ubugeeei-prod/uf#519.
+
+"use client";
 
 import * as React from "react";
 

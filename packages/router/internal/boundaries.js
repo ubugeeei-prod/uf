@@ -1,4 +1,3 @@
-"use client";
 // @flow
 //
 // Internal to `@uniflowed/router`: which DOM subtree each boundary owns.
@@ -83,6 +82,8 @@
 // gate `client.js` already uses, replaced by `undefined` in a build — and this
 // package is `sideEffects: false`, so with the references folded away the
 // module is dropped rather than merely unused.
+
+"use client";
 
 import * as React from "react";
 import { useEffect, useSyncExternalStore } from "react";

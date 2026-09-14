@@ -1,4 +1,3 @@
-"use client";
 // @flow
 //
 // The router runtime: the browser's binding.
@@ -18,6 +17,8 @@
 // three are split out because none of them may reach a hook, a context or a
 // class component, which is what lets a server graph resolved under React's
 // `react-server` condition import them (ubugeeei-prod/uf#519).
+
+"use client";
 
 import * as React from "react";
 import {
