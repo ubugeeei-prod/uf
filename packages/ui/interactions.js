@@ -66,18 +66,21 @@
 //   * **Keys belong to the element that has focus.** `Enter` and `Space` press
 //     the focused element and never an ancestor that happens to contain it, so
 //     a link inside a pressable card is the link's.
-//   * **An element the browser already activates keeps its activation.** A
-//     `<button>`, a link, a `<summary>` and the checkable and button-typed
-//     `<input>`s click themselves on `Enter` or `Space`, and that click is what
-//     submits a form, follows a link or checks a box. On those the press
-//     completes from that click, which is the only way `Enter` on a submit
-//     button can both press and submit — and nothing fires twice, because
-//     nothing but that click ever fires `press` for them.
-//   * **Everything else is given a button's keyboard.** On a `<div>` or a
-//     `<span>` — anything `render` might put a part on — `Enter` presses on key
-//     down and `Space` on key up, the timing a native button has. `role="link"`
-//     keeps a link's keyboard (`Enter` only) and `role="checkbox"` and
-//     `role="radio"` keep a checkbox's (`Space` only; `Enter` is the form's).
+//   * **An element whose activation does more than press keeps it.** A link
+//     follows, a submit or reset button submits or resets its form, a checkable
+//     `<input>` checks and a `<summary>` opens its details, and the browser does
+//     each of those from the click it sends for `Enter` or `Space`. On those the
+//     press completes from that click, which is the only way `Enter` on a
+//     submit button can both press and submit — and nothing fires twice,
+//     because nothing but that click ever fires `press` for them.
+//   * **Everything else is given a button's keyboard, and the browser's click
+//     is claimed.** On a `<button type="button">`, whose click does nothing but
+//     press, and on a `<div>` or a `<span>` — anything `render` might put a part
+//     on — `Enter` presses on key down and `Space` on key up, the timing a
+//     native button has, and the keys' default actions are prevented so a
+//     native button is not clicked a second time. `role="link"` keeps a link's
+//     keyboard (`Enter` only) and `role="checkbox"` and `role="radio"` keep a
+//     checkbox's (`Space` only; `Enter` is the form's).
 //   * **A held key is one press.** Its repeats are claimed and ignored.
 //   * **Focus moves to what was pressed**, without scrolling, which is what
 //     every browser but Safari already does for a button. `preventFocusOnPress`
@@ -624,11 +627,15 @@ type KeyRule = {| readonly enter: boolean, readonly native: boolean, readonly sp
 /**
  * The keys that press `element`, or nothing when its keys are text.
  *
- * `native` names the elements the browser clicks for their keys; see the module
- * header for why the press waits for that click on them. The tag is asked
- * before the role because the browser asks the tag: a `<button role="checkbox">`
- * is still clicked by `Enter`, and a part that wants `Enter` for something else
- * claims it first.
+ * `native` names the elements whose own activation — following a link,
+ * submitting or resetting a form, checking a box, opening a `<summary>` — comes
+ * from the click the browser sends for a key. The press waits for that click on
+ * them, and claims the key everywhere else; the module header says why.
+ *
+ * The tag is asked before the role because the browser asks the tag: a
+ * `<button type="button" role="checkbox">` takes `Enter` like any button, so a
+ * part that wants `Enter` for something else — `Checkbox` submits the form with
+ * it — prevents the key first, and a press never sees it.
  */
 function keyRuleFor(element: HTMLElement): KeyRule | null {
   if (element.isContentEditable) {
@@ -643,12 +650,21 @@ function keyRuleFor(element: HTMLElement): KeyRule | null {
     if (type === "checkbox" || type === "radio") {
       return { enter: false, native: true, space: true };
     }
-    if (type === "button" || type === "submit" || type === "reset" || type === "image") {
+    if (type === "submit" || type === "reset" || type === "image") {
       return { enter: true, native: true, space: true };
+    }
+    if (type === "button") {
+      return { enter: true, native: false, space: true };
     }
     return null;
   }
-  if (tag === "BUTTON" || tag === "SUMMARY") {
+  if (tag === "BUTTON") {
+    // `.type` rather than the attribute: a `<button>` with none is a submit
+    // button, and submitting is the activation a press cannot do instead.
+    const type = String((element as $FlowFixMe).type ?? "submit").toLowerCase();
+    return { enter: true, native: type === "submit" || type === "reset", space: true };
+  }
+  if (tag === "SUMMARY") {
     return { enter: true, native: true, space: true };
   }
   if ((tag === "A" || tag === "AREA") && element.hasAttribute("href")) {

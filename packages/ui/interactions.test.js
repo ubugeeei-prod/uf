@@ -131,7 +131,7 @@ component PressProbe(
   onEvent: (event: PressEvent) => void,
   allowTextSelectionOnPress?: boolean = false,
   isDisabled?: boolean = false,
-  kind?: "button" | "checkbox" | "div" | "link" = "div",
+  kind?: "button" | "checkbox" | "div" | "link" | "submit" = "div",
   preventFocusOnPress?: boolean = false,
   shouldCancelOnPointerExit?: boolean = false,
 ) {
@@ -149,6 +149,13 @@ component PressProbe(
   if (kind === "button") {
     return (
       <button {...pressProps} data-pressed={pressed} type="button">
+        Save
+      </button>
+    );
+  }
+  if (kind === "submit") {
+    return (
+      <button {...pressProps} data-pressed={pressed} type="submit">
         Save
       </button>
     );
@@ -482,13 +489,28 @@ describe("usePress, from the keyboard", () => {
     expect(control).not.toHaveAttribute("data-pressed");
   });
 
-  it("leaves a native button's Enter to the browser, and presses once", () => {
+  it("presses a button on its own keys, and claims them so the browser does not click it again", () => {
     const { events, record } = recorder();
     render(<PressProbe kind="button" onEvent={record} />);
     const control = screen.getByRole("button", { name: "Save" });
 
-    // Not claimed: the browser clicks a button for its `Enter`, and that click
-    // is what submits the form a submit button is in.
+    // A `type="button"` button's click does nothing but press, so its keys are
+    // handled here and their default action — that click — is prevented.
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(events).toEqual(KEY_PRESS);
+
+    expect(fireEvent.keyDown(control, { key: " " })).toBe(false);
+    expect(fireEvent.keyUp(control, { key: " " })).toBe(false);
+    expect(events).toEqual([...KEY_PRESS, ...KEY_PRESS]);
+  });
+
+  it("leaves a submit button's Enter to the browser, which submits, and presses once", () => {
+    const { events, record } = recorder();
+    render(<PressProbe kind="submit" onEvent={record} />);
+    const control = screen.getByRole("button", { name: "Save" });
+
+    // Not claimed: the click the browser sends for `Enter` is what submits the
+    // form the button is in, and a press cannot do that instead.
     expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(true);
     expect(events).toEqual(["pressstart:keyboard", "pressup:keyboard", "pressend:keyboard"]);
 
@@ -497,9 +519,9 @@ describe("usePress, from the keyboard", () => {
     expect(events).toEqual(KEY_PRESS);
   });
 
-  it("presses a native button on Space through the click the key makes as it comes up", () => {
+  it("presses a submit button on Space through the click the key makes as it comes up", () => {
     const { events, record } = recorder();
-    render(<PressProbe kind="button" onEvent={record} />);
+    render(<PressProbe kind="submit" onEvent={record} />);
     const control = screen.getByRole("button", { name: "Save" });
 
     expect(fireEvent.keyDown(control, { key: " " })).toBe(true);
