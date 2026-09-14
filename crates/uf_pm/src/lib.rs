@@ -181,11 +181,21 @@ pub enum PackageManagerError {
         /// Manifest path.
         path: Utf8PathBuf,
     },
-    /// A package manifest declared npm scripts while they are forbidden.
-    #[error("package manifest {path} declares scripts; use uf tasks in uf.config.js")]
+    /// A package manifest declared install-time lifecycle scripts while they are
+    /// forbidden.
+    ///
+    /// Only the hooks in [`INSTALL_LIFECYCLE_SCRIPTS`]. A script no install runs
+    /// is the project's own business, and refusing it protects against nothing.
+    #[error(
+        "package manifest {path} declares install-time lifecycle scripts ({}), which run code \
+         during an install; move that automation to uf tasks in uf.config.js",
+        .scripts.join(", ")
+    )]
     ScriptsForbidden {
         /// Manifest path.
         path: Utf8PathBuf,
+        /// The install-time hooks it declares, in manifest order.
+        scripts: Vec<String>,
     },
 }
 
@@ -271,8 +281,14 @@ pub fn check_workspace_manifests(
             }
         })?;
 
-        if plan.forbids_npm_scripts() && has_scripts(&value) {
-            return Err(PackageManagerError::ScriptsForbidden { path: manifest });
+        if plan.forbids_npm_scripts() {
+            let scripts = install_lifecycle_scripts(&value);
+            if !scripts.is_empty() {
+                return Err(PackageManagerError::ScriptsForbidden {
+                    path: manifest,
+                    scripts,
+                });
+            }
         }
 
         packages.push(lock_manifest(root, &manifest, &source, &value)?);
@@ -603,11 +619,95 @@ fn read_dependency_map(value: &Value, field: &str) -> BTreeMap<CompactString, Co
     dependencies
 }
 
-fn has_scripts(value: &Value) -> bool {
+/// The scripts a package manager runs from a project's own manifest while it
+/// installs, and so the ones `uf install` refuses there.
+///
+/// This is npm's own list, from `docs/content/using-npm/scripts.md` as npm 11
+/// ships it. `npm install` and `npm ci` run `preinstall`, `install`,
+/// `postinstall`, `prepublish`, `preprepare`, `prepare` and `postprepare`.
+/// `prepack` and `postpack` run when a package is packed, which installing it
+/// from git does, and `dependencies` runs after any change to `node_modules`.
+/// pnpm adds `pnpm:devPreinstall`, which runs in the workspace root before it
+/// installs. Yarn and Bun run subsets of the same names.
+///
+/// # Why only these
+///
+/// The refusal exists because an install-time hook is code that runs, unasked,
+/// on a machine that has just cloned a repository. A named script such as
+/// `start`, `ios` or `test` runs only when a person types `npm run` for it, so
+/// refusing one protects against nothing an install can do. It used to be
+/// refused anyway, and that refused every project `create-expo-app` or the React
+/// Native template generates, because both write `start`, `android` and `ios`.
+/// See ubugeeei-prod/uf#992.
+///
+/// A `pre` or `post` twin of a named script is a named script too: `prestart`
+/// runs with `npm start`, not with an install.
+pub const INSTALL_LIFECYCLE_SCRIPTS: &[&str] = &[
+    "preinstall",
+    "install",
+    "postinstall",
+    "prepublish",
+    "preprepare",
+    "prepare",
+    "postprepare",
+    "prepack",
+    "postpack",
+    "dependencies",
+    "pnpm:devPreinstall",
+];
+
+/// Every script a manifest declares, in manifest order.
+fn script_names(value: &Value) -> impl Iterator<Item = &str> {
     value
         .get("scripts")
         .and_then(Value::as_object)
-        .is_some_and(|scripts| !scripts.is_empty())
+        .into_iter()
+        .flat_map(|scripts| scripts.keys().map(String::as_str))
+}
+
+/// The install-time hooks a manifest declares, in manifest order.
+fn install_lifecycle_scripts(value: &Value) -> Vec<String> {
+    script_names(value)
+        .filter(|name| INSTALL_LIFECYCLE_SCRIPTS.contains(name))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The scripts each package manifest declares that no install runs, and that uf
+/// does not run either, such as `start`, `ios` and `test`.
+///
+/// Manifests that declare none are left out, so an empty list means there is
+/// nothing to say. `uf install` says it in one line; see
+/// [`INSTALL_LIFECYCLE_SCRIPTS`] for why these are not refused.
+///
+/// # Errors
+///
+/// A manifest that cannot be read or parsed, which is the failure the install is
+/// about to hit anyway.
+pub fn scripts_uf_does_not_run(
+    root: &Utf8Path,
+) -> Result<Vec<(Utf8PathBuf, Vec<String>)>, PackageManagerError> {
+    let mut declared = Vec::new();
+    for manifest in discover_package_manifests(root)? {
+        let source = fs::read_to_string(&manifest).map_err(|source| PackageManagerError::Read {
+            path: manifest.to_path_buf(),
+            source,
+        })?;
+        let value = serde_json::from_str::<Value>(&source).map_err(|source| {
+            PackageManagerError::Parse {
+                path: manifest.to_path_buf(),
+                source,
+            }
+        })?;
+        let names = script_names(&value)
+            .filter(|name| !INSTALL_LIFECYCLE_SCRIPTS.contains(name))
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        if !names.is_empty() {
+            declared.push((manifest.to_path_buf(), names));
+        }
+    }
+    Ok(declared)
 }
 
 fn write_json<T: Serialize>(path: &Utf8Path, value: &T) -> Result<(), PackageManagerError> {

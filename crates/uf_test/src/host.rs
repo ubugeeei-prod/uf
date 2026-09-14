@@ -337,12 +337,11 @@ impl HostCommand {
 
     /// Whether this host can collect coverage at all.
     ///
-    /// Node only, and the reason is not a missing feature of uf's: Bun's
-    /// preload transforms with `sourceMap: false` and implements no
-    /// `NODE_V8_COVERAGE`, and Deno writes its counts through `--coverage` in
-    /// a profile format of its own, with no source-map cache beside them for
-    /// [`crate::coverage`] to map back through. A caller is expected to say so
-    /// rather than report a run of zeroes.
+    /// Node only, and the reason is not a missing feature of uf's: Bun
+    /// implements no `NODE_V8_COVERAGE`, and Deno writes its counts through
+    /// `--coverage` in a profile format of its own, with no source-map cache
+    /// beside them for [`crate::coverage`] to map back through. A caller is
+    /// expected to say so rather than report a run of zeroes.
     ///
     /// The browser is the interesting `false`, because the counters are right
     /// there — V8 is counting in the renderer exactly as it counts in Node. The

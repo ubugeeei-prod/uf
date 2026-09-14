@@ -280,9 +280,11 @@ instead of a `dist/` with a hole in it, and a project that has said it renders
 everything per request gets no prerendered documents at all. The summary's
 `rendering` row says which of the three happened.
 
-The builder that does all of this is [`builder.module`](/reference/config#builder),
-which is `@uniflowed/vite` unless a project names another; `uf explain build`
-prints the one that will run and its version.
+The builder that does all of this is [`build.builder`](/reference/config#builder),
+which is `@uniflowed/vite` unless a project names another, and it runs on
+[`build.runtime`](/reference/config#runtime-and-packagemanager), then `runtime`.
+`uf explain build` prints the builder that will run, its version, and the
+release it runs on.
 
 The build's own notes go in `.uf/build/meta/` rather than in the output
 directory: `uf-build-manifest.json`, `uf-rsc-manifest.json` and
@@ -693,9 +695,12 @@ inside it is fixed at build time and changing a single asset means building
 again.
 
 Producing one needs a runtime to embed, and **which one is the project's
-choice**: uf reads `app.runtime.capabilityJsHost`, the same setting that
-decides which host `uf dev` and `uf test` run on, and uses the first of the
-accepted hosts that can build a binary. Running one still needs nothing.
+choice**: uf reads `app.runtime.capabilityJsHost`, the setting `uf dev` and
+`uf test` fall back to when no runtime is declared, and uses the first of the
+accepted hosts that can build a binary. It does not read
+[`runtime`](/reference/config#runtime-and-packagemanager) yet
+([#1036](https://github.com/ubugeeei-prod/uf/issues/1036)). Running one still
+needs nothing.
 
 | host | how | cross-compiles | needs |
 | --- | --- | --- | --- |
@@ -876,9 +881,21 @@ Runs uf's rules and Flow's built-in lints. `--json` for the report.
 | `--fix` | Rewrite the files, applying every fix that cannot change what the program does |
 | `--fix-unsafe` | Also apply the fixes whose correctness rests on something the rule could not check |
 | `--json` | The whole report on stdout, machine-readable |
+| `--rules` | List every rule, its level in this project and what fixes it, instead of linting |
 
 Without a `--fix` flag nothing is written. That is the `--check`-like use, and
 it is what CI and a git hook run.
+
+`uf lint --rules` lints nothing. It lists every rule with the level a run in
+this project would use — `uf.config.js` over the defaults, deprecated rule
+names included, so a rule the project turned off says `off` — the command that
+fixes its findings (`--fix`, `--fix-unsafe`, `uf fmt`, or nothing) and what it
+checks. A level marked `*` belongs to a rule that needs Flow type inference,
+which uf does not implement yet, so a run names it under `unavailableRules`
+instead of running it. With `--json` each entry is the one `uf inspect --json`
+prints under `lintRules`, plus `level` and `fix`, where `fix` is `"safe"`,
+`"unsafe"`, `"formatter"` or `null`. It exits `0`, and it cannot be combined
+with `--fix`, `--fix-unsafe` or a path.
 
 #### What "safe" and "unsafe" mean here
 

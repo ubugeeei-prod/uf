@@ -43,7 +43,7 @@ import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { builtinModules, register } from "node:module";
 import { installFlowHooks } from "@uniflowed/host/internal/sync-hooks.js";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -58,13 +58,16 @@ import { loadUfConfig, projectConfig } from "./internal/config.js";
 import { send, toRequest } from "./internal/http.js";
 import { createOpenApiDocument } from "./internal/openapi.js";
 import { withProjectConfig } from "./merge.js";
+import { FLIGHT_VIRTUAL, RSC_ENVIRONMENT } from "./internal/flight.js";
 import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
 import {
   BUILD_ID_FILE,
+  DOCUMENT_ASSETS_FILE,
   assetsFromManifest,
   buildIdentity,
   createPrerenderGate,
   createServeHandler,
+  documentAssetsFor,
   loadBuild,
   nodeListener,
   providerSpecifier,
@@ -455,6 +458,17 @@ async function preview() {
   const draftFirst = {
     name: "uf:draft-before-files",
     configurePreviewServer(previewServer) {
+      // A prerendered payload is a file whose extension Vite's static middleware
+      // knows no type for, and the router hands bytes to React only when they
+      // are answered as a payload — so a navigation on a preview would silently
+      // become a document load. Set here, in front of the file server, which
+      // keeps a type it did not choose.
+      previewServer.middlewares.use((request, response, next) => {
+        if ((request.url ?? "").split("?")[0].endsWith("/__uf.flight")) {
+          response.setHeader("content-type", "text/x-component");
+        }
+        next();
+      });
       if (handle == null) return;
       const run = answer(previewServer);
       previewServer.middlewares.use((request, response, next) => {
@@ -607,17 +621,48 @@ async function build() {
   const staticBuild = flag("--static-build");
   const because = argument("--because") ?? "this build prerenders every route";
 
+  // 0. The rsc graph, for an application React Server Components render: the
+  //    route table and every server component, resolved under `react-server`.
+  //    First, because it is what finds the client modules the next pass has
+  //    to build; `./internal/flight.js` has the order and the reason for it.
+  const flight = flightStateOf(inline);
+  const rscDir = path.join(root, ".uf", "build", "rsc");
+  if (flight != null) {
+    emit("phase", { name: "rsc" });
+    await buildRscGraph(vite, inline, flight, { outDir: rscDir, conditions: null });
+  }
+
   // 1. The client: everything the browser loads, with a manifest so the
-  //    server render knows which script and stylesheet tags to write.
+  //    server render knows which script and stylesheet tags to write. Under
+  //    React Server Components that is the entry and one entry per client
+  //    module, each keeping its export names, because a payload asks for a
+  //    chunk by its URL and for a component by its export.
   emit("phase", { name: "client" });
+  const references = flight == null ? [] : [...flight.clientModules].sort();
+  const input = { client: VIRTUAL.client };
+  references.forEach((file, index) => {
+    input[`client-reference-${index}`] = file;
+  });
   await vite.build({
     ...inline,
     build: {
       ...inline.build,
-      rollupOptions: { input: { client: VIRTUAL.client } },
+      rollupOptions:
+        flight == null ? { input } : { input, preserveEntrySignatures: "exports-only" },
     },
   });
   const manifest = readManifest(outDir);
+  if (flight != null) {
+    recordClientChunks(flight, manifest, references, rscDir);
+    // What the summary's "pages in the client bundle" reads. None: a browser
+    // that hydrates a payload imports no page, whichever route it is on.
+    emit("rsc-split", {
+      pages: 0,
+      routes: scanRoutes(path.resolve(root, config.app?.router?.root ?? "app"), {
+        target: resolveRouteTarget(config, argument("--target")),
+      }).routes.length,
+    });
+  }
 
   // 2. The server entry, bundled for the host, outside `dist/` so it is never
   //    deployed by accident.
@@ -653,7 +698,14 @@ async function build() {
   //    arrives here as one word, and this is where it meets the route table.
   emit("phase", { name: "prerender" });
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
-  const assets = assetsFromManifest(manifest);
+  const assets =
+    flight == null
+      ? assetsFromManifest(manifest)
+      : flightAssets(manifest, references, rscDir, outDir);
+  // Recorded beside the server bundle, because whatever serves this build
+  // later cannot recompute them from the client manifest alone; see
+  // `documentAssetsFor`.
+  writeFileSync(path.join(serverDir, DOCUMENT_ASSETS_FILE), `${JSON.stringify(assets, null, 2)}\n`);
   const openapi = await createOpenApiDocument(server.handlers);
   const openapiFile = path.join(root, ".uf", "build", "meta", "openapi.json");
   mkdirSync(path.dirname(openapiFile), { recursive: true });
@@ -719,6 +771,11 @@ async function build() {
     const file = htmlPathFor(outDir, url);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, result.html);
+    // The payload the document was rendered from, beside it: what a browser
+    // navigating to this route fetches, from whatever serves the files.
+    if (result.payload != null) {
+      writeFileSync(path.join(path.dirname(file), "__uf.flight"), result.payload);
+    }
     emit("page", {
       url,
       file: path.relative(root, file),
@@ -1057,8 +1114,15 @@ async function compile() {
   mkdirSync(bundleDir, { recursive: true });
   writeFileSync(
     entry,
-    entrySource(path.relative(root, assets), assetsFromManifest(readManifest(outDir))),
+    entrySource(
+      path.relative(root, assets),
+      await documentAssetsFor(path.join(root, ".uf", "build", "server"), readManifest(outDir)),
+    ),
   );
+
+  // The rsc graph `uf build` built, and the client chunks its references name.
+  const flight = flightStateOf(inline);
+  if (flight != null) loadFlightBuild(flight, path.join(root, ".uf", "build", "rsc"));
 
   await vite.build({
     ...inline,
@@ -1288,7 +1352,10 @@ async function deploy() {
   // file is the version a person can open when a deployed directory
   // misbehaves.
   mkdirSync(work, { recursive: true });
-  const document = assetsFromManifest(readManifest(outDir));
+  const document = await documentAssetsFor(
+    path.join(root, ".uf", "build", "server"),
+    readManifest(outDir),
+  );
   // Whatever `build` above minted, so a durable cache in the deployed artefact
   // is keyed by the build that produced it and not by the moment it was
   // packaged. Read rather than minted again for exactly that reason: a second
@@ -1311,6 +1378,21 @@ async function deploy() {
     input[name] = path.join(work, `${name}.js`);
   }
 
+  // An application React Server Components render bundles the rsc graph into
+  // its server, and a target with export conditions of its own needs that graph
+  // resolved under them as well: React's Flight server has a Node build and a
+  // worker build, exactly as its HTML renderer does.
+  const flight = flightStateOf(inline);
+  if (flight != null) {
+    loadFlightBuild(flight, path.join(root, ".uf", "build", "rsc"));
+    if (shape.conditions != null) {
+      await buildRscGraph(vite, inline, flight, {
+        outDir: path.join(work, "rsc"),
+        conditions: shape.conditions,
+      });
+    }
+  }
+
   const ssr = { ...(inline.ssr ?? {}), noExternal: true };
   if (shape.conditions != null) {
     // Which build of a dependency this target gets, and it is the difference
@@ -1330,6 +1412,19 @@ async function deploy() {
       nativeAddonGuard(),
       ...(shape.workerBuiltins === true ? [workerBuiltinGuard()] : []),
     ],
+    // Fixed, because this bundle inlines every dependency and so both of each
+    // React package's builds, and a runtime lookup of `NODE_ENV` in a worker
+    // finds nothing and picks the development one. React's Flight client's
+    // development build constructs a `WeakRef` for every response, which
+    // workerd does not have: every document the edge artefact rendered was a
+    // `ReferenceError`. The production build has none, and is the one a
+    // deployment means.
+    define: {
+      ...(inline.define ?? {}),
+      "process.env.NODE_ENV": JSON.stringify(
+        inline.mode === "development" ? "development" : "production",
+      ),
+    },
     ssr,
     build: {
       ...inline.build,
@@ -1877,6 +1972,135 @@ async function printConfig() {
   const config = await loadConfig();
   emit("config", { config: projectConfig(config) });
   process.exit(0);
+}
+
+/**
+ * The React Server Components state `@uniflowed/vite` shares with this driver,
+ * or `null` for an application rendered from its modules.
+ *
+ * Read off the plugin rather than decided again here: `rendersFlight` in
+ * `./internal/flight.js` decides from the same `uf.config.js`, and a second
+ * reading of it would be the one that drifts.
+ */
+function flightStateOf(inline) {
+  const plugins = (inline.plugins ?? []).flat(Number.POSITIVE_INFINITY);
+  return plugins.find((plugin) => plugin?.name === "uf:flow")?.api?.flight ?? null;
+}
+
+/** What a later command needs of the rsc build, written beside its output. */
+const FLIGHT_BUILD_FILE = "uf-flight.json";
+
+/**
+ * Build the rsc graph into `outDir`.
+ *
+ * `conditions` are a deploy target's own, added to `react-server`; `null` is
+ * the Node server `uf build` writes. Vite's builder rather than `vite.build`,
+ * because the rsc graph is an environment of its own and `vite.build` builds
+ * the two Vite always has.
+ */
+async function buildRscGraph(vite, inline, state, { outDir, conditions }) {
+  const environment = {
+    build: {
+      outDir,
+      emptyOutDir: true,
+      rollupOptions: {
+        input: { index: FLIGHT_VIRTUAL.entry },
+        output: { entryFileNames: "[name].js", format: "es" },
+      },
+    },
+  };
+  if (conditions != null) {
+    environment.resolve = {
+      conditions: ["react-server", ...conditions],
+      externalConditions: ["react-server", ...conditions],
+    };
+  }
+  const builder = await vite.createBuilder({
+    ...inline,
+    customLogger: eventLogger("warn"),
+    environments: { [RSC_ENVIRONMENT]: environment },
+  });
+  await builder.build(builder.environments[RSC_ENVIRONMENT]);
+  state.rscOutput = path.join(outDir, "index.js");
+}
+
+/**
+ * Record the chunk each client module was built into, and write it down.
+ *
+ * Written down because `uf build --adapter` and `uf build --compile` bundle
+ * the server again in a process of their own, and a reference in the rsc
+ * output names its module by path, which only this build's manifest turns
+ * into a URL.
+ */
+function recordClientChunks(state, manifest, references, rscDir) {
+  for (const file of references) {
+    const key = path.relative(root, file).split(path.sep).join("/");
+    const chunk = manifest[key];
+    if (chunk == null) {
+      throw new Error(
+        `uf: the client build wrote no chunk for ${key}, which a server component renders as a ` +
+          "client component",
+      );
+    }
+    state.chunkUrls.set(file, `/${chunk.file}`);
+  }
+  writeFileSync(
+    path.join(rscDir, FLIGHT_BUILD_FILE),
+    `${JSON.stringify({ chunkUrls: [...state.chunkUrls] }, null, 2)}\n`,
+  );
+}
+
+/** What `recordClientChunks` wrote, for a command that runs after `uf build`. */
+function loadFlightBuild(state, rscDir) {
+  const file = path.join(rscDir, FLIGHT_BUILD_FILE);
+  if (!existsSync(file)) {
+    throw new Error(
+      `uf: ${path.relative(root, file)} is missing, so there is no rsc graph to render routes ` +
+        "with; run `uf build` first",
+    );
+  }
+  state.chunkUrls = new Map(JSON.parse(readFileSync(file, "utf8")).chunkUrls);
+  state.rscOutput = path.join(rscDir, "index.js");
+}
+
+/**
+ * The tags a document React Server Components render needs.
+ *
+ * `assetsFromManifest`'s, with stylesheets from three places in the order they
+ * cascade: the rsc graph's first — every layout's and every server component's
+ * — then the client entry's, then each client module's own, which the client
+ * build emits beside that module's chunk and no import from the entry reaches.
+ *
+ * The rsc build's emitted files are copied under `dist/` so those URLs resolve,
+ * and only its assets: a server bundle's JavaScript is never a deployable file.
+ */
+function flightAssets(manifest, references, rscDir, outDir) {
+  const assets = assetsFromManifest(manifest);
+  const styles = new Set();
+  const rscManifest = path.join(rscDir, ".vite", "manifest.json");
+  if (existsSync(rscManifest)) {
+    const rscStyles = assetsFromManifest(JSON.parse(readFileSync(rscManifest, "utf8"))).styles;
+    for (const href of rscStyles) styles.add(href);
+  }
+  const rscAssets = path.join(rscDir, "assets");
+  if (existsSync(rscAssets)) {
+    cpSync(rscAssets, path.join(outDir, "assets"), {
+      recursive: true,
+      filter: (from) => !/\.(?:[cm]?js|map)$/.test(from),
+    });
+  }
+  for (const href of assets.styles) styles.add(href);
+  const seen = new Set();
+  const visit = (key) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    const chunk = manifest[key];
+    if (chunk == null) return;
+    for (const css of chunk.css ?? []) styles.add(`/${css}`);
+    for (const imported of chunk.imports ?? []) visit(imported);
+  };
+  for (const file of references) visit(path.relative(root, file).split(path.sep).join("/"));
+  return { ...assets, styles: [...styles] };
 }
 
 function readManifest(outDir) {
