@@ -18,6 +18,7 @@ import {
   clientReferencePlugin,
   compilerRuntimeSource,
   createFlightState,
+  devStylesheets,
   opensWithUseClient,
   rendersFlight,
 } from "./internal/flight.js";
@@ -160,6 +161,56 @@ describe("a client module in the rsc graph", () => {
     );
     expect(out).toBe(null);
     expect(state.clientModules.size).toBe(0);
+  });
+});
+
+describe("the stylesheets a development document links from the rsc graph", () => {
+  /** A dev server whose rsc graph holds `modules`, as `[id, { file, url }]`. */
+  function serverWith(modules: Array<[string, { +file: ?string, +url: string }]>): $FlowFixMe {
+    return {
+      config: { root: "/repo/docs", base: "/" },
+      environments: { [RSC_ENVIRONMENT]: { moduleGraph: { idToModuleMap: new Map(modules) } } },
+    };
+  }
+
+  it("links each at a URL the dev server serves, wherever the file is", () => {
+    const urls = devStylesheets(
+      serverWith([
+        [
+          "/repo/docs/app/_design/seam.css",
+          { file: "/repo/docs/app/_design/seam.css", url: "/app/_design/seam.css" },
+        ],
+        // A workspace package, outside the project: Vite serves it under
+        // `/@fs/`, and the graph's own `url` for it is not that.
+        [
+          "/repo/packages/brand/tokens.css",
+          { file: "/repo/packages/brand/tokens.css", url: "/brand/tokens.css" },
+        ],
+        // A module's StyleX sheet, which has no file.
+        [
+          "uf-style:/repo/docs/app/$page.js.css",
+          { file: null, url: "/@id/uf-style:/repo/docs/app/$page.js.css" },
+        ],
+      ]),
+    );
+    expect(urls).toEqual([
+      "/app/_design/seam.css",
+      "/@fs/repo/packages/brand/tokens.css",
+      "/@id/uf-style:/repo/docs/app/$page.js.css",
+    ]);
+  });
+
+  it("leaves out a stylesheet imported for its text or its URL rather than to apply", () => {
+    const urls = devStylesheets(
+      serverWith([
+        [
+          "/repo/docs/app/raw.css?inline",
+          { file: "/repo/docs/app/raw.css", url: "/app/raw.css?inline" },
+        ],
+        ["/repo/docs/app/page.js", { file: "/repo/docs/app/page.js", url: "/app/page.js" }],
+      ]),
+    );
+    expect(urls).toEqual([]);
   });
 });
 

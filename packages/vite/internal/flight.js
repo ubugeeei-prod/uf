@@ -543,11 +543,19 @@ export const runMiddleware = createMiddlewareRunner({ middleware });
 export function devStylesheets(server) {
   const environment = server.environments?.[RSC_ENVIRONMENT];
   if (environment == null) return [];
+  const { root, base } = server.config;
   const urls = [];
   for (const [id, module] of environment.moduleGraph.idToModuleMap) {
-    if (!isCSSRequest(cleanId(id)) || typeof module.url !== "string") continue;
-    if (module.url.includes("?")) continue;
-    urls.push(module.url);
+    if (id.includes("?") || !isCSSRequest(cleanId(id))) continue;
+    // From the file rather than the graph's own `url`, which is not the URL the
+    // browser can fetch for a stylesheet outside the project — a workspace
+    // package's, which Vite serves under `/@fs/` — and the same rule a client
+    // reference's URL follows. A stylesheet with no file is a virtual one.
+    urls.push(
+      typeof module.file === "string" && module.file !== ""
+        ? devUrlOf(root, base, module.file)
+        : `${base.replace(/\/$/, "")}/@id/${id.replace(/\0/g, "__x00__")}`,
+    );
   }
   return urls;
 }
