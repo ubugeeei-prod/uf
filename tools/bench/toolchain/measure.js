@@ -294,7 +294,19 @@ export function startDevServer(
     stop: async () => {
       if (exitCode == null) {
         signalGroup(child, "SIGTERM");
-        await Promise.race([exited, sleep(10_000)]);
+        // A timer that is cleared once the race is decided: an uncleared one
+        // would hold this process open for ten seconds after the last server
+        // had already gone.
+        let timer = null;
+        await Promise.race([
+          exited,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 10_000);
+          }),
+        ]);
+        if (timer != null) {
+          clearTimeout(timer);
+        }
       }
       // uf has gone; give the rest of its group — the driver, Vite — the same
       // few seconds to finish closing before it is killed, so a cache being

@@ -845,10 +845,16 @@ async function main(): Promise<void> {
   process.stdout.write(`\n  wrote ${out}\n`);
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) {
+// The shell's convention, 128 and the signal's number, so whoever started the
+// run can tell an interrupted benchmark from a failed one.
+const SIGNALS: $ReadOnlyArray<[string, number]> = [
+  ["SIGINT", 130],
+  ["SIGTERM", 143],
+];
+for (const [signal, code] of SIGNALS) {
   process.on(signal, () => {
     stopEverything();
-    process.exit(130);
+    process.exit(code);
   });
 }
 
