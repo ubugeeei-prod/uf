@@ -844,10 +844,11 @@ pub(crate) enum RoutesCommand {
     /// The path is a URL path in the spelling the directories already use —
     /// `/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what
     /// is typed is what appears in `RoutePath`. A spelling uf reserves without
-    /// serving (`(.)photo`) is refused here with the same sentence `uf build`
-    /// and `uf lint` give, rather than written and reported later. A `@slot`
-    /// is refused too, for the opposite reason: uf serves parallel routes, and
-    /// a slot is not a URL — this command's argument is one.
+    /// serving (`(....)photo`) is refused here with the same sentence
+    /// `uf build` and `uf lint` give, rather than written and reported later. A
+    /// `@slot` and an intercepting route (`(.)photo`) are refused too, for the
+    /// opposite reason: uf serves both, and neither is a URL — this command's
+    /// argument is one.
     ///
     /// Nothing is overwritten: a route whose page exists is an error, and a
     /// run that stops has written none of its files.

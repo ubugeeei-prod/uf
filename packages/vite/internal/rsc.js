@@ -202,7 +202,13 @@ function slotPredicate(needed) {
   const needsSlot = (slot) => {
     const cached = cache.get(slot);
     if (cached !== undefined) return cached;
-    let answer = false;
+    // A slot that intercepts anything needs the client router on every page it
+    // is rendered on, whatever its modules are. An intercepting route renders
+    // only for a client navigation that starts on such a page, and a page
+    // served as a document with no router hydrated on it is a page no
+    // navigation starts from — so dropping it would leave the interception a
+    // file nothing ever renders, which is the silence #267 is about.
+    let answer = (slot.intercepts ?? []).length > 0;
     if (slot.defaultPage != null && needed(slot.defaultPage)) {
       answer = true;
     }
