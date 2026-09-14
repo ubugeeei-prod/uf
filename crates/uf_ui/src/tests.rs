@@ -161,14 +161,8 @@ fn the_embedded_registry_reads() {
 #[test]
 fn every_module_the_headless_package_ships_has_a_component() {
     const NOT_YET: &[&str] = &[
-        "accordion",
-        "alert",
-        "avatar",
-        "breadcrumb",
         "calendar",
         "carousel",
-        "checkbox",
-        "collapsible",
         "combobox",
         "context-menu",
         "date-picker",
@@ -177,20 +171,12 @@ fn every_module_the_headless_package_ships_has_a_component() {
         "menu",
         "menubar",
         "navigation-menu",
-        "pagination",
-        "progress",
-        "radio-group",
         "resizable",
         "scroll-area",
-        "separator",
         "sidebar",
-        "skeleton",
         "slider",
-        "switch",
         "table",
         "toast",
-        "toggle",
-        "toggle-group",
     ];
 
     let modules = headless_modules();
