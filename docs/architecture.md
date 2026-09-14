@@ -756,12 +756,17 @@ is refused where it is constructed rather than allowed to guess.
 namespace goes behind the seam without uf naming either. The seam itself is
 `packages/server/internal/cache-provider.js`: five methods over strings, no
 staleness, no eviction policy, no fill. Everything a cache decides stays in the
-store; a provider decides only where bytes go. A durable store is what turns
-time-based revalidation and on-demand invalidation into ISR — a URL rendered
-once, served from a store four processes share, refreshed behind a reader, and
-dropped the moment a mutation says it is wrong. What is not written is seeding
-that store from `uf build`'s prerender, so the *first* request to each URL still
-renders.
+store; a provider decides only where bytes go. A durable store makes the route
+cache shared — a URL rendered once, served from a store four processes share,
+refreshed behind a reader, and dropped the moment a mutation says it is wrong —
+and incremental static regeneration is that store started from the build. A
+prerendered page that states a lifetime is written under
+`dist/__uf/regenerate/`, where no static half answers its URL, and recorded in
+`.uf/build/server/regenerate.json`. The fetch handler seeds the page's entry
+from that document, through a reader the front door puts on the request; keeps
+it servable past its lifetime until a background refresh replaces it; and never
+seeds a key twice, so an invalidated page renders rather than going back to the
+build's copy.
 
 Nothing is cached without a stated lifetime: a route says `cacheLife` and
 `cacheTag` from inside its own render, a request says `cache` at the call, and a

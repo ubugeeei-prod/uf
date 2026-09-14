@@ -5,7 +5,7 @@
 # The in-process library tests check the adapter modules uf owns. This smoke
 # starts the worker entry `uf build --adapter edge` writes, with the
 # `wrangler.json` and asset binding it writes beside it, so the Edge support row
-# is backed by a Worker runtime rather than by Node calling the handler. Three
+# is backed by a Worker runtime rather than by Node calling the handler. Four
 # Workers, one after another:
 #
 #   1. the served-app fixture: a prerendered page, a dynamic render, both route
@@ -14,7 +14,10 @@
 #      level it was written at;
 #   2. the rsc-split-app fixture: a server action, called the way the client
 #      reference calls it, and the same action refused from another origin;
-#   3. a probe built from `packages/vite/internal/worker-builtins.js`: every
+#   3. the isr-app fixture: a page that regenerates, answered first with the
+#      document the build wrote and then, past its lifetime, with one the
+#      Worker rendered, which a restarted Worker reads back out of Workers KV;
+#   4. a probe built from `packages/vite/internal/worker-builtins.js`: every
 #      Node built-in that table says a Worker provides only as a stub must still
 #      throw, or the warnings `uf build --adapter edge` prints are wrong.
 set -eu
@@ -257,7 +260,66 @@ assert_status POST /counter 403 \
 pass "POST /counter from another origin is refused"
 stop_worker
 
-# 3. The Node built-ins a Worker provides only as stubs, measured again.
+# 3. A page that regenerates, on the fixture the regeneration tests use. It
+#    states a one-second lifetime, so the first answer is the document the
+#    build wrote, a later one is a document the Worker rendered with no rebuild,
+#    and what it rendered is kept in the KV namespace the build bound, so a
+#    restarted Worker reads it back rather than the build's.
+regenerating="crates/uf_cli/tests/fixtures/isr-app"
+"$uf_binary" --cwd "$regenerating" build --adapter edge
+grep -F '"UF_CACHE"' "$regenerating/.uf/deploy/edge/wrangler.json" >/dev/null 2>&1 ||
+  fail "the isr-app edge build did not bind the KV namespace a regenerated page is kept in"
+
+# The instant a document of that fixture says it was rendered at.
+rendered_instant() {
+  sed -n 's/.*rendered at \([0-9][0-9]*\).*/\1/p' "$1" | head -n 1
+}
+
+built="$(rendered_instant "$regenerating/.uf/deploy/edge/static/__uf/regenerate/clock/index.html")"
+[ -n "$built" ] || fail "the isr-app build wrote no regenerating document for /clock"
+start_worker "$regenerating/.uf/deploy/edge" isr-app
+
+assert_response GET /clock 200 "rendered at $built"
+
+# Past the lifetime a reader is still answered, and one regeneration runs behind
+# it. Polled with a bound rather than slept for, because the regeneration is a
+# render in a local Worker and how long it takes is not this script's to promise.
+regenerated=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
+  sleep 1
+  assert_status GET /clock 200
+  answered="$(rendered_instant "$work/body")"
+  if [ -n "$answered" ] && [ "$answered" != "$built" ]; then
+    regenerated="$answered"
+    break
+  fi
+done
+[ -n "$regenerated" ] || {
+  dump_wrangler_log
+  fail "GET /clock still answered the build's document 30 seconds past its one-second lifetime"
+}
+[ "$regenerated" -gt "$built" ] ||
+  fail "GET /clock regenerated to an instant before the build's: $regenerated"
+if grep -F "a cache refresh failed" "$log" >/dev/null 2>&1; then
+  dump_wrangler_log
+  fail "the worker logged a failed regeneration"
+fi
+pass "GET /clock regenerated after its lifetime, with no rebuild"
+
+# Kept in KV rather than in the isolate: a restarted Worker starts with empty
+# memory, and answers with a document a Worker rendered rather than the build's.
+stop_worker
+start_worker "$regenerating/.uf/deploy/edge" isr-app-restarted
+assert_status GET /clock 200
+restarted="$(rendered_instant "$work/body")"
+if [ -z "$restarted" ] || [ "$restarted" = "$built" ]; then
+  dump_wrangler_log
+  fail "a restarted Worker answered /clock with the build's document, so the regenerated one was not kept in KV"
+fi
+pass "a restarted Worker reads the regenerated /clock back out of KV"
+stop_worker
+
+# 4. The Node built-ins a Worker provides only as stubs, measured again.
 probe="$work/builtins"
 mkdir -p "$probe"
 PROBE_DIRECTORY="$probe" TABLE="$repo_root/packages/vite/internal/worker-builtins.js" \

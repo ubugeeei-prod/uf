@@ -15,6 +15,7 @@
     "./bun": "./bun.js",
     "./cache": "./cache.js",
     "./cache/filesystem": "./cache-filesystem.js",
+    "./cache/kv": "./cache-kv.js",
     "./deno": "./deno.js",
     "./edge": "./edge.js",
     "./events": "./events.js",
@@ -32,6 +33,7 @@
   "files": [
     "bun.js",
     "cache-filesystem.js",
+    "cache-kv.js",
     "cache.js",
     "deno.js",
     "edge.js",

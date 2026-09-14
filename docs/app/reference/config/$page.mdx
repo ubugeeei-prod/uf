@@ -138,10 +138,15 @@ a process.
 | `["ssg"]` | Prerenders everything, and **fails**, naming the route, if anything can only be answered per request |
 | `["ssr"]` | Prerenders nothing. Every route is rendered per request |
 | `["csr"]` | Prerenders one shell that is no route's document, and the browser renders every route from it |
+| contains `isr` (the default does) | Prerenders what `ssg` would, and regenerates a prerendered page that states a lifetime with `cacheLife` once the lifetime passes, when `rendering.cache.route` is on and a server is deployed |
 
-`ppr` and `isr` are **Planned**. Naming one alongside an implemented mode is
-allowed and selects nothing; a list that names *only* planned modes is refused
-while the config is read, because there is no build behind it.
+`isr` allows what `ssg` allows, because a regenerated page is a prerendered
+document with a lifetime: `["isr"]` alone prerenders every route. The
+[rendering guide](/guide/rendering) has what regeneration does on each target.
+
+`ppr` is **Planned**. Naming it alongside an implemented mode is allowed and
+selects nothing; a list that names *only* `ppr` is refused while the config is
+read, because there is no build behind it.
 
 `csr` is the one value that **cannot share the list**. The others answer "where
 does this route's document come from", which is what makes the list a set the

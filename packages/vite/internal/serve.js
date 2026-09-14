@@ -156,8 +156,13 @@ async function cacheFor(declared, createCacheStore, where) {
  * @param {{store?: string, storeDir?: string} | undefined} declared
  * @param {{root: string, build: string | null}} where
  */
-async function providerFor(declared, { root, build }) {
-  const named = declared?.store ?? "memory";
+async function providerFor(declared, { root, build, regenerates }) {
+  // A build that regenerates pages keeps what it regenerated on disk unless the
+  // project named a store. A restart that took every regenerated page back to
+  // the build's copy would be a server whose pages went back in time, which is
+  // the one thing regeneration is for not doing. `"memory"`, said out loud, is
+  // still memory.
+  const named = declared?.store ?? (regenerates === true ? "filesystem" : "memory");
   if (named === "memory") return null;
   if (build == null) {
     throw new Error(
@@ -213,7 +218,41 @@ export async function loadBuild({ root, outDir, serverDir }) {
   const entry = await import(pathToFileURL(entryFile).href);
   await deployment();
   const build = await buildIdentity(root, serverDir);
-  return { entry, assets: assetsFromManifest(manifest), distDir, root, build };
+  const regeneration = await readRegeneration(path.resolve(root, serverDir));
+  return { entry, assets: assetsFromManifest(manifest), distDir, root, build, regeneration };
+}
+
+/**
+ * The file beside the server bundle that names the pages a build regenerates.
+ *
+ * Written by `driver.js`'s build, and only for a build that has such a page.
+ */
+export const REGENERATION_FILE = "regenerate.json";
+
+/**
+ * Where a regenerated page's document goes, under the build's output directory.
+ *
+ * Somewhere no static half answers the page's own URL, which is the point: a
+ * file at `dist/posts/a/index.html` would be served by every host before the
+ * server saw the request, forever, whatever the page's lifetime said.
+ */
+export const REGENERATED_DIRECTORY = "__uf/regenerate";
+
+/**
+ * The pages this build regenerates, or `undefined` for a build that has none.
+ *
+ * `undefined` rather than an empty manifest, so a build with nothing to
+ * regenerate serves exactly as every build did before regeneration existed.
+ */
+export async function readRegeneration(serverDir) {
+  let text;
+  try {
+    text = await readFile(path.join(serverDir, REGENERATION_FILE), "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+  return JSON.parse(text);
 }
 
 /**
@@ -437,7 +476,7 @@ export async function beginRequest(entry, request) {
  *
  * @param {{entry: object, assets: object, cache?: object, root?: string, build?: string | null}} build
  */
-export function createApplicationHandler({ entry, assets, cache, root, build }) {
+export function createApplicationHandler({ entry, assets, cache, root, build, regeneration }) {
   const ready = deployment().then(
     async ({ createFetchHandler, createCacheStore, nodeCapabilities }) =>
       createFetchHandler({
@@ -446,7 +485,12 @@ export function createApplicationHandler({ entry, assets, cache, root, build }) 
         cache: await cacheFor(cache, createCacheStore, {
           root: root ?? process.cwd(),
           build: build ?? null,
+          regenerates: regeneration != null,
         }),
+        // The pages this build regenerates, from the manifest beside the server
+        // bundle. Absent for a build with none, which then serves exactly as it
+        // did before regeneration existed.
+        ...(regeneration == null ? {} : { regeneration }),
         // `uf preview` and `uf start` are a Node process with a socket, which is
         // what a deployed `--adapter node` build is too — so a route handler
         // that streams events answers the same way in the preview it is checked
@@ -482,13 +526,23 @@ export function createStaticHandler({ root }) {
  * project whose handler path collides with a file in `public/` behaves one way
  * when it is checked and the other way when it is deployed.
  *
- * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null}} build
+ * It is `@uniflowed/server/node`'s own `createServeHandler`, the one a deployed
+ * `server.js` runs, rather than the two halves composed a second time here.
+ * That one also hands the application the build's files when the static half
+ * has nothing, which is how a regenerated page starts from the document the
+ * build wrote; a composition of its own here would be a `uf start` whose
+ * regenerated pages rendered on their first request while a deployment's did
+ * not.
+ *
+ * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null, regeneration?: object}} build
  */
-export function createServeHandler({ entry, assets, distDir, cache, root, build }) {
-  const serveStatic = createStaticHandler({ root: distDir });
-  const application = createApplicationHandler({ entry, assets, cache, root, build });
+export function createServeHandler({ entry, assets, distDir, cache, root, build, regeneration }) {
+  const application = createApplicationHandler({ entry, assets, cache, root, build, regeneration });
+  const ready = deployment().then(({ createServeHandler: create }) =>
+    create({ staticDir: distDir, handle: application }),
+  );
   return async function handle(request) {
-    return (await serveStatic(request)) ?? (await application(request));
+    return (await ready)(request);
   };
 }
 
