@@ -78,9 +78,13 @@
 //     press, and on a `<div>` or a `<span>` — anything `render` might put a part
 //     on — `Enter` presses on key down and `Space` on key up, the timing a
 //     native button has, and the keys' default actions are prevented so a
-//     native button is not clicked a second time. `role="link"` keeps a link's
-//     keyboard (`Enter` only) and `role="checkbox"` and `role="radio"` keep a
-//     checkbox's (`Space` only; `Enter` is the form's).
+//     native button is not clicked a second time. The press then completes
+//     through one click dispatched at the element — the click a button would
+//     have made — so every route to activation ends in exactly one click, and a
+//     component's click handler hears the keyboard as well as the pointer.
+//     `role="link"` keeps a link's keyboard (`Enter` only) and
+//     `role="checkbox"` and `role="radio"` keep a checkbox's (`Space` only;
+//     `Enter` is the form's).
 //   * **A held key is one press.** Its repeats are claimed and ignored.
 //   * **Focus moves to what was pressed**, without scrolling, which is what
 //     every browser but Safari already does for a button. `preventFocusOnPress`
@@ -934,14 +938,16 @@ export hook usePress(options?: PressOptions): PressResult {
     if (!released) {
       return;
     }
+    current.keyClick = press.target;
     if (press.native) {
       // The browser clicks it after this listener returns, and that click is
       // the press; see the module header.
-      current.keyClick = press.target;
       return;
     }
+    // Claimed, so Firefox does not click a button on key up as well, and the
+    // click a button would have made is dispatched instead; see `onKeyDown`.
     native.preventDefault();
-    emit("press", "keyboard", press.target, native, null);
+    press.target.click();
   });
 
   const onKeyPressBlur = useStableCallback((native: $FlowFixMe) => {
@@ -1010,11 +1016,14 @@ export hook usePress(options?: PressOptions): PressResult {
     emit("pressup", "keyboard", element, event, null);
     change(false);
     emit("pressend", "keyboard", element, event, null);
-    if (rule.native) {
-      current.keyClick = element;
-      return;
+    // The press completes on a click either way: the browser's own, for an
+    // element whose click does something, or the one a button would have made,
+    // dispatched here — so every route to activation ends in exactly one click,
+    // and a click handler hears the keyboard as well as the pointer.
+    current.keyClick = element;
+    if (!rule.native) {
+      element.click();
     }
-    emit("press", "keyboard", element, event, null);
   });
 
   const onClick = useStableCallback((event: InteractionEvent) => {

@@ -476,6 +476,45 @@ describe("usePress, from the keyboard", () => {
     expect(events).toEqual([...KEY_PRESS, ...KEY_PRESS]);
   });
 
+  it("ends a keyboard press in one click, so a click handler hears the keyboard too", () => {
+    const { events, record } = recorder();
+    const clicks: Array<string> = [];
+    component Clickable() {
+      const { pressProps } = usePress({
+        onPress: record,
+        onPressEnd: record,
+        onPressStart: record,
+        onPressUp: record,
+      });
+      return (
+        <div
+          {...mergeProps(pressProps, { onClick: () => clicks.push("click") })}
+          role="button"
+          tabIndex={0}
+        >
+          Save
+        </div>
+      );
+    }
+    render(<Clickable />);
+    const control = screen.getByRole("button", { name: "Save" });
+
+    // A `<div>` is never clicked by the browser for a key. The press is
+    // completed by the click a button would have made — once, on key down for
+    // `Enter` and on key up for `Space`, and not again for a held key.
+    fireEvent.keyDown(control, { key: "Enter" });
+    fireEvent.keyDown(control, { key: "Enter", repeat: true });
+    fireEvent.keyUp(control, { key: "Enter" });
+    expect(clicks).toEqual(["click"]);
+
+    fireEvent.keyDown(control, { key: " " });
+    expect(clicks).toEqual(["click"]);
+    fireEvent.keyUp(control, { key: " " });
+    expect(clicks).toEqual(["click", "click"]);
+
+    expect(events).toEqual([...KEY_PRESS, ...KEY_PRESS]);
+  });
+
   it("does not press when focus leaves before Space comes up", () => {
     const { events, record } = recorder();
     render(<PressProbe onEvent={record} />);
