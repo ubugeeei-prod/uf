@@ -155,6 +155,7 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
 
     let host = resolve_host(&resolved.config)?;
     let builder = builder::resolve(&root, &resolved.config)?;
+    crate::support::render_deprecations(ui, resolved.config.builder_module_deprecation());
     // Loaded here rather than inherited from the build: these serve a `dist/`
     // that may have been built on another machine days ago, and a server that
     // could not be pointed at a different database than the build ran against

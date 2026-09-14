@@ -325,7 +325,16 @@ pub(crate) fn build(
         );
         renderer.blank(out);
 
-        for warning in warnings.iter().chain(&unresolved).chain(&unpublished) {
+        // The `builder.module` deprecation in the report rather than before
+        // the build, where a line on stdout would be drawn over by the
+        // progress on stderr.
+        let deprecation = resolved.config.builder_module_deprecation();
+        for warning in warnings
+            .iter()
+            .chain(&unresolved)
+            .chain(&unpublished)
+            .chain(&deprecation)
+        {
             renderer.status(out, Status::Warn, warning);
         }
         renderer.status(out, Status::Success, &summary);

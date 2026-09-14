@@ -138,8 +138,8 @@ than reporting a run of zeroes.
 ## Deno
 
 A uf project runs on Deno, and it gets there by a different road from the other
-two. Node has `register()` and Bun has `Bun.plugin`; **Deno has no module hook
-at all**, so nothing can be installed in it that transforms a module as the
+two. Node has module hooks — `registerHooks`, or `register()` on a Node too old
+for it — and Bun has `Bun.plugin`; **Deno has no module hook at all**, so nothing can be installed in it that transforms a module as the
 runtime asks for it. The transform has to have already happened.
 
 So `uf test` on Deno runs an **ahead-of-time pass** before the host starts. It
@@ -363,8 +363,11 @@ receives. That asymmetry is why `--compile` on Bun refuses rather than warns.
 On Node, uf's own Flow loader needs two grants that Node itself warns about at
 startup:
 
-- `--allow-worker`, because `register()` runs module hooks on a loader thread,
-  and without it the very first import fails with `ERR_ACCESS_DENIED`;
+- `--allow-worker`, because the Flow loader compiles on a thread: on a cold
+  cache the in-thread hooks hand each module to a transform thread, and a Node
+  without `registerHooks` runs the hooks themselves on the loader thread
+  `register()` starts. Without it the first module that has to be compiled
+  fails with `ERR_ACCESS_DENIED`;
 - `--allow-child-process`, because every Flow module is transformed by a
   `uf transform` child.
 

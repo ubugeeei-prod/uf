@@ -8,6 +8,23 @@
 // native bundle cannot render, and hands a navigator-shaped event to the app's
 // own navigation runtime. Rendering the tree is still the renderer/host-config
 // half of the React Native target.
+//
+// # No interception here, deliberately
+//
+// An intercepting route — a slot's `(.)photo` — is not one of this adapter's
+// features, and that is a decision rather than a gap. What interception does
+// is a browser's: the address bar says `/feed/photo/1` while the page
+// underneath stays on screen with the photo in a slot over it, and a reload
+// renders the page the URL names instead. A native navigator has no address bar
+// for the screen to disagree with, and it already has the thing interception
+// imitates — a screen presented modally over the one below it, with its own
+// back gesture. Doing both would give a native app two answers to "open this
+// over the feed", one of them the router's and one the navigator's.
+//
+// So `resolveNativeNavigation` matches `table.routes` and nothing else:
+// `/feed/photo/1` resolves to the ordinary `app/feed/photo/[id]` route every
+// time, a slot's `intercepts` are never read, and presenting that screen as a
+// modal is the navigator's call, made where the rest of its presentation is.
 
 import type { RouteParams, RouteRecord, RouteTable } from "./internal/routing.js";
 import { hasClientPage, matchRoute, splitUrl } from "./internal/routing.js";

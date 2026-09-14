@@ -1,0 +1,67 @@
+---
+title: "Build an app · uf"
+description: "One guide per thing an application does: routes, data, rendering, state, forms, UI, styling, and what production asks for."
+---
+
+import { SectionContents } from "../../_design/parts.js";
+
+<p className="eyebrow">Build an app</p>
+
+# Build an app
+
+<div className="lede">
+For a reader building an application with uf: one guide per thing an application
+does. Unlike Start, this is not a sequence to read front to back. Read the first
+two pages, then the one for what you are doing today.
+</div>
+
+## What you need first
+
+A project that runs — [Your first project](/guide/project) makes one. The
+[tutorial](/guide/tutorial) builds one application out of most of the pages
+below, and is the quickest way to see how they fit before reading any of them in
+detail.
+
+## The pages, in order
+
+<SectionContents section="Build an app" />
+
+[Flow, the modern parts](/guide/flow) comes first because every example on every
+other page is written in it, and [Routing](/guide/routing) second because a route
+is what the rest attaches to: a loader, a layout, a Suspense boundary, a form
+that posts to an action. [Rendering modes](/guide/rendering) decides what each
+route becomes when you build, which changes what the pages after it can do. From
+there the order is roughly the order an application needs things in: the split
+between server and browser, the libraries that hold state, take input and model
+failure, the interface and what styles it, and last what a deployed application
+needs around it — caching, signing in, logs and measurements.
+
+## Which page answers which question
+
+| You want to | Read |
+| --- | --- |
+| write components and hooks with `component` and `hook` | [Flow, the modern parts](/guide/flow) |
+| add a page, a layout, a loader, middleware or a route handler | [Routing](/guide/routing) |
+| choose between prerendering, rendering per request and a client-side application | [Rendering modes](/guide/rendering) |
+| decide what runs on the server and what ships to the browser | [Server Components](/guide/server-components) |
+| show something while data loads or a change is in flight | [Async React](/guide/async-react) |
+| call the server from the browser | [Server actions](/guide/server-actions) |
+| share state between components | [State](/guide/state) |
+| take input and validate it | [Forms](/guide/form) |
+| put failure in a type | [Effects](/guide/effect) |
+| build a tab list, a dialog or a menu that works with a keyboard and a screen reader | [Headless components](/guide/ui) |
+| style it, or write pages in Markdown and MDX | [Styling and content](/guide/styling) |
+| resize images, self-host fonts, draw a share card | [Images, fonts, icons and cards](/guide/assets) |
+| cache a route or a `fetch` | [Caching](/guide/cache) |
+| sign somebody in with OAuth | [Signing in](/guide/auth) |
+| log what a request did | [Logging](/guide/logging) |
+| measure LCP, CLS and INP | [Web vitals](/guide/vitals) |
+| test any of it | [Testing](/guide/testing), in The toolchain |
+| look up a component's parts, or which package exports something | [Components](/reference/ui) and [Packages](/reference/packages) |
+
+## When you are done
+
+[Targets](/guide/targets) is where an application goes once it builds: a server
+or a static host, a single executable file, a phone, a terminal.
+[Testing](/guide/testing) is in [The toolchain](/guide/toolchain), with the other
+commands you run against what you built.
