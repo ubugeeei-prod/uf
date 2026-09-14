@@ -27,9 +27,11 @@ CircleCI, and the rules under the recipes apply to any other system.
 <SectionContents section="The toolchain" />
 
 The commands you run all day come first — the dev server and the build, the
-formatter and the linter, the tests — then what they run on: which Node.js,
-which Bun, which package manager, pinned. [uf in CI](/guide/ci) is last because
-it is all of the above, run by a machine.
+formatter and the linter, the type checker, the tests — then what they run on:
+the dependencies, and which Node.js, Bun or package manager, pinned. After those
+come the three ways the same commands get run for you: [Tasks](/guide/tasks)
+names them once in `uf.config.js`, [uf in CI](/guide/ci) runs them on a machine,
+and [Agents](/guide/agents) hands them to a coding agent.
 
 ## Which page covers which command
 
@@ -38,18 +40,17 @@ it is all of the above, run by a machine.
 | `uf dev`, `uf build` | [Dev and build](/guide/dev) |
 | `uf preview`, `uf start`, `uf build --adapter`, `uf build --compile` | [Targets](/guide/targets) |
 | `uf fmt`, `uf lint` | [Formatting and linting](/guide/format) |
-| `uf check` | [Formatting and linting](/guide/format#uf-check) |
+| `uf check` | [Type checking](/guide/check) |
 | `uf test` | [Testing](/guide/testing) |
+| `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf ls`, `uf audit`, `uf search`, `uf pm approve-builds` | [Dependencies](/guide/dependencies) |
 | `uf env`, `uf use` | [Environments](/guide/env) |
-| `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf ls`, `uf audit`, `uf search` | [Dependencies](/reference/cli#dependencies), in the command reference |
-| `uf run`, `ufx` | [`uf run`](/reference/cli#uf-run-script-args) and [`tasks`](/reference/config#tasks-and-plugins), in the reference |
-| `uf lsp`, `uf mcp` | none yet |
+| `uf run` and `ufr`, `uf exec` and `ufx` | [Tasks](/guide/tasks) |
+| `uf lsp` | [Editors](/guide/editors), in Start |
+| `uf mcp` | [Agents](/guide/agents) |
 
-Type checking, packages, tasks, editors and agents have no guide of their own
-yet. They are being written under
-[#943](https://github.com/ubugeeei-prod/uf/issues/943), and until they land the
-[command reference](/reference/cli) is what documents those commands. Every
-command not in the table is there too.
+Every command not in the table — `uf new`, `uf routes`, `uf i18n`, `uf release`
+and the rest — is in the [command reference](/reference/cli), and so is every
+flag of the ones that are.
 
 ## When you are done
 

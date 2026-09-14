@@ -1,6 +1,6 @@
 ---
 title: "Start · uf"
-description: "Install uf, make a project, and build one application with it end to end."
+description: "Install uf, make a project, set up your editor, and build one application end to end."
 ---
 
 import { SectionContents } from "../../_design/parts.js";
@@ -12,7 +12,8 @@ import { SectionContents } from "../../_design/parts.js";
 <div className="lede">
 For a reader who wants uf running on their own machine. These pages are a
 sequence, and each assumes the one before it: install the binary, make a project
-and read every file in it, then build one application end to end.
+and read every file in it, connect your editor, then build one application end
+to end.
 </div>
 
 ## What you need first
@@ -34,7 +35,9 @@ and read every file in it, then build one application end to end.
 [Install](/guide/install) puts `uf` on your `PATH` and ends with `uf info`,
 which says which JavaScript host it found. [Your first project](/guide/project)
 scaffolds a project and explains each file the scaffold writes, and the config
-files a React project usually has and this one does not.
+files a React project usually has and this one does not. [Editors](/guide/editors)
+connects VS Code, Cursor, Neovim, Vim, Helix or Emacs to `uf lsp`, so lint
+findings and formatting reach the editor while you write.
 [Build a reading list](/guide/tutorial) is the long one: routes, a loader, shared
 state, an accessible tab list, a validated form, the tests for all of it and the
 build, with what each command printed.
