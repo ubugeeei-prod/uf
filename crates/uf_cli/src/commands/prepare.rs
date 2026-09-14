@@ -40,6 +40,7 @@
 //! commit somebody has already written the message for, which is the kind of
 //! helpfulness that gets a hook uninstalled.
 
+use std::collections::BTreeSet;
 use std::fs;
 
 use anyhow::{Context, Result, bail};
@@ -49,8 +50,9 @@ use uf_config::{ResolvedConfig, load_config};
 use uf_fmt::{NonFlowOutcome, format_source};
 use uf_lint::{LintReport, Severity, SourceFile, lint_sources};
 use uf_prepare::{
-    GeneratedFile, GeneratedFileKind, NoStagedSet, PrepareStep, StagedFiles, StepOutcome,
-    StepStatus, default_plan, discover_staged_files,
+    GeneratedFile, GeneratedFileKind, HookInstall, NoStagedSet, PrepareStep, StagedFiles,
+    StagedView, StepOutcome, StepStatus, changed_since_staged, default_plan, discover_staged_files,
+    recover_interrupted, stage, staged_runs,
 };
 use uf_project::{ProjectFile, SourceKind, scan_selected_source_files};
 use uf_router::write_router_manifest;
@@ -61,6 +63,7 @@ use uf_rsc::{
 use uf_term::{KeyValue, Status, Tone, push_spaces};
 
 use crate::commands::lint::{group_by_path, render_group, severity_count};
+use crate::commands::task::{RunArgs, run_task};
 use crate::fix::files::{FixMode, fix_files};
 use crate::support::{
     enabled, plural, problem_summary, project_label, relative_to, unreadable_lines,
@@ -124,7 +127,7 @@ const fn halts_the_run(step: PrepareStep) -> bool {
         PrepareStep::DiscoverStagedFiles
         | PrepareStep::GenerateRouterTypes
         | PrepareStep::GenerateServerActionTypes => true,
-        PrepareStep::RunLint | PrepareStep::RunFormatCheck => false,
+        PrepareStep::RunStagedTasks | PrepareStep::RunLint | PrepareStep::RunFormatCheck => false,
     }
 }
 
@@ -158,11 +161,24 @@ struct Run<'a> {
     /// the code frames above the banner, so the first thing on screen was a
     /// diagnostic from a command that had not introduced itself yet.
     diagnostics: Option<(LintReport, Vec<SourceFile>)>,
+    /// The working tree showing what is staged, from the first step until the
+    /// run is over. See `uf_prepare::index`.
+    view: Option<StagedView>,
+    /// Files an interrupted run had left showing their staged half, put back
+    /// before this one started.
+    recovered: Vec<compact_str::CompactString>,
 }
 
 pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<()> {
     let resolved = load_config(cwd)?;
     let plan = default_plan();
+    // Before anything reads a file. A run killed while it held the unstaged
+    // halves of half-staged files left them under `.uf/prepare`, and every step
+    // below would otherwise read the staged half as if it were the working tree.
+    let recovered = recover_interrupted(&resolved.root).context(
+        "an earlier `uf prepare` was interrupted, and the unstaged changes it set aside could \
+         not be put back; they are under .uf/prepare/unstaged",
+    )?;
     let mut run = Run {
         resolved: &resolved,
         fix,
@@ -175,6 +191,8 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
         scanned: false,
         generated: Vec::new(),
         diagnostics: None,
+        view: None,
+        recovered,
     };
 
     let mut reports: Vec<StepReport> = Vec::with_capacity(plan.steps.len());
@@ -191,12 +209,25 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
             PrepareStep::DiscoverStagedFiles => run.discover_staged(),
             PrepareStep::GenerateRouterTypes => run.generate_router_types(),
             PrepareStep::GenerateServerActionTypes => run.generate_server_action_types(),
+            PrepareStep::RunStagedTasks => run.run_staged_tasks(),
             PrepareStep::RunLint => run.run_lint(),
             PrepareStep::RunFormatCheck => run.run_format_check(),
         };
         halted = report.outcome.status.is_failure() && halts_the_run(*step);
         reports.push(report);
     }
+
+    // The unstaged halves go back before anything is written or reported, so
+    // nothing below can leave them set aside. Putting them back discards what a
+    // step wrote over a half-staged file, which is said rather than lost.
+    let dropped = match run.view.take().map(StagedView::close) {
+        Some(Ok(dropped)) => dropped,
+        Some(Err(error)) => bail!(
+            "uf prepare could not put back the unstaged changes it set aside: {error}\n\n  \
+             they are under .uf/prepare/unstaged, and the next `uf prepare` puts them back"
+        ),
+        None => Vec::new(),
+    };
 
     let state_dir = resolved.root.join(".uf");
     fs::create_dir_all(&state_dir).with_context(|| format!("failed to create {state_dir}"))?;
@@ -241,8 +272,20 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
         // each check step fails when it writes — so the staging instruction is
         // a clause on that message rather than one instead of it. Both halves
         // matter: which step, and what is now left to do.
+        let not_kept = if dropped.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " — what it wrote over half-staged files was not kept: {}",
+                dropped
+                    .iter()
+                    .map(compact_str::CompactString::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
         bail!(
-            "uf prepare failed at {}{}{}",
+            "uf prepare failed at {}{}{}{}",
             first.name(),
             if failed.len() > 1 {
                 format!(" ({} steps failed)", failed.len())
@@ -253,7 +296,8 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
                 " — it rewrote files; review them, stage them, and commit again"
             } else {
                 ""
-            }
+            },
+            not_kept
         );
     }
     Ok(())
@@ -277,14 +321,187 @@ impl Run<'_> {
                 PrepareStep::DiscoverStagedFiles,
                 "nothing is staged for commit",
             ),
-            StagedFiles::Staged(files) => StepReport::ok(
-                PrepareStep::DiscoverStagedFiles,
-                plural(files.len(), "staged file"),
-            )
-            .with_lines(staged_lines(files)),
+            StagedFiles::Staged(files) => {
+                // From here until the run is over, what every step reads is
+                // what is staged: a half-staged file shows its staged content.
+                let view = match StagedView::open(&self.resolved.root, files) {
+                    Ok(view) => view,
+                    Err(error) => {
+                        return StepReport::failed(
+                            PrepareStep::DiscoverStagedFiles,
+                            error.to_string(),
+                        );
+                    }
+                };
+                let mut detail = plural(files.len(), "staged file");
+                let half = view.half_staged().count();
+                if half > 0 {
+                    detail.push_str(&format!(", {half} half staged and read as staged"));
+                }
+                self.view = Some(view);
+                StepReport::ok(PrepareStep::DiscoverStagedFiles, detail)
+                    .with_lines(staged_lines(files))
+            }
         };
+        let mut report = report;
+        if !self.recovered.is_empty() {
+            report.lines.insert(
+                0,
+                format!(
+                    "put back the unstaged changes an interrupted run had set aside: {}",
+                    self.recovered
+                        .iter()
+                        .map(compact_str::CompactString::as_str)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            );
+        }
         self.staged = staged;
         report
+    }
+
+    /// Run the tasks `staged` names, each over the staged files its glob
+    /// matches.
+    ///
+    /// Through `uf run`'s own runner, so a staged task is a task like any other
+    /// — its `dependsOn`, its `env`, its cache — with the files appended to its
+    /// command the way `uf run <task> -- <files>` appends them, each quoted so a
+    /// path with a space in it stays one argument.
+    ///
+    /// A rewrite is found by asking git which staged files no longer match the
+    /// index. A rewrite of a fully staged file is staged, so the fix is in the
+    /// commit — but only when every task passed, because a commit that is
+    /// about to be stopped should not have had anything added to it. A rewrite
+    /// of a half-staged file cannot be staged without staging the other half
+    /// too, so it fails the step and the run puts the working tree back.
+    fn run_staged_tasks(&mut self) -> StepReport {
+        let step = PrepareStep::RunStagedTasks;
+        if self.resolved.config.staged.is_empty() {
+            return StepReport::skipped(step, "`staged` in uf.config.js names no tasks");
+        }
+        let files = match &self.staged {
+            StagedFiles::Staged(files) if files.is_empty() => {
+                return StepReport::skipped(step, "nothing is staged for commit");
+            }
+            StagedFiles::Staged(files) => files.clone(),
+            // A staged task is handed the files a commit is about. With no
+            // staged set there are none, and handing it every file in the
+            // project would be a different command than the one configured.
+            StagedFiles::Unavailable(reason) => {
+                return StepReport::skipped(
+                    step,
+                    format!(
+                        "there are no staged files to hand a task: {}",
+                        reason.reason()
+                    ),
+                );
+            }
+        };
+        let runs = match staged_runs(
+            self.resolved
+                .config
+                .staged
+                .iter()
+                .map(|(glob, tasks)| (glob.as_str(), tasks.names())),
+            &files,
+        ) {
+            Ok(runs) => runs,
+            Err(error) => return StepReport::failed(step, error.to_string()),
+        };
+        if runs.is_empty() {
+            return StepReport::skipped(step, "no staged file matches a glob in `staged`");
+        }
+
+        let root = self.resolved.root.clone();
+        let already = match changed_since_staged(&root, &files) {
+            Ok(changed) => changed,
+            Err(error) => return StepReport::failed(step, error.to_string()),
+        };
+        let mut failures = Vec::new();
+        let mut ran = 0usize;
+        for staged_run in &runs {
+            let arguments: Vec<String> = staged_run
+                .files
+                .iter()
+                .map(|file| shell_word(file))
+                .collect();
+            for task in &staged_run.tasks {
+                ran += 1;
+                if let Err(error) = run_task(&root, None, task, &arguments, RunArgs::default()) {
+                    let said = error.to_string();
+                    failures.push(format!(
+                        "{task}, for {}: {}",
+                        staged_run.glob,
+                        said.lines().next().unwrap_or("failed")
+                    ));
+                }
+            }
+        }
+
+        let rewritten: Vec<compact_str::CompactString> = match changed_since_staged(&root, &files) {
+            Ok(changed) => changed
+                .into_iter()
+                .filter(|path| !already.contains(path))
+                .collect(),
+            Err(error) => return StepReport::failed(step, error.to_string()),
+        };
+        let half: Vec<&str> = self
+            .view
+            .as_ref()
+            .map(|view| view.half_staged().collect())
+            .unwrap_or_default();
+        let (partly, wholly): (Vec<_>, Vec<_>) = rewritten
+            .into_iter()
+            .partition(|path| half.contains(&path.as_str()));
+
+        let mut lines = Vec::new();
+        if !partly.is_empty() {
+            failures.push(format!(
+                "{} rewritten while only partly staged, and the rewrite was not kept",
+                plural(partly.len(), "file")
+            ));
+            lines.extend(partly.iter().map(|path| {
+                format!("{path}: only partly staged — fix the staged half by hand, and stage it")
+            }));
+        }
+        if !wholly.is_empty() {
+            if failures.is_empty() {
+                match stage(&root, &wholly) {
+                    Ok(()) => lines.extend(
+                        wholly
+                            .iter()
+                            .map(|path| format!("{path}: rewritten, and the rewrite staged")),
+                    ),
+                    Err(error) => failures.push(error.to_string()),
+                }
+            } else {
+                lines.extend(wholly.iter().map(|path| {
+                    format!("{path}: rewritten and left unstaged, because a task failed")
+                }));
+            }
+        }
+
+        let matched: BTreeSet<&str> = runs
+            .iter()
+            .flat_map(|staged_run| {
+                staged_run
+                    .files
+                    .iter()
+                    .map(compact_str::CompactString::as_str)
+            })
+            .collect();
+        let detail = format!(
+            "{} over {}",
+            plural(ran, "task run"),
+            plural(matched.len(), "staged file")
+        );
+        if failures.is_empty() {
+            StepReport::ok(step, detail).with_lines(lines)
+        } else {
+            failures.extend(lines);
+            StepReport::failed(step, detail).with_lines(failures)
+        }
     }
 
     /// Write the route table.
@@ -619,9 +836,9 @@ impl Run<'_> {
     /// Discovery rather than reading the staged paths directly, so that the
     /// ignore rules, the file kinds and the unreadable-file handling are the
     /// same ones `uf lint` and `uf fmt` use rather than a second copy that
-    /// drifts. It also reads the *working tree*, which is what makes the
-    /// difference from `lint-staged` visible: a file that is half staged is
-    /// checked as it is on disk.
+    /// drifts. It reads the working tree, and for the length of a run the
+    /// working tree holds what is staged — the discover step opened a
+    /// [`StagedView`] — so a half-staged file is read as it will be committed.
     fn scan(&mut self) -> Result<(), uf_project::ProjectError> {
         if self.scanned {
             return Ok(());
@@ -692,6 +909,55 @@ impl Run<'_> {
             ..ProjectScanOptions::default()
         }
     }
+}
+
+/// `uf prepare --install-hooks`: write the committed dispatcher, and point
+/// this clone at it. `uf_prepare::hooks` says why it is a command and not a
+/// `postinstall` script.
+pub(crate) fn install_hooks(cwd: &camino::Utf8Path, ui: &mut Ui) -> Result<()> {
+    let resolved = load_config(cwd)?;
+    let HookInstall {
+        hook,
+        wrote,
+        configured,
+    } = uf_prepare::install_hooks(&resolved.root)?;
+    let file = if wrote {
+        format!("wrote {hook}")
+    } else {
+        format!("{hook} is already uf's dispatcher")
+    };
+    let setting = if configured {
+        format!(
+            "set core.hooksPath to {}",
+            uf_prepare::hooks::HOOKS_DIRECTORY
+        )
+    } else {
+        String::from("core.hooksPath already points there")
+    };
+    let next = format!(
+        "git runs `uf prepare` before each commit now; commit {hook}, so that every clone \
+         runs this once and gets the same hook"
+    );
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf prepare", Some(project_label(&resolved.root)));
+        renderer.blank(out);
+        renderer.status(out, Status::Success, &file);
+        renderer.status(out, Status::Success, &setting);
+        renderer.status(out, Status::Info, &next);
+    });
+    Ok(())
+}
+
+/// `path` as one word to the task command parser, which reads quotes the way a
+/// POSIX shell does.
+fn shell_word(path: &str) -> String {
+    let plain = path
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || "_./@%+=:,-".contains(character));
+    if plain && !path.is_empty() {
+        return path.to_owned();
+    }
+    format!("'{}'", path.replace('\'', r"'\''"))
 }
 
 /// The `staged` object of `prepare.json`.

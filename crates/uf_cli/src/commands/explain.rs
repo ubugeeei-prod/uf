@@ -633,11 +633,56 @@ fn runtime_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn prepare_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let staged = &resolved.config.staged;
+    let tasks = if staged.is_empty() {
+        String::from("none; `staged` in uf.config.js maps globs over the staged files to tasks")
+    } else {
+        staged
+            .iter()
+            .map(|(glob, tasks)| {
+                let names = tasks
+                    .names()
+                    .iter()
+                    .map(compact_str::CompactString::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{glob} → {names}")
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+    // Whether a commit runs any of this is the question a reader of this
+    // command most needs answered, and it is not in uf.config.js: git keeps it.
+    let hook = match uf_prepare::hook_state(&resolved.root) {
+        uf_prepare::HookState::Installed => {
+            "installed: git runs .githooks/pre-commit, and so `uf prepare`, before each commit"
+        }
+        uf_prepare::HookState::NotConfigured => {
+            ".githooks/pre-commit is here and this clone does not run it; \
+             `uf prepare --install-hooks` points git at it"
+        }
+        uf_prepare::HookState::Absent => {
+            "not installed; `uf prepare --install-hooks` writes .githooks/pre-commit"
+        }
+        uf_prepare::HookState::NotARepository => "no git repository to hook into",
+    };
     vec![
         Stage {
             name: "staged files",
             provider: "uf_prepare".to_string(),
-            detail: "lint-staged compatible: the files a commit is about".to_string(),
+            detail: "the files a commit is about, read as they are staged rather than as they \
+                     are on disk"
+                .to_string(),
+        },
+        Stage {
+            name: "staged tasks",
+            provider: "uf run".to_string(),
+            detail: tasks,
+        },
+        Stage {
+            name: "git hook",
+            provider: "git".to_string(),
+            detail: hook.to_string(),
         },
         Stage {
             name: "checks",
@@ -1710,5 +1755,37 @@ mod tests {
             "the plan does not mention the checksum"
         );
         assert!(stages_for("upgrade", &resolved).is_none());
+    }
+
+    /// `uf explain prepare` names what `staged` runs over which files, and
+    /// whether git will run any of it — the one fact about a pre-commit
+    /// command that is not in `uf.config.js`.
+    #[test]
+    fn prepare_names_the_staged_tasks_and_the_hook() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        std::fs::write(
+            root.join("uf.config.js"),
+            r#"export default { tasks: { fix: "true" }, staged: { "*.css": ["fix"] } };"#,
+        )
+        .unwrap();
+        let resolved = load_config(root).unwrap();
+
+        let stages = stages_for("prepare", &resolved).expect("prepare is explainable");
+        let tasks = stages
+            .iter()
+            .find(|stage| stage.name == "staged tasks")
+            .expect("a staged tasks stage");
+        assert_eq!(tasks.detail, "*.css → fix");
+        let hook = stages
+            .iter()
+            .find(|stage| stage.name == "git hook")
+            .expect("a git hook stage");
+        assert!(
+            hook.detail.contains("uf prepare --install-hooks")
+                || hook.detail.contains("no git repository"),
+            "{}",
+            hook.detail
+        );
     }
 }
