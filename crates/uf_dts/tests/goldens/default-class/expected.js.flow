@@ -1,0 +1,3 @@
+declare export default class $Default {
+  method(): void;
+}

@@ -1,0 +1,4 @@
+export type EventName<T extends string> = `on${Capitalize<T>}`;
+export type Pattern = `${number}px` | `${string}-${string}`;
+export type Split<S extends string> = S extends `${infer Head}.${infer Tail}` ? [Head, ...Split<Tail>] : [S];
+export type Plain = `no substitutions`;

@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Hidden",
+    "construct": "computed-key",
+    "reason": "a computed key other than `Symbol.iterator` or `Symbol.asyncIterator` has no Flow spelling, so the member is left out",
+    "line": 18
+  }
+]

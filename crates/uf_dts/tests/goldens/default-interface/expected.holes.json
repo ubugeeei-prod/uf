@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Props",
+    "construct": "default-export-type",
+    "reason": "a default export that is only a type has no Flow spelling, so `import type X from` this module finds nothing",
+    "line": 1
+  }
+]

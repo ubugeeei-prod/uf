@@ -84,3 +84,7 @@ uf_profiler = { path = "../uf_profiler" }
 
 [dev-dependencies]
 tempfile.workspace = true
+# `tests/declaration_goldens.rs` checks every translation `uf_dts`'s goldens
+# pin with this checker, which is the one question those goldens cannot answer
+# on their own: whether Flow accepts what the translation prints.
+uf_dts = { path = "../uf_dts" }

@@ -1,0 +1,5 @@
+declare function helper(): void;
+interface Config {
+  readonly debug: boolean;
+}
+declare export const config: Config;

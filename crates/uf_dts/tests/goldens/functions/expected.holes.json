@@ -1,0 +1,14 @@
+[
+  {
+    "declaration": "assertString",
+    "construct": "assertion-signature",
+    "reason": "Flow has no assertion signatures, so this returns `void` and narrows nothing after a call",
+    "line": 8
+  },
+  {
+    "declaration": "assertTruthy",
+    "construct": "assertion-signature",
+    "reason": "Flow has no assertion signatures, so this returns `void` and narrows nothing after a call",
+    "line": 9
+  }
+]
