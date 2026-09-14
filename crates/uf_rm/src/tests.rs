@@ -53,11 +53,16 @@ fn refuses_a_host_without_a_loader_before_it_reaches_the_manifest() {
 
     let error = RuntimeManagerPlan::infer_from_config(&config).unwrap_err();
 
+    // The grade travels from `uf_runtime::HOSTS` rather than being written
+    // twice: `edge` moved from `planned` to `experimental` when the worker
+    // smoke started running, and a row's grade is not what this test is about.
     assert_eq!(
         error,
         RuntimeManagerError::RuntimeEngineWithoutHost {
             engine: "edge",
-            level: "planned",
+            level: uf_runtime::HostSupport::for_host(RuntimeHost::Edge)
+                .level
+                .as_str(),
             tracking_issue: Some(246),
         }
     );
