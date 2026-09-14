@@ -146,6 +146,59 @@ stops has written none of its files.
 `uf prepare` regenerates `router.js`, so the new path joins `RoutePath` on the
 next run of it.
 
+### uf ui add NAME... [--overwrite]
+
+Writes styled components into the project, with the components they import.
+
+```
+uf ui add button dialog tabs select
+```
+
+Each component is one file in `app/components/ui/` — `dialog.js` is
+`@uniflowed/ui`'s dialog dressed in `@uniflowed/stylex`'s tokens — and from then
+on the file is the project's to change. The behaviour stays imported from
+`@uniflowed/ui`, so a fix to a focus trap still arrives by upgrading it; what
+the file owns is the look.
+
+The components are part of the uf binary, so adding one needs no network and
+writes the version that matches the uf running it. A package a component
+imports that `package.json` does not name is added first, through `uf add`, at
+that uf's own version, and an install that fails leaves every file unwritten.
+
+What happens to a file that is already there depends on what it is:
+
+| The file | What `uf ui add` does |
+| --- | --- |
+| Not there | Writes it |
+| Written by `uf ui add`, untouched, and already this uf's version | Nothing |
+| Written by an older uf, and untouched | Brings it up to this uf's version |
+| Edited, or not written by `uf ui add`, and named | Refuses, names the file, and writes nothing; `--overwrite` replaces it |
+| Edited, or not written by `uf ui add`, and only imported by one that was named | Keeps it, because it still satisfies the import |
+
+The last line of every file it writes records the component, the uf that wrote
+it and a digest of what was written. That line is how `uf ui add` tells an
+edited copy from an untouched one, and how `uf ui diff` says whose change a
+difference is.
+
+### uf ui list [--json]
+
+Every component this uf carries, what each one is, and whether the project has
+it: not added, added and untouched, added by an older uf, edited, or a file of
+the project's own under the same name. `--json` adds the packages each component
+imports and the components it needs.
+
+### uf ui diff [NAME...] [--json]
+
+How the project's copies differ from this uf's components, as a unified diff
+with the registry's version on the old side, so a `+` line is in the copy and
+not in the registry and the diff of an edited copy reads as the edit. With no
+names, every component the project has is compared.
+
+Above each diff is the sentence that makes it more than `diff`: that the copy is
+untouched, that every line is the project's own edit because the registry has
+not moved since the copy was written, or that the lines mix the project's edits
+with the registry's changes.
+
 ## Running and building
 
 ### uf dev
