@@ -19,22 +19,22 @@ for you to discover by measuring `dist/`.
 
 ## The current contract
 
-The RSC work is deliberately documented as a contract with a missing half, not
-as a finished Next.js-equivalent implementation.
+Routes render as React Server Components by default. The table says what that
+covers and what it does not yet.
 
-| Area | Today | Missing before the claim changes |
+| Area | Today | Still missing |
 | --- | --- | --- |
 | Directive parsing | `"use client"` and `"use server"` are read by the same directive-prologue rules React and bundlers use | no known gap |
-| Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call |
-| Route-level split | a route with no reachable client boundary can be removed from the client route table | splitting a Server Component above a boundary out of the client bundle |
-| HTML streaming | Suspense boundaries stream through the document renderer | client-side reconstruction of the streamed Server Component tree |
-| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references and native form progressive enhancement |
-| Flight payload | not implemented | the payload format, client references, chunk ids and a second React environment |
+| Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call; `uf build` naming the import chain that put server-only code in a client module |
+| The split | a Server Component never reaches the browser: the browser gets the payload it rendered and the `"use client"` modules that payload names | no known gap |
+| HTML streaming | the document streams, and carries the Flight payload its tree was rendered from; a Suspense boundary resolves from the rows that arrive later in the same response | no known gap |
+| Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html` | intercepting routes, which need the router that resolves routes from modules |
+| Server actions | exported async functions in `"use server"` modules are callable by id | inline action references, a server function passed to a client component as a prop, and native form progressive enhancement |
+| Flight payload | React's own renderer and client (`react-server-dom-parcel`) in a second Vite environment resolved under `react-server` | no known gap |
 
-That table is the difference between "RSC analysis exists" and "uf has React
-Server Components as a full app model". The first is true now. The second waits
-on the Flight payload and the bundler environment that can build React under
-the `react-server` condition separately from the client.
+`app.rsc: false` in `uf.config.js` turns the model off: routes render from their
+modules and the browser hydrates by rendering them again, as every uf
+application did before [#519](https://github.com/ubugeeei-prod/uf/issues/519).
 
 ## Three kinds of module
 
@@ -257,34 +257,38 @@ modules rather than about the boundary at all.
 
 ## What is not here
 
-**The Flight payload, and everything downstream of it.** uf has no
-client-re-renderable payload describing the tree the server rendered, so:
+**How it is built.** React's Flight renderer only loads where `react` resolves
+under the `react-server` export condition, and the HTML renderer and the browser
+need the other build, so a uf application is three module graphs, each a Vite
+environment: `rsc`, which holds the route table and every server component;
+`ssr`, which renders the payload into HTML and holds the server copy of every
+client module; and `client`, which hydrates the payload and holds only the
+client modules. In the `rsc` graph a `"use client"` module is replaced by one
+client reference per export, which is why none of its code runs there and none
+of a server component's code reaches the browser.
 
-- **the split cannot be at the module.** A Server Component above a boundary
-  ships whole, because the client re-renders the matched tree from the same
-  modules the server used. The analysis, the bundler and the roadmap all carry
-  that same sentence, and it is why the unit is a route.
-- **a `"use client"` module is not a reference in the server render.** It is a
-  module the browser also gets, which is ordinary SSR with full hydration for
-  every route that keeps its page.
-- **`rsc/server-only-import-in-client` does not cover a page above a
-  boundary.** It asks about modules the client graph *reaches*, and a module
-  above a boundary is not one of them — it is server-reachable code that the
-  route-level split ships anyway. Until the payload lands, keep a `cookies()`
-  call out of a page that renders a client component, or move it behind an
-  action.
+**What that asks of a project.**
 
-Streaming is *not* the missing half: `renderToPipeableStream` and
-`renderToReadableStream` are what uf renders documents with, and Suspense
-boundaries already resolve independently in the HTML stream. What is missing is
-the payload a **client** re-renders a tree from, and it is a second module graph
-rather than a second dependency — React's server renderer only loads under the
-`react-server` export condition, which resolves `react` to a build with no
-`useState` in it, and `react-dom/server` needs the ordinary one. Two builds of
-React cannot share one module registry, so this needs a Vite environment uf does
-not have yet, a client-reference manifest keyed to Rollup's chunk ids, and a
-rewrite of the client's hydration.
+- **`$error.js` is a client module.** An error boundary catches a throw while
+  the browser renders, so its component runs in the browser; a boundary module
+  without `"use client"` is refused with its file named.
+- **A client module names its exports.** A client module is one reference per
+  export, so `export * from` in one is refused with the fix in the message.
+- **A server component edit reloads the page under `uf dev`.** The browser holds
+  no module for a server component, so there is nothing for Fast Refresh to
+  replace; a client module keeps Fast Refresh.
 
-[#252](https://github.com/ubugeeei-prod/uf/issues/252) and
-[#519](https://github.com/ubugeeei-prod/uf/issues/519) carry that argument in
-full. [What uf does not do](/guide/scope) lists this beside every other gap.
+**What is not here.**
+
+- **A server function passed to a client component as a prop.** A client
+  component imports the `"use server"` module instead; Flight server references
+  are not wired.
+- **Inline `"use server"` closures**, which have no export name to reference.
+- **Intercepting routes**, which need the router that resolves routes from their
+  modules: under React Server Components an intercepted URL is an ordinary
+  navigation to the page it names.
+- **`uf build` failing on the import chain** that put server-only code into a
+  client module; [#252](https://github.com/ubugeeei-prod/uf/issues/252) tracks
+  it.
+
+[What uf does not do](/guide/scope) lists these beside every other gap.

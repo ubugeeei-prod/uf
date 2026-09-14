@@ -138,6 +138,25 @@ split that decides whether an action is callable from the browser,
 [Server actions](/guide/server-actions) for the endpoint itself, and the
 [config reference](/reference/config#renderingmodes) for the exact defaults.
 
+## How a page navigates
+
+A document React Server Components rendered carries the Flight payload its tree
+was rendered from, and the browser hydrates that payload rather than rendering
+the route's modules again. A link after that fetches the next route's payload
+from `<route>/__uf.flight` — `/guide/rendering/__uf.flight` for this page — and
+renders it in place:
+
+- **a prerendered route has its payload beside its document**, so a static host
+  serves navigation from files, with no rewrite rule, as `text/x-component`;
+- **a server-rendered route answers the payload per request**, after the
+  middleware that guards its path and before any route handler;
+- **anything that is not a payload is a document load**: a redirect off the
+  site, a static host's `404.html` for a file it lacks, a middleware's own
+  refusal. The browser navigates the way a link without JavaScript would.
+
+`app.rsc: false` turns this off, and a navigation imports the next route's
+modules instead.
+
 ## `navigation: "document"`
 
 ```js

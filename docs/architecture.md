@@ -791,28 +791,41 @@ answers the browser's copy of that file with one `createServerReference` per
 callable export — an id and a `fetch`, and none of the module's body, its
 imports, or anything only they reached. The graph colours such a module server
 for the same reason, so the analysis and the bundle agree rather than each
-describing the other. What is *not* split is a Server Component above a
-boundary: uf's client hydrates by re-rendering the matched tree from the same
-modules the server used, so dropping one needs a Flight-shaped payload uf does
-not have. See ubugeeei-prod/uf#252.
+describing the other.
 
-What that payload costs is worth writing down, because it is not a module and
-the shape of the answer decides where it can go. React's own Flight renderer —
-`react-server-dom-*/server` — refuses to load unless the `react-server` export
-condition is on, because it needs the *other* build of React, the one with no
-`useState` in it; and `react-dom/server`, which turns the payload into HTML,
-needs the ordinary one. Two builds of React in one module registry is not a
-thing Node or a bundler will do, so a Flight renderer is a second module graph
-rather than a second import: `node --conditions react-server` for a whole
-process, a worker thread started with those `execArgv`, or a bundler
-environment resolved with that condition — which is the shape `@uniflowed/vite`
-would have to grow, since the first two are Node-only and uf's edge, serverless
-and workerd adapters all serve the same `handler.js`. That is the size of
-ubugeeei-prod/uf#519, and it is why the *element* half of the answer is not a
-smaller version of itself: half of it in the tree is the worst state for the
-thing whose whole risk is deserialisation.
+A Server Component is split out too, at the module, and that needed a second
+module graph rather than a second import. React's own Flight renderer —
+`react-server-dom-parcel/server` — refuses to load unless the `react-server`
+export condition is on, because it needs the *other* build of React, the one
+with no `useState` in it; and `react-dom/server`, which turns the payload into
+HTML, needs the ordinary one. Two builds of React in one module registry is not
+a thing Node or a bundler will do, so `@uniflowed/vite` declares a third Vite
+environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
 
-The framing is separable from that, and it has landed.
+- **`rsc`**, resolved under `react-server` with every dependency bundled in,
+  holds the route table, every page, layout and loader, and
+  `@uniflowed/router/rsc`'s `createFlightRenderer`. A `"use client"` module is
+  replaced there by one `createClientReference` per export, so its code never
+  runs in that graph and a server component's code never reaches another.
+- **`ssr`** holds `@uniflowed/router/server`'s `createDocumentRenderer`, which
+  reads the payload with React's own Flight client and renders that tree into
+  HTML while writing the same bytes into the document, and the server copy of
+  every client module. It reaches `rsc` through one bridge module: the rsc
+  environment's module runner under `uf dev`, the rsc build's output in a build.
+- **`client`** hydrates the payload the document carries (`hydrateFlight`) and
+  holds no page, layout or loader — only the client modules, each an entry of
+  its own, loaded when a payload names its chunk.
+
+`uf build` runs the three in that order, because each needs what the one before
+it found: the rsc build finds the client modules, the client build writes their
+chunks, and the ssr build resolves every reference to a chunk URL. It is one
+environment rather than a process started with `--conditions react-server`
+because uf's edge, serverless and workerd adapters all serve the same
+`handler.js`; an adapter with export conditions of its own rebuilds the rsc
+graph under them. See ubugeeei-prod/uf#519 and ubugeeei-prod/uf#252.
+
+The row framing below predates that, and is what an application rendered from
+its modules (`app.rsc: false`) still uses.
 `packages/router/internal/payload.js` is the wire format: a payload is a
 sequence of numbered rows rather than one value, row 0 is the model with each
 unresolved value replaced by a `"$P<n>"` reference, and each later row is a
