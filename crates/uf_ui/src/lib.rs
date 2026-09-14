@@ -76,8 +76,8 @@
 //!   and the binary are two halves of one release.
 //! * **The components it needs** are the siblings it imports. `./button.js` is
 //!   `button`, so `uf ui add dialog` writes `button.js` as well.
-//! * **Its description** is the first line of its header, after the title:
-//!   `// Dialog: …`.
+//! * **Its description** is the first paragraph of its header, after the
+//!   title: `// Dialog: …`.
 //! * **Its accessibility notes** are the rest of the header, under "What to keep
 //!   true when you change it". In the file, because the person who most needs
 //!   them is the one editing the copy, and a note kept in a registry they never

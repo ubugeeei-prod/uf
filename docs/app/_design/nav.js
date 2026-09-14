@@ -153,6 +153,12 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Files become routes; layouts nest; loaders run before the page.",
       },
       {
+        href: "/guide/routing/requests",
+        title: "Answering requests",
+        blurb:
+          "Middleware, route handlers, draft mode, QUERY, and streams, sockets and work that outlives the request.",
+      },
+      {
         href: "/guide/rendering",
         title: "Rendering modes",
         blurb: "Where a document comes from, and what the browser does once it has one.",

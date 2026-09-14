@@ -41,8 +41,9 @@ use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
 use crate::commands::lint::identifier_span;
+use crate::commands::runtimes;
 use crate::commands::vite::{
-    Driver, Event, load_project_config, render_diagnostic, render_error, render_log, resolve_host,
+    Driver, Event, load_project_config, render_diagnostic, render_error, render_log,
 };
 use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label, relative_to};
 use crate::ui::Ui;
@@ -82,12 +83,17 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
         );
     }
 
-    let host = resolve_host(&resolved.config)?;
+    // `build.runtime`, then `runtime`, then the host uf has always found — and
+    // on the first run on a version, the one time it is downloaded.
+    let runtime = runtimes::resolve(&resolved, runtimes::Role::Build, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })?;
+    let host = runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
     crate::support::render_deprecations(ui, resolved.config.builder_module_deprecation());
     let _ = write_router_manifest(&root, &resolved.config)?;
 
-    let mut env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
+    let mut env = runtime.environment(project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?);
     // Before the driver, not after: `@uniflowed/vite` reads the analysis to
     // decide which routes keep a page in the client route table, and it reads
     // it as it generates that table — which happens on the first request. A
@@ -169,7 +175,9 @@ pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
                 &format!("{named} changed; restarting with the new environment"),
             );
         });
-        env = project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?;
+        // Read again, and on the same runtime: a reload that dropped it from
+        // `PATH` would restart the server with its children on another Node.
+        env = runtime.environment(project_env(&resolved, args.mode.as_deref(), DEVELOPMENT)?);
     }
 }
 
@@ -281,7 +289,10 @@ fn serve(
 ///
 /// Completion, from [`config_file`], and in `uf.config.js` only: the keys valid
 /// at the cursor with their documentation and type, and the values of a key
-/// whose type is a fixed set. A hover over one of those keys says what its
+/// whose type is a fixed set. In a tool spec — `runtime: "node@26"` — the
+/// names the key takes, and after the `@` that tool's versions, from the
+/// release list `uf_env` caches; a list is fetched on a thread of its own and
+/// never waited for. A hover over one of those keys says what its
 /// completion said. Everywhere else completion answers `null`, because the
 /// type-aware completion a Flow file wants needs the positional query `hover`
 /// explains `uf_check` does not expose yet.
@@ -322,6 +333,10 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     // Same reasoning: `uf_lib::builtin_modules` rebuilds the whole registry on
     // every call, and a hover happens on mouse-move.
     let modules = uf_lib::builtin_modules();
+    // The release lists version completion offers: read from `uf_env`'s cache
+    // when first asked for, and refreshed on threads of their own, so that no
+    // request waits on a publisher.
+    let mut releases = config_file::ReleaseLists::from_env();
 
     while let Some(frame) = read_message(&mut reader)? {
         let message = match frame {
@@ -437,7 +452,7 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                 answer_request(&mut stdout, id, answer)?;
             }
             "textDocument/completion" => {
-                let answer = completion_answer(&message, &documents, fmt.quotes);
+                let answer = completion_answer(&message, &documents, fmt.quotes, &mut releases);
                 answer_request(&mut stdout, id, answer)?;
             }
             // A request uf does not serve is answered as one, not ignored: an
@@ -909,10 +924,16 @@ fn hover_answer(
 /// `null` for every document but `uf.config.js`. The trigger characters are
 /// sent from every file this server is given, and a quote typed in a
 /// component is not a question uf has an answer to.
+///
+/// A `CompletionList` with `isIncomplete` rather than a bare list when a tool's
+/// release list is still being fetched: that is the protocol's way to have the
+/// editor ask again on the next keystroke instead of filtering an answer that
+/// is about to be out of date.
 fn completion_answer(
     message: &Value,
     documents: &FxHashMap<String, Document>,
     quotes: QuoteStyle,
+    releases: &mut config_file::ReleaseLists,
 ) -> Result<Value, String> {
     let (uri, line, requested) = position_params(message, "textDocument/completion")?;
     let Some(document) = documents.get(&uri) else {
@@ -926,19 +947,23 @@ fn completion_answer(
         return Ok(json!([]));
     };
 
-    let items = config_file::complete(
+    let completion = config_file::complete(
         Schema::embedded(),
         &document.text,
         document.config_outline(),
         offset,
         quotes,
+        releases,
     );
-    Ok(Value::Array(
-        items
-            .iter()
-            .map(|item| completion_item(&index, item))
-            .collect(),
-    ))
+    let items: Vec<Value> = completion
+        .items
+        .iter()
+        .map(|item| completion_item(&index, item))
+        .collect();
+    Ok(match completion.incomplete {
+        true => json!({ "isIncomplete": true, "items": items }),
+        false => Value::Array(items),
+    })
 }
 
 /// One completion as the protocol spells it.

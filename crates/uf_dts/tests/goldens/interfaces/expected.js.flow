@@ -1,0 +1,32 @@
+export interface Point {
+  readonly x: number;
+  readonly y: number;
+  readonly label?: string;
+}
+
+export interface Dictionary<out T> {
+  [key: string]: T;
+
+}
+
+export interface Callable {
+  (input: string): number;
+  new (seed: number): Callable;
+  describe(verbose?: boolean): string;
+  optionalMethod?: () => void;
+  get size(): number;
+  set size(value: number): void;
+}
+
+export interface Named extends Point, Dictionary<string> {
+  readonly name: string;
+  readonly "quoted-key": boolean;
+  readonly 42: "answer";
+}
+
+export type Shape = interface {
+  readonly kind: "circle" | "square";
+  area(): number;
+};
+
+export type OneLine = interface { readonly a: string; readonly b?: number; };

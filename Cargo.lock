@@ -3584,6 +3584,7 @@ dependencies = [
  "smallvec",
  "tempfile",
  "thiserror",
+ "uf_dts",
  "uf_flow",
  "uf_infra",
  "uf_profiler",
@@ -3668,6 +3669,24 @@ dependencies = [
  "uf_config",
  "uf_flow",
  "uf_project",
+]
+
+[[package]]
+name = "uf_dts"
+version = "0.0.0-alpha.34"
+dependencies = [
+ "compact_str",
+ "criterion",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_ast_visit",
+ "oxc_parser",
+ "oxc_span",
+ "serde",
+ "serde_json",
+ "similar-asserts",
+ "smallvec",
+ "uf_infra",
 ]
 
 [[package]]

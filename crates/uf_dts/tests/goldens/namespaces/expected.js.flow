@@ -1,0 +1,24 @@
+declare export namespace util {
+  type Maybe<out T> = T | null;
+  declare function identity<T>(value: T): T;
+  declare const version: string;
+  declare namespace inner {
+    interface Deep {
+      readonly value: number;
+    }
+  }
+
+
+  type Extra = string;
+}
+declare export namespace A { declare namespace B { declare namespace C {
+      declare const leaf: true;
+    } } }
+declare function configure$value(options: configure.Options): void; export { configure$value as configure };
+declare export namespace configure {
+  interface Options {
+    readonly verbose: boolean;
+  }
+}
+declare export class Widget {
+}

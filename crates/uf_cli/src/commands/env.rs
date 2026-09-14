@@ -98,16 +98,11 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     let store = uf_env::Store::discover()?;
     let mut fetched = Vec::new();
     for pin in &pins {
-        if store.has(pin) {
-            continue;
+        if uf_env::archive::ensure(&store, pin)
+            .with_context(|| format!("failed to install {pin}"))?
+        {
+            fetched.push(pin.clone());
         }
-        let source = uf_env::source::Source::for_pin(pin)
-            .with_context(|| format!("uf has no published build of {pin} for this platform"))?;
-        let staging = store.staging(pin)?;
-        uf_env::archive::install(&source, &staging)
-            .with_context(|| format!("failed to install {pin}"))?;
-        store.adopt(pin, &staging)?;
-        fetched.push(pin.clone());
     }
 
     // Before the links are made, not after: a `.uniflowed` from an older uf

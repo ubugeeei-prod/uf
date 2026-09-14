@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Maybe",
+    "construct": "jsdoc-type",
+    "reason": "a JSDoc type is not something a declaration file can hold, so it is `any`",
+    "line": 1
+  }
+]

@@ -1,0 +1,18 @@
+import { Model, createModel, type Options } from "./model.js";
+import DefaultThing from "./model.js";
+import * as all from "./model.js";
+import type { Missing } from "./missing.js";
+import { External } from "external-package";
+import { Merged } from "./model.js";
+export { Model, createModel };
+export { Options as ModelOptions };
+export * from "./model.js";
+export * as models from "./model.js";
+export type * from "./types.js";
+export { type Kind, value, Merged as MergedAgain } from "./types.js";
+export declare function use(model: Model, options: Options, external: External, merged: Merged, missing: Missing): typeof createModel;
+export type Default = typeof DefaultThing;
+export type Extern = typeof External;
+export type Namespace = typeof all;
+export type Lazy = import("./types.js").Kind;
+export type LazyModule = typeof import("./types.js");

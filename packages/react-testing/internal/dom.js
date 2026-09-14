@@ -206,18 +206,53 @@ function isUsableStorage(value: mixed): boolean {
   );
 }
 
-let installed: HostWindow | null = null;
+/** The address a window this module creates starts at, and goes back to. */
+const HOME = "http://localhost/";
 
 /**
- * Install a DOM on the global object, once.
+ * A page's own window, when the process already had a document.
+ *
+ * That window belongs to the page — a project running its tests in a browser —
+ * and nothing here takes it back.
+ */
+let installed: HostWindow | null = null;
+
+/** The window this module created, and what putting the process back needs. */
+type Created = {|
+  readonly win: HostWindow,
+  /** Every own property of the window, as it was created. */
+  readonly pristine: Map<string | symbol, PropertyDescriptor<mixed>>,
+  /**
+   * What each global this module defines was before it first did: its
+   * descriptor, or `undefined` when the host had no such global.
+   */
+  readonly previous: Map<string, PropertyDescriptor<mixed> | void>,
+  /** Whether the globals are this window's right now. */
+  applied: boolean,
+|};
+
+/** The window this module created, once a render in this process needed one. */
+let created: Created | null = null;
+
+/**
+ * Install a DOM on the global object.
  *
  * Returns the window, so a caller that wants the document can have it without
- * reaching through `globalThis`. Calling this a second time is free and does
- * not replace the document — replacing it mid-process would strand every React
- * root already mounted in the old one.
+ * reaching through `globalThis`. The window is created once per process and
+ * never replaced — replacing it mid-file would strand every React root already
+ * mounted in the old one. What changes between files is whether the globals
+ * point at it: `uf test`'s worker takes them back before the next file, and
+ * the next render here puts them back on the same window. See
+ * [`restoreBetweenFiles`].
  */
 export function installDom(): HostWindow {
   installActEnvironment();
+  if (created != null) {
+    if (!created.applied) {
+      apply(created);
+    }
+    return created.win;
+  }
   if (installed != null) {
     return installed;
   }
@@ -229,22 +264,40 @@ export function installDom(): HostWindow {
     return installed;
   }
 
-  const win: HostWindow = new Window({ url: "http://localhost/" });
+  const win: HostWindow = new Window({ url: HOME });
+  const pristine: Map<string | symbol, PropertyDescriptor<mixed>> = new Map();
+  for (const key of Reflect.ownKeys(win)) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(win, key);
+    if (descriptor != null) {
+      pristine.set(key, descriptor);
+    }
+  }
+  created = { win, pristine, previous: new Map(), applied: false };
+  apply(created);
+  registerBetweenFiles();
+  return win;
+}
 
+/** Point the globals a document needs at `dom`'s window. */
+function apply(dom: Created): void {
+  const { win } = dom;
   for (const name of CLASSES) {
     const value = win[name];
     if (value !== undefined) {
-      define(name, value);
+      defineFor(dom, name, value);
     }
   }
   // The three by name rather than from a list: see `HostWindow`.
-  defineBound("getComputedStyle", win.getComputedStyle, win);
-  defineBound("requestAnimationFrame", win.requestAnimationFrame, win);
-  defineBound("cancelAnimationFrame", win.cancelAnimationFrame, win);
+  for (const name of ["getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"]) {
+    const fn = win[name];
+    if (typeof fn === "function") {
+      defineFor(dom, name, fn.bind(win));
+    }
+  }
   for (const name of OBJECTS) {
     const value = win[name];
     if (value !== undefined && globals[name] === undefined) {
-      define(name, value);
+      defineFor(dom, name, value);
     }
   }
   for (const name of STORAGE) {
@@ -253,17 +306,180 @@ export function installDom(): HostWindow {
     }
     const value = win[name];
     if (isUsableStorage(value)) {
-      define(name, value);
+      defineFor(dom, name, value);
     }
   }
 
   // React reads these to decide it is in a browser and to pick its event
   // system, and they must be the objects the elements belong to.
-  define("window", win);
-  define("document", win.document);
+  defineFor(dom, "window", win);
+  defineFor(dom, "document", win.document);
+  dom.applied = true;
+}
 
-  installed = win;
-  return installed;
+/** [`define`], remembering what the global was before this module first set it. */
+function defineFor(dom: Created, name: string, value: mixed): void {
+  if (!dom.previous.has(name)) {
+    dom.previous.set(name, Reflect.getOwnPropertyDescriptor(globalThis, name));
+  }
+  define(name, value);
+}
+
+/**
+ * Where `@uniflowed/test`'s worker finds state other packages install for the
+ * whole process, and how to put each back. See `restoreSharedState` in that
+ * package's `internal/isolation.js`, which runs every entry before each file.
+ *
+ * A symbol from the global registry rather than an import: this package does
+ * not depend on `@uniflowed/test`, and a project may render with it under
+ * another runner, where nothing reads the entry and it costs nothing.
+ */
+const SHARED_STATE: symbol = Symbol.for("@uniflowed/test/shared-state");
+
+/** Tell the worker, once, that this module has state for it to put back. */
+function registerBetweenFiles(): void {
+  let registry: mixed = Reflect.get(globalThis, SHARED_STATE);
+  if (!(registry instanceof Map)) {
+    registry = new Map();
+    Reflect.defineProperty(globalThis, SHARED_STATE, {
+      value: registry,
+      writable: true,
+      configurable: true,
+      enumerable: false,
+    });
+  }
+  registry.set("the window and document a render installed", restoreBetweenFiles);
+}
+
+/**
+ * Hand the next file the process as it was before any file rendered.
+ *
+ * The window is shared by every file a worker runs, and a file changes it in
+ * ways nothing else undoes. Found in this repository's own suite once
+ * `uf test` started packing more files into each worker
+ * (ubugeeei-prod/uf#944), each one naming the file that read rather than the
+ * file that wrote:
+ *
+ * * `window.matchMedia = undefined`, which `packages/ui/ui.test.js` writes to
+ *   say its document has no viewport, left every later component that asks a
+ *   media query with `matchMedia is not a function`;
+ * * `FormData`, which a render installs from the document because React's form
+ *   actions build one from a form element — and whose document version refuses
+ *   Node's `Blob`, so a file that never rendered failed to build a form it
+ *   would have built in a fresh worker.
+ *
+ * So the window's own properties go back to the ones it was created with, the
+ * attributes on `<html>` and `<head>` go the way the body's already do, and
+ * each global goes back to what it was before this module defined it — which
+ * for a file that never renders means no document at all, exactly as in a
+ * worker that has not run one. The window object itself stays, and the next
+ * render points the globals back at it.
+ *
+ * Two things are left where the last file put them, because other modules
+ * keep state about them that outlives the file as well, and putting one half
+ * back without the other is a new inconsistency rather than a fresh start:
+ *
+ * * the address and `history.state`, which the router keeps its own state in
+ *   step with. Resetting them was tried on this repository's suite, run on one
+ *   worker, and failed 31 cases across the router, dialogs, selects and tabs
+ *   that pass without the reset;
+ * * the head's elements. `@uniflowed/router` inserts nodes there and positions
+ *   later ones against them (`internal/hydration.js`, `client.js`), and
+ *   clearing the head fixed nothing in the same run.
+ *
+ * Event listeners a file added to the window are not reached either: a listener
+ * is not an own property, and nothing short of a new window removes one.
+ */
+function restoreBetweenFiles(): void {
+  const dom = created;
+  let failure: mixed = null;
+  if (dom != null && dom.applied) {
+    // While the window is still installed. A root the last file left mounted
+    // unmounts through React, and React reads `window` as it does — the next
+    // file's own `cleanup()` met exactly that, before it had rendered anything.
+    // A step that throws does not stop the rest: a half-restored process is the
+    // defect this function exists to end.
+    for (const step of beforeRestore) {
+      try {
+        step();
+      } catch (thrown) {
+        failure ??= thrown;
+      }
+    }
+    const { win } = dom;
+    const document: $FlowFixMe = win.document;
+    for (const element of [document?.documentElement, document?.head]) {
+      for (const name of [...(element?.getAttributeNames?.() ?? [])]) {
+        element.removeAttribute(name);
+      }
+    }
+    restoreOwnProperties(win, dom.pristine);
+    for (const [name, descriptor] of dom.previous) {
+      if (descriptor === undefined) {
+        Reflect.deleteProperty(globalThis, name);
+      } else {
+        Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+    dom.applied = false;
+  }
+  if (declared) {
+    if (actFlagBefore === undefined) {
+      Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    } else {
+      Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", actFlagBefore);
+    }
+    declared = false;
+  }
+  if (failure != null) {
+    throw failure;
+  }
+}
+
+/** What has to happen while the window is still installed, in the order it was asked for. */
+const beforeRestore: Array<() => void> = [];
+
+/**
+ * Run `step` before the worker takes the window back, each time it does.
+ *
+ * For state another module of this package keeps about the window — the roots
+ * `render` mounted — which has to be let go of through the window rather than
+ * after it is gone. Asking twice with the same function asks once.
+ */
+export function beforeWindowRestore(step: () => void): void {
+  if (!beforeRestore.includes(step)) {
+    beforeRestore.push(step);
+  }
+}
+
+/** Put `target`'s own properties back to `pristine`, adding, replacing and deleting. */
+function restoreOwnProperties(
+  target: HostWindow,
+  pristine: Map<string | symbol, PropertyDescriptor<mixed>>,
+): void {
+  for (const key of Reflect.ownKeys(target)) {
+    if (!pristine.has(key)) {
+      Reflect.deleteProperty(target, key);
+    }
+  }
+  for (const [key, descriptor] of pristine) {
+    const now = Reflect.getOwnPropertyDescriptor(target, key);
+    if (now == null || !sameDescriptor(now, descriptor)) {
+      Object.defineProperty(target, key, descriptor);
+    }
+  }
+}
+
+/** Whether two descriptors describe the same property. */
+function sameDescriptor(a: PropertyDescriptor<mixed>, b: PropertyDescriptor<mixed>): boolean {
+  return (
+    Object.is(a.value, b.value) &&
+    a.get === b.get &&
+    a.set === b.set &&
+    a.writable === b.writable &&
+    a.enumerable === b.enumerable &&
+    a.configurable === b.configurable
+  );
 }
 
 /**
@@ -282,8 +498,7 @@ export function installActEnvironment(): void {
   if (declared) {
     return;
   }
-  declared = true;
-  define("IS_REACT_ACT_ENVIRONMENT", true);
+  declareActEnvironment(true);
 }
 
 /**
@@ -292,9 +507,24 @@ export function installActEnvironment(): void {
  * `waitFor` stands it down for the length of a wait; see the reason there.
  */
 export function setActEnvironment(active: boolean): void {
+  declareActEnvironment(active);
+}
+
+/**
+ * Set the flag, remembering what it was the first time this process — or this
+ * file, after the worker put it back — set it.
+ */
+function declareActEnvironment(active: boolean): void {
+  if (!declared) {
+    actFlagBefore = Reflect.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    registerBetweenFiles();
+  }
   declared = true;
   define("IS_REACT_ACT_ENVIRONMENT", active);
 }
+
+/** What `IS_REACT_ACT_ENVIRONMENT` was before this module set it. */
+let actFlagBefore: PropertyDescriptor<mixed> | void = undefined;
 
 /**
  * Whether the flag has been installed, tracked separately from its value.
@@ -319,13 +549,6 @@ function define(name: string, value: mixed): void {
     configurable: true,
     enumerable: true,
   });
-}
-
-/** Install one of the window's own functions, still reading that window. */
-function defineBound(name: string, fn: HostFunction | void, win: HostWindow): void {
-  if (typeof fn === "function") {
-    define(name, fn.bind(win));
-  }
 }
 
 /** The document tests query, installing one if the process has none. */

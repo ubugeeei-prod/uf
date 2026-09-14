@@ -1,0 +1,38 @@
+[
+  {
+    "declaration": "Intrinsic",
+    "construct": "intrinsic-type",
+    "reason": "`intrinsic` names a type only TypeScript's compiler implements, so it is `any`",
+    "line": 1
+  },
+  {
+    "declaration": "Global",
+    "construct": "global-this",
+    "reason": "`globalThis` has no Flow type, so this is `any`",
+    "line": 2
+  },
+  {
+    "declaration": "GlobalMember",
+    "construct": "global-this",
+    "reason": "`globalThis` has no Flow type, so this is `any`",
+    "line": 3
+  },
+  {
+    "declaration": "Instantiated",
+    "construct": "instantiation-query",
+    "reason": "`typeof f<T>` instantiates a value's type, which Flow's `typeof` cannot, so it is `any`",
+    "line": 5
+  },
+  {
+    "declaration": "DataAttributes",
+    "construct": "index-signature-key",
+    "reason": "Flow keys an index signature by `string`, `number` or `symbol`, so this one is left out",
+    "line": 7
+  },
+  {
+    "declaration": "default",
+    "construct": "export-assignment",
+    "reason": "`export default` of an expression that is not a name has no Flow spelling, so the default export is `any`",
+    "line": 10
+  }
+]

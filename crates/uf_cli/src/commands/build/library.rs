@@ -89,7 +89,8 @@ use uf_config::{LibraryPlan, ResolvedConfig};
 use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
 
 use crate::commands::builder;
-use crate::commands::vite::{Driver, Event, render_error, render_log, resolve_host};
+use crate::commands::runtimes;
+use crate::commands::vite::{Driver, Event, render_error, render_log};
 use crate::support::{
     PRODUCTION, plural, project_env, project_label, relative_to, write_json_file,
 };
@@ -123,9 +124,14 @@ pub(crate) fn build(
     fs::create_dir_all(&out_dir).with_context(|| format!("failed to create {out_dir}"))?;
 
     progress.tick("resolving the JavaScript host");
-    let host = resolve_host(&resolved.config)?;
+    // A library builds on `build.runtime` exactly as an application does.
+    let runtime = runtimes::resolve(resolved, runtimes::Role::Build, &mut |message| {
+        progress.finish();
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })?;
+    let host = runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
-    let env = project_env(resolved, requested_mode, PRODUCTION)?;
+    let env = runtime.environment(project_env(resolved, requested_mode, PRODUCTION)?);
 
     // Read before the bundle, because it is what the bundle is told. A
     // manifest that cannot be read is not an error: a library without one is a

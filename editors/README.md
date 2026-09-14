@@ -35,9 +35,11 @@ eighty lines long.
   what a rule id in a suppression comment means, and a key of `uf.config.js`.
 * **Completion**, in `uf.config.js` and nowhere else — the keys valid at the
   cursor, each with the documentation and type `@uniflowed/config` declares for
-  it, and the values of a key whose type is a fixed set. It works while the
-  file is half-typed, and it needs nothing installed: the declaration it reads
-  is compiled into `uf`.
+  it, the values of a key whose type is a fixed set, and in a tool spec like
+  `runtime: "node@26"` the names and, after `@`, the versions. It works while
+  the file is half-typed, and it needs nothing installed: the declaration it
+  reads is compiled into `uf`, and versions come from release lists uf caches
+  and refreshes in the background, never on a request's time.
 
 Not go-to-definition, rename, references, document symbols, the type at a
 position, organize imports, or completion in any other file. The server

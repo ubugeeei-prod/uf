@@ -130,6 +130,7 @@ the fix from leaking away while the next slice is being cut.
 - `uf_assets`: image resizing and re-encoding, and the font metrics behind `Image` and `Font`
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
+- `uf_dts`: a dependency's TypeScript declaration files, translated into Flow declaration modules with every hole named
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
 - `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString, and the byte bound every `.uf/cache/` directory is swept to

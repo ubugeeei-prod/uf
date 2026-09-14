@@ -1,0 +1,20 @@
+[
+  {
+    "declaration": "Mixed",
+    "construct": "enum-member",
+    "reason": "a Flow enum holds strings or numbers and this one mixes them; `Mixed` is declared `any`",
+    "line": 21
+  },
+  {
+    "declaration": "Quoted",
+    "construct": "enum-member",
+    "reason": "a Flow enum member is named by an identifier, and this one is not; `Quoted` is declared `any`",
+    "line": 26
+  },
+  {
+    "declaration": "Computed",
+    "construct": "enum-member",
+    "reason": "the value of `A` is not a constant uf can compute; `Computed` is declared `any`",
+    "line": 29
+  }
+]

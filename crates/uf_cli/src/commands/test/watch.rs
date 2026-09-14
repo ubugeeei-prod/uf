@@ -29,6 +29,7 @@ use uf_test::{ImportGraph, TestFilter, Watcher};
 
 use super::render::render_report;
 use super::{TestArgs, read_timings, record_timings, run_once};
+use crate::commands::vite::Host;
 use crate::support::plural;
 use crate::ui::Ui;
 
@@ -47,6 +48,7 @@ pub(super) fn watch(
     root: &Utf8Path,
     config: UniflowedConfig,
     env: &ProjectEnv,
+    runtime: Host,
     args: TestArgs,
 ) -> Result<()> {
     // The one-shot `uf test` has already refused to start on a file it could
@@ -61,7 +63,7 @@ pub(super) fn watch(
     // Resolved once, with the environment the session started with: a watch
     // that reloaded `.env` mid-session would change what the suite means
     // between two runs of the same file.
-    let host = super::test_host(root, &config, env, args.browser)?
+    let host = super::test_host(root, &config, env, args.browser, runtime)?
         .with_axe(config.accessibility.axe.as_json());
     // Every host, Deno included. Deno used to be refused here, because its Flow
     // loader was an ahead-of-time pass and a watch session would have kept

@@ -1,0 +1,20 @@
+[
+  {
+    "declaration": "(module)",
+    "construct": "module-augmentation",
+    "reason": "`declare module \"some-package\"` adds to another module, and Flow reads a module's declarations from that module alone; the block is not translated",
+    "line": 2
+  },
+  {
+    "declaration": "Window",
+    "construct": "global-augmentation",
+    "reason": "`declare global` adds `Window` to every module's scope, and a Flow module declares only its own; it is not translated",
+    "line": 8
+  },
+  {
+    "declaration": "counter",
+    "construct": "global-augmentation",
+    "reason": "`declare global` adds `counter` to every module's scope, and a Flow module declares only its own; it is not translated",
+    "line": 11
+  }
+]
