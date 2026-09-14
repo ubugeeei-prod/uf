@@ -18,7 +18,12 @@ function program() {
   // `init` before `id` on purpose: a tree that arrives through JSON has its
   // keys in whatever order the map kept, not in source order.
   const declarator = { type: "VariableDeclarator", init, id, range: [6, 13] };
-  const declaration = { type: "VariableDeclaration", kind: "const", declarations: [declarator], range: [0, 14] };
+  const declaration = {
+    type: "VariableDeclaration",
+    kind: "const",
+    declarations: [declarator],
+    range: [0, 14],
+  };
   return { type: "Program", body: [declaration], comments: [], range: [0, 14] };
 }
 

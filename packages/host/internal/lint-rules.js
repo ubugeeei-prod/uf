@@ -72,7 +72,9 @@ export async function loadRules(root, modules, wanted) {
   for (const id of wanted) {
     const rule = defined.get(id);
     if (rule === undefined) {
-      problems.push(`\`${id}\` is enabled in \`lint.rules\`, and no plugin in \`plugins\` defines it`);
+      problems.push(
+        `\`${id}\` is enabled in \`lint.rules\`, and no plugin in \`plugins\` defines it`,
+      );
     } else {
       rules.push({ id, rule });
     }
