@@ -542,6 +542,37 @@ mod tests {
         );
     }
 
+    /// `lint.rules` is a map whose keys are rule ids, and its value type,
+    /// `RuleLevel`, mixes every kind of literal a value can be: strings,
+    /// numbers, and `boolean`.
+    #[test]
+    fn a_rule_level_offers_every_kind_of_literal_it_declares() {
+        let (_, items) = complete_at(
+            "export default defineConfig({ lint: { rules: { \"flow/unclear-type\": ‸ } } })",
+        );
+        assert_eq!(
+            labels(&items),
+            [
+                "\"off\"",
+                "\"warn\"",
+                "\"error\"",
+                "0",
+                "1",
+                "2",
+                "true",
+                "false"
+            ]
+        );
+        assert_eq!(items[3].kind, Kind::Literal);
+        assert_eq!(items[6].kind, Kind::Constant);
+        // In declaration order, which is severity order.
+        assert!(
+            items
+                .windows(2)
+                .all(|pair| pair[0].sort_text < pair[1].sort_text)
+        );
+    }
+
     #[test]
     fn a_boolean_offers_true_and_false_and_nothing_inside_quotes() {
         let (_, items) = complete_at("export default defineConfig({ fmt: { semicolons: ‸ } })");
