@@ -172,9 +172,9 @@ fn a_file_used_within_the_grace_period_is_never_removed() {
 #[test]
 fn a_subdirectory_is_not_swept_and_is_not_counted() {
     let root = tempfile::tempdir().unwrap();
-    // `.uf/cache/task/last/` is this, and losing it costs `uf run --why` the
+    // `.uf/cache/task/notes/` is this, and losing it costs `uf run --why` the
     // ability to say which file changed.
-    let notes = root.path().join("last");
+    let notes = root.path().join("notes");
     fs::create_dir(&notes).unwrap();
     entry(&notes, "note", 10_000, 86_400);
     entry(root.path(), "cold", 100, 86_400);
@@ -184,7 +184,7 @@ fn a_subdirectory_is_not_swept_and_is_not_counted() {
 
     // The notes are neither counted towards the budget nor eligible for it.
     assert_eq!(swept.bytes_before, 200);
-    assert_eq!(remaining(root.path()), ["last", "warm"]);
+    assert_eq!(remaining(root.path()), ["notes", "warm"]);
     assert_eq!(remaining(&notes), ["note"]);
 }
 

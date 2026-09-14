@@ -81,7 +81,7 @@
 //!
 //! Only files directly in the directory. Subdirectories are left alone,
 //! contents and all, because a cache keeps things beside its entries that are
-//! not entries: `.uf/cache/task/last/` holds one note per task recording what
+//! not entries: `.uf/cache/task/notes/` holds one note per task recording what
 //! that task keyed on, which is what makes `uf run --why` able to name the
 //! file that changed. It is bounded by the number of tasks and rewritten in
 //! place, so it is not what grows — and evicting it by size would take away an

@@ -40,6 +40,7 @@ use crate::cache::{
     encode,
 };
 use crate::digest::{Digest, Fields, hex};
+use crate::environment::Environment;
 use crate::inputs::{InputError, Patterns};
 
 /// One task, resolved: everything the runner needs and nothing about how it
@@ -61,8 +62,8 @@ pub struct ScheduledTask {
     pub outputs: Vec<CompactString>,
     /// Whether uf may answer it from the cache at all.
     pub cacheable: bool,
-    /// A digest over the environment uf will give it.
-    pub environment: String,
+    /// The environment uf will give it, every value already a digest.
+    pub environment: Environment,
 }
 
 /// How many tasks may run at once.
@@ -455,13 +456,15 @@ impl Executor<'_> {
             Err(error) => return unkeyed(RunReason::UnusableInputs(error)),
         };
 
-        let mut fields = Fields::new("uf task cache v1");
+        // `v2` since the environment went in as digests rather than as text,
+        // so that no key from before that can be read as one from after it.
+        let mut fields = Fields::new("uf task cache v2");
         fields
             .push(&RECORD_VERSION.to_string())
             .push(task.name.as_str())
-            .push(&task.command)
-            .push(&task.environment)
-            .push_digest(&patterns.digest("uf task inputs v1", &files));
+            .push(&task.command);
+        task.environment.push_into(&mut fields);
+        fields.push_digest(&patterns.digest("uf task inputs v1", &files));
         for pattern in &task.outputs {
             fields.push(pattern.as_str());
         }
