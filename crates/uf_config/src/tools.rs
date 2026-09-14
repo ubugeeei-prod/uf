@@ -84,11 +84,11 @@ use crate::{
 /// names none gets.
 pub const VITE_BUILDER_MODULE: &str = "@uniflowed/vite";
 
-/// The issue that turns `test.runner: "bun"` into a run.
+/// The issue that turned `test.runner: "bun"` into a run.
 ///
-/// Until it lands the spec parses — so a project can write down what it wants
-/// and `uf inspect` can show it — and `uf test` refuses it with this number
-/// rather than running uf's own runner in its place.
+/// Nothing waits on it any more — [`TestRunnerSpec::tracking_issue`] answers
+/// `None` for every runner — and it stays a public name because removing one
+/// is a breaking change to this crate's API.
 pub const BUN_TEST_RUNNER_ISSUE: u32 = 942;
 
 /// The names one role accepts.
@@ -302,9 +302,9 @@ pub enum TestRunnerSpec {
     Uf,
     /// `"bun"` or `"bun@1.4"`: `bun test`, on the Bun it names.
     ///
-    /// Parsed, shown and checked against `test.runtime` today, and refused by
-    /// `uf test` until [`BUN_TEST_RUNNER_ISSUE`] lands — a runner that silently
-    /// ran uf's own suite in its place would be the worst of both answers.
+    /// `uf test` hands the files its discovery found to `bun test`, with uf's
+    /// Flow preload loaded and `@uniflowed/test` resolving to `bun:test`, and
+    /// reads the run's JUnit report back to say whether the suite passed.
     Bun(ToolVersion),
 }
 
@@ -361,11 +361,15 @@ impl TestRunnerSpec {
     }
 
     /// The issue a runner is waiting on before `uf test` can run it.
+    ///
+    /// None, for either runner: `bun test` runs behind `uf test` since
+    /// [`BUN_TEST_RUNNER_ISSUE`]. Kept rather than removed, because removing a
+    /// public method is a breaking change to this crate's API, and the next
+    /// runner that parses before it runs will need it again.
     #[must_use]
     pub const fn tracking_issue(&self) -> Option<u32> {
         match self {
-            Self::Uf => None,
-            Self::Bun(_) => Some(BUN_TEST_RUNNER_ISSUE),
+            Self::Uf | Self::Bun(_) => None,
         }
     }
 }

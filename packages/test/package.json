@@ -11,7 +11,10 @@
     "directory": "packages/test"
   },
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "uniflowed-bun-test": "./bun/index.js",
+      "default": "./index.js"
+    },
     "./in-source": "./in-source.js",
     "./worker": "./worker.js",
     "./browser-worker": "./browser-worker.js",
@@ -19,6 +22,7 @@
   },
   "files": [
     "browser-worker.js",
+    "bun",
     "in-source.js",
     "index.js",
     "internal",

@@ -1,0 +1,621 @@
+//! `bun test` behind `uf test`, when `test.runner` names Bun.
+//!
+//! uf's own runner is a default, not the only implementation (red line 3). A
+//! project that writes `test: { runner: "bun" }` has its suite run by
+//! `bun test`, on the Bun that spec names, and `uf test` is the same command
+//! it always was: it discovers the files, loads the project's `.env`, starts
+//! the runner, and says whether the suite passed.
+//!
+//! # How a Flow suite reaches `bun test`
+//!
+//! Three things have to be true of the Bun process, and each is one argument:
+//!
+//! * **It can read Flow.** `--preload @uniflowed/host/bun-preload` transforms
+//!   every module uf is responsible for through `uf transform`, exactly as a
+//!   Bun host running uf's own runner does.
+//! * **`@uniflowed/test` means `bun:test`.** `--conditions=uniflowed-bun-test`
+//!   makes the package's `exports` answer with `bun/index.js`, which maps the
+//!   API onto `bun:test` and refuses by name what Bun has no equivalent for. A
+//!   preload plugin cannot do this: Bun does not ask a plugin about a bare
+//!   specifier that resolves to an installed package, and the test file then
+//!   registers its cases with uf's registry, where `bun test` cannot see them,
+//!   and exits 0 over a suite that ran nothing. See ubugeeei-prod/uf#942.
+//! * **It runs the files uf would.** The files are uf's discovery, passed as
+//!   paths, rather than Bun's own filename patterns — so the two runners run
+//!   the same files.
+//!
+//! # Why the JUnit report is always asked for
+//!
+//! `bun test`'s console output is for a person, and its exit status cannot
+//! tell a suite that passed from a suite that ran nothing: a file whose
+//! registrations went somewhere Bun could not see reports "0 tests" and exits
+//! 0. So the run always writes a JUnit report — to the `--reporter-outfile`
+//! the caller named, or into `.uf` — and `uf test` reads it back. A file uf's
+//! discovery says declares tests, for which Bun reports no case at all, fails
+//! the run by name: the same rule `FileStatus::RegisteredNothing` enforces for
+//! uf's own runner, for the same reason.
+//!
+//! # Flags
+//!
+//! A flag with the same meaning to `bun test` is passed through; a flag
+//! without one is refused by name, before Bun starts. A flag silently dropped
+//! is a run that is not the run a person asked for, and a flag translated into
+//! something with a different meaning is worse.
+
+use std::process::Command;
+
+use anyhow::{Context, Result, anyhow, bail};
+use camino::{Utf8Path, Utf8PathBuf};
+use uf_config::env_files::ProjectEnv;
+use uf_config::tools::ToolVersion;
+use uf_config::{CoverageThresholdConfig, ResolvedConfig};
+use uf_project::ProjectFile;
+
+use super::TestArgs;
+use crate::cli::{CoverageReporterArg, ResultReporterArg};
+use crate::commands::builder::uniflowed_package;
+use crate::commands::vite::find_program;
+use crate::support::plural;
+use crate::ui::Ui;
+
+pub(crate) mod junit;
+
+/// The export condition under which `@uniflowed/test` is `bun:test`.
+pub(crate) const CONDITION: &str = "uniflowed-bun-test";
+
+/// Where the JUnit report goes when the caller did not name a file.
+const REPORT: &str = ".uf/bun-test/junit.xml";
+
+/// What a module has to say to hold an in-source test.
+const IN_SOURCE_MARKER: &str = "import.meta.uf.test";
+
+/// A `uf test` flag `bun test` has no meaning for, and what to do instead.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RefusedFlag {
+    /// The flag as a person typed it.
+    pub(crate) flag: &'static str,
+    /// Why it cannot be passed on, and what to use.
+    pub(crate) reason: &'static str,
+}
+
+/// Every flag in `args` that `bun test` cannot honour.
+pub(crate) fn refused_flags(args: &TestArgs) -> Vec<RefusedFlag> {
+    let mut refused = Vec::new();
+    let mut refuse = |present: bool, flag: &'static str, reason: &'static str| {
+        if present {
+            refused.push(RefusedFlag { flag, reason });
+        }
+    };
+    refuse(
+        args.json,
+        "--json",
+        "`bun test` writes no JSON report; use `--reporter junit --reporter-outfile <file>`",
+    );
+    refuse(
+        args.list,
+        "--list",
+        "`bun test` cannot list what it would run without running it",
+    );
+    refuse(
+        args.browser,
+        "--browser",
+        "browser mode is uf's own runner; `bun test` runs on Bun",
+    );
+    refuse(
+        args.watch_interval.is_some(),
+        "--watch-interval",
+        "`bun test --watch` follows file events and takes no interval",
+    );
+    refuse(
+        args.update_snapshots,
+        "--update-snapshots",
+        "uf and Bun key and serialise snapshots differently, and the runner refuses snapshot \
+         matchers rather than rewrite snapshots uf did not write; update them with \
+         `runner: \"uf\"`",
+    );
+    refuse(
+        args.coverage_reporters
+            .iter()
+            .any(|reporter| matches!(reporter, CoverageReporterArg::Cobertura)),
+        "--coverage-reporter cobertura",
+        "`bun test` writes `text` and `lcov` coverage only",
+    );
+    refused
+}
+
+/// The test-bearing files whose tests are in-source blocks.
+///
+/// `import.meta.uf.test` is compiled to uf's test API only for uf's own runner;
+/// for any other it is `void 0`, and a block behind it registers nothing. So a
+/// file relying on one is refused by name before Bun starts, rather than being
+/// reported afterwards as a file that ran nothing.
+pub(crate) fn in_source_files(files: &[ProjectFile]) -> Vec<&str> {
+    files
+        .iter()
+        .filter(|file| file.source.contains(IN_SOURCE_MARKER))
+        .map(|file| file.relative_path.as_str())
+        .collect()
+}
+
+/// The arguments `bun` is started with, after the program itself.
+pub(crate) fn arguments(
+    preload: &Utf8Path,
+    report: &Utf8Path,
+    args: &TestArgs,
+    files: &[&str],
+) -> Vec<String> {
+    let mut out = vec![
+        format!("--conditions={CONDITION}"),
+        String::from("test"),
+        String::from("--preload"),
+        preload.to_string(),
+    ];
+    if let Some(pattern) = args.filter.as_deref() {
+        // uf's `-t` is a substring of the full name; Bun's is a regular
+        // expression. Escaping makes every character literal, so the pattern
+        // means what it meant to uf.
+        out.push(format!("--test-name-pattern={}", escape_pattern(pattern)));
+    }
+    if args.watch {
+        out.push(String::from("--watch"));
+    }
+    if args.coverage {
+        out.push(String::from("--coverage"));
+    }
+    for reporter in &args.coverage_reporters {
+        match reporter {
+            CoverageReporterArg::Text => out.push(String::from("--coverage-reporter=text")),
+            CoverageReporterArg::Lcov => out.push(String::from("--coverage-reporter=lcov")),
+            CoverageReporterArg::Cobertura => {}
+        }
+    }
+    if let Some(directory) = args.coverage_dir.as_deref() {
+        out.push(format!("--coverage-dir={directory}"));
+    }
+    if let Some(failures) = args.bail {
+        out.push(format!("--bail={failures}"));
+    }
+    if args.retry > 0 {
+        out.push(format!("--retry={}", args.retry));
+    }
+    if let Some(threads) = args.threads {
+        out.push(format!("--parallel={threads}"));
+    }
+    out.push(String::from("--reporter=junit"));
+    out.push(format!("--reporter-outfile={report}"));
+    // As paths rather than filters: `./` is what makes Bun run a file by name
+    // whatever its filename patterns say.
+    out.extend(files.iter().map(|file| format!("./{file}")));
+    out
+}
+
+/// Where the JUnit report is written: the caller's file, or uf's own.
+pub(crate) fn report_path(root: &Utf8Path, args: &TestArgs) -> Utf8PathBuf {
+    match (args.reporter.as_ref(), args.reporter_outfile.as_deref()) {
+        (Some(ResultReporterArg::Junit), Some(outfile)) => {
+            let outfile = Utf8Path::new(outfile);
+            if outfile.is_absolute() {
+                outfile.to_path_buf()
+            } else {
+                root.join(outfile)
+            }
+        }
+        _ => root.join(REPORT),
+    }
+}
+
+/// `pattern` with every regular-expression metacharacter escaped.
+pub(crate) fn escape_pattern(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    for character in pattern.chars() {
+        if matches!(
+            character,
+            '\\' | '^'
+                | '$'
+                | '.'
+                | '|'
+                | '?'
+                | '*'
+                | '+'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '/'
+        ) {
+            out.push('\\');
+        }
+        out.push(character);
+    }
+    out
+}
+
+/// The Bun a runner spec names.
+///
+/// `bun` is whatever `bun` is on `PATH`, the way every runtime spec without a
+/// version is. `bun@1.4` is the Bun `uf env install` linked for this project,
+/// checked against the version the spec asks for; a project that has not
+/// installed it is told the command that does.
+pub(crate) fn program(
+    root: &Utf8Path,
+    version: &ToolVersion,
+    on_path: &dyn Fn(&str) -> Option<Utf8PathBuf>,
+    linked: &dyn Fn(&Utf8Path) -> Option<Utf8PathBuf>,
+    reported_version: &dyn Fn(&Utf8Path) -> Option<String>,
+) -> Result<Utf8PathBuf> {
+    match version {
+        ToolVersion::OnPath => on_path("bun").ok_or_else(|| {
+            anyhow!(
+                "`test.runner` is `bun`, and there is no `bun` on PATH. Install Bun, or pin one \
+                 with `runner: \"bun@<version>\"` and run `uf env install`."
+            )
+        }),
+        ToolVersion::Prefix(wanted) | ToolVersion::Exact(wanted) => {
+            let Some(bun) = linked(root) else {
+                bail!(
+                    "`test.runner` is `bun@{wanted}`, and no Bun is installed for this project. \
+                     Run `uf env install`, which installs every tool uf.config.js declares."
+                );
+            };
+            let found = reported_version(&bun)
+                .with_context(|| format!("could not ask {bun} for its version"))?;
+            let matches = match version {
+                ToolVersion::Exact(_) => found == wanted.as_str(),
+                _ => found == wanted.as_str() || found.starts_with(&format!("{wanted}.")),
+            };
+            if !matches {
+                bail!(
+                    "`test.runner` is `bun@{wanted}`, and the Bun installed for this project is \
+                     {found}. Run `uf env install` to install the one uf.config.js names."
+                );
+            }
+            Ok(bun)
+        }
+    }
+}
+
+/// Ask a Bun binary what version it is.
+pub(crate) fn bun_version(bun: &Utf8Path) -> Option<String> {
+    let output = Command::new(bun.as_std_path())
+        .arg("--version")
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Run the suite with `bun test`, and say whether it passed.
+///
+/// `files` are the test-bearing files uf's discovery found, already narrowed by
+/// any path arguments — the files uf's own runner would have run.
+pub(crate) fn run(
+    ui: &mut Ui,
+    resolved: &ResolvedConfig,
+    version: &ToolVersion,
+    env: &ProjectEnv,
+    files: &[ProjectFile],
+    args: &TestArgs,
+) -> Result<()> {
+    let root = &resolved.root;
+    let config = &resolved.config;
+
+    // Each refusal below is a promise uf keeps for its own runner and cannot
+    // keep through Bun. Running anyway would be a green run over a check that
+    // did not happen.
+    if config.permissions.is_some() {
+        bail!(
+            "`test.runner` is `bun`, and this project declares `permissions`. Bun has no \
+             permission model, so the set would not be enforced; a set that is written down and \
+             silently ignored is worse than none. Run the suite with `runner: \"uf\"` on Node or \
+             Deno, which enforce it."
+        );
+    }
+    let coverage = &config.test.coverage;
+    if declares_thresholds(&coverage.thresholds)
+        || declares_thresholds(&coverage.per_file_thresholds)
+    {
+        bail!(
+            "`test.runner` is `bun`, and `test.coverage` declares thresholds. uf checks those \
+             against the coverage its own runner maps back to your Flow source; `bun test` \
+             measures in its own terms and nothing would check the numbers. Remove the \
+             thresholds, or run with `runner: \"uf\"`."
+        );
+    }
+    let in_source = in_source_files(files);
+    if !in_source.is_empty() {
+        bail!(
+            "`test.runner` is `bun`, and {} in-source tests (`import.meta.uf.test`), which only \
+             uf's own runner runs: {}. Move them into a `.test.js` file, or run with \
+             `runner: \"uf\"`.",
+            plural(in_source.len(), "file holds"),
+            in_source.join(", ")
+        );
+    }
+
+    let declared: Vec<&str> = files
+        .iter()
+        .map(|file| file.relative_path.as_str())
+        .collect();
+    if declared.is_empty() {
+        // What uf's own runner answers for a project with no tests yet.
+        ui.plain("no test files\n");
+        return Ok(());
+    }
+
+    let program = program(root, version, &find_program, &linked_bun, &bun_version)?;
+    let preload = uniflowed_package(root, "host", "bun-preload.js")?.join("bun-preload.js");
+    let report = report_path(root, args);
+    if let Some(parent) = report.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("could not create {parent}"))?;
+    }
+    // A report an earlier run left must not be read back as this run's.
+    let _ = std::fs::remove_file(&report);
+
+    let status = Command::new(program.as_std_path())
+        .args(arguments(&preload, &report, args, &declared))
+        .current_dir(root.as_std_path())
+        .envs(env.exported())
+        .env("UF_PROJECT_ROOT", root.as_str())
+        // The preload transforms through the binary that started it, never a
+        // different `uf` on PATH — the same promise uf's own runner makes.
+        .env("UF_BINARY", super::uf_binary()?.as_str())
+        .status()
+        .with_context(|| format!("could not start `{program}`"))?;
+
+    if args.watch {
+        // `bun test --watch` reports as it goes and ends when the person ends
+        // it, so there is no single report to read back.
+        return if status.success() {
+            Ok(())
+        } else {
+            bail!("`bun test --watch` exited ({status})")
+        };
+    }
+
+    let document = std::fs::read_to_string(&report).with_context(|| {
+        format!(
+            "`bun test` exited ({status}) and wrote no report to {report}, so uf cannot say which \
+             cases ran"
+        )
+    })?;
+    let cases = junit::read_cases(&document).map_err(|error| anyhow!("{error}"))?;
+    let count = |outcome| cases.iter().filter(|case| case.outcome == outcome).count();
+    let (passed, failed, skipped) = (
+        count(junit::BunOutcome::Passed),
+        count(junit::BunOutcome::Failed),
+        count(junit::BunOutcome::Skipped),
+    );
+    ui.plain(&format!(
+        "\nrunner  bun test ({program}) · {passed} passed, {failed} failed, {skipped} skipped\n"
+    ));
+
+    // Before the exit status: Bun exits 0 when a file's registrations went
+    // somewhere it could not see, and that is the run most in need of failing.
+    let silent = silent_files(&declared, &cases);
+    if !silent.is_empty() {
+        bail!(
+            "`bun test` ran no case from {}, though uf's discovery found tests there: {}. Their \
+             registrations went somewhere `bun test` could not see — usually a test API imported \
+             from somewhere other than `@uniflowed/test` or `bun:test`.",
+            plural(silent.len(), "file"),
+            silent.join(", ")
+        );
+    }
+    if failed > 0 {
+        bail!("bun test failed with {}", plural(failed, "failure"));
+    }
+    if !status.success() {
+        bail!("`bun test` exited ({status}) with no failing case in its report");
+    }
+    Ok(())
+}
+
+/// Whether any threshold in `thresholds` is set.
+fn declares_thresholds(thresholds: &CoverageThresholdConfig) -> bool {
+    thresholds.lines.is_some() || thresholds.functions.is_some() || thresholds.branches.is_some()
+}
+
+/// The Bun `uf env install` linked for the project at `root`, when there is one.
+fn linked_bun(root: &Utf8Path) -> Option<Utf8PathBuf> {
+    let bun = uf_env::project::Envs::discover()
+        .ok()?
+        .bin_dir(root)
+        .join("bun");
+    bun.is_file().then_some(bun)
+}
+
+/// The files uf's discovery says declare tests that Bun reported no case for.
+pub(crate) fn silent_files<'a>(declared: &[&'a str], cases: &[junit::BunCase]) -> Vec<&'a str> {
+    declared
+        .iter()
+        .copied()
+        .filter(|file| {
+            !cases
+                .iter()
+                .any(|case| case.file.trim_start_matches("./") == *file)
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uf_project::SourceKind;
+
+    fn file(path: &str, source: &str) -> ProjectFile {
+        ProjectFile {
+            relative_path: path.to_owned(),
+            absolute_path: Utf8PathBuf::from(path),
+            source: source.to_owned(),
+            kind: SourceKind::JavaScript,
+        }
+    }
+
+    #[test]
+    fn a_substring_filter_stays_a_substring_under_a_regex() {
+        assert_eq!(escape_pattern("a.b (c)"), "a\\.b \\(c\\)");
+        assert_eq!(escape_pattern("math > adds"), "math > adds");
+    }
+
+    #[test]
+    fn the_condition_preload_report_and_files_are_always_passed() {
+        let args = TestArgs::default();
+        let arguments = arguments(
+            Utf8Path::new("/p/node_modules/@uniflowed/host/bun-preload.js"),
+            Utf8Path::new("/p/.uf/bun-test/junit.xml"),
+            &args,
+            &["src/a.test.js"],
+        );
+
+        assert_eq!(
+            arguments,
+            vec![
+                "--conditions=uniflowed-bun-test",
+                "test",
+                "--preload",
+                "/p/node_modules/@uniflowed/host/bun-preload.js",
+                "--reporter=junit",
+                "--reporter-outfile=/p/.uf/bun-test/junit.xml",
+                "./src/a.test.js",
+            ]
+        );
+    }
+
+    #[test]
+    fn flags_with_a_bun_meaning_pass_through() {
+        let args = TestArgs {
+            filter: Some(String::from("adds")),
+            watch: true,
+            coverage: true,
+            bail: Some(2),
+            retry: 3,
+            threads: Some(4),
+            ..TestArgs::default()
+        };
+        let arguments = arguments(
+            Utf8Path::new("/p/bun-preload.js"),
+            Utf8Path::new("/p/r.xml"),
+            &args,
+            &[],
+        );
+
+        for expected in [
+            "--test-name-pattern=adds",
+            "--watch",
+            "--coverage",
+            "--bail=2",
+            "--retry=3",
+            "--parallel=4",
+        ] {
+            assert!(
+                arguments.iter().any(|argument| argument == expected),
+                "{expected}: {arguments:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn flags_without_one_are_refused_by_name() {
+        let args = TestArgs {
+            json: true,
+            list: true,
+            browser: true,
+            watch_interval: Some(100),
+            update_snapshots: true,
+            ..TestArgs::default()
+        };
+
+        let refused: Vec<&str> = refused_flags(&args)
+            .iter()
+            .map(|refusal| refusal.flag)
+            .collect();
+
+        assert_eq!(
+            refused,
+            vec![
+                "--json",
+                "--list",
+                "--browser",
+                "--watch-interval",
+                "--update-snapshots"
+            ]
+        );
+        assert!(refused_flags(&TestArgs::default()).is_empty());
+    }
+
+    #[test]
+    fn an_in_source_test_is_named_before_bun_starts() {
+        let files = [
+            file("src/a.test.js", "it('a', () => {});\n"),
+            file(
+                "src/slug.js",
+                "if (import.meta.uf.test) { it('b', () => {}); }\n",
+            ),
+        ];
+
+        assert_eq!(in_source_files(&files), vec!["src/slug.js"]);
+    }
+
+    #[test]
+    fn a_pinned_bun_must_be_installed_and_be_the_version_named() {
+        let root = Utf8Path::new("/p");
+        let installed = |_: &Utf8Path| Some(Utf8PathBuf::from("/envs/p/bin/bun"));
+        let nothing = |_: &Utf8Path| None;
+        let on_path = |_: &str| None;
+
+        let prefix = ToolVersion::Prefix("1.3".into());
+        assert!(
+            program(root, &prefix, &on_path, &installed, &|_| Some(
+                "1.3.13".into()
+            ))
+            .is_ok()
+        );
+        assert!(
+            program(root, &prefix, &on_path, &installed, &|_| Some(
+                "1.4.0".into()
+            ))
+            .is_err()
+        );
+        assert!(
+            program(root, &prefix, &on_path, &installed, &|_| Some(
+                "1.30.0".into()
+            ))
+            .is_err()
+        );
+
+        let error = program(root, &prefix, &on_path, &nothing, &|_| None).unwrap_err();
+        assert!(error.to_string().contains("uf env install"), "{error}");
+
+        let exact = ToolVersion::Exact("1.3.13".into());
+        assert!(
+            program(root, &exact, &on_path, &installed, &|_| Some(
+                "1.3.13".into()
+            ))
+            .is_ok()
+        );
+        assert!(
+            program(root, &exact, &on_path, &installed, &|_| Some(
+                "1.3.14".into()
+            ))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_file_bun_ran_nothing_from_is_named() {
+        let cases = vec![junit::BunCase {
+            file: String::from("src/a.test.js"),
+            name: String::from("a > b"),
+            outcome: junit::BunOutcome::Passed,
+        }];
+
+        assert_eq!(
+            silent_files(&["src/a.test.js", "src/b.test.js"], &cases),
+            vec!["src/b.test.js"]
+        );
+    }
+}
