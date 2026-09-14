@@ -29,8 +29,11 @@ impl Default for RuntimeConfig {
     /// The runtimes a uf project runs on, and no others.
     ///
     /// This listed six, and three of them — `edge`, `serverless`,
-    /// `container` — are rows `uf_runtime::HOSTS` grades **planned** with no
-    /// Flow loader at all. The list was written into `.uf/install.json` under
+    /// `container` — are rows `uf_runtime::HOSTS` gives no Flow loader at all.
+    /// The grade is not what decides it: `edge` is graded *experimental* on
+    /// the strength of a built worker that runs under Wrangler, and a worker
+    /// still cannot load a line of project source. The list was written into
+    /// `.uf/install.json` under
     /// `runtimeManager.hosts`, which is documented as the hosts that must be
     /// available, and printed by `uf inspect --json`: every project uf
     /// installed recorded that it ran on three runtimes that cannot import a

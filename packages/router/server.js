@@ -181,13 +181,13 @@ export { DATA_ID, ROOT_ID } from "./internal/document.js";
  *
  * Re-exported rather than left to the host to import, and the reason is the
  * one thing about `@uniflowed/server` that is easy to get wrong: the request
- * lives in an `AsyncLocalStorage` belonging to *that module instance*. A host
- * that resolved `@uniflowed/server/host` for itself — from its own
- * `node_modules`, or from outside the bundle a build produced — would begin a
- * request in a second storage, and every `cookies()` in the application would
- * still be outside one, silently. Handing it out from here makes the copy the
- * host begins with the copy this module dispatches and renders with, because
- * it is the same import.
+ * store is shared by every copy of one *release* of that package, and no more.
+ * A host that resolved `@uniflowed/server/host` for itself — from its own
+ * `node_modules`, or from outside the bundle a build produced — may hold a
+ * different release, and would begin a request in a store the application
+ * never reads, so every `cookies()` in it would still be outside one, silently.
+ * Handing it out from here makes the copy the host begins with the copy this
+ * module dispatches and renders with, because it is the same import.
  *
  * `run` wraps everything that decides the response; `settle` is called once
  * the response has been *written*, which is a different line in every host.

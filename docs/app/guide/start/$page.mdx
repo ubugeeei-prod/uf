@@ -1,0 +1,50 @@
+---
+title: "Start · uf"
+description: "Install uf, make a project, and build one application with it end to end."
+---
+
+import { SectionContents } from "../../_design/parts.js";
+
+<p className="eyebrow">Start</p>
+
+# Start
+
+<div className="lede">
+For a reader who wants uf running on their own machine. These pages are a
+sequence, and each assumes the one before it: install the binary, make a project
+and read every file in it, then build one application end to end.
+</div>
+
+## What you need first
+
+- **macOS or Linux**, on x86-64 or ARM64. There is no Windows build; WSL2 works,
+  and [Install](/guide/install#on-windows) says what else does.
+- **Node.js or Bun.** uf parses, transforms, schedules and reports in Rust, and
+  hands Vite and your test bodies to a JavaScript host. Deno runs `uf test`
+  through an ahead-of-time pass, graded experimental, and has no loader for
+  `uf dev` or `uf build` yet ([#246](https://github.com/ubugeeei-prod/uf/issues/246)).
+- **React you already know.** The pages explain Flow's `component` and `hook`
+  syntax where they first use it, and assume you know what a component, a hook
+  and a prop are.
+
+## The pages, in order
+
+<SectionContents section="Start" />
+
+[Install](/guide/install) puts `uf` on your `PATH` and ends with `uf info`,
+which says which JavaScript host it found. [Your first project](/guide/project)
+scaffolds a project and explains each file the scaffold writes, and the config
+files a React project usually has and this one does not.
+[Build a reading list](/guide/tutorial) is the long one: routes, a loader, shared
+state, an accessible tab list, a validated form, the tests for all of it and the
+build, with what each command printed.
+
+## When you are done
+
+[Build an app](/guide/build-an-app) is next: one guide per thing an application
+does, starting with the Flow syntax and the route table the tutorial leaned on.
+
+Two other readers pass through here. If you are moving an application you
+already have, read [Migrating to uf](/guide/migrate) before you convert anything.
+If you are still deciding whether uf is for your team, [Why uf](/guide/why-uf)
+is the argument, with the rows uf loses.

@@ -303,6 +303,25 @@ describe("the process logger", () => {
     expect(records[0].message).toBe("through the seam");
     expect(processLogger()).not.toBe(log);
   });
+
+  it("is the process's, so a second copy of this package writes through it too", async () => {
+    // `uf dev` silences uf's logging because its stdout is a protocol, and the
+    // module graph that renders React Server Components holds a second copy of
+    // this package. A logger installed through one copy has to be the logger
+    // the other one writes through. See `internal/process-state.js`.
+    const copy = await import(new URL("./log.js?a-second-copy", import.meta.url).href);
+    expect(copy.installLogger).not.toBe(installLogger);
+    const { logger: log, records } = recordingLogger();
+
+    installLogger(log);
+    try {
+      copy.processLogger().info("from the other copy");
+    } finally {
+      installLogger(null);
+    }
+
+    expect(records.map((record) => record.message)).toEqual(["from the other copy"]);
+  });
 });
 
 describe("the request id", () => {

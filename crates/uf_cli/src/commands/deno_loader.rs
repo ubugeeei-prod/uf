@@ -3,8 +3,8 @@
 //!
 //! # Why this exists at all
 //!
-//! Every other host uf runs on has a hook. Node has `register()` and
-//! `packages/host/internal/node-hooks.js`; Bun has `Bun.plugin` and
+//! Every other host uf runs on has a hook. Node has `registerHooks` and
+//! `packages/host/internal/sync-hooks.js`; Bun has `Bun.plugin` and
 //! `packages/host/bun-preload.js`. Both are the same move — the module is
 //! transformed *as the runtime asks for it* — and Deno has nothing to install
 //! one in. There is no `--loader`, no plugin API, no `register`.

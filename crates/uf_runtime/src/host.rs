@@ -138,18 +138,18 @@ pub const HOSTS: &[HostSupport] = &[
     },
     HostSupport {
         host: RuntimeHost::Edge,
-        level: SupportLevel::Planned,
+        level: SupportLevel::Experimental,
         flow_loader: None,
         // Not "no permission model": the platform *is* the sandbox, and a
         // worker cannot be handed `--allow-read` because it has no filesystem
         // to read. A permission set is refused there for a different reason
         // than on Bun, and the two should not be written as one.
         enforces: &[],
-        verified_by: None,
+        verified_by: Some("tools/ci/edge-worker-smoke.sh"),
         missing: Some(
-            "everything: there is no host at all. A worker runtime has no loader hook and no \
-             child process, so the transform has to happen before deployment — the same \
-             ahead-of-time question the standalone binary asks, answered once for both",
+            "a source-level host and loader: uf can build an ahead-of-time Cloudflare Worker and \
+             smoke it under Wrangler local, but there is no `uf test --runtime edge`, no Flow \
+             loader hook and no remote worker coverage",
         ),
         tracking_issue: Some(246),
     },

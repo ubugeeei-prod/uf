@@ -194,6 +194,18 @@ pub(crate) fn state_home() -> Result<Utf8PathBuf, EnvError> {
     Ok(home.join(".local").join("state"))
 }
 
+/// `$XDG_CACHE_HOME`, or `$HOME/.cache`.
+///
+/// Where a thing goes that uf can always fetch again — a publisher's release
+/// list — as opposed to the store, which holds what a project is using.
+pub(crate) fn cache_home() -> Result<Utf8PathBuf, EnvError> {
+    if let Some(xdg) = env_path("XDG_CACHE_HOME") {
+        return Ok(xdg);
+    }
+    let home = env_path("HOME").ok_or(EnvError::NoHome)?;
+    Ok(home.join(".cache"))
+}
+
 /// A non-empty environment variable, as a path.
 pub(crate) fn env_path(name: &str) -> Option<Utf8PathBuf> {
     let value = std::env::var(name).ok()?;

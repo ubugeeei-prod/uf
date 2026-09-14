@@ -3,7 +3,7 @@ title: "Migrating to uf · uf"
 description: "From CRA, Vite or Next.js: what survives, what is lost, what it costs."
 ---
 
-<p className="eyebrow">Getting started</p>
+<p className="eyebrow">Migrate</p>
 
 # Migrating to uf
 
@@ -14,6 +14,28 @@ command and there is not going to be a false number here either — nobody has
 moved a large application to uf yet, and what npm holds is the closure a new
 project needs rather than every declaration surface this repository contains.
 </div>
+
+## Where your application is covered
+
+This page is for a reader moving an application they already have. Whatever it
+is built with, read [the three questions](#three-questions-that-mean-not-yet)
+below first — each is a wall rather than a speed bump — and then the row for
+what you have:
+
+| You have | Read |
+| --- | --- |
+| `create-react-app` | [From `create-react-app`](#from-create-react-app) |
+| Vite and React | [From Vite + React](#from-vite--react) |
+| Vite+ | [uf and Vite+](/guide/vite-plus), then [From Vite + React](#from-vite--react) |
+| Next.js | [What uf does not do](/guide/scope), then [From Next.js](#from-nextjs) |
+| Expo | [Compared with Expo](/guide/react-native#compared-with-expo), in the React Native guide |
+| TypeScript, in any of the above | [Flow and TypeScript](/guide/typescript), then [Converting the types](#converting-the-types) |
+
+Parts of this page predate the releases that closed the gaps they describe, and
+some of the issues it names as open walls are closed. Until
+[#954](https://github.com/ubugeeei-prod/uf/issues/954) rechecks it against the
+current release, treat an issue link here as something to check rather than an
+answer.
 
 ## Three questions that mean "not yet"
 
