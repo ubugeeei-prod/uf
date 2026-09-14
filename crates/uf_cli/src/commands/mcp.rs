@@ -33,16 +33,27 @@
 //!
 //! # What is exposed, and what is marked
 //!
-//! The read-only commands are tools of the same name. The two that write —
-//! `uf fmt --write` and `uf lint --fix` — are separate tools whose names say so
+//! Each command is a tool named for it. The two that write — `uf fmt --write`
+//! and `uf lint --fix` — are separate tools whose names say so
 //! (`uf_fmt_write`, `uf_lint_fix`), because an agent choosing a tool from a
 //! list should not have to read a description to learn that one edits the
 //! checkout.
 //!
-//! `uf_test` is the third case and is neither: it writes nothing, but it
-//! executes the project's own code, which is not what "reads only" promises.
-//! [`Effect`] is the three-way distinction, and every description ends with
-//! the sentence for its own — a tool that says "Reads only" means it.
+//! `uf_test` is the third case and is neither: it rewrites none of the
+//! project's files, but it executes the project's own code. [`Effect`] is the
+//! three-way distinction, and every description ends with the sentence for its
+//! own. The readers' sentence was "Reads only." until #994, which `uf_check`
+//! was not — it keeps its inference cache under `.uf/cache/check/` — so it now
+//! says what is true of every reader, and `uf_check` names its cache.
+//!
+//! # Arguments are held to the schema that is published
+//!
+//! A call's `arguments` are checked against its tool's own `inputSchema`
+//! before anything runs, and a call that does not fit is a tool error that
+//! names the argument. Until #994 nothing read the schemas: a misspelled
+//! `pathz` was dropped, and `uf_lint` answered for the whole project — a
+//! different request from the one that was sent, reported as a success.
+//! [`misfit`] is the check.
 //!
 //! # What a real client found
 //!
@@ -196,8 +207,9 @@ fn serve(input: &mut impl BufRead, output: &mut impl Write, cwd: &Utf8Path) -> R
 /// choosing one from a list needs to know.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Effect {
-    /// Reads the project and reports. Nothing on disk changes and no project
-    /// code runs.
+    /// Reads the project and reports. None of the project's files change and
+    /// none of its code runs; uf may write its own caches under `.uf/cache/`,
+    /// as `uf check` does.
     Reads,
     /// Rewrites files in the checkout.
     Writes,
@@ -210,7 +222,9 @@ impl Effect {
     /// the prose as well as in the name.
     fn note(self) -> &'static str {
         match self {
-            Self::Reads => "Reads only.",
+            Self::Reads => {
+                "Changes none of your files, though uf may write its own cache under `.uf/cache/`."
+            }
             Self::Writes => "WRITES to files in the checkout.",
             Self::Runs => "RUNS the project's own code.",
         }
@@ -321,7 +335,9 @@ const SPECS: &[Spec] = &[
         description: "Type-check the project with Flow and report diagnostics as JSON. \
                       The report holds two lists: `diagnostics` is lint findings and \
                       `typeCheck.diagnostics` is type errors, and `errors` is the sum \
-                      of both \u{2014} so a project can fail with `diagnostics` empty.",
+                      of both \u{2014} so a project can fail with `diagnostics` empty. \
+                      What it inferred is kept in `.uf/cache/check/`, and an unchanged \
+                      file is answered from there.",
         schema: paths_only,
     },
     Spec {
@@ -335,8 +351,10 @@ const SPECS: &[Spec] = &[
         name: "uf_info",
         effect: Effect::Reads,
         speaks: Speaks::Prose,
-        description: "What uf resolved about this project: versions, hosts, and the \
-                      configuration in effect.",
+        description: "uf's own version, the machine's architecture and operating system, \
+                      the working directory this server was given, where uf's documentation \
+                      and installer are, and uf's design tokens. It reads no `uf.config.js`: \
+                      `uf_explain` is the tool that says what uf will do in this project.",
         schema: no_arguments,
     },
     Spec {
@@ -397,13 +415,21 @@ pub(crate) fn tools() -> Vec<Value> {
 /// the call succeeded and the answer is that the project does not check. A
 /// protocol error would tell the caller its *request* was wrong, which is a
 /// different thing and the distinction the specification draws.
+///
+/// A tool that does not exist, and arguments that do not fit the tool's
+/// schema, are answered the same way, and deliberately: the agent that sent
+/// the call is the one that has to read why and send a better one, and a tool
+/// error is what reaches it, where a protocol error is what a client library
+/// raises before the model sees anything.
 fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
     let Some(spec) = SPECS.iter().find(|spec| spec.name == name) else {
-        return json!({
-            "content": [{ "type": "text", "text": format!("no tool named {name:?}") }],
-            "isError": true,
-        });
+        return tool_error(format!("no tool named {name:?}"));
     };
+    // Before anything runs. Guessing what a call that does not fit meant is
+    // how a misspelled `pathz` became a lint of the whole project.
+    if let Some(why) = misfit(&(spec.schema)(), arguments) {
+        return tool_error(format!("{name} did not run: {why}"));
+    }
 
     let paths: Vec<String> = arguments
         .get("paths")
@@ -462,12 +488,7 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
         // Unreachable while the contract test passes: `SPECS` is what was
         // searched above, so a name that resolved to a spec and has no arm
         // here is a tool added to the table and nowhere else.
-        other => {
-            return json!({
-                "content": [{ "type": "text", "text": format!("no tool named {other:?}") }],
-                "isError": true,
-            });
-        }
+        other => return tool_error(format!("no tool named {other:?}")),
     };
 
     // What the command wrote is one block, whole. A command that failed adds
@@ -492,6 +513,138 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
         content.push(json!({ "type": "text", "text": "" }));
     }
     json!({ "content": content, "isError": failed })
+}
+
+/// A tool result that is an error, and says why.
+fn tool_error(text: String) -> Value {
+    json!({ "content": [{ "type": "text", "text": text }], "isError": true })
+}
+
+/// The keywords [`misfit`] enforces, and `description`, which it reads past.
+///
+/// A test fails on a published schema that uses any other. A keyword the check
+/// did not know would be a rule `tools/list` states and nothing enforces,
+/// which is the bug the check exists for.
+#[cfg(test)]
+const SCHEMA_KEYWORDS: &[&str] = &[
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "description",
+];
+
+/// Why `arguments` do not fit `schema`, or [`None`] when they do.
+///
+/// `schema` is the value [`tools`] publishes, built by the same function, so
+/// the schema a client reads and the one its call is held to cannot be two
+/// descriptions of one thing. The walk follows the schema rather than the
+/// value, so how deep it goes is decided by this file and not by the sender.
+fn misfit(schema: &Value, arguments: &Value) -> Option<String> {
+    fit(schema, arguments, None).err()
+}
+
+/// One level of [`misfit`]: `value` against `schema`, where `at` names the
+/// argument, or is [`None`] for the arguments object itself.
+fn fit(schema: &Value, value: &Value, at: Option<&str>) -> Result<(), String> {
+    let named = |key: &str| match at {
+        Some(at) => format!("{at}.{key}"),
+        None => key.to_owned(),
+    };
+    if let Some(expected) = schema.get("type").and_then(Value::as_str)
+        && !is_type(value, expected)
+    {
+        return Err(format!(
+            "`{}` must be {}, not {}",
+            at.unwrap_or("arguments"),
+            a_type(expected),
+            a_value(value),
+        ));
+    }
+    if let Some(object) = value.as_object() {
+        let properties = schema.get("properties").and_then(Value::as_object);
+        let known = |key: &str| properties.is_some_and(|properties| properties.contains_key(key));
+        if schema.get("additionalProperties") == Some(&Value::Bool(false))
+            && let Some(unknown) = object.keys().find(|key| !known(key))
+        {
+            let names: Vec<String> = properties
+                .into_iter()
+                .flatten()
+                .map(|(key, _)| format!("`{}`", named(key)))
+                .collect();
+            return Err(if names.is_empty() {
+                format!("`{}` is not an argument, and it takes none", named(unknown))
+            } else {
+                format!(
+                    "`{}` is not an argument; the arguments are {}",
+                    named(unknown),
+                    names.join(", ")
+                )
+            });
+        }
+        let required = schema.get("required").and_then(Value::as_array);
+        for key in required.into_iter().flatten().filter_map(Value::as_str) {
+            if !object.contains_key(key) {
+                return Err(format!("`{}` is required", named(key)));
+            }
+        }
+        for (key, property) in properties.into_iter().flatten() {
+            if let Some(inner) = object.get(key) {
+                fit(property, inner, Some(&named(key)))?;
+            }
+        }
+    }
+    if let (Some(items), Some(array)) = (schema.get("items"), value.as_array()) {
+        let at = at.unwrap_or("arguments");
+        for (index, item) in array.iter().enumerate() {
+            fit(items, item, Some(&format!("{at}[{index}]")))?;
+        }
+    }
+    Ok(())
+}
+
+/// Whether `value` is what a schema's `type` names.
+///
+/// A type this does not know fits nothing, so a schema naming one refuses every
+/// call rather than letting every call through.
+fn is_type(value: &Value, expected: &str) -> bool {
+    match expected {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "integer" => value.is_i64() || value.is_u64(),
+        "number" => value.is_number(),
+        "null" => value.is_null(),
+        _ => false,
+    }
+}
+
+/// A schema type, as it reads in a sentence.
+fn a_type(expected: &str) -> &'static str {
+    match expected {
+        "object" => "an object",
+        "array" => "an array",
+        "string" => "a string",
+        "boolean" => "a boolean",
+        "integer" => "an integer",
+        "number" => "a number",
+        "null" => "null",
+        _ => "a type this server does not know",
+    }
+}
+
+/// What a value is, as it reads in a sentence.
+fn a_value(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "a boolean",
+        Value::Number(_) => "a number",
+        Value::String(_) => "a string",
+        Value::Array(_) => "an array",
+        Value::Object(_) => "an object",
+    }
 }
 
 /// Write one JSON-RPC result, or nothing when the message was a notification.

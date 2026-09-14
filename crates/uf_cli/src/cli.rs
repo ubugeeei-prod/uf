@@ -462,8 +462,10 @@ pub(crate) enum Commands {
     Lsp,
     /// Serve the Model Context Protocol over stdin/stdout, for an agent.
     ///
-    /// The read-only commands become tools of the same name; the two that
-    /// write are separate and say so: `uf_fmt_write`, `uf_lint_fix`.
+    /// Each tool runs the command it is named for. `uf_check`, `uf_lint`,
+    /// `uf_info`, `uf_routes` and `uf_explain` change none of your files,
+    /// `uf_test` runs the project's own code, and the two that write say so:
+    /// `uf_fmt_write`, `uf_lint_fix`.
     Mcp,
     /// Run the checks and code generation a commit should not go without.
     Prepare {
