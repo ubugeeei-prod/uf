@@ -22,7 +22,7 @@ import { Suspense } from "react";
 
 import { ROOT_ERROR_ID, ROUTE_ERROR_ID, suspenseId } from "./boundary-data.js";
 import type { RouteBoundary } from "./boundary-data.js";
-import { insideBoundary } from "./boundaries.js";
+import { BoundaryEdge } from "./boundaries.js";
 import { RouteErrorBoundary } from "./error-view.js";
 import { Head } from "./head.js";
 import type { RouteParams, SearchParams } from "./routing.js";
@@ -213,6 +213,34 @@ export function composeRoute(resolved: ResolvedRoute, options: ComposeOptions): 
       <RouteErrorBoundary module={null} resetKey={resolved.pathname}>
         {BOUNDARY_MARKS ? insideBoundary(marks?.get(ROOT_ERROR_ID), element) : element}
       </RouteErrorBoundary>
+    </>
+  );
+}
+
+/**
+ * `children`, between the two marks of `boundary`.
+ *
+ * `children` unchanged when there is no boundary to mark, so a caller never has
+ * to ask twice. The marks are the first and last children of a fragment rather
+ * than a wrapper's, so the nodes between them are siblings of them, and every
+ * position in the fragment is fixed — an edge going from `null` to a hidden
+ * mark after mount is an insertion beside `children` and not around it,
+ * which is why it costs no remount.
+ *
+ * Here rather than beside the marks in `./boundaries.js`, because this is a
+ * factory and that is a client module: a server composing a tree for React
+ * Server Components calls this, and the edges it places stay references to
+ * the module that renders them.
+ */
+export function insideBoundary(boundary: ?RouteBoundary, children: React.Node): React.Node {
+  if (boundary == null) {
+    return children;
+  }
+  return (
+    <>
+      <BoundaryEdge boundary={boundary} edge="open" />
+      {children}
+      <BoundaryEdge boundary={boundary} edge="close" />
     </>
   );
 }

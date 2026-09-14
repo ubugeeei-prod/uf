@@ -1,3 +1,4 @@
+"use client";
 // @flow
 //
 // Internal to `@uniflowed/router`: which DOM subtree each boundary owns.
@@ -129,7 +130,7 @@ let marksAreLive = false;
  * during document-root hydration as a browser error. A `span hidden` carries
  * the same marker data without entering layout or the accessibility tree.
  */
-component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
+export component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
   const [live, setLive] = useState<boolean>(() => marksAreLive);
   useEffect(() => {
     marksAreLive = true;
@@ -154,25 +155,14 @@ component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
 /**
  * `children`, between the two marks of `boundary`.
  *
- * `children` unchanged when there is no boundary to mark, so a caller never has
- * to ask twice. The marks are the first and last children of a fragment rather
- * than a wrapper's, so the nodes between them are siblings of them, and every
- * position in the fragment is fixed — an edge going from `null` to a hidden
- * mark after mount is an insertion beside `children` and not around it,
- * which is why it costs no remount.
+ * Kept importable from here, where the marks are, and written in
+ * `./compose.js`, where they are placed. This module is a client module — an
+ * edge has state and an effect — and a server composing a tree for React Server
+ * Components calls the factory rather than rendering it, so the factory has to
+ * live in a module that graph evaluates while the edges it places stay
+ * references to this one. See ubugeeei-prod/uf#519.
  */
-export function insideBoundary(boundary: ?RouteBoundary, children: React.Node): React.Node {
-  if (boundary == null) {
-    return children;
-  }
-  return (
-    <>
-      <BoundaryEdge boundary={boundary} edge="open" />
-      {children}
-      <BoundaryEdge boundary={boundary} edge="close" />
-    </>
-  );
-}
+export { insideBoundary } from "./compose.js";
 
 /**
  * How far a walk between two marks will go before giving up.

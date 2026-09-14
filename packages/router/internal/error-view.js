@@ -1,3 +1,4 @@
+"use client";
 // @flow
 //
 // Internal to `@uniflowed/router`: what renders in place of a subtree that threw.
@@ -105,6 +106,28 @@ export component ResolvedErrorPage() {
   return (
     <RouteErrorView module={resolved.errorBoundary.module} error={resolved.error} reset={reset} />
   );
+}
+
+/**
+ * The page of a route that resolved to an error, rendered by React Server
+ * Components.
+ *
+ * [`ResolvedErrorPage`] reads the error and the boundary's module out of the
+ * router, which holds a whole resolved route in a single-page application. The
+ * route a Flight payload hands the browser carries neither — the module is the
+ * server's, and what crosses is the part a hook reads — so the Flight renderer
+ * passes both as props: the boundary's module as `{ default: <client
+ * reference> }`, which is what a `"use client"` `$error.js` becomes on the way,
+ * and the error, which React serialises the way it serialises any error value.
+ * The retry is the same `router.refresh()`, because trying again still means
+ * resolving the route again. See ubugeeei-prod/uf#519.
+ */
+export component ErrorRoutePage(module: ?ErrorModule, error: RouteError) {
+  const { router } = useRouterState();
+  const reset = () => {
+    router.refresh().catch(() => {});
+  };
+  return <RouteErrorView module={module} error={error} reset={reset} />;
 }
 
 type RouteErrorBoundaryProps = {|

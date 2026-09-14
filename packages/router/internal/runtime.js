@@ -1,6 +1,13 @@
+"use client";
 // @flow
 //
 // The router runtime: the browser's binding.
+//
+// A client module, and the directive is load-bearing rather than descriptive:
+// in the module graph React Server Components render in, every export of this
+// file is a client reference — `Link` renders as markup on the server and runs
+// in the browser — and `../server-components.js` is what that graph gets for
+// the hooks instead. Everywhere else the directive changes nothing.
 //
 // A route table is data — the virtual module `virtual:uf/routes` that
 // `@uniflowed/vite` generates from the `app/` directory — and this module is
