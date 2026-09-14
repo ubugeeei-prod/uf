@@ -1356,9 +1356,9 @@ async function deploy() {
  * out — `server.js` below does exactly that through
  * `@uniflowed/server/node`, and a worker hands `settle` to `ctx.waitUntil`.
  * It comes from the bundle rather than from the host's own
- * `@uniflowed/server`, because the request lives in an `AsyncLocalStorage`
- * belonging to a module instance and the instance the application reads is the
- * one inlined here. See ubugeeei-prod/uf#389.
+ * `@uniflowed/server`, because the request store is shared only by copies of
+ * one release of that package and the release the application reads is the one
+ * inlined here. See ubugeeei-prod/uf#389.
  *
  * The document's script and stylesheet URLs are baked in here because they
  * come from the client manifest, which exists at this moment and not in the

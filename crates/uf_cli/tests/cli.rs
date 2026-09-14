@@ -1709,6 +1709,92 @@ fn explain_emits_json_when_asked() {
     );
 }
 
+/// `uf explain <command>` names each tool the command reads, and the key that
+/// declared it.
+///
+/// ubugeeei-prod/uf#940. The test runtime here is written nowhere: the runner
+/// implies it, and "which key made this Bun" is exactly the question a reader
+/// cannot answer from the config file alone.
+#[test]
+fn explain_names_each_tool_a_command_reads_and_the_key_it_came_from() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({ runtime: \"node@26\", test: { runner: \"bun@1.4\" } });\n",
+    )
+    .unwrap();
+    let explain = |arguments: &[&str]| {
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .arg("explain")
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+
+    let value: serde_json::Value = serde_json::from_str(&explain(&["test", "--json"])).unwrap();
+    let tools = value["tools"].as_array().expect("a tools array");
+    assert_eq!(tools.len(), 2, "{tools:#?}");
+    assert_eq!(tools[0]["role"], "testRuntime");
+    assert_eq!(tools[0]["spec"], "bun@1.4");
+    assert_eq!(tools[0]["key"], "test.runner");
+    assert_eq!(tools[0]["via"], "implied");
+    assert_eq!(tools[1]["role"], "testRunner");
+
+    // A command that runs no tool of the project's choosing lists none.
+    let value: serde_json::Value = serde_json::from_str(&explain(&["fmt", "--json"])).unwrap();
+    assert_eq!(value["tools"], serde_json::json!([]));
+    assert!(!explain(&["fmt"]).contains("  tools\n"));
+
+    let dev = explain(&["dev"]);
+    assert!(dev.contains("  tools\n"), "{dev}");
+    assert!(dev.contains("node@26 (runtime)"), "{dev}");
+    assert!(dev.contains("vite (uf's default)"), "{dev}");
+    assert_plain(&dev);
+}
+
+/// A tool spec uf cannot read is reported as itself by a command that would
+/// otherwise evaluate the config.
+///
+/// `uf build` answers a config it cannot *parse* by starting the builder to
+/// evaluate the file instead. A refused spec is not a parse failure — it is
+/// refused where the key is known — so a range where a version belongs is
+/// reported with its key, and not as a config that could not be evaluated after
+/// a JavaScript host was started for nothing. ubugeeei-prod/uf#940.
+#[test]
+fn a_refused_tool_spec_is_not_handed_to_the_builder_to_evaluate() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("package.json"), "{}\n").unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({ build: { runtime: \"node@^26\" } });\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(!output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("build.runtime is `node@^26`, which is a range"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("`node@26`"), "{stderr}");
+    assert!(!stderr.contains("failed to evaluate"), "{stderr}");
+}
+
 /// `uf explain exec` describes the path that runs without asking.
 ///
 /// `exec_package` tries four things in order, and the explanation listed three:

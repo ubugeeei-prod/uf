@@ -140,6 +140,7 @@ pub(crate) fn query(
     operands: &[String],
 ) -> Result<()> {
     let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
     let detection = detect_package_manager_with(
         &resolved.root,
         &DetectionOptions::from_config(&resolved.config),
@@ -220,6 +221,7 @@ pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> 
 
 pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
     let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
     let detection = detect_package_manager_with(
         &resolved.root,
         &DetectionOptions::from_config(&resolved.config),
@@ -287,6 +289,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     // argument must not have rewritten `uf.lock` on the way to refusing it.
     uf_pm::check_operands(request.operands)?;
     let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
 
     let detection = detect_package_manager_with(

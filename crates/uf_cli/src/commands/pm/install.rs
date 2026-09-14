@@ -172,6 +172,7 @@ impl Ladder {
 pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     let mut timer = PhaseTimer::start();
     let resolved = timer.measure("config", || load_config(cwd))?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
 
     // A manifest that declares scripts is refused before anything is fetched,

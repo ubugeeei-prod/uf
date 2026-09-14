@@ -378,3 +378,112 @@ fn inspect_text_output_is_sectioned() {
     assert!(stdout.contains("zero-config defaults"));
     assert!(stdout.contains("lint rules"));
 }
+
+/// Each tool a command runs, and the key that declared it.
+///
+/// ubugeeei-prod/uf#940. `uf inspect` is where a person checks what their
+/// config says, and a test runtime that no key names — because the runner
+/// implies it — is exactly the answer that has to be read rather than worked
+/// out.
+#[test]
+fn inspect_reports_each_tool_and_the_key_it_came_from() {
+    let dir = tempfile::tempdir().unwrap();
+    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"export default defineConfig({
+  runtime: "node@26",
+  packageManager: "pnpm@12.0.0",
+  build: { builder: "vite" },
+  test: { runner: "bun@1.4" },
+});
+"#,
+    )
+    .unwrap();
+
+    let value = inspect_json(dir.path());
+    let tools = value["tools"].as_array().expect("a tools array");
+    let row = |role: &str| {
+        tools
+            .iter()
+            .find(|tool| tool["role"] == role)
+            .unwrap_or_else(|| panic!("no {role} row in {tools:#?}"))
+    };
+    assert_eq!(row("runtime")["spec"], "node@26");
+    assert_eq!(row("runtime")["key"], "runtime");
+    assert_eq!(row("buildRuntime")["spec"], "node@26");
+    assert_eq!(row("buildRuntime")["key"], "runtime");
+    assert_eq!(row("testRuntime")["spec"], "bun@1.4");
+    assert_eq!(row("testRuntime")["key"], "test.runner");
+    assert_eq!(row("testRuntime")["via"], "implied");
+    assert_eq!(row("testRunner")["spec"], "bun@1.4");
+    assert_eq!(row("packageManager")["spec"], "pnpm@12.0.0");
+    assert_eq!(row("packageManager")["key"], "packageManager");
+    assert_eq!(row("builder")["spec"], "vite");
+    assert_eq!(row("builder")["key"], "build.builder");
+    // The config beside it is what the project wrote, not a rendering of it.
+    assert_eq!(value["config"]["config"]["test"]["runner"], "bun@1.4");
+    assert_eq!(value["toolDeprecations"], serde_json::json!([]));
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("inspect")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("  tools\n"), "{stdout}");
+    assert!(
+        stdout.contains("bun@1.4 (implied by test.runner)"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("pnpm@12.0.0 (packageManager)"), "{stdout}");
+    assert_plain(&stdout);
+}
+
+/// A project still writing a tool key #940 replaced is told which key
+/// replaced it, in the report and in the JSON.
+#[test]
+fn inspect_names_the_key_that_replaced_a_deprecated_tool_key() {
+    let dir = tempfile::tempdir().unwrap();
+    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"export default defineConfig({
+  builder: { module: "@uniflowed/vite" },
+  env: { toolchain: { node: "24.14.0" } },
+});
+"#,
+    )
+    .unwrap();
+
+    let value = inspect_json(dir.path());
+    let deprecations: Vec<&str> = value["toolDeprecations"]
+        .as_array()
+        .expect("a toolDeprecations array")
+        .iter()
+        .map(|sentence| sentence.as_str().unwrap())
+        .collect();
+    assert_eq!(deprecations.len(), 2, "{deprecations:#?}");
+    assert!(
+        deprecations[0].contains(r#"`runtime: "node@24.14.0"`"#),
+        "{deprecations:#?}"
+    );
+    assert!(
+        deprecations[1].contains(r#"builder: "vite""#),
+        "{deprecations:#?}"
+    );
+    let builder = value["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["role"] == "builder")
+        .expect("a builder row");
+    assert_eq!(builder["key"], "builder.module");
+    assert_eq!(builder["via"], "deprecated");
+}

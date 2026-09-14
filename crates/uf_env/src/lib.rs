@@ -14,7 +14,9 @@
 //!   repository, so a checkout that is deleted stops holding its tools.
 //! - [`gc`] deletes what the roots do not reach.
 //!
-//! [`tool`] is the vocabulary the three share.
+//! [`tool`] is the vocabulary the three share, and [`index`] is what each
+//! publisher has released — the list a version prefix such as `node@26` is
+//! resolved against, cached so that an editor can read it without a network.
 //!
 //! # What is not here
 //!
@@ -26,6 +28,7 @@
 
 pub mod archive;
 pub mod gc;
+pub mod index;
 pub mod project;
 pub mod roots;
 pub mod source;
@@ -145,6 +148,16 @@ pub enum EnvError {
         archive: Utf8PathBuf,
         /// What the unpacker said.
         detail: String,
+    },
+    /// A publisher's release list arrived, and it is not a release list.
+    ///
+    /// A captive portal's login page, a mirror's HTML error page, a rate
+    /// limiter's apology: each is refused rather than read as a list with
+    /// nothing in it, which would resolve no prefix and say nothing about why.
+    #[error("{url} is not a release list uf can read")]
+    MalformedIndex {
+        /// Where the list was fetched from.
+        url: String,
     },
     /// `uf.config.js` names something uf does not install.
     #[error("uf does not install {name}; it installs node, bun, deno, npm, pnpm and yarn")]

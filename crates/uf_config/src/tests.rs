@@ -176,21 +176,22 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(config.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
+    assert_eq!(config.test.runner, None);
     assert_eq!(
-        config.test.runner.application_target,
+        config.test.native_runner().application_target,
         NativeTestApplicationTarget::Auto
     );
     assert_eq!(
-        config.test.runner.runtime,
+        config.test.native_runner().runtime,
         NativeTestRuntimeConfig::CapabilityJsHost
     );
     assert_eq!(
-        config.test.runner.performance_target,
+        config.test.native_runner().performance_target,
         NativeTestPerformanceTarget::FasterThanBun
     );
-    assert!(config.test.runner.official_flow_parser);
+    assert!(config.test.native_runner().official_flow_parser);
     assert_eq!(
-        config.test.runner.js_hosts,
+        config.test.native_runner().js_hosts,
         vec![
             CapabilityJsHost::Node,
             CapabilityJsHost::Deno,
@@ -392,15 +393,15 @@ fn extracts_vite_style_define_config_object() {
     assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!parsed.task_runner.allow_package_scripts);
     assert_eq!(
-        parsed.test.runner.application_target,
+        parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::ReactNative
     );
     assert_eq!(
-        parsed.test.runner.performance_target,
+        parsed.test.native_runner().performance_target,
         NativeTestPerformanceTarget::FasterThanBun
     );
     assert_eq!(
-        parsed.test.runner.js_hosts,
+        parsed.test.native_runner().js_hosts,
         vec![
             CapabilityJsHost::Node,
             CapabilityJsHost::Deno,
@@ -495,7 +496,8 @@ fn parses_an_evaluated_config_projection() {
 
     assert_eq!(config.dev.port, 4173);
     assert_eq!(config.tasks["hello"].command(), "echo hi");
-    assert_eq!(config.builder.module, "@uniflowed/vite");
+    assert_eq!(config.builder.module, None);
+    assert_eq!(config.builder_tool().spec.module(), "@uniflowed/vite");
     assert_eq!(
         config.app.runtime.capability_js_host.default,
         CapabilityJsHost::Node
@@ -704,13 +706,19 @@ fn the_runtimes_a_project_may_name_are_the_ones_with_a_host() {
 /// wrote `edge` here meant one of them.
 #[test]
 fn refuses_a_runtime_it_has_no_host_for() {
-    for (key, body, issue) in [
-        ("app.runtime.default", "default: \"edge\"", "246"),
+    for (key, body, engine, issue) in [
+        (
+            "app.runtime.default",
+            "default: \"edge\"",
+            RuntimeEngine::Edge,
+            "246",
+        ),
         // A different row, so the issue in the message is the one the table
         // records for *that* host rather than a constant written beside it.
         (
             "app.runtime.compatibility",
             "compatibility: [\"node\", \"serverless\"]",
+            RuntimeEngine::Serverless,
             "391",
         ),
     ] {
@@ -730,7 +738,14 @@ fn refuses_a_runtime_it_has_no_host_for() {
         );
         let message = error.to_string();
         assert!(message.contains(key), "{message}");
-        assert!(message.contains("planned"), "{message}");
+        // The grade is read from the table rather than written here, so
+        // promoting a row — `edge` went from `planned` to `experimental` when
+        // the worker smoke started running — carries this assertion with it
+        // instead of failing a test that is about something else.
+        let level = uf_runtime::HostSupport::for_host(engine.host())
+            .level
+            .as_str();
+        assert!(message.contains(level), "{level}: {message}");
         // The key that chooses a host, and the key that chooses a deployment
         // target. Between them they are what the refused name was reaching for.
         assert!(
@@ -941,11 +956,11 @@ fn parses_runtime_agnostic_tooling_surface() {
     assert_eq!(parsed.lint.flow.builtins, FlowBuiltinLintMode::Mixed);
     assert_eq!(parsed.lint.flow.parser, FlowLintParser::OfficialFlowRust);
     assert_eq!(
-        parsed.test.runner.application_target,
+        parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::Web
     );
     assert_eq!(
-        parsed.test.runner.runtime,
+        parsed.test.native_runner().runtime,
         NativeTestRuntimeConfig::CapabilityJsHost
     );
 }

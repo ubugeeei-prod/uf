@@ -1332,3 +1332,39 @@ fn a_react_native_project_refuses_the_web_document_test_runner() {
     assert!(stderr.contains("react-native"), "{stderr}");
     assert!(stderr.contains("document shim"), "{stderr}");
 }
+
+/// A Bun runner parses, and `uf test` refuses it with the issue that will run
+/// it rather than running uf's own suite in its place.
+///
+/// Answering for a suite by rules the project did not choose is worse than not
+/// answering. ubugeeei-prod/uf#940 declares the runner; ubugeeei-prod/uf#942
+/// runs it.
+#[test]
+fn a_bun_test_runner_is_refused_with_the_issue_that_will_run_it() {
+    let project = Project::new(&[(
+        "src/sum.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => { expect(1 + 1).toBe(2); });\n",
+    )]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runner: \"bun@1.4\" } });\n",
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("test")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        !output.status.success(),
+        "a Bun runner must not fall through to uf's own:\n{stdout}\n{stderr}"
+    );
+    assert!(stderr.contains("`test.runner` is `bun@1.4`"), "{stderr}");
+    assert!(stderr.contains("ubugeeei-prod/uf#942"), "{stderr}");
+    // Refused before anything ran, so no case was reported.
+    assert!(!stdout.contains("adds"), "{stdout}");
+}

@@ -1432,14 +1432,15 @@ ${mount}({ App, routes, notFound, errors${strictMode}${navigation} });
  * has nothing to do with a document that is no route's.
  *
  * `beginRequest` is the fourth, and it is re-exported rather than imported by
- * the host for a reason that is easy to get wrong: `@uniflowed/server` keeps
- * the request in an `AsyncLocalStorage` held by *its module*, and a bundled
- * application has its own copy of that module inlined. A host that imported
- * `beginRequest` from its own `node_modules` would establish a request in a
- * second storage, and every `cookies()` in the application would still be
- * outside one. So the bundle hands the host the entry point that belongs to
- * the bundle. `uf preview`, `uf start`, `uf dev` and the compiled binary all
- * take it from here; see ubugeeei-prod/uf#389.
+ * the host for a reason that is easy to get wrong: `@uniflowed/server` shares
+ * its request store between copies of one *release* of itself, and a bundled
+ * application has its own copy inlined. A host that imported `beginRequest`
+ * from its own `node_modules` could be holding another release, would
+ * establish a request in a store the application never reads, and every
+ * `cookies()` in the application would still be outside one. So the bundle
+ * hands the host the entry point that belongs to the bundle. `uf preview`,
+ * `uf start`, `uf dev` and the compiled binary all take it from here; see
+ * ubugeeei-prod/uf#389.
  *
  * Through `@uniflowed/router/server` rather than `@uniflowed/server/host`,
  * because this source is resolved from the *project's* directory and a project

@@ -157,6 +157,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     }
 
     let resolved = load_config(cwd)?;
+    refuse_a_runner_uf_test_cannot_run_yet(&resolved.config)?;
     let root = resolved.root.clone();
     // Named paths override `.gitignore`, as they do for `uf lint` and
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
@@ -183,6 +184,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         }
     };
     render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));
+    crate::support::render_deprecations(ui, resolved.config.test_runner_deprecation());
     let unreadable = unreadable_lines(&scan.unreadable);
     let mut files = scan.files;
     // Before anything is run. A file uf could not read might have been a test,
@@ -1002,7 +1004,7 @@ pub(crate) fn runner_plan() -> NativeTestRunnerPlan {
 
 /// Resolve the concrete application runtime a test run targets.
 pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicationTarget {
-    match config.test.runner.application_target {
+    match config.test.native_runner().application_target {
         NativeTestApplicationTarget::Web => TestApplicationTarget::Web,
         NativeTestApplicationTarget::ReactNative => TestApplicationTarget::ReactNative,
         NativeTestApplicationTarget::Auto => match config.app.framework {
@@ -1010,6 +1012,28 @@ pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicati
             FrameworkPreset::Uniflowed | FrameworkPreset::React => TestApplicationTarget::Web,
         },
     }
+}
+
+/// Refuse a runner `uf test` cannot run yet, rather than running uf's own in
+/// its place.
+///
+/// `test.runner: "bun@1.4"` parses — a project can write down what it means to
+/// run, and `uf inspect` shows it — but `bun test` behind `uf test` is
+/// ubugeeei-prod/uf#942. Running uf's own runner instead would report the suite
+/// green or red by rules the project did not choose, and answering for a suite
+/// it was not asked to run is the one thing a runner must never do.
+fn refuse_a_runner_uf_test_cannot_run_yet(config: &UniflowedConfig) -> Result<()> {
+    let runner = config.test_runner_tool();
+    if let Some(issue) = runner.spec.tracking_issue() {
+        bail!(
+            "`test.runner` is `{}`, and `uf test` cannot run it yet: a suite run by `bun test` \
+             behind `uf test` is ubugeeei-prod/uf#{issue}. Until it lands, write `runner: \"uf\"` \
+             — or leave the key out — to run the suite with uf's own runner, or run `bun test` \
+             directly.",
+            runner.spec
+        );
+    }
+    Ok(())
 }
 
 fn refuse_unsupported_test_target(target: TestApplicationTarget) -> Result<()> {
@@ -1120,15 +1144,23 @@ mod tests {
         );
     }
 
+    /// `test.runner` written as the object, which is where `applicationTarget`
+    /// is still spelled until ubugeeei-prod/uf#953 gives it a key of its own.
+    fn runner_object(target: NativeTestApplicationTarget) -> uf_config::TestRunnerConfig {
+        let mut runner = uf_config::NativeTestRunnerConfig::default();
+        runner.application_target = target;
+        uf_config::TestRunnerConfig::Object(runner)
+    }
+
     #[test]
     fn explicit_test_application_target_wins_over_the_framework() {
         let mut config = UniflowedConfig::default();
         config.app.framework = FrameworkPreset::ReactNative;
-        config.test.runner.application_target = NativeTestApplicationTarget::Web;
+        config.test.runner = Some(runner_object(NativeTestApplicationTarget::Web));
 
         assert_eq!(test_application_target(&config), TestApplicationTarget::Web);
 
-        config.test.runner.application_target = NativeTestApplicationTarget::ReactNative;
+        config.test.runner = Some(runner_object(NativeTestApplicationTarget::ReactNative));
         assert_eq!(
             test_application_target(&config),
             TestApplicationTarget::ReactNative
