@@ -27,9 +27,11 @@ dependencies, this is the bill, and it does not get smaller by choosing uf.
 [`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client
 of it. What it can do is the diagnostics it pushes when a document opens or
 changes, and what it advertises in `initialize`: `textDocument/formatting`,
-`textDocument/codeAction` (`quickfix` and `source.fixAll.uf`) and
-`textDocument/hover`. There is no rename, no go-to-definition, no
-find-references, no auto-import.
+`textDocument/codeAction` (`quickfix` and `source.fixAll.uf`),
+`textDocument/hover`, and `textDocument/completion` — which answers in
+`uf.config.js` only, from `@uniflowed/config`'s own type. There is no rename,
+no go-to-definition, no find-references, no auto-import, and no completion in
+your own modules.
 `tests/library/lsp.test.js` drives the real binary and asserts both the
 capabilities the READMEs claim and the absence of the ones they disclaim.
 

@@ -37,15 +37,17 @@ server and asserts each of these.
 | Formatting | `:LspDocumentFormat`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `:LspCodeAction` on a diagnostic. |
 | Fix all | `:LspCodeAction`, then pick "Fix all uf lint problems in this file". |
-| Hover | `:LspHover` |
+| Hover | `:LspHover`, including over a key of `uf.config.js`. |
+| Completion | In `uf.config.js`: `<C-x><C-o>` with `setlocal omnifunc=lsp#complete`, or asyncomplete.vim and asyncomplete-lsp.vim to have it as you type. The keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. |
 
 Format on save is off; the one-line autocommand is at the bottom of `uf.vim`.
 
 ## What you do not get
 
-`:LspDefinition`, `:LspRename`, `:LspReferences` and completion have no server
-behind them — `uf lsp` advertises none of those providers. `:LspHover` over a
-plain expression answers nothing, because uf has no positional type query yet.
+`:LspDefinition`, `:LspRename` and `:LspReferences` have no server behind them —
+`uf lsp` advertises none of those providers — and completion answers in
+`uf.config.js` only. `:LspHover` over a plain expression answers nothing,
+because uf has no positional type query yet.
 
 ## Working directory
 

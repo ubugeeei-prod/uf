@@ -53,15 +53,17 @@ asserts each of them.
 | Formatting | `:lua vim.lsp.buf.format({ name = "uf" })`, or `format_on_save = true`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `:lua vim.lsp.buf.code_action()` on a diagnostic. Offered only where uf's answer is mechanical — `flow/deprecated-type` has one; a rule that would have to guess at intent deliberately does not. |
 | Fix all | `:lua vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })` |
-| Hover | `K`. The rule behind a diagnostic, what an import specifier names, or what a rule id in a suppression comment means. |
+| Hover | `K`. The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, or what a key of `uf.config.js` is for. |
+| Completion | In `uf.config.js`: `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. The keys valid at the cursor, with their documentation and type, and after `"` the values of a key whose type is a fixed set. |
 
 ## What you do not get
 
-No go-to-definition, no rename, no completion, no references, no document
-symbols, and **no type on hover** — `uf lsp` does not advertise any of them, so
-`vim.lsp.buf.definition()` will tell you the server has no handler. Hover over a
-plain expression answers nothing rather than an empty popup; the reason is in
-`crates/uf_cli/src/commands/dev/hover.rs`.
+No go-to-definition, no rename, no references, no document symbols, and **no
+type on hover** — `uf lsp` does not advertise any of them, so
+`vim.lsp.buf.definition()` will tell you the server has no handler. Completion
+answers in `uf.config.js` only; in any other file the server returns nothing.
+Hover over a plain expression answers nothing rather than an empty popup; the
+reason is in `crates/uf_cli/src/commands/dev/hover.rs`.
 
 ## Working directory
 
