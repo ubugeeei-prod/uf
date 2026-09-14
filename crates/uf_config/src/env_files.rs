@@ -153,6 +153,9 @@ pub struct ProjectEnv {
     values: BTreeMap<String, String>,
     injected: BTreeSet<String>,
     client_prefixes: Vec<String>,
+    /// Directories to put in front of `PATH`, in order; see
+    /// [`ProjectEnv::with_path_prefix`].
+    path_prefix: Vec<Utf8PathBuf>,
 }
 
 impl ProjectEnv {
@@ -189,7 +192,59 @@ impl ProjectEnv {
         &self.client_prefixes
     }
 
-    /// Every variable to set in a process uf starts, [`INJECTED`] included.
+    /// The same environment, with `directory` in front of `PATH` for every
+    /// process started with it — after any directory put there before.
+    ///
+    /// # Why the environment carries it
+    ///
+    /// A runtime a project pins — `build: { runtime: "node@26" }` — is started
+    /// by its absolute path, and that is only half of running on it. Vite
+    /// starts workers, a plugin shells out to `node`, a test spawns a child, a
+    /// package's bin script is `#!/usr/bin/env node`, and every one of those
+    /// finds its runtime on `PATH`. A `PATH` still leading to the machine's
+    /// Node would run the half of the project nobody looks at on a different
+    /// release from the half they do. Every process uf starts for the
+    /// project's code already takes this environment — the dev server, a
+    /// build, a preview, a test worker, a task — so this is the one place a
+    /// prefix reaches all of them. See ubugeeei-prod/uf#940.
+    ///
+    /// In front of, not instead of: the rest of `PATH` is the machine's, and a
+    /// project still needs `git`, `sh` and everything else its commands expect.
+    #[must_use]
+    pub fn with_path_prefix(mut self, directory: impl Into<Utf8PathBuf>) -> Self {
+        self.path_prefix.push(directory.into());
+        self
+    }
+
+    /// The directories [`Self::with_path_prefix`] put in front of `PATH`, in
+    /// the order they come.
+    #[must_use]
+    pub fn path_prefix(&self) -> &[Utf8PathBuf] {
+        &self.path_prefix
+    }
+
+    /// `PATH` with the prefix in front of what this process inherited.
+    ///
+    /// A directory that cannot be joined into a `PATH` — one containing the
+    /// separator — leaves the inherited value as it was. uf's own store and
+    /// link directories never contain one, so this is a statement about a
+    /// path somebody else chose rather than a case uf produces.
+    fn prefixed_path(&self) -> String {
+        let inherited = std::env::var_os("PATH").unwrap_or_default();
+        let joined = std::env::join_paths(
+            self.path_prefix
+                .iter()
+                .map(|directory| directory.as_std_path().to_path_buf())
+                .chain(std::env::split_paths(&inherited)),
+        );
+        match joined {
+            Ok(path) => path.to_string_lossy().into_owned(),
+            Err(_) => inherited.to_string_lossy().into_owned(),
+        }
+    }
+
+    /// Every variable to set in a process uf starts, [`INJECTED`] included, and
+    /// `PATH` when [`Self::with_path_prefix`] put a runtime in front of it.
     ///
     /// The marker carries the names this process was told about as well as the
     /// ones it is setting: a name a parent injected is still a name that came
@@ -222,6 +277,13 @@ impl ProjectEnv {
                 INJECTED.to_owned(),
                 names.into_iter().collect::<Vec<_>>().join(","),
             ));
+        }
+        // Beside the marker rather than in it: `PATH` is uf's, not a file's,
+        // so a nested uf has no business letting its own files overrule it.
+        // And not when the caller sets `PATH` itself — a task whose `env`
+        // block names it gets exactly the `PATH` it wrote down.
+        if !self.path_prefix.is_empty() && !overridden.contains("PATH") {
+            exported.push(("PATH".to_owned(), self.prefixed_path()));
         }
         exported
     }
@@ -374,6 +436,7 @@ pub fn load_from(
         values,
         injected,
         client_prefixes: client_prefixes(config),
+        path_prefix: Vec::new(),
     })
 }
 

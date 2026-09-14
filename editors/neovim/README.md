@@ -54,7 +54,7 @@ asserts each of them.
 | Quick fixes | `:lua vim.lsp.buf.code_action()` on a diagnostic. Offered only where uf's answer is mechanical — `flow/deprecated-type` has one; a rule that would have to guess at intent deliberately does not. |
 | Fix all | `:lua vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })` |
 | Hover | `K`. The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, or what a key of `uf.config.js` is for. |
-| Completion | In `uf.config.js`: `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. The keys valid at the cursor, with their documentation and type, and after `"` the values of a key whose type is a fixed set. |
+| Completion | In `uf.config.js`: `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. The keys valid at the cursor, with their documentation and type, after `"` the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
 
 ## What you do not get
 

@@ -28,6 +28,10 @@
 //!   quotes only strings are offered, because `"true"` is not a boolean. A
 //!   string written without quotes is written in the project's own
 //!   `fmt.quotes`.
+//! * **Tool specs**, in a key typed by one of `@uniflowed/config`'s four spec
+//!   aliases: the names the key takes, and after the `@` that tool's versions,
+//!   newest first, from the release list `uf_env` caches. See [`tools`], and
+//!   [`releases`] for why a request never waits for a list.
 //!
 //! # What is not
 //!
@@ -44,12 +48,16 @@
 
 mod cursor;
 mod outline;
+mod releases;
+mod tools;
 
 use uf_config::QuoteStyle;
 use uf_config::schema::{Key, Schema, Shape, Step};
 
 use cursor::Site;
 use outline::{Span, Word};
+pub(super) use releases::ReleaseLists;
+use releases::Releases;
 
 /// The names a config file answers completion under.
 const FILE_NAMES: [&str; 3] = ["uf.config.js", "uf.config.mjs", "uf.config.cjs"];
@@ -70,18 +78,31 @@ pub(super) enum Kind {
     Literal,
     /// `true`, `false` or `null`.
     Constant,
+    /// A version of a tool, after the `@` of a spec.
+    Version,
 }
 
 impl Kind {
     /// The protocol's `CompletionItemKind`: `Property`, `EnumMember`,
-    /// `Constant`.
+    /// `Constant`, `Value`.
     pub(super) fn protocol(self) -> u8 {
         match self {
             Self::Key => 10,
             Self::Literal => 20,
             Self::Constant => 21,
+            Self::Version => 12,
         }
     }
+}
+
+/// What completion answers.
+#[derive(Debug, Default)]
+pub(super) struct Completion {
+    pub(super) items: Vec<Item>,
+    /// Whether the list is not the whole answer yet: a tool's release list is
+    /// being fetched, so the editor should ask again as the user types rather
+    /// than filter this one.
+    pub(super) incomplete: bool,
 }
 
 /// One completion, in byte offsets; the protocol layer turns them into UTF-16.
@@ -131,27 +152,53 @@ impl Outline {
 }
 
 /// What may be written at `offset`, in the `source` that `outline` was read
-/// from.
+/// from. A tool's versions come from `releases`, which never waits.
 pub(super) fn complete(
     schema: &Schema,
     source: &str,
     outline: &Outline,
     offset: usize,
     quotes: QuoteStyle,
-) -> Vec<Item> {
+    releases: &mut dyn Releases,
+) -> Completion {
     let Some(root) = &outline.0 else {
-        return Vec::new();
+        return Completion::default();
     };
     let Some(cursor) = cursor::locate(source, root, offset) else {
-        return Vec::new();
+        return Completion::default();
     };
     match cursor.site {
         Site::Key {
             word,
             colon,
             present,
-        } => keys(schema, &cursor.path, offset, word, colon, &present),
-        Site::Value { word } => values(schema, &cursor.path, offset, word, quotes),
+        } => Completion {
+            items: keys(schema, &cursor.path, offset, word, colon, &present),
+            incomplete: false,
+        },
+        Site::Value { word } => {
+            let mut completion = Completion {
+                items: values(schema, &cursor.path, offset, word, quotes),
+                incomplete: false,
+            };
+            let shapes = schema.resolve(&cursor.path);
+            if let Some(role) = tools::Role::of(&shapes) {
+                let described = described(schema, &cursor.path, offset, word);
+                tools::complete(
+                    tools::Request {
+                        role,
+                        described: &described,
+                        source,
+                        offset,
+                        word,
+                        quotes,
+                        releases,
+                    },
+                    &mut completion,
+                );
+            }
+            completion
+        }
     }
 }
 
@@ -251,12 +298,7 @@ fn values(
     word: Option<Word>,
     quotes: QuoteStyle,
 ) -> Vec<Item> {
-    let key = schema.key(path);
-    let described = Described {
-        detail: key.map(|key| key.type_text().to_owned()),
-        documentation: key.and_then(Key::documentation).map(str::to_owned),
-        replace: word.map_or(Span::at(offset), |word| word.contents()),
-    };
+    let described = described(schema, path, offset, word);
     let quoted = word.and_then(|word| word.quote);
     let open_quote = word
         .filter(|word| !word.terminated)
@@ -278,10 +320,7 @@ fn values(
                 );
             }
             (Shape::StringLiteral(value), None) => {
-                let quote = match quotes {
-                    QuoteStyle::Single => b'\'',
-                    QuoteStyle::Double => b'"',
-                };
+                let quote = quote_byte(quotes);
                 let written = format!("{0}{1}{0}", char::from(quote), escape(value, quote));
                 offer(
                     &mut items,
@@ -346,6 +385,24 @@ struct Described {
     detail: Option<String>,
     documentation: Option<String>,
     replace: Span,
+}
+
+/// The key at `path`'s type and documentation, and the word a value replaces.
+fn described(schema: &Schema, path: &[Step<'_>], offset: usize, word: Option<Word>) -> Described {
+    let key = schema.key(path);
+    Described {
+        detail: key.map(|key| key.type_text().to_owned()),
+        documentation: key.and_then(Key::documentation).map(str::to_owned),
+        replace: word.map_or(Span::at(offset), |word| word.contents()),
+    }
+}
+
+/// The quote a string written without one is written in.
+fn quote_byte(quotes: QuoteStyle) -> u8 {
+    match quotes {
+        QuoteStyle::Single => b'\'',
+        QuoteStyle::Double => b'"',
+    }
 }
 
 fn offer(
@@ -415,8 +472,24 @@ mod tests {
         let offset = marked.find('‸').expect("a cursor");
         let source = marked.replacen('‸', "", 1);
         let outline = Outline::read(&source);
-        let items = complete(Schema::embedded(), &source, &outline, offset, quotes);
-        (source, items)
+        let completion = complete(
+            Schema::embedded(),
+            &source,
+            &outline,
+            offset,
+            quotes,
+            &mut NoReleases,
+        );
+        (source, completion.items)
+    }
+
+    /// No release lists, and none coming: keys and values need none.
+    struct NoReleases;
+
+    impl Releases for NoReleases {
+        fn lookup(&mut self, _: uf_env::Tool) -> releases::Lookup<'_> {
+            releases::Lookup::Unavailable
+        }
     }
 
     /// The hover for the character at `at`.
