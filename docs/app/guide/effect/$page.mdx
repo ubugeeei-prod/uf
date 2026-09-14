@@ -14,6 +14,14 @@ everything that model gets from higher-kinded types — which Flow does not have
 and which this package does not pretend to.
 </div>
 
+**What you will be able to do:** write an `Effect` whose type says what it
+produces, how it fails and what it needs; compose, recover, retry and run work
+concurrently; and know what Flow cannot express that Effect-TS can.
+
+**What you need first:** a project — [Your first project](/guide/project).
+Effect-TS is not assumed; [Coming from Effect-TS](#coming-from-effect-ts), near
+the end, is where the two part company.
+
 ## The three channels
 
 An `Effect<A, E, R>` is a description of work that has not run: `A` is what it
@@ -253,3 +261,9 @@ const decoded = trySync({
 Compose this with `ensuring` when the operation owns cleanup, such as rolling back
 a synchronous database transaction. Cleanup runs before the original typed
 failure is returned to the caller.
+
+## Where to go next
+
+[Headless components](/guide/ui) is next: keyboard maps, ARIA and composition,
+with no styles attached. [Effects](/reference/effect), in the reference, has
+every export.

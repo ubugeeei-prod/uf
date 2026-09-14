@@ -16,6 +16,13 @@ it happens in `uf` itself, at build time, and this page is as clear about what
 the pipeline cannot do as about what it can.
 </div>
 
+**What you will be able to do:** import images, fonts, icons and Open Graph
+cards and get them resized, self-hosted, collected into a sprite or drawn at
+build time, and know where that pipeline stops.
+
+**What you need first:** a project with routes to put them on —
+[Routing](/guide/routing).
+
 ## An image
 
 Import it, and hand the whole import to `Image`:
@@ -450,3 +457,8 @@ import url from "./hero.png?url";
 
 uf claims the plain form and leaves every Vite asset convention — `?url`,
 `?raw`, `?inline` — exactly where it was.
+
+## Where to go next
+
+[Caching](/guide/cache) is next: a route cache and a fetch cache, both off until
+a route asks.
