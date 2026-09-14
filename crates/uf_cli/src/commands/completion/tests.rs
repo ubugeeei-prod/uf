@@ -60,7 +60,26 @@ fn enum_arguments_complete_to_their_variants() {
     assert_eq!(complete_line(&["env", ""]), vec!["doctor", "use"]);
     assert_eq!(complete_line(&["i18n", ""]), vec!["extract", "merge"]);
     assert_eq!(complete_line(&["routes", ""]), vec!["list", "add"]);
+    assert_eq!(complete_line(&["ui", ""]), vec!["add", "list", "diff"]);
     assert!(complete_line(&["explain", ""]).contains(&"build".to_string()));
+}
+
+/// `uf ui add <TAB>` offers the components this binary carries, and keeps
+/// offering them after the first, because `uf ui add button dialog` is one
+/// command.
+#[test]
+fn ui_add_and_diff_complete_to_the_registrys_components() {
+    let registry = uf_ui::Registry::embedded().expect("the registry reads");
+    let every: Vec<String> = registry
+        .components()
+        .iter()
+        .map(|component| component.name.to_owned())
+        .collect();
+
+    assert_eq!(complete_line(&["ui", "add", ""]), every);
+    assert_eq!(complete_line(&["ui", "add", "button", ""]), every);
+    assert_eq!(complete_line(&["ui", "diff", "di"]), vec!["dialog"]);
+    assert!(complete_line(&["ui", "list", ""]).is_empty());
 }
 
 /// Completion offers exactly what `uf explain` answers, because it is the same

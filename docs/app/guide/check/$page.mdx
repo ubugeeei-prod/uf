@@ -1,0 +1,294 @@
+---
+title: "Type checking · uf"
+description: "uf check: uf lint, then Flow's own inference over the project and the packages that ship Flow."
+---
+
+<p className="eyebrow">The toolchain</p>
+
+# Type checking
+
+<div className="lede">
+`uf check` is `uf lint` followed by Flow's type inference — Meta's own Flow,
+ported to Rust and compiled into the binary. uf has no second opinion about your
+types. What it decides is which files Flow sees, which packages it can read, and
+how the answer is reported.
+</div>
+
+**What you will be able to do:** check a project or a few files in it, read the
+human report and the JSON one, tell why an import is typed `any`, and know what
+makes a check fail.
+
+**What you need first:** a project with its dependencies installed —
+[Dependencies](/guide/dependencies). A check run before `uf install` types every
+package it cannot find as `any`, which is the reason
+[uf in CI](/guide/ci) installs before it checks.
+
+## Running it
+
+Two files, one of them wrong:
+
+```js
+// @flow
+// lib/total.js
+export type LineItem = {| readonly name: string, readonly cents: number |};
+
+export function total(items: $ReadOnlyArray<LineItem>): number {
+  return items.reduce((sum, item) => sum + item.cents, 0);
+}
+```
+
+```js
+// @flow
+// lib/summary.js
+import { total } from "./total.js";
+
+export const due: string = total([{ name: "tea", cents: 450 }]);
+```
+
+<figure className="terminal">
+
+```
+uf check
+────────
+
+lib/summary.js  1 error
+
+  error[incompatible-type]: Cannot assign total(...) to due because number [1] is incompatible with string [2].
+   --> lib/summary.js:4:28
+    │
+  4 │ export const due: string = total([{ name: "tea", cents: 450 }]);
+    │                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    note: [1] is here
+     --> lib/total.js:4:57
+    note: [2] is here
+     --> lib/summary.js:4:19
+
+  files checked  10
+  errors         1
+  warnings       0
+  rules skipped  16
+
+✗ 1 error
+
+  types checked  46
+  asked about    10 of 46
+  unchanged      44 of 46
+  inference      29.7ms
+  builtins       228.6ms (cold)
+
+  › these imports are typed as any; uf resolved no module for them
+    - @uniflowed/host/module-mocks
+    - axe-core
+    - node:async_hooks
+    - node:module
+    - react-dom
+error: uf check failed with 1 error
+```
+
+</figure>
+
+The first half of the report is `uf lint`'s, and a lint error fails `uf check` as
+surely as a type error does; on the same two files `uf lint` alone reports no
+problems. The second half is inference: `types checked` counts every file Flow
+read, `asked about` the ones the run was for, and `unchanged` the ones answered
+from the cache. The run exits 1, with the sentence on the last line written to
+stderr.
+
+`--fix` and `--fix-unsafe` apply `uf lint`'s fixes before the check, the way they
+do for [`uf lint`](/guide/format). Nothing fixes a type error.
+
+## What it checks
+
+Every `.js`, `.jsx`, `.mjs` and `.cjs` file in the project, and each
+`package.json`, found the way `uf lint` finds them: `.gitignore` is honoured, the
+top-level `ignore` list in `uf.config.js` is applied — `node_modules`, `dist` and
+`target` by default — and `.uf` and `.git` are never read.
+
+A file needs no `// @flow` to be checked. One that says `// @noflow` is parsed,
+so a syntax error in it is still reported, and not inferred; the footer counts it
+on a row of its own:
+
+<figure className="terminal">
+
+```
+  types checked  46
+  @noflow        1
+```
+
+</figure>
+
+A `.ts` or `.tsx` file is not checked at all. An import of one is typed `any`.
+
+## Checking some of the files
+
+Name paths after the command, and only files whose path contains one of them are
+reported:
+
+<figure className="terminal">
+
+```
+$ uf check lib/summary.js
+
+  files checked  1
+  errors         1
+
+  types checked  2
+  asked about    1 of 2
+```
+
+</figure>
+
+A narrowed check still reads what the named file imports — `total.js` above is the
+second of the two files typed — and reports only the named file's own errors. The
+path is a substring of a path relative to the project root, not a glob and not
+relative to your shell: `uf check Counter.js` also checks `useCounter.js`, and a
+leading `./` matches nothing:
+
+<figure className="terminal">
+
+```
+$ uf check ./lib/summary.js
+error: no file matched `./lib/summary.js`
+```
+
+</figure>
+
+## What an import resolves to
+
+| An import of | Resolves to |
+| --- | --- |
+| a file in the project, with or without its extension, or a directory with an `index` file | that file, typed |
+| a module a library definition declares — `react`, `node:fs` and the rest Flow ships | the declaration, whatever `node_modules` holds |
+| a package installed in `node_modules` that ships Flow — a file with `@flow` in its first 8 KiB | that package's files, through its `exports` map |
+| a package in the same workspace | the file its manifest publishes |
+| an image, a stylesheet or `?raw`, and `import.meta.glob` or `import.meta.hot` | uf's declarations for Vite's client API |
+| anything else | `any`, and named in the report |
+
+An `exports` map is read with the `flow`, `import` and `default` conditions and no
+others: uf does not choose between `node`, `browser`, `bun` and `deno`, so a
+package that publishes only host-specific entries is typed `any`, and the JSON
+report lists it apart from a package that is missing. A package with no `exports`
+map is read through `module`, then `main`. A `.json` import is typed `any`.
+
+The names in `these imports are typed as any` are where the check cannot see.
+Before `uf install`, that list is every `@uniflowed/*` package the scaffold
+imports, and the scaffold still checks clean, because it only uses them as values.
+Using a type from a module that resolved to nothing is an error, not a quiet
+`any`:
+
+<figure className="terminal">
+
+```
+lib/price.js  1 error
+
+  error[value-as-type]: Cannot use Money as a type because it is an any-typed value. Type Money properly, so it is no longer any-typed, to use it as an annotation.
+   --> lib/price.js:4:21
+    │
+  4 │ export const price: Money = 450;
+    │                     ^^^^^
+
+  › these imports are typed as any; uf resolved no module for them
+    - money-that-is-not-installed
+```
+
+</figure>
+
+## Library definitions and `.flowconfig`
+
+Flow's own library definitions come first — the DOM, Node's built-ins, React —
+then uf's for Vite's client API and Web Crypto, then the project's: every file
+under `flow-typed/`, which needs no configuration, and whatever the `[libs]`
+section of a `.flowconfig` names, in order. A later definition shadows an earlier
+one. `uf explain check` says the same in two lines:
+
+<figure className="terminal">
+
+```
+  uf check
+
+    1. library definitions
+        provider  flow (upstream)
+        what      Flow's own, then `flow-typed` and whatever `.flowconfig`'s [libs] names
+    2. type checking
+        provider  flow (upstream)
+        what      uf does not type-check; Flow is the type system
+```
+
+</figure>
+
+`[libs]` is the only section of `.flowconfig` uf reads. `[ignore]`, `[options]`,
+`[lints]` and `[version]` have no effect — the top-level `ignore` in
+`uf.config.js` is where files are left out — but a `.flowconfig` that does not
+parse fails the check rather than being skipped.
+
+## The report a machine reads
+
+`uf check --json` writes the whole report to stdout and nothing else:
+
+```json
+{
+  "command": "uf check",
+  "filesChecked": 10,
+  "errors": 1,
+  "warnings": 0,
+  "diagnostics": [],
+  "unavailableRules": [ … ],
+  "typeCheck": {
+    "backend": "upstream-flow-rust-port",
+    "status": "checked",
+    "diagnostics": [
+      {
+        "severity": "error",
+        "kind": "infer",
+        "code": "incompatible-type",
+        …
+```
+
+It is `uf lint --json`'s report with `typeCheck` added, and one field is a trap:
+**`errors` counts both halves, and `diagnostics` holds only the lint findings.**
+The type errors are in `typeCheck.diagnostics`, so a project can fail with
+`diagnostics` empty, as this one does. `typeCheck.status` is `checked`,
+`unavailable` or `failed`, with the reason in `typeCheck.error` when it failed.
+[The command reference](/reference/cli#uf-check) lists every field.
+
+## Speed
+
+Inference is cached under `.uf/cache/check/`, per file, keyed on the file, the
+project's library definitions and the `uf` binary that produced the answer — so a
+new uf starts cold, and an edit re-checks the file and what imports it. The
+builtin library definitions are merged once per process and are not cached, which
+is the `builtins` row: about 200 ms on every run, however warm the rest is. The
+JSON report carries the same numbers in `typeCheck`: `filesChecked`, `requested`,
+`filesFromCache`, `elapsedMs`, `builtinsMs` and `builtinsCold`, with the imports
+typed `any` in `untypedModules`.
+
+The lint half runs on every core. Inference runs on one thread. There is no watch
+mode and no daemon; `uf check` starts, answers and exits.
+
+## Silencing one error
+
+`$FlowFixMe` and `$FlowExpectedError` suppress the error on the line below them,
+best written with the code they expect — `// $FlowFixMe[incompatible-type]` — so
+that a different error on the same line is still reported. A suppression that no
+longer suppresses anything is not reported.
+
+## What is not here
+
+- **The lint rules that need inference.** `rules skipped` counts them and the
+  JSON names them. They do not run under `uf lint`, and they do not run under
+  `uf check` either, although inference does.
+- **Types in the editor.** `uf lsp` publishes lint diagnostics and no type errors,
+  and hover shows no types — see [Editors](/guide/editors).
+- **A type check in `uf prepare`**, the pre-commit command.
+- **More than one exit code for failure.** A lint error, a type error and a
+  `.flowconfig` that does not parse all exit 1; only an argument uf cannot parse
+  exits 2.
+- **A type defined as itself across two files.** A pair of aliases that refer to
+  each other through imports is typed `any` rather than refused.
+
+## Where to go next
+
+[Testing](/guide/testing) is next: `uf test`, which runs the code this command
+only reads. [uf in CI](/guide/ci) runs `uf check` after `uf install`, and
+[Flow and TypeScript](/guide/typescript) is the argument for the type system this
+command runs.

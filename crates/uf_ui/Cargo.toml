@@ -1,0 +1,27 @@
+[package]
+name = "uf_ui"
+description = "The components `uf ui add` writes into a project: the registry this uf carries, what a copy records about where it came from, and how a copy differs from it."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+camino.workspace = true
+compact_str.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+similar.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# The table of headless components, so the registry can be held to it: every
+# module `@uniflowed/ui` ships has a styled component here, and a component with
+# no module is one that table declined on purpose.
+uf_lib = { path = "../uf_lib" }
