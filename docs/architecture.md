@@ -460,6 +460,20 @@ a package that declares no `@flow` anywhere is not read either: it exports `any`
 whether it is in the batch or not, so reading it would buy a parse of every byte
 it ships and nothing else.
 
+Unless it has types written in TypeScript. A package with no Flow and with
+declarations — its own, or an `@types` package's — is typed from the
+declaration file TypeScript would read for the specifier: `uf_dts` translates it
+and every declaration file it reaches into Flow, and the checker is handed those
+translations under a manifest whose `flow` condition names them, with none of
+the package's JavaScript. What the translation cannot carry over is a hole typed
+`any`, named by its declaration, and the footer counts each package's holes
+once. Translations are kept under `.uf/cache/dts`, keyed by the `uf` that made
+them and checked against the SHA-256 of every file they read, so a warm check
+translates nothing ([#946](https://github.com/ubugeeei-prod/uf/issues/946)).
+A package's own Flow outranks its declarations: one that publishes `@flow`
+sources, or a `.flow` file beside a module — which is read in place of that
+module, as Flow reads it — is never translated.
+
 *Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
 by climbing `node_modules` from the file that wrote it, so code inside
 `node_modules/foo` that imports `bar` gets `node_modules/foo/node_modules/bar`
