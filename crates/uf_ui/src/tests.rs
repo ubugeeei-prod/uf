@@ -163,7 +163,6 @@ fn every_module_the_headless_package_ships_has_a_component() {
     const NOT_YET: &[&str] = &[
         "accordion",
         "alert",
-        "alert-dialog",
         "avatar",
         "breadcrumb",
         "calendar",
@@ -173,21 +172,17 @@ fn every_module_the_headless_package_ships_has_a_component() {
         "combobox",
         "context-menu",
         "date-picker",
-        "drawer",
         "field",
-        "hover-card",
         "input-otp",
         "menu",
         "menubar",
         "navigation-menu",
         "pagination",
-        "popover",
         "progress",
         "radio-group",
         "resizable",
         "scroll-area",
         "separator",
-        "sheet",
         "sidebar",
         "skeleton",
         "slider",
@@ -196,7 +191,6 @@ fn every_module_the_headless_package_ships_has_a_component() {
         "toast",
         "toggle",
         "toggle-group",
-        "tooltip",
     ];
 
     let modules = headless_modules();
@@ -395,16 +389,25 @@ const text = <p>taken from "the manual"</p>;
 }
 
 #[test]
-fn a_description_is_the_first_header_line_after_its_title() {
+fn a_description_is_the_first_header_paragraph_after_its_title() {
     assert_eq!(
         description(
             "\"use client\";\n// @flow\n//\n// Dialog: a modal dialog.\n//\n// Later: not this.\n"
-        ),
+        )
+        .as_deref(),
         Some("a modal dialog.")
     );
     assert_eq!(
-        description("// @flow\n// Button: a button.\n"),
+        description("// @flow\n// Button: a button.\n").as_deref(),
         Some("a button.")
+    );
+    // Wrapped at the header's width, and ended by the paragraph break.
+    assert_eq!(
+        description(
+            "// @flow\n//\n// Sheet: a panel on one edge,\n// for filters.\n//\n// More.\n"
+        )
+        .as_deref(),
+        Some("a panel on one edge, for filters.")
     );
     assert_eq!(description("// @flow\n\nimport x from \"y\";\n"), None);
     assert_eq!(description("// @flow\n// No title here.\n"), None);
