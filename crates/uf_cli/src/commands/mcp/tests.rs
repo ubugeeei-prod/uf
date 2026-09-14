@@ -238,7 +238,12 @@ fn every_advertised_tool_is_one_the_server_dispatches() {
             !text.contains("no tool named"),
             "{name} is listed but not dispatched"
         );
-        assert!(!text.contains("did not run"), "{name} was refused: {text}");
+        // By its prefix: a command's own report can say "did not run" about
+        // something inside it, as `uf check`'s does.
+        assert!(
+            !text.starts_with(&format!("{name} did not run:")),
+            "{name} was refused: {text}"
+        );
     }
 }
 
