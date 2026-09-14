@@ -98,7 +98,10 @@ for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27
     dump_wrangler_log
     fail "wrangler dev exited before the worker was reachable"
   fi
-  if curl -sS "$base/" >/dev/null 2>&1; then
+  # Bounded, because curl has no overall timeout of its own: a connection
+  # Wrangler accepts and the worker never answers would otherwise hold this
+  # loop, and the job with it, until the runner gives up.
+  if curl -sS --connect-timeout 2 --max-time 5 "$base/" >/dev/null 2>&1; then
     ready=1
     break
   fi
@@ -118,7 +121,7 @@ assert_response() {
   shift 4
 
   body="$work/body"
-  if ! status="$(curl -sS -o "$body" -w '%{http_code}' -X "$method" "$@" "$base$path")"; then
+  if ! status="$(curl -sS --connect-timeout 2 --max-time 15 -o "$body" -w '%{http_code}' -X "$method" "$@" "$base$path")"; then
     dump_wrangler_log
     fail "$method $path did not complete"
   fi
