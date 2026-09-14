@@ -196,7 +196,7 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         category: RuleCategory::Router,
         default_level: RuleLevel::Error,
         requirement: SourceText,
-        description: "`(.)segment` directories are not routes uf can serve",
+        description: "`(.)segment` directories must be interceptions uf reads, inside a `@slot`",
     },
     RuleDescriptor {
         id: "package/no-npm-scripts",

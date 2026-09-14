@@ -203,11 +203,57 @@ fn both_routers_reserve_the_same_layout_prop_names() {
 #[test]
 fn every_spelling_the_build_router_refuses_is_unsupported_here() {
     for segment in build_router_unsupported_segments() {
+        // In a slot as well as outside one: these are refused everywhere.
         assert!(
-            !classify_route_segment(&segment).is_supported(),
+            !classify_route_segment(&segment).is_supported(true),
             "`packages/vite/internal/routes.js` refuses `{segment}` and \
              `uf_router::classify_route_segment` calls it a route, so `uf build` would generate a \
              `RoutePath` for a directory the build router will not serve"
         );
+    }
+}
+
+/// The intercepting routes, which both routers serve inside a `@slot` and
+/// refuse outside one.
+///
+/// A list of its own on both sides, for the reason the refusal is a sentence
+/// of its own: these are spelled correctly and placed wrongly, and a router
+/// that refused one of them *by name* would tell the author to rename a
+/// directory that was right.
+#[test]
+fn both_routers_serve_the_same_interception_spellings() {
+    let source = build_router_source();
+
+    let table = source
+        .split_once("export const INTERCEPTION_SEGMENTS = Object.freeze([")
+        .expect(
+            "`INTERCEPTION_SEGMENTS` is a frozen array literal; if it is not, this test is out of \
+             date",
+        )
+        .1
+        .split_once("]);")
+        .expect("the literal is closed")
+        .0;
+
+    let build_router: BTreeSet<String> = table
+        .split('"')
+        .filter(|value| !value.trim().is_empty() && !value.contains(','))
+        .map(str::to_owned)
+        .collect();
+    let grammar: BTreeSet<String> = RouteSegment::SLOT_ONLY_EXAMPLES
+        .iter()
+        .map(|segment| (*segment).to_owned())
+        .collect();
+
+    assert_eq!(
+        grammar, build_router,
+        "`RouteSegment::SLOT_ONLY_EXAMPLES` and `INTERCEPTION_SEGMENTS` in \
+         `packages/vite/internal/routes.js` name different interception spellings, so one router \
+         serves an intercepting route the other refuses"
+    );
+    for segment in &grammar {
+        let classified = classify_route_segment(segment);
+        assert!(classified.is_supported(true), "{segment}");
+        assert!(!classified.is_supported(false), "{segment}");
     }
 }

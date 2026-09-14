@@ -139,12 +139,12 @@ teaching that the rule is noise.
 
 The file names come from the same grammar `uf build` discovers routes with, so
 a scaffold uf writes is a route uf finds. A spelling uf reserves without
-serving — `(.)photo` — is refused here with the sentence `uf build` and
-`uf lint` give for it, rather than written now and reported later. A `@team` is
-refused for the opposite reason: uf serves parallel routes, and a slot is not a
-URL — which is what this command's argument is. Nothing
-is overwritten: a route whose page already exists is an error, and a run that
-stops has written none of its files.
+serving — `(....)photo` — is refused here with the sentence `uf build` and
+`uf lint` give for it, rather than written now and reported later. A `@team`
+and an intercepting route like `(.)photo` are refused for the opposite reason:
+uf serves both, and neither is a URL — which is what this command's argument
+is. Nothing is overwritten: a route whose page already exists is an error, and
+a run that stops has written none of its files.
 
 `uf prepare` regenerates `router.js`, so the new path joins `RoutePath` on the
 next run of it.

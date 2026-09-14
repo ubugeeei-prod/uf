@@ -16,13 +16,14 @@
 //! disagreeing is what ubugeeei-prod/uf#224, #291, #386 and #437 all are.
 //!
 //! It is also why this refuses more than a scaffold usually would. A path with
-//! `(.)photo` in it, and a `[...rest]` with a segment after it, are rejected
+//! `(....)photo` in it, and a `[...rest]` with a segment after it, are rejected
 //! here rather than written and then reported by the next `uf build`: the point
 //! of one grammar is that the answer does not depend on which tool you ask.
 //!
-//! `@team` is refused for a different reason, and the difference is worth
-//! keeping: a slot is a route uf serves, but it is not a *URL*, and this
-//! command's argument is a URL. See [`ScaffoldError::SlotSegment`].
+//! `@team` and `(.)photo` are refused for a different reason, and the
+//! difference is worth keeping: a slot and an intercepting route are routes uf
+//! serves, but neither is a *URL*, and this command's argument is a URL. See
+//! [`ScaffoldError::SlotSegment`] and [`ScaffoldError::InterceptionSegment`].
 //!
 //! [`discover_routes`]: crate::discover_routes
 
@@ -98,6 +99,25 @@ pub enum ScaffoldError {
         /// The segment, as it was written.
         segment: String,
     },
+    /// An intercepting route in the path this command was given.
+    ///
+    /// The same shape of refusal as [`SlotSegment`](ScaffoldError::SlotSegment)
+    /// and for the same reason: uf serves intercepting routes, and what it
+    /// does not have is a URL for one. An interception is the route that shows
+    /// in a slot *instead of* at the URL its path names, so there is no URL
+    /// here for this command to add a page at — and writing the directory
+    /// alone would leave an interception outside a slot, which the next
+    /// `uf build` refuses.
+    #[error(
+        "`{segment}` is an intercepting route, and `uf routes add` takes a URL — an interception \
+         has none. It renders into a `@slot` when a navigation reaches it from inside that \
+         slot's segment, and the URL stays the one it intercepts. Create the directory inside \
+         the slot and put its pages there; `uf routes add` writes the pages a URL names."
+    )]
+    InterceptionSegment {
+        /// The segment, as it was written.
+        segment: String,
+    },
     /// A `[...param]` with another routing segment after it, which is a page
     /// no URL can reach — see [`crate::RouterError::NonTerminalCatchAll`].
     #[error(
@@ -155,6 +175,14 @@ fn route_directory(path: &str) -> Result<Utf8PathBuf, ScaffoldError> {
         }
         if classified.slot().is_some() {
             return Err(ScaffoldError::SlotSegment {
+                segment: segment.to_owned(),
+            });
+        }
+        // After `unsupported_reason`, so a marker that means nothing is
+        // answered as a misspelling rather than as a feature this command
+        // does not cover.
+        if matches!(classified, RouteSegment::Interception { .. }) {
+            return Err(ScaffoldError::InterceptionSegment {
                 segment: segment.to_owned(),
             });
         }
@@ -463,16 +491,36 @@ mod tests {
         // that the next `uf build` reports. The sentence is the one
         // `RouteSegment::unsupported_reason` gives, so a reader gets the same
         // answer whichever tool told them.
-        let error = directory("/feed/(.)photo").unwrap_err();
+        let error = directory("/feed/(.)(.)photo").unwrap_err();
         let ScaffoldError::UnsupportedSegment { reason, .. } = &error else {
             panic!("expected an unsupported segment, got {error:?}");
         };
         assert_eq!(
             reason.as_str(),
-            classify_route_segment("(.)photo")
-                .unsupported_reason("(.)photo")
+            classify_route_segment("(.)(.)photo")
+                .unsupported_reason("(.)(.)photo")
                 .unwrap()
                 .as_str()
+        );
+    }
+
+    /// A well-spelled interception is refused by this command and not by the
+    /// router, the way a slot is: uf serves interception, and what it does not
+    /// have is a URL for one to be added at.
+    #[test]
+    fn an_interception_is_refused_because_this_command_takes_a_url() {
+        let error = directory("/feed/(.)photo").unwrap_err();
+        let ScaffoldError::InterceptionSegment { segment } = &error else {
+            panic!("expected an interception segment, got {error:?}");
+        };
+        assert_eq!(segment, "(.)photo");
+        let message = error.to_string();
+        assert!(message.contains("takes a URL"), "{message}");
+        // And not the sentence for a spelling uf refuses everywhere: `(.)photo`
+        // is not one of those any more.
+        assert_eq!(
+            classify_route_segment("(.)photo").unsupported_reason("(.)photo"),
+            None
         );
     }
 

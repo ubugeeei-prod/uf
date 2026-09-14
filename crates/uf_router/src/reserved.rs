@@ -64,10 +64,19 @@
 //! can be a route at all: a URL that says nothing about a slot still has to
 //! leave something in it.
 //!
-//! [`RouteSegment::Interception`] is still a name without a route. It needs a
-//! navigation to carry where it came from, which is a change to what a
-//! navigation *is* rather than a change to this grammar, so it stays refused
-//! by name. See ubugeeei-prod/uf#267.
+//! [`RouteSegment::Interception`] is a route now too, and only inside a slot.
+//! An interception renders a route *somewhere other than where its path says*,
+//! and "somewhere" is a named place — which is what a slot is. So
+//! `app/feed/@modal/(.)photo/$page.js` is what a client navigation from a page
+//! the slot is on puts in the `modal` slot when it reaches `/feed/photo`, and
+//! every other way of arriving at that URL — the address bar, a reload, a
+//! shared link, a prerender — renders `app/feed/photo/$page.js` instead.
+//! Outside a slot the spelling stays refused, because there would be no second
+//! place to render into and the only thing left to do with it would be to
+//! serve it as a URL, which is what it used to do by accident.
+//!
+//! The marker says how far to climb, in URL segments, from the directory the
+//! interception sits in: [`InterceptionClimb`]. See ubugeeei-prod/uf#267.
 
 use std::str::FromStr;
 
@@ -467,43 +476,133 @@ pub enum RouteSegment<'a> {
     /// [`ReservedRole::Default`] answers.
     Slot(&'a str),
     /// `(.)photo`, `(..)photo`, `(...)photo`, `(..)(..)photo` — an intercepting
-    /// route. Not a route uf can serve.
+    /// route, which uf serves inside a `@slot` and nowhere else.
     ///
-    /// Interception matches a path *from within a segment* and renders it
-    /// there, leaving the URL alone. That needs the router to know where a
-    /// navigation came from, which is a change to what a navigation is: uf's
-    /// `navigate` has a destination and nothing else.
+    /// Interception renders a route *from within a segment* and leaves the URL
+    /// alone: a client navigation from a page the slot is on renders what the
+    /// directory holds in that slot, and every other way of reaching the URL —
+    /// a reload, a shared link, a prerender — renders the ordinary page. The URL
+    /// it intercepts is [`InterceptionClimb`] applied to the route path of the
+    /// directory it sits in, with `route` appended.
+    ///
+    /// Refused everywhere, slot or not, when the marker climbs nowhere —
+    /// `(.)(.)photo`, `(....)photo` — or when what follows it is not a URL
+    /// segment: `(.)(gallery)` and `(.)@photo` name no path to intercept.
+    /// [`interception_climb`](RouteSegment::interception_climb) is [`None`] for
+    /// all of those.
     Interception {
         /// The `(.)`-style prefix, as written.
         marker: &'a str,
-        /// What follows it — the route being intercepted.
+        /// What follows it — the segment being intercepted.
         route: &'a str,
     },
 }
 
 impl<'a> RouteSegment<'a> {
-    /// One directory name per spelling uf refuses.
+    /// One directory name per spelling uf refuses everywhere.
     ///
     /// Here so that `tests/reserved_names.rs` can hold the build router to the
     /// same list, the way it already holds it to [`ReservedRole`]. A spelling
     /// one router refuses and the other serves is the disagreement this module
     /// exists to prevent, and the two are separate implementations.
+    ///
+    /// Every entry is spelled like an interception and cannot be one: a marker
+    /// that climbs nowhere, or a marker followed by something that is not a URL
+    /// segment. The spellings that *are* interceptions moved to
+    /// [`SLOT_ONLY_EXAMPLES`](RouteSegment::SLOT_ONLY_EXAMPLES) when
+    /// interception became a route.
     pub const UNSUPPORTED_EXAMPLES: &'static [&'static str] = &[
+        "(.)(.)photo",
+        "(.)(..)photo",
+        "(...)(..)photo",
+        "(....)photo",
+        "(.)(gallery)",
+        "(.)@photo",
+    ];
+
+    /// One directory name per spelling uf serves inside a `@slot` and refuses
+    /// outside one.
+    ///
+    /// A separate list from [`UNSUPPORTED_EXAMPLES`](RouteSegment::UNSUPPORTED_EXAMPLES)
+    /// because the two refusals are different sentences, and a reader who gets
+    /// the wrong one is told to rename a directory that was spelled correctly.
+    pub const SLOT_ONLY_EXAMPLES: &'static [&'static str] = &[
         "(.)photo",
         "(..)photo",
         "(...)photo",
         "(..)(..)photo",
         "(..)(..)(..)photo",
+        "(.)[id]",
     ];
 
-    /// Whether uf serves a segment spelled this way.
+    /// Whether uf serves a segment spelled this way, given where it sits.
     ///
-    /// False for interception alone. `@team` was here too until slots became
-    /// routes; refusing is still the point for what is left, because a literal
-    /// is what these used to be.
+    /// `inside_slot` is the whole of the difference for an interception: it is
+    /// a route in a slot and a refusal anywhere else. Every other spelling
+    /// answers the same either way, and passing the flag rather than asking two
+    /// questions is what keeps one caller from checking only the first.
+    ///
+    /// A well-spelled interception inside a slot can still be in the wrong
+    /// place — climbing past the router root — and that is a question about
+    /// the path rather than the name, answered by
+    /// [`climb_reason`](RouteSegment::climb_reason) for the callers that have
+    /// the path.
     #[must_use]
-    pub const fn is_supported(&self) -> bool {
-        !matches!(self, Self::Interception { .. })
+    pub fn is_supported(&self, inside_slot: bool) -> bool {
+        match self {
+            Self::Interception { .. } => inside_slot && self.interception_climb().is_some(),
+            Self::Group | Self::Param(_) | Self::CatchAll(_) | Self::Literal(_) | Self::Slot(_) => {
+                true
+            }
+        }
+    }
+
+    /// How far this segment climbs before it matches, when it is an
+    /// interception uf reads: a marker that climbs, with a URL segment after it.
+    #[must_use]
+    pub fn interception_climb(&self) -> Option<InterceptionClimb> {
+        match self {
+            Self::Interception { marker, route } if names_a_url_segment(route) => {
+                interception_climb(marker)
+            }
+            _ => None,
+        }
+    }
+
+    /// Why an interception `depth` URL segments below the router root climbs
+    /// past it, or [`None`] when it does not.
+    ///
+    /// `depth` is how many URL segments the directory holding the interception
+    /// contributes, after any interception above it has been applied — so a
+    /// caller counts what [`InterceptionClimb::remaining`] counts, and this
+    /// only supplies the sentence. Here rather than on `RouterError` for the
+    /// reason [`unsupported_reason`](RouteSegment::unsupported_reason) is: the
+    /// build and `uf lint` refuse the same directory with the same words.
+    #[must_use]
+    pub fn climb_reason(&self, segment: &str, depth: usize) -> Option<String> {
+        let climb = self.interception_climb()?;
+        if climb.remaining(depth).is_some() {
+            return None;
+        }
+        let InterceptionClimb::Up(levels) = climb else {
+            return None;
+        };
+        let climbs = if levels == 1 {
+            "one level".to_owned()
+        } else {
+            format!("{levels} levels")
+        };
+        let sits = match depth {
+            0 => "at the router root".to_owned(),
+            1 => "one level below it".to_owned(),
+            _ => format!("{depth} levels below it"),
+        };
+        Some(format!(
+            "`{segment}` climbs {climbs} from the directory it is in, which is {sits}, so the URL \
+             it intercepts would be above the router root, and there is no such URL. It is \
+             refused rather than read as a climb to the root. Remove a `(..)`, or write `(...)` \
+             to intercept from the router root. https://github.com/ubugeeei-prod/uf/issues/267"
+        ))
     }
 
     /// The slot this segment names, if it names one.
@@ -533,22 +632,150 @@ impl<'a> RouteSegment<'a> {
     /// Here rather than on `RouterError` so `uf lint` says the same thing the
     /// build does. Two messages for one refusal is how a linter ends up
     /// disagreeing with the compiler about what is wrong.
+    ///
+    /// For an interception this is the refusal that holds everywhere, and it is
+    /// about the spelling. Where a correctly spelled one is placed is a separate
+    /// question with separate sentences: [`outside_slot_reason`] and
+    /// [`climb_reason`].
+    ///
+    /// [`outside_slot_reason`]: RouteSegment::outside_slot_reason
+    /// [`climb_reason`]: RouteSegment::climb_reason
     #[must_use]
     pub fn unsupported_reason(&self, segment: &str) -> Option<String> {
-        match self {
-            Self::Interception { route, .. } => Some(format!(
-                "`{segment}` is an intercepting route, and uf does not have interception — a \
-                 navigation carries where it is going and not where it came from, so nothing here \
-                 could match `{route}`. It is refused rather than served as the URL segment \
-                 `/{segment}`, which is what it used to become. Move the route to the path it \
-                 belongs at, or rename the directory. \
+        let Self::Interception { marker, route } = self else {
+            return None;
+        };
+        if interception_climb(marker).is_none() {
+            return Some(format!(
+                "`{segment}` is spelled like an intercepting route and `{marker}` is not a marker \
+                 uf reads. The markers are `(.)` for the level the directory is at, `(..)` for one \
+                 above it — repeated for each further level — and `(...)` for the router root. \
+                 It is refused rather than served as the URL segment `/{segment}`, which is what \
+                 it used to become. Spell the marker as one of those and put the directory inside \
+                 a `@slot`, or rename it to the literal segment `{route}`. \
                  https://github.com/ubugeeei-prod/uf/issues/267"
-            )),
-            Self::Group | Self::Param(_) | Self::CatchAll(_) | Self::Literal(_) | Self::Slot(_) => {
-                None
-            }
+            ));
+        }
+        if !names_a_url_segment(route) {
+            return Some(format!(
+                "`{segment}` is spelled like an intercepting route, and `{route}` after the marker \
+                 is not a URL segment, so there is no path for it to intercept: an interception \
+                 names the segment it stands in for, the way `{marker}photo` and `{marker}[id]` \
+                 do. It is refused rather than served as the URL segment `/{segment}`, which is \
+                 what it used to become. Put a segment name after the marker, or rename the \
+                 directory. https://github.com/ubugeeei-prod/uf/issues/267"
+            ));
+        }
+        None
+    }
+
+    /// Why uf refuses this directory *here*, when it would serve the same
+    /// spelling inside a `@slot`.
+    ///
+    /// Separate from [`unsupported_reason`](RouteSegment::unsupported_reason)
+    /// because the two are different answers: that one says the spelling is
+    /// wrong, and this one says the place is. Telling an author to rename a
+    /// directory they spelled correctly is the worse of the two mistakes, so
+    /// the caller has to have decided which it is.
+    #[must_use]
+    pub fn outside_slot_reason(&self, segment: &str) -> Option<String> {
+        let Self::Interception { route, .. } = self else {
+            return None;
+        };
+        self.interception_climb()?;
+        Some(format!(
+            "`{segment}` is an intercepting route, and an intercepting route renders into a \
+             `@slot`: it is what a client navigation shows in a named place instead of the page \
+             its URL names, and outside a slot there is no named place for it to show in. It is \
+             refused rather than served as the URL segment `/{segment}`, which is what it used to \
+             become. Move it inside a slot directory beside the layout that renders the slot, or \
+             rename the directory to the literal segment `{route}`. \
+             https://github.com/ubugeeei-prod/uf/issues/267"
+        ))
+    }
+}
+
+/// Whether what follows an interception marker is a segment a URL has — a
+/// literal, a `[param]` or a `[...rest]`.
+///
+/// A `(group)` or a `@slot` after the marker contributes no URL segment of its
+/// own, so there is nothing for the interception to stand in for, and reading
+/// `(.)(gallery)` as "intercept the directory I am in" would be a meaning
+/// nobody wrote down.
+fn names_a_url_segment(route: &str) -> bool {
+    matches!(
+        classify_route_segment(route),
+        RouteSegment::Literal(_) | RouteSegment::Param(_) | RouteSegment::CatchAll(_)
+    )
+}
+
+/// How far an interception climbs before it matches.
+///
+/// Counted in *URL* segments from the directory the interception sits in —
+/// which, for the usual shape of an interception directly inside its slot, is
+/// the segment that declares the slot. Directories are not the unit: a
+/// `(group)` and a `@slot` contribute no URL segment, so they are not levels to
+/// climb past, and `app/feed/@modal/(..)photo` intercepts `/photo` rather than
+/// `/feed/photo`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InterceptionClimb {
+    /// `(.)` is zero, `(..)` is one, `(..)(..)` is two, and so on.
+    Up(usize),
+    /// `(...)`: the router root, however deep the directory is.
+    ///
+    /// Its own variant rather than a large [`Up`](InterceptionClimb::Up),
+    /// because "from the root" is what the author wrote and clamping a number
+    /// at the root would silently accept `(..)` repeated past it.
+    Root,
+}
+
+impl InterceptionClimb {
+    /// How many of the `depth` URL segments above an interception are left
+    /// once it has climbed, or [`None`] when it climbs past the router root.
+    ///
+    /// One function for a question three places ask — the URL an interception
+    /// stands in for, the router refusing a climb it cannot make, and
+    /// `uf lint` saying the same from a file path — because the answer is
+    /// arithmetic, and arithmetic written three times is what comes out
+    /// different the third time.
+    #[must_use]
+    pub const fn remaining(self, depth: usize) -> Option<usize> {
+        match self {
+            Self::Up(levels) => depth.checked_sub(levels),
+            Self::Root => Some(0),
         }
     }
+}
+
+/// Read a marker as a climb, or [`None`] when it is not one uf reads.
+///
+/// `(.)`, `(..)` repeated, and `(...)` alone. The combinations that are not
+/// on that list — `(.)(.)`, `(...)(..)`, `(....)` — parse as a marker and mean
+/// nothing, which is why this is separate from
+/// [`interception_marker`]: one says "this is the shape of a marker", the
+/// other says "and this is what it does".
+#[must_use]
+pub fn interception_climb(marker: &str) -> Option<InterceptionClimb> {
+    let mut rest = marker;
+    let mut up = 0usize;
+    while let Some(after) = rest.strip_prefix('(') {
+        let close = after.find(')')?;
+        let inner = &after[..close];
+        rest = &after[close + 1..];
+        match inner {
+            // Only as the whole marker: `(.)` says "the level this directory
+            // is at", and there is nothing for a second marker to say after it.
+            "." => return (up == 0 && rest.is_empty()).then_some(InterceptionClimb::Up(0)),
+            ".." => up += 1,
+            // Same: the root is where the climb ends, so nothing may follow.
+            "..." => return (up == 0 && rest.is_empty()).then_some(InterceptionClimb::Root),
+            _ => return None,
+        }
+    }
+    if !rest.is_empty() || up == 0 {
+        return None;
+    }
+    Some(InterceptionClimb::Up(up))
 }
 
 /// Classify one directory name from the router root.
@@ -588,16 +815,23 @@ pub fn classify_route_segment(segment: &str) -> RouteSegment<'_> {
 
 /// The `(.)`-style prefix of `segment` and the route after it, if it has one.
 ///
-/// One or more of `(.)`, `(..)` and `(...)`, which is every marker Next.js
-/// defines — `(..)(..)` is two of them and not a fourth spelling — followed by
-/// something for them to intercept. A marker with nothing after it is not an
-/// interception, because there is no route named.
+/// One or more parenthesised runs of dots, followed by something for them to
+/// intercept. Which runs *mean* anything is [`interception_climb`]'s question
+/// and deliberately not this one: `(....)photo` is the shape of an
+/// interception written by somebody who miscounted, and reading it as a
+/// literal URL segment is how that miscount becomes a page at `/(....)photo`.
+/// This says "an interception was intended"; the climb says whether it can be
+/// honoured; and the two together are what produces a sentence about the
+/// marker rather than a route nobody meant.
+///
+/// A marker with nothing after it is not an interception, because there is no
+/// route named — `(.)` alone stays the `(group)` it has always been.
 fn interception_marker(segment: &str) -> Option<(&str, &str)> {
     let mut consumed = 0;
     while let Some(open) = segment[consumed..].strip_prefix('(') {
         let Some(close) = open.find(')') else { break };
         let inner = &open[..close];
-        if inner.is_empty() || inner.len() > 3 || !inner.bytes().all(|byte| byte == b'.') {
+        if inner.is_empty() || !inner.bytes().all(|byte| byte == b'.') {
             break;
         }
         consumed += close + 2;
@@ -872,7 +1106,15 @@ mod tests {
             RouteSegment::Literal("posts")
         );
         for segment in ["(marketing)", "[slug]", "[...path]", "posts"] {
-            assert!(classify_route_segment(segment).is_supported(), "{segment}");
+            // Everywhere: only an interception's answer depends on where it is.
+            assert!(
+                classify_route_segment(segment).is_supported(false),
+                "{segment}"
+            );
+            assert!(
+                classify_route_segment(segment).is_supported(true),
+                "{segment}"
+            );
         }
     }
 
@@ -882,7 +1124,7 @@ mod tests {
         // and in the generated `RoutePath`; then it was refused by name; now it
         // is a slot uf serves. See ubugeeei-prod/uf#267.
         assert_eq!(classify_route_segment("@team"), RouteSegment::Slot("team"));
-        assert!(classify_route_segment("@team").is_supported());
+        assert!(classify_route_segment("@team").is_supported(false));
         assert_eq!(classify_route_segment("@team").slot(), Some("team"));
         // Not a slot: the `@` has to start the segment, so a scoped-looking
         // name in the middle is an ordinary literal.
@@ -912,22 +1154,62 @@ mod tests {
 
     #[test]
     fn every_interception_marker_next_defines_is_recognized() {
-        for (segment, marker) in [
-            ("(.)photo", "(.)"),
-            ("(..)photo", "(..)"),
-            ("(...)photo", "(...)"),
-            ("(..)(..)photo", "(..)(..)"),
-            ("(..)(..)(..)photo", "(..)(..)(..)"),
+        for (segment, marker, climb) in [
+            ("(.)photo", "(.)", InterceptionClimb::Up(0)),
+            ("(..)photo", "(..)", InterceptionClimb::Up(1)),
+            ("(...)photo", "(...)", InterceptionClimb::Root),
+            ("(..)(..)photo", "(..)(..)", InterceptionClimb::Up(2)),
+            (
+                "(..)(..)(..)photo",
+                "(..)(..)(..)",
+                InterceptionClimb::Up(3),
+            ),
         ] {
+            let classified = classify_route_segment(segment);
             assert_eq!(
-                classify_route_segment(segment),
+                classified,
                 RouteSegment::Interception {
                     marker,
                     route: "photo"
                 },
                 "{segment}"
             );
-            assert!(!classify_route_segment(segment).is_supported(), "{segment}");
+            assert_eq!(classified.interception_climb(), Some(climb), "{segment}");
+            // A route in a slot, and a refusal anywhere else. Both directions,
+            // because the whole of the feature is the difference between them.
+            assert!(classified.is_supported(true), "{segment}");
+            assert!(!classified.is_supported(false), "{segment}");
+            assert_eq!(classified.unsupported_reason(segment), None, "{segment}");
+            let outside = classified
+                .outside_slot_reason(segment)
+                .unwrap_or_else(|| panic!("{segment} is refused outside a slot without a reason"));
+            assert!(outside.contains("`@slot`"), "{segment}: {outside}");
+        }
+    }
+
+    #[test]
+    fn a_marker_that_parses_and_climbs_nowhere_is_refused_everywhere() {
+        // The shape of an interception written by somebody who miscounted.
+        // Reading these as literals is how `/(....)photo` becomes a page, so
+        // they classify as interceptions with no climb and are refused in a
+        // slot as well as outside one.
+        for segment in [
+            "(.)(.)photo",
+            "(.)(..)photo",
+            "(...)(..)photo",
+            "(....)photo",
+        ] {
+            let classified = classify_route_segment(segment);
+            assert!(
+                matches!(classified, RouteSegment::Interception { .. }),
+                "{segment} classified as {classified:?}"
+            );
+            assert_eq!(classified.interception_climb(), None, "{segment}");
+            assert!(!classified.is_supported(true), "{segment}");
+            assert!(!classified.is_supported(false), "{segment}");
+            // The refusal is about the marker, so `outside_slot_reason` — which
+            // is about the *place* — has nothing to say about it.
+            assert_eq!(classified.outside_slot_reason(segment), None, "{segment}");
         }
     }
 
@@ -939,7 +1221,7 @@ mod tests {
         // route group into an interception.
         for name in ["(marketing)", "(.)", "(..)", "(shop)", "(a.b)"] {
             assert_eq!(classify_route_segment(name), RouteSegment::Group, "{name}");
-            assert!(classify_route_segment(name).is_supported(), "{name}");
+            assert!(classify_route_segment(name).is_supported(false), "{name}");
         }
     }
 
@@ -948,8 +1230,8 @@ mod tests {
         for segment in RouteSegment::UNSUPPORTED_EXAMPLES {
             let classified = classify_route_segment(segment);
             assert!(
-                !classified.is_supported(),
-                "{segment} is listed as unsupported and classifies as a route"
+                !classified.is_supported(true),
+                "{segment} is listed as unsupported and classifies as a route even in a slot"
             );
             let reason = classified
                 .unsupported_reason(segment)
@@ -959,6 +1241,103 @@ mod tests {
             assert!(reason.contains("refused"), "{segment}: {reason}");
             assert!(reason.contains(segment), "{segment}: {reason}");
         }
+    }
+
+    #[test]
+    fn every_slot_only_example_is_a_route_in_a_slot_and_a_refusal_outside_one() {
+        for segment in RouteSegment::SLOT_ONLY_EXAMPLES {
+            let classified = classify_route_segment(segment);
+            assert!(classified.is_supported(true), "{segment}");
+            assert!(!classified.is_supported(false), "{segment}");
+            // And it is not on the other list, because a reader who is told to
+            // rename a correctly spelled directory has been told the wrong
+            // thing.
+            assert!(
+                !RouteSegment::UNSUPPORTED_EXAMPLES.contains(segment),
+                "{segment} is on both lists"
+            );
+            let reason = classified
+                .outside_slot_reason(segment)
+                .unwrap_or_else(|| panic!("{segment} is refused outside a slot without a reason"));
+            assert!(reason.contains(segment), "{segment}: {reason}");
+        }
+    }
+
+    #[test]
+    fn a_marker_with_no_url_segment_after_it_is_refused_everywhere() {
+        // `(.)(gallery)` and `(.)@photo` are spelled like interceptions and name
+        // no segment to stand in for. Reading them as "intercept the directory
+        // I am in" would be a meaning nobody wrote, so they are refused in a
+        // slot as well as outside one, with the sentence about the spelling.
+        for (segment, route) in [("(.)(gallery)", "(gallery)"), ("(.)@photo", "@photo")] {
+            let classified = classify_route_segment(segment);
+            assert_eq!(
+                classified,
+                RouteSegment::Interception {
+                    marker: "(.)",
+                    route
+                },
+                "{segment}"
+            );
+            assert_eq!(classified.interception_climb(), None, "{segment}");
+            assert!(!classified.is_supported(true), "{segment}");
+            let reason = classified
+                .unsupported_reason(segment)
+                .unwrap_or_else(|| panic!("{segment} is refused without a reason"));
+            assert!(reason.contains("not a URL segment"), "{segment}: {reason}");
+            assert_eq!(classified.outside_slot_reason(segment), None, "{segment}");
+        }
+    }
+
+    #[test]
+    fn an_interception_may_stand_in_for_a_parameter() {
+        assert_eq!(
+            classify_route_segment("(.)[id]"),
+            RouteSegment::Interception {
+                marker: "(.)",
+                route: "[id]"
+            }
+        );
+        assert_eq!(
+            classify_route_segment("(..)[...rest]").interception_climb(),
+            Some(InterceptionClimb::Up(1))
+        );
+    }
+
+    #[test]
+    fn a_climb_counts_url_segments_and_stops_at_the_router_root() {
+        assert_eq!(InterceptionClimb::Up(0).remaining(2), Some(2));
+        assert_eq!(InterceptionClimb::Up(1).remaining(2), Some(1));
+        assert_eq!(InterceptionClimb::Up(2).remaining(2), Some(0));
+        assert_eq!(InterceptionClimb::Up(2).remaining(1), None);
+        // `(...)` is the root from anywhere, the root included.
+        assert_eq!(InterceptionClimb::Root.remaining(0), Some(0));
+        assert_eq!(InterceptionClimb::Root.remaining(5), Some(0));
+    }
+
+    #[test]
+    fn a_climb_past_the_router_root_is_refused_with_a_sentence_of_its_own() {
+        let one = classify_route_segment("(..)photo");
+        assert_eq!(one.climb_reason("(..)photo", 1), None);
+        let at_root = one
+            .climb_reason("(..)photo", 0)
+            .expect("one level up from the router root is nowhere");
+        assert!(at_root.contains("router root"), "{at_root}");
+        assert!(at_root.contains("refused"), "{at_root}");
+        let two = classify_route_segment("(..)(..)photo")
+            .climb_reason("(..)(..)photo", 1)
+            .expect("two levels up from one is nowhere");
+        assert!(two.contains("2 levels"), "{two}");
+        // `(...)` never climbs past the root, and a segment that is not an
+        // interception has no climb to refuse.
+        assert_eq!(
+            classify_route_segment("(...)photo").climb_reason("(...)photo", 0),
+            None
+        );
+        assert_eq!(
+            classify_route_segment("photo").climb_reason("photo", 0),
+            None
+        );
     }
 
     #[test]

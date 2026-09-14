@@ -22,6 +22,12 @@
 // URL the page is, so one URL renders two subtrees at once, and
 // `$default.js` is what a slot renders when the URL matched none of its
 // routes. See ubugeeei-prod/uf#267.
+//
+// A directory named `(.)photo` inside a slot is an intercepting route: a client
+// navigation that starts on a page the slot is on, and reaches the URL the
+// directory stands in for, renders it in the slot and leaves the page
+// underneath where it was. A document request for that URL — a reload, a
+// shared link, a prerender — renders the ordinary page.
 
 import * as React from "react";
 
