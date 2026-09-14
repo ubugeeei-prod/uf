@@ -445,6 +445,15 @@ pub(crate) enum Commands {
         /// still parses and still formats — read the diff before committing it.
         #[arg(long, conflicts_with = "fix")]
         fix_unsafe: bool,
+        /// List every rule instead of linting: the level it runs at in this
+        /// project, and whether `--fix`, `--fix-unsafe` or `uf fmt` answers it.
+        ///
+        /// The level is the one a lint run here would use — `uf.config.js`
+        /// over the defaults, deprecated rule names included — so a rule this
+        /// project turned off says `off`. With `--json`, the same list
+        /// machine-readably.
+        #[arg(long, conflicts_with_all = ["fix", "fix_unsafe", "paths"])]
+        rules: bool,
         /// Only lint files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -1171,6 +1180,7 @@ mod tests {
                 json: true,
                 fix: false,
                 fix_unsafe: false,
+                rules: false,
                 paths: Vec::new()
             }
             .wants_json()

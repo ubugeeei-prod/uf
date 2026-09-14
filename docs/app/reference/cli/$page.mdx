@@ -876,9 +876,21 @@ Runs uf's rules and Flow's built-in lints. `--json` for the report.
 | `--fix` | Rewrite the files, applying every fix that cannot change what the program does |
 | `--fix-unsafe` | Also apply the fixes whose correctness rests on something the rule could not check |
 | `--json` | The whole report on stdout, machine-readable |
+| `--rules` | List every rule, its level in this project and what fixes it, instead of linting |
 
 Without a `--fix` flag nothing is written. That is the `--check`-like use, and
 it is what CI and a git hook run.
+
+`uf lint --rules` lints nothing. It lists every rule with the level a run in
+this project would use — `uf.config.js` over the defaults, deprecated rule
+names included, so a rule the project turned off says `off` — the command that
+fixes its findings (`--fix`, `--fix-unsafe`, `uf fmt`, or nothing) and what it
+checks. A level marked `*` belongs to a rule that needs Flow type inference,
+which uf does not implement yet, so a run names it under `unavailableRules`
+instead of running it. With `--json` each entry is the one `uf inspect --json`
+prints under `lintRules`, plus `level` and `fix`, where `fix` is `"safe"`,
+`"unsafe"`, `"formatter"` or `null`. It exits `0`, and it cannot be combined
+with `--fix`, `--fix-unsafe` or a path.
 
 #### What "safe" and "unsafe" mean here
 
