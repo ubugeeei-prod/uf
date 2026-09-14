@@ -37,6 +37,11 @@
     "react": ">=19",
     "react-dom": ">=19"
   },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.34",
     "@uniflowed/server": "0.0.0-alpha.34"

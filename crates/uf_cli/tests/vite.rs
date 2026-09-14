@@ -470,6 +470,13 @@ fn a_native_target_manifest_names_the_native_contract() {
         serde_json::json!("app/$page.native.js"),
         "the build did not consume the native route target:\n{manifest:#}"
     );
+    // The table Metro bundles, one module per platform beside the web
+    // router's `router.js`. See ubugeeei-prod/uf#981.
+    let ios = fs::read_to_string(project.path().join("router.ios.js")).unwrap();
+    assert!(ios.contains("\"./app/$page.native.js\""), "{ios}");
+    assert!(ios.contains("export const routeTable"), "{ios}");
+    assert!(project.path().join("router.android.js").is_file());
+    assert!(project.path().join("router.native.js").is_file());
 }
 
 /// A middleware must run before the path it guards answers.
