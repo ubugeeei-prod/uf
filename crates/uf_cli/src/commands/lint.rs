@@ -47,6 +47,8 @@ use crate::support::{
 };
 use crate::ui::Ui;
 
+pub(crate) mod plugins;
+
 /// How many skipped rules are named before the list is summarised.
 ///
 /// The full list is always in `--json`; on screen it must not out-shout the
@@ -92,15 +94,23 @@ pub(crate) fn lint_command(
         sources,
         unreadable,
         ignore_deprecation,
+        project_rules,
         ..
     } = run_lint(cwd, paths)?;
     progress.finish();
     drop(progress);
 
     if json {
-        ui.json(&lint_payload(command, &report, fixed.as_ref()))?;
+        let mut payload = lint_payload(command, &report, fixed.as_ref());
+        // Only when the pass ran, so the report of a project with no project
+        // rule is the report it was before they existed.
+        if project_rules.ran {
+            payload["projectRules"] = plugins::payload(&project_rules);
+        }
+        ui.json(&payload)?;
     } else {
         render_lint_report(ui, command, &report, &sources, fixed.as_ref());
+        plugins::render(ui, &project_rules);
         render_unreadable(ui, &unreadable);
         render_ignore_deprecation(ui, ignore_deprecation);
     }
@@ -109,6 +119,14 @@ pub(crate) fn lint_command(
     // diagnostics, and reporting "0 errors" over it would be a lie.
     if !unreadable.is_empty() {
         bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
+    // Before it for the same reason: an enabled rule that could not answer has
+    // no findings, and "0 errors" would be the run speaking for it.
+    if !project_rules.problems.is_empty() {
+        bail!(
+            "{} kept project rules from answering",
+            plural(project_rules.problems.len(), "problem")
+        );
     }
     let errors = severity_count(&report, Severity::Error);
     if errors > 0 {
@@ -160,6 +178,10 @@ pub(crate) struct LintRun {
     /// reason [`Self::root`] is: two reads of one config file are two chances
     /// to disagree about what it said.
     pub(crate) ignore_deprecation: Option<&'static str>,
+    /// What the project's own rules cost and what kept any of them from
+    /// answering. Their findings are already in [`Self::report`], sorted among
+    /// uf's; see [`plugins`].
+    pub(crate) project_rules: plugins::ProjectRules,
 }
 
 pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
@@ -227,7 +249,14 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
         }
         bail!("no file matched {}", quoted_list(paths));
     }
-    let report = lint_sources(&sources, &resolved.config)?;
+    let mut report = lint_sources(&sources, &resolved.config)?;
+    // Over the same narrowed sources, so a path argument means the same thing
+    // to a project rule as to uf's own. Nothing starts when none is enabled.
+    let mut project_rules = plugins::run(&resolved.root, &resolved.config, &sources)?;
+    if !project_rules.diagnostics.is_empty() {
+        report.diagnostics.append(&mut project_rules.diagnostics);
+        plugins::sort(&mut report.diagnostics);
+    }
     Ok(LintRun {
         report,
         sources,
@@ -235,6 +264,7 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
         root: resolved.root,
         available,
         ignore_deprecation: ignore_deprecation(&resolved.config),
+        project_rules,
     })
 }
 

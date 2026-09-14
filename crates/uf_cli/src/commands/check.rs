@@ -26,8 +26,8 @@ use uf_term::Status;
 use uf_term::{CodeFrame, DiagnosticLevel, KeyValue, Tone, push_spaces};
 
 use crate::commands::lint::{
-    LintCommand, LintRun, group_by_path, lint_payload, render_file_summary, render_fix_summary,
-    render_group, render_unreadable, render_verdict, run_lint, severity_count,
+    LintCommand, LintRun, group_by_path, lint_payload, plugins, render_file_summary,
+    render_fix_summary, render_group, render_unreadable, render_verdict, run_lint, severity_count,
 };
 use crate::fix::files::{FixMode, FixSummary, fix_project};
 #[cfg(feature = "upstream-typecheck")]
@@ -179,6 +179,7 @@ pub(crate) fn check(
         root,
         available,
         ignore_deprecation,
+        project_rules,
     } = run_lint(cwd, paths)?;
     progress.draw("type checking");
     let types = type_check(&sources, &available, &root);
@@ -186,9 +187,14 @@ pub(crate) fn check(
     drop(progress);
 
     if json {
-        ui.json(&payload(&lint, &types, fixed.as_ref()))?;
+        let mut body = payload(&lint, &types, fixed.as_ref());
+        if project_rules.ran {
+            body["projectRules"] = plugins::payload(&project_rules);
+        }
+        ui.json(&body)?;
     } else {
         render(ui, &lint, &sources, &types, fixed.as_ref());
+        plugins::render(ui, &project_rules);
         render_unreadable(ui, &unreadable);
         render_ignore_deprecation(ui, ignore_deprecation);
     }
@@ -197,6 +203,14 @@ pub(crate) fn check(
     // "0 errors" over it would be a lie.
     if !unreadable.is_empty() {
         bail!("{} could not be read", plural(unreadable.len(), "file"));
+    }
+    // `uf check` is `uf lint` plus inference, so a project rule that could not
+    // answer fails it for the reason it fails `uf lint`.
+    if !project_rules.problems.is_empty() {
+        bail!(
+            "{} kept project rules from answering",
+            plural(project_rules.problems.len(), "problem")
+        );
     }
     let errors = severity_count(&lint, Severity::Error) + types.count(TypeSeverity::Error);
     if errors > 0 {
