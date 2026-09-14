@@ -513,6 +513,26 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // Every uf command, timed on a generated application of a stated size:
+    // `uf dev` to its first document and an edit to its HMR update; `uf build`,
+    // `uf test`, `uf lint`, `uf fmt --check` and `uf check`, cold and warm; and
+    // `uf install`, cold and warm. ubugeeei-prod/uf#945 asked for one command
+    // that reproduces every number, and this is it.
+    // `tools/bench/toolchain/bench.js` says what each row is a measurement of
+    // and what it leaves out, and `report.js` beside it documents the JSON.
+    //
+    // Not in `ci`, for the reason above: a wall clock on a shared agent is a
+    // measurement of the agent. It writes nothing inside the repository — the
+    // fixture is generated under the system temporary directory with its
+    // `node_modules` linked to this checkout's, so `npm ci` has to have run —
+    // and it refuses a `--work-dir` inside it. Arguments after the name are the
+    // benchmark's own: `uf run bench:toolchain --preset large --runs 10`.
+    "bench:toolchain": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/toolchain/bench.js",
+      dependsOn: ["build"],
+    },
+
     // --- Release --------------------------------------------------------
     //
     // Each is a step the release workflow runs, named so it can be run by
