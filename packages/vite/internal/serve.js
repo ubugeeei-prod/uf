@@ -219,7 +219,47 @@ export async function loadBuild({ root, outDir, serverDir }) {
   await deployment();
   const build = await buildIdentity(root, serverDir);
   const regeneration = await readRegeneration(path.resolve(root, serverDir));
-  return { entry, assets: assetsFromManifest(manifest), distDir, root, build, regeneration };
+  return {
+    entry,
+    assets: await documentAssetsFor(path.resolve(root, serverDir), manifest),
+    distDir,
+    root,
+    build,
+    regeneration,
+  };
+}
+
+/** What `uf build` records a document's tags in, beside the server bundle. */
+export const DOCUMENT_ASSETS_FILE = "uf-document-assets.json";
+
+/**
+ * The tags a served document needs: the ones `uf build` recorded, or — for a
+ * build from before it recorded them — the client manifest's.
+ *
+ * Recorded rather than recomputed, because the client manifest is no longer the
+ * whole answer. An application React Server Components render links the
+ * stylesheets its rsc graph emitted and the ones each client module's chunk
+ * carries, and neither is reachable from the client entry the manifest is walked
+ * from — so a server that recomputed the tags rendered every page without the
+ * stylesheets its prerendered pages had. `uf start`, `uf preview`, `--adapter`
+ * and `--compile` all read them from here.
+ *
+ * @param {string} serverDir absolute path of the server bundle's directory
+ * @param {object} manifest the client build's Vite manifest
+ */
+export async function documentAssetsFor(serverDir, manifest) {
+  const file = path.join(serverDir, DOCUMENT_ASSETS_FILE);
+  let recorded;
+  try {
+    recorded = await readFile(file, "utf8");
+  } catch {
+    return assetsFromManifest(manifest);
+  }
+  try {
+    return JSON.parse(recorded);
+  } catch {
+    throw new Error(`uf: ${file} is not the JSON \`uf build\` writes; run \`uf build\` again`);
+  }
 }
 
 /**
@@ -343,7 +383,14 @@ async function readable(file, message) {
  * at build time, and bakes the answer into what it emits.
  */
 export function assetsFromManifest(manifest) {
-  const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
+  // `client` by name first. An application React Server Components render
+  // gives the client build one entry per client module as well, and the
+  // document's script is the application's entry, not whichever of those the
+  // manifest happens to list first.
+  const chunks = Object.values(manifest);
+  const entry =
+    chunks.find((chunk) => chunk.isEntry && chunk.name === "client") ??
+    chunks.find((chunk) => chunk.isEntry);
   if (entry == null) throw new Error("uf: the client manifest has no entry chunk");
 
   const styles = new Set(entry.css ?? []);

@@ -54,7 +54,13 @@ pub(crate) fn run_task(
         Err(PlanError::Cycle(cycle)) => bail!(dependency_cycle(&cycle)),
     };
 
-    let environment = environment_digest(&env);
+    // Every value is digested as it goes in, so nothing a task's note keeps
+    // can be read back as one: see `uf_task::Environment`, and #1006 for what
+    // keeping them looked like.
+    let mut environment = uf_task::Environment::new(env.mode());
+    for (name, value) in env.values() {
+        environment.file(name, value);
+    }
     let mut tasks = Vec::with_capacity(plan.len());
     for (at, node) in plan.nodes().iter().enumerate() {
         let name = node.name.as_str();
@@ -79,17 +85,13 @@ pub(crate) fn run_task(
             command.push(' ');
             command.push_str(&args.join(" "));
         }
-        let mut fields = String::from(&environment);
+        let mut given = environment.clone();
         if let Some(details) = details {
             for (key, value) in &details.env {
-                fields.push('\0');
-                fields.push_str(key);
-                fields.push('=');
-                fields.push_str(value);
+                given.task(key, value);
             }
             if let Some(cwd) = &details.cwd {
-                fields.push_str("\0cwd=");
-                fields.push_str(cwd);
+                given.directory(cwd);
             }
         }
         tasks.push(ScheduledTask {
@@ -99,7 +101,7 @@ pub(crate) fn run_task(
             inputs: details.map(|task| task.inputs.clone()).unwrap_or_default(),
             outputs: details.map(|task| task.outputs.clone()).unwrap_or_default(),
             cacheable: definition.is_cacheable(),
-            environment: fields,
+            environment: given,
         });
     }
 
@@ -186,22 +188,6 @@ pub(crate) fn run_task(
         }
     }
     bail!(message)
-}
-
-/// A digest over the environment every task in this run starts with.
-///
-/// Names *and* values, because a task that reads `API_URL` gets a different
-/// answer when it changes, and a digest is the one way to say so without
-/// putting the value anywhere a person or a log can see it.
-fn environment_digest(env: &ProjectEnv) -> String {
-    let mut fields = String::from(env.mode());
-    for (name, value) in env.values() {
-        fields.push('\0');
-        fields.push_str(name);
-        fields.push('=');
-        fields.push_str(value);
-    }
-    fields
 }
 
 /// The error for `dependsOn` that closes a loop.
@@ -917,7 +903,7 @@ fn binary_name(package: &str) -> Option<&str> {
 /// So a quote, a caret or a percent sign in an argument is the standard
 /// library's problem to encode and not uf's to quote — and quoting it here
 /// would be uf escaping a string that is about to be escaped again.
-fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
+pub(crate) fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
     installed_binary_in(root, package, BinPlatform::HOST)
 }
 
@@ -978,7 +964,7 @@ fn spawn_executable(
 /// That loses which signal it was, and matching `uf env exec` is worth more
 /// than fixing it in one of the two commands: a sibling pair that disagreed
 /// about the same event would be the harder thing to reason about.
-fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, package: &str) -> ! {
+pub(crate) fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, package: &str) -> ! {
     // Said before leaving, because the number alone does not say whose it is:
     // a reader looking at `42` should not have to guess whether uf failed or
     // the thing uf ran did.

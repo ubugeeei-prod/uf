@@ -89,6 +89,7 @@ import { END_OF_TIME, newScope, runInScope } from "./internal/cache-store.js";
 import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
+import { flightResponse } from "./internal/flight.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
 
@@ -284,6 +285,18 @@ export function createFetchHandler(
 
     const acted = await app.callAction(request);
     if (acted != null) return acted;
+
+    // A browser that is navigating, asking for the next route's payload rather
+    // than its document. After the guard and before the handlers, for the
+    // reasons `./internal/flight.js` gives; every other request is declined.
+    // Inside a cache scope, for the reason a document is rendered inside one.
+    const flight = await flightResponse(app, request, {
+      onError: (error: mixed) => {
+        console.error(error);
+      },
+      within: (body) => runInScope(newScope({ key: [] }), body),
+    });
+    if (flight != null) return flight;
 
     const handled = await app.dispatch(request);
     if (handled != null) return handled;

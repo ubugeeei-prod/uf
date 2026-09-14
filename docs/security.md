@@ -120,13 +120,15 @@ Four things are outside it deliberately, each because admitting it would mean
 admitting a tag in the payload that says which constructor to call:
 
 - **A reference format.** React's Flight payload carries references to client
-  modules, promises and elements. uf's own payload
-  (`packages/router/internal/payload.js`) carries exactly one of the three and
-  it travels the other way — `"$P<n>"`, in a document the server writes, naming
-  a row of that same payload rather than anything to construct. This grammar is
-  the one an untrusted *sender* is decoded under, and it has none: an action's
-  arguments arrive from the network, so a tag there is a tag somebody else
-  chose.
+  modules, promises and elements, and uf now ships one — but only from server to
+  browser, and only React's own client decodes it. The server writes it into a
+  document or answers it at `<route>/__uf.flight`; the browser loads the client
+  module a reference names only from a same-origin URL, so the bytes cannot pick
+  a script from anywhere else; and a build fixes `process.env.NODE_ENV` in the
+  rsc graph, so a production payload carries no source locations or server
+  stacks. This grammar is the one an untrusted *sender* is decoded under, and it
+  has none: an action's arguments arrive from the network, so a tag there is a
+  tag somebody else chose, and Flight's `decodeReply` is not used for them.
 - **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays.** An action
   that wants a date takes an ISO string and parses it, where the parse is the
   application's and is checked.
@@ -357,6 +359,7 @@ what a file in a repository you just cloned can make uf do.
 | A profile or mode that escapes the project — `uf env use ../../etc`, `uf build --mode ../secrets` | A mode is the end of a file name and is checked against a closed character set before anything is read or written; `local` is refused because `.env.local` already means something else | `uf_config::env_files::check_mode` |
 | Unbounded file text as an allocation vector | Every file has a byte ceiling and a typed error above it, and the parser is one hand-written pass with no regex | `uf_config::env_files` |
 | A credential printed into a log by a diagnostic | `uf inspect` reports the mode, the file names and the variable *names*; the banners report the mode and the files; a parse error names the line and the text before the `=`. No command prints a value | `uf_cli::commands::inspect`, `uf_config::env_files` |
+| A credential written to disk by the task cache, which a CI step that caches `.uf/cache` archives with everything else | The note `uf run --why` compares against keeps each variable's name and a digest of where it came from, its name and its value — enough to name the variable that changed, never the value — and a run removes the plaintext notes an earlier uf kept under `.uf/cache/task/last/`. A digest hides a value from a reader, not from somebody guessing it, and a key that has to be the same on every machine cannot do better | `uf_task::environment`, `crates/uf_cli/tests/tasks.rs` |
 
 ## Parser, formatter, linter, and test runner
 

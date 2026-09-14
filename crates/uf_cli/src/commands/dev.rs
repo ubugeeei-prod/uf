@@ -23,6 +23,7 @@
 
 mod config_file;
 mod hover;
+pub(crate) mod native;
 mod rsc;
 
 use std::cell::OnceCell;
@@ -35,10 +36,11 @@ use uf_config::schema::Schema;
 use uf_config::{FmtConfig, QuoteStyle, UniflowedConfig, env_files, load_config};
 use uf_infra::FxHashMap;
 use uf_lib::NativeModule;
-use uf_router::write_router_manifest;
+use uf_router::{RouteTarget, write_router_manifest};
 use uf_rsc::RSC_MANIFEST_ENV;
 use uf_term::{KeyValue, Status, Tone};
 
+use crate::commands::build::application_target;
 use crate::commands::builder;
 use crate::commands::lint::identifier_span;
 use crate::commands::runtimes;
@@ -60,12 +62,34 @@ pub(crate) struct DevArgs {
     pub(crate) port: Option<u16>,
     /// Run in this mode instead of `development`.
     pub(crate) mode: Option<String>,
+    /// The application target, when `--target` named one.
+    pub(crate) target: Option<String>,
+    /// Everything after `--`, for a native target's own dev server.
+    pub(crate) passthrough: Vec<String>,
 }
 
 /// Start the dev server and render its events until it exits.
 pub(crate) fn dev(cwd: &Utf8Path, ui: &mut Ui, args: DevArgs) -> Result<()> {
     let resolved = load_project_config(cwd, args.mode.as_deref(), DEVELOPMENT)?;
     let root = resolved.root.clone();
+
+    // The target first, because it decides which server this is. A native
+    // target's server is the project's own React Native CLI rather than the
+    // builder, and nothing below — the host, the builder, the server-component
+    // analysis — applies to it; `native` says why uf runs that server instead
+    // of being one.
+    let target = application_target(&resolved.config, args.target.as_deref(), false, "uf dev")?;
+    if target != RouteTarget::Web {
+        return native::dev(ui, &resolved, &args, target);
+    }
+    if !args.passthrough.is_empty() {
+        bail!(
+            "arguments after `--` are handed to a native target's own dev server, and the web \
+             target has none to hand them to: its server is the builder, configured in \
+             uf.config.js. Remove `-- {}`, or add `--target native`.",
+            args.passthrough.join(" ")
+        );
+    }
 
     // Exposing the server needs an allowlist; see docs/security.md. Vite
     // enforces `server.allowedHosts` itself, but a `--host` with nothing to

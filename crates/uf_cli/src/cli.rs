@@ -266,6 +266,10 @@ pub(crate) enum Commands {
         command: CreateCommand,
     },
     /// Start the development server, with hot module replacement.
+    ///
+    /// For a native target the server is the project's own: `expo start` when
+    /// Expo is installed, `react-native start` otherwise, with Metro routing
+    /// every module through `uf transform`.
     Dev {
         /// Bind a routable address instead of loopback. Requires a non-empty
         /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
@@ -278,6 +282,18 @@ pub(crate) enum Commands {
         /// `import.meta.env.MODE` reads.
         #[arg(long, value_name = "MODE")]
         mode: Option<String>,
+        /// Develop this application target: `web`, `native`, `ios` or
+        /// `android`. A `react-native` framework project defaults to `native`.
+        //
+        // A free-form string for `uf build --target`'s reason: the refusal has
+        // to be able to say why a target is not accepted, not only list the
+        // ones that are.
+        #[arg(long, value_name = "TARGET")]
+        target: Option<String>,
+        /// Arguments for a native target's own dev server, after `--`:
+        /// `uf dev --target native -- --tunnel`.
+        #[arg(last = true, value_name = "ARGS")]
+        passthrough: Vec<String>,
     },
     /// Generate API documentation from exported Flow source.
     ///
@@ -330,6 +346,10 @@ pub(crate) enum Commands {
         command: String,
         #[arg(long)]
         json: bool,
+        /// Describe `uf dev` for this application target: `web`, `native`,
+        /// `ios` or `android`.
+        #[arg(long, value_name = "TARGET")]
+        target: Option<String>,
     },
     /// Format every file in the project.
     ///
@@ -425,6 +445,15 @@ pub(crate) enum Commands {
         /// still parses and still formats — read the diff before committing it.
         #[arg(long, conflicts_with = "fix")]
         fix_unsafe: bool,
+        /// List every rule instead of linting: the level it runs at in this
+        /// project, and whether `--fix`, `--fix-unsafe` or `uf fmt` answers it.
+        ///
+        /// The level is the one a lint run here would use — `uf.config.js`
+        /// over the defaults, deprecated rule names included — so a rule this
+        /// project turned off says `off`. With `--json`, the same list
+        /// machine-readably.
+        #[arg(long, conflicts_with_all = ["fix", "fix_unsafe", "paths"])]
+        rules: bool,
         /// Only lint files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -1149,6 +1178,7 @@ mod tests {
                 json: true,
                 fix: false,
                 fix_unsafe: false,
+                rules: false,
                 paths: Vec::new()
             }
             .wants_json()
