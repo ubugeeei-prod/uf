@@ -145,7 +145,7 @@ the rest to a host:
 
 | Host | Dev and build | Tests | Notes |
 | --- | --- | --- | --- |
-| Node.js | yes | yes | The default. Flow modules load through `module.register()`. |
+| Node.js | yes | yes | The default. Flow modules load through `module.registerHooks()`, or `module.register()` on a Node older than 22.15. |
 | Bun | yes | yes | Flow modules load through a `--preload` plugin. |
 | Deno | not yet | experimental | Deno has no module hook, so `uf test` compiles the project ahead of time into `.uf/deno/` and hands Deno an import map; a Flow suite runs, a module the pass could not enumerate is still Flow when Deno meets it, `--watch` is refused, and there is no coverage. `uf dev` and `uf build` get no such pass: `packages/vite/driver.js` registers Node's hooks and Bun is started with `--preload`, Deno gets neither, and the first Flow module they import fails to parse. See [#246](https://github.com/ubugeeei-prod/uf/issues/246). |
 
