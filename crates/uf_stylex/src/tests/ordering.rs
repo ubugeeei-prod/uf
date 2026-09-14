@@ -53,6 +53,34 @@ fn a_hover_rule_is_emitted_after_the_base_rule_it_overrides() {
 }
 
 #[test]
+fn an_announced_state_is_emitted_after_the_pointer_state_it_outranks() {
+    // The state is written first, so source order would put `:hover` after it
+    // and hovering a selected tab would repaint it as an unselected one.
+    let compiled = compile(&module(
+        "const s = stylex.create({ a: { color: { \":is([aria-selected=true])\": \"s\", \":hover\": \"h\", default: \"d\" } } });\n",
+    ));
+    assert_eq!(
+        emitted(&compiled.sheet),
+        ["color", "color:hover", "color:is([aria-selected=true])"]
+    );
+}
+
+#[test]
+fn a_hovered_state_is_emitted_after_the_state_alone() {
+    let compiled = compile(&module(
+        "const s = stylex.create({ a: { backgroundColor: { \":is([aria-pressed=true]):hover\": \"ph\", \":is([aria-pressed=true])\": \"p\", default: \"d\" } } });\n",
+    ));
+    assert_eq!(
+        emitted(&compiled.sheet),
+        [
+            "background-color",
+            "background-color:is([aria-pressed=true])",
+            "background-color:is([aria-pressed=true]):hover",
+        ]
+    );
+}
+
+#[test]
 fn link_states_are_emitted_in_cascade_order() {
     let compiled = compile(&module(
         "const s = stylex.create({ a: { color: {\n  \":active\": \"a\",\n  \":hover\": \"h\",\n  \":visited\": \"v\",\n  \":focus\": \"f\",\n  \":link\": \"l\",\n  default: \"d\",\n} } });\n",

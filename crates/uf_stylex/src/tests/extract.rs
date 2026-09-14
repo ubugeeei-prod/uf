@@ -115,6 +115,29 @@ fn a_pseudo_element_condition_is_extracted() {
     assert!(compiled.sheet.to_css().contains("::before{content:x}"));
 }
 
+/// The state a headless part announces reaches the sheet on the class it
+/// styles, and nowhere else: `.class:is([…])`, not a selector of its own.
+#[test]
+fn the_state_a_part_announces_is_extracted_onto_its_class() {
+    let compiled = compile(&module(
+        "const s = stylex.create({ a: { color: { default: \"black\", \":is([aria-selected=true])\": \"red\" } } });\n",
+    ));
+    let property = compiled.styles[0].property("color").expect("a colour");
+    let selected = property
+        .classes
+        .iter()
+        .find(|entry| entry.condition.as_str() == ":is([aria-selected=true])")
+        .expect("a class for the selected state");
+    let css = compiled.sheet.to_css();
+    assert!(
+        css.contains(&format!(
+            ".{}:is([aria-selected=true]){{color:red}}",
+            selected.class
+        )),
+        "got {css}"
+    );
+}
+
 #[test]
 fn a_bare_create_import_is_recognized() {
     let compiled = compile(
