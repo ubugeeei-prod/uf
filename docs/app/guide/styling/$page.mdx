@@ -3,7 +3,7 @@ title: "Styling and content · uf"
 description: "CSS, StyleX, tokens, dark mode, Markdown and MDX."
 ---
 
-<p className="eyebrow">Writing code</p>
+<p className="eyebrow">Build an app</p>
 
 # Styling and content
 
@@ -118,6 +118,39 @@ the arrangement the claim needs: a `className` cannot reach a key handler, so
 the styled test proves the styling arrives and the unstyled one proves there was
 behaviour there to keep.
 
+### The state a part announces
+
+A headless part says what state it is in: `aria-selected="true"` on the
+selected tab, `aria-expanded="true"` on a trigger whose panel is showing,
+`data-active="true"` on the option a select's keyboard cursor rests on. A
+condition can select exactly that, so the style follows the part rather than a
+prop the page has to keep in step with it:
+
+```js
+const styles = stylex.create({
+  tab: {
+    color: { default: ufTokens.muted, ":is([aria-selected=true])": ufTokens.ink },
+    borderBottomColor: { default: "transparent", ":is([aria-selected=true])": ufTokens.accent },
+  },
+});
+
+<Tabs.Tab {...props(styles.tab)} value="billing">
+  Billing
+</Tabs.Tab>;
+```
+
+A tab the arrow keys selected is drawn selected, and the page never had to
+learn which one it was. The select's cursor is the case with no other answer:
+focus stays on the trigger, so no pseudo-class matches the option, and without
+a highlight a keyboard user cannot see which option `Enter` will take.
+
+The shape is narrow on purpose: an attribute selector inside `:is()` or
+`:not()`, with an unquoted value — `[data-state=open]`, never
+`[data-state="open"]`. A state is emitted after `:hover`, `:focus-visible`,
+`:active` and the form states, so a pressed toggle stays pressed under the
+pointer; `":is([aria-pressed=true]):hover"` is emitted after the state on its
+own, which is how that toggle gets a hover colour of its own.
+
 ### Dark mode
 
 Two themes ship, and both are one spread:
@@ -155,20 +188,22 @@ which is the non-text threshold. The tightest of those margins today are
 Three more tests in the same file hold the two themes to the same token set, and
 one asserts the automatic theme emits nothing at all in light mode.
 
-### Where it stops today
+### What holds it to a built page
 
-An application build does not yet write that stylesheet.
-`stylex.create` compiles — the class names are in the built JavaScript and in the
-prerendered HTML — and the CSS module carrying the rules never reaches `dist/`,
-so the classes name rules that do not exist and `ufAutoTheme` has nothing to
-switch. It is [issue #306](https://github.com/ubugeeei-prod/uf/issues/306), with
-a reproduction, and until it closes the working paths are a plain stylesheet or
-CSS Modules, both of which this site is built with.
+An application build writes the stylesheet it compiled, and links it from the
+prerendered HTML together with the `:root` block that declares the tokens its
+rules read. `crates/uf_cli/tests/vite_styles.rs` builds such an application and
+checks the artefact rather than the pipeline: every class on the prerendered
+page has a rule, every custom property a rule reads is declared, and
+`ufAutoTheme`'s overrides sit inside the media query that makes them a dark
+theme. Until [issue #306](https://github.com/ubugeeei-prod/uf/issues/306)
+closed, the classes on a built page named rules that did not exist, and this
+section said so.
 
-What is real today, and tested: the compiler
-(`crates/uf_stylex`, including the contrast suite above), the runtime merge in
-`props` (`packages/stylex/stylex.test.js`), and the preset applied to a headless
-component. What is not is the last hop into a built page.
+The rest is tested where it lives: the compiler (`crates/uf_stylex`, including
+the contrast suite above), the runtime merge in `props`
+(`packages/stylex/stylex.test.js`), and the preset applied to a headless
+component.
 
 ### Not there, and saying so
 

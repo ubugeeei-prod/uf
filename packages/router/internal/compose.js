@@ -404,12 +404,17 @@ component SlotView(slot: ResolvedSlot, pathname: string, searchParams: SearchPar
   if (page == null) {
     return null;
   }
+  // Except in an interception, whose URL is not the one the route on screen was
+  // resolved for. The page it renders reads the intercepted URL's query, and
+  // its templates and error boundary are keyed on the intercepted pathname — so
+  // a second photo opened in the modal remounts what the first one mounted, the
+  // way a navigation between two pages does.
+  const at = slot.intercepted?.pathname ?? pathname;
+  const query = slot.intercepted?.searchParams ?? searchParams;
   const Page = pageComponent(page);
-  let element: React.Node = (
-    <Page params={slot.params} searchParams={searchParams} data={undefined} />
-  );
+  let element: React.Node = <Page params={slot.params} searchParams={query} data={undefined} />;
   const templateContext = {
-    pathname,
+    pathname: at,
     params: slot.params,
     templates: slot.templates,
   };
@@ -425,7 +430,7 @@ component SlotView(slot: ResolvedSlot, pathname: string, searchParams: SearchPar
     const errorBoundary = slot.errorBoundary;
     if (errorBoundary != null && errorBoundary.above === depth) {
       element = (
-        <RouteErrorBoundary module={errorBoundary.module} resetKey={`${pathname}:${slot.name}`}>
+        <RouteErrorBoundary module={errorBoundary.module} resetKey={`${at}:${slot.name}`}>
           {element}
         </RouteErrorBoundary>
       );

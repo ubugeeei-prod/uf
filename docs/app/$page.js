@@ -2,18 +2,20 @@
 //
 // The home page.
 //
-// The heading says what uf is for: the strongest React development experience
-// with Modern Flow. Everything under it is evidence: one command, and what
-// that command really prints.
+// A choice of path, not a pitch. The heading says what uf is for; under it,
+// before anything else, is every kind of reader the manual has and the page
+// each should open first. That list is generated from `_design/nav.js`, so the
+// home page cannot offer a path the manual does not have. The install command
+// comes after it, because the most common path starts with it.
 //
-// Every claim below links to the page that backs it, and the ones uf loses
-// are on that list too.
+// The argument for uf, with the rows it loses, is the "Why uf" section — one
+// of the paths, rather than the first thing on the page.
 
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import type { Metadata } from "@uniflowed/router";
 
-import { Claims, Command, Eyebrow, Lede, Terminal } from "./_design/parts.js";
+import { Command, Eyebrow, Lede, ReaderPaths } from "./_design/parts.js";
 
 /**
  * The one page whose canonical URL is the site's own.
@@ -24,32 +26,6 @@ import { Claims, Command, Eyebrow, Lede, Terminal } from "./_design/parts.js";
  * path here and an absolute URL in the document.
  */
 export const metadata: Metadata = { canonical: "/" };
-
-/**
- * Output of `uf build` on this site, pasted from a real run.
- *
- * Trimmed to the phases and the summary — the size table underneath it is
- * fifty rows long — but not otherwise edited. When the build changes shape
- * this block is re-pasted rather than adjusted by hand: a page that shows
- * invented output is wrong the first time somebody checks it.
- */
-const BUILD_OUTPUT = [
-  { text: "uf build  docs" },
-  { text: "──────────────", tone: "muted" },
-  { text: "" },
-  { text: "  config       ························ 105.2µs" },
-  { text: "  routes       ························ 402.2µs" },
-  { text: "  router types ························ 300.7µs" },
-  { text: "  rsc analysis ························   4.7ms" },
-  { text: "  vite         ························   2.11s" },
-  { text: "  manifest     ························ 134.7µs" },
-  { text: "  total        ························   6.44s" },
-  { text: "" },
-  { text: "  engine             vite", tone: "muted" },
-  { text: "  host               node", tone: "muted" },
-  { text: "  prerendered pages  14", tone: "muted" },
-  { text: "  modules            12", tone: "muted" },
-];
 
 export default component Home() {
   return (
@@ -93,15 +69,6 @@ export default component Home() {
       </section>
 
       <section className="hero-tail">
-        <div className="hero-actions">
-          <Link className="button" to="/guide/install">
-            Install uf
-          </Link>
-          <Link className="button button-quiet" to="/guide/why">
-            Why Flow
-          </Link>
-        </div>
-
         <div className="notice">
           <strong>Pre-release.</strong> uf is at <code>0.0.0-alpha</code>. Interfaces move without
           warning, and every <code>@uniflowed/*</code> release on npm is a prerelease under the{" "}
@@ -111,90 +78,33 @@ export default component Home() {
       </section>
 
       <section className="home-section">
+        <h2 className="seam-mark">Where to begin</h2>
+        <p>
+          The manual is arranged by what you came to do. Find the question you arrived with: the
+          page it leads to says who that part of the manual is for, what is in it, and the order to
+          read it in.
+        </p>
+        <ReaderPaths />
+      </section>
+
+      <section className="home-section">
         <h2 className="seam-mark">Install it</h2>
         <p>
           One binary. It reads the checksum from the release manifest before it writes anything, and
           it is short enough to read first.
         </p>
         <Command>curl -fsSL https://setup.uniflowed.dev | sh</Command>
-        <p>Then a project, and a dev server, with nothing to configure in between:</p>
+        <p>Then a project, its packages, and a dev server:</p>
         <Command>uf new my-site</Command>
-        <Command>cd my-site &amp;&amp; uf dev</Command>
+        <Command>cd my-site &amp;&amp; uf install</Command>
+        <Command>uf dev</Command>
         <p>
-          That is the whole setup. No <code>npm install</code> of a toolchain, no config to copy
-          from somewhere. If you would rather build from source, or pin the project to Bun or Deno,{" "}
-          <Link to="/guide/install">the install page</Link> covers both.
+          <code>uf new</code> writes the project and nothing else, so its packages come second:{" "}
+          <code>uf install</code> fetches them with the project&apos;s package manager. There is no
+          toolchain to <code>npm install</code> and no config to copy from somewhere. To build uf
+          from source, or to pin a project to Bun, <Link to="/guide/install">the install page</Link>{" "}
+          covers both.
         </p>
-      </section>
-
-      <section className="home-section">
-        <h2 className="seam-mark">What a build looks like</h2>
-        <Command>uf build</Command>
-        <Terminal lines={BUILD_OUTPUT} label="Output of uf build" />
-        <p>
-          There is no <code>vite.config.ts</code> next to that, no <code>babel.config.js</code>, and
-          no <code>@babel/preset-flow</code> in the dependency tree. Flow reaches JavaScript through
-          Meta's own Rust parser and React's own compiler, both linked into the binary.
-        </p>
-      </section>
-
-      <section className="home-section">
-        <h2 className="seam-mark">What it claims</h2>
-        <Claims
-          items={[
-            {
-              title: "Flow without Babel",
-              body: (
-                <>
-                  The official Flow parser, the official React Compiler and oxc, in one Rust
-                  pipeline. <code>component</code>, <code>hook</code>, <code>match</code> and enums
-                  are lowered where they are parsed. <Link to="/guide/flow">How it works</Link>
-                </>
-              ),
-            },
-            {
-              title: "Vite, not a fork of it",
-              body: (
-                <>
-                  The dev server and the production build are Vite 8. uf decides what Vite is handed
-                  and drives it over a JSON protocol, so Vite's plugin ecosystem keeps working.{" "}
-                  <Link to="/guide/dev">Dev and build</Link>
-                </>
-              ),
-            },
-            {
-              title: "Tests that actually run",
-              body: (
-                <>
-                  Rust owns discovery, ordering, the worker pool and the report; the host runs the
-                  bodies. About nine times faster than Vitest on 1,000 tests — and about three times
-                  slower than Bun, which the guide explains rather than hides.{" "}
-                  <Link to="/guide/testing">Testing</Link>
-                </>
-              ),
-            },
-            {
-              title: "One config file",
-              body: (
-                <>
-                  <code>uf.config.js</code> configures the runtime, the router, the build, the test
-                  runner and the formatter. It is Flow, so it is type-checked like the rest of your
-                  code. <Link to="/reference/config">Every option</Link>
-                </>
-              ),
-            },
-            {
-              title: "Any JavaScript host",
-              body: (
-                <>
-                  Node.js, Bun and Deno are capabilities, not targets: uf asks the host what it can
-                  do and picks one. The same project builds and tests on all three.{" "}
-                  <Link to="/guide/install">Install</Link>
-                </>
-              ),
-            },
-          ]}
-        />
       </section>
     </div>
   );

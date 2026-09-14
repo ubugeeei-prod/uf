@@ -540,6 +540,41 @@ export type ResolvedRoute = {|
    * belongs to the segment the walk went through.
    */
   readonly slots: $ReadOnlyArray<ResolvedSlot>,
+  /**
+   * Set when a client navigation was intercepted: this is then the route the
+   * navigation came from, still on screen, with the intercepting route in one
+   * of its slots.
+   *
+   * `null` or absent on every other resolution — which includes every one a
+   * server makes, because a document request is never intercepted. See
+   * [`resolveInterception`].
+   */
+  readonly interception?: ?Interception,
+|};
+
+/**
+ * What an intercepted navigation went to, and what it went there from.
+ *
+ * A route is resolved *for* a URL, and an intercepted navigation is the one
+ * case where the URL in the address bar is not the URL the page on screen was
+ * resolved for. The `ResolvedRoute` that carries this is the page the
+ * navigation started on — its `pathname`, `params` and `data` are that page's,
+ * because that page is what `children` still renders and what `useRoute()`
+ * still describes — and this is the other half: where the address bar went.
+ *
+ * `base` is the same page as it was before anything intercepted it. Kept rather
+ * than re-derived, because a second interception from inside the first — the
+ * next photo, from a photo already open in the modal — has to start from the
+ * page underneath rather than from a page that already has a modal in it, and
+ * going back from the second to the first has to find that page where it left
+ * it.
+ */
+export type Interception = {|
+  /** The URL the navigation went to: the one in the address bar. */
+  readonly pathname: string,
+  readonly search: string,
+  /** The route the navigation came from, as it was before it was intercepted. */
+  readonly base: ResolvedRoute,
 |};
 
 /**
@@ -564,6 +599,32 @@ export type ResolvedSlot = {|
   readonly templates: $ReadOnlyArray<ResolvedTemplate>,
   readonly errorBoundary: ?ResolvedSlotErrorBoundary,
   readonly slots: $ReadOnlyArray<ResolvedSlot>,
+  /**
+   * The table record this slot was resolved from.
+   *
+   * Carried so a client navigation can ask the slots *on screen* whether they
+   * intercept where it is going. Interception is a question about the page a
+   * navigation starts on, and this is that page's own answer rather than a
+   * second match of the table that could arrive at different slots. Absent on
+   * a slot written by hand, which then intercepts nothing.
+   */
+  readonly record?: SlotRecord,
+  /**
+   * Set when this slot renders an intercepting route, or sits inside one: the
+   * URL that was intercepted.
+   *
+   * The slot's keys and its page's `searchParams` come from here rather than
+   * from the route on screen, because the route on screen is the page the
+   * navigation started on. Keying the modal's templates on that page's
+   * pathname would leave the second photo mounted as the first one.
+   */
+  readonly intercepted?: ?InterceptedUrl,
+|};
+
+/** The URL an intercepting route was matched against. */
+type InterceptedUrl = {|
+  readonly pathname: string,
+  readonly searchParams: SearchParams,
 |};
 
 // ---------------------------------------------------------------------------
@@ -798,12 +859,15 @@ async function resolveSlots(
   pathname: string,
   layoutCount: number,
   fallbackParams: RouteParams,
+  intercepted?: ?InterceptedUrl,
 ): Promise<$ReadOnlyArray<ResolvedSlot>> {
   if (records.length === 0) {
     return [];
   }
   return Promise.all(
-    records.map((record) => resolveSlot(record, pathname, layoutCount, fallbackParams)),
+    records.map((record) =>
+      resolveSlot(record, pathname, layoutCount, fallbackParams, intercepted),
+    ),
   );
 }
 
@@ -812,6 +876,7 @@ async function resolveSlot(
   pathname: string,
   layoutCount: number,
   fallbackParams: RouteParams,
+  intercepted?: ?InterceptedUrl,
 ): Promise<ResolvedSlot> {
   // Clamped exactly as a template's `above` is, and for the same reason: a
   // hand-written table, or a `(group)` between the layout and the route, can
@@ -827,6 +892,8 @@ async function resolveSlot(
     templates: [],
     errorBoundary: null,
     slots: [],
+    record,
+    intercepted,
   };
 
   const matched = matchIn(record.routes, pathname);
@@ -848,6 +915,31 @@ async function resolveSlot(
     };
   }
 
+  return (await resolveSlotRoute(record, matched, above, pathname, intercepted)) ?? empty;
+}
+
+/**
+ * One route inside a slot, imported: what the slot renders for a match.
+ *
+ * Shared by the two ways a slot comes to render a route — one of its own
+ * `routes`, matched against the URL, and one of its `intercepts`, matched
+ * against where a client navigation is going — so an intercepting page is
+ * composed exactly the way every other slot page is: inside its own layouts,
+ * fallbacks, templates and error boundary, with the slots those layouts
+ * declare.
+ *
+ * `null` when the page or a layout will not import, and what that means is the
+ * caller's to say. For a match it is an empty slot, for the reason
+ * [`resolveSlots`] gives; for an interception it is no interception, and the
+ * navigation goes where the URL says instead.
+ */
+async function resolveSlotRoute(
+  record: SlotRecord,
+  matched: RoutingRouteMatch<SlotRouteRecord>,
+  above: number,
+  pathname: string,
+  intercepted: ?InterceptedUrl,
+): Promise<?ResolvedSlot> {
   const route = matched.route;
   // Started together and awaited apart, so the two `await`s are not a
   // waterfall and each keeps the type its loader had.
@@ -856,11 +948,11 @@ async function resolveSlot(
   const page = await pending;
   const layouts = await pendingLayouts;
   if (page == null) {
-    return empty;
+    return null;
   }
   const loaded = layouts.filter(Boolean);
   if (loaded.length !== layouts.length) {
-    return empty;
+    return null;
   }
   const loading = await resolveLoadingRecords(route.loading ?? [], loaded.length);
   const templates = await resolveTemplateRecords(route.templates ?? [], loaded.length);
@@ -875,8 +967,145 @@ async function resolveSlot(
     templates,
     errorBoundary,
     // The slot's own layouts are what a nested slot is measured against, so
-    // the count handed down is this slot's rather than the route's.
-    slots: await resolveSlots(route.slots, pathname, loaded.length, matched.params),
+    // the count handed down is this slot's rather than the route's. A slot
+    // nested inside an interception is matched against the intercepted URL,
+    // and keyed on it, for the same reason the interception is.
+    slots: await resolveSlots(route.slots, pathname, loaded.length, matched.params, intercepted),
+    record,
+    intercepted,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Interception
+// ---------------------------------------------------------------------------
+
+/**
+ * The page underneath: `resolved` itself, or what it was before an interception
+ * put something in one of its slots.
+ *
+ * Every question about where a navigation *starts* is asked of this rather than
+ * of the route on screen, because an interception is not a place a navigation
+ * can start from. The next photo, opened from inside the modal, is intercepted
+ * from the feed.
+ */
+export function beneath(resolved: ResolvedRoute): ResolvedRoute {
+  return resolved.interception?.base ?? resolved;
+}
+
+/**
+ * The intercepting routes the slots on screen have for `pathname`.
+ *
+ * Only the slots on screen, and that is the whole of what "a navigation from
+ * inside `/feed`" means. A page under `app/feed/$layout.js` renders the layout
+ * that declares `@modal`, so the slot is in its tree and so are the slot's
+ * `intercepts`. A page outside that segment has no such slot in its tree —
+ * which is why a link to `/feed/photo/1` from `/about` is an ordinary
+ * navigation to the photo page, not an interception with nowhere to render.
+ *
+ * A slot that intercepts `pathname` is not looked inside: what it holds is
+ * about to be replaced, nested slots and all.
+ */
+export function interceptingRoutes(
+  slots: $ReadOnlyArray<ResolvedSlot>,
+  pathname: string,
+): $ReadOnlyArray<SlotRouteRecord> {
+  const found: Array<SlotRouteRecord> = [];
+  for (const slot of slots) {
+    const matched = matchIn(slot.record?.intercepts ?? [], pathname);
+    if (matched != null) {
+      found.push(matched.route);
+    } else {
+      found.push(...interceptingRoutes(slot.slots, pathname));
+    }
+  }
+  return found;
+}
+
+/**
+ * `base`, with every slot on it that intercepts `url` rendering what it
+ * intercepts — or `null` when none of them does.
+ *
+ * # What stays, and what does not
+ *
+ * Everything that is not an intercepting slot stays exactly as it was, and that
+ * is the feature rather than a shortcut. `children` goes on rendering the page
+ * the reader navigated *from* — its data, its scroll position, whatever state
+ * its components are holding — and every other slot keeps what it was showing.
+ * An intercepted navigation changes the address bar and the slots that
+ * intercept it, and nothing else. Matching the rest against the new URL would
+ * be an ordinary navigation with a modal on top of it: the page underneath
+ * swapped for the page the URL names, which is precisely what interception
+ * exists not to do.
+ *
+ * Every slot that intercepts the URL renders it, not only the first, because
+ * slots are independent of each other: two named places may each have
+ * something to show for one URL, the way two slots each match one URL by their
+ * own routes.
+ *
+ * # Never on a server
+ *
+ * Nothing on the server calls this. A document request for an intercepted URL
+ * resolves the ordinary page, because a request carries where it is going and
+ * not what was on screen when it was made — which is what a reload, a shared
+ * link and a crawler all are. That includes the Flight renderer, so a browser
+ * holding a payload rather than a resolved route navigates to the page the URL
+ * names: interception is a feature of the router that resolves routes from
+ * their modules.
+ *
+ * # When the interception cannot render
+ *
+ * A slot whose intercepting page will not import keeps what it had, and when no
+ * slot could render the interception this answers `null`: the navigation goes
+ * ahead as an ordinary one, and the reader gets the page the URL names — what a
+ * reload would have given them — rather than a click that did nothing. An
+ * intercepting page that exports a `loader`, which no slot page may, is the
+ * error boundary for the URL, the way any other slot page's is.
+ */
+export async function resolveInterception(
+  table: RouteTable,
+  base: ResolvedRoute,
+  url: string,
+): Promise<?ResolvedRoute> {
+  const { pathname, search } = splitUrl(url);
+  const intercepted: InterceptedUrl = { pathname, searchParams: parseSearch(search) };
+  // The first slot that renders the interception, for the transition's name.
+  let first: ?ResolvedSlot = null;
+  const visit = (slots: $ReadOnlyArray<ResolvedSlot>): Promise<$ReadOnlyArray<ResolvedSlot>> =>
+    Promise.all(
+      slots.map(async (slot): Promise<ResolvedSlot> => {
+        const record = slot.record;
+        const matched = record == null ? null : matchIn(record.intercepts ?? [], pathname);
+        if (record == null || matched == null) {
+          return slot.slots.length === 0 ? slot : { ...slot, slots: await visit(slot.slots) };
+        }
+        const rendered = await resolveSlotRoute(record, matched, slot.above, pathname, intercepted);
+        if (rendered == null) {
+          return slot;
+        }
+        first = first ?? rendered;
+        return rendered;
+      }),
+    );
+
+  let slots: $ReadOnlyArray<ResolvedSlot>;
+  try {
+    slots = await visit(base.slots);
+  } catch (error) {
+    return resolveFailure(table, url, error);
+  }
+  if (first == null) {
+    return null;
+  }
+  return {
+    ...base,
+    slots,
+    // The intercepting page's own name, where it or a layout inside the slot
+    // declares one, so a stylesheet can tell a modal opening from a page
+    // arriving. The page underneath has not moved, so its name would say
+    // nothing about this arrival.
+    viewTransition: resolveViewTransition(first.page ?? {}, first.layouts),
+    interception: { pathname, search, base },
   };
 }
 

@@ -78,7 +78,13 @@ import { type FlightRoot, type RouteState, routeState } from "./flight.js";
 import { Head } from "./head.js";
 import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
 import type { RouteParams, SearchParams } from "./routing.js";
-import { loadOnce, resolveMatch } from "./resolve.js";
+import {
+  beneath,
+  interceptingRoutes,
+  loadOnce,
+  resolveInterception,
+  resolveMatch,
+} from "./resolve.js";
 import type { Metadata, ResolvedRoute, RouteTable } from "./resolve.js";
 
 export type { RouteError, RouteParamSpec, RouteParams, SearchParams } from "./routing.js";
@@ -104,6 +110,7 @@ export {
 export type {
   ErrorBoundary,
   ErrorModule,
+  Interception,
   JsonLd,
   LayoutModule,
   LoaderArgs,
@@ -488,8 +495,67 @@ export component RouterProvider(
 }
 
 /**
+ * The key an intercepted navigation writes into its history entry.
+ *
+ * One string in `history.state` rather than the resolved route, because the
+ * browser structured-clones the state and keeps it across a reload: it can hold
+ * a URL and nothing with a module in it. A URL is also all the entry needs —
+ * where the navigation came from, resolved again when that page is not the one
+ * on screen, and the entry's own URL for what intercepted it.
+ */
+const INTERCEPTED_FROM = "uf:intercepted-from";
+
+/**
+ * The state a history entry for `resolved` is written with.
+ *
+ * `null` for a navigation nothing intercepted, which is what every entry this
+ * router wrote was before interception existed.
+ */
+function historyStateFor(resolved: ResolvedRoute): mixed {
+  const interception = resolved.interception;
+  if (interception == null) {
+    return null;
+  }
+  return { [INTERCEPTED_FROM]: interception.base.pathname + interception.base.search };
+}
+
+/** Where the history entry holding `state` was intercepted from, if it was. */
+function interceptedFrom(state: mixed): ?string {
+  if (state == null || typeof state !== "object" || Array.isArray(state)) {
+    return null;
+  }
+  const from = state[INTERCEPTED_FROM];
+  return typeof from === "string" ? from : null;
+}
+
+/**
+ * `state` without the interception in it.
+ *
+ * What is left is handed back rather than cleared, because an entry's state is
+ * not only this router's to write: another library may have put something
+ * beside it.
+ */
+function withoutInterception(state: mixed): mixed {
+  if (state == null || typeof state !== "object" || Array.isArray(state)) {
+    return state;
+  }
+  const rest: { [string]: mixed } = {};
+  for (const key of Object.keys(state)) {
+    if (key !== INTERCEPTED_FROM) {
+      rest[key] = state[key];
+    }
+  }
+  return Object.keys(rest).length === 0 ? null : rest;
+}
+
+/**
  * The provider for a route resolved from its modules: a single-page
  * application, and a project that turned `app.rsc` off.
+ *
+ * It is also the provider that intercepts. Whether a navigation is intercepted
+ * is a question about the slots on screen, and only a router holding a route
+ * resolved from its modules has them to ask; a payload holds a rendered tree.
+ * See [`resolveInterception`].
  */
 component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node) {
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
@@ -499,6 +565,20 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
   // that asked at click time would be asking a question whose answer decided
   // what it rendered.
   const navigation = navigationMode();
+  // The route on screen, for the code that runs after a render has finished.
+  //
+  // State is what renders, and a closure only sees the state of the render that
+  // made it: the `popstate` listener below is installed once and would go on
+  // reading the first route forever, and a navigation awaits between reading
+  // what is on screen and replacing it. Interception is what needs the answer —
+  // whether a navigation is intercepted is a question about the page it starts
+  // on — and `show` writes both in the same breath, so the two cannot disagree
+  // about what was last committed.
+  const shown = React.useRef<ResolvedRoute>(initial);
+  const show = (next: ResolvedRoute) => {
+    shown.current = next;
+    setResolved(next);
+  };
 
   const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
     if (!isBrowser()) {
@@ -519,6 +599,13 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       }
       return;
     }
+    // Interception first, because it is a question about the page this
+    // navigation starts on rather than about the one it reaches. A slot on
+    // screen that intercepts the URL renders a page of its own, so whether the
+    // URL's ordinary page is in this bundle — the paragraph below — is not a
+    // question this navigation has to ask.
+    const origin = beneath(shown.current);
+    const intercepting = interceptingRoutes(origin.slots, target.pathname).length > 0;
     // The half of the split that is not about bytes. A route whose page is not
     // in this bundle is not a route this router can render, and pretending
     // otherwise is the silent break: the navigation would resolve to nothing
@@ -526,21 +613,29 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     // has the document, so the browser does the navigation — which is what a
     // link does when there is no JavaScript at all, and what the anchor
     // `Link` renders would have done on its own.
-    const matched = matchRoute(routeTable().routes, target.pathname);
-    if (matched != null && !hasClientPage(matched.route)) {
-      window.location.assign(target.href);
-      return;
+    if (!intercepting) {
+      const matched = matchRoute(routeTable().routes, target.pathname);
+      if (matched != null && !hasClientPage(matched.route)) {
+        window.location.assign(target.href);
+        return;
+      }
     }
     setPending(true);
     try {
-      const nextResolved = await resolveMatch(routeTable(), next);
+      const nextResolved =
+        (intercepting ? await resolveInterception(routeTable(), origin, next) : null) ??
+        (await resolveMatch(routeTable(), next));
+      // An intercepted entry remembers where it was intercepted from, so back
+      // and forward can put the page underneath under it again. Every other
+      // entry is written the way it always was.
+      const state = historyStateFor(nextResolved);
       if (options?.replace === true) {
-        window.history.replaceState(null, "", next + target.hash);
+        window.history.replaceState(state, "", next + target.hash);
       } else {
-        window.history.pushState(null, "", next + target.hash);
+        window.history.pushState(state, "", next + target.hash);
       }
       const commit = () => {
-        setResolved(nextResolved);
+        show(nextResolved);
         setPending(false);
       };
       if (options?.transition === false) {
@@ -548,7 +643,13 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       } else {
         withViewTransition(nextResolved.viewTransition, commit);
       }
-      if (options?.scroll !== false) {
+      // An intercepted navigation leaves the page underneath where the reader
+      // left it — the modal opens over the post they clicked, not over the top
+      // of the feed — so it moves the window only for a caller who asks with
+      // `scroll: true`. Every other navigation scrolls unless asked not to.
+      const scroll =
+        nextResolved.interception == null ? options?.scroll !== false : options?.scroll === true;
+      if (scroll) {
         if (target.hash !== "") {
           const element = document.getElementById(target.hash.slice(1));
           if (element != null) {
@@ -568,6 +669,16 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     if (!isBrowser()) {
       return undefined;
     }
+    // An entry that says it was intercepted, under a provider that has only
+    // just mounted, is an entry the browser reloaded or restored — and the
+    // document on screen is what a request for its URL returned, which is the
+    // ordinary page. Clearing the mark makes the entry say what the reader is
+    // looking at, so coming back to it later renders this page again rather
+    // than a modal over a page they never saw one on.
+    const restored = window.history.state;
+    if (interceptedFrom(restored) != null) {
+      window.history.replaceState(withoutInterception(restored), "", window.location.href);
+    }
     // Nothing pushed a history entry, so there is nothing to pop back into: a
     // document-navigating application left this page when the link was
     // followed, and the back button asks the browser for the previous document
@@ -577,8 +688,37 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     if (navigation === "document") {
       return undefined;
     }
+    const arrive = (nextResolved: ResolvedRoute) => {
+      // The back button is a navigation, and a navigation that animates in
+      // one direction and cuts in the other would read as a bug in the
+      // animation rather than as a decision.
+      withViewTransition(nextResolved.viewTransition, () => {
+        show(nextResolved);
+      });
+    };
     const onPopState = () => {
       const next = window.location.pathname + window.location.search;
+      // Back or forward into an entry an interception wrote: the page it was
+      // intercepted from, with the interception over it again. That page is
+      // resolved afresh only when it is not already the one underneath, so
+      // back from the second photo to the first leaves the feed exactly where
+      // it is.
+      const from = interceptedFrom(window.history.state);
+      if (from != null) {
+        const underneath = beneath(shown.current);
+        const origin =
+          underneath.pathname + underneath.search === from
+            ? Promise.resolve(underneath)
+            : resolveMatch(routeTable(), from);
+        origin
+          .then((page) => resolveInterception(routeTable(), page, next))
+          // Nothing on that page intercepts the entry's URL any more — a
+          // module that will not load, a table a development server rebuilt —
+          // so the entry is what its URL names.
+          .then((intercepted) => intercepted ?? resolveMatch(routeTable(), next))
+          .then(arrive);
+        return;
+      }
       // Back into a route this bundle has no page for. The history entry is
       // already the browser's — it moved before this listener ran — so the
       // document that belongs to it is what has to be fetched.
@@ -587,14 +727,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
         window.location.reload();
         return;
       }
-      resolveMatch(routeTable(), next).then((nextResolved) => {
-        // The back button is a navigation, and a navigation that animates in
-        // one direction and cuts in the other would read as a bug in the
-        // animation rather than as a decision.
-        withViewTransition(nextResolved.viewTransition, () => {
-          setResolved(nextResolved);
-        });
-      });
+      resolveMatch(routeTable(), next).then(arrive);
     };
     window.addEventListener("popstate", onPopState);
     return () => {
@@ -615,6 +748,19 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
         return;
       }
       const target = new URL(to, window.location.href);
+      // What the next render will need is decided the way the navigation will
+      // decide it: a URL a slot on screen intercepts renders that slot's page,
+      // so that is the module worth having, and the page the URL names is not.
+      const intercepting = interceptingRoutes(beneath(shown.current).slots, target.pathname);
+      if (intercepting.length > 0) {
+        await Promise.all(
+          intercepting.flatMap((route) => [
+            loadOnce(route.page),
+            ...route.layouts.map((layout) => loadOnce(layout)),
+          ]),
+        );
+        return;
+      }
       const matched = matchRoute(routeTable().routes, target.pathname);
       const load = matched?.route.page;
       if (matched == null || load == null) {
@@ -637,16 +783,28 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
         window.location.reload();
         return;
       }
-      const nextResolved = await resolveMatch(
-        routeTable(),
-        window.location.pathname + window.location.search,
-      );
+      // A refresh of an intercepted page refreshes both of its halves: the
+      // page underneath, resolved again for its own URL, and the interception
+      // resolved again over it. Resolving only the address bar's URL would
+      // close the modal, which is a navigation nobody asked for.
+      const interception = shown.current.interception;
+      const nextResolved =
+        interception == null
+          ? await resolveMatch(routeTable(), window.location.pathname + window.location.search)
+          : ((await resolveInterception(
+              routeTable(),
+              await resolveMatch(
+                routeTable(),
+                interception.base.pathname + interception.base.search,
+              ),
+              interception.pathname + interception.search,
+            )) ?? (await resolveMatch(routeTable(), interception.pathname + interception.search)));
       // No view transition, and it is the one place that is right: a refresh
       // is the same URL resolved again, so a transition would animate a page
       // into itself — a cross-fade between two frames of the same thing,
       // which is a flicker with a name.
       startTransition(() => {
-        setResolved(nextResolved);
+        show(nextResolved);
       });
     },
     back: () => {

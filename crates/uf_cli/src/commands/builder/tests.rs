@@ -1,5 +1,5 @@
 use camino::Utf8Path;
-use uf_config::UniflowedConfig;
+use uf_config::{UniflowedConfig, Written};
 
 use super::{resolve, uniflowed_package};
 
@@ -18,15 +18,59 @@ fn project_with(name: &str, manifest: &str, files: &[&str]) -> tempfile::TempDir
     dir
 }
 
+/// A config naming its builder the way it was named before `build.builder`.
 fn naming(module: &str) -> UniflowedConfig {
     let mut config = UniflowedConfig::default();
-    config.builder.module = module.into();
+    config.builder.module = Some(module.into());
+    config
+}
+
+/// A config naming its builder in `build.builder`.
+fn building_with(spec: &str) -> UniflowedConfig {
+    let mut config = UniflowedConfig::default();
+    config.build.builder = Some(Written::new(spec));
     config
 }
 
 #[test]
 fn the_default_builder_is_vite() {
-    assert_eq!(UniflowedConfig::default().builder.module, "@uniflowed/vite");
+    assert_eq!(
+        UniflowedConfig::default().builder_tool().spec.module(),
+        "@uniflowed/vite"
+    );
+}
+
+/// `build.builder: "vite"` is uf's own builder, found where it always was.
+#[test]
+fn build_builder_vite_is_uniflowed_vite() {
+    let dir = project_with(
+        "@uniflowed/vite",
+        r#"{"name":"@uniflowed/vite","version":"0.0.0"}"#,
+        &["driver.js"],
+    );
+    let root = Utf8Path::from_path(dir.path()).unwrap();
+    let builder = resolve(root, &building_with("vite")).unwrap();
+
+    assert_eq!(builder.module, "@uniflowed/vite");
+    assert_eq!(builder.directory, root.join("node_modules/@uniflowed/vite"));
+}
+
+/// A refusal names the key the specifier came from, which is the line a
+/// reader has to change — `build.builder` or the older `builder.module`.
+#[test]
+fn a_refused_path_names_the_key_that_named_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8Path::from_path(dir.path()).unwrap();
+
+    let error = resolve(root, &building_with("../elsewhere"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("`build.builder`"), "{error}");
+
+    let error = resolve(root, &naming("../elsewhere"))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("`builder.module`"), "{error}");
 }
 
 #[test]

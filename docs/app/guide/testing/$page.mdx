@@ -3,7 +3,7 @@ title: "Testing · uf"
 description: "A Rust runner, host workers, and where it stands against Bun."
 ---
 
-<p className="eyebrow">The tools</p>
+<p className="eyebrow">The toolchain</p>
 
 # Testing
 
@@ -494,7 +494,8 @@ exports is fine and misspelling one of them is not.
 Node only. Interception needs synchronous, in-thread module customization hooks
 — `node:module`'s `registerHooks` — because a mock is a value the test built and
 a loader running on a thread of its own cannot see it. Bun's `node:module` has
-no such hook and Deno has no uf loader at all
+no such hook, and Deno runs a suite that uf compiled before the host started
+rather than through a hook it could intercept
 ([#246](https://github.com/ubugeeei-prod/uf/issues/246)), so on either host all
 seven bindings raise `UnsupportedError` naming the host, the hook and what to do
 instead. None of them silently does nothing, and on Bun that is checked by
@@ -926,8 +927,9 @@ to tell "not measured" from "measured, and bad".
 
 Coverage is **Node only**. It is V8's own count, written through
 `NODE_V8_COVERAGE` and mapped through the source map Node's loader attached;
-Bun implements neither, and Deno has no Flow loader at all. `uf test --coverage`
-on either says so rather than reporting zeroes.
+Bun implements neither, and Deno, which runs a suite uf compiled ahead of time,
+has no such switch either. `uf test --coverage` on either says so rather than
+reporting zeroes.
 
 `--watch` and `--coverage` cannot be combined: watch mode re-runs the files an
 edit affected, so its coverage would be a number about three files wearing the
@@ -1023,5 +1025,7 @@ between runs and a pre-bundled worker. Neither exists yet.
   audit runs in a real browser and answers them.
 - `@uniflowed/react-testing` needs a DOM and says so when called; component
   tests need one supplied.
-- Deno has no Flow loader, so `uf test` refuses it with a message rather than
-  failing later on syntax it cannot read.
+- Deno runs a suite through an ahead-of-time pass rather than a loader, so a
+  module the pass could not enumerate — a path computed at run time, a file a
+  test writes and then imports — is still Flow when Deno meets it, and
+  `uf test --watch` is refused there.

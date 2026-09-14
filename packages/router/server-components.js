@@ -43,6 +43,7 @@ export type {
   AppProps,
   ErrorBoundary,
   ErrorModule,
+  Interception,
   JsonLd,
   LayoutModule,
   LinkPrefetch,

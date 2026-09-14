@@ -360,9 +360,20 @@ dependency through `onLoad`, where anything that comes out is an ES module and
 
 The service also unreferences its child between requests, so it holds its host
 open for exactly as long as it owes an answer. Node did not need that — its
-module hooks run on a loader thread and the process exits with the main
-thread — which is the only reason it was never noticed that on Bun the same
-service kept the process alive forever after the program had finished.
+loaders keep the service on a thread of their own, and the process exits with
+the main thread — which is the only reason it was never noticed that on Bun
+the same service kept the process alive forever after the program had
+finished.
+
+On Node the hooks themselves run in the importing thread wherever
+`node:module` has `registerHooks`, and on a loader thread only where it does
+not. A loader thread is a second V8 isolate started before a program's first
+line and a round trip per module, and `uf test` starts a Node process per
+worker, so on the suite `docs/app/guide/testing` measures it was a third of
+every worker's start-up. The in-thread hooks serve a cached module with a file
+read, and hand a miss to a transform thread they start only when something
+actually has to be compiled; `packages/host/internal/sync-hooks.js` has the
+measurements.
 
 Source maps point at the Flow source. The printer records a mapping for every
 node the author wrote and none for nodes the compiler or the lowering passes

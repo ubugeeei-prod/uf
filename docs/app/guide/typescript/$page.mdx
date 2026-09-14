@@ -3,7 +3,7 @@ title: "Flow and TypeScript · uf"
 description: "The rows TypeScript wins, the four Flow wins, and why uf is possible."
 ---
 
-<p className="eyebrow">Getting started</p>
+<p className="eyebrow">Why uf</p>
 
 # Flow and TypeScript
 
@@ -25,10 +25,11 @@ dependencies, this is the bill, and it does not get smaller by choosing uf.
 
 **Editors.** uf ships `uf lsp`, and every editor integration under
 [`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client
-of it. What it advertises in `initialize` is the whole of what it can do:
-diagnostics, `textDocument/formatting`, `textDocument/codeAction`
-(`quickfix` and `source.fixAll.uf`) and `textDocument/hover`. There is no
-rename, no go-to-definition, no find-references, no auto-import.
+of it. What it can do is the diagnostics it pushes when a document opens or
+changes, and what it advertises in `initialize`: `textDocument/formatting`,
+`textDocument/codeAction` (`quickfix` and `source.fixAll.uf`) and
+`textDocument/hover`. There is no rename, no go-to-definition, no
+find-references, no auto-import.
 `tests/library/lsp.test.js` drives the real binary and asserts both the
 capabilities the READMEs claim and the absence of the ones they disclaim.
 
@@ -75,12 +76,16 @@ them against. What is left in the list is one file that says `@noflow` on
 purpose and two `node:` builtins Flow does not declare. Under TypeScript that
 list would be empty, and that is the row.
 
-**Vite's client API has no Flow types.** A TypeScript project gets
-`import.meta.glob`, `import.meta.hot`, `import.meta.env` and the ambient
-declarations for `*.svg`, `?raw` and `?url` from `vite/client`. There is no Flow
-equivalent, from Vite or from uf, so a five-line file using them reports five
-type errors — [issue #264](https://github.com/ubugeeei-prod/uf/issues/264) has
-the file and the output.
+**Vite's client API is declared, and one guard in it is not a refinement.** A
+TypeScript project gets `import.meta.glob`, `import.meta.hot` and the ambient
+declarations for asset imports from `vite/client`, and uf ships the Flow
+declarations for the same API, so `import.meta.glob("./*.js")` and
+`import logo from "./logo.png"` check without a libdef of your own. What Flow
+cannot do is refine a test on `import.meta`: the `if (import.meta.hot)` guard
+Vite's own documentation writes is an error under `uf check`, and uf's lint,
+`vite/hot-needs-optional-chaining`, asks for `import.meta.hot?.accept()`
+instead. An extension a project adds to Vite's `assetsInclude` is not read, so
+an import of that kind is still `any`.
 
 **A module with no `import` and no `export` is read as a script.** That is how
 uf decides which of ECMAScript's two goal symbols a file is written in, and the
@@ -90,8 +95,9 @@ that awaits and neither imports nor exports is refused, and an `export {}` is
 enough to say what it is.
 [Issue #204](https://github.com/ubugeeei-prod/uf/issues/204).
 
-None of those three is an argument about Flow. They are uf's, they have issue
-numbers, and [what uf does not do](/guide/scope) keeps the rest of the list.
+None of those three is an argument against Flow's model of React. They are what
+using it through uf costs today, and [what uf does not do](/guide/scope) keeps
+the costs that are still open, each with its issue number.
 
 ## What Flow says that TypeScript has no spelling for
 

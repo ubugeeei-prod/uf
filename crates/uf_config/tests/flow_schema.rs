@@ -36,7 +36,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use uf_config::{ByteSize, LibraryConfig, Permissions, SizeBudget, UniflowedConfig};
+use uf_config::{
+    ByteSize, LibraryConfig, NativeTestRunnerConfig, Permissions, SizeBudget, TestRunnerConfig,
+    UniflowedConfig,
+};
 use uf_flow::Loc;
 use uf_flow::ast::{statement, types};
 
@@ -91,11 +94,30 @@ fn every_section() -> UniflowedConfig {
 /// and every other attribute have already been applied — which makes this the
 /// set of names a `uf.config.js` may actually contain, rather than the set of
 /// Rust field names that mostly resembles it.
+///
+/// A key that accepts two shapes contributes the paths of both, which is how
+/// the Flow side reads a union: `test.runner` is a spec string or — deprecated,
+/// and still read — the object it replaced, and one serialized config can only
+/// hold one of the two. [`every_other_shape`] holds the other.
 fn accepted_paths() -> BTreeSet<String> {
-    let value = serde_json::to_value(every_section()).expect("the config serializes");
     let mut paths = BTreeSet::new();
-    collect_json(&value, "", &mut paths);
+    for config in [every_section(), every_other_shape()] {
+        let value = serde_json::to_value(config).expect("the config serializes");
+        collect_json(&value, "", &mut paths);
+    }
     paths
+}
+
+/// The shapes [`every_section`] cannot hold at the same time as its own.
+///
+/// `test.runner` is `null` there — not written — which is a leaf. Written as
+/// the object it used to be, its keys are the ones the schema's object half
+/// declares, and a schema that dropped that half would be refusing configs uf
+/// still reads.
+fn every_other_shape() -> UniflowedConfig {
+    let mut config = every_section();
+    config.test.runner = Some(TestRunnerConfig::Object(NativeTestRunnerConfig::default()));
+    config
 }
 
 fn collect_json(value: &serde_json::Value, prefix: &str, out: &mut BTreeSet<String>) {
