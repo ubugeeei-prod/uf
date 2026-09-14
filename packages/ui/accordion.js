@@ -94,6 +94,7 @@ import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
+  withInteraction,
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
@@ -101,6 +102,7 @@ import { moveOnKey } from "./internal/roving-focus.js";
 import type { RovingSet } from "./internal/roving-focus.js";
 import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { usePress } from "./interactions.js";
 
 /** Whether one section is open at a time, or any number of them. */
 export type AccordionType = "single" | "multiple";
@@ -304,8 +306,10 @@ export component AccordionTrigger(children: React.Node, render?: RenderProp, ...
   // stays where they can find it: "this section will not close" and "this
   // section is unavailable".
   const inert = item.locked || item.disabled;
+  // A press rather than a click, for the reason `Dialog.Trigger` gives.
+  const { pressProps } = usePress({ isDisabled: inert, onPress: item.toggle });
 
-  const props = withProps(withoutComposed(rest, ["onClick"]), {
+  const props = withProps(withInteraction(rest, pressProps, []), {
     "aria-controls": item.present ? item.contentId : undefined,
     "aria-disabled": inert ? "true" : undefined,
     "aria-expanded": item.open ? "true" : "false",
@@ -314,11 +318,6 @@ export component AccordionTrigger(children: React.Node, render?: RenderProp, ...
     // has none to look for; see the module header.
     "data-accordion-trigger": "",
     id: item.triggerId,
-    onClick: composeHandlers(rest.onClick, () => {
-      if (!inert) {
-        item.toggle();
-      }
-    }),
   });
 
   if (render != null) {

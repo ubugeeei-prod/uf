@@ -65,6 +65,7 @@ import {
   composeHandlers,
   composeRefs,
   forwarded,
+  withInteraction,
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
@@ -72,6 +73,7 @@ import { moveOnKey, useFirstItem } from "./internal/roving-focus.js";
 import type { Orientation, RovingSet } from "./internal/roving-focus.js";
 import { RadioGroupItem, RadioGroupRoot } from "./radio-group.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { usePress } from "./interactions.js";
 
 /** Whether the set holds one answer or any number of them. */
 export type ToggleGroupType = "single" | "multiple";
@@ -231,9 +233,15 @@ export component ToggleGroupItem(
   ...rest: Rest
 ) {
   const group = useToggleGroup("ToggleGroup.Item");
-  // Before the branch, because it is a hook: which mode the set is in is not
+  // Before the branch, because they are hooks: which mode the set is in is not
   // allowed to change how many of them run.
   const id = useId();
+  // A press: `Space` on key up and `Enter` on key down, once for a held key.
+  // Unused in `single` mode, whose radio has a keyboard of its own.
+  const { pressProps } = usePress({
+    isDisabled: disabled,
+    onPress: () => group.toggle(value),
+  });
 
   if (group.type === "single") {
     // A radio, whole. The `aria-checked` state, the roving tab stop and the
@@ -247,31 +255,19 @@ export component ToggleGroupItem(
   }
 
   const on = group.pressed.includes(value);
-  const passed = withoutComposed(rest, ["onClick", "onFocus", "onKeyDown"]);
   const setActiveId = group.setActiveId;
-  const itemProps = withProps(passed, {
+  const handlers = {
+    ...pressProps,
+    // The roving tab stop follows real focus rather than leading it, so a
+    // pointer that moves focus and an arrow key that moves focus agree
+    // without the two having to be kept in step by hand.
+    onFocus: () => setActiveId(id),
+  };
+  const itemProps = withProps(withInteraction(rest, handlers, []), {
     "aria-disabled": disabled ? "true" : undefined,
     "aria-pressed": on ? "true" : "false",
     children,
     id,
-    onClick: composeHandlers(rest.onClick, (_event: PartEvent) => {
-      if (!disabled) {
-        group.toggle(value);
-      }
-    }),
-    // The roving tab stop follows real focus rather than leading it, so a
-    // pointer that moves focus and an arrow key that moves focus agree
-    // without the two having to be kept in step by hand.
-    onFocus: composeHandlers(rest.onFocus, (_event: PartEvent) => setActiveId(id)),
-    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
-      if (disabled || (event.key !== " " && event.key !== "Enter")) {
-        return;
-      }
-      // Stops `Space` scrolling the page, and stops the browser's own click
-      // arriving afterwards and pressing this back to where it started.
-      event.preventDefault();
-      group.toggle(value);
-    }),
     tabIndex: group.activeId === id || (group.activeId == null && group.firstId === id) ? 0 : -1,
   });
 

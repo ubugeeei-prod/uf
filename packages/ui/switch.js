@@ -29,9 +29,10 @@
 
 import * as React from "@uniflowed/react";
 
-import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withInteraction, withProps } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { usePress } from "./interactions.js";
 
 /**
  * A two-state switch: on or off.
@@ -51,26 +52,16 @@ export component Switch(
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
-  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {
+  // A press: `Space` as the key comes up and `Enter` as it goes down, once for a
+  // held key. Claiming both keys is not decoration: it stops `Space` scrolling
+  // the page — which is what makes a hand-written toggle feel broken even when
+  // it works — and it stops the browser clicking the switch a second time. See
+  // `interactions.js`.
+  const { pressProps } = usePress({ isDisabled: disabled, onPress: () => setOn(!on) });
+  const props = withProps(withInteraction(rest, pressProps, []), {
     "aria-checked": on ? "true" : "false",
     children,
     disabled,
-    onClick: composeHandlers(rest.onClick, () => {
-      if (!disabled) {
-        setOn(!on);
-      }
-    }),
-    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
-      if (disabled || (event.key !== " " && event.key !== "Enter")) {
-        return;
-      }
-      // Preventing the default is not decoration. It stops `Space` scrolling
-      // the page — which is what makes a hand-written toggle feel broken even
-      // when it works — and it stops the browser's own click from arriving
-      // after this handler and toggling the switch a second time.
-      event.preventDefault();
-      setOn(!on);
-    }),
     role: "switch",
   });
 

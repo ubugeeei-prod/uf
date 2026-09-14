@@ -54,13 +54,14 @@ import { createContext, useContext, useId, useMemo, useRef, useState } from "@un
 
 import type { RenderProp, Rest } from "./internal/merge-props.js";
 import {
-  composeHandlers,
   composeRefs,
+  withInteraction,
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
 import { useMeasuredHeight, usePresence, useUntilFound } from "./internal/disclosure.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { usePress } from "./interactions.js";
 
 type CollapsibleState = {|
   readonly contentId: string,
@@ -118,7 +119,12 @@ export component CollapsibleTrigger(
   ...rest: Rest
 ) {
   const collapsible = useCollapsible("Collapsible.Trigger");
-  const props = withProps(withoutComposed(rest, ["onClick"]), {
+  // A press rather than a click, for the reason `Dialog.Trigger` gives.
+  const { pressProps } = usePress({
+    isDisabled: disabled,
+    onPress: () => collapsible.setOpen(!collapsible.open),
+  });
+  const props = withProps(withInteraction(rest, pressProps, []), {
     // Named only while the content is in the document. A caller who renders
     // the content conditionally — or not at all until data arrives — would
     // otherwise have this trigger pointing at nothing.
@@ -126,11 +132,6 @@ export component CollapsibleTrigger(
     "aria-expanded": collapsible.open ? "true" : "false",
     children,
     disabled,
-    onClick: composeHandlers(rest.onClick, () => {
-      if (!disabled) {
-        collapsible.setOpen(!collapsible.open);
-      }
-    }),
   });
 
   if (render != null) {

@@ -68,9 +68,11 @@
 
 import * as React from "@uniflowed/react";
 
-import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withInteraction, withProps } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
+import type { InteractionEvent } from "./interactions.js";
+import { usePress } from "./interactions.js";
 
 /**
  * The button a form would submit itself through, or nothing.
@@ -226,34 +228,27 @@ export component Checkbox(
   // underneath it": a half-selected "select all" that clears itself on the
   // first click is the behaviour every table in every application gets wrong.
   const next = indeterminate ? true : !on;
-  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown"]), {
-    "aria-checked": indeterminate ? "mixed" : on ? "true" : "false",
-    children,
-    disabled,
-    onClick: composeHandlers(rest.onClick, () => {
-      if (!disabled) {
-        setOn(next);
-      }
-    }),
-    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
-      if (disabled) {
-        return;
-      }
-      if (event.key === " ") {
-        // Stops `Space` scrolling the page, and stops the browser's own click
-        // arriving afterwards and toggling this a second time.
-        event.preventDefault();
-        setOn(next);
-        return;
-      }
-      if (event.key === "Enter") {
+  // `Space` checks it — a press, on key up and once for a held key, which also
+  // stops `Space` scrolling the page. See `interactions.js`.
+  const { pressProps } = usePress({ isDisabled: disabled, onPress: () => setOn(next) });
+  const handlers = {
+    ...pressProps,
+    onKeyDown: (event: InteractionEvent) => {
+      if (!disabled && event.key === "Enter") {
         // Claimed, and *not* to make the key inert: the default action here
         // is a click on this button, and a click on this button toggles. See
-        // the module header for the whole of it.
+        // the module header for the whole of it. Claimed before the press
+        // hears the key, which leaves a prevented key alone.
         event.preventDefault();
         submitImplicitly(event.currentTarget as $FlowFixMe);
       }
-    }),
+      pressProps.onKeyDown(event);
+    },
+  };
+  const props = withProps(withInteraction(rest, handlers, []), {
+    "aria-checked": indeterminate ? "mixed" : on ? "true" : "false",
+    children,
+    disabled,
     role: "checkbox",
   });
 

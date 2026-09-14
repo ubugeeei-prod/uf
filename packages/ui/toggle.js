@@ -44,9 +44,10 @@
 
 import * as React from "@uniflowed/react";
 
-import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
-import { composeHandlers, withProps, withoutComposed } from "./internal/merge-props.js";
+import type { RenderProp, Rest } from "./internal/merge-props.js";
+import { withInteraction, withProps } from "./internal/merge-props.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { usePress } from "./interactions.js";
 
 /**
  * A button whose state stays applied: pressed or not.
@@ -66,27 +67,17 @@ export component Toggle(
   ...rest: Rest
 ) {
   const [on, setOn] = useControlled(pressed, defaultPressed, onPressedChange);
-  const passed = withoutComposed(rest, ["onClick", "onKeyDown"]);
+  // A press: `Space` as the key comes up and `Enter` as it goes down, once for a
+  // held key, and a click for a pointer — the keyboard a native button has,
+  // whatever element `render` put this on. Both keys are claimed, so `Space`
+  // does not scroll the page and the browser does not press the button a second
+  // time. See `interactions.js`.
+  const { pressProps } = usePress({ isDisabled: disabled, onPress: () => setOn(!on) });
+  const passed = withInteraction(rest, pressProps, []);
   const semantics = {
     "aria-pressed": on ? "true" : "false",
     children,
     disabled,
-    onClick: composeHandlers(rest.onClick, (_event: PartEvent) => {
-      if (!disabled) {
-        setOn(!on);
-      }
-    }),
-    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
-      if (disabled || (event.key !== " " && event.key !== "Enter")) {
-        return;
-      }
-      // Preventing the default stops `Space` scrolling the page, and stops
-      // the browser's own click arriving after this handler and pressing the
-      // button a second time — back to where it started, which reads as the
-      // key having done nothing at all.
-      event.preventDefault();
-      setOn(!on);
-    }),
   };
 
   if (render != null) {

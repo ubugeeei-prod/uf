@@ -283,3 +283,33 @@ export function withoutComposed(rest: Rest, names: $ReadOnlyArray<string>): Rest
   }
   return kept;
 }
+
+/**
+ * A caller's props with an interaction's handlers composed in: what a part puts
+ * on its element when it presses through `interactions.js`.
+ *
+ * A hook there hands back an object of handlers — a press needs eight — and
+ * each has to go onto the element the way `composeHandlers` puts one there:
+ * the caller's first, and the part's unless the caller prevented the default.
+ * Written out in every part, those are eight lines per part that have to agree;
+ * this is the one place they do.
+ *
+ * `alsoComposed` names the caller's props the part composes by hand as well —
+ * a `ref`, most often — so they are taken out here rather than spread back
+ * over the composed ones.
+ */
+export function withInteraction(
+  rest: Rest,
+  handlers: { readonly [string]: mixed },
+  alsoComposed: $ReadOnlyArray<string>,
+): Rest {
+  const names = Object.keys(handlers);
+  const composed: { key?: empty, [string]: mixed } = {};
+  for (const name of names) {
+    const handler = handlers[name];
+    if (typeof handler === "function" && name !== "key") {
+      composed[name] = composeHandlers(rest[name], handler as $FlowFixMe);
+    }
+  }
+  return withProps(withoutComposed(rest, [...names, ...alsoComposed]), composed);
+}

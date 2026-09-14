@@ -9589,3 +9589,244 @@ describe("an edge, a role, an alphabet and an orientation are unions too", () =>
     });
   });
 });
+
+/**
+ * Focus what a query found, inside `act`.
+ *
+ * A query answers `Element`, and `focus()` belongs to `HTMLElement`. Everything
+ * these cases focus is one; a case that focused anything else would be a case
+ * about the wrong element, so it says so rather than doing nothing.
+ */
+function focusTo(element: Element): void {
+  if (!(element instanceof HTMLElement)) {
+    throw new Error(`<${element.tagName.toLowerCase()}> cannot take focus`);
+  }
+  act(() => {
+    element.focus();
+  });
+}
+
+describe("a part rendered through render keeps its keyboard", () => {
+  // The first thing ubugeeei-prod/uf#948's survey found. `render` hands a
+  // part's props to whatever element a caller renders, and these parts acted
+  // only in `onClick` — relying on a native `<button>` to turn `Enter` and
+  // `Space` into a click. A browser never clicks a `<div>` for a key, so every
+  // one of them opened for a pointer and did nothing at all at the keyboard,
+  // which is a WCAG 2.1.1 failure a screenshot cannot show. They press through
+  // `usePress` now, which completes a keyboard press on such an element with
+  // the click a button would have made.
+  //
+  // The caller's `role` and `tabIndex` go after the spread, which is the order
+  // Flow can check. None of these parts sets either, so nothing of theirs is
+  // overridden; a menu item, which has a role of its own, is spread alone.
+
+  it("opens a dialog from a trigger rendered as a div, and closes it from a close rendered as one", async () => {
+    render(
+      <Dialog.Root>
+        <Dialog.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+          Delete
+        </Dialog.Trigger>
+        <Dialog.Body>
+          <Dialog.Title>Delete this project?</Dialog.Title>
+          <Dialog.Close render={(props) => <div {...props} role="button" tabIndex={0} />}>
+            Cancel
+          </Dialog.Close>
+        </Dialog.Body>
+      </Dialog.Root>,
+    );
+    const trigger = screen.getByRole("button", { name: "Delete" });
+    focusTo(trigger);
+
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    // The dialog put focus on its first stop, which is the close.
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+    await userEvent.keyboard(" ");
+    expect(screen.queryByRole("dialog")).toBe(null);
+    expect(trigger).toHaveFocus();
+  });
+
+  it("opens a menu from a trigger rendered as a div, and chooses an item rendered as one", async () => {
+    const onSelect = fn();
+    render(
+      <Menu.Root>
+        <Menu.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+          File
+        </Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item onSelect={onSelect} render={(props) => <div {...props} />}>
+            Open
+          </Menu.Item>
+        </Menu.Body>
+      </Menu.Root>,
+    );
+    focusTo(screen.getByRole("button", { name: "File" }));
+
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("menuitem", { name: "Open" })).toHaveFocus();
+
+    await userEvent.keyboard(" ");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu")).toBe(null);
+  });
+
+  it("opens a popover from a trigger rendered as a span", async () => {
+    render(
+      <Popover.Root>
+        <Popover.Trigger render={(props) => <span {...props} role="button" tabIndex={0} />}>
+          Filters
+        </Popover.Trigger>
+        <Popover.Body>
+          <button type="button">Only mine</button>
+        </Popover.Body>
+      </Popover.Root>,
+    );
+    focusTo(screen.getByRole("button", { name: "Filters" }));
+
+    await userEvent.keyboard(" ");
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("opens a collapsible and an accordion section from triggers rendered as divs", async () => {
+    render(
+      <>
+        <Collapsible.Root>
+          <Collapsible.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+            Details
+          </Collapsible.Trigger>
+          <Collapsible.Content>More</Collapsible.Content>
+        </Collapsible.Root>
+        <Accordion.Root type="single">
+          <Accordion.Item value="shipping">
+            <Accordion.Header level={2}>
+              <Accordion.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+                Shipping
+              </Accordion.Trigger>
+            </Accordion.Header>
+            <Accordion.Content>Two days</Accordion.Content>
+          </Accordion.Item>
+        </Accordion.Root>
+      </>,
+    );
+
+    const details = screen.getByRole("button", { name: "Details" });
+    focusTo(details);
+    await userEvent.keyboard("{Enter}");
+    expect(details).toHaveAttribute("aria-expanded", "true");
+
+    const shipping = screen.getByRole("button", { name: "Shipping" });
+    focusTo(shipping);
+    await userEvent.keyboard(" ");
+    expect(shipping).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("gives an engine nothing to report about the triggers it renders that way", async () => {
+    const { container } = render(
+      <main>
+        <h1>Project</h1>
+        <Dialog.Root>
+          <Dialog.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+            Delete
+          </Dialog.Trigger>
+          <Dialog.Body>
+            <Dialog.Title>Delete this project?</Dialog.Title>
+          </Dialog.Body>
+        </Dialog.Root>
+        <Menu.Root>
+          <Menu.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+            File
+          </Menu.Trigger>
+          <Menu.Body>
+            <Menu.Item>Open</Menu.Item>
+          </Menu.Body>
+        </Menu.Root>
+        <Collapsible.Root>
+          <Collapsible.Trigger render={(props) => <div {...props} role="button" tabIndex={0} />}>
+            Details
+          </Collapsible.Trigger>
+          <Collapsible.Content>More</Collapsible.Content>
+        </Collapsible.Root>
+      </main>,
+    );
+    await expect(container).toHaveNoAxeViolations();
+  });
+});
+
+describe("a held key presses once", () => {
+  // The second thing the survey found. These pressed on every `keydown` of
+  // `Space` or `Enter`, and a held key repeats its `keydown` — so holding the
+  // key flipped the control at the keyboard's repeat rate, and let go of on
+  // an even count it had done nothing a reader could see. A native button
+  // presses once, and presses on `Space` as the key comes up.
+
+  it("flips a switch once, when Space comes up", () => {
+    render(<Switch aria-label="Notifications" />);
+    const control = screen.getByRole("switch");
+    focusTo(control);
+
+    fireEvent.keyDown(control, { key: " " });
+    fireEvent.keyDown(control, { key: " ", repeat: true });
+    fireEvent.keyDown(control, { key: " ", repeat: true });
+    fireEvent.keyDown(control, { key: " ", repeat: true });
+    expect(control).not.toBeChecked();
+
+    fireEvent.keyUp(control, { key: " " });
+    expect(control).toBeChecked();
+  });
+
+  it("presses a toggle once for a held Enter", () => {
+    render(<Toggle aria-label="Bold">B</Toggle>);
+    const control = screen.getByRole("button", { name: "Bold" });
+    focusTo(control);
+
+    fireEvent.keyDown(control, { key: "Enter" });
+    fireEvent.keyDown(control, { key: "Enter", repeat: true });
+    fireEvent.keyUp(control, { key: "Enter" });
+
+    expect(control).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("presses an item of a toggle group once for a held Space", () => {
+    render(
+      <ToggleGroup.Root aria-label="Formatting" type="multiple">
+        <ToggleGroup.Item value="bold">Bold</ToggleGroup.Item>
+      </ToggleGroup.Root>,
+    );
+    const bold = screen.getByRole("button", { name: "Bold" });
+    focusTo(bold);
+
+    fireEvent.keyDown(bold, { key: " " });
+    fireEvent.keyDown(bold, { key: " ", repeat: true });
+    fireEvent.keyUp(bold, { key: " " });
+
+    expect(bold).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("checks a checkbox once for a held Space, and still leaves Enter to the form", () => {
+    const onSubmit = fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <Checkbox aria-label="Subscribe" />
+        <button type="submit">Sign up</button>
+      </form>,
+    );
+    const control = screen.getByRole("checkbox");
+    focusTo(control);
+
+    fireEvent.keyDown(control, { key: " " });
+    fireEvent.keyDown(control, { key: " ", repeat: true });
+    fireEvent.keyUp(control, { key: " " });
+    expect(control).toBeChecked();
+
+    expect(fireEvent.keyDown(control, { key: "Enter" })).toBe(false);
+    expect(control).toBeChecked();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});

@@ -112,6 +112,7 @@ import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
+  withInteraction,
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
@@ -137,6 +138,8 @@ import {
   useMenu,
   useTriggerRegistration,
 } from "./internal/menu-tree.js";
+import type { InteractionEvent } from "./interactions.js";
+import { usePress } from "./interactions.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -219,16 +222,12 @@ export component MenuSub(
 export component MenuTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const menu = useMenu("Menu.Trigger");
   useTriggerRegistration(menu);
-  const props = withProps(withoutComposed(rest, ["onClick", "onKeyDown", "ref"]), {
-    // Named only while the menu is in the document, so a reader is never told
-    // to go somewhere that is not there.
-    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
-    "aria-expanded": menu.open ? "true" : "false",
-    "aria-haspopup": "menu",
-    children,
-    id: `${menu.base}-trigger`,
-    onClick: composeHandlers(rest.onClick, () => menu.setOpen(!menu.open)),
-    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+  // A press rather than a click, so a trigger rendered onto an element the
+  // browser never clicks for a key still opens for `Enter` and `Space`.
+  const { pressProps } = usePress({ onPress: () => menu.setOpen(!menu.open) });
+  const handlers = {
+    ...pressProps,
+    onKeyDown: (event: InteractionEvent) => {
       // `ArrowUp` opening onto the *last* item is the behaviour that makes a
       // long menu usable: the last entry is usually the destructive one, and
       // reaching it should not mean arrowing past everything else.
@@ -238,12 +237,22 @@ export component MenuTrigger(children: React.Node, render?: RenderProp, ...rest:
         _ => null,
       };
       if (end == null) {
+        pressProps.onKeyDown(event);
         return;
       }
       event.preventDefault();
       menu.pendingFocus.current = end;
       menu.setOpen(true);
-    }),
+    },
+  };
+  const props = withProps(withInteraction(rest, handlers, ["ref"]), {
+    // Named only while the menu is in the document, so a reader is never told
+    // to go somewhere that is not there.
+    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
+    "aria-expanded": menu.open ? "true" : "false",
+    "aria-haspopup": "menu",
+    children,
+    id: `${menu.base}-trigger`,
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       menu.triggerRef.current = element;
     }),
@@ -479,33 +488,53 @@ hook useMenuItem(
   onSelect: ((event: MenuSelect) => mixed) | void,
   act: (() => void) | void,
 ): {|
+  readonly handlers: { readonly [string]: mixed },
   readonly id: string,
-  readonly onClick: (event: MenuSelect) => void,
-  readonly onFocus: () => void,
   readonly tabIndex: number,
 |} {
   const menu = useMenu(part);
   const list = useContext(MenuListContext);
   const id = useId();
   const setActiveId = list?.setActiveId;
+  // Whether the click being handled completed a press. The item is chosen from
+  // the click rather than from the press, so `onSelect` keeps receiving the
+  // click it has always been handed — and every route to a press, the keyboard
+  // on a caller's `<div>` included, now ends in one. See `interactions.js`.
+  const pressed = useRef(false);
+  const { pressProps } = usePress({
+    isDisabled: disabled,
+    onPress: () => {
+      pressed.current = true;
+    },
+  });
 
   return {
-    id,
-    onClick: (event: MenuSelect) => {
-      if (disabled) {
-        return;
-      }
-      act?.();
-      onSelect?.(event);
-      // The caller's answer, read after they have had the event: a
-      // `preventDefault()` in `onSelect` is "I handled this, leave the menu
-      // open", which is the same sentence `composeHandlers` reads between a
-      // caller's handler and this package's.
-      if (closeOnSelect && !event.defaultPrevented) {
-        closeTree(menu);
-      }
+    handlers: {
+      ...pressProps,
+      onClick: (event: InteractionEvent) => {
+        pressed.current = false;
+        pressProps.onClick(event);
+        if (!pressed.current) {
+          return;
+        }
+        pressed.current = false;
+        const selection: MenuSelect = event;
+        act?.();
+        onSelect?.(selection);
+        // The caller's answer, read after they have had the event: a
+        // `preventDefault()` in `onSelect` is "I handled this, leave the menu
+        // open", which is the same sentence `composeHandlers` reads between a
+        // caller's handler and this package's.
+        if (closeOnSelect && !selection.defaultPrevented) {
+          closeTree(menu);
+        }
+      },
+      // The roving tab stop follows real focus rather than leading it, so a
+      // pointer that moves focus and a key that moves focus agree without the
+      // two of them having to be kept in step by hand.
+      onFocus: () => setActiveId?.(id),
     },
-    onFocus: () => setActiveId?.(id),
+    id,
     tabIndex: list?.activeId === id ? 0 : -1,
   };
 }
@@ -541,15 +570,10 @@ export component MenuItem(
   ...rest: Rest
 ) {
   const item = useMenuItem("Menu.Item", disabled, closeOnSelect, onSelect, undefined);
-  const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
+  const props = withProps(withInteraction(rest, item.handlers, []), {
     "aria-disabled": disabled ? "true" : undefined,
     children,
     id: item.id,
-    onClick: composeHandlers(rest.onClick, item.onClick),
-    // The roving tab stop follows real focus rather than leading it, so a
-    // pointer that moves focus and a key that moves focus agree without the
-    // two of them having to be kept in step by hand.
-    onFocus: composeHandlers(rest.onFocus, item.onFocus),
     role: "menuitem",
     tabIndex: item.tabIndex,
   });
@@ -590,13 +614,11 @@ export component MenuCheckboxItem(
   const [on, setOn] = useControlled(checked, defaultChecked, onCheckedChange);
   const toggle = useCallback(() => setOn(!on), [on, setOn]);
   const item = useMenuItem("Menu.CheckboxItem", disabled, closeOnSelect, onSelect, toggle);
-  const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
+  const props = withProps(withInteraction(rest, item.handlers, []), {
     "aria-checked": on ? "true" : "false",
     "aria-disabled": disabled ? "true" : undefined,
     children,
     id: item.id,
-    onClick: composeHandlers(rest.onClick, item.onClick),
-    onFocus: composeHandlers(rest.onFocus, item.onFocus),
     role: "menuitemcheckbox",
     tabIndex: item.tabIndex,
   });
@@ -685,13 +707,11 @@ export component MenuRadioItem(
   const choose = group.choose;
   const pick = useCallback(() => choose(value), [choose, value]);
   const item = useMenuItem("Menu.RadioItem", disabled, closeOnSelect, onSelect, pick);
-  const props = withProps(withoutComposed(rest, ["onClick", "onFocus"]), {
+  const props = withProps(withInteraction(rest, item.handlers, []), {
     "aria-checked": group.value === value ? "true" : "false",
     "aria-disabled": disabled ? "true" : undefined,
     children,
     id: item.id,
-    onClick: composeHandlers(rest.onClick, item.onClick),
-    onFocus: composeHandlers(rest.onFocus, item.onFocus),
     role: "menuitemradio",
     tabIndex: item.tabIndex,
   });
@@ -722,18 +742,15 @@ export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...re
     menu.pendingFocus.current = "first";
     menu.setOpen(true);
   };
-
-  const props = withProps(withoutComposed(rest, ["onClick", "onFocus", "onKeyDown", "ref"]), {
-    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
-    "aria-expanded": menu.open ? "true" : "false",
-    "aria-haspopup": "menu",
-    children,
-    id,
-    onClick: composeHandlers(rest.onClick, open),
-    onFocus: composeHandlers(rest.onFocus, () => setActiveId?.(id)),
-    onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
+  // A press rather than a click, for the reason `Menu.Trigger` gives.
+  const { pressProps } = usePress({ onPress: open });
+  const handlers = {
+    ...pressProps,
+    onFocus: () => setActiveId?.(id),
+    onKeyDown: (event: InteractionEvent) => {
       const trigger: $FlowFixMe = event.currentTarget;
       if (event.key !== submenuKeys(directionOf(trigger)).open) {
+        pressProps.onKeyDown(event);
         return;
       }
       event.preventDefault();
@@ -741,7 +758,15 @@ export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...re
       // levels deep would otherwise see this key at every level.
       event.stopPropagation();
       open();
-    }),
+    },
+  };
+
+  const props = withProps(withInteraction(rest, handlers, ["ref"]), {
+    "aria-controls": menu.open ? `${menu.base}-body` : undefined,
+    "aria-expanded": menu.open ? "true" : "false",
+    "aria-haspopup": "menu",
+    children,
+    id,
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       menu.triggerRef.current = element;
     }),

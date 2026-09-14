@@ -63,6 +63,7 @@ import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
+  withInteraction,
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
@@ -70,6 +71,7 @@ import { focusable } from "./internal/focus.js";
 import { useAnchor } from "./internal/anchor.js";
 import { useControlled } from "./internal/controlled-state.js";
 import { usePresence } from "./internal/disclosure.js";
+import { usePress } from "./interactions.js";
 
 export type { Align, LogicalSide, Side } from "./internal/anchor.js";
 
@@ -152,9 +154,10 @@ export component PopoverRoot(
  */
 export component PopoverTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const popover = usePopover("Popover.Trigger");
-  const passed = withoutComposed(rest, ["onClick", "ref"]);
+  // A press rather than a click, for the reason `Dialog.Trigger` gives.
+  const { pressProps } = usePress({ onPress: () => popover.setOpen(!popover.open) });
   usePresence(popover.registerTrigger);
-  const props = withProps(passed, {
+  const props = withProps(withInteraction(rest, pressProps, ["ref"]), {
     // Only while it is open: an `aria-controls` naming an element that is not
     // in the document tells a reader there is somewhere to go and then has
     // nowhere to send them.
@@ -163,7 +166,6 @@ export component PopoverTrigger(children: React.Node, render?: RenderProp, ...re
     "aria-haspopup": "dialog",
     children,
     id: `${popover.base}-trigger`,
-    onClick: composeHandlers(rest.onClick, () => popover.setOpen(!popover.open)),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       popover.triggerRef.current = element;
     }),

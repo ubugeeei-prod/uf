@@ -82,11 +82,13 @@ import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
   composeRefs,
+  withInteraction,
   withProps,
   withoutComposed,
 } from "./internal/merge-props.js";
 import { focusable } from "./internal/focus.js";
 import { useControlled } from "./internal/controlled-state.js";
+import { usePress } from "./interactions.js";
 
 /**
  * What a screen reader is told the dialog is.
@@ -170,7 +172,10 @@ export component DialogRoot(
  */
 export component DialogTrigger(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Trigger");
-  const props = withProps(withoutComposed(rest, ["onClick", "ref"]), {
+  // A press rather than a click: a trigger rendered onto an element the browser
+  // never clicks for a key still opens for `Enter` and `Space`.
+  const { pressProps } = usePress({ onPress: () => dialog.setOpen(true) });
+  const props = withProps(withInteraction(rest, pressProps, ["ref"]), {
     // Only while it is open. An `aria-controls` naming an element that is not
     // in the document is worse than no `aria-controls`: a reader is told
     // there is somewhere to go and there is not.
@@ -178,7 +183,6 @@ export component DialogTrigger(children: React.Node, render?: RenderProp, ...res
     "aria-expanded": dialog.open ? "true" : "false",
     "aria-haspopup": "dialog",
     children,
-    onClick: composeHandlers(rest.onClick, () => dialog.setOpen(true)),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       dialog.triggerRef.current = element;
     }),
@@ -454,10 +458,8 @@ export component DialogFooter(children: React.Node, render?: RenderProp, ...rest
 /** A button that closes the dialog. */
 export component DialogClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const dialog = useDialog("Dialog.Close");
-  const props = withProps(withoutComposed(rest, ["onClick"]), {
-    children,
-    onClick: composeHandlers(rest.onClick, () => dialog.setOpen(false)),
-  });
+  const { pressProps } = usePress({ onPress: () => dialog.setOpen(false) });
+  const props = withProps(withInteraction(rest, pressProps, []), { children });
 
   if (render != null) {
     return render(props);
