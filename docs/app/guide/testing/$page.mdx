@@ -1002,7 +1002,15 @@ appear below the tests it excludes.
 **One worker serves many files, and each one starts from the same place.**
 Between files the worker clears the registry, puts every `stubEnv` and
 `stubGlobal` back, restores the real clock, and drops the module stand-ins a
-`mock` installed. Spies and mocks live in state the runner owns; a stub and a
+`mock` installed. When a file rendered, the window goes back too: the
+properties a test assigned on it (a removed `matchMedia` is the usual one), the
+attributes on `<html>` and `<head>`, and the globals a render installed — so a
+file that never renders gets Node's own `FormData` and no `document` at all,
+exactly as in a fresh worker, and the next render puts the same window back.
+The URL is not reset, because the router keeps its own state in step with it;
+a test that depends on the address sets the one it needs. An axe
+audit a timed-out case abandoned is waited for rather than failing the next
+file's. Spies and mocks live in state the runner owns; a stub and a
 fake clock are writes to something the whole process shares, so without this a
 file that called `uft.useFakeTimers()` and forgot to restore it would leave the
 *next* file's `setTimeout` never firing — a hang, with nothing on screen,

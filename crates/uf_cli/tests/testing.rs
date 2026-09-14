@@ -1141,15 +1141,17 @@ import { expect, it } from "@uniflowed/test";
 import { render, screen } from "@uniflowed/react-testing";
 
 it("is handed a document nobody else has written to", () => {
-  // The document exists because the file before this one installed it, and
-  // these two assertions are what say the worker put its *contents* back.
-  // Asserting on the body before rendering is deliberate: it names the leak
-  // rather than leaving it to be inferred from a count further down.
-  expect(globalThis.document.body.innerHTML).toBe("");
-  expect(globalThis.document.body.getAttributeNames().length).toBe(0);
+  // Nothing has rendered in this file, so there is no document yet: the worker
+  // takes back the one the file before installed, with everything that file
+  // wrote into it, and hands this file the process a fresh worker would. That
+  // assertion comes first because it names the leak rather than leaving it to
+  // be inferred from a count further down.
+  expect(typeof globalThis.document).toBe("undefined");
 
+  // Rendering puts the same window back, emptied.
   render(<img alt="the only one" src="/b.png" />);
   expect(screen.getAllByRole("img").length).toBe(1);
+  expect(globalThis.document.body.getAttributeNames().length).toBe(0);
 });
 "#,
         ),
@@ -1190,6 +1192,115 @@ it("is handed a document nobody else has written to", () => {
         panic!("the second file ran its one case: {second:?}");
     };
     assert_eq!(record.status, TestStatus::Passed, "{record:?}");
+}
+
+#[test]
+fn a_file_that_changes_the_window_hands_the_next_file_the_process_it_found() {
+    if !host_ready() {
+        return;
+    }
+    // The fourth occurrence of the seam above, found once `uf test` started
+    // packing more files into each worker (ubugeeei-prod/uf#944): the body was
+    // put back and the window around it was not. Two shapes of it failed this
+    // repository's own suite depending on which files shared a worker —
+    // `matchMedia is not a function` after `ui.test.js` removed it, and
+    // `server-actions.test.js` unable to build a `FormData` because a render
+    // had replaced Node's with the document's, which refuses Node's `Blob`.
+    //
+    // Three files through one worker: one that renders and changes the window,
+    // one that never renders, and one that renders again.
+    let project = Project::new(&[
+        (
+            "src/changes-the-window.test.js",
+            r#"// @flow
+import { expect, it } from "@uniflowed/test";
+import { render } from "@uniflowed/react-testing";
+
+it("changes the window a render installed and never changes it back", () => {
+  render(<p>a window, please</p>);
+  globalThis.window.matchMedia = undefined;
+  globalThis.document.documentElement.setAttribute("class", "dark");
+
+  expect(globalThis.window.matchMedia).toBe(undefined);
+});
+"#,
+        ),
+        (
+            "src/renders-nothing.test.js",
+            r#"// @flow
+import { afterEach, expect, it } from "@uniflowed/test";
+import { cleanup } from "@uniflowed/react-testing";
+
+// What `packages/router/intercepting-routes.test.js` does in a file whose cases
+// render on the server and never into a document. The root the file before
+// left mounted must already be gone, or unmounting it here reads a `window`
+// this file was never given.
+afterEach(() => {
+  cleanup();
+});
+
+it("is handed Node's own globals rather than the document's", () => {
+  expect(typeof globalThis.document).toBe("undefined");
+  expect(typeof globalThis.window).toBe("undefined");
+
+  const form = new FormData();
+  form.append("avatar", new Blob(["bytes"]), "avatar.png");
+  expect(form.get("avatar") instanceof Blob).toBe(true);
+});
+"#,
+        ),
+        (
+            "src/renders-again.test.js",
+            r#"// @flow
+import { expect, it } from "@uniflowed/test";
+import { render, screen } from "@uniflowed/react-testing";
+
+it("gets the window back as it was created", () => {
+  render(<output>again</output>);
+
+  expect(screen.getByText("again").tagName).toBe("OUTPUT");
+  expect(typeof globalThis.window.matchMedia).toBe("function");
+  expect(globalThis.document.documentElement.getAttributeNames().length).toBe(0);
+});
+"#,
+        ),
+    ]);
+    let root = Utf8PathBuf::from_path_buf(project.path().to_path_buf()).unwrap();
+    let mut worker = Worker::spawn(&worker_command(project.path())).expect("node starts");
+
+    // Generous for the reason the document test above gives: a cold transform
+    // cache on a loaded machine. The assertions each file opens with are what
+    // bound the regression.
+    let case_budget = Duration::from_secs(15);
+    let file_budget = Duration::from_secs(240);
+    let outcomes: Vec<_> = [
+        "src/changes-the-window.test.js",
+        "src/renders-nothing.test.js",
+        "src/renders-again.test.js",
+    ]
+    .iter()
+    .map(|file| {
+        (
+            *file,
+            worker.run_file(
+                root.join(file).as_str(),
+                file,
+                None,
+                case_budget,
+                file_budget,
+            ),
+        )
+    })
+    .collect();
+    worker.kill();
+
+    for (file, outcome) in &outcomes {
+        assert_eq!(outcome.status, FileStatus::Completed, "{file}: {outcome:?}");
+        let [record] = outcome.records.as_slice() else {
+            panic!("{file} ran its one case: {outcome:?}");
+        };
+        assert_eq!(record.status, TestStatus::Passed, "{file}: {record:?}");
+    }
 }
 
 /// A file that changes the process the way a test is allowed to, and never
