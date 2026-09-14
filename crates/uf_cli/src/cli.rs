@@ -193,6 +193,16 @@ pub(crate) enum Commands {
         /// still parses and still formats — read the diff before committing it.
         #[arg(long, conflicts_with = "fix")]
         fix_unsafe: bool,
+        /// List every place a package typed from its TypeScript declarations
+        /// is `any`, each with the declaration it is in.
+        ///
+        /// A package that ships no Flow is typed from a translation of its
+        /// `.d.ts`, and the report counts what the translation could not say:
+        /// the holes it typed `any`, and the errors Flow reports inside it.
+        /// This names each one — the declaration file, the line, the
+        /// declaration and why — for the package named here.
+        #[arg(long, value_name = "PACKAGE")]
+        explain_any: Option<String>,
         /// Only check files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -1158,6 +1168,7 @@ mod tests {
                 json: true,
                 fix: false,
                 fix_unsafe: false,
+                explain_any: None,
                 paths: Vec::new()
             }
             .wants_json()

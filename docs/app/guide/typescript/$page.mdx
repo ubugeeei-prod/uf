@@ -17,11 +17,14 @@ the reason a toolchain like uf can be built at all.
 
 ## The rows TypeScript wins
 
-**The ecosystem.** A package on npm ships `.d.ts`. Flow reads
-[library definitions](https://flow.org/en/docs/libdefs/), and a package that has
-none is `any` until somebody writes one. `flow-typed` covers a fraction of what
-DefinitelyTyped covers. If your application stands on twenty typed
-dependencies, this is the bill, and it does not get smaller by choosing uf.
+**The ecosystem.** A package on npm ships `.d.ts`, and Flow reads
+[library definitions](https://flow.org/en/docs/libdefs/). uf translates a
+package's declarations, its own or its `@types` package's, into Flow, so the
+package is typed rather than `any`. A translation is still not the declarations:
+where TypeScript says something Flow has no way to say, the result is `any`,
+and Flow reads some of the rest less precisely than TypeScript does. If your
+application stands on twenty typed dependencies, this is still the bill. It is
+smaller than it was, and uf counts it per package instead of hiding it.
 
 **Editors.** uf ships `uf lsp`, and every editor integration under
 [`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client
@@ -51,10 +54,12 @@ TypeScript project gets `@types/*` for practically any package that ships no
 types of its own, and a `node:` builtin is described down to its overloads.
 Flow's own library definitions cover the DOM, the standard library and React,
 and stop well short of that. `uf check` resolves a dependency that opts into
-Flow with `@flow` — it reads the package's manifest out of `node_modules`,
+Flow with `@flow`: it reads the package's manifest out of `node_modules`,
 follows its `exports` map and types your code against the package's real
-declarations — and a dependency that does not is Flow's *unchecked module*: the
-import is `any`, and the report names it rather than leaving you to find out.
+declarations. A dependency that ships TypeScript declarations instead is typed
+from a translation of them, which the next section measures. A dependency with
+neither is Flow's *unchecked module*: the import is `any`, and the report names
+it rather than leaving you to find out.
 
 <figure className="terminal">
 
@@ -100,6 +105,85 @@ enough to say what it is.
 None of those three is an argument against Flow's model of React. They are what
 using it through uf costs today, and [what uf does not do](/guide/scope) keeps
 the costs that are still open, each with its issue number.
+
+## A package that ships `.d.ts`
+
+Most of npm is written in TypeScript and publishes declaration files, and
+`uf check` reads them. For a dependency with no Flow of its own, it looks for
+the declaration file TypeScript would read for the import. That is the `types`
+condition of an `exports` map, then `types` or `typings` and `typesVersions`,
+then `@types/<name>` when the package ships none. uf translates that file, and
+every declaration file it reaches, into Flow, and checks your code against the
+result. A second check reads the translation back from `.uf/cache/dts` instead
+of making it again.
+
+**What carries over.** The checker uf embeds reads most of TypeScript's type
+language, so most of it is written as it was:
+- interfaces and type aliases, with optional and `readonly` members and index signatures
+- unions, intersections and literal types
+- tuples with labels, optional elements and rests of tuples
+- overloads, and generics with bounds and defaults
+- `keyof`, conditional types with `infer`, mapped types and template literal types
+- type guards, classes, enums, namespaces and `export =`
+- the utility types, under their TypeScript names
+
+Where the two languages mean different things, the translation writes what
+TypeScript meant. An object type becomes an inexact interface, a property is read
+covariantly, a type parameter gets the variance TypeScript measures, `unknown`
+becomes `mixed` and `never` becomes `empty`.
+
+**What does not.** A construct Flow has no way to say becomes a *hole*: `any`,
+named by the declaration it is in. These constructs become holes:
+- `declare global`, and a `declare module "x"` augmentation
+- an assertion signature
+- an array rest inside a tuple
+- a computed key other than `Symbol.iterator` and `Symbol.asyncIterator`
+- `intrinsic`, and a JSDoc type
+- `typeof f<T>`, and `import x = N.y`
+- `export =` or `export default` of something that is not a name, and a default-exported type
+- a relative import of a file the package does not ship
+- an enum member whose value is not a constant, or an enum mixing strings and numbers
+- two declarations of one name that Flow cannot bind together
+- a `static` index signature, or one keyed by anything but `string`, `number` or `symbol`
+- a class that extends an expression
+- `globalThis`
+
+**What Flow reads differently.** Some declarations that do carry over are ones
+Flow types less precisely than TypeScript: a conditional type it does not
+reduce, an array spread into a tuple, a member its own library definitions lack.
+Flow reports an error inside the translation for each, and a use that reaches
+one can be typed more loosely than TypeScript would type it. The report counts
+those errors beside the holes.
+
+Here are the numbers for the three packages
+[#946](https://github.com/ubugeeei-prod/uf/issues/946) was filed about. A file
+of misuses of them used to check clean, and now has one error per misuse:
+
+| Package | Declaration files | Holes | Flow errors inside the translation |
+| --- | ---: | ---: | ---: |
+| `zod@4.6.5` | 95 | 17 | 267 |
+| `date-fns@4.4.0` | 258 | 1 | 6 |
+| `@tanstack/query-core@5.102.8` | 12 | 5 | 12 |
+
+The footer of every `uf check` gives the same two numbers for each package it
+translated. `uf check --explain-any <package>` lists every one of those places,
+with the declaration file, the line, the declaration and the reason. Here is the
+start of zod's list, cut at the ellipses:
+
+<figure className="terminal">
+
+```
+  › zod: 17 holes typed as any, 267 Flow errors inside its translation
+    - node_modules/zod/v4/classic/compat.d.cts:29 BRAND [computed-key] a computed key other than `Symbol.iterator` or `Symbol.asyncIterator` has no Flow spelling, so the member is left out
+    - node_modules/zod/v4/classic/schemas.d.cts:554 discriminatedUnion [array-rest-in-tuple] Flow spreads only a tuple into a tuple, so a tuple type with an array rest is `any`
+    …
+    - node_modules/zod/v4/core/core.d.cts:12 $constructor.init [assertion-signature] Flow has no assertion signatures, so this returns `void` and narrows nothing after a call
+    …
+    - node_modules/zod/v4/classic/schemas.d.cts:85 ZodType.apply [incompatible-type] Readonly<[]> [1] is incompatible with Array<unknown> [2].
+    …
+```
+
+</figure>
 
 ## What Flow says that TypeScript has no spelling for
 
@@ -210,9 +294,10 @@ breaks. Every number and every embedding hazard is in
 
 ## How to decide
 
-**Stay on TypeScript** if your application leans on many typed dependencies, if
-your team is hiring, or if anything on the list of rows uf loses is load-bearing
-for you this quarter. That is most people, and it is a reasonable answer.
+**Stay on TypeScript** if your application leans on many typed dependencies
+whose holes you cannot live with (`uf check --explain-any` lists them), if your
+team is hiring, or if anything on the list of rows uf loses is load-bearing for
+you this quarter. That is most people, and it is a reasonable answer.
 
 **Try uf** if you are writing React rather than JavaScript-with-React — if the
 things you want the type system to catch are a missing prop, a hook called from

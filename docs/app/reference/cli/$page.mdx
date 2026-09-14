@@ -805,7 +805,10 @@ here, and it delegates to whichever package manager the project uses (`npx
 Type-checks the project with Flow. `--json` for the machine-readable report.
 `--fix` and `--fix-unsafe` are `uf lint`'s, and mean the same thing here: they
 apply the *lint* fixes. Type inference has no fix catalogue — a type error is
-not something uf knows how to rewrite.
+not something uf knows how to rewrite. `--explain-any <package>` lists every
+place a dependency typed from its TypeScript declarations is `any`: each hole
+the translation left, and each error Flow reports inside the translation. Every
+entry gives the declaration file, the line and the declaration.
 
 #### The `--json` report has two lists of diagnostics
 
@@ -820,6 +823,8 @@ type errors are**:
 | `typeCheck.diagnostics` | Type errors, from the inference backend |
 | `typeCheck.status` | `checked`, or why inference did not run |
 | `typeCheck.backend`, `.filesChecked`, `.filesFromCache`, `.elapsedMs` | What inference did and how long it took |
+| `typeCheck.translatedPackages` | Each dependency typed from its TypeScript declarations, with its `holes` and `findings` counts |
+| `typeCheck.explainAny` | With `--explain-any`, that package's `holes` and `findings`, each with `path`, `line` and `declaration` |
 | `unavailableRules` | Lint rules that need inference uf does not implement yet, and did not run |
 
 A reader who counts `diagnostics` and reports that gets zero for a project with
