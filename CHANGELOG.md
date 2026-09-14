@@ -1,5 +1,56 @@
 # Changelog
 
+## uf@0.0.0-alpha.34
+
+_2026-09-14_
+
+Seventeen changes, the same day as alpha.33, and the first release of the
+push tracked in #951. `uf.config.js` can now say which tool each command uses —
+`runtime: "node@26"`, `packageManager`, `build.runtime` and `build.builder`,
+`test.runtime` and `test.runner` — and uf can read what each publisher has
+released, which is what a version like `node@26` resolves against; the commands
+do not run the named tools yet, and that is the next part of #940. The language
+server completes keys and values in `uf.config.js`. `uf ui add`, `list` and
+`diff` copy styled components from a registry into a project. The router renders
+an intercepted navigation into the slot it came from, and the manual is
+reorganised into sections by reader, with new guides for type checking,
+dependencies, tasks, editors and agents. On Node, Flow now loads on the
+in-thread module hooks — one isolate fewer in every test worker's start-up, and
+no deprecation warning on Node 26 — and `uf test` starts only the workers a
+suite can keep busy.
+
+### Added
+
+- **router, vite, lint**: an interception is a route inside a slot (#1016)
+- **cli**: uf ui add, list and diff over a registry of styled components (#1025)
+- **lsp**: complete keys and values in uf.config.js (#1002)
+- **router**: render an intercepted navigation into the slot it came from (#1001)
+- **env**: read what each publisher has released (#999)
+- **stylex**: let a condition select the state a headless part announces (#995)
+- **config**: declare each tool where it is used (#980)
+
+### Fixed
+
+- **react-native**: load the Metro helper where Metro runs, and compose with real configs (#1011)
+- **server**: keep the request store one per process, whichever copy reads it (#1000)
+
+### Performance
+
+- **test**: start only the workers a suite can keep busy (#1018)
+- **host**: load Flow on Node's in-thread module hooks (#1007)
+- **bench**: time every uf command on a generated application (#1003)
+
+### Documentation
+
+- **router**: intercepting routes (#1022)
+- **guide**: give type checking, dependencies, tasks, editors and agents a guide (#1020)
+- **why-uf**: bring the comparisons and the gap list up to date with main (#1004)
+- **nav**: organise the manual into sections by reader (#978)
+
+### Internal
+
+- **check**: count allocation budgets on the measuring thread, not the process (#1021)
+
 ## uf@0.0.0-alpha.33
 
 _2026-09-14_
