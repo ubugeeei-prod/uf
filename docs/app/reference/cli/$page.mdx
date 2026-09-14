@@ -1001,7 +1001,7 @@ once, when it starts.
 | `textDocument/formatting` | One edit over the whole document, from the printer `uf fmt` runs |
 | `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and `source.fixAll.uf` for every such fix at once |
 | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` |
-| `textDocument/completion` | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. `"` and `@` trigger it |
+| `textDocument/completion` | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec, the names its key takes and, after `@`, that tool's versions. `"` and `@` trigger it |
 
 Completion is read from `@uniflowed/config`'s own Flow type — the declaration
 `defineConfig` checks the file against — compiled into the binary, so it needs
@@ -1010,6 +1010,17 @@ is half-typed and does not parse, which is when it is wanted. A key the object
 already has is not offered again; a string typed without quotes is written in
 the project's `fmt.quotes`; and nothing is offered under `vite`, whose options
 uf passes through unread rather than re-declaring.
+
+A tool spec — `runtime`, `build.runtime`, `test.runtime`, `packageManager`,
+`test.runner`, `build.builder` — completes the names that key takes, and after
+the `@` that tool's versions, newest first: each major, which resolves to its
+newest release and is locked in `uf.lock`, then every release. They come from
+the publisher's release list uf resolves `node@26` against, cached under
+`$XDG_CACHE_HOME/uf/index`, and **a completion request never waits for one.**
+With no list cached, the answer is empty and marked incomplete while the list is
+fetched on a thread of its own, so the versions appear as you type on; a list
+older than a day is offered as it is and refreshed behind the request.
+`UF_INDEX_CACHE` moves the cache, and `UF_TOOL_INDEX_BASE` the publishers.
 
 Not served: go-to-definition, rename, references, document symbols, the type at
 a position, organize imports, and completion in any other file.

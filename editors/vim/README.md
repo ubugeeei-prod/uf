@@ -38,7 +38,7 @@ server and asserts each of these.
 | Quick fixes | `:LspCodeAction` on a diagnostic. |
 | Fix all | `:LspCodeAction`, then pick "Fix all uf lint problems in this file". |
 | Hover | `:LspHover`, including over a key of `uf.config.js`. |
-| Completion | In `uf.config.js`: `<C-x><C-o>` with `setlocal omnifunc=lsp#complete`, or asyncomplete.vim and asyncomplete-lsp.vim to have it as you type. The keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. |
+| Completion | In `uf.config.js`: `<C-x><C-o>` with `setlocal omnifunc=lsp#complete`, or asyncomplete.vim and asyncomplete-lsp.vim to have it as you type. The keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
 
 Format on save is off; the one-line autocommand is at the bottom of `uf.vim`.
 
