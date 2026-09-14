@@ -66,15 +66,17 @@ fn inspect_reports_zero_config_defaults() {
         .iter()
         .find(|host| host["host"] == "deno")
         .expect("the test runner names Deno");
-    assert_eq!(runner_deno["level"], "experimental");
+    assert_eq!(runner_deno["level"], "implemented");
     assert!(
         runner_deno["missing"]
             .as_str()
             .unwrap_or_default()
-            .contains("hook"),
+            .contains("coverage"),
         "{runner_deno}"
     );
-    assert_eq!(runner_deno["trackingIssue"], 246);
+    // No tracking issue: what the row still names is coverage, the version
+    // floor and an upstream Deno limitation, not work #246 is holding open.
+    assert!(runner_deno["trackingIssue"].is_null(), "{runner_deno}");
     assert_eq!(
         value["engines"]["testRunner"]["performanceTarget"],
         serde_json::json!("faster-than-bun")
@@ -153,22 +155,16 @@ fn inspect_reports_zero_config_defaults() {
         .iter()
         .find(|host| host["host"] == "deno")
         .expect("every host has a row");
-    assert_eq!(deno["level"], "experimental");
-    // Not a module, unlike Node's and Bun's: Deno has no hook, so what teaches
-    // it Flow is a pass that has already run.
-    assert!(
-        deno["flowLoader"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("ahead-of-time"),
-        "{deno}"
-    );
-    assert_eq!(deno["trackingIssue"], 246);
+    assert_eq!(deno["level"], "implemented");
+    // A module now, like Node's and Bun's: Deno 2.8 has `registerHooks`, and
+    // the preload is what installs the transform in it.
+    assert_eq!(deno["flowLoader"], "@uniflowed/host/deno-preload", "{deno}");
+    // And what it still lacks is said rather than dropped with the grade.
     assert!(
         deno["missing"]
             .as_str()
             .unwrap_or_default()
-            .contains("hook"),
+            .contains("coverage"),
         "{deno}"
     );
     let node = hosts

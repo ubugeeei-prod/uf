@@ -409,11 +409,11 @@ fn host_support() -> serde_json::Value {
 /// The test runner plan, with each host graded beside the list that names it.
 ///
 /// `NativeTestRunnerPlan::hosts` says what the runner may start. That list used
-/// to be easy to quote as three equal claims, even though Deno is deliberately
-/// experimental: it runs through an ahead-of-time pass with gaps a user can
-/// meet. Carrying the same `HostSupport` rows here keeps the test runner's
-/// surface from becoming another place where "Deno is in an enum" reads as
-/// "Deno has parity".
+/// to be easy to quote as three equal claims while they were not — Deno ran
+/// through an ahead-of-time pass with gaps a user could meet, long before its
+/// hook existed. Carrying the same `HostSupport` rows here keeps the test
+/// runner's surface from becoming another place where "a host is in an enum"
+/// reads as "a host has parity", whichever host that is next.
 fn test_runner_report(plan: &NativeTestRunnerPlan) -> Result<serde_json::Value> {
     let mut value = serde_json::to_value(plan)?;
     if let Some(object) = value.as_object_mut() {

@@ -11,7 +11,6 @@ pub(crate) mod clean;
 pub(crate) mod compile;
 pub(crate) mod completion;
 pub(crate) mod create;
-pub(crate) mod deno_loader;
 pub(crate) mod deploy;
 pub(crate) mod dev;
 pub(crate) mod doc;

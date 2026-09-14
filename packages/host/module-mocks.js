@@ -228,11 +228,14 @@ export function moduleKey(url) {
 /**
  * Whether this host can intercept a module before it is imported.
  *
- * The one requirement is synchronous, in-thread module hooks. Node has them;
- * Bun's `node:module` has neither `register` nor `registerHooks`, and Deno has
- * no loader in `@uniflowed/host` at all. `@uniflowed/test` turns a `false` here
- * into an error that names the host rather than a mock that quietly does
- * nothing.
+ * The one requirement is synchronous, in-thread module hooks. Node has them,
+ * and so does Deno from 2.8 — the same `registerHooks` its Flow loader
+ * (`./deno-preload.js`) is built on, on a runtime that sets
+ * `process.versions.node` — so the first branch below answers for both, and
+ * `crates/uf_cli/tests/deno_host.rs` replaces a module on a real Deno to hold
+ * that. Bun's `node:module` has neither `register` nor `registerHooks`.
+ * `@uniflowed/test` turns a `false` here into an error that names the host
+ * rather than a mock that quietly does nothing.
  *
  * Bun's plugin API is a second answer only once direct dynamic import redirects
  * work, which starts at the version pinned in `bunInterceptionSupported`.

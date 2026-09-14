@@ -13,7 +13,7 @@
 // preload, the config loader — goes through here, which is what makes them
 // all produce the same module from the same source.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -169,14 +169,46 @@ export function ufBinaryIdentity(command = ufBinary()) {
   if (binary == null) return null;
   try {
     const stats = statSync(binary);
-    if (!stats.isFile()) return null;
-    accessSync(binary, constants.X_OK);
-    return `${binary}\0${stats.size}\0${stats.mtimeMs}`;
+    if (!stats.isFile() || !isExecutable(binary, stats)) return null;
+    // Whole milliseconds, because hosts disagree below that: Node reports the
+    // filesystem's nanosecond timestamp as a fraction and Deno reports whole
+    // milliseconds. Node's and Deno's loaders share one cache
+    // (`./internal/transform-cache.js`), and two spellings of one binary's
+    // identity would be two keys for every module either host compiled. A
+    // rebuild that lands in the same millisecond at the same size is not a
+    // rebuild anybody runs.
+    return `${binary}\0${stats.size}\0${Math.trunc(stats.mtimeMs)}`;
   } catch {
     // Named a binary that is not there, or is not one. The caller gets `null`
     // and stops trusting the cache, which is right: nothing can be compiled
     // either.
     return null;
+  }
+}
+
+/**
+ * Whether `file`, whose `stats` the caller already holds, may be executed.
+ *
+ * `access(2)` with `X_OK`, which asks the kernel on behalf of this process —
+ * the question `spawn` is about to ask. Deno will not answer it inside its
+ * permission model without `--allow-sys=uid`, because the answer depends on
+ * who is asking, and a worker `uf test` starts on Deno is granted no `sys` at
+ * all. Measured on Deno 2.9: the call throws `NotCapable`, and treating that as
+ * "not executable" left every Deno run with no identity, so its loader never
+ * read or wrote the cache.
+ *
+ * So a refusal *by the sandbox* is answered from the mode bits `stat` already
+ * returned — executable by somebody. That is a looser test than `access`, and
+ * loose in the direction that fails loudly: a binary that has an execute bit
+ * and still may not be run by this user is one `spawn` cannot start, which is an
+ * error, not a stale answer. Anything else `access` throws is still "no".
+ */
+function isExecutable(file, stats) {
+  try {
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch (error) {
+    return error?.name === "NotCapable" && (stats.mode & 0o111) !== 0;
   }
 }
 
@@ -207,9 +239,8 @@ function resolveExecutable(command) {
     if (directory === "") continue;
     const candidate = path.join(directory, command);
     try {
-      if (!statSync(candidate).isFile()) continue;
-      accessSync(candidate, constants.X_OK);
-      return candidate;
+      const stats = statSync(candidate);
+      if (stats.isFile() && isExecutable(candidate, stats)) return candidate;
     } catch {
       // Not in this directory. Keep looking, exactly as the shell would.
     }
@@ -409,28 +440,7 @@ export class TransformService {
       this.#pending.push({
         id,
         reject,
-        resolve: (reply) => {
-          if (reply.code == null) {
-            resolve(null);
-            return;
-          }
-          // Named field by field rather than passed through, so a host reads
-          // the protocol rather than whatever `uf transform` happens to send —
-          // which means every field the protocol grows has to be added here,
-          // and one was not. `css` arrived with the StyleX compiler and this
-          // object did not mention it, so `out.css` was `undefined` in every
-          // host: the Vite plugin's `if (out.css != null)` never ran, no module
-          // ever imported its own stylesheet, and an application styled with
-          // `stylex.create` shipped class names and no CSS. The transform was
-          // right the whole time; the shim in front of it was returning three
-          // quarters of the answer. See ubugeeei-prod/uf#306.
-          resolve({
-            code: reply.code,
-            map: reply.map ?? null,
-            css: reply.css ?? null,
-            diagnostics: reply.diagnostics ?? [],
-          });
-        },
+        resolve: (reply) => resolve(answerOf(reply)),
       });
       this.#child.stdin.write(`${JSON.stringify({ id, code, options })}\n`);
     });
@@ -456,6 +466,33 @@ export class TransformService {
     this.#child.stdin.end();
     this.#child.kill();
   }
+}
+
+/**
+ * One reply, as the object every host reads: `{ code, map, css, diagnostics }`,
+ * or `null` for a module that is not uf's to transform.
+ *
+ * Named field by field rather than passed through, so a host reads the
+ * protocol rather than whatever `uf transform` happens to send — which means
+ * every field the protocol grows has to be added here, and one was not. `css`
+ * arrived with the StyleX compiler and this object did not mention it, so
+ * `out.css` was `undefined` in every host: the Vite plugin's
+ * `if (out.css != null)` never ran, no module ever imported its own
+ * stylesheet, and an application styled with `stylex.create` shipped class
+ * names and no CSS. The transform was right the whole time; the shim in front
+ * of it was returning three quarters of the answer. See ubugeeei-prod/uf#306.
+ *
+ * One function for the service and for `transformFlowSync`, so the two ways in
+ * cannot disagree about what an answer contains.
+ */
+function answerOf(reply) {
+  if (reply.code == null) return null;
+  return {
+    code: reply.code,
+    map: reply.map ?? null,
+    css: reply.css ?? null,
+    diagnostics: reply.diagnostics ?? [],
+  };
 }
 
 let shared = null;
@@ -492,4 +529,141 @@ export function transformFlow(code, filename, options = {}) {
   return sharedService(options.root, {
     configBootstrap: options.configBootstrap === true,
   }).transform(filename, code, options);
+}
+
+/**
+ * The most bytes one reply may be.
+ *
+ * `spawnSync` buffers the child's whole output and needs a ceiling to do it
+ * with; its default is one megabyte, which a large module and the source map
+ * appended to it can pass. Sixty-four is far above any module uf's own
+ * transform ceilings let through, and still a ceiling.
+ */
+const MAX_SYNC_REPLY_BYTES = 64 * 1024 * 1024;
+
+/**
+ * The variables a synchronous transform's child is given, when the host will
+ * not say what the whole environment is.
+ *
+ * `PATH` because `uf transform` may start a host of its own to evaluate
+ * `uf.config.js`, `HOME` and `TMPDIR` because the platform's own libraries
+ * read them, and uf's three because they are what the transform is about.
+ */
+const SYNC_TRANSFORM_ENVIRONMENT = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "UF_BINARY",
+  "UF_PROJECT_ROOT",
+  "UF_IN_SOURCE_TESTS",
+];
+
+/**
+ * The environment a synchronous transform's child starts with.
+ *
+ * The whole of this process's, where the host lets it be read — which is what
+ * `TransformService` hands its child, so the two paths agree on every host
+ * that does not sandbox the environment. Deno does: a run `uf test` starts is
+ * granted the variables it names and nothing else, and spreading
+ * `process.env` there is a request for all of them, refused as `NotCapable`.
+ * So a refusal falls back to the names above, each read on its own and
+ * skipped if that one is refused too. The child is `uf`, not the project's
+ * code, and a transform needs nothing a test's sandbox withholds.
+ */
+function syncTransformEnvironment(configBootstrap) {
+  let env;
+  try {
+    env = { ...process.env };
+  } catch {
+    env = {};
+    for (const name of SYNC_TRANSFORM_ENVIRONMENT) {
+      try {
+        const value = process.env[name];
+        if (value != null) env[name] = value;
+      } catch {
+        // Not granted to this process, so not ours to pass on.
+      }
+    }
+  }
+  if (configBootstrap) {
+    env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
+  } else {
+    delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+  }
+  return env;
+}
+
+/**
+ * Transform one Flow module and wait for the answer, for a loader that cannot
+ * wait any other way.
+ *
+ * Returns what `transformFlow` resolves to — `{ code, map, css, diagnostics }`,
+ * or `null` for a module that is not uf's to transform — and throws what it
+ * rejects with, a `TransformError` carrying the position included.
+ *
+ * # Why a second way in exists
+ *
+ * Deno's module hooks are `node:module`'s `registerHooks`: synchronous, and run
+ * in the thread that is doing the importing (`./deno-preload.js`). A hook of
+ * that kind has to return the module's source, not a promise of it, and the
+ * service above answers through a pipe it reads *asynchronously* — so there is
+ * no way to wait on it from inside the hook without blocking the very event
+ * loop that would deliver the reply.
+ *
+ * So each module is one short-lived `uf transform`: one request written to its
+ * stdin, stdin closed, one reply read back, the process gone. It is the same
+ * protocol and the same binary as the service — `uf transform` serves requests
+ * until its stdin closes, and here that is after the first — so the compiled
+ * module cannot differ between the two paths. What it costs is a process per
+ * module that is not already in the on-disk cache, which measured at about ten
+ * milliseconds for a warm binary; a fully warm run starts none, because the
+ * loader reads the cache before it gets here.
+ *
+ * @param {string} code the Flow source
+ * @param {string} filename absolute path, used for the map and for errors
+ * @param {object} [options] as for `transformFlow`, plus `command`
+ */
+export function transformFlowSync(code, filename, options = {}) {
+  const command = options.command ?? ufBinary();
+  const root = options.root ?? process.env.UF_PROJECT_ROOT ?? process.cwd();
+  // Which binary to run is this process's business and not the compiler's.
+  const requestOptions = { ...options };
+  delete requestOptions.command;
+  const result = spawnSync(command, ["--cwd", root, "transform"], {
+    input: `${JSON.stringify({ id: filename, code, options: requestOptions })}\n`,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "inherit"],
+    env: syncTransformEnvironment(options.configBootstrap === true),
+    maxBuffer: MAX_SYNC_REPLY_BYTES,
+  });
+  if (result.error != null) {
+    throw new Error(`could not run \`${command} transform\`: ${result.error.message}`);
+  }
+  // A spawn a sandbox refuses is not an error on every host. Measured on Deno
+  // 2.9: a program its permission set does not name comes back with no
+  // `error`, no status and no output at all, and reading a reply out of that is
+  // a `TypeError` about `undefined` that names neither the binary nor the
+  // grant. Both are known here, so the refusal is said here.
+  if (typeof result.stdout !== "string") {
+    throw new Error(
+      `could not run \`${command} transform\` for ${filename}: no process started, which is ` +
+        `how a sandbox answers a program it was not told about — on Deno, \`--allow-run\` has ` +
+        `to name ${command}`,
+    );
+  }
+  const newline = result.stdout.indexOf("\n");
+  const line = newline === -1 ? result.stdout : result.stdout.slice(0, newline);
+  if (line.trim() === "") {
+    throw new Error(`uf transform exited (${result.status}) without answering for ${filename}`);
+  }
+  let reply;
+  try {
+    reply = JSON.parse(line);
+  } catch {
+    throw new Error(`uf transform sent a malformed reply: ${line}`);
+  }
+  if (reply.error != null) {
+    throw new TransformError(filename, reply.error, reply.line, reply.column);
+  }
+  return answerOf(reply);
 }

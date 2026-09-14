@@ -12,13 +12,15 @@
 //
 // Transforms are cached on disk under `.uf/cache/transform/` keyed by a hash
 // of the source *and* of the `uf` that compiled it, so a second run of the
-// same file is a read rather than a round trip.
+// same file is a read rather than a round trip. The key and the framing live
+// in `./transform-cache.js`, because Deno's loader (`../deno-preload.js`) reads
+// and writes the same directory and has to agree with this one byte for byte.
 //
-// Both halves are load-bearing. The key was the source alone at first, on the
-// reasoning that a content-addressed cache has no invalidation to get wrong —
-// which quietly assumed the compiler was a constant. It is not: edit
-// `crates/uf_transform` or `crates/uf_stylex`, rebuild, run `uf test`, and
-// every module whose *source* had not changed came back as the previous
+// Both halves of the key are load-bearing. The key was the source alone at
+// first, on the reasoning that a content-addressed cache has no invalidation
+// to get wrong — which quietly assumed the compiler was a constant. It is not:
+// edit `crates/uf_transform` or `crates/uf_stylex`, rebuild, run `uf test`,
+// and every module whose *source* had not changed came back as the previous
 // binary had compiled it. The suite then passed, or failed, for the previous
 // build's reasons, and the only symptom was an answer that made no sense.
 // `rm -rf .uf/cache/transform` was the cure, and finding that out cost a
@@ -42,9 +44,7 @@
 // happens exactly when it can have grown, and a fully warm run, which spawns
 // no `uf` at all, pays nothing and needs to pay nothing.
 
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -54,18 +54,14 @@ import {
   transformFlow,
   ufBinaryIdentity,
 } from "../transform.js";
-import { writeAtomically } from "../write-atomically.js";
-
-/**
- * Bumped whenever *this file's* framing of the output changes, to retire old
- * entries.
- *
- * Not the compiler's version, which is `ufBinaryIdentity` and which nobody
- * has to remember. What is left for this to cover is what the loader adds
- * around a transform — the appended source map, the module format it forces —
- * and that is all it should ever be bumped for.
- */
-const CACHE_VERSION = "3";
+import {
+  cacheEntryFor,
+  frameCompiledModule,
+  isCompiledConfig,
+  readCachedModule,
+  rememberCompiledModule,
+  transformCacheDirectory,
+} from "./transform-cache.js";
 
 let cacheDirectory = null;
 let root = null;
@@ -76,7 +72,7 @@ let root = null;
  */
 export async function initialize(data) {
   root = data?.root ?? process.cwd();
-  cacheDirectory = path.join(root, ".uf", "cache", "transform");
+  cacheDirectory = transformCacheDirectory(root);
 }
 
 /**
@@ -95,44 +91,6 @@ export async function load(url, context, nextLoad) {
   // package.json forgot `"type": "module"` still runs, rather than failing on
   // an `import` in what Node would have guessed was CommonJS.
   return { format: "module", source: code, shortCircuit: true };
-}
-
-function isCompiledConfig(filename) {
-  return filename.includes(`${path.sep}.uf${path.sep}config${path.sep}uf.config.`);
-}
-
-/**
- * The file this module's compiled form belongs in under `identity`, or `null`
- * when it must not be cached at all.
- *
- * `null` when there is no cache directory, and — the case worth spelling out —
- * when the caller has no identity to give: nothing is read and nothing is
- * written. Hashing the rest anyway would give every build of `uf` one key
- * again, and writing under it would leave an entry for the next run to trust.
- * A host that cannot name its compiler compiles everything, every time, which
- * is slower and is never wrong.
- */
-function cacheEntryFor(identity, source, filename) {
-  if (cacheDirectory == null || identity == null) return null;
-  const key = createHash("sha256")
-    .update(CACHE_VERSION)
-    .update("\0")
-    .update(identity)
-    .update("\0")
-    // Every transform option that changes the output has to be in the key,
-    // and this is the first one that varies between two commands sharing a
-    // cache directory. `uf test` compiles `import.meta.uf.test` to uf's test
-    // API and `uf run` compiles it to `void 0`; without this byte the second
-    // command to touch a module would be served the first one's answer, and
-    // the symptom would be an in-source test that ran or did not depending on
-    // what somebody had typed earlier in the day.
-    .update(inSourceTests() ? "in-source" : "plain")
-    .update("\0")
-    .update(filename)
-    .update("\0")
-    .update(source)
-    .digest("hex");
-  return path.join(cacheDirectory, `${key}.mjs`);
 }
 
 /**
@@ -159,15 +117,10 @@ function cacheEntryFor(identity, source, filename) {
  * during this run, and each half is right about its own half.
  */
 async function cachedTransform(source, filename) {
-  const entry = cacheEntryFor(ufBinaryIdentity(), source, filename);
-
-  if (entry) {
-    try {
-      return readFileSync(entry, "utf8");
-    } catch {
-      // not cached yet
-    }
-  }
+  const cached = readCachedModule(
+    cacheEntryFor(cacheDirectory, ufBinaryIdentity(), source, filename),
+  );
+  if (cached != null) return cached;
 
   const configBootstrap = process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1";
   const out = await transformFlow(source, filename, {
@@ -178,19 +131,16 @@ async function cachedTransform(source, filename) {
     configBootstrap,
   });
   if (out == null) return null;
-  const output = out.map
-    ? `${out.code}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(out.map).toString("base64")}\n`
-    : out.code;
+  const output = frameCompiledModule(out);
 
-  const written = cacheEntryFor(
-    sharedService(root, { configBootstrap }).identity,
-    source,
-    filename,
+  rememberCompiledModule(
+    cacheEntryFor(
+      cacheDirectory,
+      sharedService(root, { configBootstrap }).identity,
+      source,
+      filename,
+    ),
+    output,
   );
-  if (written) {
-    // Tolerant: a cache that cannot be written is a slower run, not a
-    // failed one — a read-only checkout still works.
-    writeAtomically(written, output, { tolerant: true });
-  }
   return output;
 }

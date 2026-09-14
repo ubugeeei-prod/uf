@@ -135,6 +135,7 @@ pub fn worker_command(root: &std::path::Path) -> uf_test::HostCommand {
     .with_flow_loader(
         camino::Utf8Path::new("@uniflowed/host/register"),
         &host.join("bun-preload.js"),
+        &host.join("deno-preload.js"),
     )
     .with_uf_binary(camino::Utf8PathBuf::from(uf_path()))
 }
