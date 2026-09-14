@@ -23,10 +23,7 @@
 // and turning it into an `import()` would be letting bytes decide which script
 // runs.
 
-import {
-  createFromFetch,
-  createFromReadableStream,
-} from "react-server-dom-parcel/client.browser";
+import { createFromFetch, createFromReadableStream } from "react-server-dom-parcel/client.browser";
 
 import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
 import { FLIGHT_CONTENT_TYPE, type FlightRoot, documentPathOf, flightUrl } from "./flight.js";
@@ -43,7 +40,11 @@ type ModuleNamespace = { +[string]: mixed };
  */
 export function installBrowserModules(): void {
   const loaded: Map<string, ModuleNamespace> = new Map();
-  const require = (id: string): ModuleNamespace => {
+  // A function with three properties, which is the shape React's Parcel client
+  // calls: `parcelRequire(id)` for a module, `parcelRequire.load(url)` for the
+  // chunk it lives in. Declared and then given its properties, so the hook is
+  // built rather than merged into something that already existed.
+  function parcelRequire(id: string): ModuleNamespace {
     const namespace = loaded.get(id);
     if (namespace == null) {
       throw new Error(
@@ -52,29 +53,27 @@ export function installBrowserModules(): void {
       );
     }
     return namespace;
+  }
+  parcelRequire.load = (url: string): Promise<void> => {
+    const target = new URL(url, window.location.href);
+    if (target.origin !== window.location.origin) {
+      return Promise.reject(
+        new Error(
+          `@uniflowed/router: a payload named the client module ${url}, which is not on this ` +
+            "page's origin. uf writes same-origin chunk URLs only, so it is not loaded.",
+        ),
+      );
+    }
+    return import(target.href).then((namespace: ModuleNamespace) => {
+      loaded.set(url, namespace);
+    });
   };
-  const hook = Object.assign(require, {
-    load(url: string): Promise<void> {
-      const target = new URL(url, window.location.href);
-      if (target.origin !== window.location.origin) {
-        return Promise.reject(
-          new Error(
-            `@uniflowed/router: a payload named the client module ${url}, which is not on this ` +
-              "page's origin. uf writes same-origin chunk URLs only, so it is not loaded.",
-          ),
-        );
-      }
-      return import(target.href).then((namespace: ModuleNamespace) => {
-        loaded.set(url, namespace);
-      });
-    },
-    extendImportMap(): void {
-      throw new Error("@uniflowed/router: a payload asked for an import map, which uf never writes");
-    },
-    meta: { publicUrl: "", devServer: null },
-  });
+  parcelRequire.extendImportMap = (): void => {
+    throw new Error("@uniflowed/router: a payload asked for an import map, which uf never writes");
+  };
+  parcelRequire.meta = { publicUrl: "", devServer: null };
   Object.defineProperty(globalThis, "parcelRequire", {
-    value: hook,
+    value: parcelRequire,
     writable: true,
     configurable: true,
   });

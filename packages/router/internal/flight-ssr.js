@@ -41,7 +41,8 @@ export type ClientModuleLoader = (url: string) => Promise<ModuleNamespace>;
  */
 export function installServerModules(load: ClientModuleLoader): void {
   const loaded: Map<string, ModuleNamespace> = new Map();
-  const require = (id: string): ModuleNamespace => {
+  // The browser's hook, on a server; `./flight-browser.js` has the shape.
+  function parcelRequire(id: string): ModuleNamespace {
     const namespace = loaded.get(id);
     if (namespace == null) {
       throw new Error(
@@ -49,20 +50,17 @@ export function installServerModules(load: ClientModuleLoader): void {
       );
     }
     return namespace;
+  }
+  parcelRequire.load = (url: string): Promise<void> =>
+    load(url).then((namespace) => {
+      loaded.set(url, namespace);
+    });
+  parcelRequire.extendImportMap = (): void => {
+    throw new Error("@uniflowed/router: a payload asked for an import map, which uf never writes");
   };
-  const hook = Object.assign(require, {
-    load(url: string): Promise<void> {
-      return load(url).then((namespace) => {
-        loaded.set(url, namespace);
-      });
-    },
-    extendImportMap(): void {
-      throw new Error("@uniflowed/router: a payload asked for an import map, which uf never writes");
-    },
-    meta: { publicUrl: "", devServer: null },
-  });
+  parcelRequire.meta = { publicUrl: "", devServer: null };
   Object.defineProperty(globalThis, "parcelRequire", {
-    value: hook,
+    value: parcelRequire,
     writable: true,
     configurable: true,
   });

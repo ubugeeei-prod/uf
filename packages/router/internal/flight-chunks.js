@@ -51,8 +51,8 @@ export type FlightChunk = string | {| readonly bytes: string |} | null;
 function elementJson(value: FlightChunk): string {
   return JSON.stringify(value)
     .replace(/</g, "\\u003c")
-    .replace(/ /g, "\\u2028")
-    .replace(/ /g, "\\u2029");
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 /** The element for one chunk, or the end marker for `null`. */
