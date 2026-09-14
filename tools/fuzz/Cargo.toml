@@ -10,11 +10,19 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 uf_config = { path = "../../crates/uf_config" }
+uf_dts = { path = "../../crates/uf_dts" }
 uf_flow = { path = "../../crates/uf_flow" }
 
 [[bin]]
 name = "config_object"
 path = "fuzz_targets/config_object.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dts_translate"
+path = "fuzz_targets/dts_translate.rs"
 test = false
 doc = false
 bench = false

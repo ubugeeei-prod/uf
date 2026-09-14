@@ -1,0 +1,6 @@
+declare export function helper(): void;
+export interface Config {
+  readonly debug: boolean;
+}
+export type Alias = Config;
+declare export const config: Config;

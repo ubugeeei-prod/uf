@@ -1,0 +1,18 @@
+declare export function parse(input: string): number;
+declare export function parse(input: string, radix: number): number;
+declare export function optional(value?: string, ...rest: Array<boolean>): void;
+declare export function destructured(arg0: interface { readonly a: string; readonly b: number; }, arg1: [boolean]): void;
+declare export function withThis(this: HTMLElement, event: Event): void;
+declare export function generic<T extends string = "default", const U = T>(value: T, other: U): [T, U];
+declare export function isString(value: mixed): value is string;
+declare export function assertString(value: mixed): void;
+declare export function assertTruthy(value: mixed): void;
+declare export function noReturnType(value: string): any;
+export type Callback = (error: Error | null, result?: string) => void;
+export type Factory<out T> = new (...args: Array<any>) => T;
+export type AbstractFactory<out T> = abstract new () => T;
+export type Curried = (a: number) => (b: number) => number;
+export type Returns = () => string | number;
+export type InUnion = (() => void) | null;
+export type Guard = (value: mixed) => value is number;
+export type GenericFunction = <T>(value: T) => T;

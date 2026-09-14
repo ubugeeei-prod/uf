@@ -1,0 +1,18 @@
+import * as $Import0 from "./types.d.ts.flow"; import type { Options } from "./model.d.ts.flow"; import { Model, createModel } from "./model.d.ts.flow";
+import { default as DefaultThing } from "./model.d.ts.flow";
+import * as all from "./model.d.ts.flow";
+type Missing = any;
+import { External } from "external-package";
+import type { Merged } from "./model.d.ts.flow";
+export { Model, createModel };
+export type { Options as ModelOptions };
+export * from "./model.d.ts.flow";
+export * as models from "./model.d.ts.flow";
+export type * from "./types.d.ts.flow";
+export type { Kind, Merged as MergedAgain } from "./types.d.ts.flow"; export { value, Merged as MergedAgain } from "./types.d.ts.flow";
+declare export function use(model: Model, options: Options, external: External, merged: Merged, missing: Missing): typeof createModel;
+export type Default = typeof DefaultThing;
+export type Extern = typeof External;
+export type Namespace = typeof all;
+export type Lazy = $Import0.Kind;
+export type LazyModule = typeof $Import0;

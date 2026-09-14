@@ -1,0 +1,14 @@
+[
+  {
+    "declaration": "ArrayRest",
+    "construct": "array-rest-in-tuple",
+    "reason": "Flow spreads only a tuple into a tuple, so a tuple type with an array rest is `any`",
+    "line": 5
+  },
+  {
+    "declaration": "NamedArrayRest",
+    "construct": "array-rest-in-tuple",
+    "reason": "Flow spreads only a tuple into a tuple, so a tuple type with an array rest is `any`",
+    "line": 6
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "declaration": "(module)",
+    "construct": "merged-declaration",
+    "reason": "`Widget` is declared as both a class and a namespace, and Flow binds a name once; the namespace is left out",
+    "line": 25
+  },
+  {
+    "declaration": "Deep",
+    "construct": "import-alias",
+    "reason": "`import Deep = …` aliases a namespace member, which a Flow module cannot import; every use of `Deep` is `any`",
+    "line": 28
+  }
+]

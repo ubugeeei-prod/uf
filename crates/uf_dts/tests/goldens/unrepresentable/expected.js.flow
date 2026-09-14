@@ -1,0 +1,9 @@
+export type Intrinsic = any;
+export type Global = any;
+export type GlobalMember = any;
+declare function make<T>(): T;
+export type Instantiated = any;
+export type DataAttributes = interface {
+
+};
+declare export const expression: number;

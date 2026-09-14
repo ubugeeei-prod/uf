@@ -33,3 +33,4 @@ jobs:
       # `cargo fuzz` looks for `<cargo project root>/fuzz` unless told otherwise,
       # and this repository keeps its fuzz crate at `tools/fuzz`.
       - run: cargo +nightly fuzz build config_object --fuzz-dir tools/fuzz
+      - run: cargo +nightly fuzz build dts_translate --fuzz-dir tools/fuzz

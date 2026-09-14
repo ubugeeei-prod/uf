@@ -1,0 +1,36 @@
+declare export class Base<out T> {
+  constructor(value: T): void;
+  get value(): T;
+}
+export interface Service {
+  start(): Promise<void>;
+}
+declare export abstract class Worker<out T = string> extends Base<T> implements Service {
+
+
+  guarded: number;
+  static instances: number;
+  readonly id: string;
+  label?: string;
+  constructor(value: T): void;
+  constructor(value: T, id: string): void;
+  start(): Promise<void>;
+  abstract run(input: T): void;
+  optional?: () => void;
+  static create<U>(value: U): Worker<U>;
+  get size(): number;
+  set size(value: number): void;
+  [key: string]: mixed;
+
+  @@iterator(): Iterator<T, any, any>;
+
+}
+declare export class Merged {
+  fromClass: string;
+
+
+  readonly fromInterface: number;
+}
+declare export function mixin<T>(base: T): T;
+declare export class Mixed {
+}

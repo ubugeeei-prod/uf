@@ -1,0 +1,20 @@
+[
+  {
+    "declaration": "Worker",
+    "construct": "static-index-signature",
+    "reason": "a `static` index signature has no Flow spelling, so it is left out",
+    "line": 24
+  },
+  {
+    "declaration": "Worker",
+    "construct": "computed-key",
+    "reason": "a computed key other than `Symbol.iterator` or `Symbol.asyncIterator` has no Flow spelling, so the member is left out",
+    "line": 26
+  },
+  {
+    "declaration": "Mixed",
+    "construct": "class-heritage",
+    "reason": "`Mixed` extends an expression that is not a name, which a Flow declaration cannot; the class extends nothing",
+    "line": 35
+  }
+]
