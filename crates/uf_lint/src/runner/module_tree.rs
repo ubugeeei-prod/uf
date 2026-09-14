@@ -90,13 +90,20 @@ pub(crate) fn run_module_tree_rules(
         outcome
     };
 
+    // The parse and every tree rule run on the thread below, so a
+    // `uf_profiler::ThreadWindow` open on this one would count none of them.
+    // The worker hands its allocations back with its outcome, the same way it
+    // hands its spans over above — or `tests/allocation_budget.rs` would be
+    // measuring the scan and the thread start, and nothing #668 is about.
+    let allocations = uf_profiler::Handover::capture();
     let outcome = std::thread::scope(|scope| {
         std::thread::Builder::new()
             .name("uf-lint-module".into())
             .stack_size(uf_flow::PARSE_STACK_BYTES)
-            .spawn_scoped(scope, work)
+            .spawn_scoped(scope, move || allocations.run(work))
             .map_err(|error| LintError::Flow(uf_flow::FlowError::Initialize(error.to_string())))?
             .join()
+            .map(uf_profiler::HandedBack::receive)
             .map_err(|_| {
                 LintError::Flow(uf_flow::FlowError::Runtime(
                     "the Flow parser thread panicked".to_owned(),
