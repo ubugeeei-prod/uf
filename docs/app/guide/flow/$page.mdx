@@ -32,7 +32,7 @@ parameter is declared.
 Rest props are written the way they are read:
 
 ```js
-type InputProps = {| +name: string, +required?: boolean |};
+type InputProps = {| readonly name: string, readonly required?: boolean |};
 
 export component Field(label: string, ...input: InputProps) {
   return (
