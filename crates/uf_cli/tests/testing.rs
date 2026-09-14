@@ -855,6 +855,31 @@ fn a_corrupt_timings_file_schedules_cold_instead_of_failing() {
 }
 
 #[test]
+fn a_warm_run_of_a_short_suite_starts_only_the_workers_it_can_use() {
+    if !host_ready() {
+        return;
+    }
+    // ubugeeei-prod/uf#944. Two files of a few milliseconds are one worker's
+    // work: a second worker would spend longer booting than it could save. The
+    // first run has nothing recorded, starts a worker per file as a cold run
+    // always has, and records what a worker cost to start; the second sizes
+    // its pool from that.
+    let project = Project::new(&MIXED);
+    run(project.path(), &[]);
+
+    let timings = std::fs::read_to_string(project.path().join(".uf/test-timings.json"))
+        .expect("the first run records its timings");
+    assert!(timings.contains("\"workerStartMicros\""), "{timings}");
+
+    let (_, stdout, _) = run(project.path(), &[]);
+    let workers = stdout
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix("workers"))
+        .map(str::trim);
+    assert_eq!(workers, Some("1"), "{stdout}");
+}
+
+#[test]
 fn async_tests_and_promise_matchers_work() {
     if !host_ready() {
         return;

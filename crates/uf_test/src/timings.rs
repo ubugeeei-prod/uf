@@ -135,12 +135,31 @@ impl TimingsAudit {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TestTimings {
     entries: FxHashMap<CompactString, u64>,
+    /// What starting one worker cost the run that wrote this, in microseconds.
+    ///
+    /// One number for the project rather than one per file, because it is a
+    /// property of the host and the machine, not of any test: the time from
+    /// spawning a worker to its first answer, less the time that answer says
+    /// the file took. It is what [`crate::auto_workers`] weighs a file's
+    /// duration against, and without it a run starts a worker per core.
+    worker_start_micros: Option<u64>,
 }
 
 impl TestTimings {
     /// An empty record, which schedules every file cold.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// What starting one worker cost last time, in microseconds.
+    pub fn worker_start_micros(&self) -> Option<u64> {
+        self.worker_start_micros
+    }
+
+    /// Remember what starting one worker cost, clamped to
+    /// [`MAX_TIMING_MICROS`].
+    pub fn record_worker_start(&mut self, micros: u64) {
+        self.worker_start_micros = Some(micros.min(MAX_TIMING_MICROS));
     }
 
     /// The recorded duration for `file`, in microseconds.
@@ -217,6 +236,15 @@ impl TestTimings {
                 None => audit.rejected_durations += 1,
             }
         }
+        if let Some(value) = document.worker_start_micros {
+            // Held to the same test as a file's duration. A start-up of a year
+            // would tell the next run that no suite is ever worth a second
+            // worker, and a negative one is not something this crate wrote.
+            match believable_micros(&value) {
+                Some(micros) => timings.worker_start_micros = Some(micros),
+                None => audit.rejected_durations += 1,
+            }
+        }
 
         Ok((timings, audit))
     }
@@ -230,6 +258,10 @@ impl TestTimings {
         let mut out = String::with_capacity(32 + files.len() * 48);
         out.push_str("{\n  \"version\": ");
         out.push_str(&TIMINGS_VERSION.to_string());
+        if let Some(micros) = self.worker_start_micros {
+            out.push_str(",\n  \"workerStartMicros\": ");
+            out.push_str(&micros.to_string());
+        }
         out.push_str(",\n  \"files\": {");
         for (index, (file, micros)) in files.iter().enumerate() {
             if index > 0 {
@@ -280,6 +312,11 @@ struct TimingsDocument {
     version: u32,
     #[serde(default)]
     files: serde_json::Map<String, serde_json::Value>,
+    /// Optional, so a document written before the field existed still reads,
+    /// and a value rather than a number, so a hostile one is refused by the
+    /// same check a hostile file duration is.
+    #[serde(default)]
+    worker_start_micros: Option<serde_json::Value>,
 }
 
 /// Where recorded timings live for a project rooted at `root`.
