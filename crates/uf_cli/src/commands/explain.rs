@@ -24,6 +24,7 @@ use uf_pm::{
     installable,
 };
 use uf_router::RouteTarget;
+use uf_router::native::{NATIVE_PLATFORMS, native_router_module};
 use uf_term::KeyValue;
 
 use crate::commands::build::{application_target, default_application_target};
@@ -1031,6 +1032,17 @@ fn dev_stages_for(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> 
 fn native_dev_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
     let root = &resolved.root;
     let server = NativeServer::detect(root);
+    let router_root = resolved.config.app.router.root.as_str();
+    let modules = NATIVE_PLATFORMS
+        .iter()
+        .map(|platform| {
+            let module = native_router_module(root, &resolved.config, *platform);
+            module
+                .strip_prefix(root)
+                .map_or_else(|_| module.to_string(), ToString::to_string)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
     vec![
         Stage {
             name: "configuration",
@@ -1041,6 +1053,15 @@ fn native_dev_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stag
             ),
         },
         env_stage(resolved, DEVELOPMENT),
+        Stage {
+            name: "routes",
+            provider: "uf".to_string(),
+            detail: format!(
+                "a route table for each platform, as {modules}, written when {router_root}/ exists \
+                 and rewritten while the server runs; Metro gives each platform's bundle its own \
+                 file when a module imports `./router`"
+            ),
+        },
         Stage {
             name: "dev server",
             provider: server.as_ref().map_or_else(
