@@ -30,6 +30,7 @@ members = [
   "crates/uf_test",
   "crates/uf_transform",
   "crates/uf_tui",
+  "crates/uf_ui",
 ]
 exclude = ["upstream"]
 resolver = "3"
@@ -110,6 +111,10 @@ rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 sha2 = "0.11.0"
+# Line diffs for `uf ui diff`, which shows how a project's copy of a component
+# has moved away from the registry's. Already in the lockfile through
+# `similar-asserts`, which the test suites use for the same job.
+similar = "3.2.0"
 similar-asserts = "2.0.0"
 # Google Fonts' own font subsetter, a Rust port of HarfBuzz's `hb-subset`, for
 # `uf_assets::subset`. Rebuilding a font from a glyph closure is the work
