@@ -323,6 +323,43 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
     expect(await asset.text()).toBe("console.log(1);");
   });
 
+  it("follows the assets binding's directory redirect for a prerendered page", async () => {
+    const asked: Array<string> = [];
+    const handle = createWorkerFetch({
+      handle: createFetchHandler({ app: appWith({}), document: assets }),
+      beginRequest,
+    });
+
+    const response = await handle(
+      request("/guide"),
+      {
+        ASSETS: {
+          fetch: async (incoming: Request): Promise<Response> => {
+            const pathname = new URL(incoming.url).pathname;
+            asked.push(pathname);
+            if (pathname === "/guide") {
+              return new Response(null, {
+                status: 307,
+                headers: { location: "/guide/" },
+              });
+            }
+            if (pathname === "/guide/") {
+              return new Response("<!doctype html><p>guide</p>", {
+                headers: { "content-type": "text/html; charset=utf-8" },
+              });
+            }
+            return new Response("not found", { status: 404 });
+          },
+        },
+      },
+      executionContext(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("guide");
+    expect(asked).toEqual(["/guide", "/guide/"]);
+  });
+
   it("falls through to the application when the binding says 404", async () => {
     const staticDir = directoryWith({ "index.html": "<!doctype html><p>home</p>" });
     const handle = createWorkerFetch({

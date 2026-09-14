@@ -324,6 +324,7 @@ jobs:
           path: target/release
       - run: chmod +x target/release/uf
       - run: ./target/release/uf run test:lib
+      - run: ./target/release/uf run edge:smoke
 
   installer:
     name: Installer

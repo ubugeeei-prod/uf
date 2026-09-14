@@ -165,8 +165,10 @@ fn install_runs_the_package_manager_that_drives_the_project() {
     // And the hosts it records are hosts. `runtimeManager.hosts` is documented
     // as the hosts that must be available, and every project uf installed used
     // to be told it ran on `edge`, `serverless` and `container` — three rows
-    // `uf_runtime::HOSTS` grades planned with no Flow loader, so three
-    // runtimes that cannot import the project's first file. A claim uf writes
+    // `uf_runtime::HOSTS` gives no Flow loader, so three runtimes that cannot
+    // import the project's first file. The loader is what decides it and not
+    // the grade: `edge` is graded experimental for a worker that runs under
+    // Wrangler, and is still not a host here. A claim uf writes
     // into a file it hands the reader is the exact shape ubugeeei-prod/uf#246
     // is named after.
     let hosts = plan["runtimeManager"]["hosts"].as_array().unwrap();
