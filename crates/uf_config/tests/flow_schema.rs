@@ -31,27 +31,24 @@
 //! `build.hooks`, `pm.scopes`, `env.toolchain`, `vite` — contributes its own
 //! name and nothing under it. Both sides say that the same way: an indexer in
 //! Flow, an empty map in the serialized config.
+//!
+//! # Whose reader
+//!
+//! The declared side is [`uf_config::schema`], the same reader `uf lsp`
+//! completes `uf.config.js` from, over the same embedded copy of the file. A
+//! key that reader walked past would be missing from an editor's completion
+//! list and from this comparison at once; reading the schema twice, in two
+//! ways, is how one of the two could be right about a key the other never saw.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::collections::BTreeSet;
 
+use uf_config::schema::{SOURCE, Schema};
 use uf_config::{
     ByteSize, LibraryConfig, NativeTestRunnerConfig, Permissions, SizeBudget, TestRunnerConfig,
     UniflowedConfig,
 };
-use uf_flow::Loc;
-use uf_flow::ast::{statement, types};
 
-/// This checkout, found by walking out of the crate rather than by counting.
-fn repository_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .expect("the crate is inside the repository")
-}
-
-/// The Flow type this test reads.
+/// The Flow type this test reads, for the messages.
 const SCHEMA: &str = "packages/config/internal/schema.js";
 
 /// A config in which every optional *section* is present.
@@ -139,110 +136,11 @@ fn join(prefix: &str, key: &str) -> String {
     }
 }
 
-/// The type aliases one Flow module declares, by name.
-type Aliases<'a> = BTreeMap<String, &'a types::Type<Loc, Loc>>;
-
-/// Every key path `UniflowedConfig` declares in the Flow schema.
+/// Every key path a Flow source's `UniflowedConfig` declares.
 fn declared_paths(source: &str) -> BTreeSet<String> {
-    let parsed = uf_flow::parse(source).expect("the schema parses");
-    assert!(
-        parsed.diagnostics.is_empty(),
-        "{SCHEMA} does not parse: {:?}",
-        parsed.diagnostics
-    );
-
-    let mut aliases = Aliases::new();
-    for node in parsed.program.statements.iter() {
-        match &**node {
-            statement::StatementInner::TypeAlias { inner, .. } => {
-                aliases.insert(inner.id.name.to_string(), &inner.right);
-            }
-            statement::StatementInner::ExportNamedDeclaration { inner, .. } => {
-                if let Some(declaration) = &inner.declaration
-                    && let statement::StatementInner::TypeAlias { inner, .. } = &**declaration
-                {
-                    aliases.insert(inner.id.name.to_string(), &inner.right);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let root = aliases
-        .get("UniflowedConfig")
-        .unwrap_or_else(|| panic!("{SCHEMA} declares `UniflowedConfig`"));
-    let mut paths = BTreeSet::new();
-    descend(root, "", &aliases, &mut paths);
-    paths
-}
-
-/// The keys a type contributes under `prefix`.
-///
-/// A union contributes every member's, because `TaskDefinition` is
-/// `string | { command, … }` and the object half is as much part of the surface
-/// as the string half. A name declared in the same file is the shape it stands
-/// for; a name that is not — `$ReadOnlyArray<Something>` — contributes nothing,
-/// which is what makes a list of objects a leaf here exactly as a `Vec` is on
-/// the other side.
-fn descend(
-    ty: &types::Type<Loc, Loc>,
-    prefix: &str,
-    aliases: &Aliases<'_>,
-    out: &mut BTreeSet<String>,
-) {
-    match &**ty {
-        types::TypeInner::Object { inner, .. } => object_paths(inner, prefix, aliases, out),
-        types::TypeInner::Nullable { inner, .. } => descend(&inner.argument, prefix, aliases, out),
-        types::TypeInner::Union { inner, .. } => {
-            let (first, second, rest) = &inner.types;
-            for member in [first, second].into_iter().chain(rest.iter()) {
-                descend(member, prefix, aliases, out);
-            }
-        }
-        types::TypeInner::Generic { inner, .. } => {
-            let types::generic::Identifier::Unqualified(id) = &inner.id else {
-                return;
-            };
-            if let Some(target) = aliases.get(id.name.as_str()) {
-                descend(target, prefix, aliases, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn object_paths(
-    object: &types::Object<Loc, Loc>,
-    prefix: &str,
-    aliases: &Aliases<'_>,
-    out: &mut BTreeSet<String>,
-) {
-    for property in object.properties.iter() {
-        // An indexer is a map whose keys belong to the project — `tasks`,
-        // `lint.rules`, `vite`. It names none of them, and neither does the
-        // config it is compared against.
-        let types::object::Property::NormalProperty(property) = property else {
-            continue;
-        };
-        let Some(name) = key_name(&property.key) else {
-            continue;
-        };
-        let path = join(prefix, &name);
-        out.insert(path.clone());
-        if let types::object::PropertyValue::Init(Some(value)) = &property.value {
-            descend(value, &path, aliases, out);
-        }
-    }
-}
-
-fn key_name(key: &uf_flow::ast::expression::object::Key<Loc, Loc>) -> Option<String> {
-    use uf_flow::ast::expression::object::Key;
-
-    match key {
-        Key::Identifier(id) => Some(id.name.to_string()),
-        Key::StringLiteral((_, literal)) => Some(literal.value.to_string()),
-        _ => None,
-    }
+    Schema::parse(source)
+        .unwrap_or_else(|error| panic!("{SCHEMA} does not read: {error}"))
+        .key_paths()
 }
 
 /// The Flow type declares every key uf reads, and no key it does not.
@@ -263,11 +161,7 @@ fn key_name(key: &uf_flow::ast::expression::object::Key<Loc, Loc>) -> Option<Str
 /// if the key you just added holds a section, add it to [`every_section`] too.
 #[test]
 fn the_flow_schema_declares_every_key_uf_reads() {
-    let schema = repository_root().join(SCHEMA);
-    let source = fs::read_to_string(&schema)
-        .unwrap_or_else(|error| panic!("{} cannot be read: {error}", schema.display()));
-
-    let declared = declared_paths(&source);
+    let declared = declared_paths(SOURCE);
     let accepted = accepted_paths();
 
     // A floor rather than an exact count: the number moves with every key
@@ -347,5 +241,11 @@ fn the_schema_reader_sees_every_shape_the_schema_uses() {
              { readonly a?: { readonly b?: string } | { readonly c?: string } };"
         ),
         ["a", "a.b", "a.c"].map(str::to_owned).into_iter().collect()
+    );
+
+    // And through `?`, which is a union with `null` spelled differently.
+    assert_eq!(
+        paths("export type UniflowedConfig = { readonly a?: ?{ readonly b?: string } };"),
+        ["a", "a.b"].map(str::to_owned).into_iter().collect()
     );
 }

@@ -184,10 +184,12 @@ pub struct ToolchainAccess {
     pub env: Vec<String>,
     /// Whether uf's Flow loader runs on a thread of the host's.
     ///
-    /// Node's `register()` installs module hooks on a loader thread rather than
-    /// on the main one, and Node's permission model classifies that thread as
-    /// `WorkerThreads`: without `--allow-worker` the very first import fails
-    /// with `ERR_ACCESS_DENIED`, before any of the project's code runs. It is a
+    /// Node's Flow loader compiles a module that is not cached yet on a thread
+    /// — the transform thread its in-thread hooks start, or, on a Node without
+    /// `registerHooks`, the loader thread `register()` runs the hooks on — and
+    /// Node's permission model classifies either as `WorkerThreads`: without
+    /// `--allow-worker` the first module that has to be compiled fails with
+    /// `ERR_ACCESS_DENIED`, before any of the project's code runs. It is a
     /// field rather than a constant because it is a property of *how a
     /// particular command loads Flow*, not of the host — `uf transform`'s own
     /// process needs no such grant.
@@ -341,9 +343,9 @@ fn node_arguments(
     }
     // Both of these Node itself warns about at startup —
     // "must be used with extreme caution. It could invalidate the permission
-    // model" — and both are here because uf's own Flow loader needs them: the
-    // hooks run on a loader thread, and every module they transform goes
-    // through a `uf transform` child. Neither is scoped, which is why a
+    // model" — and both are here because uf's own Flow loader needs them: it
+    // compiles on a thread, and every module it transforms goes through a
+    // `uf transform` child. Neither is scoped, which is why a
     // project's own `run` list is refused above rather than translated into
     // one of them, and why `docs/security.md` says in as many words what a
     // test can still reach through them.

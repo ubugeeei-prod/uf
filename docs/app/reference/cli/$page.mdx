@@ -922,6 +922,35 @@ two checks are skipped.
 staged is checked as it is on disk; uf does not stash the unstaged half the way
 `lint-staged` does.
 
+## Editors
+
+### uf lsp
+
+The language server every integration in
+[`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) starts. It
+speaks JSON-RPC over stdin and stdout, and reads the project's `uf.config.js`
+once, when it starts.
+
+| Method | What it answers |
+| --- | --- |
+| `textDocument/publishDiagnostics` | Pushed on open and on every change, from the linter `uf lint` runs |
+| `textDocument/formatting` | One edit over the whole document, from the printer `uf fmt` runs |
+| `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and `source.fixAll.uf` for every such fix at once |
+| `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` |
+| `textDocument/completion` | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. `"` and `@` trigger it |
+
+Completion is read from `@uniflowed/config`'s own Flow type — the declaration
+`defineConfig` checks the file against — compiled into the binary, so it needs
+nothing installed and offers no key uf does not read. It answers in a file that
+is half-typed and does not parse, which is when it is wanted. A key the object
+already has is not offered again; a string typed without quotes is written in
+the project's `fmt.quotes`; and nothing is offered under `vite`, whose options
+uf passes through unread rather than re-declaring.
+
+Not served: go-to-definition, rename, references, document symbols, the type at
+a position, organize imports, and completion in any other file.
+`tests/library/lsp.test.js` drives the binary and asserts both lists.
+
 ## Messages
 
 Two commands over `@uniflowed/i18n`'s catalogue: one that takes it out to a

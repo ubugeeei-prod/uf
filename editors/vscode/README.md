@@ -1,9 +1,9 @@
 # uf for VS Code
 
 A language client for `uf lsp`. It starts one server per uf project in the
-window, and everything it shows — diagnostics, formatting, quick fixes, hover —
-is answered by that server, from the same crates `uf lint`, `uf fmt` and
-`uf inspect` call.
+window, and everything it shows — diagnostics, formatting, quick fixes, hover,
+completion in `uf.config.js` — is answered by that server, from the same crates
+`uf lint`, `uf fmt` and `uf inspect` call.
 
 Not published to any marketplace. Build it from this directory.
 
@@ -39,7 +39,21 @@ they are in `uf run ci`.
 | **Formatting** | `uf_fmt`, the same `format_source` `uf fmt` calls | Format Document, or `uf.formatOnSave`. |
 | **Quick fixes** | `textDocument/codeAction`, kind `quickfix` | The lightbulb on a diagnostic. |
 | **Fix all** | kind `source.fixAll.uf` | `editor.codeActionsOnSave`, or the lightbulb. |
-| **Hover** | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means. |
+| **Hover** | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`. |
+| **Completion** | `textDocument/completion`, in `uf.config.js` | The keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean. |
+
+Completion reads `@uniflowed/config`'s own Flow type — the declaration
+`defineConfig` checks the file against — compiled into `uf`, so it needs nothing
+installed, cannot offer a key uf does not read, and shows the words written
+above each key in that declaration. It works while the file is half-typed and
+does not parse, which is when you want it. A key the object already has is not
+offered again, and nothing is offered under `vite`, whose options uf passes to
+Vite unread rather than re-declaring.
+
+The extension needed no change for any of this: `uf.config.js` is one of the
+files it already hands the server, and VS Code registers a completion provider
+from the capabilities the server advertises. VS Code's own JavaScript
+suggestions still appear beside uf's.
 
 Quick fixes are offered only where uf's answer is mechanical.
 `flow/deprecated-type` has one — `bool` becomes `boolean`. `flow/unclear-type`
@@ -57,10 +71,11 @@ hierarchical, and asking for the parent selects uf's child kind.
 
 ## What does not work, and will not until the server serves it
 
-`uf lsp` advertises no definition, rename, references, completion or document
-symbol provider, so **go to definition, rename, find references and completion
-do nothing** for Flow files. This extension does not add them; a language client
-cannot invent what the server does not answer.
+`uf lsp` advertises no definition, rename, references or document symbol
+provider, so **go to definition, rename and find references do nothing** for
+Flow files, and **completion answers only in `uf.config.js`** — in your own
+modules the suggestions you see are VS Code's. This extension does not add
+them; a language client cannot invent what the server does not answer.
 
 **Hover does not show the type at a position.** It answers a diagnostic, an
 import specifier or a rule id, and nothing for a plain expression — deliberately
@@ -164,6 +179,8 @@ An extension host cannot be started in this repository's CI, so these need a
 person with VS Code open:
 
 * that VS Code registers the providers from the server's capabilities,
+* that the suggest widget shows `uf.config.js` completions as you type, and
+  after `"`,
 * that `editor.codeActionsOnSave` reaches `source.fixAll.uf`,
 * that the missing-binary notification and its buttons appear,
 * that `uf.formatOnSave` runs on save,

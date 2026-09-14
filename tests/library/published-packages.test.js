@@ -217,14 +217,16 @@ const resolvesTo = (packed: Set<string>, from: string, specifier: string): strin
 
 describe("what the release packages pack", () => {
   it("the scan finds the imports it is looking for", () => {
-    // A guard on the guard. `internal/node-hooks.js` is the file whose import
-    // #409 was about, so if the scanner ever stops seeing that one, both
-    // assertions below are passing over an empty list.
-    const hooks = fs.readFileSync(
-      path.join(repository, "packages/host/internal/node-hooks.js"),
+    // A guard on the guard. The import #409 was about lives in
+    // `internal/flow-cache.js` now — it moved there from `internal/node-hooks.js`
+    // when Node's two Flow loaders began sharing one cache — so if the scanner
+    // ever stops seeing that one, both assertions below are passing over an
+    // empty list.
+    const cache = fs.readFileSync(
+      path.join(repository, "packages/host/internal/flow-cache.js"),
       "utf8",
     );
-    expect(relativeImports(hooks)).toContain("../write-atomically.js");
+    expect(relativeImports(cache)).toContain("../write-atomically.js");
     expect(
       relativeImports(`import x from "./a.js";\nconst y = await import('../b/c.js');`),
     ).toEqual(["./a.js", "../b/c.js"]);
