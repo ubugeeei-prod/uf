@@ -518,6 +518,25 @@ have read them:
   through, so the 404 a visitor sees is your `$not-found` page rather than
   Cloudflare's.
 
+**A Node built-in the Worker only stubs is named at the build.** At uf's
+compatibility date a Worker provides `node:child_process`, `node:cluster`,
+`node:fs`, `node:http`, `node:http2`, `node:https`, `node:repl` and `node:wasi`
+as modules whose every function throws. `uf build --adapter edge` prints a
+warning for each one the server bundle reaches, naming the file that imports
+it: your own code first, then a dependency by its package name. It is a warning
+and not a refusal, because a `wrangler.json` of your own at a newer date may
+provide the module. A request that does call one answers 500, and the log line
+names the function as a Node API this Worker does not provide. The list is a
+measurement, taken again against workerd by `tools/ci/edge-worker-smoke.sh` on
+every CI run.
+
+**Logs are filed at their level.** The generated `worker.js` writes each log
+level through the `console` method of the same name. A Worker's own log store
+reads the method, so an `info` access line stays information rather than
+showing up as an error in `wrangler tail`. A logger your application installs
+with `installLogger` is kept. This applies only inside a Worker: imported under
+Node, for example by a test, `worker.js` keeps writing every level to stderr.
+
 React is linked from its `server.edge.js` build for this target, so a document
 comes out of `renderToReadableStream` rather than the Node renderer. That is a
 different code path from every other target, and the test that says all six
