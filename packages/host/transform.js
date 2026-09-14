@@ -247,10 +247,12 @@ export class TransformError extends Error {
  * hooks and the Bun preload both take it and neither has an "afterwards" to
  * close it in — so on Bun `bun --preload @uniflowed/host/bun-preload app.js`
  * ran the program, printed its output, and then sat there forever. Node hides
- * this: its module hooks run on a loader thread of their own, and the process
- * exits with the main thread whatever that thread is still holding. That
- * accident is the only reason it was ever invisible, and it is not something
- * the second host can be asked to reproduce.
+ * this: its loaders keep the service on a thread of their own — the loader
+ * thread `register()` starts, or the transform thread
+ * `./internal/sync-hooks.js` starts on a cache miss — and the process exits
+ * with the main thread whatever that thread is still holding. That accident is
+ * the only reason it was ever invisible, and it is not something the second
+ * host can be asked to reproduce.
  *
  * So the service holds its host open for exactly as long as it owes an
  * answer: referenced when a request joins an empty queue, unreferenced when

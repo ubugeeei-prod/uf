@@ -3,7 +3,7 @@ title: "uf and Vite+ · uf"
 description: "Where uf sits next to the toolchain it will be compared to."
 ---
 
-<p className="eyebrow">Getting started</p>
+<p className="eyebrow">Why uf</p>
 
 # uf and Vite+
 
@@ -35,9 +35,16 @@ is what happens to a module before Vite sees it.
 | Transform | Oxc | Meta's Flow parser → Hermes lowering passes → the React Compiler crate → oxc |
 | Bundler and dev server | Vite and Rolldown | Vite |
 | Config | `vite.config.ts` | `uf.config.js`, in Flow |
+| Framework | none of its own | a router, streaming server rendering, server actions, deploy adapters and `--compile` |
+| Tasks | `vp run`, across a workspace's packages, with a cache | `uf run`: a `dependsOn` graph run up to a concurrency limit, cached on the `inputs` each task declares, with `--why` for each decision; `uf run#member` reaches one member's own tasks, and there is no `--filter` across members yet ([#967](https://github.com/ubugeeei-prod/uf/issues/967)) |
+| Dependencies | `vp install`, `add`, `remove`, `update`, `outdated`, `why` and the rest, over your package manager | `uf install`, `add`, `remove`, `update`, `why`, `ls`, `audit`, `search`, `patch` and `catalog`, over your package manager, with dependencies' install scripts off unless `uf pm approve-builds` names them on a manager that keeps such a list |
+| A package's binary | `vp exec` and `vp dlx` download and run it | `uf exec`, or `ufx`, runs what the project installed and fetches a package only with `--yes` |
+| Agents | `vp config` sets up agent integration | `uf mcp`: eight tools over stdio — lint, check, test, the route table, `explain`, and the two that write, formatting and safe lint fixes |
 | Maturity | a funded product with a team behind it | `0.0.0-alpha`, and it says so on every page |
 
-The row that matters is the first one. Everything else follows from it.
+The Vite+ column is what [its guide](https://viteplus.dev/guide/) lists. The
+first row is the one that decides the question for most readers; the rest say
+what else each of the two has chosen to own.
 
 ## What "TypeScript-first" costs you if you write Flow
 
@@ -69,8 +76,12 @@ integration, every answer to every question. uf inherits Flow's ecosystem,
 which is much smaller. [Why Flow](/guide/why#and-what-it-does-not-say) does not
 pretend otherwise.
 
-**Monorepo tooling at scale.** uf runs tasks and builds a project. It has not
-been near a thousand-package repository.
+**Monorepo tooling at scale.** `vp run` runs a task across a workspace's
+packages. `uf run` runs one project's task graph, cached, and `uf run#member`
+reaches one member's own tasks — but there is no `--filter` to run a task in
+several members, and no way for one member's task to depend on another's
+([#967](https://github.com/ubugeeei-prod/uf/issues/967)). uf has not been near a
+thousand-package repository.
 
 ## When uf is the right choice
 
@@ -87,7 +98,9 @@ and this page is not trying to talk you out of it.
 
 ## Can they be used together?
 
-Partly, today. uf's task runner is Vite's, and uf drives standard Vite, so a
-project already using Vite's ecosystem keeps it. What does not compose is the
-transform: a module is Flow or it is TypeScript, and uf's pipeline is the Flow
-one.
+Partly, today. uf drives standard Vite, so a project already using Vite's
+plugins keeps them. What does not compose is the transform: a module is Flow or
+it is TypeScript, and uf's pipeline is the Flow one. And the commands overlap
+rather than stack — both have a dev server command, a test runner, a linter, a
+formatter, a task runner and a package-manager front end — so a project runs
+one of them for those, not both.

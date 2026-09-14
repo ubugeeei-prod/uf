@@ -79,7 +79,9 @@
 // # Readiness
 //
 // **Implemented.** `props`, `create`, `defineVars`, `createTheme`, pseudo-class
-// and pseudo-element conditions, at-rule conditions (`@media`, `@supports`),
+// and pseudo-element conditions, the state a headless part announces
+// (`:is([aria-selected=true])` — `crates/uf_stylex/src/condition.rs` says why
+// that shape and no wider), at-rule conditions (`@media`, `@supports`),
 // shorthand-versus-longhand ordering, unit inference, the preset tokens, the
 // base layer, and the shipped themes. Every one of them is compiled: the
 // runtime half of this package is `props` and three functions that throw.

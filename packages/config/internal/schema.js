@@ -26,6 +26,17 @@
 // parse — `orm.module` is `"@uniflowed/orm"` because there is one
 // implementation, where the loader takes any string. Where this package means
 // to be more opinionated than the parser, that is what these say.
+//
+// # What an editor shows
+//
+// `uf lsp` completes and explains `uf.config.js` from this file, compiled into
+// the binary. A key's completion shows the comment directly above the key and
+// the type as it is written here, and the members of a literal union are the
+// values it offers — so a comment above a key is written for somebody typing
+// that key. Either kind of comment counts above a key; above a type alias only
+// a `/** */` block does, because the `//` notes on the aliases are this file's
+// history rather than the key's meaning. `crates/uf_config/src/schema.rs` is
+// the reader, and says exactly what it takes.
 
 export type RuleLevel = "off" | "warn" | "error" | 0 | 1 | 2 | boolean;
 
@@ -94,6 +105,81 @@ export type DeployAdapter =
   | "serverless"
   | "static"
   | "container";
+
+// # Tools, declared where they are used
+//
+// The four aliases below are strings to Flow and a grammar to uf, which reads
+// every one of them where the config is read and refuses what it cannot run —
+// naming the key, what was written, and what to write instead. They are
+// aliases rather than bare `string` so the grammar has one place to be written
+// down, and so an editor can find a tool-spec key by its type — which is what
+// completion in `uf.config.js` keys on (ubugeeei-prod/uf#941). Rename one and
+// that stops working without a type error anywhere.
+//
+// A spec is `name[@version]`, and what follows the `@` is one of three things:
+//
+//   * nothing — `"node"` — the `node` on `PATH`, which is what every project
+//     got before it could say anything else;
+//   * a numeric prefix — `"node@26"`, `"bun@1.4"` — the newest release that
+//     starts with it, resolved once against the publisher's index and locked in
+//     `uf.lock`, so every machine runs the same release until somebody moves it;
+//   * a full version — `"pnpm@12.0.0"` — exactly that release.
+//
+// A range — `"node@^26"`, `"node@>=24"`, `"node@24.x"` — is refused: a range is
+// not an environment, because it can resolve to a different release tomorrow.
+// So is a tag such as `"node@lts"`, for the same reason. ubugeeei-prod/uf#940.
+
+/**
+ * A JavaScript runtime, and optionally which release of it: `"node"`,
+ * `"node@26"`, `"bun@1.3.5"`.
+ *
+ * The names are `node`, `bun` and `deno`. No version is the one on `PATH`; a
+ * prefix is the newest release that starts with it, locked in `uf.lock`; a full
+ * version is exactly that release. A range or a tag is refused.
+ *
+ * The type of `runtime`, `build.runtime` and `test.runtime`.
+ */
+export type RuntimeSpec = string;
+
+/**
+ * A package manager, and optionally which release of it: `"pnpm"`,
+ * `"pnpm@10"`, `"pnpm@12.0.0"`.
+ *
+ * The names are `npm`, `pnpm`, `yarn` and `bun`. Yarn's edition is its major
+ * version — `"yarn@1"` is Classic. No version is the one on `PATH`; a prefix is
+ * the newest release that starts with it, locked in `uf.lock`; a full version
+ * is exactly that release. A range or a tag is refused.
+ *
+ * The type of `packageManager`.
+ */
+export type PackageManagerSpec = string;
+
+/**
+ * What runs the test suite: `"uf"` or `"bun[@version]"`.
+ *
+ * `"uf"` is the runner built into uf, and the default; it takes no version,
+ * because it is the binary that is running. `"bun"` is `bun test`, on the Bun
+ * it names — so it also decides the test runtime when `test.runtime` is
+ * absent, and a `test.runtime` naming anything else is an error. The version
+ * follows the same grammar as a runtime's. `uf test` refuses a Bun runner until
+ * ubugeeei-prod/uf#942 lands, rather than running its own suite in its place.
+ *
+ * The type of `test.runner`.
+ */
+export type TestRunnerSpec = string;
+
+/**
+ * Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive:
+ * `"vite"`, or a module specifier.
+ *
+ * `"vite"` is `@uniflowed/vite`, the builder uf ships and the default. Any other
+ * string is a module specifier — a package found up `node_modules`, or a path
+ * starting with `.` or `/` that must stay inside the project — whose driver
+ * satisfies the contract in docs/architecture.md.
+ *
+ * The type of `build.builder`.
+ */
+export type BuilderSpec = string;
 
 /**
  * One entry of `plugins: [...]`.
@@ -443,10 +529,31 @@ export type UniflowedConfig = {
       // modules; this is for what a manifest cannot say.
       readonly external?: $ReadOnlyArray<string>,
     },
+    /**
+     * What `uf dev`, `uf build` and `uf preview` run on, when it is not the
+     * top-level `runtime`: `"node@26"`.
+     *
+     * Read before `runtime`, so a project that builds on Node and tests on Bun
+     * can say so. See `RuntimeSpec` for the grammar.
+     */
+    readonly runtime?: RuntimeSpec,
+    /**
+     * Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive:
+     * `"vite"`, or a module specifier.
+     *
+     * Vite is the default, not a dependency: any module satisfying the
+     * contract in docs/architecture.md can be named here. See `BuilderSpec`.
+     */
+    readonly builder?: BuilderSpec,
   },
-  // Which builder uf drives. Vite is the default, not a dependency: any module
-  // satisfying the contract in docs/architecture.md can be named here.
   readonly builder?: {
+    /**
+     * The old spelling of `build.builder`.
+     *
+     * **Deprecated**, and read only when `build.builder` is absent; the two
+     * naming different builders is an error. `"@uniflowed/vite"` here is
+     * `builder: "vite"` there, and any other specifier moves as it is.
+     */
     readonly module?: string,
   },
   readonly dev?: {
@@ -474,7 +581,7 @@ export type UniflowedConfig = {
     readonly deploy?: "void",
   },
   /**
-   * The `.env` cascade, the mode it is read for, and the pinned toolchain.
+   * The `.env` cascade and the mode it is read for.
    *
    * `active` empty means the command decides — `development` for `uf dev`,
    * `production` for a build, `test` for `uf test`. `files` empty selects the
@@ -483,8 +590,16 @@ export type UniflowedConfig = {
   readonly env?: {
     readonly active?: string,
     readonly files?: $ReadOnlyArray<string>,
-    // Runtimes and package managers by exact version — `{ node: "24.14.0" }`.
-    // Exact, because a range is not an environment.
+    /**
+     * Runtimes and package managers by exact version — `{ node: "24.14.0" }`.
+     *
+     * **Deprecated.** It says which tools a project has and not what each is
+     * for, so a project that builds on Node and tests on Bun could not write
+     * that down. Declare each tool where it is used instead — `runtime`,
+     * `build.runtime`, `test.runtime` and `packageManager` — as
+     * `name@version`. It keeps working for `uf env install` and `uf env exec`,
+     * and a pin here that disagrees with one of those keys is an error.
+     */
     readonly toolchain?: { readonly [string]: string },
   },
   readonly fmt?: {
@@ -555,6 +670,14 @@ export type UniflowedConfig = {
     >,
     readonly typescriptDeclarationsToFlow?: true,
   },
+  /**
+   * The package manager `uf install`, `uf add`, `uf update` and the rest drive,
+   * and optionally which release of it: `"pnpm@12.0.0"`.
+   *
+   * Read before `pm.packageManager` — its deprecated spelling — and before
+   * `package.json#packageManager` and the lockfile. See `PackageManagerSpec`.
+   */
+  readonly packageManager?: PackageManagerSpec,
   readonly permissions?: Permissions,
   // Plugins the project adds, appended to uf's own and resolved in the order
   // they are written. A name that names a file is code to run, so `uf_plugin`
@@ -566,6 +689,16 @@ export type UniflowedConfig = {
     readonly lockfile?: "uf.lock",
     readonly storeDir?: string,
     readonly allowLifecycleScripts?: false,
+    /**
+     * The package manager uf drives, in the spelling that came before the
+     * top-level `packageManager`.
+     *
+     * **Deprecated** for the managers `packageManager` can name — write
+     * `packageManager: "pnpm"` rather than `pm: { packageManager: "pnpm" }`,
+     * and `"yarn@1"` for `"yarn-classic"` — and read only when that key is
+     * absent. The two naming different managers is an error. `"uf"`, uf's own
+     * resolver, has no other spelling and is not deprecated.
+     */
     readonly packageManager?: PackageManagerPreference,
     /**
      * The registry uf *reads* from: packuments, provenance attestations, and
@@ -614,6 +747,17 @@ export type UniflowedConfig = {
     readonly apply?: "config-and-host",
     readonly doctor?: boolean,
   },
+  /**
+   * The runtime every command runs on unless a section names its own, and
+   * optionally which release of it: `"node@26"`.
+   *
+   * `uf start`, `uf run` and `uf exec` read it directly. `uf dev`, `uf build`
+   * and `uf preview` read `build.runtime` first; `uf test` reads `test.runtime`
+   * and the runtime its runner brings first. Absent, a command starts
+   * `app.runtime.capabilityJsHost` from `PATH`, as it always has. See
+   * `RuntimeSpec`.
+   */
+  readonly runtime?: RuntimeSpec,
   readonly server?: {
     readonly engine?: "native-rust",
     readonly native?: {
@@ -725,14 +869,33 @@ export type UniflowedConfig = {
   },
   readonly test?: {
     readonly module?: "@uniflowed/test",
-    readonly runner?: {
-      readonly applicationTarget?: "auto" | "web" | "react-native",
-      readonly runtime?: "vite-task" | "capability-js-host" | "uf-self-hosted",
-      readonly jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
-      readonly scheduler?: "vite-task-cache" | "native-work-stealing",
-      readonly performanceTarget?: "vite-task" | "faster-than-bun",
-      readonly officialFlowParser?: true,
-    },
+    /**
+     * What `uf test` runs on, when it is neither the runtime the runner brings
+     * nor the top-level `runtime`: `"node@26"`.
+     *
+     * A runner that brings its own — `runner: "bun@1.4"` — decides this when it
+     * is absent, and a `runtime` here naming anything else is an error. See
+     * `RuntimeSpec`.
+     */
+    readonly runtime?: RuntimeSpec,
+    /**
+     * What runs the suite: `"uf"`, the default, or `"bun[@version]"`. See
+     * `TestRunnerSpec`.
+     *
+     * The object is the old description of uf's own runner, field by field,
+     * and is **deprecated**: it still parses, and `applicationTarget` in it is
+     * still read. ubugeeei-prod/uf#953 is where that one field goes next.
+     */
+    readonly runner?:
+      | TestRunnerSpec
+      | {
+          readonly applicationTarget?: "auto" | "web" | "react-native",
+          readonly runtime?: "vite-task" | "capability-js-host" | "uf-self-hosted",
+          readonly jsHosts?: $ReadOnlyArray<CapabilityJsHost>,
+          readonly scheduler?: "vite-task-cache" | "native-work-stealing",
+          readonly performanceTarget?: "vite-task" | "faster-than-bun",
+          readonly officialFlowParser?: true,
+        },
     readonly reactTestingLibraryNative?: true,
     /**
      * What `uf test --coverage` measures, writes and fails on.

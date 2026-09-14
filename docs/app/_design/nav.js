@@ -2,10 +2,22 @@
 //
 // The manual's table of contents.
 //
-// One list, in reading order, is the whole navigation model: the sidebar
-// renders it, "next page" reads it, and the masthead highlights the section a
-// page belongs to. Keeping it in one place means a new page cannot appear in
-// the sidebar and be missing from the footer, or the reverse.
+// The manual has several kinds of reader, and they came for different things:
+// to try uf, to decide whether a team should use it, to move an application
+// onto it, to build with it, to run it, or to look one thing up. So it is
+// sections by reader rather than one sequence. Each section opens with a
+// landing page that says who it is for and the order to read it in, and each
+// names the landing page its reader goes to when they reach its end.
+//
+// It is still one list, and the list is still the whole navigation model: the
+// sidebar renders it, "next page" reads it, the masthead highlights the part
+// of the site a page belongs to, the home page offers its sections as paths,
+// and every landing page lists its section's pages from it. Keeping it in one
+// place means a new page cannot appear in the sidebar and be missing from its
+// landing page, or the reverse.
+//
+// A page's section is where it is listed, not where it lives: `href` is the
+// route, and a page changes section without its URL changing.
 
 /** A page in the manual. `href` is the route, not a file path. */
 export type Entry = {|
@@ -15,15 +27,65 @@ export type Entry = {|
   readonly blurb: string,
 |};
 
-/** A run of pages under one heading. */
+/** The pages one kind of reader needs, and where that reader goes after. */
 export type Section = {|
   readonly title: string,
+  /** The question the reader this section is for arrived with. */
+  readonly question: string,
+  /**
+   * The page that says who the section is for, what is in it and the order
+   * to read it in. The sidebar's section heading links to it.
+   */
+  readonly landing: Entry,
+  /** The section's pages, in the order its reader should read them. */
   readonly pages: $ReadOnlyArray<Entry>,
+  /**
+   * The landing page of the section this reader goes to next, or `null` for
+   * the section that ends the manual. "Next page" on a section's last page
+   * points here rather than at whichever section happens to be listed below:
+   * somebody who has finished deciding wants to start, not to read the
+   * section that follows in the sidebar.
+   */
+  readonly then: string | null,
 |};
 
 export const sections: $ReadOnlyArray<Section> = [
   {
-    title: "Getting started",
+    title: "Start",
+    question: "How do I get it running?",
+    landing: {
+      href: "/guide/start",
+      title: "Start",
+      blurb: "Install uf, make a project, and build one application with it end to end.",
+    },
+    pages: [
+      {
+        href: "/guide/install",
+        title: "Install",
+        blurb: "One binary, three runtimes, no plugins to add.",
+      },
+      {
+        href: "/guide/project",
+        title: "Your first project",
+        blurb: "From an empty directory to a built site.",
+      },
+      {
+        href: "/guide/tutorial",
+        title: "Build a reading list",
+        blurb: "One application end to end: routes, data, state, a form, tests, the build.",
+      },
+    ],
+    then: "/guide/build-an-app",
+  },
+  {
+    title: "Why uf",
+    question: "Should my team use this, and what does it cost?",
+    landing: {
+      href: "/guide/why-uf",
+      title: "Why uf",
+      blurb:
+        "For deciding whether to use uf: what it is, what Flow buys, what it costs, and what it will not do.",
+    },
     pages: [
       {
         href: "/guide",
@@ -41,16 +103,6 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "The rows TypeScript wins, the four Flow wins, and why uf is possible.",
       },
       {
-        href: "/guide/architecture",
-        title: "Architecture",
-        blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
-      },
-      {
-        href: "/guide/scope",
-        title: "What uf does not do",
-        blurb: "The refusals, and the gaps — the second list with issue numbers.",
-      },
-      {
         href: "/guide/compare",
         title: "uf compared",
         blurb: "Against Next.js, Vite, Bun and CRA, including the rows uf loses.",
@@ -61,29 +113,27 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Where uf sits next to the toolchain it will be compared to.",
       },
       {
-        href: "/guide/install",
-        title: "Install",
-        blurb: "One binary, three runtimes, no plugins to add.",
+        href: "/guide/scope",
+        title: "What uf does not do",
+        blurb: "The refusals, and the gaps — the second list with issue numbers.",
       },
       {
-        href: "/guide/project",
-        title: "Your first project",
-        blurb: "From an empty directory to a built site.",
-      },
-      {
-        href: "/guide/tutorial",
-        title: "Build a reading list",
-        blurb: "One application end to end: routes, data, state, a form, tests, the build.",
-      },
-      {
-        href: "/guide/migrate",
-        title: "Migrating to uf",
-        blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
+        href: "/guide/architecture",
+        title: "Architecture",
+        blurb: "What went wrong with create-react-app, and the lines uf will not cross.",
       },
     ],
+    then: "/guide/start",
   },
   {
-    title: "Writing code",
+    title: "Build an app",
+    question: "How do I route, load data, render, style and test?",
+    landing: {
+      href: "/guide/build-an-app",
+      title: "Build an app",
+      blurb:
+        "One guide per thing an application does: routes, data, rendering, state, forms, UI, styling, and what production asks for.",
+    },
     pages: [
       {
         href: "/guide/flow",
@@ -94,6 +144,11 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/routing",
         title: "Routing",
         blurb: "Files become routes; layouts nest; loaders run before the page.",
+      },
+      {
+        href: "/guide/rendering",
+        title: "Rendering modes",
+        blurb: "Where a document comes from, and what the browser does once it has one.",
       },
       {
         href: "/guide/server-components",
@@ -114,29 +169,6 @@ export const sections: $ReadOnlyArray<Section> = [
           "A function the browser calls by id: what may cross, what is refused, and why it authorizes itself.",
       },
       {
-        href: "/guide/styling",
-        title: "Styling and content",
-        blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
-      },
-      {
-        href: "/guide/assets",
-        title: "Images, fonts, icons and cards",
-        blurb:
-          "Resized, self-hosted, subsetted and drawn at build time — and what that stops short of.",
-      },
-      {
-        href: "/guide/vitals",
-        title: "Web vitals",
-        blurb:
-          "Five numbers the browser already has, and nothing that leaves the machine unless you ask.",
-      },
-      {
-        href: "/guide/ui",
-        title: "Headless components",
-        blurb:
-          "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all.",
-      },
-      {
         href: "/guide/state",
         title: "State",
         blurb: "Atoms, a store, and where this parts company with Jotai.",
@@ -147,34 +179,26 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "Uncontrolled inputs, narrow subscriptions, and no Proxy.",
       },
       {
-        href: "/guide/react-native",
-        title: "React Native target",
-        blurb: "Native route files, Metro, navigator events and the test-tree surface.",
-      },
-      {
         href: "/guide/effect",
         title: "Effects",
         blurb: "Failures in the type, and what Flow costs against Effect-TS.",
       },
       {
-        href: "/guide/tui",
-        title: "Terminal UI",
-        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
-      },
-    ],
-  },
-  {
-    title: "The tools",
-    pages: [
-      {
-        href: "/guide/dev",
-        title: "Dev and build",
-        blurb: "Vite runs both; uf decides what it is handed.",
+        href: "/guide/ui",
+        title: "Headless components",
+        blurb:
+          "Headless primitives: keyboard maps, ARIA contracts, composition types, and no styles at all.",
       },
       {
-        href: "/guide/rendering",
-        title: "Rendering modes",
-        blurb: "Where a document comes from, and what the browser does once it has one.",
+        href: "/guide/styling",
+        title: "Styling and content",
+        blurb: "CSS, StyleX, tokens, dark mode, Markdown and MDX.",
+      },
+      {
+        href: "/guide/assets",
+        title: "Images, fonts, icons and cards",
+        blurb:
+          "Resized, self-hosted, subsetted and drawn at build time — and what that stops short of.",
       },
       {
         href: "/guide/cache",
@@ -194,14 +218,61 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "A structured logger, and a request id readable from inside a render.",
       },
       {
-        href: "/guide/testing",
-        title: "Testing",
-        blurb: "A Rust runner, host workers, and where it stands against Bun.",
+        href: "/guide/vitals",
+        title: "Web vitals",
+        blurb:
+          "Five numbers the browser already has, and nothing that leaves the machine unless you ask.",
+      },
+    ],
+    then: "/guide/targets",
+  },
+  {
+    title: "Targets",
+    question: "Where does it run: a server, a static host, a phone, a terminal?",
+    landing: {
+      href: "/guide/targets",
+      title: "Targets",
+      blurb:
+        "Where a uf application runs: a server or a static host, a single file, a phone, a terminal.",
+    },
+    pages: [
+      {
+        href: "/guide/react-native",
+        title: "React Native target",
+        blurb: "Native route files, Metro, navigator events and the test-tree surface.",
+      },
+      {
+        href: "/guide/tui",
+        title: "Terminal UI",
+        blurb: "React with a terminal for a host: flexbox, cells, and only the ones that changed.",
+      },
+    ],
+    then: "/guide/toolchain",
+  },
+  {
+    title: "The toolchain",
+    question: "How do I pin runtimes, run CI, tune lint and cache tasks?",
+    landing: {
+      href: "/guide/toolchain",
+      title: "The toolchain",
+      blurb:
+        "One guide per command: what it runs, what it reads, what it refuses, and how to put it in CI.",
+    },
+    pages: [
+      {
+        href: "/guide/dev",
+        title: "Dev and build",
+        blurb: "Vite runs both; uf decides what it is handed.",
       },
       {
         href: "/guide/format",
         title: "Formatting and linting",
         blurb: "The official Flow parser, a Rust printer, and Flow's own lints.",
+      },
+      {
+        href: "/guide/testing",
+        title: "Testing",
+        blurb: "A Rust runner, host workers, and where it stands against Bun.",
       },
       {
         href: "/guide/env",
@@ -215,9 +286,30 @@ export const sections: $ReadOnlyArray<Section> = [
           "GitHub Actions, GitLab and CircleCI: one step each, why they all pin, and the install a check is worthless without.",
       },
     ],
+    then: "/reference",
+  },
+  {
+    title: "Migrate",
+    question: "How do I move an application I already have?",
+    // One page, so it is its own landing page: it opens with where each kind of
+    // application is covered, and a second page in front of it would say only
+    // "read the next page".
+    landing: {
+      href: "/guide/migrate",
+      title: "Migrating to uf",
+      blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
+    },
+    pages: [],
+    then: "/guide/start",
   },
   {
     title: "Reference",
+    question: "What does this flag, key or export do?",
+    landing: {
+      href: "/reference",
+      title: "Reference",
+      blurb: "Every command, config key, package and export, for looking one up.",
+    },
     pages: [
       {
         href: "/reference/cli",
@@ -263,11 +355,15 @@ export const sections: $ReadOnlyArray<Section> = [
           "The Go standard library modules JavaScript does not have, and the measurements behind why they are JavaScript.",
       },
     ],
+    then: null,
   },
 ];
 
-/** Every page, flattened into reading order. */
-export const pages: $ReadOnlyArray<Entry> = sections.flatMap((section) => section.pages);
+/** Every page, flattened: each section's landing page, then its pages. */
+export const pages: $ReadOnlyArray<Entry> = sections.flatMap((section) => [
+  section.landing,
+  ...section.pages,
+]);
 
 /**
  * The entry for a pathname, or `null` for a page outside the manual (the home
@@ -284,18 +380,51 @@ export function entryFor(pathname: string): Entry | null {
   return null;
 }
 
+/** The section a pathname is listed in, or `null` for a page outside the manual. */
+export function sectionFor(pathname: string): Section | null {
+  const normalized = normalize(pathname);
+  for (const section of sections) {
+    if (section.landing.href === normalized) {
+      return section;
+    }
+    for (const page of section.pages) {
+      if (page.href === normalized) {
+        return section;
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * The page a reader should go to next, or `null` at the end of the manual.
- * Reading order is the order of `sections`, which is the order the sidebar
- * shows — so "next" always means "the link below this one".
+ *
+ * Inside a section that is the entry below this one in the sidebar, starting
+ * from the landing page. On a section's last page it is the landing page the
+ * section names in `then` — the next section *for that reader*, which is not
+ * always the one listed next.
  */
 export function nextAfter(pathname: string): Entry | null {
-  const normalized = normalize(pathname);
-  const index = pages.findIndex((page) => page.href === normalized);
-  if (index < 0 || index + 1 >= pages.length) {
+  const section = sectionFor(pathname);
+  if (section == null) {
     return null;
   }
-  return pages[index + 1];
+  const normalized = normalize(pathname);
+  const run = [section.landing, ...section.pages];
+  const index = run.findIndex((page) => page.href === normalized);
+  if (index + 1 < run.length) {
+    return run[index + 1];
+  }
+  const then = section.then;
+  if (then == null) {
+    return null;
+  }
+  for (const candidate of sections) {
+    if (candidate.landing.href === then) {
+      return candidate.landing;
+    }
+  }
+  return null;
 }
 
 /** `true` when `pathname` is the entry's page. */

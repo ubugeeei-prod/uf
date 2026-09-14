@@ -187,10 +187,10 @@ export type StandaloneApp = {|
    *
    * From the application bundle rather than from this module's own import of
    * `@uniflowed/server/host`, and that is not a stylistic choice: the request
-   * lives in an `AsyncLocalStorage` belonging to one module instance, and the
-   * instance that matters is the one the bundled router, middleware and pages
-   * resolved to. Beginning a request in a second storage would leave every
-   * `cookies()` in the application outside one, silently.
+   * store is shared by every copy of one *release* of `@uniflowed/server`, and
+   * the release that matters is the one the bundled router, middleware and
+   * pages resolved to. Beginning a request in another release's store would
+   * leave every `cookies()` in the application outside one, silently.
    *
    * `run` wraps everything that decides the response; `settle` is called after
    * the last byte, which here is after `send`, after `sendBytes`, and after

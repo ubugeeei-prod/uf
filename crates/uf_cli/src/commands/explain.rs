@@ -92,6 +92,13 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
     };
 
     let sources = config_sources(&resolved);
+    // The tools this command reads, each with the key that declared it: the
+    // question ubugeeei-prod/uf#940 adds to "which provider runs each stage" is
+    // "on what, and says who". Empty for a command that runs no tool of a
+    // project's choosing, and then not printed at all.
+    let tools: Vec<uf_config::ToolDeclaration> = uf_config::ToolRole::for_command(command)
+        .map(|role| resolved.config.tool_declaration(role))
+        .collect();
 
     if as_json {
         ui.json(&json!({
@@ -105,10 +112,15 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
                     "detail": stage.detail,
                 }))
                 .collect::<Vec<_>>(),
+            "tools": tools,
             "configurationSources": sources,
         }))?;
         return Ok(());
     }
+    let tool_summaries: Vec<String> = tools
+        .iter()
+        .map(uf_config::ToolDeclaration::summary)
+        .collect();
 
     let label = project_label(&resolved.root);
     let heading = format!("uf {command}");
@@ -132,6 +144,16 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         }
 
         renderer.blank(out);
+        if !tools.is_empty() {
+            renderer.heading(out, 2, "tools");
+            let rows: Vec<_> = tools
+                .iter()
+                .zip(&tool_summaries)
+                .map(|(tool, summary)| KeyValue::new(tool.label, summary))
+                .collect();
+            renderer.key_values(out, 4, &rows);
+            renderer.blank(out);
+        }
         renderer.heading(out, 2, "configuration");
         let rows: Vec<&str> = sources.iter().map(String::as_str).collect();
         renderer.bullet_list(out, 4, &rows);
@@ -844,7 +866,10 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 fn builder_provider(resolved: &ResolvedConfig) -> String {
     match builder::resolve(&resolved.root, &resolved.config) {
         Ok(builder) => builder.label(),
-        Err(error) => format!("{} (unresolved: {error})", resolved.config.builder.module),
+        Err(error) => format!(
+            "{} (unresolved: {error})",
+            resolved.config.builder_tool().spec.module()
+        ),
     }
 }
 
@@ -1218,7 +1243,7 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         },
         Stage {
             name: "scheduling",
-            provider: format!("{:?}", resolved.config.test.runner.scheduler),
+            provider: format!("{:?}", resolved.config.test.native_runner().scheduler),
             detail: "one file per worker, longest expected first".to_string(),
         },
         host_stage(resolved),

@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/react-native",
-  "version": "0.0.0-alpha.32",
+  "version": "0.0.0-alpha.33",
   "description": "React Native, re-exported for the Unified Toolchain for Flow.",
   "type": "module",
   "license": "MIT",
@@ -12,21 +12,21 @@
   },
   "exports": {
     ".": "./index.js",
-    "./metro": "./metro.js",
+    "./metro": "./metro.cjs",
     "./metro-transformer.cjs": "./metro-transformer.cjs"
   },
   "files": [
     "index.js",
-    "metro.js",
+    "metro.cjs",
     "metro-transformer.cjs",
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/host": "0.0.0-alpha.32"
+    "@uniflowed/host": "0.0.0-alpha.33"
   },
   "peerDependencies": {
     "react": ">=19.2.3",
-    "react-native": ">=0.87"
+    "react-native": ">=0.86"
   },
   "peerDependenciesMeta": {
     "react-native": {

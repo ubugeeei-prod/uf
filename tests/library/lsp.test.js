@@ -55,16 +55,23 @@ type Diagnostic = {
 };
 
 // One entry of a `result` that is a list. `textDocument/formatting` answers
-// with `TextEdit`s (`range` and `newText`) and `textDocument/codeAction` with
-// `CodeAction`s (`title`, `kind`, `edit`); the tests tell them apart by which
-// fields are set, which is itself part of what they check.
+// with `TextEdit`s (`range` and `newText`), `textDocument/codeAction` with
+// `CodeAction`s (`title`, `kind`, `edit`), and `textDocument/completion` with
+// `CompletionItem`s (`label`, a numeric `kind`, `textEdit`); the tests tell
+// them apart by which fields are set, which is itself part of what they check.
 type Entry = {
   range?: Range,
   newText?: string,
   title?: string,
-  kind?: string,
+  kind?: string | number,
   diagnostics?: Array<Diagnostic>,
   edit?: { changes: { [uri: string]: Array<Entry> } },
+  label?: string,
+  detail?: string,
+  documentation?: { kind: string, value: string },
+  textEdit?: Entry,
+  filterText?: string,
+  sortText?: string,
 };
 
 // A `result` that is not a list: `initialize`'s, and `hover`'s.
@@ -77,7 +84,7 @@ type Answer = {
     codeActionProvider?: { codeActionKinds: Array<string> },
     definitionProvider?: boolean,
     renameProvider?: boolean,
-    completionProvider?: { ... },
+    completionProvider?: { triggerCharacters: Array<string> },
     referencesProvider?: boolean,
     documentSymbolProvider?: boolean,
   },
@@ -233,12 +240,15 @@ describe("what uf lsp tells an editor it can do", () => {
       "quickfix",
       "source.fixAll.uf",
     ]);
+    // Completion, which only `uf.config.js` answers. `"` opens a value or a
+    // quoted key; `@` separates a tool from its version.
+    expect(result.capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@"]);
   });
 
   it("does not advertise what it cannot do", () => {
     // The READMEs are written from this list. `source.organizeImports` is
     // absent because uf has no import-order opinion, and go-to-definition,
-    // rename and completion are absent because nothing serves them.
+    // rename, references and symbols are absent because nothing serves them.
     const messages = session([
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } },
       EXIT,
@@ -247,7 +257,6 @@ describe("what uf lsp tells an editor it can do", () => {
 
     expect(capabilities.definitionProvider).toBe(undefined);
     expect(capabilities.renameProvider).toBe(undefined);
-    expect(capabilities.completionProvider).toBe(undefined);
     expect(capabilities.referencesProvider).toBe(undefined);
     expect(capabilities.documentSymbolProvider).toBe(undefined);
     expect(capabilities.codeActionProvider.codeActionKinds).not.toContain("source.organizeImports");
@@ -464,6 +473,149 @@ describe("hover", () => {
     const messages = session([didOpen("// @flow\nconst x = 1;\n"), hover(5, 1, 6), EXIT]);
 
     expect(answer(messages, 5).result).toBe(null);
+  });
+});
+
+describe("completion in uf.config.js", () => {
+  const CONFIG = "file:///project/uf.config.js";
+
+  const complete = (
+    id: number,
+    line: number,
+    character: number,
+    uri: string = CONFIG,
+  ): Message => ({
+    jsonrpc: "2.0",
+    id,
+    method: "textDocument/completion",
+    params: { textDocument: { uri }, position: { line, character } },
+  });
+
+  // A document with `‸` where the cursor is: the text without it, and the
+  // protocol position of the cursor. A JavaScript string is indexed in UTF-16
+  // code units, which is what `character` counts.
+  const marked = (document: string): { text: string, line: number, character: number } => {
+    const before = document.slice(0, document.indexOf("‸")).split("\n");
+    return {
+      text: document.replace("‸", ""),
+      line: before.length - 1,
+      character: before[before.length - 1].length,
+    };
+  };
+
+  const completeAt = (document: string, cwd?: string): { text: string, items: Array<Entry> } => {
+    const { text, line, character } = marked(document);
+    const messages = session([didOpen(text, CONFIG), complete(9, line, character), EXIT], cwd);
+    return { text, items: listed(messages, 9) };
+  };
+
+  const labels = (items: Array<Entry>): Array<string> => items.map((item) => item.label ?? "");
+
+  it("completes a half-typed key from the config schema, with its documentation and type", () => {
+    // Unclosed and mid-word: the state a document is in when somebody wants a
+    // completion, and one the Flow parser cannot read.
+    const { text, items } = completeAt("export default defineConfig({\n  test: {\n    cov‸\n");
+    const coverage = items.find((item) => item.label === "coverage") ?? {};
+
+    expect(coverage.kind).toBe(10);
+    expect(coverage.detail).toBe("{ … }");
+    expect(coverage.documentation?.kind).toBe("markdown");
+    expect(coverage.documentation?.value).toContain("What `uf test --coverage` measures");
+    // The half-typed word is replaced, and the cursor is left where the value goes.
+    expect(apply(text, [coverage.textEdit ?? {}])).toBe(
+      "export default defineConfig({\n  test: {\n    coverage: \n",
+    );
+  });
+
+  it("does not offer a key the object already has", () => {
+    const { items } = completeAt(
+      'export default defineConfig({\n  fmt: { quotes: "single" },\n  ‸\n});\n',
+    );
+
+    expect(labels(items)).toContain("lint");
+    expect(labels(items)).not.toContain("fmt");
+  });
+
+  it("completes the members of a string union inside its quotes", () => {
+    const { text, items } = completeAt('export default defineConfig({ fmt: { quotes: "‸" } });\n');
+
+    expect(labels(items)).toEqual(["single", "double"]);
+    expect(items[0].kind).toBe(20);
+    expect(apply(text, [items[1].textEdit ?? {}])).toBe(
+      'export default defineConfig({ fmt: { quotes: "double" } });\n',
+    );
+  });
+
+  it("writes a value typed without quotes in the project's own quote style", () => {
+    // The style comes from the `uf.config.js` the server was started with,
+    // which is not the document being edited.
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-quotes-"));
+    try {
+      fs.writeFileSync(
+        path.join(project, "uf.config.js"),
+        '// @flow\nexport default { fmt: { quotes: "single" } };\n',
+      );
+      const { text, items } = completeAt(
+        "export default defineConfig({ fmt: { quotes: ‸ } });\n",
+        project,
+      );
+
+      expect(labels(items)).toEqual(["'single'", "'double'"]);
+      expect(apply(text, [items[0].textEdit ?? {}])).toBe(
+        "export default defineConfig({ fmt: { quotes: 'single' } });\n",
+      );
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("completes true and false for a boolean, and nothing inside quotes", () => {
+    expect(
+      labels(completeAt("export default defineConfig({ fmt: { semicolons: ‸ } });\n").items),
+    ).toEqual(["true", "false"]);
+    expect(
+      completeAt('export default defineConfig({ fmt: { semicolons: "‸" } });\n').items,
+    ).toEqual([]);
+  });
+
+  it("puts the edit in UTF-16 units after a character outside the Basic Multilingual Plane", () => {
+    const { text, items } = completeAt(
+      'export default defineConfig({ docs: { app: "🦀" }, fmt: { quotes: "‸" } });\n',
+    );
+
+    expect(apply(text, [items[0].textEdit ?? {}])).toBe(
+      'export default defineConfig({ docs: { app: "🦀" }, fmt: { quotes: "single" } });\n',
+    );
+  });
+
+  it("answers nothing in a file that is not uf.config.js", () => {
+    // The trigger characters fire in every file an editor gives the server.
+    const messages = session([didOpen('// @flow\nconst a = "";\n'), complete(9, 1, 11, URI), EXIT]);
+
+    expect(answer(messages, 9).result).toBe(null);
+  });
+
+  it("explains the key under the pointer with the documentation completion shows", () => {
+    const text = "export default defineConfig({ test: { coverage: {} } });\n";
+    const start = text.indexOf("coverage");
+    const messages = session([
+      didOpen(text, CONFIG),
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "textDocument/hover",
+        params: { textDocument: { uri: CONFIG }, position: { line: 0, character: start + 2 } },
+      },
+      EXIT,
+    ]);
+    const result = answered(messages, 9);
+
+    expect(result.contents?.value).toContain("**`test.coverage`**");
+    expect(result.contents?.value).toContain("What `uf test --coverage` measures");
+    expect(result.range).toEqual({
+      start: { line: 0, character: start },
+      end: { line: 0, character: start + "coverage".length },
+    });
   });
 });
 

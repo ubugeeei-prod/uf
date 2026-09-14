@@ -1709,6 +1709,92 @@ fn explain_emits_json_when_asked() {
     );
 }
 
+/// `uf explain <command>` names each tool the command reads, and the key that
+/// declared it.
+///
+/// ubugeeei-prod/uf#940. The test runtime here is written nowhere: the runner
+/// implies it, and "which key made this Bun" is exactly the question a reader
+/// cannot answer from the config file alone.
+#[test]
+fn explain_names_each_tool_a_command_reads_and_the_key_it_came_from() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({ runtime: \"node@26\", test: { runner: \"bun@1.4\" } });\n",
+    )
+    .unwrap();
+    let explain = |arguments: &[&str]| {
+        let output = uf()
+            .arg("--cwd")
+            .arg(dir.path())
+            .arg("explain")
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+
+    let value: serde_json::Value = serde_json::from_str(&explain(&["test", "--json"])).unwrap();
+    let tools = value["tools"].as_array().expect("a tools array");
+    assert_eq!(tools.len(), 2, "{tools:#?}");
+    assert_eq!(tools[0]["role"], "testRuntime");
+    assert_eq!(tools[0]["spec"], "bun@1.4");
+    assert_eq!(tools[0]["key"], "test.runner");
+    assert_eq!(tools[0]["via"], "implied");
+    assert_eq!(tools[1]["role"], "testRunner");
+
+    // A command that runs no tool of the project's choosing lists none.
+    let value: serde_json::Value = serde_json::from_str(&explain(&["fmt", "--json"])).unwrap();
+    assert_eq!(value["tools"], serde_json::json!([]));
+    assert!(!explain(&["fmt"]).contains("  tools\n"));
+
+    let dev = explain(&["dev"]);
+    assert!(dev.contains("  tools\n"), "{dev}");
+    assert!(dev.contains("node@26 (runtime)"), "{dev}");
+    assert!(dev.contains("vite (uf's default)"), "{dev}");
+    assert_plain(&dev);
+}
+
+/// A tool spec uf cannot read is reported as itself by a command that would
+/// otherwise evaluate the config.
+///
+/// `uf build` answers a config it cannot *parse* by starting the builder to
+/// evaluate the file instead. A refused spec is not a parse failure — it is
+/// refused where the key is known — so a range where a version belongs is
+/// reported with its key, and not as a config that could not be evaluated after
+/// a JavaScript host was started for nothing. ubugeeei-prod/uf#940.
+#[test]
+fn a_refused_tool_spec_is_not_handed_to_the_builder_to_evaluate() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("package.json"), "{}\n").unwrap();
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nexport default defineConfig({ build: { runtime: \"node@^26\" } });\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(!output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("build.runtime is `node@^26`, which is a range"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("`node@26`"), "{stderr}");
+    assert!(!stderr.contains("failed to evaluate"), "{stderr}");
+}
+
 /// `uf explain exec` describes the path that runs without asking.
 ///
 /// `exec_package` tries four things in order, and the explanation listed three:
@@ -2137,6 +2223,12 @@ fn lsp_initialize_returns_native_capabilities() {
         stdout.contains(r#""codeActionKinds":["quickfix","source.fixAll.uf"]"#),
         "{stdout}"
     );
+    // Completion, which `uf.config.js` answers: `"` opens a value or a quoted
+    // key, and `@` separates a tool from its version.
+    assert!(
+        stdout.contains(r#""completionProvider":{"triggerCharacters":["\"","@"]}"#),
+        "{stdout}"
+    );
     // `diagnosticProvider` is the *pull* model, where the editor asks. uf
     // pushes `textDocument/publishDiagnostics` instead, which is a
     // notification and has no capability to advertise. Advertising a pull
@@ -2425,6 +2517,72 @@ fn hover_at(id: u64, uri: &str, line: u64, character: u64) -> String {
     framed(&format!(
         r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":{line},"character":{character}}}}}}}"#
     ))
+}
+
+fn completion_at(id: u64, uri: &str, line: u64, character: u64) -> String {
+    framed(&format!(
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/completion","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":{line},"character":{character}}}}}}}"#
+    ))
+}
+
+/// Completion in `uf.config.js`, over the wire: the keys valid at the cursor
+/// with the schema's own documentation, the members of a string union inside
+/// its quotes, and nothing at all for a file that is not a config.
+#[test]
+fn lsp_completes_uf_config_js_from_the_config_schema() {
+    let uri = "file:///project/uf.config.js";
+    let source = "export default defineConfig({\n  fmt: { quotes: \"\" },\n  te\n});\n";
+    let messages = lsp_session(&[
+        did_open(uri, source),
+        // After the half-typed `te`.
+        completion_at(1, uri, 2, 4),
+        // Between the quotes of `quotes: ""`.
+        completion_at(2, uri, 1, 18),
+        did_open("file:///project/app.js", "// @flow\nconst a = \"\";\n"),
+        completion_at(3, "file:///project/app.js", 1, 11),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let keys = answer(&messages, 1)["result"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a list of keys in:\n{messages:#?}"));
+    let test = keys
+        .iter()
+        .find(|item| item["label"] == "test")
+        .unwrap_or_else(|| panic!("`test` is offered: {keys:#?}"));
+    assert_eq!(test["kind"], 10);
+    assert_eq!(test["detail"], "{ … }");
+    assert_eq!(test["textEdit"]["newText"], "test: ");
+    assert_eq!(
+        test["textEdit"]["range"],
+        serde_json::json!({
+            "start": { "line": 2, "character": 2 },
+            "end": { "line": 2, "character": 4 },
+        })
+    );
+    // Written already, so not offered again.
+    assert!(!keys.iter().any(|item| item["label"] == "fmt"), "{keys:#?}");
+    let ignore = keys
+        .iter()
+        .find(|item| item["label"] == "ignore")
+        .unwrap_or_else(|| panic!("`ignore` is offered: {keys:#?}"));
+    assert_eq!(ignore["documentation"]["kind"], "markdown");
+    assert!(
+        ignore["documentation"]["value"]
+            .as_str()
+            .is_some_and(|text| text.contains("Paths no command walks into")),
+        "{ignore:#?}"
+    );
+
+    let values: Vec<&str> = answer(&messages, 2)["result"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a list of values in:\n{messages:#?}"))
+        .iter()
+        .filter_map(|item| item["label"].as_str())
+        .collect();
+    assert_eq!(values, ["single", "double"]);
+
+    assert_eq!(answer(&messages, 3)["result"], serde_json::Value::Null);
 }
 
 /// The whole point of a code action: an edit that, applied, fixes the thing.

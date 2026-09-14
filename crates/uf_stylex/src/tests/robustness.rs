@@ -115,6 +115,26 @@ fn a_selector_that_escapes_its_rule_is_refused() {
     ));
 }
 
+/// An attribute selector is new text inside a key, and it is not a way out of
+/// the rule: a list, a second class or a closing brace after it is refused the
+/// same way it is refused after `:hover`.
+#[test]
+fn an_attribute_selector_that_escapes_its_rule_is_refused() {
+    for key in [
+        ":is([open]), .victim",
+        ":is([open]){}.victim",
+        ":is([open=a}.victim{display:none])",
+    ] {
+        let source = module(&format!(
+            "const s = stylex.create({{ a: {{ \"{key}\": {{ display: \"none\" }} }} }});\n"
+        ));
+        assert!(
+            matches!(parse_module(&source), Err(StyleXError::InvalidKey { .. })),
+            "{key}"
+        );
+    }
+}
+
 #[test]
 fn an_at_rule_that_escapes_its_block_is_refused() {
     let source = module(
