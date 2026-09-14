@@ -69,6 +69,7 @@ import { reportMalformedRequests, send } from "./node.js";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
+import { flightResponse } from "./internal/flight.js";
 import { processLogger } from "./log.js";
 
 /**
@@ -471,6 +472,19 @@ export function createHandler(
         const acted = await app.callAction(asRequest);
         if (acted != null) {
           await sendUnlessHead(response, method, acted);
+          return;
+        }
+
+        // A browser that is navigating, asking for the next route's payload:
+        // after the guard and before the handlers, as every front door does.
+        // See `./internal/flight.js`.
+        const flight = await flightResponse(app, asRequest, {
+          onError: (error) => {
+            console.error(error);
+          },
+        });
+        if (flight != null) {
+          await sendUnlessHead(response, method, flight);
           return;
         }
 
