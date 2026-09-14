@@ -16,7 +16,7 @@
 //
 // # Temporal, not `Date`
 //
-// This component is built on `@uniflowed/temporal` and the choice is not
+// This component is built on `@uniflowed/core/temporal` and the choice is not
 // cosmetic. `Date` has one time zone — whichever the machine is set to — and
 // the two machines here are set to different ones, which is the entire problem
 // restated. There is no way to write "six in the morning UTC, shown as three in
@@ -46,8 +46,8 @@
 // subject inside this one, because nothing about a price is about an instant.
 
 import * as React from "@uniflowed/react";
-import type { Instant } from "@uniflowed/temporal";
-import { Temporal } from "@uniflowed/temporal";
+import type { Instant } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
 import { useRenderEnvelope } from "@uniflowed/hooks/render";
 
 /** Whatever a caller has an instant written as. */

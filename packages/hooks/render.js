@@ -119,8 +119,8 @@ import { createContext, useContext, useState } from "@uniflowed/react";
 import { currentClock } from "@uniflowed/core/clock";
 import type { Random } from "@uniflowed/core/random";
 import { hostSeed, seededRandom, shuffled } from "@uniflowed/core/random";
-import type { Instant } from "@uniflowed/temporal";
-import { Temporal } from "@uniflowed/temporal";
+import type { Instant } from "@uniflowed/core/temporal";
+import { Temporal } from "@uniflowed/core/temporal";
 
 /** What a render fixes, and what travels to the client. */
 export type RenderEnvelope = {
