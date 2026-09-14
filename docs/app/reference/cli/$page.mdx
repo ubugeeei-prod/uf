@@ -77,6 +77,14 @@ Says what a command will do and **which provider does each part** — `dev`,
 `build`, `preview`, `start`, `doc`, `test`, `fmt`, `lint` or `check`. `--json`
 for the machine-readable form.
 
+`--target TARGET` describes `uf dev` for that application target. For `native`,
+`ios` or `android` the stages name the project's own React Native dev server
+and its version, the Metro config file, and what a device connects to, rather
+than the builder. Without it, `uf explain dev` describes the project's default
+target, so a `react-native` framework project gets the native plan. It is
+refused for any other command, because only `uf dev`'s providers change with
+the target.
+
 ```
 uf dev
 
@@ -228,7 +236,20 @@ is why this exists; see [ubugeeei-prod/uf#234](https://github.com/ubugeeei-prod/
 `.env.<mode>` and what the browser reads as `import.meta.env.MODE`; see
 [Environments](/guide/env).
 
-It also runs the server-component analysis, and runs it again whenever a module
+`--target TARGET` chooses the application target — `web`, `native`, `ios` or
+`android`, with `react-native` accepted for `native` — and a `react-native`
+framework project defaults to `native`, as it does for `uf build`. A native
+target is developed with the project's own React Native dev server rather than
+the builder: `expo start` when Expo is installed, `react-native start` when
+React Native CLI is. Before starting it, uf loads the project's Metro config and
+refuses one that does not compose `withUniflowedMetro()`, and prints the address
+a device connects to. Everything after `--` goes to that server untouched —
+`uf dev --target native -- --tunnel` — and `UF_BINARY` names the `uf` that
+started it, so the bundle is compiled by the same binary. `--host` is refused
+for a native target, because each server spells binding its own way; pass that
+server's flag after `--` instead. See [React Native](/guide/react-native).
+
+For the web target, it also runs the server-component analysis, and runs it again whenever a module
 changes, so a Server Component that reaches for `useEffect` or `localStorage`
 is named where it was written rather than in a build days later. It is a report
 and not a gate: `uf dev` does not refuse to serve a module over it, and nothing
