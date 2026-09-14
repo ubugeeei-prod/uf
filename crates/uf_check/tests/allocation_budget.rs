@@ -10,7 +10,7 @@
 #![cfg(feature = "upstream-typecheck")]
 
 use uf_check::{CheckLimits, Source, check_sources};
-use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{CountingAllocator, ThreadWindow};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
@@ -38,16 +38,15 @@ fn runtime_js_check_stays_below_the_cold_allocation_budget() {
     let warm = check_sources(&sources, &[], &limits).expect("warm check");
     assert_eq!(warm.files_checked, 1, "the fixture should opt in to Flow");
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    // This thread, and the check thread `uf_check` runs the module on, which
+    // hands its allocations back — not any other thread in the binary. See
+    // `uf_profiler::Handover`.
+    let window = ThreadWindow::open();
     let report = check_sources(&sources, &[], &limits).expect("measured check");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(report.files_checked, 1, "the fixture should be checked");
 
-    let delta = after.delta_from(&before);
     let source_bytes = u64::try_from(source.len()).expect("source length fits in u64");
     let allocation_ceiling = source_bytes * RUNTIME_JS_ALLOCATIONS_PER_BYTE_CEILING;
     let byte_ceiling = source_bytes * RUNTIME_JS_BYTES_PER_BYTE_CEILING;

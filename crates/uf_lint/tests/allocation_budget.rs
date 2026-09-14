@@ -7,7 +7,7 @@
 
 use uf_config::UniflowedConfig;
 use uf_lint::SourceFile;
-use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{CountingAllocator, ThreadWindow};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
@@ -39,12 +39,12 @@ fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
         warm.diagnostics
     );
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    // This thread, and the thread `uf_lint` parses the module on, which hands
+    // its allocations back — not any other thread in the binary. See
+    // `uf_profiler::Handover`.
+    let window = ThreadWindow::open();
     let report = uf_lint::lint_source(&file, &config).expect("measured lint");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert!(
         report.diagnostics.is_empty(),
@@ -52,7 +52,6 @@ fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
         report.diagnostics
     );
 
-    let delta = after.delta_from(&before);
     let source_bytes = u64::try_from(file.source.len()).expect("source length fits in u64");
     let source_kib = source_bytes.div_ceil(1024);
     let allocation_ceiling = source_kib * RUNTIME_JS_ALLOCATIONS_PER_KIB_CEILING;
