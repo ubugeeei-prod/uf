@@ -14,6 +14,13 @@ accessible errors wired for you — and one render where the incumbent gets
 zero, for a reason the page gives you rather than hides.
 </div>
 
+**What you will be able to do:** build a form with typed values and rules or a
+schema, submit it to a server action, subscribe only where a value renders, and
+handle arrays of fields, controlled components and asynchronous validation.
+
+**What you need first:** a project — [Your first project](/guide/project) — and
+[Server actions](/guide/server-actions) if the form submits to one.
+
 ## A form
 
 ```js
@@ -524,3 +531,8 @@ excerpts of a component, since a fence that repeated the `useForm` call, the
 `packages/form/form.test.js` is where the behaviour above is pinned, including
 the three render counts, in *"counts the owner, the watcher and a controlled
 input over the same six keystrokes"* — `uf test packages/form/form.test.js`.
+
+## Where to go next
+
+[Effects](/guide/effect) is next: failures in the type, for the work a form
+hands off.

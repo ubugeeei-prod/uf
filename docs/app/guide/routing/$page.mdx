@@ -12,6 +12,15 @@ Files under `app/` are the route table. There is no route configuration to
 write and no list to keep in step with the directory.
 </div>
 
+**What you will be able to do:** lay out routes as files; nest layouts,
+templates and slots; handle a missing page, an error and a slow one; load data
+and metadata before a page renders; navigate; and answer requests with
+middleware and route handlers.
+
+**What you need first:** a project — [Your first project](/guide/project) — and
+[Flow, the modern parts](/guide/flow) for the `component` syntax every example
+uses.
+
 ## The file names
 
 Nine names are reserved. Everything else in `app/` is an ordinary module.
@@ -1369,3 +1378,9 @@ route("/docs/:path*", { path: "guide" });    // a catch-all is an array
 `/` stays one segment rather than becoming two — and the link it builds matches
 the route it was built from, because the builder and the matcher are the same
 code.
+
+## Where to go next
+
+[Rendering modes](/guide/rendering) is next: where each route's document comes
+from, and what a click does. [Server Components](/guide/server-components) is
+what decides which of these modules reach the browser.

@@ -13,6 +13,14 @@ installs the toolchain, and each is thin because all three run the same
 installer a human runs.
 </div>
 
+**What you will be able to do:** run uf in GitHub Actions, GitLab CI or
+CircleCI, pin its version, install before you check, cache what is safe to
+cache, and read the result from a job.
+
+**What you need first:** a repository with a uf project in it — [Your first
+project](/guide/project) — and [Tasks](/guide/tasks), if the pipeline and a
+laptop should run the same list.
+
 `uf` is one binary. A pipeline does not build it, install a package manager to
 fetch it, or configure a toolchain around it: it downloads a release, puts three
 names on `PATH`, and runs `uf check`.
@@ -374,3 +382,8 @@ check that holds the three files to them. If you write a Jenkins or Buildkite
 recipe for uf, the four things to get right are on this page: pin the version,
 put the architecture in the cache key, run `uf install` before anything reads
 `node_modules`, and read the result out of `--json` rather than out of the log.
+
+## Where to go next
+
+[Agents](/guide/agents) is next: the same checks, run by a coding agent over `uf
+mcp`.
