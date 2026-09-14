@@ -369,7 +369,7 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
       }),
     );
     try {
-      installWorkerLogger();
+      installWorkerLogger("Cloudflare-Workers");
       const handle = createWorkerFetch({
         handle: createFetchHandler({ app: appWith({}), document: assets }),
         beginRequest,
@@ -410,9 +410,32 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
     const { logger } = recordingLogger();
     installLogger(logger);
     try {
-      installWorkerLogger();
+      installWorkerLogger("Cloudflare-Workers");
       expect(processLogger()).toBe(logger);
     } finally {
+      installLogger(null);
+    }
+  });
+
+  it("keeps the process default when the worker is imported under Node", () => {
+    const written: Array<string> = [];
+    const spies = ["info", "error"].map((method) =>
+      uft.spyOn(console, method).mockImplementation((line: mixed) => {
+        written.push(`${method}: ${String(line)}`);
+      }),
+    );
+    try {
+      // What `uf`'s adapter parity test does: it imports `worker.js` under
+      // Node and reads the answers from stdout, which `console.info` writes to.
+      installWorkerLogger("Node.js/24");
+      processLogger().info("served under node", {});
+
+      expect(written.some((line) => line.startsWith("info: "))).toBe(false);
+      expect(
+        written.some((line) => line.startsWith("error: ") && line.includes("served under node")),
+      ).toBe(true);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
       installLogger(null);
     }
   });

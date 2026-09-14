@@ -278,7 +278,10 @@ level to `console.error`, because stdout is a protocol in the process that runs
 under `wrangler dev` every request's access line came out as an `ERROR`: a
 Worker answering 200s read as one failing on every request. The generated
 `worker.js` now installs a logger that writes each level through its own
-method, unless the application installed one first.
+method, unless the application installed one first. It does so only where
+`navigator.userAgent` is `Cloudflare-Workers`. uf's adapter parity test imports
+the same file under Node and reads its answers from stdout, which is where
+`console.info` writes on Node, so everywhere else the default stays.
 
 ### The limits a Worker imposes, by name
 

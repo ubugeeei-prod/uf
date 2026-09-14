@@ -89,9 +89,36 @@ export function edgeCapabilities(options?: CapabilityOptions): ServerCapabilitie
  * Called by the generated `worker.js` after its imports, which is after the
  * application's modules have been evaluated, and only takes effect when nothing
  * chose a logger first: an application that installed its own keeps it.
+ *
+ * # Only on a Worker
+ *
+ * Nothing is installed unless `userAgent` is `Cloudflare-Workers`, which is
+ * what workerd's `navigator.userAgent` answers at the compatibility date `uf`
+ * writes. The same `worker.js` is also imported under Node: by `uf`'s own test
+ * that every adapter answers what the `node` adapter answers, and by any
+ * application that tests its build that way. There `console.info` is stdout,
+ * so the default's reason applies again, and a harness reading answers from
+ * stdout would find access lines between them. `userAgent` is the runtime's
+ * unless a caller passes one, which is what a test does.
  */
-export function installWorkerLogger(): void {
+export function installWorkerLogger(userAgent: string | null = runtimeUserAgent()): void {
+  if (userAgent !== WORKERS_USER_AGENT) {
+    return;
+  }
   installLoggerUnlessChosen(createLevelConsoleLogger);
+}
+
+/** `navigator.userAgent` in a Worker. */
+const WORKERS_USER_AGENT = "Cloudflare-Workers";
+
+/** `navigator.userAgent`, or `null` on a runtime with no `navigator`. */
+function runtimeUserAgent(): string | null {
+  const runtime = globalThis.navigator;
+  if (runtime == null || typeof runtime !== "object") {
+    return null;
+  }
+  const agent = runtime.userAgent;
+  return typeof agent === "string" ? agent : null;
 }
 
 /**

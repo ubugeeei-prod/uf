@@ -534,7 +534,8 @@ every CI run.
 level through the `console` method of the same name. A Worker's own log store
 reads the method, so an `info` access line stays information rather than
 showing up as an error in `wrangler tail`. A logger your application installs
-with `installLogger` is kept.
+with `installLogger` is kept. This applies only inside a Worker: imported under
+Node, for example by a test, `worker.js` keeps writing every level to stderr.
 
 React is linked from its `server.edge.js` build for this target, so a document
 comes out of `renderToReadableStream` rather than the Node renderer. That is a
