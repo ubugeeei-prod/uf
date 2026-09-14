@@ -917,7 +917,7 @@ fn binary_name(package: &str) -> Option<&str> {
 /// So a quote, a caret or a percent sign in an argument is the standard
 /// library's problem to encode and not uf's to quote — and quoting it here
 /// would be uf escaping a string that is about to be escaped again.
-fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
+pub(crate) fn installed_binary(root: &Utf8Path, package: &str) -> Option<Utf8PathBuf> {
     installed_binary_in(root, package, BinPlatform::HOST)
 }
 
@@ -978,7 +978,7 @@ fn spawn_executable(
 /// That loses which signal it was, and matching `uf env exec` is worth more
 /// than fixing it in one of the two commands: a sibling pair that disagreed
 /// about the same event would be the harder thing to reason about.
-fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, package: &str) -> ! {
+pub(crate) fn adopt_exit_status(ui: &mut Ui, status: std::process::ExitStatus, package: &str) -> ! {
     // Said before leaving, because the number alone does not say whose it is:
     // a reader looking at `42` should not have to guess whether uf failed or
     // the thing uf ran did.

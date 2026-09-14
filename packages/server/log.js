@@ -77,9 +77,10 @@ export {
  * protocol. A `let` would have left the first copy writing default lines into
  * that protocol from the first server component that logged.
  */
-const installed: {| current: Logger | null |} = processWide("process-logger@1", () => ({
-  current: null,
-}));
+const installed: {| current: Logger | null, chosen?: boolean |} = processWide(
+  "process-logger@1",
+  () => ({ current: null, chosen: false }),
+);
 
 /**
  * The process logger, building the default one if nobody installed any.
@@ -107,6 +108,24 @@ export function processLogger(): Logger {
  */
 export function installLogger(logger: Logger | null): void {
   installed.current = logger;
+  installed.chosen = logger != null;
+}
+
+/**
+ * Install the logger `create` builds, unless something already chose one.
+ *
+ * For a front door that knows a better default than [`createLogger`]'s and
+ * must not overrule a decision made elsewhere: `@uniflowed/server/edge`'s
+ * [`installWorkerLogger`], which runs after the application's modules have
+ * been evaluated, so an application that called [`installLogger`] while it
+ * loaded keeps its logger. A default built lazily by [`processLogger`] is not a
+ * choice and is replaced; `installLogger(null)` takes a choice back.
+ */
+export function installLoggerUnlessChosen(create: () => Logger): void {
+  if (installed.chosen === true) {
+    return;
+  }
+  installed.current = create();
 }
 
 /**

@@ -285,6 +285,45 @@ export function consoleSink(format: LogFormat): LogSink {
 }
 
 /**
+ * The sink that writes each level to the `console` method of the same name.
+ *
+ * For a host whose `console` *is* its log store and has no protocol on stdout
+ * to protect: a Cloudflare Worker, where `wrangler tail`, Workers Logs and
+ * `wrangler dev` file a `console.error` line as an error and a `console.info`
+ * line as information. [`consoleSink`]'s one stream is right in the process
+ * that runs `uf start` and wrong there — measured under `wrangler dev`, every
+ * request's access line came out marked `ERROR`, so a Worker answering every
+ * request with a 200 read, in the platform's own logs, as a Worker failing on
+ * every one. `../edge.js` installs a logger over this; nothing else does.
+ */
+export function levelConsoleSink(format: LogFormat): LogSink {
+  const spell = format === "json" ? formatJson : formatText;
+  return (record) => {
+    const line = spell(record);
+    if (record.level === "debug") {
+      console.debug(line);
+    } else if (record.level === "info") {
+      console.info(line);
+    } else if (record.level === "warn") {
+      console.warn(line);
+    } else {
+      console.error(line);
+    }
+  };
+}
+
+/**
+ * [`createLogger`]'s default logger, writing through [`levelConsoleSink`].
+ *
+ * The same level and format the environment chooses — `UF_LOG_LEVEL`,
+ * `UF_LOG_FORMAT` — and the same `silent`, so a Worker's logger differs from
+ * the default in where a line goes and in nothing else.
+ */
+export function createLevelConsoleLogger(): Logger {
+  return createLogger({ sink: levelConsoleSink(defaultFormat()) });
+}
+
+/**
  * One record as a line of JSON.
  *
  * `time` is an ISO string rather than the instant it is held as, because that

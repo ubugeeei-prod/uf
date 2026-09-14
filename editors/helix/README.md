@@ -51,9 +51,10 @@ formatting, since only one of them reads your `uf.config.js`.
 
 ## Working directory
 
-`uf lsp` reads `uf.config.js` from the directory it is started in, once, and
-that read is the only source of your `fmt` options and lint levels. `--cwd` is
-accepted by the command and ignored, so it is not a way out.
+`uf lsp` reads `uf.config.js` once, at start-up — from the directory `--cwd`
+names, or else from the directory it is started in — and that read is the only
+source of your `fmt` options and lint levels. This configuration relies on the
+second: its `args` are a fixed `["lsp"]`, with no project root in them.
 
 `roots = ["uf.config.js"]` is what tells Helix where the workspace is. Start
 `hx` from the project root. The way to check is to format a file in Helix and

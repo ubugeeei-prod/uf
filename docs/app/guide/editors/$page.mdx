@@ -169,10 +169,10 @@ Plug 'prabirshrestha/vim-lsp'
 source /path/to/uf/editors/vim/uf.vim
 ```
 
-vim-lsp starts a server in Vim's working directory, so start Vim from the project
-root, or set `let g:uf_cd_to_root = 1` before the `source` line, which starts the
-server through `/bin/sh -c 'cd <root> && exec uf lsp'`. `g:uf_executable` names a
-different binary. Format on save is a commented-out autocommand at the bottom of
+vim-lsp starts a server in Vim's working directory, so `uf.vim` names the project
+on the command line instead — `uf lsp --cwd <root>`, with the nearest directory
+that has a `uf.config.js` — and Vim can be started anywhere. `g:uf_executable`
+names a different binary. Format on save is a commented-out autocommand at the bottom of
 the file; restart with `:LspStopServer uf` and reopen the file.
 
 ## Helix
