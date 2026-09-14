@@ -29,11 +29,13 @@
 pub mod archive;
 pub mod gc;
 pub mod index;
+pub mod lock;
 pub mod project;
 pub mod roots;
 pub mod source;
 pub mod store;
 pub mod tool;
+pub mod toolchain;
 
 #[cfg(test)]
 mod tests;
@@ -148,6 +150,43 @@ pub enum EnvError {
         archive: Utf8PathBuf,
         /// What the unpacker said.
         detail: String,
+    },
+    /// `uf.lock` exists and is not the JSON uf writes, so what it locks is
+    /// unknown.
+    ///
+    /// Refused rather than read as empty: an unreadable lock read as an empty
+    /// one is every prefix silently re-resolved to whatever was published
+    /// since.
+    #[error("{path} cannot be read as uf's lockfile: {detail}")]
+    LockUnreadable {
+        /// The lockfile.
+        path: Utf8PathBuf,
+        /// What is wrong with it.
+        detail: String,
+    },
+    /// A prefix nothing has locked yet, and no release list to resolve it
+    /// with — no network, and no list fetched before.
+    #[error(
+        "{spec} is not locked in {lock}, and its release list could not be read to resolve it: \
+         {detail}\n  connect and run this again, or write an exact version"
+    )]
+    Unresolvable {
+        /// The spec as written: `node@26`.
+        spec: String,
+        /// The lockfile it is not locked in.
+        lock: Utf8PathBuf,
+        /// Why the list could not be read.
+        detail: String,
+    },
+    /// A prefix the publisher's list has no release for.
+    #[error("{spec} names no release in {list}{hint}")]
+    NoSuchRelease {
+        /// The spec as written.
+        spec: String,
+        /// Where the list came from.
+        list: String,
+        /// Why that list may be the wrong place to look, when it may be.
+        hint: &'static str,
     },
     /// A publisher's release list arrived, and it is not a release list.
     ///

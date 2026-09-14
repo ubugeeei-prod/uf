@@ -131,6 +131,43 @@ fn polluting_json_keys_are_recognised() {
     assert!(!is_polluting_json_key("__proto__x"));
 }
 
+/// `uf install` rewrites `uf.lock` from the manifests and keeps the toolchain
+/// record `uf_env` put there.
+///
+/// ubugeeei-prod/uf#940: which release `node@26` resolved to is not the
+/// manifests' to decide, and an install that dropped it would have every prefix
+/// re-resolved on the next command.
+#[test]
+fn install_keeps_the_toolchain_record_in_uf_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(root.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    fs::write(
+        root.join("uf.lock"),
+        "{\n  \"toolchain\": {\n    \"node@26\": \"26.8.2\"\n  }\n}\n",
+    )
+    .unwrap();
+
+    install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+    let lock: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("uf.lock")).unwrap()).unwrap();
+    assert_eq!(
+        lock["toolchain"],
+        serde_json::json!({ "node@26": "26.8.2" })
+    );
+    assert_eq!(lock["packages"][0]["name"], "demo");
+
+    // A project with no record gets the file it always got.
+    fs::remove_file(root.join("uf.lock")).unwrap();
+    install_workspace(&root, &UniflowedConfig::default()).unwrap();
+    assert!(
+        !fs::read_to_string(root.join("uf.lock"))
+            .unwrap()
+            .contains("toolchain")
+    );
+}
+
 #[test]
 fn install_still_detects_the_native_resolver_afterwards() {
     let dir = tempfile::tempdir().unwrap();

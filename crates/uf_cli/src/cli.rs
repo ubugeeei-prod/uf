@@ -1056,8 +1056,14 @@ pub(crate) enum EnvCommand {
     /// Into a store shared by every repository on this machine, linked into
     /// this one. Nothing is installed globally and `PATH` is not changed.
     Install,
-    /// List what this project declares and what the store holds.
+    /// List each tool this project declares, what it is for, and what the
+    /// store holds.
     List,
+    /// Resolve every version prefix — `node@26` — against its publisher's
+    /// current release list, and move `uf.lock` to the newest release of each.
+    ///
+    /// Installs nothing: `uf env install` installs what moved.
+    Update,
     /// Run a command with this project's toolchain in front of `PATH`.
     Exec {
         /// The command and its arguments.

@@ -1375,14 +1375,25 @@ the file that overrides every mode. See [Environments](/guide/env).
 
 ### uf env install
 
-Installs the runtimes and package managers `uf.config.js` declares, into a store
-shared by every repository on the machine, and links them into this one. Nothing
-is installed globally and `PATH` is not changed. See
-[Environments](/guide/env).
+Installs every tool `uf.config.js` declares at a version — `runtime`,
+`build.runtime`, `test.runtime`, `packageManager` and the older `env.toolchain`,
+plus exact `package.json#engines` — into a store shared by every repository on
+the machine, and links them into this one. A version prefix such as `node@26`
+is resolved against its publisher's release list the first time and locked in
+`uf.lock`; after that the lock is the answer. Nothing is installed globally and
+`PATH` is not changed. See [Environments](/guide/env).
 
 ### uf env list
 
-Lists what the project declares beside what the store holds.
+Lists each tool the project declares, what it is used for and whether the store
+has it, beside what the store holds. Reads `uf.lock` and fetches nothing, so a
+prefix nothing has resolved yet is shown as not locked.
+
+### uf env update
+
+Resolves every version prefix again against its publisher's current release
+list and moves `uf.lock` to the newest release of each, printing what moved.
+Installs nothing; `uf env install` installs what moved.
 
 ### uf env exec COMMAND
 

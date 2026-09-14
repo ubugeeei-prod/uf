@@ -6,10 +6,11 @@ use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
 use uf_config::env_files::{self, PROFILE_FILE};
 use uf_config::{discover_root, load_config};
+use uf_env::toolchain::{Declared, Lookup, Publishers, Resolution, Toolchain};
 use uf_term::{Align, KeyValue, Status, Tone, push_padded, push_spaces};
 
 use crate::cli::EnvCommand;
-use crate::support::{command_output, plural, project_label};
+use crate::support::{command_output, plural, project_label, relative_to};
 use crate::ui::Ui;
 
 /// The tools `uf env doctor` looks for, and the flag that reports a version.
@@ -27,13 +28,18 @@ pub(crate) fn env(cwd: &Utf8Path, ui: &mut Ui, command: EnvCommand) -> Result<()
         EnvCommand::Use { name } => use_environment(cwd, ui, &name),
         EnvCommand::Install => install(cwd, ui),
         EnvCommand::List => list(cwd, ui),
+        EnvCommand::Update => update(cwd, ui),
         EnvCommand::Exec { command } => exec(cwd, &command),
         EnvCommand::Gc { dry_run } => gc(ui, dry_run),
     }
 }
 
-/// The pins this project declares, and where they would live.
-fn declared(cwd: &Utf8Path) -> Result<(uf_config::ResolvedConfig, Vec<uf_env::Pin>)> {
+/// This project's toolchain, resolved as far as `lookup` allows, and the
+/// platform its pins are for.
+fn toolchain(
+    cwd: &Utf8Path,
+    lookup: Lookup,
+) -> Result<(uf_config::ResolvedConfig, uf_env::Platform, Toolchain)> {
     let resolved = load_config(cwd)?;
     let platform = uf_env::Platform::current().ok_or_else(|| {
         anyhow::anyhow!(
@@ -42,41 +48,66 @@ fn declared(cwd: &Utf8Path) -> Result<(uf_config::ResolvedConfig, Vec<uf_env::Pi
             std::env::consts::ARCH
         )
     })?;
-    let pins = uf_env::project::declared_for_project(&resolved.root, &resolved.config, platform)?;
-    Ok((resolved, pins))
+    let toolchain =
+        uf_env::toolchain::resolve(&resolved.root, &resolved.config, lookup, &Publishers)?;
+    Ok((resolved, platform, toolchain))
 }
 
-/// Install everything `uf.config.js` declares, and link it into the project.
+/// One declared tool on a line: what it is, what it is for, and `state`.
+///
+/// `node@26 (26.10.0)  runtime, build runtime  installed` — the spec as written
+/// first, because that is the text a reader can find in their config, and the
+/// release it locked to after it, because that is the text they can find in
+/// the store.
+fn tool_row(declared: &Declared, state: &str) -> String {
+    let release = match &declared.resolution {
+        Resolution::Locked { version, .. } | Resolution::Resolved { version, .. } => {
+            format!(" ({version})")
+        }
+        Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => String::new(),
+    };
+    format!(
+        "{}{release}  {}  {state}",
+        declared.spec(),
+        declared.roles()
+    )
+}
+
+/// Install every tool this project declares a version of, lock what had to be
+/// resolved, and link the tools into the project.
 fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let (resolved, pins) = declared(cwd)?;
+    let (resolved, platform, toolchain) = toolchain(cwd, Lookup::Missing)?;
     crate::support::render_deprecations(ui, resolved.config.toolchain_deprecation());
+    let pins = toolchain.pins(platform);
     if pins.is_empty() {
+        let sentence = if toolchain.tools.is_empty() {
+            "neither uf.config.js nor package.json engines declares a tool at a version, so \
+             nothing is pinned to this project"
+        } else {
+            "every tool this project declares is the one on PATH, so there is nothing to \
+             install — write a version, such as `node@26`, to pin one"
+        };
         ui.render(|renderer, out| {
             renderer.banner(out, "uf env install", Some(project_label(&resolved.root)));
             renderer.blank(out);
-            renderer.status(
-                out,
-                Status::Warn,
-                "neither uf.config.js nor package.json engines declares an exact toolchain, so \
-                 nothing is pinned to this project",
-            );
+            renderer.status(out, Status::Warn, sentence);
         });
         return Ok(());
     }
 
     let store = uf_env::Store::discover()?;
-    let mut installed = Vec::new();
+    let mut fetched = Vec::new();
     for pin in &pins {
         if store.has(pin) {
-            installed.push((pin.clone(), false));
             continue;
         }
         let source = uf_env::source::Source::for_pin(pin)
             .with_context(|| format!("uf has no published build of {pin} for this platform"))?;
         let staging = store.staging(pin)?;
-        uf_env::archive::install(&source, &staging)?;
+        uf_env::archive::install(&source, &staging)
+            .with_context(|| format!("failed to install {pin}"))?;
         store.adopt(pin, &staging)?;
-        installed.push((pin.clone(), true));
+        fetched.push(pin.clone());
     }
 
     // Before the links are made, not after: a `.uniflowed` from an older uf
@@ -84,25 +115,43 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     // what stops `uf env install` outright — ubugeeei-prod/uf#427.
     let migrated = uf_env::project::migrate_legacy_dir(&resolved.root)?;
     let envs = uf_env::project::Envs::discover()?;
-    let linked = uf_env::project::link(&resolved.root, &envs, &store, &pins)?;
+    let linked = uf_env::project::link(&resolved.root, &envs, &store, &toolchain.linked(platform))?;
+    // Every pin, linked or not: a `build.runtime` that shares its tool with
+    // `runtime` is not on `PATH`, and is still this project's to keep.
     let entries: Vec<String> = pins.iter().map(uf_env::Pin::slug).collect();
     uf_env::Roots::discover()?.register(&resolved.root, &entries)?;
 
-    let bin = envs.bin_dir(&resolved.root).to_string();
-    let rows: Vec<String> = installed
+    let rows: Vec<String> = toolchain
+        .tools
         .iter()
-        .map(|(pin, fetched)| {
-            format!(
-                "{pin}  {}",
-                if *fetched {
-                    "installed"
-                } else {
-                    "in the store"
-                }
-            )
+        .map(|declared| {
+            let state = match declared.pin(platform) {
+                None => "on PATH",
+                Some(pin) if fetched.contains(&pin) => "installed",
+                Some(_) => "in the store",
+            };
+            tool_row(declared, state)
         })
         .collect();
     let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let locked: Vec<String> = toolchain
+        .tools
+        .iter()
+        .filter_map(|declared| match &declared.resolution {
+            Resolution::Resolved { version, .. } => {
+                Some(format!("{} at {version}", declared.spec()))
+            }
+            _ => None,
+        })
+        .collect();
+    let lock_note = (!locked.is_empty()).then(|| {
+        format!(
+            "locked {} in {}",
+            locked.join(", "),
+            relative_to(&resolved.root, &toolchain.lock_path)
+        )
+    });
+    let bin = envs.bin_dir(&resolved.root).to_string();
     let summary = format!("{} linked into {bin}", plural(linked.len(), "executable"));
 
     ui.render(|renderer, out| {
@@ -121,25 +170,37 @@ fn install(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
                  was one, is `.uf/profile` now",
             );
         }
+        if let Some(note) = &lock_note {
+            renderer.status(out, Status::Info, note);
+        }
         renderer.status(out, Status::Success, &summary);
     });
     Ok(())
 }
 
-/// What this project declares, and what the store holds for everybody.
+/// Each tool this project declares and what it is for, and what the store
+/// holds for everybody.
+///
+/// Reads `uf.lock` and nothing else — no release list is fetched and nothing
+/// is locked — so a prefix nothing has resolved yet says so, and names the
+/// command that resolves it.
 fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let (resolved, pins) = declared(cwd)?;
+    let (resolved, platform, toolchain) = toolchain(cwd, Lookup::LockOnly)?;
     crate::support::render_deprecations(ui, resolved.config.toolchain_deprecation());
     let store = uf_env::Store::discover()?;
-    let mine: Vec<String> = pins
+    let mine: Vec<String> = toolchain
+        .tools
         .iter()
-        .map(|pin| {
-            let mark = if store.has(pin) {
-                "installed"
-            } else {
-                "missing"
+        .map(|declared| {
+            let state = match (&declared.resolution, declared.pin(platform)) {
+                (_, Some(pin)) if store.has(&pin) => "installed",
+                (_, Some(_)) => "missing",
+                (Resolution::Unlocked { .. }, None) => {
+                    "not locked yet — `uf env install` resolves it"
+                }
+                (_, None) => "on PATH",
             };
-            format!("{pin}  {mark}")
+            tool_row(declared, state)
         })
         .collect();
     let mine: Vec<&str> = mine.iter().map(String::as_str).collect();
@@ -155,7 +216,7 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
             renderer.bullet_list(
                 out,
                 4,
-                &["nothing pinned in uf.config.js or package.json engines"],
+                &["nothing declared in uf.config.js or package.json engines"],
             );
         } else {
             renderer.bullet_list(out, 4, &mine);
@@ -172,12 +233,62 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
     Ok(())
 }
 
+/// Move every version prefix to the newest release its publisher lists now.
+///
+/// Installs nothing. What moved is a line in `uf.lock` a reader can review
+/// before anything is downloaded, and `uf env install` is the step that
+/// downloads it.
+fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    let (resolved, _, toolchain) = toolchain(cwd, Lookup::Latest)?;
+    let rows: Vec<String> = toolchain
+        .tools
+        .iter()
+        .filter_map(|declared| match &declared.resolution {
+            Resolution::Resolved {
+                version,
+                was: Some(was),
+                ..
+            } => Some(format!("{}  {was} → {version}", declared.spec())),
+            Resolution::Resolved {
+                version, was: None, ..
+            } => Some(format!("{}  locked at {version}", declared.spec())),
+            Resolution::Locked { version, .. } => Some(format!(
+                "{}  {version}, already the newest",
+                declared.spec()
+            )),
+            Resolution::OnPath | Resolution::Exact(_) | Resolution::Unlocked { .. } => None,
+        })
+        .collect();
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let lock = relative_to(&resolved.root, &toolchain.lock_path);
+    let summary = if rows.is_empty() {
+        "no tool this project declares is written as a version prefix, so there is nothing to \
+         move"
+            .to_owned()
+    } else if toolchain.lock_changed {
+        format!("{lock} updated; `uf env install` installs what moved")
+    } else {
+        format!("{lock} already locks the newest release of every prefix")
+    };
+
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf env update", Some(project_label(&resolved.root)));
+        renderer.blank(out);
+        if !rows.is_empty() {
+            renderer.bullet_list(out, 2, &rows);
+            renderer.blank(out);
+        }
+        renderer.status(out, Status::Success, &summary);
+    });
+    Ok(())
+}
+
 /// Run a command with this project's `bin` in front of `PATH`.
 ///
 /// In front of, not instead of: a project that pins Node still needs `git`,
 /// `sh` and everything else the command it is running expects to find.
 fn exec(cwd: &Utf8Path, command: &[String]) -> Result<()> {
-    let (resolved, _) = declared(cwd)?;
+    let resolved = load_config(cwd)?;
     let bin = uf_env::project::Envs::discover()?.bin_dir(&resolved.root);
     if !bin.is_dir() {
         bail!("this project has no environment yet; run `uf env install`");
