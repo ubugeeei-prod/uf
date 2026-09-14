@@ -355,6 +355,15 @@ fn a_nested_thread_window_measures_its_own_stretch_and_the_outer_one_covers_both
     const SMALL: usize = 256 * 1024;
     const BIG: usize = 4 * 1024 * 1024;
 
+    // Not for this test's sake — nothing another test does can reach a
+    // thread's counters — but for the process-wide tests beside it, which
+    // count every thread. The 64 MiB below lands in their peak as well, and
+    // `a_nested_counter_measures_its_own_stretch_and_the_outer_one_covers_both`
+    // asserts that nothing that size happened in its stretch. Without the lock
+    // it failed twice in four runs under load: ubugeeei-prod/uf#1015 in
+    // miniature.
+    let _lock = exclusive();
+
     let outermost = ThreadWindow::open();
     // A high mark set while counting, before either window under test opens:
     // what a window that read the thread's running peak would report.
