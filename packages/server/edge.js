@@ -39,10 +39,9 @@
 // one behavioural difference between this target and the other three.
 //
 // `beginRequest` is passed in rather than imported, for the reason `./node.js`
-// gives at length: the request lives in an `AsyncLocalStorage` belonging to a
-// module instance, and the instance the application reads is the one bundled
-// into the `handler.js` beside the generated `worker.js`. See
-// ubugeeei-prod/uf#389.
+// gives at length: the request store is shared by every copy of one release of
+// this package, and the release the application reads is the one bundled into
+// the `handler.js` beside the generated `worker.js`. See ubugeeei-prod/uf#389.
 
 import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";

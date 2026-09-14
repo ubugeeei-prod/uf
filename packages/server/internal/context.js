@@ -25,6 +25,7 @@ import type { CacheOptions } from "./cache-store.js";
 import type { ServerCapabilities } from "./capabilities.js";
 import type { DraftChange } from "./draft.js";
 import { DRAFT_COOKIE, draftKeyIsPerProcess, draftSetCookie, verifyDraftCookie } from "./draft.js";
+import { processWide } from "./process-state.js";
 import { processLogger } from "../log.js";
 
 /** A read-only view of one request's headers. */
@@ -190,7 +191,20 @@ export type RequestLifecycle = {|
   readonly settle: () => Promise<void>,
 |};
 
-const storage: AsyncLocalStorage<RequestContext> = new AsyncLocalStorage();
+/**
+ * Where the request lives: one store for the process, not one per copy.
+ *
+ * A module-level `new AsyncLocalStorage()` was one store per *module
+ * instance*, so a host that began a request through a second copy of this
+ * package began it somewhere no page could see — which is ubugeeei-prod/uf#389
+ * — and the second module graph React Server Components render in would have
+ * been exactly such a copy. `./process-state.js` says why the name carries a
+ * version.
+ */
+const storage: AsyncLocalStorage<RequestContext> = processWide(
+  "request-context@1",
+  () => new AsyncLocalStorage(),
+);
 
 /**
  * The context of the request being handled, or `null` outside one.

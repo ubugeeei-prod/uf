@@ -38,6 +38,7 @@
 
 import type { LogLevel, LogRecord, Logger } from "./internal/log.js";
 import { createLogger, silentLogger } from "./internal/log.js";
+import { processWide } from "./internal/process-state.js";
 
 export type {
   LogFields,
@@ -67,8 +68,18 @@ export {
  * was first imported — a bundler can hoist an import a long way from where it
  * is used, and a default that had already been decided by then would ignore a
  * host that set `UF_LOG_LEVEL` in its own startup.
+ *
+ * In a box kept by `./internal/process-state.js` rather than in a module-level
+ * `let`, because "the process logger" has to mean the process's and not this
+ * copy's. A uf application loads this package twice — once in the module graph
+ * that renders React Server Components and once in the one that renders HTML —
+ * and `uf dev` silences logging in the second because its stdout is a
+ * protocol. A `let` would have left the first copy writing default lines into
+ * that protocol from the first server component that logged.
  */
-let installed: Logger | null = null;
+const installed: {| current: Logger | null |} = processWide("process-logger@1", () => ({
+  current: null,
+}));
 
 /**
  * The process logger, building the default one if nobody installed any.
@@ -78,7 +89,7 @@ let installed: Logger | null = null;
  * were imported before it was called.
  */
 export function processLogger(): Logger {
-  return (installed ??= createLogger());
+  return (installed.current ??= createLogger());
 }
 
 /**
@@ -95,7 +106,7 @@ export function processLogger(): Logger {
  * the sort of coupling that fails only when the order changes.
  */
 export function installLogger(logger: Logger | null): void {
-  installed = logger;
+  installed.current = logger;
 }
 
 /**
@@ -130,7 +141,7 @@ export function recordingLogger(options?: {| readonly level?: LogLevel |}): {|
  * does not have to know that silence is `silentLogger()` rather than a level.
  */
 export function silenceLogging(): void {
-  installed = silentLogger();
+  installed.current = silentLogger();
 }
 
 /** Everything an access line carries, so the hosts cannot disagree about it. */
