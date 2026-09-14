@@ -141,8 +141,8 @@ rules against code that never asked for them.
 The server is started **in** the project folder, and that is load-bearing.
 `uf lsp` reads `uf.config.js` from its working directory, once, at start-up, and
 that read is the only source of the project's formatter width, quote style and
-lint levels. `uf lsp --cwd <dir>` is not an alternative: the flag is accepted by
-the command line and then ignored by the command.
+lint levels. `uf lsp --cwd <dir>` would name the same folder; the extension sets
+the process's working directory instead, so the project is stated once.
 
 Editing `uf.config.js` restarts that folder's server, because the server has no
 way to be told about the change and a stale one formats to the wrong width

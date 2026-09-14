@@ -46,10 +46,9 @@ it pinned, the same order the VS Code extension uses.
 
 And the process must run **in the worktree root**. `uf lsp` reads `uf.config.js`
 from its working directory, once, at start-up, and that read is the only source
-of a project's `fmt` options and lint levels. `uf lsp --cwd` is not a way
-around it: the flag is accepted by the command and then ignored. Zed starts a
-language server in the worktree root, so opening the project folder — the one
-with `uf.config.js` in it — is what makes this correct.
+of a project's `fmt` options and lint levels. `uf lsp --cwd <root>` would name
+the same directory; Zed starts a language server in the worktree root, so
+opening the project folder — the one with `uf.config.js` in it — is enough.
 
 ## What it would give you
 

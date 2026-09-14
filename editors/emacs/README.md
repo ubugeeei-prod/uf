@@ -57,9 +57,9 @@ rather than showing an empty popup — uf has no positional type query yet.
 
 ## Working directory
 
-`uf lsp` reads `uf.config.js` from the directory it was started in, once. `uf
-lsp --cwd` is accepted and ignored, so the working directory is the only
-channel. Eglot's is `default-directory` at start-up, which is the project root
+`uf lsp` reads `uf.config.js` once, at start-up: from the directory `--cwd`
+names, or else from the directory it was started in. `uf.el` relies on the
+second. Eglot's is `default-directory` at start-up, which is the project root
 `uf-project-find` reports. If you start a server from a buffer that is not in a
 uf project, you get uf's defaults rather than an error.
 
