@@ -73,6 +73,8 @@ import {
 import { BoundaryReporter } from "./boundaries.js";
 import { routeBoundaries } from "./boundary-data.js";
 import { composeRoute, pageComponent } from "./compose.js";
+import { type FetchedFlight, fetchFlight } from "./flight-browser.js";
+import { type FlightRoot, type RouteState, routeState } from "./flight.js";
 import { Head } from "./head.js";
 import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
 import type { RouteParams, SearchParams } from "./routing.js";
@@ -328,12 +330,27 @@ export type RouteInfo = {|
  */
 export type Navigation = "client" | "document";
 
+/**
+ * What the router holds, and what every hook and `RouteView` read.
+ *
+ * Two halves, because a route arrives two ways. `route` is what a hook reads —
+ * the path, the parameters, the loader's answer — and it is the same shape
+ * whichever way the route was rendered. `view` is what `RouteView` renders:
+ * the tree a server composed for React Server Components, or a route resolved
+ * from its modules, which the browser composes itself.
+ */
 type RouterState = {|
-  readonly resolved: ResolvedRoute,
+  readonly route: RouteState,
+  readonly view: RouteViewState,
   readonly router: Router,
   readonly pending: boolean,
   readonly navigation: Navigation,
 |};
+
+/** What `RouteView` renders: a server's tree, or a route to compose. */
+type RouteViewState =
+  | {| readonly kind: "flight", readonly tree: React.Node |}
+  | {| readonly kind: "modules", readonly resolved: ResolvedRoute |};
 
 const RouterContext: React.Context<?RouterState> = createContext(null);
 
@@ -387,10 +404,19 @@ export function routeTable(): RouteTable {
   return installedTable;
 }
 
-/** Props the app root receives from the client and server entries. */
+/**
+ * Props the app root receives from the client and server entries.
+ *
+ * One of `flight` and `initial`. A document React Server Components rendered
+ * hands the root its payload, on the server and again in the browser, so both
+ * sides render the same tree from the same bytes. A single-page application —
+ * and a project that turned `app.rsc` off — hands it a route resolved from its
+ * modules instead. See ubugeeei-prod/uf#519.
+ */
 export type AppProps = {|
   readonly url: string,
-  readonly initial: ResolvedRoute,
+  readonly initial?: ResolvedRoute,
+  readonly flight?: Promise<FlightRoot>,
 |};
 
 /**
@@ -415,9 +441,13 @@ function isBrowser(): boolean {
  * Provides the current route to the tree and performs navigation.
  *
  * On the server the route is fixed for the request. In the browser the
- * provider listens to history and to `Link` clicks; a navigation resolves the
- * next route (loading its chunks and running its loader) *before* committing,
- * inside a transition, so the previous page stays interactive meanwhile.
+ * provider listens to history and to `Link` clicks; a navigation fetches the
+ * next route's payload — or, for a route resolved from its modules, loads its
+ * chunks and runs its loader — *before* committing, inside a transition, so the
+ * previous page stays interactive meanwhile.
+ *
+ * Which of the two it does is decided by what it was started with: a Flight
+ * payload is [`FlightRouter`], and a resolved route is [`ModuleRouter`].
  *
  * # Unless the application asked the browser to do it
  *
@@ -435,7 +465,33 @@ function isBrowser(): boolean {
  * reads it in step with this one, which is four things to keep in step for one
  * that actually differs.
  */
-export component RouterProvider(url: string, initial: ResolvedRoute, children: React.Node) {
+export component RouterProvider(
+  url: string,
+  initial?: ResolvedRoute,
+  flight?: Promise<FlightRoot>,
+  children: React.Node,
+) {
+  if (flight != null) {
+    return <FlightRouter flight={flight}>{children}</FlightRouter>;
+  }
+  if (initial == null) {
+    throw new Error(
+      "@uniflowed/router: RouterProvider was given neither a Flight payload nor a resolved route " +
+        "to start from. `virtual:uf/client` and `virtual:uf/server` hand it one of the two.",
+    );
+  }
+  return (
+    <ModuleRouter url={url} initial={initial}>
+      {children}
+    </ModuleRouter>
+  );
+}
+
+/**
+ * The provider for a route resolved from its modules: a single-page
+ * application, and a project that turned `app.rsc` off.
+ */
+component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node) {
   const [resolved, setResolved] = useState<ResolvedRoute>(initial);
   const [pending, setPending] = useState<boolean>(false);
   // Read once per render rather than per navigation: it is installed by the
@@ -605,8 +661,243 @@ export component RouterProvider(url: string, initial: ResolvedRoute, children: R
     },
   };
 
-  const value: RouterState = { resolved, router, pending, navigation };
+  const value: RouterState = {
+    route: routeState(resolved),
+    view: { kind: "modules", resolved },
+    router,
+    pending,
+    navigation,
+  };
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
+}
+
+/**
+ * The provider for a route React Server Components rendered.
+ *
+ * What it holds is the payload rather than a resolved route: `use` reads its
+ * root — the route a hook reads and the tree `RouteView` renders — and a
+ * navigation fetches the next route's payload and swaps the promise. The
+ * browser resolves nothing and imports no page, layout or loader; the server
+ * did all three, and a component that needs the browser arrived as a client
+ * reference inside the tree.
+ *
+ * A navigation reads the next payload's root before it commits, for the reason
+ * [`ModuleRouter`] resolves the next route before it commits: the page on
+ * screen stays interactive while the next one is on its way, and a commit
+ * inside a view transition is synchronous, so a root that had not arrived would
+ * show nothing rather than the page being left. What may still suspend after
+ * the commit is a `$loading.js` boundary inside the new tree, which is what that
+ * file is for.
+ */
+component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
+  const [current, setCurrent] = useState<Promise<FlightRoot>>(flight);
+  const [pending, setPending] = useState<boolean>(false);
+  const root = use(current);
+  // Read once per render, for the reason `ModuleRouter` reads it once.
+  const navigation = navigationMode();
+
+  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
+    if (!isBrowser()) {
+      return;
+    }
+    const target = new URL(to, window.location.href);
+    const next = target.pathname + target.search;
+    // The browser's job in this application; `ModuleRouter` has the argument.
+    if (navigation === "document") {
+      if (options?.replace === true) {
+        window.location.replace(target.href);
+      } else {
+        window.location.assign(target.href);
+      }
+      return;
+    }
+    setPending(true);
+    try {
+      const fetched = await (takePrefetched(next) ?? fetchFlight(next));
+      // Not a payload: a redirect off this origin, or a host that has no payload
+      // for this URL. The browser loads it as a document, which is what the
+      // anchor would have done.
+      if (fetched.kind === "document") {
+        window.location.assign(fetched.url);
+        return;
+      }
+      const payload = fetched.root;
+      const nextRoot = await payload;
+      // The URL the payload came from, which is a redirect's target when the
+      // route redirected: the history entry is where the visitor ended up.
+      const landed = fetched.url + target.hash;
+      if (options?.replace === true) {
+        window.history.replaceState(null, "", landed);
+      } else {
+        window.history.pushState(null, "", landed);
+      }
+      const commit = () => {
+        setCurrent(payload);
+        setPending(false);
+      };
+      if (options?.transition === false) {
+        startTransition(commit);
+      } else {
+        withViewTransition(nextRoot.route.viewTransition, commit);
+      }
+      if (options?.scroll !== false) {
+        if (target.hash !== "") {
+          const element = document.getElementById(target.hash.slice(1));
+          if (element != null) {
+            element.scrollIntoView();
+            return;
+          }
+        }
+        window.scrollTo(0, 0);
+      }
+    } catch (error) {
+      setPending(false);
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    if (!isBrowser()) {
+      return undefined;
+    }
+    // No history entry was pushed, so there is nothing to pop back into; see
+    // `ModuleRouter`.
+    if (navigation === "document") {
+      return undefined;
+    }
+    const onPopState = () => {
+      const next = window.location.pathname + window.location.search;
+      // The history entry already moved; a payload that cannot be had for it is
+      // a document to load, and a reload is the browser's way to load it.
+      fetchFlight(next).then(
+        (fetched) => {
+          if (fetched.kind === "document") {
+            window.location.reload();
+            return;
+          }
+          const payload = fetched.root;
+          payload.then(
+            (nextRoot) => {
+              withViewTransition(nextRoot.route.viewTransition, () => {
+                setCurrent(payload);
+              });
+            },
+            () => {
+              window.location.reload();
+            },
+          );
+        },
+        () => {
+          window.location.reload();
+        },
+      );
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, []);
+
+  const router: Router = {
+    push: (to, options) => navigate(to, options),
+    replace: (to) => navigate(to, { replace: true }),
+    prefetch: async (to) => {
+      // Under document navigation there is no next render in this page to
+      // fetch a payload for; see `ModuleRouter`'s prefetch.
+      if (!isBrowser() || navigation === "document") {
+        return;
+      }
+      const target = new URL(to, window.location.href);
+      if (target.origin !== window.location.origin) {
+        return;
+      }
+      await prefetchFlight(target.pathname + target.search);
+    },
+    refresh: async () => {
+      if (!isBrowser()) {
+        return;
+      }
+      if (navigation === "document") {
+        window.location.reload();
+        return;
+      }
+      const fetched = await fetchFlight(window.location.pathname + window.location.search);
+      if (fetched.kind === "document") {
+        window.location.reload();
+        return;
+      }
+      const payload = fetched.root;
+      await payload;
+      // No view transition: a refresh is the same URL rendered again. See
+      // `ModuleRouter`'s refresh.
+      startTransition(() => {
+        setCurrent(payload);
+      });
+    },
+    back: () => {
+      if (isBrowser()) {
+        window.history.back();
+      }
+    },
+    forward: () => {
+      if (isBrowser()) {
+        window.history.forward();
+      }
+    },
+  };
+
+  const value: RouterState = {
+    route: root.route,
+    view: { kind: "flight", tree: root.tree },
+    router,
+    pending,
+    navigation,
+  };
+  return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>;
+}
+
+/**
+ * Payloads a `Link` fetched on intent, kept for the navigation that follows it.
+ *
+ * Bounded and short-lived, because a payload is the rendering of a route at one
+ * moment: one old enough to disagree with the server is one a navigation should
+ * not show, and a page with a hundred links hovered over must not hold a hundred
+ * renderings. Taken rather than read, so a prefetched payload serves exactly one
+ * navigation and the next visit to the same URL asks again.
+ */
+const PREFETCH_LIMIT = 32;
+const PREFETCH_LIFETIME_MS = 30000;
+const prefetchedFlights: Map<
+  string,
+  {| readonly fetched: Promise<FetchedFlight>, readonly at: number |},
+> = new Map();
+
+function prefetchFlight(url: string): Promise<FetchedFlight> {
+  const existing = prefetchedFlights.get(url);
+  if (existing != null && Date.now() - existing.at < PREFETCH_LIFETIME_MS) {
+    return existing.fetched;
+  }
+  if (existing == null && prefetchedFlights.size >= PREFETCH_LIMIT) {
+    const oldest = prefetchedFlights.keys().next();
+    if (oldest.done !== true) {
+      prefetchedFlights.delete(oldest.value);
+    }
+  }
+  const fetched = fetchFlight(url);
+  prefetchedFlights.set(url, { fetched, at: Date.now() });
+  fetched.catch(() => {
+    prefetchedFlights.delete(url);
+  });
+  return fetched;
+}
+
+function takePrefetched(url: string): Promise<FetchedFlight> | null {
+  const entry = prefetchedFlights.get(url);
+  prefetchedFlights.delete(url);
+  if (entry == null || Date.now() - entry.at >= PREFETCH_LIFETIME_MS) {
+    return null;
+  }
+  return entry.fetched;
 }
 
 export hook useRouterState(): RouterState {
@@ -621,13 +912,13 @@ export hook useRouterState(): RouterState {
 
 /** The current route. */
 export hook useRoute(): RouteInfo {
-  const { resolved, pending } = useRouterState();
+  const { route, pending } = useRouterState();
   return {
-    path: resolved.path,
-    pathname: resolved.pathname,
-    params: resolved.params,
-    searchParams: resolved.searchParams,
-    data: useResolvedData(resolved),
+    path: route.path,
+    pathname: route.pathname,
+    params: route.params,
+    searchParams: route.searchParams,
+    data: useResolvedData(route),
     pending,
   };
 }
@@ -648,9 +939,9 @@ export hook useRoute(): RouteInfo {
  * it is a benefit not taken rather than a regression, and it is visible: the
  * fallback does not appear.
  */
-hook useResolvedData(resolved: ResolvedRoute): mixed {
-  const loader = resolved.deferred;
-  return loader == null ? resolved.data : use(loader);
+hook useResolvedData(route: RouteState): mixed {
+  const loader = route.deferred;
+  return loader == null ? route.data : use(loader);
 }
 
 /** Navigation. */
@@ -679,7 +970,7 @@ export hook useRouter(): Router {
  * same file, keyed by route. Until it is there, this says what is true.
  */
 export hook useLoaderData(): mixed {
-  return useResolvedData(useRouterState().resolved);
+  return useResolvedData(useRouterState().route);
 }
 
 /**
@@ -712,7 +1003,14 @@ const BOUNDARY_MARKS: boolean = import.meta.hot != null;
  * the boundary marks and the report that watches them. See ubugeeei-prod/uf#520.
  */
 export component RouteView() {
-  const { resolved } = useRouterState();
+  const { view } = useRouterState();
+  // A tree a server composed for React Server Components is the whole of it:
+  // the boundaries, the fallbacks, the marks and the head were placed by
+  // `composeRoute` on the server, before any of it was written into the payload.
+  if (view.kind === "flight") {
+    return view.tree;
+  }
+  const resolved = view.resolved;
   const loader = resolved.deferred;
   // The route's boundaries, named once and read by both the marks the
   // composition places and the report that watches them. `installedTable`
@@ -758,7 +1056,12 @@ export component RouteView() {
  * read out of those very elements.
  */
 component RenderedPage(data: mixed) {
-  const { resolved } = useRouterState();
+  const { view } = useRouterState();
+  // Only ever rendered by `RouteView` for a route resolved from its modules.
+  if (view.kind !== "modules") {
+    return null;
+  }
+  const resolved = view.resolved;
   const Page = pageComponent(resolved.page);
   return (
     <>
@@ -990,8 +1293,8 @@ function rowFailure(error: mixed): string {
  * relative URLs written here are resolved.
  */
 export hook useSeo(seo: Metadata): React.Node {
-  const { resolved } = useRouterState();
-  const base = seo.metadataBase ?? resolved.metadata.metadataBase;
+  const { route } = useRouterState();
+  const base = seo.metadataBase ?? route.metadata.metadataBase;
   return <Head metadata={base == null ? seo : { ...seo, metadataBase: base }} />;
 }
 
@@ -1126,10 +1429,10 @@ function isExternal(to: string): boolean {
  */
 export function routerView(root: string): React.ComponentType<AppProps> {
   void root;
-  component App(url: string, initial: ResolvedRoute) {
+  component App(url: string, initial?: ResolvedRoute, flight?: Promise<FlightRoot>) {
     return (
       <RenderProvider>
-        <RouterProvider url={url} initial={initial}>
+        <RouterProvider url={url} initial={initial} flight={flight}>
           <RouteView />
         </RouterProvider>
       </RenderProvider>

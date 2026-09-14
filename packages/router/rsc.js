@@ -74,8 +74,16 @@ export type FlightOptions = {|
    * its answer later. A prerender turns it off, because a file has no "later".
    */
   readonly defer?: boolean,
-  /** Every exception the render recovered from, including the late ones. */
-  readonly onError?: (error: mixed) => void,
+  /**
+   * Every exception the render recovered from, including the late ones.
+   *
+   * What it returns becomes the exception's digest. React writes the digest
+   * into the row that stands in for the part of the tree that failed, and sets
+   * it on the error its Flight client rebuilds from that row — which is how
+   * `./server.js` recognises, in the HTML renderer, the copy of an exception
+   * this renderer has already reported.
+   */
+  readonly onError?: (error: mixed) => ?string,
   /**
    * Render the error boundary for this exception instead of resolving the URL.
    *
@@ -172,12 +180,9 @@ export function createFlightRenderer(options: {|
     // route however many `await`s into the render it asks.
     const stream = withServerRoute(state, () =>
       renderToReadableStream(root, {
-        onError:
-          report == null
-            ? undefined
-            : (error: mixed) => {
-                report(error);
-              },
+        // Handed over as it is, so that the digest it returns reaches the row.
+        // Absent, React logs the exception to the console itself.
+        onError: report,
         signal: settings?.signal,
       }),
     );

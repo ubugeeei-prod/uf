@@ -94,17 +94,19 @@ component RouteErrorView(module: ?ErrorModule, error: RouteError, reset: () => v
  * a static render has nothing to re-run.
  */
 export component ResolvedErrorPage() {
-  const { resolved, router } = useRouterState();
+  const { route, view, router } = useRouterState();
   const reset = () => {
     router.refresh().catch(() => {});
   };
 
-  if (resolved.error == null) {
-    // Unreachable: this module is only ever the page of a resolved error route.
+  // Unreachable otherwise: this is only ever the page of an error route that was
+  // resolved from its modules. A route React Server Components rendered has
+  // [`ErrorRoutePage`] instead, with the boundary's module handed over as a prop.
+  if (route.error == null || view.kind !== "modules") {
     return null;
   }
   return (
-    <RouteErrorView module={resolved.errorBoundary.module} error={resolved.error} reset={reset} />
+    <RouteErrorView module={view.resolved.errorBoundary.module} error={route.error} reset={reset} />
   );
 }
 
