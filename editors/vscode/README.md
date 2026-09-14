@@ -50,8 +50,9 @@ does not parse, which is when you want it. A key the object already has is not
 offered again, and nothing is offered under `vite`, whose options uf passes to
 Vite unread rather than re-declaring.
 
-A tool's versions — each major, then every release — come from the release list
-uf caches under `$XDG_CACHE_HOME/uf/index`, and completion never waits for one:
+A tool's versions — each major, then its releases, a hundred at a time until
+what you type narrows them — come from the release list uf caches under
+`$XDG_CACHE_HOME/uf/index`, and completion never waits for one:
 the first time a tool is asked about with nothing cached, the list is fetched in
 the background and its versions appear a keystroke or two later.
 

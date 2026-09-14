@@ -161,7 +161,7 @@ pub(super) fn complete(request: Request<'_, '_>, completion: &mut Completion) {
                 open_quote,
             };
             match releases.lookup(tool) {
-                Lookup::Ready(index) => versions.offer(&text[..at], index, &mut completion.items),
+                Lookup::Ready(index) => versions.offer(&text[..at], index, completion),
                 // Asked again as the user types, which is when it may be there.
                 Lookup::Pending => completion.incomplete = true,
                 Lookup::Unavailable => {}
@@ -211,6 +211,16 @@ fn tool_named(role: Role, name: &str) -> Option<Tool> {
         .and_then(|(_, tool)| tool)
 }
 
+/// How many releases one answer offers before what has been typed narrows them.
+///
+/// Node has published some eight hundred. Every one of them in every answer was
+/// 158 KB and 31 ms per request on a debug build, measured, for a list an editor
+/// then filters down to a handful. Past this many the answer is marked
+/// incomplete — the protocol's way to have the editor ask again as the user
+/// types — so `node@24.` still gets every 24.x, and `node@` gets every major
+/// and the newest releases.
+const RELEASES_AT_ONCE: usize = 100;
+
 /// The version half of a spec being written.
 struct Versions<'s> {
     /// What has been typed after the `@`, up to the cursor.
@@ -222,34 +232,34 @@ struct Versions<'s> {
 }
 
 impl Versions<'_> {
-    /// Each major, then each release, newest first, as far as `typed` allows.
+    /// Each major, then each release, newest first, as far as `typed` allows
+    /// and no more than [`RELEASES_AT_ONCE`] releases.
     ///
     /// Pushed rather than [`offer`]ed: a major has no dot and a release has two,
     /// and the list has one entry per version, so there is nothing to
     /// deduplicate — and Node's list is long enough that looking would show.
-    fn offer(&self, name: &str, index: &Index, items: &mut Vec<Item>) {
-        let released = || {
-            index
-                .releases
-                .iter()
-                .filter(|release| !release.is_prerelease())
-        };
+    fn offer(&self, name: &str, index: &Index, completion: &mut Completion) {
+        let items = &mut completion.items;
         let fetched = fetched(index);
 
-        let mut majors: Vec<&str> = Vec::new();
-        for release in released() {
+        // The list is newest first, so the first release of a major that a
+        // prefix can resolve to is the one it does resolve to: the answer
+        // `Index::resolve` gives, from one pass rather than one per major.
+        let mut majors: Vec<(&str, &Release)> = Vec::new();
+        for release in index
+            .releases
+            .iter()
+            .filter(|release| !release.is_prerelease() && is_semver(&release.version))
+        {
             let major = major(release);
-            if !majors.contains(&major) {
-                majors.push(major);
+            if !majors.iter().any(|(seen, _)| *seen == major) {
+                majors.push((major, release));
             }
         }
-        for major in majors
+        for (major, newest) in majors
             .into_iter()
-            .filter(|major| major.starts_with(self.typed))
+            .filter(|(major, _)| major.starts_with(self.typed))
         {
-            let Some(newest) = index.resolve(major) else {
-                continue;
-            };
             let detail = match &newest.lts {
                 Some(line) => format!("{} · LTS {line}", newest.version),
                 None => newest.version.clone(),
@@ -263,12 +273,12 @@ impl Versions<'_> {
         }
 
         let prereleases = self.typed.contains('-');
-        for release in index
+        let mut matching = index
             .releases
             .iter()
             .filter(|release| prereleases || !release.is_prerelease())
-            .filter(|release| release.version.starts_with(self.typed))
-        {
+            .filter(|release| release.version.starts_with(self.typed));
+        for release in matching.by_ref().take(RELEASES_AT_ONCE) {
             let detail = [
                 release.date.clone(),
                 release.lts.as_ref().map(|line| format!("LTS {line}")),
@@ -283,6 +293,9 @@ impl Versions<'_> {
                 (!detail.is_empty()).then_some(detail),
                 None,
             );
+        }
+        if matching.next().is_some() {
+            completion.incomplete = true;
         }
     }
 
@@ -315,6 +328,17 @@ fn major(release: &Release) -> &str {
         .split(['.', '-', '+'])
         .next()
         .unwrap_or_default()
+}
+
+/// Whether a version is `major.minor.patch` and nothing looser, which is the
+/// only kind `uf_env::index::resolve` resolves a prefix to.
+fn is_semver(version: &str) -> bool {
+    let core = version.split(['-', '+']).next().unwrap_or_default();
+    let parts = core.split('.');
+    parts.clone().count() == 3
+        && parts
+            .into_iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// When a list was fetched, the way a sentence says it.
@@ -650,6 +674,54 @@ mod tests {
             // `npm` has releases, and this fixture has no list of them.
             assert!(!completion.incomplete, "{marked}");
         }
+    }
+
+    #[test]
+    fn a_long_list_is_offered_a_hundred_releases_at_a_time() {
+        let many: Vec<Release> = (0..30u32)
+            .rev()
+            .flat_map(|major| {
+                (0..10u32)
+                    .rev()
+                    .map(move |minor| release(&format!("{major}.{minor}.0"), None, None))
+            })
+            .collect();
+        let mut lists = FxHashMap::default();
+        lists.insert(
+            Tool::Node,
+            Index {
+                format: FORMAT,
+                tool: Tool::Node,
+                fetched_at: 0,
+                sources: Vec::new(),
+                releases: many,
+            },
+        );
+        let mut releases = Fixed {
+            lists,
+            pending: false,
+            asked: Vec::new(),
+        };
+
+        // Every major, then the newest hundred of three hundred releases, and
+        // a list the editor is told to ask for again.
+        let (_, completion) = complete_at(
+            "export default defineConfig({ runtime: \"node@‸\" })",
+            &mut releases,
+        );
+        assert_eq!(completion.items.len(), 30 + RELEASES_AT_ONCE);
+        assert_eq!(completion.items[0].label, "29");
+        assert_eq!(completion.items[0].detail.as_deref(), Some("29.9.0"));
+        assert_eq!(completion.items[30].label, "29.9.0");
+        assert!(completion.incomplete);
+
+        // Narrowed to one major: all of it, and nothing left to ask for.
+        let (_, completion) = complete_at(
+            "export default defineConfig({ runtime: \"node@12.‸\" })",
+            &mut releases,
+        );
+        assert_eq!(completion.items.len(), 10);
+        assert!(!completion.incomplete);
     }
 
     #[test]

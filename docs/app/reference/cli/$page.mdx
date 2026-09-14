@@ -1014,7 +1014,9 @@ uf passes through unread rather than re-declaring.
 A tool spec — `runtime`, `build.runtime`, `test.runtime`, `packageManager`,
 `test.runner`, `build.builder` — completes the names that key takes, and after
 the `@` that tool's versions, newest first: each major, which resolves to its
-newest release and is locked in `uf.lock`, then every release. They come from
+newest release and is locked in `uf.lock`, then every release — a hundred at a
+time, with the list marked incomplete past that so it narrows as you type
+(`node@24.` is every 24.x). They come from
 the publisher's release list uf resolves `node@26` against, cached under
 `$XDG_CACHE_HOME/uf/index`, and **a completion request never waits for one.**
 With no list cached, the answer is empty and marked incomplete while the list is
