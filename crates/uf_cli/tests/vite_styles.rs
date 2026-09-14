@@ -333,9 +333,15 @@ export component Counter() {
 "#,
     ));
     files.push(("node_modules/@uniflowed/probe/index.js", refs_during_render));
+    // A client module, because a ref is the browser's and a page is a Server
+    // Component unless it says otherwise: without the directive this page
+    // cannot render under React Server Components at all (ubugeeei-prod/uf#519),
+    // and the build would fail on that before anything here is about refs. The
+    // package component needs none — a client module's imports are client code.
     files.push((
         "app/$page.js",
-        r#"// @flow
+        r#""use client";
+// @flow
 import { useRef } from "react";
 import { Counter } from "@uniflowed/probe";
 
