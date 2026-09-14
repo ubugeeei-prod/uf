@@ -56,23 +56,35 @@ grep -q "every listed package name exists" "${work}/all-present.log" \
 $(cat "${work}/all-present.log")"
 pass "all names present passes"
 
-if (NPM_MISSING="temporal vite"; run missing); then
+# The two names the stub withholds are read from the list rather than written
+# here. The script walks the real `published-packages.txt`, so a name spelled
+# into this test is a claim about that file's contents: this test named
+# `temporal`, and failed on #952 — the change that rightly took `temporal` off
+# the list — while the guard it pins was working. The first and last entries
+# keep the two in list order, which is the order the commands print them in.
+listed="$(grep -vE '^[[:space:]]*(#|$)' tools/release/published-packages.txt)"
+first="$(printf '%s\n' "$listed" | sed -n '1p')"
+last="$(printf '%s\n' "$listed" | sed -n '$p')"
+[ -n "$first" ] && [ "$first" != "$last" ] \
+  || fail "tools/release/published-packages.txt needs at least two names for this test"
+
+if (NPM_MISSING="$first $last"; run missing); then
   fail "missing names reported success:
 $(cat "${work}/missing.log")"
 fi
-grep -q "missing     @uniflowed/temporal" "${work}/missing.log" \
-  || fail "temporal was not reported missing:
+grep -q "missing     @uniflowed/${first}\$" "${work}/missing.log" \
+  || fail "${first} was not reported missing:
 $(cat "${work}/missing.log")"
-grep -q "missing     @uniflowed/vite" "${work}/missing.log" \
-  || fail "vite was not reported missing:
+grep -q "missing     @uniflowed/${last}\$" "${work}/missing.log" \
+  || fail "${last} was not reported missing:
 $(cat "${work}/missing.log")"
 grep -q "before any package is published" "${work}/missing.log" \
   || fail "failure did not explain why it is before publish:
 $(cat "${work}/missing.log")"
-grep -q "bootstrap-publish.sh --package temporal --package vite" "${work}/missing.log" \
+grep -q "bootstrap-publish.sh --package ${first} --package ${last}" "${work}/missing.log" \
   || fail "failure did not print the targeted bootstrap:
 $(cat "${work}/missing.log")"
-grep -q "trust-npm.sh --package temporal --package vite" "${work}/missing.log" \
+grep -q "trust-npm.sh --package ${first} --package ${last}" "${work}/missing.log" \
   || fail "failure did not print the targeted trust command:
 $(cat "${work}/missing.log")"
 pass "every missing name is reported before publish"
