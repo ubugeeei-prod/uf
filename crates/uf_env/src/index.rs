@@ -152,7 +152,15 @@ impl Release {
     }
 
     /// `major.minor.patch`, when the version has one.
+    ///
+    /// `None` for anything that is not one exact release, build metadata
+    /// included. The numbers before a `+` can be perfectly good while what
+    /// follows it carries a `/`, and a release this answers for becomes a
+    /// directory name in the store and part of a download URL.
     fn core(&self) -> Option<[u64; 3]> {
+        if !crate::project::is_exact_version(&self.version) {
+            return None;
+        }
         let core = self.version.split(['-', '+']).next()?;
         let mut parts = core.split('.');
         let core = [
@@ -258,8 +266,14 @@ pub fn parse_node_index(body: &str) -> Option<Vec<Release>> {
     let mut releases = Vec::with_capacity(rows.len());
     for row in rows {
         let version = row.get("version")?.as_str()?;
+        let version = version.strip_prefix('v').unwrap_or(version);
+        // Dropped rather than kept: an entry that is not one release is never
+        // an answer, and a cache that held one would offer it to completion.
+        if !crate::project::is_exact_version(version) {
+            continue;
+        }
         releases.push(Release {
-            version: version.strip_prefix('v').unwrap_or(version).to_owned(),
+            version: version.to_owned(),
             date: row
                 .get("date")
                 .and_then(serde_json::Value::as_str)
@@ -283,7 +297,13 @@ pub fn parse_node_index(body: &str) -> Option<Vec<Release>> {
 pub fn parse_packument(body: &str) -> Option<Vec<Release>> {
     let value: serde_json::Value = serde_json::from_str(body).ok()?;
     let versions = value.get("versions")?.as_object()?;
-    Some(sorted(versions.keys().map(Release::new).collect()))
+    Some(sorted(
+        versions
+            .keys()
+            .filter(|version| crate::project::is_exact_version(version))
+            .map(Release::new)
+            .collect(),
+    ))
 }
 
 /// Where the lists come from.

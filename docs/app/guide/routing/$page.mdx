@@ -91,7 +91,7 @@ Parameters arrive as props:
 // @flow
 import type { PageProps } from "@uniflowed/router";
 
-export default component Post(params: {| +slug: string |}) {
+export default component Post(params: {| readonly slug: string |}) {
   return <article>{params.slug}</article>;
 }
 ```
@@ -546,7 +546,7 @@ export async function loader({ params }: LoaderArgs) {
   return { post: await readPost(params.slug) };
 }
 
-export default component Post(data: {| +post: Post |}) {
+export default component Post(data: {| readonly post: Post |}) {
   return <h1>{data.post.title}</h1>;
 }
 ```
@@ -568,7 +568,9 @@ export async function loader({ params }: LoaderArgs) {
   };
 }
 
-export default component Post(data: {| +post: Post, +comments: Promise<Array<Comment>> |}) {
+export default component Post(
+  data: {| readonly post: Post, readonly comments: Promise<Array<Comment>> |},
+) {
   return (
     <article>
       <h1>{data.post.title}</h1>

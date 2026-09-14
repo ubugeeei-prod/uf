@@ -200,17 +200,46 @@ impl Source {
     /// packages, which is also how `corepack` gets them.
     fn npm_package(pin: &Pin) -> Self {
         let base = base("https://registry.npmjs.org");
-        let name = pin.tool.name();
         let version = &pin.version;
+        let (package, file) = npm_package_for(pin.tool, version);
         Self {
-            archive: format!("{base}/{name}/-/{name}-{version}.tgz"),
+            archive: format!("{base}/{package}/-/{file}-{version}.tgz"),
             checksum: Checksum::NpmIntegrity {
-                url: format!("{base}/{name}/{version}"),
+                url: format!("{base}/{package}/{version}"),
             },
             format: Format::TarGz,
             // Every npm tarball wraps its contents in `package/`.
             strip: 1,
         }
+    }
+}
+
+/// The npm package a release is published as, and the name its tarball is
+/// filed under.
+///
+/// The tool's own name, except for Yarn. Yarn 1 is the `yarn` package, and every
+/// release from 2.4.1 on is `@yarnpkg/cli-dist`, whose tarball is
+/// `cli-dist-<version>.tgz` under the scope — so asking the `yarn` package for
+/// `yarn@4.9.2`, which is what this did, was a 404 for every Yarn a project
+/// could be using today. Three releases after 1.x went out as `yarn` before the
+/// move and were never republished — 2.0.0-rc.24, 2.0.0-rc.27 and 2.4.3 — and
+/// stay where they are. The list is closed, because Yarn 2 is.
+///
+/// `@yarnpkg/cli-dist` declares `bin.yarn` as `bin/yarn.js`, which it ships
+/// executable, so [`crate::project::link`] finds it the way it finds pnpm's.
+fn npm_package_for(tool: Tool, version: &str) -> (&'static str, &'static str) {
+    const PUBLISHED_AS_YARN: [&str; 3] = ["2.0.0-rc.24", "2.0.0-rc.27", "2.4.3"];
+    let major = version
+        .split(['.', '-', '+'])
+        .next()
+        .and_then(|major| major.parse::<u64>().ok());
+    match tool {
+        Tool::Yarn
+            if major.is_some_and(|major| major >= 2) && !PUBLISHED_AS_YARN.contains(&version) =>
+        {
+            ("@yarnpkg/cli-dist", "cli-dist")
+        }
+        other => (other.name(), other.name()),
     }
 }
 

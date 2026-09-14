@@ -7,8 +7,8 @@
 **Build the strongest React development experience with Modern Flow.**
 
 [Documentation](https://docs.uniflowed.dev) ·
-[Install](https://docs.uniflowed.dev/guide/install) ·
-[Your first project](https://docs.uniflowed.dev/guide/project) ·
+[Start](https://docs.uniflowed.dev/guide/start) ·
+[Why uf](https://docs.uniflowed.dev/guide/why-uf) ·
 [What uf does not do](https://docs.uniflowed.dev/guide/scope) ·
 [Roadmap](docs/roadmap.md)
 
@@ -29,9 +29,9 @@ React is written in Flow, and Flow has spent years growing syntax that exists to
 describe React — `component` and `hook` declarations, `renders` types, `match`,
 enums. Nothing else has any of it.
 
-Using that syntax today is an assembly job. Babel to strip the types, a preset
-that understands `component`, a plugin for the React Compiler, a bundler, a
-second config to tell the bundler about the first, a test runner with its own
+Using that syntax without uf is an assembly job. Babel to strip the types, a
+preset that understands `component`, a plugin for the React Compiler, a bundler,
+a second config to tell the bundler about the first, a test runner with its own
 transform pipeline that has to be configured the same way, a linter with a
 parser plugin so it can read the syntax, a formatter, and a `tsconfig.json` you
 do not use but something insists on. Every one of those is a place where two
@@ -54,86 +54,25 @@ and the audit of where it does not yet meet them, are in
 
 ## Where it stands
 
-**uf is `0.0.0-alpha`.** Eight prereleases so far, `uf@0.0.0-alpha.0` through
-`uf@0.0.0-alpha.7`. It installs in seconds and scaffolds a project that builds —
-and it changes under you: commands, config keys and package exports move without
-a deprecation cycle, and no version here promises compatibility with the one
-before it.
+**uf is pre-release software.** Every version so far is a `0.0.0-alpha`
+prerelease, and it changes under you: commands, config keys and package exports
+move without a deprecation cycle, and no version promises compatibility with the
+one before it. [Releases](https://github.com/ubugeeei-prod/uf/releases) lists
+them, and `uf --version` names the one you have.
 
-The specific shape of "alpha", so you can decide before you spend an afternoon:
+This file names no version and lists no current gaps, because it is copied into
+every release archive and would be wrong about the next one. Each question below
+is answered where the answer is kept up to date — beside the code that decides
+it, or on the page that documents it:
 
-- **Runtimes.** Node.js and Bun load Flow, and a test starts each of them.
-  Deno runs a uf project too, by a different road — it has no module hook, so
-  uf compiles ahead of time and hands it an import map — which is why it is
-  graded *experimental*: a module uf could not enumerate is still Flow to Deno.
-  Edge is experimental too: CI starts the generated Cloudflare Worker under
-  Wrangler's local runtime, but there is still no source-level host or Flow
-  loader there ([#246](https://github.com/ubugeeei-prod/uf/issues/246)). The
-  per-host matrix — what works, what does not, and what each gap is waiting for
-  — is [`docs/hosts.md`](./docs/hosts.md).
-- **Deployment.** `uf build --adapter` writes for `node`, `container`, `edge`,
-  `serverless` and `static`, all five against one `@uniflowed/server/fetch`
-  handler, and `--compile` writes a single executable file — with Bun or with
-  Node's single-executable applications, whichever the project's Capability JS
-  Host is, and `--target` builds it for another platform. No server output has
-  ever been deployed to a real platform, and no cross-built binary has ever
-  been run. `bun` and `deno` are names in an enum, waiting on a benchmark
-  ([#391](https://github.com/ubugeeei-prod/uf/issues/391)).
-- **Server Components.** `"use client"` and `"use server"` are scanned, graphed
-  and manifested, and the build reads that: a route no client boundary reaches
-  keeps its page out of the browser bundle entirely. Nothing smaller than a
-  route is split, so a Server Component *above* a boundary still ships whole,
-  and server actions are analysed, keyed, typed and not yet callable
-  ([#252](https://github.com/ubugeeei-prod/uf/issues/252)).
-- **Tests.** About nine times faster than Vitest on a 1,000-test suite, and about
-  three times slower than Bun's runner, which
-  [Testing](https://docs.uniflowed.dev/guide/testing) explains rather than hides.
-- **Platforms.** macOS and Linux, on x86-64 and ARM64. There is no Windows build;
-  `install.ps1` resolves and says so rather than failing obscurely, and WSL2
-  works.
-- **Packages.** Twenty-nine `@uniflowed/*` packages are on npm — the closure a
-  new project needs, plus the test runner. Two more implemented front doors are
-  still workspace-only: `@uniflowed/temporal` and `@uniflowed/std`
-  ([#560](https://github.com/ubugeeei-prod/uf/issues/560),
-  [#710](https://github.com/ubugeeei-prod/uf/issues/710)); they wait in
-  `tools/release/pending-packages.txt`. Every release so far is a
-  prerelease and `latest` still points where the first publish left it, so name
-  the tag if you install one by hand: `npm install @uniflowed/ui@alpha`.
-
-### Rough edges in `0.0.0-alpha.7`
-
-Three of these stand between the next section and a reader who follows it, so
-they are named here rather than found there. All three are scoped to a version
-on purpose: this block goes when the release that closes them does.
-
-- **A new project installs `0.0.0-alpha.1` packages.** `uf new` writes
-  `"latest"` for each `@uniflowed/*` dependency, and `latest` on npm still
-  points where the first publish left it, because a prerelease must not displace
-  a stable release and there has never been one. `uf test` in such a project
-  stops with `@uniflowed/host` is not installed. The scaffold now pins the exact
-  version of the uf that wrote it and `latest` has a script to move it
-  ([#408](https://github.com/ubugeeei-prod/uf/issues/408),
-  [#416](https://github.com/ubugeeei-prod/uf/pull/416)); neither has shipped.
-- **Pinning to `alpha` instead trades that for a different failure.**
-  `@uniflowed/host` names `./write-atomically` in its `exports` map and leaves
-  the file out of its `files` array, so the tarball does not contain it — in
-  `alpha.5`, `.6` and `.7` alike — and `uf build` and `uf test` stop at
-  `ERR_MODULE_NOT_FOUND`. Fixed on `main`
-  ([#410](https://github.com/ubugeeei-prod/uf/pull/410)).
-- **`uf fmt` exits non-zero in a scaffolded project.** The default non-Flow
-  formatter is Biome, `package.json` is a non-Flow file, and the scaffold does
-  not install Biome. Install it, or set `fmt.nonFlow.formatter: "none"` in
-  `uf.config.js`.
-
-What does work on `0.0.0-alpha.7` as published, from a default
-`uf init` followed by `uf install`: `uf build` writes `dist/`, and
-`uf lint` and `uf check` report on the project. For the rest, a checkout is the
-way in until the next release — see
-[Building from a checkout](#building-from-a-checkout).
-
-[What uf does not do](https://docs.uniflowed.dev/guide/scope) is the complete
-list, sorted into refusals — decisions that will not change, each with its reason
-— and gaps, each with an issue number.
+| If you are asking | It is answered in |
+| --- | --- |
+| Does it run on my machine? macOS and Linux on x86-64 and ARM64; no Windows build, and WSL2 works | [Install](https://docs.uniflowed.dev/guide/install) |
+| Which JavaScript hosts — Node.js, Bun, Deno, edge — and what each is still waiting for | [docs/hosts.md](docs/hosts.md) |
+| What uf refuses to do on purpose, and every gap with its issue number | [What uf does not do](https://docs.uniflowed.dev/guide/scope) |
+| How it stands against Next.js, Vite, Bun and `create-react-app`, losses included | [uf compared](https://docs.uniflowed.dev/guide/compare) |
+| Which `@uniflowed/*` packages are on npm, and under which tag | [Packages](https://docs.uniflowed.dev/reference/packages) |
+| What is being worked on next | [docs/roadmap.md](docs/roadmap.md) |
 
 ## Install
 
@@ -141,26 +80,11 @@ list, sorted into refusals — decisions that will not change, each with its rea
 curl -fsSL https://setup.uniflowed.dev | sh
 ```
 
-```
-  Unified Toolchain for Flow
-
-  target   aarch64-apple-darwin
-  version  0.0.0-alpha.7  (prerelease — no stable release yet)
-
-  ✓ downloaded uf-aarch64-apple-darwin.tar.gz
-  ✓ verified   sha256 ab8c17c6adc1
-  ✓ unpacked   …/uf/runtimes/uf@0.0.0-alpha.7
-  ✓ linked     uf, ufr, ufx into …/bin
-
-  uf 0.0.0-alpha.7 is ready.
-```
-
-The script picks the archive for your platform, checks it against the sha256 in
-the release manifest before unpacking anything, and links `uf`, `ufr` and `ufx`
-into `~/.local/bin`, with the runtime itself under `$XDG_DATA_HOME/uf`
-(`UF_INSTALL_ROOT` and `UF_BIN_DIR` override both). It is short enough to read
-first, and it is served from `https://setup.uniflowed.dev/install.sh` if you
-would rather fetch it before running it.
+The script picks the archive for your platform, verifies it, and puts `uf`,
+`ufr` and `ufx` on your `PATH`. It is short enough to read first, and it is
+served from `https://setup.uniflowed.dev/install.sh` if you would rather fetch it
+before running it. [Install](https://docs.uniflowed.dev/guide/install) says what
+it verifies, how to pin a version, and how to build from source.
 
 On Nix, the repository is a flake and that is the whole install:
 
@@ -174,12 +98,10 @@ against and applies uf's patches to it, so the build is the same everywhere. For
 NixOS, nix-darwin and home-manager there are `nixosModules.default`,
 `darwinModules.default` and `homeManagerModules.default`, all taking
 `programs.uf.enable`, and an `overlays.default` if you would rather have
-`pkgs.uf` and place it yourself. [The install
-page](https://docs.uniflowed.dev/guide/install) has those and the
-build-from-a-checkout path.
+`pkgs.uf` and place it yourself.
 
-uf still needs a JavaScript host — Node.js or Bun — because Vite and your test
-bodies run there. `uf info` prints the one it found.
+uf still needs a JavaScript host, because Vite and your test bodies run there.
+`uf info` prints the one it found.
 
 ## Five minutes
 
@@ -187,7 +109,7 @@ bodies run there. `uf info` prints the one it found.
 uf new hello
 cd hello
 uf install
-uf dev          # a dev server on :5173, with Fast Refresh through `component`
+uf dev          # a dev server, with Fast Refresh through `component`
 uf build        # dist/, prerendered, with real gzip and brotli sizes
 uf test
 ```
@@ -196,111 +118,32 @@ uf test
 no git history:
 
 ```
-uf new · hello
-──────────────
-
   hello
   ├─ app
-  │  ├─ Counter.js
   │  ├─ $layout.js
   │  ├─ $page.js
   │  ├─ $page.test.js
+  │  ├─ Counter.js
   │  └─ useCounter.js
   ├─ .gitignore
   ├─ app.js
   ├─ package.json
   └─ uf.config.js
-
-✓ created 9 files in …/hello
 ```
 
 Three of those nine are a demonstration you read once and delete. There is no
 `vite.config.ts`, no `babel.config.js`, no `.eslintrc`, no `.flowconfig` and no
 `vitest.config.ts`, and there is not going to be one.
 
-`uf install` hands the work to the package manager the project already uses, with
-lifecycle scripts refused — `--ignore-scripts` to the manager, and a manifest
-that declares `scripts` of its own is rejected before anything is fetched. The
-`chosen by` line is uf saying that its own resolver, `@uniflowed/pm`, cannot
-fetch yet:
+`uf install` hands the work to the package manager the project already uses —
+npm, pnpm, Yarn or Bun — with lifecycle scripts refused: the manager is passed
+`--ignore-scripts`, and a manifest that declares `scripts` of its own is rejected
+before anything is fetched. Every command that runs a manager prints which one it
+chose and why.
 
-```
-  manager    npm
-  chosen by  uf.lock names uf, whose resolver cannot fetch yet
-  command    npm install --ignore-scripts --loglevel=http
-  runtime    node · /opt/homebrew/bin/node
-  lockfile   package-lock.json · 240 packages · 136.26 kB
-
-  config    ························  88.2µs
-  workspace ························ 683.2µs
-  resolve   ························    7.3s
-  fetch     ························   1.31s
-  lockfile  ························   734µs
-  total     ························   8.62s
-
-✓ dependencies installed in 8.62s
-```
-
-Then `uf build` — Vite, driven by uf, with every module transformed in-process
-and every prerenderable route written as HTML:
-
-```
-uf build · hello
-────────────────
-
-  config       ························  73.9µs
-  routes       ························  53.1µs
-  router types ························ 130.4µs
-  rsc analysis ························ 354.5µs
-  vite         ························   1.13s
-  manifest     ························ 145.3µs
-  rsc manifest ························ 108.9µs
-  bundle size  ························ 912.9ms
-  total        ························   2.04s
-
-  engine             vite
-  host               node
-  prerendered pages  1
-  modules            7
-  client components  1
-
-  shipped
-    assets  10
-    raw     209.41 kB
-    gzip    66.10 kB
-    brotli  57.04 kB
-
-✓ build succeeded in 2.04s
-```
-
-and `uf test`, whose discovery, ordering, worker pool and report are Rust and
-whose test bodies run on the host:
-
-```
-uf test · hello
-───────────────
-
-  ✓ app/$page.test.js  useCounter > is a hook, so it is only callable from a component or another hook
-
-✓ 1 passed, 0 failed in 297.6ms
-```
-
-Those four blocks are one real run of `uf new`, `uf install`, `uf build` and
-`uf test`, at version `0.0.0-alpha.7` on Node v25.8.1, trimmed — the banner,
-npm's own output, the per-asset size table and absolute paths — and not
-otherwise edited. `uf dev` has no transcript here because it does not exit.
-
-What it ran against is worth stating exactly, because it is not yet what
-`curl … | sh` gives you: a `uf` built from `main`, whose scaffold pins the
-packages to its own version, and the published `@uniflowed/host` for that
-version with the files `main` ships and `0.0.0-alpha.7` left out of the tarball
-put back into it. That pair is the next release;
-[Rough edges in `0.0.0-alpha.7`](#rough-edges-in-000-alpha7) is the distance
-between it and today.
-
-The compressed figures are measured by really compressing the bytes at fixed
-settings, never estimated, and `build.budgets` in `uf.config.js` turns them into
-a check.
+[Your first project](https://docs.uniflowed.dev/guide/project) walks through
+every file above, and [Build a reading list](https://docs.uniflowed.dev/guide/tutorial)
+builds one application end to end, with what each command printed.
 
 ## What the binary does
 
@@ -308,27 +151,21 @@ Every command is in the release binary, and none of them needs a line in
 `package.json`. [Commands](https://docs.uniflowed.dev/reference/cli) is the full
 reference, with every flag and exit code.
 
-| | |
-| --- | --- |
-| `uf new`, `uf init` | Scaffold an application into a new directory, or into this one; `--lib` scaffolds a library |
-| `uf clean` | Removes what a rebuild writes again — never a lockfile, and `node_modules` only when asked |
-| `uf dev` | Vite's dev server, with React Fast Refresh through `component` declarations |
-| `uf build` | Client and server bundles, prerendered routes, a size report and the build manifest |
-| `uf build`, for a library | `uf new --lib` turns the router off, and that makes the build compile your entries to `dist/` instead: every declared dependency left as an import, and a package that ships the Flow source and the JavaScript beside it |
-| `uf preview`, `uf start` | Serve that build — through Vite, or through uf's own server with no bundler in the process |
-| `uf test` | Scheduling and reporting in Rust, one file per worker, bodies on the host |
-| `uf fmt` | Flow printed from Meta's parser to match Prettier; JSON, CSS and TypeScript handed to Biome |
-| `uf lint` | uf's rules and Flow's built-in lints, one pass, one report; `--fix` writes the fixes it can make |
-| `uf check` | Flow's own inference. uf has no second opinion about your types |
-| `uf install` | The project's package manager, with lifecycle scripts refused |
-| `uf add`, `uf remove`, `uf update`, `uf why` | The same manager, one dependency at a time, rewriting the lockfile and the store |
-| `uf ls`, `uf audit`, `uf search` | The same manager, reading — and, where it has no such command, saying so rather than reaching for another one |
-| `uf run`, `ufx` | A task from `uf.config.js`; a package's binary |
-| `uf info`, `uf inspect`, `uf explain` | What uf found, what your config resolved to, and which provider does each stage of a command |
-| `uf prepare` | The code generation and checks a commit should not go without; `--fix` makes the checks write |
-| `uf lsp` | The language server, over stdio |
-| `uf mcp` | The same commands as MCP tools, over stdio, for an agent |
-| `uf env`, `uf use`, `uf self-update` | The JavaScript hosts a project pins, the shared store they live in, and the uf that runs it |
+| | | Guide |
+| --- | --- | --- |
+| `uf new`, `uf init` | Scaffold an application into a new directory, or into this one; `--lib` scaffolds a library | [Your first project](https://docs.uniflowed.dev/guide/project) |
+| `uf dev`, `uf build` | Vite's dev server; client and server bundles, prerendered routes, a size report and the build manifest | [Dev and build](https://docs.uniflowed.dev/guide/dev) |
+| `uf preview`, `uf start` | Serve that build — through Vite, or through uf's own server with no bundler in the process | [Targets](https://docs.uniflowed.dev/guide/targets) |
+| `uf test` | Scheduling and reporting in Rust, one file per worker, bodies on the host | [Testing](https://docs.uniflowed.dev/guide/testing) |
+| `uf fmt`, `uf lint` | Flow printed from Meta's parser to match Prettier; uf's rules and Flow's lints, in one pass | [Formatting and linting](https://docs.uniflowed.dev/guide/format) |
+| `uf check` | `uf lint`, then Flow's own inference. uf has no second opinion about your types | [Type checking](https://docs.uniflowed.dev/guide/check) |
+| `uf install`, `uf add`, `uf remove`, `uf update`, `uf why`, `uf ls`, `uf audit`, `uf search`, `uf pm`, `uf patch`, `uf catalog` | The project's own package manager, with install scripts refused | [Dependencies](https://docs.uniflowed.dev/guide/dependencies) |
+| `uf run` (`ufr`), `uf exec` (`ufx`) | A task from `uf.config.js`, and everything it depends on; a package's binary, fetched only when you say so | [Tasks](https://docs.uniflowed.dev/guide/tasks) |
+| `uf env`, `uf use`, `uf self-update` | The runtimes a project pins, and the uf that runs it | [Environments](https://docs.uniflowed.dev/guide/env) |
+| `uf lsp` | The language server, over stdio | [Editors](https://docs.uniflowed.dev/guide/editors) |
+| `uf mcp` | The checks, the tests and the formatter as MCP tools, over stdio, for an agent | [Agents](https://docs.uniflowed.dev/guide/agents) |
+| `uf info`, `uf inspect`, `uf explain` | What uf found, what your config resolved to, and which provider does each stage of a command | [Commands](https://docs.uniflowed.dev/reference/cli#project) |
+| `uf routes`, `uf i18n`, `uf doc`, `uf prepare`, `uf clean`, `uf release`, `uf publish`, `uf completion` | The route table, the message catalogue, API docs, the pre-commit checks, cleaning up, and releasing | [Commands](https://docs.uniflowed.dev/reference/cli) |
 
 ## One config file
 
@@ -363,13 +200,13 @@ where uf reads it. Every option and its default is in
 
 uf is aiming at a wide surface from an early position, so the difference between
 those three decides whether a feature is something you can use this afternoon.
-This README keeps them apart and does not restate the lists, because a fourth
-copy of a list is a fourth thing to keep true:
+This README keeps them apart and does not restate the lists, because a copy of a
+list is one more thing to keep true:
 
 | | What it means | Where it is kept |
 | --- | --- | --- |
 | **Implemented** | Reachable from the binary, covered by a test, documented. The command and config references describe only what exists | [Commands](https://docs.uniflowed.dev/reference/cli), [`uf.config.js`](https://docs.uniflowed.dev/reference/config) |
-| **Experimental** | Implemented, reachable, and expected to change — said on the page that documents it. `@uniflowed/effect`'s requirement subtraction, `@uniflowed/tui` without mouse or selection, `uf build --compile`, whose cross-built binaries are checked by their file format because nothing here can run one | [Packages](https://docs.uniflowed.dev/reference/packages) |
+| **Experimental** | Implemented, reachable, and expected to change — said on the page that documents it | [Packages](https://docs.uniflowed.dev/reference/packages), and each guide |
 | **Planned** | Not written. Every gap carries an issue number, and the roadmap sorts them P0–P3 | [What uf does not do](https://docs.uniflowed.dev/guide/scope), [docs/roadmap.md](docs/roadmap.md) |
 
 A declared API that throws is not a feature, and this repository has a check that
@@ -378,10 +215,9 @@ way to nobody. The three ways that standard fails, and the table of where uf's
 own north star is not true yet, are at the top of
 [docs/roadmap.md](docs/roadmap.md).
 
-[uf compared](https://docs.uniflowed.dev/guide/compare) puts uf beside Next.js,
-Vite, Bun and `create-react-app`, with the rows uf loses in the same tables as
-the rows it wins. If you write TypeScript, read that one first: the syntax
-argument is worth nothing to you and most of the other rows are a downgrade.
+If you write TypeScript, read [uf compared](https://docs.uniflowed.dev/guide/compare)
+first: the syntax argument is worth nothing to you and most of the other rows are
+a downgrade.
 
 ## The library surface
 
@@ -391,9 +227,9 @@ primitives, StyleX styling, the test runner and the rest. "The server" there
 means a **BFF** — route handlers, server actions and rendering, the backend
 *for this frontend*. It is deliberately not an application backend, and
 [architecture red lines](docs/red-lines.md) says why that is a boundary rather
-than a gap. They are plain Flow
-with no native bindings, so what runs in the browser is what you can read, and
-`uf_lib` in this repository is the registry they are all declared in.
+than a gap. They are plain Flow with no native bindings, so what runs in the
+browser is what you can read, and `uf_lib` in this repository is the registry
+they are all declared in.
 
 [Packages](https://docs.uniflowed.dev/reference/packages) is the annotated list,
 including which are on npm and which resolve only through this repository's
@@ -403,13 +239,24 @@ workspace.
 
 [docs.uniflowed.dev](https://docs.uniflowed.dev) is the manual. It is built by
 `uf build` from `docs/` in this repository — a real uf project, which is the
-point of it.
+point of it. It is arranged by what a reader came for:
+
+| If you want to | Start at |
+| --- | --- |
+| get uf running and build one application with it | [Start](https://docs.uniflowed.dev/guide/start) |
+| decide whether your team should use it, and what it costs | [Why uf](https://docs.uniflowed.dev/guide/why-uf) |
+| route, load data, render, style and test an application | [Build an app](https://docs.uniflowed.dev/guide/build-an-app) |
+| run it on a server, a static host, a phone or a terminal | [Targets](https://docs.uniflowed.dev/guide/targets) |
+| own the pipeline: runtimes, dependencies, tasks, CI, editors and agents | [The toolchain](https://docs.uniflowed.dev/guide/toolchain) |
+| move an application you already have | [Migrating to uf](https://docs.uniflowed.dev/guide/migrate) |
+| look up a flag, a config key or an export | [Reference](https://docs.uniflowed.dev/reference) |
 
 In the repository:
 
 | | |
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | The crates, the Flow parser boundary, and why the toolchain is pinned to a nightly |
+| [docs/hosts.md](docs/hosts.md) | Each JavaScript host, what works on it, and what each gap is waiting for |
 | [docs/red-lines.md](docs/red-lines.md) | What uf will never do, and where it does not yet comply |
 | [docs/roadmap.md](docs/roadmap.md) | The north star, the three ways it fails, and P0–P3. [Issue #1](https://github.com/ubugeeei-prod/uf/issues/1) tracks it |
 | [docs/security.md](docs/security.md) | The threat model: a published CVE per row, and the decision that makes the same bug impossible here |
@@ -439,10 +286,11 @@ and applies `tools/upstream/patches/flow` on top — fixes uf needs that
 `facebook/flow` has not taken yet. Nothing builds without it: `uf` parses and
 type-checks Flow with that port and has no second backend.
 
-`rust-toolchain.toml` pins `nightly-2026-08-01`. That is a requirement rather
-than a preference — 23 crates in the port declare `#![feature(box_patterns)]`,
-which the compiler removed around the 2026-09-01 nightly, and no stable
-toolchain can build them.
+`rust-toolchain.toml` pins a nightly Rust toolchain. That is a requirement rather
+than a preference — crates in the port declare `#![feature(box_patterns)]`, which
+recent nightlies removed, and no stable toolchain can build them.
+[docs/architecture.md](docs/architecture.md) has the exact pin and why it moves
+when it moves.
 
 One command runs everything CI runs:
 

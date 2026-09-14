@@ -319,7 +319,7 @@ import { useRouter } from "@uniflowed/router";
 
 import { postMessage } from "../_actions/messages.js";
 
-type Message = {| +id: string, +body: string, +sending?: boolean |};
+type Message = {| readonly id: string, readonly body: string, readonly sending?: boolean |};
 
 component Thread(messages: $ReadOnlyArray<Message>) {
   const router = useRouter();

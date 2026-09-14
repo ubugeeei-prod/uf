@@ -181,7 +181,11 @@ fn declared_from<'a>(
     Ok(pins)
 }
 
-fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvError> {
+/// The exact versions `package.json#engines` names, for the tools uf installs.
+///
+/// A range there is a compatibility statement rather than a pin, and is left
+/// out rather than refused.
+pub(crate) fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvError> {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -215,7 +219,9 @@ fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvEr
         .collect())
 }
 
-fn is_exact_version(version: &str) -> bool {
+/// Whether `version` is one release: `24.14.0`, `1.3.0-canary.2`,
+/// `4.9.2+sha.1`.
+pub(crate) fn is_exact_version(version: &str) -> bool {
     let Some(separator) = version.find(['-', '+']) else {
         return is_version_core(version);
     };

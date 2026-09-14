@@ -564,3 +564,51 @@ fn a_profile_that_cannot_be_copied_leaves_the_original_alone() {
         "the profile was removed with the directory it could not leave"
     );
 }
+
+/// Yarn 1 is the `yarn` package and every later Yarn is `@yarnpkg/cli-dist`,
+/// so each is fetched from the package that publishes it.
+///
+/// The `yarn` package stops at 1.22 bar three releases, so asking it for
+/// `yarn@4.9.2` — which is what every Yarn pin did — was a 404.
+#[test]
+fn a_yarn_is_fetched_from_the_package_that_publishes_it() {
+    use crate::source::{Checksum, Source};
+
+    let yarn = |version: &str| Pin {
+        tool: Tool::Yarn,
+        version: version.to_owned(),
+        platform: Platform {
+            os: Os::Linux,
+            arch: Arch::X64,
+        },
+    };
+
+    let berry = Source::for_pin(&yarn("4.18.0")).unwrap();
+    assert_eq!(
+        berry.archive,
+        "https://registry.npmjs.org/@yarnpkg/cli-dist/-/cli-dist-4.18.0.tgz"
+    );
+    assert_eq!(
+        berry.checksum,
+        Checksum::NpmIntegrity {
+            url: "https://registry.npmjs.org/@yarnpkg/cli-dist/4.18.0".to_owned()
+        }
+    );
+
+    assert_eq!(
+        Source::for_pin(&yarn("1.22.22")).unwrap().archive,
+        "https://registry.npmjs.org/yarn/-/yarn-1.22.22.tgz"
+    );
+    // The one 2.x release that never left the `yarn` package, beside one that
+    // was only ever published as the dist.
+    assert_eq!(
+        Source::for_pin(&yarn("2.4.3")).unwrap().archive,
+        "https://registry.npmjs.org/yarn/-/yarn-2.4.3.tgz"
+    );
+    assert!(
+        Source::for_pin(&yarn("2.4.2"))
+            .unwrap()
+            .archive
+            .contains("/@yarnpkg/cli-dist/")
+    );
+}
