@@ -3800,6 +3800,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "uf_config",
+ "uf_env",
 ]
 
 [[package]]

@@ -43,11 +43,75 @@
 use std::collections::BTreeMap;
 use std::fs;
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Map, Value};
 
 use crate::EnvError;
 use crate::tool::Tool;
+
+/// Held while one process reads, changes and replaces `uf.lock`.
+///
+/// # Why a guard, and not only an atomic rename
+///
+/// A rename means nobody reads half a file. It does not mean nobody's change is
+/// lost: two commands started together in one checkout — a dev server and a
+/// test watch, each on a prefix nothing had locked, or `uf env update` beside
+/// `uf install` — both read `uf.lock`, each writes back what it read plus its
+/// own change, and the second rename drops the first command's. The next run
+/// resolves that prefix again, perhaps to a release published in between,
+/// which is the drift the lock exists to stop.
+///
+/// So every writer of `uf.lock` holds this for the whole read, change and
+/// rename — [`crate::toolchain::resolve`] here, and `uf_pm`'s resolver when it
+/// rewrites its half — and a second writer waits for the first. It is advisory,
+/// and taken on a file of its own under `.uf/` rather than on `uf.lock`, whose
+/// rename replaces the very file a lock would have been taken on.
+///
+/// Taken once per operation: a process that asked for it twice would wait on
+/// itself. Dropping it lets it go.
+#[derive(Debug)]
+pub struct Guard {
+    _file: fs::File,
+}
+
+/// The file the guard for the lockfile at `lockfile` is taken on:
+/// `.uf/uf.lock.guard` beside it.
+#[must_use]
+pub fn guard_path(lockfile: &Utf8Path) -> Utf8PathBuf {
+    let name = lockfile.file_name().unwrap_or("uf.lock");
+    lockfile
+        .parent()
+        .unwrap_or_else(|| Utf8Path::new(""))
+        .join(".uf")
+        .join(format!("{name}.guard"))
+}
+
+/// Wait for, and take, the guard on the lockfile at `lockfile`.
+///
+/// # Errors
+///
+/// When the guard file cannot be created or locked.
+pub fn guard(lockfile: &Utf8Path) -> Result<Guard, EnvError> {
+    let path = guard_path(lockfile);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|source| EnvError::Write {
+            path: parent.to_path_buf(),
+            source,
+        })?;
+    }
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|source| EnvError::Write {
+            path: path.clone(),
+            source,
+        })?;
+    file.lock()
+        .map_err(|source| EnvError::Write { path, source })?;
+    Ok(Guard { _file: file })
+}
 
 /// The key the record lives under.
 pub const KEY: &str = "toolchain";
@@ -108,6 +172,12 @@ fn spec(tool: Tool, prefix: &str) -> String {
 /// When the file exists and is not a JSON object, or its record is not an
 /// object of strings. Refused rather than read as empty, because an unreadable
 /// lock read as empty is a lock silently re-resolved to something newer.
+///
+/// And when an entry is not a tool uf installs, a version prefix, and one exact
+/// release. That is a security boundary as well as a format: `uf.lock` arrives
+/// with a cloned repository, and a locked version becomes a directory name in
+/// the store and part of a download URL, so `x/../../outside` must be refused
+/// here rather than trusted as far as `Store::path`.
 pub fn read(path: &Utf8Path) -> Result<ToolchainLock, EnvError> {
     let Some(document) = document(path)? else {
         return Ok(ToolchainLock::default());
@@ -126,9 +196,37 @@ pub fn read(path: &Utf8Path) -> Result<ToolchainLock, EnvError> {
                 &format!("`toolchain.{spec}` is not a version string"),
             ));
         };
+        if !is_locked_spec(spec) {
+            return Err(unreadable(
+                path,
+                &format!(
+                    "`toolchain.{spec}` is not a tool and a version prefix, such as `node@26`"
+                ),
+            ));
+        }
+        if !crate::project::is_exact_version(version) {
+            return Err(unreadable(
+                path,
+                &format!("`toolchain.{spec}` is `{version}`, which is not a release"),
+            ));
+        }
         entries.insert(spec.clone(), version.clone());
     }
     Ok(ToolchainLock { entries })
+}
+
+/// Whether `spec` is what the record is keyed by: a tool uf installs and a
+/// numeric version prefix — `node@26`, `bun@1.4`.
+fn is_locked_spec(spec: &str) -> bool {
+    let Some((name, prefix)) = spec.split_once('@') else {
+        return false;
+    };
+    let parts: Vec<&str> = prefix.split('.').collect();
+    Tool::parse(name).is_some()
+        && (1..=3).contains(&parts.len())
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
 /// Write the record into the `uf.lock` at `path`, leaving everything else in the

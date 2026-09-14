@@ -239,7 +239,16 @@ fn list(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 /// before anything is downloaded, and `uf env install` is the step that
 /// downloads it.
 fn update(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
-    let (resolved, _, toolchain) = toolchain(cwd, Lookup::Latest)?;
+    // Not through `toolchain`, which refuses a platform uf installs nothing
+    // for. `uf.lock` is the same file on every machine, and a checkout where uf
+    // cannot install a tool can still move the release a prefix locks.
+    let resolved = load_config(cwd)?;
+    let toolchain = uf_env::toolchain::resolve(
+        &resolved.root,
+        &resolved.config,
+        Lookup::Latest,
+        &Publishers,
+    )?;
     let rows: Vec<String> = toolchain
         .tools
         .iter()

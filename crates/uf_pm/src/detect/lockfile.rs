@@ -71,18 +71,14 @@ const UF_LOCK_PROBE_BYTES: usize = 64 * 1024;
 /// So a file whose one key is `toolchain` does not vote. Everything else votes
 /// as it always has — an empty object, text that is not JSON, a file too large
 /// to be a toolchain record — so what changes is exactly the file `uf_env`
-/// writes, and `crates/uf_cli/tests/env.rs` holds the two crates to that shape.
+/// writes, and which files those are is `uf_env::lock::is_toolchain_only`'s to
+/// say rather than a second reading of the shape here.
 fn uf_lock_votes(path: &Utf8Path) -> bool {
     let head = read_file_head(path, UF_LOCK_PROBE_BYTES + 1);
     if head.len() > UF_LOCK_PROBE_BYTES {
         return true;
     }
-    match serde_json::from_slice::<serde_json::Value>(&head) {
-        Ok(serde_json::Value::Object(document)) => {
-            !(document.len() == 1 && document.contains_key("toolchain"))
-        }
-        _ => true,
-    }
+    std::str::from_utf8(&head).map_or(true, |text| !uf_env::lock::is_toolchain_only(text))
 }
 
 pub(crate) fn managers_for(

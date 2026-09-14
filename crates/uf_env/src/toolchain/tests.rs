@@ -435,6 +435,52 @@ fn an_env_toolchain_pin_that_is_not_exact_is_still_refused() {
     );
 }
 
+/// Resolution that may write waits for whoever holds the lock, and then reads
+/// what they locked rather than resolving over it.
+#[test]
+fn resolving_waits_for_the_command_holding_the_lock() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let (_dir, root, config) = project(r#"{ runtime: "node@26" }"#);
+    let lockfile = root.join("uf.lock");
+    let held = lock::guard(&lockfile).unwrap();
+
+    let (done, finished) = mpsc::channel();
+    let worker_root = root.clone();
+    let worker = std::thread::spawn(move || {
+        let lists = Lists::default().publishing(Tool::Node, &["26.10.0"]);
+        let toolchain = resolve(&worker_root, &config, Lookup::Missing, &lists).unwrap();
+        done.send(()).unwrap();
+        (toolchain, lists.fetches())
+    });
+
+    assert!(
+        finished.recv_timeout(Duration::from_millis(300)).is_err(),
+        "resolved while another command held the lock"
+    );
+    let mut lock = ToolchainLock::default();
+    lock.insert(Tool::Node, "26", "26.8.2");
+    lock::write(&lockfile, &lock).unwrap();
+    drop(held);
+
+    finished
+        .recv_timeout(Duration::from_secs(10))
+        .expect("resolution finished once the lock was free");
+    let (toolchain, fetches) = worker.join().unwrap();
+    assert_eq!(
+        toolchain.tools[0].resolution,
+        Resolution::Locked {
+            prefix: "26".to_owned(),
+            version: "26.8.2".to_owned()
+        }
+    );
+    assert!(
+        fetches.is_empty(),
+        "it resolved again instead of reading the lock"
+    );
+}
+
 /// A lock entry for a prefix nothing declares any more goes on the next write,
 /// and a listing leaves it alone.
 #[test]

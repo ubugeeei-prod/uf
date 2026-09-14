@@ -128,6 +128,77 @@ fn a_lock_uf_cannot_read_is_refused_by_path() {
     assert_eq!(fs::read_to_string(&path).unwrap(), "not json");
 }
 
+/// A version becomes a directory in the store and part of a download URL, so
+/// an entry that is not one release — or not keyed by a tool and a prefix — is
+/// refused by name rather than trusted.
+#[test]
+fn an_entry_that_is_not_a_tool_a_prefix_and_a_release_is_refused() {
+    let (_guard, root) = temp();
+    let path = root.join("uf.lock");
+    for (text, detail) in [
+        (
+            r#"{"toolchain":{"node@26":"x/../../outside"}}"#,
+            "`toolchain.node@26` is `x/../../outside`, which is not a release",
+        ),
+        (
+            r#"{"toolchain":{"node@26":"26.8.2+../../outside"}}"#,
+            "which is not a release",
+        ),
+        (
+            r#"{"toolchain":{"node@26":"26"}}"#,
+            "which is not a release",
+        ),
+        (
+            r#"{"toolchain":{"../node@26":"26.8.2"}}"#,
+            "is not a tool and a version prefix",
+        ),
+        (
+            r#"{"toolchain":{"node@^26":"26.8.2"}}"#,
+            "is not a tool and a version prefix",
+        ),
+        (
+            r#"{"toolchain":{"cargo@1":"1.0.0"}}"#,
+            "is not a tool and a version prefix",
+        ),
+    ] {
+        fs::write(&path, text).unwrap();
+        let message = read(&path).unwrap_err().to_string();
+        assert!(message.contains(detail), "{text}: {message}");
+    }
+
+    fs::write(
+        &path,
+        r#"{"toolchain":{"node@26":"26.8.2","bun@1.4":"1.4.2-canary.3"}}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        read(&path).unwrap().get(Tool::Bun, "1.4"),
+        Some("1.4.2-canary.3")
+    );
+}
+
+/// The guard is one writer at a time — a second handle cannot take it — and it
+/// is let go of when it is dropped.
+#[test]
+fn the_guard_is_held_until_it_is_dropped() {
+    let (_guard, root) = temp();
+    let lockfile = root.join("uf.lock");
+    assert_eq!(guard_path(&lockfile), root.join(".uf/uf.lock.guard"));
+
+    let held = guard(&lockfile).unwrap();
+    let other = fs::OpenOptions::new()
+        .write(true)
+        .open(guard_path(&lockfile))
+        .unwrap();
+    assert!(
+        matches!(other.try_lock(), Err(fs::TryLockError::WouldBlock)),
+        "a second holder took the guard"
+    );
+
+    drop(held);
+    assert!(other.try_lock().is_ok());
+}
+
 /// Only a file whose one key is the record is toolchain-only; everything else
 /// votes in package-manager detection as it always did.
 #[test]

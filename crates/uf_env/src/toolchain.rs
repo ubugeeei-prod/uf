@@ -276,6 +276,14 @@ pub fn resolve(
     releases: &dyn Releases,
 ) -> Result<Toolchain, EnvError> {
     let lock_path = root.join(config.pm.lockfile.as_str());
+    // Held until this returns whenever anything may be written, so a command
+    // resolving beside this one reads what this one locked rather than
+    // writing over it; see [`lock::Guard`]. A listing writes nothing and waits
+    // for nobody.
+    let _guard = match lookup {
+        Lookup::LockOnly => None,
+        Lookup::Missing | Lookup::Latest => Some(lock::guard(&lock_path)?),
+    };
     let before = lock::read(&lock_path)?;
     let mut lock = before.clone();
     let mut lists = BTreeMap::new();

@@ -302,6 +302,13 @@ pub fn install_workspace(
     })?;
 
     let lockfile = root.join(plan.lockfile.as_str());
+    // Held from the read of the toolchain record to the rename below, so a
+    // command locking a prefix beside this install is not undone by it. Every
+    // writer of `uf.lock` takes this; see `uf_env::lock::Guard`.
+    let _guard = uf_env::lock::guard(&lockfile).map_err(|error| PackageManagerError::Write {
+        path: uf_env::lock::guard_path(&lockfile),
+        source: std::io::Error::other(error),
+    })?;
     // The toolchain record `uf_env` keeps in the same file — which release each
     // version prefix such as `node@26` resolved to — is not the manifests' to
     // decide, so it is carried over rather than rewritten away. An install
@@ -375,7 +382,7 @@ struct PackageLockfile<'a> {
 fn locked_toolchain(path: &Utf8Path) -> Option<Value> {
     let text = fs::read_to_string(path).ok()?;
     let mut document: serde_json::Map<String, Value> = serde_json::from_str(&text).ok()?;
-    document.remove("toolchain")
+    document.remove(uf_env::lock::KEY)
 }
 
 #[derive(Debug, Serialize)]
