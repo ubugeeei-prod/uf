@@ -54,10 +54,10 @@ import {
 } from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
 import { emit, reportRenderError } from "./internal/events.js";
+import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
-import remarkMdxFrontmatter from "remark-mdx-frontmatter";
 
 import {
   RUNTIME_PUBLIC_PATH,
@@ -1052,11 +1052,7 @@ function mdxPlugin(markdown) {
     enforce: "pre",
     ...mdx({
       jsxImportSource: "react",
-      remarkPlugins: [
-        remarkGfm,
-        remarkFrontmatter,
-        [remarkMdxFrontmatter, { name: "frontmatter" }],
-      ],
+      remarkPlugins: [remarkGfm, remarkFrontmatter, remarkFrontmatterExport],
       rehypePlugins,
     }),
     name: "uf:mdx",
