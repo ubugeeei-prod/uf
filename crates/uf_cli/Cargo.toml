@@ -61,6 +61,7 @@ uf_term = { path = "../uf_term" }
 uf_test = { path = "../uf_test" }
 uf_transform = { path = "../uf_transform" }
 uf_tui = { path = "../uf_tui" }
+uf_ui = { path = "../uf_ui" }
 compact_str.workspace = true
 mimalloc.workspace = true
 serde.workspace = true

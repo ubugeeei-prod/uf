@@ -3633,6 +3633,7 @@ dependencies = [
  "uf_test",
  "uf_transform",
  "uf_tui",
+ "uf_ui",
  "walkdir",
 ]
 
@@ -4015,6 +4016,20 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+]
+
+[[package]]
+name = "uf_ui"
+version = "0.0.0-alpha.33"
+dependencies = [
+ "camino",
+ "compact_str",
+ "serde_json",
+ "sha2",
+ "similar",
+ "tempfile",
+ "thiserror",
+ "uf_lib",
 ]
 
 [[package]]

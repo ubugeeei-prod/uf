@@ -80,6 +80,7 @@ pub(crate) const KNOWN: &[&str] = &[
     "release",
     "lsp",
     "mcp",
+    "ui",
 ];
 
 pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
@@ -245,8 +246,51 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
         "release" => release_stages(resolved),
         "lsp" => lsp_stages(resolved),
         "mcp" => mcp_stages(),
+        "ui" => ui_stages(resolved),
         _ => return None,
     })
+}
+
+/// `uf ui add`: a registry inside this binary, a directory of the project's,
+/// and the project's package manager for what the components import.
+///
+/// Three stages because there are three answers to "who did that": the files
+/// come from uf, the directory is the project's, and the packages are the
+/// manager's — which is the one a reader would otherwise not know was run.
+fn ui_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    let components = uf_ui::Registry::embedded().map_or(0, |registry| registry.components().len());
+    vec![
+        Stage {
+            name: "registry",
+            provider: format!("uf {} (embedded)", uf_ui::REGISTRY_VERSION),
+            detail: format!(
+                "{components} components, read out of this binary: no network, and every one \
+                 matches this uf's packages and compiler"
+            ),
+        },
+        Stage {
+            name: "files",
+            provider: "uf".to_string(),
+            detail: format!(
+                "writes {}/<name>.js and the components it imports, and refuses to replace a file \
+                 somebody edited",
+                uf_ui::DEFAULT_DIRECTORY
+            ),
+        },
+        Stage {
+            name: "packages",
+            provider: provider_for(
+                manager,
+                Operation::Add {
+                    kind: DependencyKind::Prod,
+                },
+            ),
+            detail: "adds the @uniflowed/* packages the components import that package.json does \
+                     not name, at this uf's version, before any file is written"
+                .to_string(),
+        },
+    ]
 }
 
 /// Where the answers came from.
