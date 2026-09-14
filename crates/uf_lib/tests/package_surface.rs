@@ -75,14 +75,17 @@ fn is_test_file(path: &Utf8Path) -> bool {
 
 /// The internal modules that are nonetheless exported, and why.
 ///
-/// Two, and both for the same structural reason: a sibling package is a
+/// Three, and all for the same structural reason: a sibling package is a
 /// different npm package and cannot reach another's internals by a relative
 /// path. `core`'s is the shared native-runtime bridge every `@uniflowed/*`
-/// raises through; `host`'s is the Node loader hook, which `@uniflowed/vite`
-/// hands to `node:module`'s `register()` by specifier.
+/// raises through. `host`'s two are the Flow loaders `@uniflowed/vite`'s
+/// driver installs itself: the loader-thread hooks it hands to `node:module`'s
+/// `register()` by specifier on Node, and the in-thread hooks whose
+/// `installFlowHooks` it calls on Deno, which has no `register()`.
 const EXPORTED_INTERNALS: &[&str] = &[
     "core/internal/native-runtime.js",
     "host/internal/node-hooks.js",
+    "host/internal/sync-hooks.js",
 ];
 
 /// Packages the host runs directly, before any Flow transform exists. See the
