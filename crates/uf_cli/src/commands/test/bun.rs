@@ -42,6 +42,7 @@
 //! is a run that is not the run a person asked for, and a flag translated into
 //! something with a different meaning is worse.
 
+use std::io::Read;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow, bail};
@@ -376,12 +377,14 @@ pub(crate) fn run(
         };
     }
 
-    let document = std::fs::read_to_string(&report).with_context(|| {
+    let file = std::fs::File::open(&report).with_context(|| {
         format!(
             "`bun test` exited ({status}) and wrote no report to {report}, so uf cannot say which \
              cases ran"
         )
     })?;
+    let document = read_report(file, junit::MAX_JUNIT_BYTES)
+        .with_context(|| format!("could not read the report `bun test` wrote to {report}"))?;
     let cases = junit::read_cases(&document).map_err(|error| anyhow!("{error}"))?;
     let count = |outcome| cases.iter().filter(|case| case.outcome == outcome).count();
     let (passed, failed, skipped) = (
@@ -417,6 +420,27 @@ pub(crate) fn run(
 /// Whether any threshold in `thresholds` is set.
 fn declares_thresholds(thresholds: &CoverageThresholdConfig) -> bool {
     thresholds.lines.is_some() || thresholds.functions.is_some() || thresholds.branches.is_some()
+}
+
+/// Everything in `file`, the report `bun test` wrote, when it holds no more
+/// than `limit` bytes.
+///
+/// [`junit::read_cases`] refuses a document past [`junit::MAX_JUNIT_BYTES`],
+/// but only once it holds the document, and reading the file whole to get it
+/// would hold a report of any size in memory to learn that it is too large.
+/// The report comes from a process uf does not control, so nothing past one
+/// byte beyond the limit is read: that byte is what says the report is too
+/// large, and the size the refusal names is the file's, from its metadata.
+fn read_report(file: std::fs::File, limit: usize) -> Result<String> {
+    let size = file.metadata()?.len();
+    let mut bytes = Vec::new();
+    file.take(u64::try_from(limit).map_or(u64::MAX, |limit| limit.saturating_add(1)))
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > limit {
+        let error = junit::JunitError::TooLarge(usize::try_from(size).unwrap_or(usize::MAX));
+        bail!("{error}");
+    }
+    Ok(String::from_utf8(bytes)?)
 }
 
 /// The Bun `uf env install` linked for the project at `root`, when there is one.
@@ -459,6 +483,43 @@ mod tests {
     fn a_substring_filter_stays_a_substring_under_a_regex() {
         assert_eq!(escape_pattern("a.b (c)"), "a\\.b \\(c\\)");
         assert_eq!(escape_pattern("math > adds"), "math > adds");
+    }
+
+    #[test]
+    fn a_report_past_the_limit_is_refused_from_the_byte_past_it() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let path = directory.path().join("junit.xml");
+        // ASCII up to and including the byte past the limit, and not UTF-8 at
+        // all after it. Reading the whole file first, as this used to, fails on
+        // the encoding before the size is ever looked at; a read that stops at
+        // that byte never meets the bytes that are not UTF-8.
+        let mut bytes = vec![b' '; 17];
+        bytes.extend([0xFF; 64]);
+        std::fs::write(&path, &bytes).expect("write the report");
+        let file = std::fs::File::open(&path).expect("open the report");
+
+        let error = read_report(file, 16).expect_err("a report past the limit is refused");
+
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("is {} bytes, past the", bytes.len())),
+            "{error:#}"
+        );
+    }
+
+    #[test]
+    fn a_report_at_the_limit_is_read_whole() {
+        let directory = tempfile::tempdir().expect("a temporary directory");
+        let path = directory.path().join("junit.xml");
+        let document = "<testsuites></testsuites>";
+        std::fs::write(&path, document).expect("write the report");
+        let file = std::fs::File::open(&path).expect("open the report");
+
+        assert_eq!(
+            read_report(file, document.len()).expect("a report at the limit is read"),
+            document
+        );
     }
 
     #[test]
