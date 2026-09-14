@@ -1,6 +1,6 @@
 ---
 title: "Environments · uf"
-description: "A pinned toolchain per repository, in a shared store, with a collector."
+description: "The runtime and package manager each command runs on, locked per repository and installed into a shared store."
 ---
 
 <p className="eyebrow">The tools</p>
@@ -8,39 +8,162 @@ description: "A pinned toolchain per repository, in a shared store, with a colle
 # Environments
 
 <div className="lede">
-Two questions with one answer here: which Node, Bun or pnpm this repository is
-built with — pinned in `uf.config.js`, installed into a store shared by every
-repository on the machine — and where the values in `process.env` and
-`import.meta.env` come from, which is the `.env` cascade at the bottom of this
-page.
+Two questions with one answer here: which Node, Bun or pnpm each command runs
+on — declared in `uf.config.js` where it is used, locked in `uf.lock`, installed
+into a store shared by every repository on the machine — and where the values
+in `process.env` and `import.meta.env` come from, which is the `.env` cascade at
+the bottom of this page.
 </div>
 
-## Declaring one
+**What you will be able to do:** declare the runtime and package manager each
+command runs on, lock them so every machine runs the same releases, see which
+release a command will use and which key chose it, install them ahead of time,
+move a project off `env.toolchain`, and decide where the values in
+`process.env` come from.
+
+**What you need first:** a project — [Your first project](/guide/project). A
+release you declare with a version is installed for you, so the machine does
+not need to have it already.
+
+## Declaring the tools
 
 <div className="command"><code>uf.config.js</code></div>
 
 ```js
 // @flow
-export default {
-  env: {
-    toolchain: {
-      node: "24.14.0",
-      pnpm: "9.15.0",
-    },
-  },
-};
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  runtime: "node@24",
+  packageManager: "pnpm@10",
+  build: { runtime: "node@26" },
+  test: { runtime: "bun@1.4" },
+});
 ```
 
-Exact versions, not ranges. A range is not an environment: it answers "what
-could this build with", and the question a repository has to answer is what it
-*is* built with. `uf env list` shows what the project declares beside what the
-store already holds.
+Each key names a tool where it is used, which is also what the tool is for.
+This project serves on Node 24, builds on Node 26, runs its tests on Bun 1.4
+and installs with pnpm 10, and every machine that checks it out runs those
+four.
 
-Node, Bun and Deno are runtimes; npm, pnpm and Yarn are package managers. All
-six are the same kind of thing here — a pinned tool, fetched from its own
-publisher, verified against the digest that publisher ships.
+| Command | Runs on |
+| --- | --- |
+| `uf dev`, `uf build`, `uf preview` | `build.runtime`, then `runtime` |
+| `uf test` | `test.runtime`, then the runtime `test.runner` brings, then `runtime` |
+| `uf start`, `uf run`, `uf exec` | `runtime` |
+| `uf install`, `uf add`, `uf remove`, `uf update` and the other package commands | `packageManager`, then `pm.packageManager`, then `package.json#packageManager`, then the lockfiles |
 
-## Installing it
+The first key in a row that says something decides. A project that writes none
+of them runs as it did before they existed: on the host
+[`app.runtime.capabilityJsHost`](/reference/config#app) finds, with the manager
+[Dependencies](/guide/dependencies#which-manager-runs) describes.
+
+`runtime`, `build.runtime` and `test.runtime` name `node`, `bun` or `deno`, and
+`packageManager` names `npm`, `pnpm`, `yarn` or `bun`. Two more keys sit beside
+them. `build.builder` is the builder `uf dev` and `uf build` drive: `"vite"`,
+which is `@uniflowed/vite` and the default, or a module of your own.
+`test.runner` is `"uf"`, the runner built into uf and the default; `"bun@1.4"`
+is read, and `uf test` refuses it until `bun test` can run behind `uf test`
+([#942](https://github.com/ubugeeei-prod/uf/issues/942)).
+
+### Writing a version
+
+A tool is written `name[@version]`:
+
+| Written | Means |
+| --- | --- |
+| `"node"` | whichever `node` is on `PATH` — a machine without one is refused, not handed another runtime |
+| `"node@26"` | the newest 26.x, resolved the first time a command needs it and locked in `uf.lock` |
+| `"node@26.8.2"` | exactly that release |
+| `"node@^26"`, `"node@>=24"` | refused |
+
+A prefix is the one to reach for. It keeps the repository on a line of
+releases without anyone having to choose a patch, and the lock makes every
+machine agree on the patch anyway. A range is refused, because a range is not
+an environment: it answers "what could this build with", and the question a
+repository has to answer is what it *is* built with.
+
+```
+error: /app/uf.config.js: build.runtime is `node@^26`, which is a range, and a range is not an environment: it can resolve to a different release tomorrow. Write a version prefix instead — `node@26` is the newest 26.x, resolved once and locked in uf.lock
+```
+
+## The first run
+
+<div className="command"><code>uf build</code></div>
+
+```
+› build.runtime is `node@26`: locked at 26.8.2 in uf.lock
+› installing node@26.8.2 for build.runtime — once, into the store every project on this machine shares
+```
+
+The first command that needs `node@26` reads the publisher's release list —
+nodejs.org's for Node, the npm registry's for Bun, Deno, npm, pnpm and Yarn —
+and writes the newest match into `uf.lock`:
+
+<div className="command"><code>uf.lock</code></div>
+
+```json
+{
+  "toolchain": {
+    "node@26": "26.8.2"
+  }
+}
+```
+
+Commit it. From then on the lock is the answer on every machine, CI included,
+and no release list is read to decide it again; moving to a newer 26.x is
+`uf env update`, below. A `uf.lock` that holds only this record says nothing
+about which package manager installs the project.
+
+The release is installed the first time a command needs it, and each of those
+firsts is said once, as above. Offline, or on a platform the publisher ships no
+build for, the command stops and names the key and the spec rather than running
+on whatever `node` is on `PATH`:
+
+```
+error: test.runtime is `node@99.0.1`, and node@99.0.1 could not be installed
+```
+
+Starting the pinned binary is half of running on it. Vite's workers, a plugin
+that shells out, a test that spawns `node` and every `#!/usr/bin/env node` bin
+in `node_modules/.bin` find their runtime on `PATH`, so the runtime's directory
+goes first on `PATH` for everything the command starts: a `node` that
+`uf build` starts above is 26.8.2 as well.
+
+The package manager is the same. With `packageManager: "pnpm@10"`, `uf install`
+runs the pnpm `uf.lock` locks, from the store, and the `node` that pnpm starts
+on is `runtime`'s. `uf install --frozen-lockfile`, the install CI runs, changes
+no lockfile, so a prefix `uf.lock` does not lock yet is refused there rather
+than resolved: run `uf install` once and commit `uf.lock`.
+
+## Seeing what runs
+
+<div className="command"><code>uf explain build</code></div>
+
+```
+    3. JavaScript host
+        provider  node 26.8.2
+        what      runs the builder and any JavaScript plugin; `build.runtime` names node@26, locked at 26.8.2 in uf.lock; in the store, and first on PATH for every process it starts
+```
+
+`uf explain <command>` names the release the command runs on, the key that
+chose it, the lock, and whether the store has it yet. It reads rather than
+resolves, so explaining a command never downloads what it explains. `uf inspect`
+lists every tool at once:
+
+<div className="command"><code>uf inspect</code></div>
+
+```
+  tools
+    runtime          node@24 (runtime) · locked at 24.21.0
+    build runtime    node@26 (build.runtime) · locked at 26.8.2
+    test runtime     bun@1.4 (test.runtime) · locked at 1.4.2
+    test runner      uf (uf's default)
+    package manager  pnpm@10 (packageManager) · locked at 10.34.5
+    builder          vite (uf's default)
+```
+
+## Installing ahead of time
 
 <div className="command"><code>uf env install</code></div>
 
@@ -48,37 +171,79 @@ publisher, verified against the digest that publisher ships.
 uf env install · my-app
 ───────────────────────
 
-  - node@24.14.0  installed
-  - pnpm@9.15.0  installed
+  - node@24 (24.21.0)  runtime  installed
+  - node@26 (26.8.2)  build runtime  installed
+  - bun@1.4 (1.4.2)  test runtime  installed
+  - pnpm@10 (10.34.5)  package manager  installed
 
-✓ 5 executables linked into ~/.local/share/uf/envs/my-app-4f2a1c8e93b0d571/bin
+› locked node@24 at 24.21.0, node@26 at 26.8.2, bun@1.4 at 1.4.2, pnpm@10 at 10.34.5 in uf.lock
+✓ 6 executables linked into ~/.local/share/uf/envs/my-app-4f2a1c8e93b0d571/bin
 ```
 
+Everything a command would install the first time it needs it, installed now —
+what a CI image, or a laptop about to go offline, wants. `uf env install`
+installs every tool the project declares at a version: `runtime`,
+`build.runtime`, `test.runtime`, `packageManager`, the older `env.toolchain`,
+and an exact version in `package.json#engines`. A prefix nothing has locked yet
+is resolved and locked on the way.
+
 Each tool is unpacked once, into a store keyed by tool, version and platform —
-`node-24.14.0-darwin-arm64` — and every repository that wants that exact tool
-links to the same copy. Two projects on the same Node share it; a third on a
+`node-26.8.2-darwin-arm64` — and every repository that wants that exact release
+uses the same copy. Two projects on the same Node share it; a third on a
 different one gets its own, and neither disturbs the other.
 
-uf writes in three places and no others: the store, the per-project link
-directory beside it, and `.uf/profile` in the repository once you have picked
-an environment. There is no `sudo` step, no shell profile to edit, and no
-version manager to initialise in your `.zshrc`. The download's checksum is
-verified before anything is unpacked, against the digest the publisher ships
-beside the archive.
+uf writes in four places and no others: the store, the per-project link
+directory beside it, the `toolchain` record in `uf.lock`, and `.uf/profile` in
+the repository once you have picked an environment. There is no `sudo` step, no
+shell profile to edit, and no version manager to initialise in your `.zshrc`.
+The download's checksum is verified before anything is unpacked, against the
+digest the publisher ships beside the archive.
 
 The store lives under `$XDG_DATA_HOME/uf/store`, and `$UF_STORE` overrides
 it; the links live beside it under `uf/envs`, and `$UF_ENVS` overrides those.
 
-## Using it
+<div className="command"><code>uf env list</code></div>
+
+```
+uf env · my-app
+───────────────
+
+  this project
+    - node@24 (24.21.0)  runtime  installed
+    - node@26 (26.8.2)  build runtime  installed
+    - bun@1.4 (1.4.2)  test runtime  installed
+    - pnpm@10 (10.34.5)  package manager  installed
+
+  the store
+    at  ~/.local/share/uf/store
+    - bun-1.4.2-darwin-arm64
+    - node-24.21.0-darwin-arm64
+    - node-26.8.2-darwin-arm64
+    - pnpm-10.34.5-darwin-arm64
+```
+
+shows each tool, what it is for and whether the store has it, beside what the
+store holds for every repository. It reads `uf.lock` and fetches nothing, so a
+prefix nothing has locked yet is shown as not locked.
+
+<div className="command"><code>uf env update</code></div>
+
+reads each publisher's release list again and moves every prefix in `uf.lock` to
+its newest release, printing what moved — `node@26  26.8.2 → 26.9.0`. It
+installs nothing: the change is a line in `uf.lock` to review, and the next
+command that needs the new release installs it.
+
+## Using the tools outside a command
 
 <div className="command"><code>uf env exec node --version</code></div>
 
 ```
-v24.14.0
+v24.21.0
 ```
 
-`uf env exec` puts that directory in front of `PATH` for one command and runs
-it, exiting with whatever the command exited with. The shell you are in is
+`uf env exec` puts the project's tools in front of `PATH` for one command and
+runs it, exiting with whatever the command exited with. The `node` there is
+`runtime`'s, the one the application itself runs on. The shell you are in is
 unchanged, and so is every other repository on the machine.
 
 The links are beside the store rather than inside the project, in a directory
@@ -110,20 +275,68 @@ from CI.
 ```
 
 A store that only grows is a store nobody trusts. Every `uf env install`
-registers the repository as a *root*, and the collector keeps exactly what some
-live root reaches: a repository that was deleted stops holding its tools, in
-the same pass that notices it is gone.
+registers the repository as a *root*, and so does a command that installs a
+tool the first time it needs it. The collector keeps exactly what some live
+root reaches: a repository that was deleted stops holding its tools, in the
+same pass that notices it is gone.
 
 <div className="command"><code>uf env gc --dry-run</code></div>
 
 says what would go and removes nothing, which is the version to run first.
 
+## Moving from env.toolchain
+
+Before these keys, a repository pinned its tools in one list:
+
+```js
+export default defineConfig({
+  env: { toolchain: { node: "24.14.0", pnpm: "9.15.0" } },
+});
+```
+
+That list says *which* tools a repository has and nothing about what each one
+is for, so no command ran on them; only `uf env exec` used them. It still works
+— `uf env install` installs it — and every command that reads the config says
+what to write instead:
+
+```
+! env.toolchain says which tools this project has and not what each is for; declare each where it is used instead — `runtime: "node@24.14.0"` and `packageManager: "pnpm@9.15.0"`
+```
+
+The other keys these replace work the same way: each keeps working, and each
+says what replaces it.
+
+| Was | Is |
+| --- | --- |
+| `env: { toolchain: { … } }` | `runtime`, `build.runtime`, `test.runtime` and `packageManager`, each where it is used |
+| `pm: { packageManager: "pnpm" }` | `packageManager: "pnpm"`, which can pin a release as well |
+| `builder: { module: "@uniflowed/vite" }` | `build: { builder: "vite" }` |
+| `test: { runner: { … } }` | `test: { runner: "uf" }`, or nothing, since it is the default |
+
+A `test.runner` object that sets `applicationTarget` to something other than
+what `app.framework` implies has no other spelling yet. Keep it until
+[#953](https://github.com/ubugeeei-prod/uf/issues/953) gives it one; uf says so
+rather than telling you to delete it.
+
+An old key and its replacement can sit side by side while they say the same
+thing. When they disagree, the config is refused naming both, because which one
+you meant is not a question uf gets to answer by precedence:
+
+```
+error: /app/uf.config.js: runtime is `node@26` and env.toolchain.node is `24.14.0` — two spellings of one tool that disagree, and uf does not pick one. env.toolchain.node is the deprecated spelling: delete `env.toolchain.node`, and write `runtime: "node@24.14.0"` if 24.14.0 is the release you mean.
+```
+
 ## What the toolchain half does not do
 
-It does not manage the uf binary itself — that is `uf use` and `uf self-update`. It
-does not read `.nvmrc`, `.tool-versions` or `package.json`'s `engines` field:
-`uf.config.js` is the one place a uf project writes down what it needs, and a
-second source of truth for the same question is the problem, not the feature.
+It does not manage the uf binary itself — that is `uf use` and `uf self-update`.
+It does not read `.nvmrc` or `.tool-versions`: `uf.config.js` is the one place a
+uf project writes down what it runs on, and a second source of truth for the
+same question is the problem, not the feature. `package.json#engines` is read
+for one thing, which is that `uf env install` installs an exact version written
+there. No command runs on it, because a range there is a statement about
+compatibility rather than a choice of release. And `uf build --compile` still
+embeds the host `app.runtime.capabilityJsHost` finds rather than `runtime`
+([#1036](https://github.com/ubugeeei-prod/uf/issues/1036)).
 
 ## Environment variables
 
@@ -337,3 +550,9 @@ anything else — into the environment of every command you then run. See
 * **It is not a secret store.** A `.env` file is a file on a disk. uf refuses to
   serve one over HTTP and refuses to put an unprefixed one in a bundle, and
   neither of those makes it encrypted.
+
+## Where to go next
+
+[Tasks](/guide/tasks) is next: the named commands `uf run` starts, on the same
+runtime and with the same environment files. [uf in CI](/guide/ci) is where a
+committed `uf.lock` and `uf install --frozen-lockfile` go.

@@ -77,16 +77,18 @@ refuses the run by name when there is none. See
 
 ## What a project may name, and which key decides
 
-Three keys in `uf.config.js` mention a runtime, and only one of them chooses
-the process that starts:
+Several keys in `uf.config.js` mention a runtime. The tool keys choose the
+process that starts, and `capabilityJsHost` chooses it when none of them names
+one:
 
 | key | what it decides | what it accepts |
 | --- | --- | --- |
-| `app.runtime.capabilityJsHost.default` | **the host `uf dev`, `uf test` and `uf build` actually start**, tried first and then the rest of `hosts` while `autoDetect` is on | `node`, `deno`, `bun` |
+| `runtime`, `build.runtime`, `test.runtime` | **the runtime a command starts**, at the release `uf.lock` locks and from the store: `build.runtime` for `uf dev`, `uf build` and `uf preview`, `test.runtime` for `uf test`, and `runtime` for `uf start`, `uf run`, `uf exec` and every command whose own key is absent — see [Environments](app/guide/env/$page.mdx) | `node`, `deno`, `bun`, as `name[@version]` |
+| `app.runtime.capabilityJsHost.default` | the host `uf dev`, `uf test` and `uf build` start when no tool key names one, tried first and then the rest of `hosts` while `autoDetect` is on | `node`, `deno`, `bun` |
 | `app.runtime.default`, `app.runtime.compatibility` | what this project *says* it is written for; it reaches `.uf/install.json` and `uf inspect --json` as the hosts that must be available | the rows above that have a Flow loader — today `node`, `deno`, `bun` |
 | `app.runtime.deploy.adapter` | which artefact `uf build` writes | the deploy adapters, which are a longer list and a different question |
 
-The second row used to accept all seven names in the table, `edge`,
+The `app.runtime.default` row used to accept all seven names in the table, `edge`,
 `serverless`, `container` and `uf` included, and the default `compatibility`
 claimed three of them. Nothing enforced the claim and nothing could: those four
 rows have no Flow loader, so a uf project cannot import its own first file
