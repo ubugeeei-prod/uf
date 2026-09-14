@@ -125,15 +125,24 @@ describe("Temporal.Instant", () => {
     expect(Temporal.Instant.from("2026-09-04T15:00:00+09:00").epochMilliseconds).toBe(AFTERNOON);
   });
 
-  it("prints no fraction when there is none, as native Temporal does", () => {
-    // `Date.prototype.toISOString` always prints `.000`. A text difference
-    // between the Lite implementation and the host's would only show up on a
-    // browser that had shipped Temporal, which is the worst place to find one.
+  it("prints the fewest fraction digits that say the value, as native Temporal does", () => {
+    // `Date.prototype.toISOString` always prints three: `.000`, and `.250` for a
+    // quarter of a second. Temporal prints none and `.25`. A text difference
+    // between the Lite implementation and the host's only shows up on a host
+    // that has shipped Temporal, which is the worst place to find one — and
+    // this case asserted `.250` until Node 26 was that host (#1052).
     expect(Temporal.Instant.fromEpochMilliseconds(AFTERNOON).toString()).toBe(
       "2026-09-04T06:00:00Z",
     );
     expect(Temporal.Instant.fromEpochMilliseconds(AFTERNOON + 250).toString()).toBe(
-      "2026-09-04T06:00:00.250Z",
+      "2026-09-04T06:00:00.25Z",
+    );
+    expect(Temporal.Instant.fromEpochMilliseconds(AFTERNOON + 5).toString()).toBe(
+      "2026-09-04T06:00:00.005Z",
+    );
+    expect(Temporal.Instant.fromEpochMilliseconds(-750).toString()).toBe("1969-12-31T23:59:59.25Z");
+    expect(Temporal.Instant.from("2026-09-04T06:00:00.25Z").epochMilliseconds).toBe(
+      AFTERNOON + 250,
     );
   });
 
@@ -217,9 +226,17 @@ describe("Temporal.ZonedDateTime", () => {
 
     expect(zoned.toString()).toBe("2026-09-04T15:00:00+09:00[Asia/Tokyo]");
     expect(Temporal.ZonedDateTime.from(zoned.toString()).equals(zoned)).toBe(true);
+
+    // With a fraction, which is printed the way `Instant` prints one.
+    const fractional = Temporal.Instant.fromEpochMilliseconds(AFTERNOON + 250).toZonedDateTimeISO(
+      "Asia/Tokyo",
+    );
+    expect(fractional.toString()).toBe("2026-09-04T15:00:00.25+09:00[Asia/Tokyo]");
+    expect(Temporal.ZonedDateTime.from(fractional.toString()).equals(fractional)).toBe(true);
+    expect(fractional.toPlainTime().toString()).toBe("15:00:00.25");
   });
 
-  it("formats in its own zone rather than in the machine's", () => {
+  it("formats in its own zone rather than in the machine's, and refuses a second one", () => {
     // The difference from `Date.prototype.toLocaleString`, and the reason this
     // component can be prerendered: the zone is a property of the value, so a
     // caller who does not name one still does not get the host's.
@@ -229,13 +246,22 @@ describe("Temporal.ZonedDateTime", () => {
     expect(
       zoned.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
     ).toBe("15:00");
-    expect(
+    // A `timeZone` in the options is refused, as Temporal refuses it, rather
+    // than chosen over the one the value carries. Somewhere else is a
+    // conversion first.
+    expect(() =>
       zoned.toLocaleString("en-US", {
         timeZone: "UTC",
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
       }),
+    ).toThrow(TypeError);
+    expect(
+      zoned
+        .toInstant()
+        .toZonedDateTimeISO("UTC")
+        .toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
     ).toBe("06:00");
   });
 
@@ -321,8 +347,8 @@ describe("Temporal.Duration", () => {
     // an hour and a half would print something the caller did not write.
     expect(Temporal.Duration.from("PT90M").toString()).toBe("PT90M");
     expect(Temporal.Duration.from({ days: 1, hours: 2 }).toString()).toBe("P1DT2H");
-    expect(Temporal.Duration.from({}).toString()).toBe("PT0S");
-    expect(Temporal.Duration.from({}).blank).toBe(true);
+    expect(Temporal.Duration.from({ seconds: 0 }).toString()).toBe("PT0S");
+    expect(Temporal.Duration.from({ seconds: 0 }).blank).toBe(true);
   });
 
   it("totals what has a fixed length and refuses what does not", () => {
@@ -340,9 +366,13 @@ describe("Temporal.Duration", () => {
     expect(Temporal.Duration.from("-PT30M").total({ unit: "minute" })).toBe(-30);
   });
 
-  it("refuses text that is not a duration", () => {
+  it("refuses what is not a duration, written as text or as fields", () => {
     expect(() => Temporal.Duration.from("30 minutes")).toThrow();
     expect(() => Temporal.Duration.from("P")).toThrow();
+    // No fields at all is refused, as Temporal refuses it, rather than read as
+    // zero: it is what a duration built from optional fields looks like when
+    // every one was left out.
+    expect(() => Temporal.Duration.from({})).toThrow(TypeError);
   });
 });
 
