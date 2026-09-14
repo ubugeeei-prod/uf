@@ -49,8 +49,9 @@ use crate::commands::builder;
 use crate::commands::compile;
 use crate::commands::deploy;
 use crate::commands::lint::identifier_span;
+use crate::commands::runtimes;
 use crate::commands::vite::{
-    Driver, Event, LinkContext, load_project_config, render_error, render_log, resolve_host,
+    Driver, Event, LinkContext, load_project_config, render_error, render_log,
 };
 use crate::support::{
     PRODUCTION, plural, problem_summary, project_env, project_label, relative_to, write_json_file,
@@ -166,7 +167,8 @@ pub(crate) fn build(
     }
 
     let root = resolved.root.clone();
-    let app_target = application_target(&resolved.config, requested_target, standalone)?;
+    let app_target =
+        application_target(&resolved.config, requested_target, standalone, "uf build")?;
     // What this project said a build may produce, resolved once. Two settings
     // decide it — `app.rendering.modes` and `build.staticBuild` — and reading
     // them apart at the four places below is how they would come to disagree;
@@ -234,13 +236,19 @@ pub(crate) fn build(
     let rsc_input = uf_rsc::write_manifest(&root.join(RSC_MANIFEST_BUILD_DIR), &rsc.manifest())?;
 
     progress.tick("resolving the JavaScript host");
-    let host = resolve_host(&resolved.config)?;
+    // The progress line is finished before anything is said, or the sentence
+    // would be written onto the end of the spinner's line.
+    let runtime = runtimes::resolve(&resolved, runtimes::Role::Build, &mut |message| {
+        progress.finish();
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })?;
+    let host = runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
     // `production` unless the project or the command line said another mode,
     // which is what selects `.env.production` over `.env.development` — the
     // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
     // about the same variable.
-    let env = project_env(&resolved, requested_mode, PRODUCTION)?;
+    let env = runtime.environment(project_env(&resolved, requested_mode, PRODUCTION)?);
 
     // Asked for before anything is built. `--compile` on a machine with no
     // usable backend fails either way; failing now costs the user nothing, and
@@ -986,15 +994,20 @@ fn refuse_an_application_artefact(
     )
 }
 
-/// Which application target this ordinary build resolves.
+/// Which application target an ordinary build, or `uf dev`, resolves.
 ///
 /// `--target` used to mean only the standalone binary's platform triple, so
 /// `standalone` leaves that meaning with [`compile::runtimes`]. Without
 /// `--compile`, it names the app surface instead: web, native, iOS or Android.
-fn application_target(
+///
+/// `command` is how the refusal names what was run, because `uf dev` and
+/// `uf build` resolve a target by the same rule and a reader should see the
+/// command they typed in the sentence that refuses it.
+pub(crate) fn application_target(
     config: &UniflowedConfig,
     requested: Option<&str>,
     standalone: bool,
+    command: &str,
 ) -> Result<RouteTarget> {
     let target = match requested.filter(|_| !standalone) {
         Some(requested) => parse_application_target(requested)?,
@@ -1017,14 +1030,16 @@ fn application_target(
         declared
     };
     bail!(
-        "`uf build --target {}` needs `app.targets` to include `{}`; this project declares {}",
+        "`{command} --target {}` needs `app.targets` to include `{}`; this project declares {}",
         target.as_str(),
         runtime_target_name(&needed),
         declared,
     )
 }
 
-fn default_application_target(config: &UniflowedConfig) -> RouteTarget {
+/// The target `uf build` and `uf dev` resolve when `--target` names none:
+/// native for a `react-native` framework project, and web for every other.
+pub(crate) fn default_application_target(config: &UniflowedConfig) -> RouteTarget {
     match config.app.framework {
         FrameworkPreset::ReactNative => RouteTarget::Native,
         FrameworkPreset::Uniflowed | FrameworkPreset::React => RouteTarget::Web,

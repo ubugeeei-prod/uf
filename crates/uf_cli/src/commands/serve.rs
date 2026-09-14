@@ -53,8 +53,9 @@ use uf_config::{Prerender, RenderingPlan};
 use uf_term::{KeyValue, Status, Tone};
 
 use crate::commands::builder;
+use crate::commands::runtimes;
 use crate::commands::vite::{
-    Driver, Event, LogLevel, load_project_config, render_error, render_log, resolve_host,
+    Driver, Event, LogLevel, load_project_config, render_error, render_log,
 };
 use crate::support::{PRODUCTION, env_file_list, plural, project_env, project_label};
 use crate::ui::Ui;
@@ -153,14 +154,25 @@ fn serve(cwd: &Utf8Path, ui: &mut Ui, args: ServeArgs, which: Server) -> Result<
         );
     }
 
-    let host = resolve_host(&resolved.config)?;
+    // Two commands, two roles. `uf preview` is a look at the build, so it runs
+    // where the build ran — `build.runtime`, then `runtime`. `uf start` is the
+    // application itself, which runs on `runtime`: a project that builds on
+    // Node and serves on Bun says so with those two keys.
+    let role = match which {
+        Server::Preview => runtimes::Role::Build,
+        Server::Start => runtimes::Role::Runtime,
+    };
+    let runtime = runtimes::resolve(&resolved, role, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })?;
+    let host = runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
     crate::support::render_deprecations(ui, resolved.config.builder_module_deprecation());
     // Loaded here rather than inherited from the build: these serve a `dist/`
     // that may have been built on another machine days ago, and a server that
     // could not be pointed at a different database than the build ran against
     // would not be a server anybody could deploy.
-    let env = project_env(&resolved, args.mode.as_deref(), PRODUCTION)?;
+    let env = runtime.environment(project_env(&resolved, args.mode.as_deref(), PRODUCTION)?);
     let mut driver = Driver::spawn(
         &host,
         &builder,

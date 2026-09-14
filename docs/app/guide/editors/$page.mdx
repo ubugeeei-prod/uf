@@ -30,7 +30,7 @@ A session with one file, `app/flags.js`, which declares `export type Flag = bool
 
 ```
 initialize
-{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]}}}
+{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]},"completionProvider":{"triggerCharacters":["\"","@"]}}}
 
 textDocument/publishDiagnostics
 flow/deprecated-type  severity 1  4:20  the `bool` type alias is deprecated; write `boolean`
@@ -57,24 +57,24 @@ Flow's own lint set · default `error` · decided from the source text
 | **Formatting** | One edit over the whole document | `uf_fmt`, the printer `uf fmt` uses, with your `fmt` options — not the editor's tab settings |
 | **Quick fixes** | `quickfix` actions for a diagnostic with a mechanical answer, and a "format this document" action where formatting clears a whitespace finding | the fix catalogue `uf lint --fix` uses |
 | **Fix all** | `source.fixAll.uf`: every **safe** fix in the file at once | the same catalogue; the unsafe tier is a quick fix you pick, never part of fix-all |
-| **Hover** | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means | the lint rules and uf's module registry |
+| **Hover** | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` | the lint rules, uf's module registry, and `@uniflowed/config` |
+| **Completion** | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec like `runtime: "node@26"`, the names its key takes and, after `@`, that tool's versions, newest first | `@uniflowed/config`'s Flow type, compiled into `uf`, so it works in a file that is half-typed; versions from the release lists uf caches under `$XDG_CACHE_HOME/uf/index`, fetched in the background and never on a request's time |
 
-What it does not answer: completion, go-to-definition, rename, find-references,
-document symbols, and the type at a position. It advertises none of them, and a
-request for one is refused rather than left waiting:
+What it does not answer: go-to-definition, rename, find-references, document
+symbols, the type at a position, and completion anywhere but `uf.config.js`. It
+advertises none of the first five, and a request for one is refused rather than
+left waiting:
 
 <figure className="terminal">
 
 ```
-textDocument/completion
-{"code":-32601,"message":"uf lsp does not serve `textDocument/completion`"}
+textDocument/definition
+{"code":-32601,"message":"uf lsp does not serve `textDocument/definition`"}
 ```
 
 </figure>
 
-Completion for `uf.config.js` is being written under
-[#941](https://github.com/ubugeeei-prod/uf/issues/941). Until the server answers
-types, the terminal is where they are: `uf check`.
+Until the server answers types, the terminal is where they are: `uf check`.
 
 ## Which configuration it reads
 
@@ -169,10 +169,10 @@ Plug 'prabirshrestha/vim-lsp'
 source /path/to/uf/editors/vim/uf.vim
 ```
 
-vim-lsp starts a server in Vim's working directory, so start Vim from the project
-root, or set `let g:uf_cd_to_root = 1` before the `source` line, which starts the
-server through `/bin/sh -c 'cd <root> && exec uf lsp'`. `g:uf_executable` names a
-different binary. Format on save is a commented-out autocommand at the bottom of
+vim-lsp starts a server in Vim's working directory, so `uf.vim` names the project
+on the command line instead — `uf lsp --cwd <root>`, with the nearest directory
+that has a `uf.config.js` — and Vim can be started anywhere. `g:uf_executable`
+names a different binary. Format on save is a commented-out autocommand at the bottom of
 the file; restart with `:LspStopServer uf` and reopen the file.
 
 ## Helix

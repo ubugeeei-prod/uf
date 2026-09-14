@@ -14,6 +14,13 @@ supply. There is no default destination, no third party, and no request until
 you write one.
 </div>
 
+**What you will be able to do:** read LCP, CLS, INP, TTFB and FCP in the
+browser, send them where you choose, and know where uf's numbers differ from
+`web-vitals`'s.
+
+**What you need first:** a page to measure — [Your first
+project](/guide/project).
+
 ## The whole API
 
 ```js
@@ -223,3 +230,9 @@ reach for when you want the object rather than the summary:
 ```js
 collectVitals({ report: (vital) => console.log(vital) });
 ```
+
+## Where to go next
+
+That is the end of Build an app. [Targets](/guide/targets) is next: where the
+application runs — a server or a static host, a single file, a phone, a
+terminal.

@@ -17,6 +17,13 @@ anything smaller than a route, and that is written down here rather than left
 for you to discover by measuring `dist/`.
 </div>
 
+**What you will be able to do:** mark a client boundary, read what the module
+graph decided, see which routes keep their page out of the client bundle, and
+know what uf reports and where `uf lint` fits.
+
+**What you need first:** a project with routes — [Routing](/guide/routing) — and
+[Rendering modes](/guide/rendering) for where a document comes from.
+
 ## The current contract
 
 The RSC work is deliberately documented as a contract with a missing half, not
@@ -288,3 +295,9 @@ rewrite of the client's hydration.
 [#252](https://github.com/ubugeeei-prod/uf/issues/252) and
 [#519](https://github.com/ubugeeei-prod/uf/issues/519) carry that argument in
 full. [What uf does not do](/guide/scope) lists this beside every other gap.
+
+## Where to go next
+
+[Async React](/guide/async-react) is next: Suspense, transitions and optimistic
+UI, and what a reader sees while work is unfinished. [Server
+actions](/guide/server-actions) is the other half of the server boundary.

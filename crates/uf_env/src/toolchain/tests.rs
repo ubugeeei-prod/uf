@@ -435,6 +435,59 @@ fn an_env_toolchain_pin_that_is_not_exact_is_still_refused() {
     );
 }
 
+/// A command resolves the one prefix it runs, and leaves the rest of the lock
+/// as it found it.
+#[test]
+fn release_locks_one_prefix_and_leaves_the_rest_of_the_lock_alone() {
+    let (_guard, root, config) = project(r#"{ build: { runtime: "node@26" } }"#);
+    let mut lock = ToolchainLock::default();
+    lock.insert(Tool::Bun, "1.4", "1.4.2");
+    lock::write(&root.join("uf.lock"), &lock).unwrap();
+    let lists = Lists::default().publishing(Tool::Node, &["26.10.0", "26.8.2"]);
+    let node_26 = ToolVersion::Prefix("26".into());
+
+    let first = release(&root, &config, Tool::Node, &node_26, &lists).unwrap();
+    assert_eq!(
+        first,
+        Resolution::Resolved {
+            prefix: "26".to_owned(),
+            version: "26.10.0".to_owned(),
+            was: None
+        }
+    );
+    let text = lock_text(&root).unwrap();
+    assert!(text.contains("\"node@26\": \"26.10.0\""), "{text}");
+    assert!(
+        text.contains("\"bun@1.4\": \"1.4.2\""),
+        "a command does not prune what it does not run: {text}"
+    );
+
+    let again = release(&root, &config, Tool::Node, &node_26, &lists).unwrap();
+    assert!(matches!(again, Resolution::Locked { .. }), "{again:?}");
+    assert_eq!(
+        lists.fetches(),
+        [Tool::Node],
+        "the second run reads the lock"
+    );
+
+    assert_eq!(
+        release(
+            &root,
+            &config,
+            Tool::Node,
+            &ToolVersion::Exact("24.14.0".into()),
+            &lists
+        )
+        .unwrap(),
+        Resolution::Exact("24.14.0".to_owned())
+    );
+    assert_eq!(
+        release(&root, &config, Tool::Node, &ToolVersion::OnPath, &lists).unwrap(),
+        Resolution::OnPath
+    );
+    assert_eq!(lists.fetches(), [Tool::Node], "neither needs a list");
+}
+
 /// Resolution that may write waits for whoever holds the lock, and then reads
 /// what they locked rather than resolving over it.
 #[test]

@@ -35,7 +35,7 @@ server and asserts each of these.
 | Quick fixes | `Space + a` on a diagnostic. |
 | Fix all | `Space + a` offers "Fix all uf lint problems in this file" as a separate action; Helix has no dedicated fix-all binding. |
 | Hover | `Space + k`, including over a key of `uf.config.js`. |
-| Completion | In `uf.config.js`, as you type and after `"`; `Ctrl + x` in insert mode asks for it. The keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. |
+| Completion | In `uf.config.js`, as you type and after `"`; `Ctrl + x` in insert mode asks for it. The keys valid at the cursor, with their documentation and type, the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
 
 ## What you do not get
 
@@ -51,9 +51,10 @@ formatting, since only one of them reads your `uf.config.js`.
 
 ## Working directory
 
-`uf lsp` reads `uf.config.js` from the directory it is started in, once, and
-that read is the only source of your `fmt` options and lint levels. `--cwd` is
-accepted by the command and ignored, so it is not a way out.
+`uf lsp` reads `uf.config.js` once, at start-up — from the directory `--cwd`
+names, or else from the directory it is started in — and that read is the only
+source of your `fmt` options and lint levels. This configuration relies on the
+second: its `args` are a fixed `["lsp"]`, with no project root in them.
 
 `roots = ["uf.config.js"]` is what tells Helix where the workspace is. Start
 `hx` from the project root. The way to check is to format a file in Helix and

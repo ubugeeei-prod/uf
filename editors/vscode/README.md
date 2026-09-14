@@ -40,7 +40,7 @@ they are in `uf run ci`.
 | **Quick fixes** | `textDocument/codeAction`, kind `quickfix` | The lightbulb on a diagnostic. |
 | **Fix all** | kind `source.fixAll.uf` | `editor.codeActionsOnSave`, or the lightbulb. |
 | **Hover** | `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js`. |
-| **Completion** | `textDocument/completion`, in `uf.config.js` | The keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean. |
+| **Completion** | `textDocument/completion`, in `uf.config.js` | The keys valid where you are typing, each with its documentation and type; after `"`, the values of a key whose type is a fixed set (`quotes: "single" \| "double"`); `true` and `false` for a boolean; in a tool spec (`runtime: "node@26"`), the names its key takes and, after `@`, that tool's versions, newest first. |
 
 Completion reads `@uniflowed/config`'s own Flow type — the declaration
 `defineConfig` checks the file against — compiled into `uf`, so it needs nothing
@@ -49,6 +49,12 @@ above each key in that declaration. It works while the file is half-typed and
 does not parse, which is when you want it. A key the object already has is not
 offered again, and nothing is offered under `vite`, whose options uf passes to
 Vite unread rather than re-declaring.
+
+A tool's versions — each major, then its releases, a hundred at a time until
+what you type narrows them — come from the release list uf caches under
+`$XDG_CACHE_HOME/uf/index`, and completion never waits for one:
+the first time a tool is asked about with nothing cached, the list is fetched in
+the background and its versions appear a keystroke or two later.
 
 The extension needed no change for any of this: `uf.config.js` is one of the
 files it already hands the server, and VS Code registers a completion provider
@@ -135,8 +141,8 @@ rules against code that never asked for them.
 The server is started **in** the project folder, and that is load-bearing.
 `uf lsp` reads `uf.config.js` from its working directory, once, at start-up, and
 that read is the only source of the project's formatter width, quote style and
-lint levels. `uf lsp --cwd <dir>` is not an alternative: the flag is accepted by
-the command line and then ignored by the command.
+lint levels. `uf lsp --cwd <dir>` would name the same folder; the extension sets
+the process's working directory instead, so the project is stated once.
 
 Editing `uf.config.js` restarts that folder's server, because the server has no
 way to be told about the change and a stale one formats to the wrong width

@@ -13,6 +13,14 @@ what order, on how many cores, and what the report says; the host runs the
 bodies, because running JavaScript is the one thing Rust cannot do.
 </div>
 
+**What you will be able to do:** write tests beside the code they test, query
+accessibility and React Native trees, replace a module, run and narrow a suite,
+use browser mode and coverage, and know where the runner stands against Bun.
+
+**What you need first:** a project with its dependencies installed —
+[Dependencies](/guide/dependencies). Without them, a run stops at
+`@uniflowed/host`.
+
 ## The performance model
 
 The runner is split so the expensive and unstable work is isolated. Rust owns
@@ -1002,7 +1010,15 @@ appear below the tests it excludes.
 **One worker serves many files, and each one starts from the same place.**
 Between files the worker clears the registry, puts every `stubEnv` and
 `stubGlobal` back, restores the real clock, and drops the module stand-ins a
-`mock` installed. Spies and mocks live in state the runner owns; a stub and a
+`mock` installed. When a file rendered, the window goes back too: the
+properties a test assigned on it (a removed `matchMedia` is the usual one), the
+attributes on `<html>` and `<head>`, and the globals a render installed — so a
+file that never renders gets Node's own `FormData` and no `document` at all,
+exactly as in a fresh worker, and the next render puts the same window back.
+The URL is not reset, because the router keeps its own state in step with it;
+a test that depends on the address sets the one it needs. An axe
+audit a timed-out case abandoned is waited for rather than failing the next
+file's. Spies and mocks live in state the runner owns; a stub and a
 fake clock are writes to something the whole process shares, so without this a
 file that called `uft.useFakeTimers()` and forgot to restore it would leave the
 *next* file's `setTimeout` never firing — a hang, with nothing on screen,
@@ -1050,3 +1066,8 @@ between runs and a pre-bundled worker. Neither exists yet.
   module the pass could not enumerate — a path computed at run time, a file a
   test writes and then imports — is still Flow when Deno meets it, and
   `uf test --watch` is refused there.
+
+## Where to go next
+
+[Dependencies](/guide/dependencies) is next: `uf install` and the rest, and the
+lockfile CI holds a project to.

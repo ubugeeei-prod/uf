@@ -35,9 +35,11 @@ eighty lines long.
   what a rule id in a suppression comment means, and a key of `uf.config.js`.
 * **Completion**, in `uf.config.js` and nowhere else — the keys valid at the
   cursor, each with the documentation and type `@uniflowed/config` declares for
-  it, and the values of a key whose type is a fixed set. It works while the
-  file is half-typed, and it needs nothing installed: the declaration it reads
-  is compiled into `uf`.
+  it, the values of a key whose type is a fixed set, and in a tool spec like
+  `runtime: "node@26"` the names and, after `@`, the versions. It works while
+  the file is half-typed, and it needs nothing installed: the declaration it
+  reads is compiled into `uf`, and versions come from release lists uf caches
+  and refreshes in the background, never on a request's time.
 
 Not go-to-definition, rename, references, document symbols, the type at a
 position, organize imports, or completion in any other file. The server
@@ -46,12 +48,14 @@ so a README here cannot quietly start over-claiming.
 
 ## The one thing every integration has to get right
 
-**Start the server in the project directory.**
+**Tell the server which project it is serving.**
 
-`uf lsp` calls `load_config(".")` once, at start-up. Its working directory is
-the only channel it has for a project's `fmt` options and lint levels, and
-`uf lsp --cwd <dir>` does not work — the flag is a global option so the command
-line accepts it, and then the command ignores it.
+`uf lsp` reads the project's configuration once, at start-up: from the directory
+`--cwd` names, or else from its own working directory. That read is the only
+channel it has for a project's `fmt` options and lint levels, and there is no
+request that can change it later. Starting the server in the project directory
+and passing `uf lsp --cwd <dir>` are two ways of saying the same thing; every
+integration here does one of them.
 
 Getting this wrong fails quietly: the editor formats to uf's defaults instead of
 to the project's, and reports the default lint levels rather than the configured

@@ -31,6 +31,11 @@ pass() {
 # release commit that carries none either, which is what a release commit looks
 # like until it is merged. `hero` is left holding the unnumbered commit, which
 # the hash case below has to be able to name.
+#
+# A second argument of `two_digit` adds one more release on top,
+# `uf@0.0.0-alpha.10`, carrying `the fifth thing (#6)`. Its number has two
+# digits, which is the shape #1035 is about: compared as strings, it sorts below
+# `0.0.0-alpha.4`, where this check begins, so the check skipped it.
 hero=""
 scratch() {
   root="$work/$1"
@@ -61,11 +66,23 @@ scratch() {
     commit "chore(release): uf@0.0.0-alpha.5 (#5)" release
   fi
   git -C "$root" tag "uf@0.0.0-alpha.5"
+  if [ "${2:-}" = two_digit ]; then
+    commit "fix: the fifth thing (#6)" five
+    commit "chore(release): uf@0.0.0-alpha.10 (#7)" release10
+    git -C "$root" tag "uf@0.0.0-alpha.10"
+  fi
 }
 
 # `$complete` with one more line inside the `uf@0.0.0-alpha.5` section.
 plus_line() {
   printf '%s' "$complete" | awk -v line="$1" '{ print } /the fourth thing/ { print line }'
+}
+
+# `$complete` under a `uf@0.0.0-alpha.10` section whose body is the argument,
+# for the history `scratch <name> two_digit` builds.
+above_complete() {
+  printf '# Changelog\n\n## uf@0.0.0-alpha.10\n\n%s\n' "$1"
+  printf '%s' "$complete" | sed 1d
 }
 
 run() {
@@ -194,5 +211,50 @@ changelog unnumbered_wrong_hash "$(plus_line '- the hero copy, rewritten by hand
 run unnumbered_wrong_hash
 [ "$status" -ne 0 ] || fail "any hex word passed as a citation: $out"
 pass "a hex word that is not this commit's hash does not cover it"
+
+# --- #1035: alpha.10 comes after alpha.4 --------------------------------------
+# The check decided which releases to compare by comparing versions as strings,
+# and `"0.0.0-alpha.10" < "0.0.0-alpha.4"` is true, because `1` sorts before
+# `4`. So every release from alpha.10 to alpha.39 was skipped, the check said
+# "6 released version(s)" on every run whatever had shipped since, and a dry run
+# against `uf@0.0.0-alpha.34` passed with three of its pull requests missing
+# from its notes.
+scratch two_digit_missing two_digit
+changelog two_digit_missing "$(above_complete '')"
+run two_digit_missing
+[ "$status" -ne 0 ] || fail "a release numbered alpha.10 was not checked: $out"
+case "$out" in
+  *"uf@0.0.0-alpha.10 does not mention: fix: the fifth thing (#6)"*) ;;
+  *) fail "the refusal does not name what alpha.10 leaves out: $out" ;;
+esac
+pass "a release whose prerelease number has two digits is checked"
+
+# --- and it is counted ---------------------------------------------------------
+# The count in the passing line came from a second copy of the same comparison,
+# so it was wrong in the same way, and it is the only thing a green run shows.
+scratch two_digit_complete two_digit
+changelog two_digit_complete "$(above_complete '- the fifth thing (#6)')"
+run two_digit_complete
+[ "$status" -eq 0 ] || fail "a complete alpha.10 section was refused: $out"
+case "$out" in
+  *"3 released version(s)"*) ;;
+  *) fail "alpha.10 is not counted among the versions checked: $out" ;;
+esac
+pass "a release whose prerelease number has two digits is counted"
+
+# --- a checkout with no tags has compared nothing -----------------------------
+# CI checked out one commit and no tags, so every section looked unreleased,
+# and the check printed "every commit in 0 released version(s)" and passed on
+# every pull request. Fixing the order of versions would not have changed that.
+scratch untagged
+changelog untagged "$complete"
+git -C "$work/untagged" tag -d uf@0.0.0-alpha.3 uf@0.0.0-alpha.4 uf@0.0.0-alpha.5 >/dev/null
+run untagged
+[ "$status" -ne 0 ] || fail "a checkout with no release tags passed: $out"
+case "$out" in
+  *"no released version's changelog section was compared"*) ;;
+  *) fail "the refusal does not say that nothing was compared: $out" ;;
+esac
+pass "a checkout with no release tags is refused rather than passed"
 
 echo "test-changelog-covers: all checks passed"

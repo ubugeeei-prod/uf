@@ -446,6 +446,60 @@ fn inspect_reports_each_tool_and_the_key_it_came_from() {
     assert_plain(&stdout);
 }
 
+/// A prefix is shown beside the release `uf.lock` locks it to, read without
+/// fetching or installing anything.
+#[test]
+fn inspect_shows_the_release_a_prefix_is_locked_to() {
+    let dir = tempfile::tempdir().unwrap();
+    write_detection_project(dir.path(), r#"{ "name": "demo" }"#);
+    fs::write(
+        dir.path().join("uf.config.js"),
+        r#"export default defineConfig({ runtime: "node@26", test: { runtime: "bun@1.4" } });"#,
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("uf.lock"),
+        "{\n  \"toolchain\": {\n    \"bun@1.4\": \"1.4.2\"\n  }\n}\n",
+    )
+    .unwrap();
+
+    let value = inspect_json(dir.path());
+    let row = |role: &str| {
+        value["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|tool| tool["role"] == role)
+            .cloned()
+            .unwrap_or_else(|| panic!("no {role} row"))
+    };
+    assert_eq!(row("testRuntime")["locked"], "1.4.2");
+    assert_eq!(
+        row("runtime")["locked"],
+        serde_json::Value::Null,
+        "node@26 is not locked yet"
+    );
+    assert_eq!(row("builder")["locked"], serde_json::Value::Null);
+    // And a `uf.lock` holding only the record is no vote for uf's resolver.
+    assert_eq!(
+        value["engines"]["packageManagerDetection"]["source"]["kind"],
+        "default"
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .arg("inspect")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("bun@1.4 (test.runtime) · locked at 1.4.2"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("node@26 (runtime)\n"), "{stdout}");
+}
+
 /// A project still writing a tool key #940 replaced is told which key
 /// replaced it, in the report and in the JSON.
 #[test]

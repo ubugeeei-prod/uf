@@ -20,9 +20,13 @@ use uf_config::{
     DeployAdapter, LibraryPlan, Prerender, RenderingPlan, ResolvedConfig, load_config,
 };
 use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
+use uf_router::RouteTarget;
 use uf_term::KeyValue;
 
+use crate::commands::build::{application_target, default_application_target};
 use crate::commands::builder;
+use crate::commands::dev::native::{NativeServer, metro_config_file};
+use crate::commands::runtimes;
 use crate::commands::task::fetchable;
 use crate::support::{DEVELOPMENT, PRODUCTION, TEST, project_label};
 use crate::ui::Ui;
@@ -83,14 +87,47 @@ pub(crate) const KNOWN: &[&str] = &[
     "ui",
 ];
 
-pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
+pub(crate) fn explain(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    command: &str,
+    target: Option<&str>,
+    as_json: bool,
+) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let Some(stages) = stages_for(command, &resolved) else {
+    let stages = match target {
+        // What `uf dev` with no `--target` will run, which for a `react-native`
+        // framework project is the native server and not the builder.
+        None if command == "dev" => Some(dev_stages_for(
+            &resolved,
+            default_application_target(&resolved.config),
+        )),
+        None => stages_for(command, &resolved),
+        // Only `uf dev` is described per target, because it is the one command
+        // whose providers change with it: a native target's server is the
+        // project's own React Native CLI rather than the builder. `uf build
+        // --target` still hands every target to the builder (#983), and a plan
+        // that varied by target there would describe a build that does not
+        // happen.
+        Some(requested) if command == "dev" => {
+            let target = application_target(&resolved.config, Some(requested), false, "uf dev")?;
+            Some(dev_stages_for(&resolved, target))
+        }
+        Some(requested) => bail!(
+            "`uf explain {command} --target {requested}`: only `uf dev` is described per \
+             application target, because it is the one command whose providers change with it"
+        ),
+    };
+    let Some(stages) = stages else {
         bail!(
             "uf explain does not describe {command:?}; it knows {}",
             KNOWN.join(", ")
         )
     };
+    let invocation = target.map_or_else(
+        || format!("uf {command}"),
+        |target| format!("uf {command} --target {target}"),
+    );
 
     let sources = config_sources(&resolved);
     // The tools this command reads, each with the key that declared it: the
@@ -103,7 +140,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
 
     if as_json {
         ui.json(&json!({
-            "command": format!("uf {command}"),
+            "command": invocation,
             "root": resolved.root.as_str(),
             "stages": stages
                 .iter()
@@ -124,7 +161,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         .collect();
 
     let label = project_label(&resolved.root);
-    let heading = format!("uf {command}");
+    let heading = invocation;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf explain", Some(label));
         renderer.blank(out);
@@ -871,6 +908,27 @@ fn host_stage(resolved: &ResolvedConfig) -> Stage {
     }
 }
 
+/// The runtime a command in `role` starts: the one `uf.config.js` declares for
+/// it, or — when nothing does — [`host_stage`]'s answer, which is the host uf
+/// has always found.
+///
+/// A project that declares one is told the release, the key that named it,
+/// the lock, and whether the store has it yet: the four facts a command acts
+/// on, and the line ubugeeei-prod/uf#940 asks `uf explain` to print. Read
+/// rather than resolved, like every other stage here — see
+/// [`runtimes::describe`] — so explaining a command never downloads the
+/// runtime it would run on.
+fn runtime_stage(resolved: &ResolvedConfig, role: runtimes::Role) -> Stage {
+    match runtimes::describe(resolved, role) {
+        Some(described) => Stage {
+            name: "JavaScript host",
+            provider: described.provider,
+            detail: described.detail,
+        },
+        None => host_stage(resolved),
+    }
+}
+
 fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {
@@ -878,7 +936,7 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "uf".to_string(),
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "dev server",
@@ -891,6 +949,82 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "rendering",
             provider: "@uniflowed/router".to_string(),
             detail: "server-renders each request, route handlers first".to_string(),
+        },
+    ]
+}
+
+/// `uf dev`'s stages for `target`: the builder's for the web, and the project's
+/// own React Native CLI's for a native target.
+fn dev_stages_for(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    match target {
+        RouteTarget::Web => dev_stages(resolved),
+        RouteTarget::Native | RouteTarget::Ios | RouteTarget::Android => {
+            native_dev_stages(resolved, target)
+        }
+    }
+}
+
+/// What `uf dev --target native` runs, and who runs each part.
+///
+/// Read from the filesystem only, as the rest of this command is: which server
+/// is installed, and which Metro config file is there. Whether that config
+/// really composes uf's transformer is `uf dev`'s check rather than this one's,
+/// because answering it means running the project's JavaScript, and a command
+/// whose job is to say what will happen should not have to run the thing to
+/// say it.
+fn native_dev_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    let root = &resolved.root;
+    let server = NativeServer::detect(root);
+    vec![
+        Stage {
+            name: "configuration",
+            provider: "uf".to_string(),
+            detail: format!(
+                "uf.config.js; the `{}` target needs `app.targets` to include `react-native`",
+                target.as_str()
+            ),
+        },
+        env_stage(resolved, DEVELOPMENT),
+        Stage {
+            name: "dev server",
+            provider: server.as_ref().map_or_else(
+                || "none installed: neither expo nor @react-native-community/cli".to_string(),
+                NativeServer::label,
+            ),
+            detail: "Metro, the manifest a device reads and the key commands — the project's own \
+                     CLI, started with UF_BINARY naming this uf and every argument after `--` \
+                     passed through"
+                .to_string(),
+        },
+        Stage {
+            name: "Metro config",
+            provider: metro_config_file(root).map_or_else(
+                || "none, and `uf dev` refuses to start without one".to_string(),
+                |file| file.to_string(),
+            ),
+            detail: "must compose withUniflowedMetro() from @uniflowed/react-native/metro, so \
+                     uf's transformer runs before the one the config names"
+                .to_string(),
+        },
+        transform_stage(),
+        Stage {
+            name: "device",
+            provider: server
+                .as_ref()
+                .map_or_else(|| "none".to_string(), |server| server.command().to_string()),
+            detail: match &server {
+                Some(NativeServer::Expo { .. }) => {
+                    "Expo Go or a development build opens exp://<this machine's address>:<port>, \
+                     and Expo prints the QR code"
+                        .to_string()
+                }
+                Some(NativeServer::ReactNativeCli { .. }) => {
+                    "a phone connects to <this machine's address>:<port> from the Dev Menu; a \
+                     simulator or emulator uses localhost"
+                        .to_string()
+                }
+                None => "nothing to connect to until a server is installed".to_string(),
+            },
         },
     ]
 }
@@ -939,7 +1073,7 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                      entry and prerenders what it can"
                 .to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
         transform_stage(),
         assets_stage(resolved),
@@ -994,7 +1128,7 @@ fn library_build_stages(resolved: &ResolvedConfig, plan: &LibraryPlan) -> Vec<St
             provider: "uf".to_string(),
             detail: format!("library: {}", plan.because()),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
         transform_stage(),
         assets_stage(resolved),
@@ -1158,7 +1292,7 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "uf".to_string(),
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
@@ -1234,7 +1368,7 @@ fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "uf".to_string(),
             detail: "uf.config.js; the build is read, not rebuilt".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Runtime),
         env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
@@ -1290,7 +1424,7 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: format!("{:?}", resolved.config.test.native_runner().scheduler),
             detail: "one file per worker, longest expected first".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Test),
     ];
     stages.extend(permissions_stage(resolved));
     stages.push(transform_stage());
@@ -1317,18 +1451,26 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 /// project did not write down anywhere. That is exactly the run whose limits
 /// somebody needs to be able to read.
 ///
-/// It names the host from `capabilityJsHost.default` rather than resolving one
-/// on PATH: `uf explain` describes a plan and must not fail because the machine
-/// it is run on has no host installed. A project whose configured default is
-/// not the host `uf test` would auto-detect is told about the configured one,
-/// which is the one its configuration is about.
+/// It names the host `test.runtime` declares — or the runtime the runner
+/// brings, or `runtime` — and `capabilityJsHost.default` when nothing declares
+/// one, rather than resolving one on PATH: `uf explain` describes a plan and
+/// must not fail because the machine it is run on has no host installed. A
+/// project whose configured default is not the host `uf test` would
+/// auto-detect is told about the configured one, which is the one its
+/// configuration is about.
 ///
 /// The counts include the grants uf makes for itself — the project root, the
 /// packages directory, `.uf`, the `uf` binary — because a permission model
 /// whose additions are invisible is one nobody can check. See
 /// `commands::test::toolchain_access`.
 fn permissions_stage(resolved: &ResolvedConfig) -> Option<Stage> {
-    let kind = resolved.config.app.runtime.capability_js_host.default;
+    // The host `uf test` starts is the declared test runtime when there is one,
+    // and a permission set means something different on Deno than on Node, so
+    // grading the configured default instead would describe another run.
+    let kind = runtimes::Role::Test.declared(&resolved.config).map_or(
+        resolved.config.app.runtime.capability_js_host.default,
+        |declared| declared.spec.name,
+    );
     // Absent unless there is a set to describe — **or the host is Deno**, where
     // there is no such thing as "no permission set". Deno's default grants
     // nothing at all, so `uf test` has to hand it *something*, and what it

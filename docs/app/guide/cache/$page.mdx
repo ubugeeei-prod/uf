@@ -17,6 +17,13 @@ not have is named here too, because a cache you cannot describe is a cache you
 cannot trust.
 </div>
 
+**What you will be able to do:** turn on the route and fetch caches per route
+and per request, set revalidation windows, invalidate by tag or by path, and
+choose where the cache lives.
+
+**What you need first:** routes that render on a server — [Rendering
+modes](/guide/rendering) — and [Routing](/guide/routing) for loaders.
+
 ## Turning it on
 
 <div className="command"><code>uf.config.js</code></div>
@@ -324,3 +331,8 @@ hop instead of 52 ms, on every process rather than on the one that rendered it.
   rather than from a directory, so it has its own copy of the resolution order
   and not its own copy of the cache. `uf preview`, `uf start` and every
   `--adapter` target do have it.
+
+## Where to go next
+
+[Signing in](/guide/auth) is next: the OAuth flow uf ships, and the session
+store you can replace.
