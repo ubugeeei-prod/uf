@@ -58,6 +58,19 @@ does. When a file is expected to grow, the guard is written as a ratio against
 source bytes or KiB, not as a frozen number that turns every legitimate feature
 into a perf test rewrite.
 
+A budget counts a thread, not the process. `cargo test` runs a binary's tests
+at once, so a delta over `uf_profiler::CountingAllocator`'s process-wide
+counters is the guarded path plus whatever every neighbouring test allocated in
+the same stretch — the resolver budget read 7,239 allocations for a loop that
+makes 128, and neither a higher ceiling nor the quietest of several windows
+made that reliable (#1015). So a budget opens a `uf_profiler::ThreadWindow`,
+which counts the thread that opened it, and work the command does on a thread
+of its own is counted because that thread hands its figure back through
+`uf_profiler::Handover`: `uf_check`'s check thread and `uf_lint`'s module-tree
+parse thread both do. A command that moves its work onto a new thread has to
+hand back there as well, or its budget measures the cost of starting a thread
+and passes whatever the thread does.
+
 The failure message is part of the contract. It names the command to run next
 — usually an `alloc_report` example with `--phases` — and says which historical
 failure mode the ceiling is meant to catch. A red allocation test should leave
@@ -117,6 +130,7 @@ the fix from leaking away while the next slice is being cut.
 - `uf_assets`: image resizing and re-encoding, and the font metrics behind `Image` and `Font`
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
+- `uf_dts`: a dependency's TypeScript declaration files, translated into Flow declaration modules with every hole named
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
 - `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString, and the byte bound every `.uf/cache/` directory is swept to
@@ -1364,17 +1378,17 @@ build. `tests/library/lsp.test.js` drives the real `uf lsp` binary over framed
 messages and asserts every capability those READMEs claim, including that the
 ones they disclaim are absent.
 
-The constraint every client has to satisfy is the working directory. `uf lsp`
-calls `load_config(".")` once, at start-up, so the process's own directory is
-the only channel a project's `fmt` options and lint levels travel through, and
-starting a server anywhere else silently gives it uf's defaults. The VS Code
-extension starts one server per workspace folder that has a `uf.config.js`, with
-that folder as `cwd`, and restarts it when the file changes — the server has no
-way to be told about a change. `uf lsp --cwd` is not an alternative: `--cwd` is
-a global option, so the command line accepts it and `Commands::Lsp` then ignores
-it, reading `.` instead of the directory it resolved. That is a bug in the
-server rather than in the clients; until it is fixed, `cwd` is the only thing
-that works, and every README under `editors/` says so.
+The constraint every client has to satisfy is naming the project. `uf lsp`
+reads its configuration once, at start-up — from the directory `--cwd` names, or
+else from the process's own working directory — so that is the only channel a
+project's `fmt` options and lint levels travel through, and a server pointed
+anywhere else silently gives it uf's defaults. The VS Code extension starts one
+server per workspace folder that has a `uf.config.js`, with that folder as
+`cwd`, and restarts it when the file changes — the server has no way to be told
+about a change. vim-lsp cannot set a server's working directory, so `uf.vim`
+passes `uf lsp --cwd <root>` instead. `--cwd` was once accepted by the command
+line and dropped by `Commands::Lsp`; `lsp_reads_the_config_of_the_directory_cwd_names`
+in `crates/uf_cli/tests/cli.rs` is what keeps it read.
 
 `uf mcp` is the same idea for an agent rather than an editor, and shares no code
 with `uf lsp` beyond the observation that both are JSON-RPC. The transports are

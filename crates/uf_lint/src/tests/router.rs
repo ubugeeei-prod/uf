@@ -94,16 +94,15 @@ fn router_reserved_files_leaves_project_owned_names_alone() {
     }
 }
 
-/// `router/unsupported-segment`: the directory spelling uf reserves without
-/// serving.
+/// `router/unsupported-segment`: an intercepting route outside a `@slot`.
 ///
 /// The diagnostic lands on a file because a file is what `uf lint` can point
-/// at; what is wrong is the directory the file is in. Before this, `@team` and
+/// at; what is wrong is the directory the file is in. Before #267, `@team` and
 /// `(.)photo` were literal URL segments in both routers and nothing said so.
-/// `@team` is a slot uf serves now, and this rule is what is left: interception
-/// needs a navigation to carry where it came from.
+/// Both are routes now — a slot anywhere, an interception inside a slot — so
+/// what this rule reports is an interception somewhere it cannot render.
 #[test]
-fn router_unsupported_segment_reports_an_interception() {
+fn router_unsupported_segment_reports_an_interception_outside_a_slot() {
     for path in [
         "app/feed/(.)photo/$page.js",
         "app/feed/(..)photo/$layout.js",
@@ -139,6 +138,46 @@ fn router_unsupported_segment_says_what_the_spelling_is_and_that_it_is_refused()
     assert!(message.contains("267"), "{message}");
 }
 
+/// A marker uf does not read is reported inside a slot as well: the sentence is
+/// about the spelling, and the place does not rescue it.
+#[test]
+fn router_unsupported_segment_reports_a_marker_nothing_reads_even_in_a_slot() {
+    for path in [
+        "app/feed/@modal/(....)photo/$page.js",
+        "app/feed/@modal/(.)(.)photo/$page.js",
+        "app/feed/@modal/(.)(gallery)/$page.js",
+    ] {
+        let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
+
+        assert!(
+            fired(&diagnostics, "router/unsupported-segment"),
+            "{path} should be reported"
+        );
+    }
+}
+
+/// Inside a slot an interception may still climb past the router root, and the
+/// rule counts the way the router does: in URL segments, where a `(group)` and
+/// the slot are not levels.
+#[test]
+fn router_unsupported_segment_reports_a_climb_past_the_router_root() {
+    for path in [
+        "app/@modal/(..)photo/$page.js",
+        "app/(shop)/@modal/(..)photo/$page.js",
+        "app/feed/@modal/(..)(..)photo/$page.js",
+    ] {
+        let diagnostics = lint_one("router/unsupported-segment", path, "// @flow\n");
+        let message = &diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.rule == "router/unsupported-segment")
+            .unwrap_or_else(|| panic!("{path} should be reported"))
+            .message;
+
+        assert!(message.contains("router root"), "{path}: {message}");
+        assert!(message.contains("refused"), "{path}: {message}");
+    }
+}
+
 #[test]
 fn router_unsupported_segment_leaves_the_segments_uf_serves_alone() {
     for path in [
@@ -151,6 +190,14 @@ fn router_unsupported_segment_leaves_the_segments_uf_serves_alone() {
         "app/dashboard/@team/$page.js",
         "app/@team/$layout.js",
         "app/dashboard/@team/$default.js",
+        // An interception inside a slot is a route: what a client navigation
+        // from a page the slot is on shows in it. Climbs count URL segments,
+        // so the group between is not a level.
+        "app/feed/@modal/(.)photo/[id]/$page.js",
+        "app/feed/@modal/(..)photo/$page.js",
+        "app/@modal/(...)photo/$page.js",
+        "app/feed/@modal/(photos)/(.)photo/$page.js",
+        "app/feed/@modal/(.)[id]/$page.js",
         // A private subtree: neither router walks into it, so an interception
         // there is not a route uf would have served.
         "app/_drafts/(.)photo/notes.js",

@@ -273,6 +273,69 @@ fn check_fixes_the_same_findings_lint_does() {
     assert!(read(&project, "app.js").contains("boolean"));
 }
 
+/// `--rules` lists the catalogue at this project's levels with the fix for
+/// each, and it is a description rather than a run: it writes nothing and
+/// exits `0` over a project whose lint fails.
+#[test]
+fn lint_rules_lists_every_rule_at_this_projects_level_with_its_fix() {
+    let project = Project::new(&[
+        (
+            "uf.config.js",
+            "export default { lint: { rules: { \"flow/deprecated-type\": \"off\" } } };\n",
+        ),
+        ("app.js", FIXABLE),
+    ]);
+
+    let (code, stdout, stderr) = split_run(&project, &["lint", "--rules", "--json"]);
+    assert_eq!(code, SUCCESS, "{stderr}");
+    let payload: serde_json::Value = serde_json::from_str(&stdout).expect("JSON on stdout");
+    let rules = payload["rules"].as_array().expect("an array of rules");
+    let entry = |id: &str| {
+        rules
+            .iter()
+            .find(|rule| rule["id"] == id)
+            .unwrap_or_else(|| panic!("{id} is listed: {payload}"))
+    };
+    assert_eq!(
+        entry("flow/deprecated-type")["level"],
+        "off",
+        "the project's level, not the default"
+    );
+    assert_eq!(entry("flow/deprecated-type")["fix"], "safe");
+    assert_eq!(entry("flow/non-const-var-export")["fix"], "unsafe");
+    assert_eq!(entry("uniflowed/no-tabs")["fix"], "formatter");
+    assert!(entry("flow/unclear-type")["fix"].is_null());
+    assert_eq!(
+        read(&project, "app.js"),
+        FIXABLE,
+        "listing rules wrote a file"
+    );
+
+    let (code, output) = run(&project, &["lint", "--rules"]);
+    assert_eq!(code, SUCCESS, "{output}");
+    assert!(output.contains("flow/non-const-var-export"), "{output}");
+    assert!(output.contains("--fix-unsafe"), "{output}");
+}
+
+/// Listing rules is not a lint run, so the arguments that shape one are
+/// refused beside it rather than silently ignored.
+#[test]
+fn lint_rules_cannot_be_combined_with_a_fix_or_a_path() {
+    for extra in ["--fix", "--fix-unsafe", "app.js"] {
+        let output = uf()
+            .args(["lint", "--rules", extra])
+            .output()
+            .expect("uf started");
+
+        assert!(!output.status.success(), "`--rules {extra}` was accepted");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("cannot be used with"),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 /// Asking for both tiers at once is a contradiction the parser refuses, rather
 /// than a precedence rule nobody would remember.
 #[test]

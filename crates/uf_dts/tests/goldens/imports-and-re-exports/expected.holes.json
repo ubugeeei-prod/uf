@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "(module)",
+    "construct": "missing-file",
+    "reason": "`./missing.js` names no declaration file this package ships, so everything imported from it is `any`",
+    "line": 4
+  }
+]

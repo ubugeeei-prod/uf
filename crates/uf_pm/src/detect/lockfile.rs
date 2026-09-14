@@ -39,12 +39,46 @@ pub fn yarn_edition_in(dir: &Utf8Path) -> YarnEdition {
 }
 
 /// Every lockfile present directly in `dir`, in precedence order.
+///
+/// A `uf.lock` holding nothing but the toolchain record is not one; see
+/// [`uf_lock_votes`].
 #[must_use]
 pub fn scan_lockfiles(dir: &Utf8Path) -> LockfileList {
     Lockfile::ALL
         .into_iter()
-        .filter(|lockfile| is_regular_file(&dir.join(lockfile.file_name())))
+        .filter(|lockfile| {
+            let path = dir.join(lockfile.file_name());
+            is_regular_file(&path) && (*lockfile != Lockfile::UfLock || uf_lock_votes(&path))
+        })
         .collect()
+}
+
+/// Bytes read from `uf.lock` when deciding whether it only locks the toolchain.
+///
+/// A toolchain record is a handful of lines. A file larger than this is the
+/// resolver's, and votes without being parsed.
+const UF_LOCK_PROBE_BYTES: usize = 64 * 1024;
+
+/// Whether a `uf.lock` is evidence of uf's resolver.
+///
+/// Since ubugeeei-prod/uf#940 `uf.lock` holds two records: the resolver's
+/// packages, and which release each toolchain prefix such as `node@26` resolved
+/// to, which `uf_env::lock` writes. Only the first says anything about which
+/// package manager a project uses. Counting the second would make a pnpm
+/// project that locks a Node read as a uf-resolver project, and a workspace
+/// member that does so outvote the workspace root above it.
+///
+/// So a file whose one key is `toolchain` does not vote. Everything else votes
+/// as it always has — an empty object, text that is not JSON, a file too large
+/// to be a toolchain record — so what changes is exactly the file `uf_env`
+/// writes, and which files those are is `uf_env::lock::is_toolchain_only`'s to
+/// say rather than a second reading of the shape here.
+fn uf_lock_votes(path: &Utf8Path) -> bool {
+    let head = read_file_head(path, UF_LOCK_PROBE_BYTES + 1);
+    if head.len() > UF_LOCK_PROBE_BYTES {
+        return true;
+    }
+    std::str::from_utf8(&head).map_or(true, |text| !uf_env::lock::is_toolchain_only(text))
 }
 
 pub(crate) fn managers_for(

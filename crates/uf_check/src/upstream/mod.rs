@@ -213,32 +213,44 @@ pub(crate) fn module_closure<'a>(
 /// full of nested generics is a stack-depth attack against a default 2 MiB
 /// worker. A large stack turns that into Flow's own recursion limit firing,
 /// which is a diagnostic rather than an abort.
+///
+/// Every entry point comes through here, so this is also where the check's
+/// allocations are handed back to a [`uf_profiler::ThreadWindow`] open on the
+/// calling thread. That window counts one thread, and this is not it: without
+/// the hand-back, every allocation budget in `tests/` would read the cost of
+/// starting a thread, pass forever, and guard nothing.
 fn on_check_thread<T, F>(path: &str, work: F) -> Result<T, CheckError>
 where
     F: FnOnce() -> T + Send,
     T: Send,
 {
+    let allocations = uf_profiler::Handover::capture();
     std::thread::scope(|scope| {
         let worker = std::thread::Builder::new()
             .name("uf-typecheck".to_owned())
             .stack_size(CHECK_STACK_BYTES)
-            .spawn_scoped(scope, || {
-                let checked = work();
-                // Spans opened here are thread-local and die with the thread;
-                // this is the hand-over `scope::flush_thread_spans` documents.
-                // Every phase of the check runs on this thread, so without it
-                // the profiler would see none of them.
-                uf_profiler::scope::flush_thread_spans();
-                checked
+            .spawn_scoped(scope, move || {
+                allocations.run(|| {
+                    let checked = work();
+                    // Spans opened here are thread-local and die with the
+                    // thread; this is the hand-over `scope::flush_thread_spans`
+                    // documents. Every phase of the check runs on this thread,
+                    // so without it the profiler would see none of them.
+                    uf_profiler::scope::flush_thread_spans();
+                    checked
+                })
             })
             .map_err(|error| CheckError::Worker {
                 path: path.to_compact_string(),
                 detail: error.to_compact_string(),
             })?;
-        worker.join().map_err(|_| CheckError::Worker {
-            path: path.to_compact_string(),
-            detail: CompactString::const_new("the checker panicked"),
-        })
+        worker
+            .join()
+            .map(uf_profiler::HandedBack::receive)
+            .map_err(|_| CheckError::Worker {
+                path: path.to_compact_string(),
+                detail: CompactString::const_new("the checker panicked"),
+            })
     })
 }
 
@@ -798,4 +810,38 @@ fn suppressed(
     );
 
     (errors, warnings)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::on_check_thread;
+    use uf_profiler::ThreadWindow;
+
+    /// What runs on the check thread counts toward a window its caller opened.
+    ///
+    /// Every entry point hands its work to `on_check_thread`, and every
+    /// allocation budget in `tests/` measures from the calling thread with a
+    /// [`ThreadWindow`], which counts one thread. Take the hand-back out and
+    /// those budgets read the cost of starting a thread — a few allocations,
+    /// under any ceiling — and go on passing whatever the checker does.
+    #[test]
+    fn the_check_threads_allocations_count_toward_a_window_on_the_calling_thread() {
+        const ON_THE_CHECK_THREAD: u64 = 256;
+
+        let window = ThreadWindow::open();
+        on_check_thread("counted.js", || {
+            for _ in 0..ON_THE_CHECK_THREAD {
+                drop(std::hint::black_box(Box::new(0_u64)));
+            }
+        })
+        .expect("the check thread runs");
+        let delta = window.close();
+
+        assert!(
+            delta.allocations >= ON_THE_CHECK_THREAD,
+            "{ON_THE_CHECK_THREAD} allocations on the check thread, and the calling \
+             thread's window saw {}: the check thread is not handing its figure back",
+            delta.allocations,
+        );
+    }
 }

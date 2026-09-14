@@ -115,6 +115,18 @@ impl Envs {
     pub fn bin_dir(&self, project_root: &Utf8Path) -> Utf8PathBuf {
         self.dir_for(project_root).join("bin")
     }
+
+    /// Where one pin's links are: `<envs>/pins/<pin>/bin`.
+    ///
+    /// Keyed by the pin rather than by a project, because what is in it is a
+    /// function of the store entry alone — the same executables pointing at the
+    /// same immutable directory — so every project on `node@26.8.2` shares
+    /// one. A project's own directory is `<name>-<hash>` and never `pins`, so
+    /// the two cannot meet. See [`link_pin`].
+    #[must_use]
+    pub fn pin_bin_dir(&self, pin: &Pin) -> Utf8PathBuf {
+        self.root.join("pins").join(pin.slug()).join("bin")
+    }
 }
 
 /// What a repository's `uf.config.js` asks for.
@@ -181,7 +193,11 @@ fn declared_from<'a>(
     Ok(pins)
 }
 
-fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvError> {
+/// The exact versions `package.json#engines` names, for the tools uf installs.
+///
+/// A range there is a compatibility statement rather than a pin, and is left
+/// out rather than refused.
+pub(crate) fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvError> {
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -215,7 +231,9 @@ fn engines(path: &Utf8Path) -> Result<Vec<(CompactString, CompactString)>, EnvEr
         .collect())
 }
 
-fn is_exact_version(version: &str) -> bool {
+/// Whether `version` is one release: `24.14.0`, `1.3.0-canary.2`,
+/// `4.9.2+sha.1`.
+pub(crate) fn is_exact_version(version: &str) -> bool {
     let Some(separator) = version.find(['-', '+']) else {
         return is_version_core(version);
     };
@@ -363,6 +381,90 @@ pub fn link(
         }
     }
     Ok(linked)
+}
+
+/// The links for one installed pin, made the first time they are asked for.
+///
+/// # Why a pin has a directory of its own
+///
+/// A command runs one tool for one role — `uf build` on `build.runtime`,
+/// `uf test` on `test.runtime` — and puts that tool's directory in front of
+/// `PATH`. The per-project directory [`link`] rebuilds holds one release per
+/// tool, so a build on `node@26` beside a `runtime` on `node@24` cannot borrow
+/// it; and a command that rebuilt it would pull it out from under a dev server
+/// started from it. A directory per pin has neither problem, and nothing about
+/// it is any one project's.
+///
+/// Links rather than the store entry's own directory, because an npm
+/// package's executable is not always named for its tool — pnpm's is
+/// `bin/pnpm.cjs` — and `PATH` finds names.
+///
+/// Built under a temporary name and renamed into place, the way a store entry
+/// is, so two commands asking at once cannot leave a directory with half its
+/// links in it; the loser of that race uses the winner's.
+///
+/// # Errors
+///
+/// When the pin is not installed, holds no executable of its own name, or the
+/// directory cannot be written.
+pub fn link_pin(envs: &Envs, store: &Store, pin: &Pin) -> Result<Utf8PathBuf, EnvError> {
+    let bin = envs.pin_bin_dir(pin);
+    let own = bin.join(pin.tool.name());
+    if own.exists() {
+        return Ok(bin);
+    }
+    let entry = store.path(pin);
+    if !entry.is_dir() {
+        return Err(EnvError::NotInstalled { pin: pin.clone() });
+    }
+
+    let pins = envs.root.join("pins");
+    let directory = pins.join(pin.slug());
+    let staging = pins.join(format!(".{}-{}", pin.slug(), std::process::id()));
+    let _ = fs::remove_dir_all(&staging);
+    let staged_bin = staging.join("bin");
+    fs::create_dir_all(&staged_bin).map_err(|source| EnvError::Write {
+        path: staged_bin.clone(),
+        source,
+    })?;
+    let mut has_own = false;
+    for executable in pin.tool.executables() {
+        let Some(target) = locate(&entry, executable) else {
+            continue;
+        };
+        if let Err(error) = symlink(&target, &staged_bin.join(executable)) {
+            let _ = fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+        has_own |= *executable == pin.tool.name();
+    }
+    if !has_own {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(EnvError::NoExecutable {
+            pin: pin.clone(),
+            entry,
+        });
+    }
+
+    // A directory with no executable of its own name is a leftover from a run
+    // that stopped half way, and the rename below would refuse to replace it.
+    if directory.exists() {
+        let _ = fs::remove_dir_all(&directory);
+    }
+    match fs::rename(&staging, &directory) {
+        Ok(()) => Ok(bin),
+        Err(_) if own.exists() => {
+            let _ = fs::remove_dir_all(&staging);
+            Ok(bin)
+        }
+        Err(source) => {
+            let _ = fs::remove_dir_all(&staging);
+            Err(EnvError::Write {
+                path: directory,
+                source,
+            })
+        }
+    }
 }
 
 /// Where an executable is inside a store entry.

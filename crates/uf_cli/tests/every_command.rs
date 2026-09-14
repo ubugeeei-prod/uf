@@ -91,6 +91,10 @@ const COVERAGE: &[(&str, &str)] = &[
         "routes",
         "here, and cli.rs for the table and the files it writes",
     ),
+    (
+        "ui",
+        "here, and ui.rs for what it writes, refuses to replace and compares",
+    ),
     ("run", "here, and cli.rs for the task runner"),
     ("start", "vite.rs: serves a build over a socket"),
     ("test", "here, and testing.rs for the runner"),
@@ -145,7 +149,10 @@ const READ_ONLY: &[&[&str]] = &[
     &["info"],
     &["inspect"],
     &["lint"],
+    &["lint", "--rules"],
     &["routes", "list"],
+    &["ui", "list"],
+    &["ui", "diff"],
     &["run"],
     &["test", "--list"],
 ];

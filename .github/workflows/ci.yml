@@ -382,6 +382,13 @@ jobs:
     steps:
       - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
+          # Every commit and every tag, for `release:changelog` below. It
+          # compares each released section with `git log <previous tag>..<tag>`,
+          # and the one commit a checkout fetches by default comes with no tags,
+          # so the check found no released version, compared nothing, and
+          # printed "every commit in 0 released version(s)" on every pull
+          # request (#1035).
+          fetch-depth: 0
           persist-credentials: false
       - run: tools/upstream/sync.sh
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1

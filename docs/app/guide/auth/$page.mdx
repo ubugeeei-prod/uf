@@ -15,6 +15,12 @@ to talk to and how to turn the tokens into a person. That is the seam, and it is
 one type with four strings and a function.
 </div>
 
+**What you will be able to do:** add sign-in against an OAuth provider, wire the
+four handlers, read who is signed in, and replace the session store.
+
+**What you need first:** route handlers — [Answering requests](/guide/routing/requests) — and a
+provider that issues you an OAuth client.
+
 ## The provider
 
 This is all of it. Nothing about uf appears in it, and nothing about your
@@ -188,3 +194,8 @@ What uf does **not** do is verify an OpenID Connect `id_token`. Verifying one
 means a JWKS fetch, a cache, an algorithm allow-list and a refusal of
 `alg: none`; half of that is worse than none of it. The raw token is handed to
 your `identify`, and uf claims nothing about it.
+
+## Where to go next
+
+[Logging](/guide/logging) is next: structured records, and the request id a
+loader, a route handler and a server component can read.

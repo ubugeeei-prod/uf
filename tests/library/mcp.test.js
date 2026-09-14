@@ -223,12 +223,10 @@ describe("uf mcp", () => {
     expect(found?.result).toBeUndefined();
   });
 
-  // `uf lsp` reads `load_config(".")` and so ignores the `--cwd` it was given,
-  // which is why every editor README under `editors/` has to talk about the
-  // working directory. `uf mcp` takes the resolved directory as an argument,
+  // `uf mcp` takes the resolved directory as an argument, as `uf lsp` does,
   // and this is the test that keeps it that way: an agent naming the project
   // on the command line is the ordinary case, not the exception.
-  it("honours --cwd, unlike uf lsp", () => {
+  it("honours --cwd", () => {
     const root = brokenProject();
     const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), "uf-mcp-elsewhere-"));
     const run = spawnSync(UF, ["--cwd", root, "mcp"], {

@@ -302,6 +302,19 @@ pub fn install_workspace(
     })?;
 
     let lockfile = root.join(plan.lockfile.as_str());
+    // Held from the read of the toolchain record to the rename below, so a
+    // command locking a prefix beside this install is not undone by it. Every
+    // writer of `uf.lock` takes this; see `uf_env::lock::Guard`.
+    let _guard = uf_env::lock::guard(&lockfile).map_err(|error| PackageManagerError::Write {
+        path: uf_env::lock::guard_path(&lockfile),
+        source: std::io::Error::other(error),
+    })?;
+    // The toolchain record `uf_env` keeps in the same file — which release each
+    // version prefix such as `node@26` resolved to — is not the manifests' to
+    // decide, so it is carried over rather than rewritten away. An install
+    // that dropped it would have every prefix re-resolved on the next command,
+    // to whatever was published since. See ubugeeei-prod/uf#940.
+    let toolchain = locked_toolchain(&lockfile);
     let lock = PackageLockfile {
         lockfile_version: 1,
         resolver: plan.resolver,
@@ -309,6 +322,7 @@ pub fn install_workspace(
         scripts: plan.scripts,
         link_mode: plan.link_mode,
         packages: &packages,
+        toolchain,
     };
     write_json(&lockfile, &lock)?;
 
@@ -350,6 +364,25 @@ struct PackageLockfile<'a> {
     scripts: PackageScriptPolicy,
     link_mode: PackageLinkMode,
     packages: &'a [LockedPackage],
+    /// The toolchain record `uf_env::lock` keeps in the same file, when there
+    /// was one.
+    ///
+    /// Last, and absent when there is none, so a project that locks no
+    /// toolchain gets the file it always got, byte for byte — which is also
+    /// what keeps `uf install --frozen-lockfile` comparing like with like.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    toolchain: Option<Value>,
+}
+
+/// The toolchain record in the `uf.lock` at `path`, when it holds one.
+///
+/// Read leniently: a lock that does not parse is about to be rewritten from the
+/// manifests anyway, and refusing the install over it would be refusing the
+/// one command that repairs it.
+fn locked_toolchain(path: &Utf8Path) -> Option<Value> {
+    let text = fs::read_to_string(path).ok()?;
+    let mut document: serde_json::Map<String, Value> = serde_json::from_str(&text).ok()?;
+    document.remove(uf_env::lock::KEY)
 }
 
 #[derive(Debug, Serialize)]

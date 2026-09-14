@@ -1,0 +1,20 @@
+export type $constructor<out T> = interface {
+  new (): T;
+  init(inst: T): void;
+};
+export interface ZodType<out Output = mixed> {
+  readonly _output: Output;
+  readonly _input: mixed;
+  parse(data: mixed): Output;
+}
+declare const ZodType$value: $constructor<ZodType>; export { ZodType$value as ZodType };
+export interface ZodString extends ZodType<string> {
+  min(length: number): this;
+}
+declare const ZodString$value: $constructor<ZodString>; export { ZodString$value as ZodString };
+export type ZodTypeConstructor = typeof ZodType$value;
+declare const internal: unique symbol;
+export interface Hidden {
+
+}
+export type { ZodType as Schema }; export { ZodType$value as Schema };

@@ -56,7 +56,8 @@ export const sections: $ReadOnlyArray<Section> = [
     landing: {
       href: "/guide/start",
       title: "Start",
-      blurb: "Install uf, make a project, and build one application with it end to end.",
+      blurb:
+        "Install uf, make a project, set up your editor, and build one application end to end.",
     },
     pages: [
       {
@@ -68,6 +69,12 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/project",
         title: "Your first project",
         blurb: "From an empty directory to a built site.",
+      },
+      {
+        href: "/guide/editors",
+        title: "Editors",
+        blurb:
+          "uf lsp in VS Code, Cursor, Neovim, Vim, Helix and Emacs: what it answers, what it does not, and the config it reads.",
       },
       {
         href: "/guide/tutorial",
@@ -144,6 +151,12 @@ export const sections: $ReadOnlyArray<Section> = [
         href: "/guide/routing",
         title: "Routing",
         blurb: "Files become routes; layouts nest; loaders run before the page.",
+      },
+      {
+        href: "/guide/routing/requests",
+        title: "Answering requests",
+        blurb:
+          "Middleware, route handlers, draft mode, QUERY, and streams, sockets and work that outlives the request.",
       },
       {
         href: "/guide/rendering",
@@ -270,9 +283,21 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "The official Flow parser, a Rust printer, and Flow's own lints.",
       },
       {
+        href: "/guide/check",
+        title: "Type checking",
+        blurb:
+          "uf check: uf lint, then Flow's own inference over the project and the packages that ship Flow.",
+      },
+      {
         href: "/guide/testing",
         title: "Testing",
         blurb: "A Rust runner, host workers, and where it stands against Bun.",
+      },
+      {
+        href: "/guide/dependencies",
+        title: "Dependencies",
+        blurb:
+          "uf install and the rest: your project's own package manager, with install scripts refused and CI held to the lockfile.",
       },
       {
         href: "/guide/env",
@@ -280,10 +305,22 @@ export const sections: $ReadOnlyArray<Section> = [
         blurb: "A pinned toolchain per repository, in a shared store, with a collector.",
       },
       {
+        href: "/guide/tasks",
+        title: "Tasks",
+        blurb:
+          "uf run, ufr and ufx: tasks as a dependency graph, run side by side, cached on the files they declare.",
+      },
+      {
         href: "/guide/ci",
         title: "uf in CI",
         blurb:
           "GitHub Actions, GitLab and CircleCI: one step each, why they all pin, and the install a check is worthless without.",
+      },
+      {
+        href: "/guide/agents",
+        title: "Agents",
+        blurb:
+          "uf mcp: eight tools over stdio, the two that write, and what an agent should not assume.",
       },
     ],
     then: "/reference",

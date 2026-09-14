@@ -15,6 +15,13 @@ dependency on a styling system, and the UI suite now holds the contracts with
 500-plus behaviour tests.
 </div>
 
+**What you will be able to do:** compose fields, tabs, dialogs, menus,
+comboboxes, checkboxes and switches into a surface, change the element a part
+renders, and keep the keyboard and ARIA behaviour each one owns.
+
+**What you need first:** a project — [Your first project](/guide/project).
+Styling comes on the page after this one.
+
 ## What you get, and what you do not
 
 The package root exports more than thirty primitive families and five
@@ -64,11 +71,55 @@ One part renders no element and so forwards nothing: `Field.Control` takes a
 nowhere; it belongs on whatever `render` returns, beside the four attributes
 that function is handed.
 
+## Owned or headless
+
+uf has both halves of a design system, and they are different kinds of thing.
+`@uniflowed/ui` is a package: the parts on this page, imported, upgraded, never
+copied. `uf ui add` writes the other half into your repository — one styled
+component per file in `app/components/ui/`, built on these parts:
+
+```sh
+uf ui add button dialog tabs select
+```
+
+```js
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "./components/ui/dialog.js";
+```
+
+| | Headless: `@uniflowed/ui` | Owned: `uf ui add` |
+| --- | --- | --- |
+| Where it lives | `node_modules`, upgraded with uf | `app/components/ui/`, committed with your code |
+| What it owns | Roles, the keyboard, focus, the ARIA wiring, composition types | The look: tokens, spacing, variants, the markup around the parts |
+| How you change it | `className`, `render`, data attributes | Edit the file |
+| How a fix reaches you | Upgrading `@uniflowed/ui` | Behaviour by upgrading `@uniflowed/ui`, which the file still imports; the look through `uf ui diff` and your own edit, or `uf ui add --overwrite` |
+
+Reach for the owned component when the application wants one look that its
+pages agree on and a person expects to open the file and change it, which is
+most product UI. Reach for the parts directly when the design system already
+exists somewhere else, when the styling is not StyleX, or when a surface is
+unusual enough that the owned component would be edited beyond recognition.
+
+The two are not forks of each other. An owned `dialog.js` imports
+`@uniflowed/ui/dialog`, so the focus trap, `Escape`, focus restore and the inert
+page behind it keep arriving by upgrade, and what the file owns is only what a
+person means by "our dialog". The composition constraints hold in the copy
+too: the owned `TabsList` takes `renders* TabsTab`, so a `<button>` dropped
+into it is a Flow error in your own file.
+
+A copy remembers where it came from. Its last line names the uf that wrote it
+and a digest of what was written, so `uf ui add` never replaces a file somebody
+edited without `--overwrite`, and `uf ui diff` says whether a difference is your
+edit, the registry's change, or both. [Commands](/reference/cli) has the whole
+of all three commands.
+
+Every owned component is styled with the tokens `@uniflowed/stylex` compiles,
+so [dark mode](/guide/styling#dark-mode) is one spread on the document, and a
+`stylex.createTheme` of your own restyles all of them at once.
+
 ## Changing the element a part renders
 
 `render` is not only `Field.Control`'s. It is how you say "this one has to be an
-`<a>`", and it is what replaces the copy step a library that writes its source
-into your repository is reached for:
+`<a>`" without copying anything:
 
 ```js
 <Menu.Item render={(props) => <a href="/settings" {...props} />}>Settings</Menu.Item>
@@ -653,6 +704,9 @@ a list is filtered or reordered — and a registry that disagrees with the page
 sends the arrow keys somewhere the reader is not.
 
 ## What to read next
+
+[Styling and content](/guide/styling) is next: CSS, StyleX and tokens, for
+styling these primitives without coupling the package to a theme.
 
 | Need | Next page |
 | --- | --- |

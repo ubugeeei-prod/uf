@@ -14,6 +14,13 @@ part is a Metro bundle, platform-specific route files, a navigator contract and
 test-tree queries that do not pretend there is a DOM.
 </div>
 
+**What you will be able to do:** configure the React Native target, write native
+route files, bundle with Metro, navigate natively, test against a native tree,
+and weigh it against Expo.
+
+**What you need first:** a project — [Your first project](/guide/project) — and
+[Routing](/guide/routing) for the route table the native files extend.
+
 ## The current line
 
 This is the honest status.
@@ -23,29 +30,31 @@ This is the honest status.
 | Package facade | Implemented | `@uniflowed/react-native` re-exports the app's real `react-native` peer |
 | Route target | Implemented | `uf build --target native`, `ios` and `android` select native route files |
 | Metro config | Implemented | `withUniflowedMetro` composes with Expo's and React Native's default Metro configs, and loads in the plain Node Metro runs |
+| Dev loop | Implemented through the project's own CLI | `uf dev --target native` runs `expo start` or `react-native start` once the Metro config composes uf's transformer, and prints the address a device connects to |
 | Native router | Implemented as a contract | `@uniflowed/router/native` resolves a uf route into a navigator event or screen call |
 | Test queries | Implemented for trees and renderer JSON | `@uniflowed/react-native-testing` queries native JSON trees, and `render()` can mount through optional `react-test-renderer` |
 | Native host renderer | Pending | `render()` is a JSON test adapter, not a React Native host config, layout engine or app shell |
-| End-to-end app runtime | Pending | There is no Expo-equivalent application shell, dev client, asset service or native module system |
+| App runtime, native builds, updates | Expo's, by design | Expo Go or a development build, the SDK's native modules, prebuild, EAS Build and EAS Update; uf composes with them rather than rebuilding them |
 
 The important distinction is the one between **contract** and **runtime**. uf
 can already say which route file belongs in a native bundle, what Metro needs
 to resolve, which navigator event or screen call a route becomes, and how to
-query the tree a native renderer produced. It cannot yet start a native host for
-you or ship a complete native app runtime.
+query the tree a native renderer produced, and it starts the project's own dev
+server for a device. It does not ship a native app runtime: that stays with
+Expo, or with the React Native CLI project.
 
-That makes this useful for code that wants a Flow-first route and testing
-contract around React Native, and not yet enough for a team expecting Expo's
-finished application platform.
+That makes this useful for a Flow-first toolchain, routes and tests around
+React Native inside an app platform, and not a replacement for that platform.
 
 ## The usable slice
 
-Use the native target today when the app already owns its native runtime and
-needs uf to keep Flow, routes, Metro and tests aligned. Do not use it yet as the
-thing that creates, serves, builds and submits the app for you.
+Use the native target today inside an Expo or React Native CLI app that needs uf
+to keep Flow, routes, Metro and tests aligned. Do not use it as the thing that
+creates, builds and submits the app: that is Expo's job, and the two compose.
 
 | You want to | Use | Still app-owned |
 | --- | --- | --- |
+| Run the app on a phone or simulator with Fast Refresh | `uf dev --target native` | Expo Go or a development build, and the native project |
 | Keep web and native routes in one file tree | `$page.native.js`, `$page.ios.js`, `$page.android.js` | Screen registration and app bootstrap |
 | Make Metro understand uf's package and file conventions | `withUniflowedMetro` | Metro cache policy, native module config, asset plugins |
 | Turn a uf path into a native screen call | `createNativeScreenManifest`, `createNativeScreenRouter` or `createNativeRouter` | React Navigation, Expo Router, or a custom navigator |
@@ -280,6 +289,60 @@ The build manifest records the same answer so a downstream tool can check it:
 That manifest shape is there because a route-suffixed build is not the same
 thing as a complete native runtime. The renderer row stays `pending` until uf
 can mount the tree on a native host.
+
+## Develop on a device
+
+`uf dev --target native` is the loop `npx expo start` is: Metro serves the
+bundle, a phone opens it, and every edit arrives as a hot update. uf does not
+replace any of it. It runs the project's own dev server — `expo start` in an
+Expo project, `react-native start` in a React Native CLI one — after checking
+the one thing uf's half needs, and prints what a device needs in order to
+connect.
+
+<div className="command"><code>uf dev --target native</code></div>
+
+```text
+uf dev · my-app
+
+  engine     metro, run by expo start (expo 57.0.22)
+  target     native
+  mode       development
+  transform  uf transform, then node_modules/expo/node_modules/@expo/metro-config/build/babel-transformer.js
+  metro      metro.config.js
+  device     exp://192.168.1.20:8081
+
+› Expo Go, or a development build, on the same network opens this; Expo prints its QR code below
+```
+
+After that the terminal is Expo's: the QR code, `i` and `a` for a simulator, `r`
+to reload, `j` for the debugger. A `react-native` framework project gets the
+same loop from a bare `uf dev`, because native is its default target.
+
+| Step | Who does it |
+| --- | --- |
+| Choose the server | uf: Expo CLI when `expo` is installed, React Native CLI when `@react-native-community/cli` is |
+| Check the Metro config | uf loads it the way Metro does, and refuses one that does not compose `withUniflowedMetro()`, printing the config to write |
+| Bundle, serve, send hot updates | Metro |
+| Manifest, QR code, tunnel, key commands | Expo CLI, or React Native CLI |
+| Compile each module | uf's transformer, through `UF_BINARY`: the `uf` that started the server |
+
+Everything after `--` goes to the server untouched:
+
+<div className="command"><code>uf dev --target native -- --tunnel</code></div>
+
+`--port` becomes the server's own `--port`. `--host` is refused, because each
+server spells binding its own way: Expo CLI takes `--lan`, `--localhost` or
+`--tunnel`, and React Native CLI takes `--host`, so pass that after `--`.
+`uf explain dev --target native` names the server, its version and the Metro
+config without starting anything.
+
+In an Expo project a hot update carries React Refresh registrations for the
+edited components, so Fast Refresh keeps their state. In a React Native CLI
+0.87.1 project the update arrives without them, for the upstream reason under
+[Metro](#metro), with or without uf.
+
+Installing the app on a phone stays where it is: Expo Go, a development build
+from `expo run:ios` or EAS Build, or `react-native run-ios`.
 
 ## Native navigation
 
@@ -532,53 +595,77 @@ worse. The rule is there for modules whose real shape is platform-specific.
 
 ## Compared with Expo
 
-Expo is a complete application platform. It gives you a dev client, native
-modules, config plugins, over-the-air updates, asset handling, EAS Build,
-submission, and years of React Native production practice. uf has none of that
-today.
+Expo is a complete application platform, and uf is not trying to become a
+second one. The line is the one [#501](https://github.com/ubugeeei-prod/uf/issues/501)
+records: uf owns the Flow toolchain, the file-system routes and the
+orchestration of the loop; Expo owns the app runtime, the native project and the
+services that build and update it. Where Expo already has the answer, uf runs
+Expo rather than replacing it.
 
-What uf is trying to own is different:
+### The development loop and routing
 
-| Question | Expo answers | uf answers |
+| | Expo | uf |
 | --- | --- | --- |
-| How do I build and submit the native app? | Expo and EAS | Not answered |
-| Which native modules exist? | Expo SDK and the React Native ecosystem | Not answered |
-| Which route files belong to iOS, Android and shared native? | Your app's router | The uf route scanner |
-| How does Flow React syntax reach Metro? | Usually by the app's Babel/Metro setup | The uf target contract plus Metro helper |
-| How does a file route become a native screen call? | App-specific router integration | `@uniflowed/router/native` |
-| How do tests query a native tree without a DOM? | Testing Library / app harness | `@uniflowed/react-native-testing` |
+| Start developing | `npx expo start`: Metro, a QR code, Expo Go or a development build | `uf dev --target native` runs `expo start` itself, after checking that Metro routes modules through uf's transformer |
+| Fast Refresh | Metro and `babel-preset-expo` | unchanged: uf's transformer runs first, and `babel-preset-expo` still registers every component |
+| Compile a module | Babel, with `babel-preset-expo` | Flow component and hook syntax, Flow's lowering and the React Compiler in Rust, then `babel-preset-expo` — the same transform the web build and `uf test` run |
+| File routes | Expo Router: `app/` files and `_layout` files | the uf scanner chooses `$page.ios.js`, then `$page.native.js`, then `$page.js`, identically in Rust and JavaScript |
+| Stacks, tabs and layouts | Expo Router's `_layout` navigators | not yet: the native route table ([#981](https://github.com/ubugeeei-prod/uf/issues/981)) and the React Navigation binding ([#991](https://github.com/ubugeeei-prod/uf/issues/991)) |
+| Typed routes | generated `href` types | `route()` and `RoutePath` for the web today; native with [#981](https://github.com/ubugeeei-prod/uf/issues/981) |
+| Deep links | automatic | [#986](https://github.com/ubugeeei-prod/uf/issues/986) |
+| Platform files | `.ios.js` / `.android.js` resolution | the same, plus `react-native/platform-split`, which prefers them to `Platform.OS` branches |
 
-So the short version is: **Expo is what ships the app; uf is the Flow-first
-contract around the code that app runs.** When uf eventually claims more than
-that, this page should get shorter, not vaguer: the pending rows at the top
-should disappear into concrete commands.
+### Native projects, builds and updates
 
-The path toward an Expo-level claim is therefore not a slogan; it is a list of
-missing commands and contracts:
+| | Expo | uf |
+| --- | --- | --- |
+| Native projects | config plugins and `expo prebuild` | Expo's — uf generates no native project |
+| Builds on a device | `expo run:ios`, `expo run:android`, development builds | Expo's |
+| Cloud builds and submission | EAS Build and EAS Submit | Expo's; a build machine needs `uf` installed to compile Flow ([#992](https://github.com/ubugeeei-prod/uf/issues/992)) |
+| Over-the-air updates | EAS Update | Expo's |
+| Native modules | the Expo SDK, `npx expo install` | Expo's; a warning for native dependencies outside the SDK's ranges is [#987](https://github.com/ubugeeei-prod/uf/issues/987) |
 
-| Missing before uf can make a platform claim | What would make the row real |
-| --- | --- |
-| Native host renderer | a real host config for `@uniflowed/react-native-testing/render`, beyond the optional React Test Renderer JSON adapter |
-| App shell | a generated native entry that can run the route table without hand-written glue |
-| Asset service | image, font and static asset handling that agrees with Metro and uf's manifest |
-| Native module policy | a documented boundary for modules that require platform installation |
-| Build and submit | a reproducible local or remote build story rather than a note to use someone else's |
+### Using both together
 
-Until those rows exist, the honest recommendation is to pair uf with an
-existing native app platform and let uf own the Flow-specific contracts inside
-that app.
+In an app `create-expo-app` made:
+
+1. Add `@uniflowed/react-native` to the dependencies, and a `uf.config.js` with
+   `app: { framework: "react-native", targets: ["react-native"] }`.
+2. Compose `metro.config.js` with
+   `withUniflowedMetro(getDefaultConfig(__dirname))`, as in [Metro](#metro).
+3. Write screens and components in Flow, run `uf dev --target native`, and scan
+   Expo's QR code.
+4. Keep installing native modules with `npx expo install`, and building and
+   updating with EAS. `uf install` refuses the template's `package.json` today,
+   because it declares scripts ([#992](https://github.com/ubugeeei-prod/uf/issues/992)).
 
 ## What is still missing
 
-- **A native host renderer and host config.** `render()` can use React Test
-  Renderer as an optional JSON adapter, but uf still cannot mount into a real
-  native host, inspect layout or exercise platform views.
-- **An app-owned native router integration.** The navigator contract is
-  implemented, but the package does not bind React Navigation, Expo Router or
-  any other navigator for you.
-- **A finished runtime story.** No dev client, no native module registry, no
-  asset service, no OTA channel, no submission pipeline.
+- **Routes as navigators.** Native route files are selected per platform, but
+  nothing turns them into React Navigation stacks and tabs yet
+  ([#981](https://github.com/ubugeeei-prod/uf/issues/981),
+  [#991](https://github.com/ubugeeei-prod/uf/issues/991)).
+- **An Expo project without workarounds.** `uf install` refuses the template's
+  scripts, and `uf` has to be installed wherever EAS Build or Xcode bundles
+  ([#992](https://github.com/ubugeeei-prod/uf/issues/992)).
+- **A native host renderer.** `render()` can use React Test Renderer as an
+  optional JSON adapter, but uf cannot render React Native's own components or
+  press them ([#989](https://github.com/ubugeeei-prod/uf/issues/989)).
+  `@uniflowed/react-native-testing` also expects React 19.3, and Expo SDK 57
+  ships 19.2.3.
+- **Source maps through the transformer.** A stack frame in a Flow module
+  points into uf's output ([#988](https://github.com/ubugeeei-prod/uf/issues/988)).
+- **StyleX on native** ([#984](https://github.com/ubugeeei-prod/uf/issues/984)),
+  **one route file for web and native** ([#985](https://github.com/ubugeeei-prod/uf/issues/985)),
+  **native builds through Metro** ([#983](https://github.com/ubugeeei-prod/uf/issues/983)),
+  **server actions from native** ([#982](https://github.com/ubugeeei-prod/uf/issues/982)),
+  and **native assets and dependency compatibility**
+  ([#987](https://github.com/ubugeeei-prod/uf/issues/987)).
 
 [#501](https://github.com/ubugeeei-prod/uf/issues/501) tracks this target.
 [Testing](/guide/testing#react-native-test-trees) covers the query surface, and
 [Packages](/reference/packages) lists the packages that exist today.
+
+## Where to go next
+
+[Terminal UI](/guide/tui) is next: React with a terminal for a host.

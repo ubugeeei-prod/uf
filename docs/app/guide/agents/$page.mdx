@@ -1,0 +1,180 @@
+---
+title: "Agents · uf"
+description: "uf mcp: eight tools over stdio, the two that write, and what an agent should not assume."
+---
+
+<p className="eyebrow">The toolchain</p>
+
+# Agents
+
+<div className="lede">
+`uf mcp` serves the Model Context Protocol over stdio, so a coding agent can run
+the checks a person runs — lint, type check, tests, the route table — and read
+the same JSON reports CI reads, rather than scraping a terminal. Eight tools, and
+two of them write.
+</div>
+
+**What you will be able to do:** register uf with an MCP client, tell which tools
+read and which write, read what a call returns, and know where the server's
+limits are before an agent leans on them.
+
+**What you need first:** a uf project — [Start](/guide/start) makes one — and a
+client that starts stdio MCP servers. Claude Code is the example below; any
+client that takes a command and its arguments works the same way.
+
+## Registering it
+
+`uf mcp` is started by the client and talks JSON-RPC over its stdin and stdout,
+one message per line. It is not a daemon and has no port. Typed into a terminal,
+where there is no client on the other end, it says so and exits:
+
+<figure className="terminal">
+
+```
+uf mcp: Model Context Protocol stdio server ready
+```
+
+</figure>
+
+The project is decided once, when the server starts: the directory it was
+started in, or the one `--cwd` names, walked up to the nearest `uf.config.js`,
+`package.json` or `.git`. Nothing a client sends afterwards changes it. So for a
+client you run from anywhere, name the project:
+
+```sh
+claude mcp add uf -- uf --cwd /path/to/project mcp
+```
+
+Everything after `--` is handed to the command untouched
+([Claude Code's MCP documentation](https://code.claude.com/docs/en/mcp)). A
+project-scoped `.mcp.json` is committed and shared, so it cannot carry your
+absolute path; written without one, it runs `uf mcp` in whatever directory the
+client starts servers in, and uf walks up from there:
+
+```json
+{
+  "mcpServers": {
+    "uf": { "command": "uf", "args": ["mcp"] }
+  }
+}
+```
+
+If the answers look like they are about the wrong directory, call `uf_info`: it
+prints the working directory the server was given.
+
+## The tools
+
+`tools/list` names eight, and each description ends with one sentence saying
+what the tool does to your checkout. Every tool runs the command it is named
+after, in the server's own process, with the arguments below:
+
+| Tool | Runs | Arguments | Its description says |
+| --- | --- | --- | --- |
+| `uf_check` | `uf check --json` | `paths` | Reads only. |
+| `uf_lint` | `uf lint --json` | `paths` | Reads only. |
+| `uf_info` | `uf info` | — | Reads only. |
+| `uf_routes` | `uf routes list` | — | Reads only. |
+| `uf_explain` | `uf explain <command> --json` | `command`, required | Reads only. |
+| `uf_test` | `uf test --json` | `filter`, `paths` | RUNS the project's own code. |
+| `uf_fmt_write` | `uf fmt` | `paths` | WRITES to files in the checkout. |
+| `uf_lint_fix` | `uf lint --fix --json` | `paths` | WRITES to files in the checkout. |
+
+`paths` narrows a command to files whose path contains one of the strings, the
+way the command line's own `PATH` arguments do. `uf_lint_fix` applies the
+[safe fixes](/reference/cli#uf-lint) only; the unsafe tier is not a tool. There
+is no tool for `uf build`, `uf dev`, `uf install` or `uf fmt --check`, and the
+server offers no resources and no prompts.
+
+## What a call returns
+
+A tool result is a list of text blocks and an `isError` flag. The first block is
+what the command printed — JSON for `uf_check`, `uf_lint`, `uf_lint_fix`,
+`uf_explain` and `uf_test`, the command's own text for the other three. A command
+that fails keeps its report whole in the first block and adds the reason as a
+second, so the JSON still parses. From a session with one deliberate type error
+in `app/price.js`:
+
+<figure className="terminal">
+
+```
+tools/call uf_lint {"paths":["app/"]}
+isError: false; blocks: 1
+{
+  "command": "uf lint",
+  "filesChecked": 6,
+  "errors": 0,
+  "warnings": 0,
+  "diagnostics": [],
+  …
+}
+
+tools/call uf_check {"paths":["app/price.js"]}
+isError: true; blocks: 2
+errors: 1; typeCheck.status: checked
+first type diagnostic: incompatible-type at app/price.js:2:30
+second block: "uf check failed with 1 error"
+```
+
+</figure>
+
+A failing check is `isError: true` inside an ordinary result, not a protocol
+error: the call worked, and its answer is that the project does not check. A tool
+that does not exist is answered the same way, and only a method the server has no
+answer for at all is a JSON-RPC error:
+
+<figure className="terminal">
+
+```
+tools/call uf_build
+← {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"no tool named \"uf_build\""}],"isError":true}}
+resources/list
+← {"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"this server has no method \"resources/list\""}}
+```
+
+</figure>
+
+[Type checking](/guide/check) has the whole shape of the report `uf_check`
+returns, including the one trap in it: `errors` is the sum of the lint findings in
+`diagnostics` and the type errors in `typeCheck.diagnostics`.
+
+## What an agent should not assume
+
+These are the limits of the server as it is, and the ones that are defects have
+issues:
+
+- **Arguments are not checked against the schemas.** Every schema says
+  `additionalProperties: false`, and nothing enforces it: a misspelled `pathz` is
+  ignored and the tool runs over the whole project
+  ([#994](https://github.com/ubugeeei-prod/uf/issues/994)).
+- **`paths` is not confined to the project.** An entry that climbs out of it is
+  followed, and `uf_fmt_write` with `../outside` rewrites what it finds there
+  ([#993](https://github.com/ubugeeei-prod/uf/issues/993)). There is no
+  confirmation step, allow-list or read-only mode in the server, so a client that
+  asks before a tool writes is the only guard.
+- **"Reads only" is about your source.** `uf_check` writes its inference cache
+  under `.uf/cache/check/`, and `uf_test` writes `.uf/test-timings.json`, beside
+  whatever the tests themselves write.
+- **`uf_info` does not describe the project.** It prints uf's version, the
+  machine and the working directory, and reads no `uf.config.js`, whatever its
+  description says (#994). `uf_explain` is the tool that says what a command will
+  do and why.
+- **`uf_test` runs your tests with the access your project gives them.** It needs
+  the project installed — it stops at `@uniflowed/host` is not installed
+  otherwise — and on a host with no `permissions` declared, nothing restricts what
+  a test reaches.
+- **One call at a time.** The server answers requests in order, so a long
+  `uf_test` holds up every call behind it, and `notifications/cancelled` cancels
+  nothing.
+- **Warnings are not in the result.** What a command or a test worker writes to
+  stderr goes to the server's stderr, which the client may or may not show you.
+- **One protocol version.** The server answers `2024-11-05` whatever the client
+  asked for.
+
+## Where to go next
+
+That is the end of the toolchain. [Reference](/reference) is next: every flag,
+config key and export, for when a guide has told you which one you need.
+[Type checking](/guide/check) and [Formatting and linting](/guide/format) are the
+reports behind the tools, read the way a person reads them, and
+[Editors](/guide/editors) is the same lint and formatting, pushed into an editor
+by `uf lsp`.

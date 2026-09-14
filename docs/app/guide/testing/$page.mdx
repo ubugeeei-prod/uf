@@ -13,6 +13,14 @@ what order, on how many cores, and what the report says; the host runs the
 bodies, because running JavaScript is the one thing Rust cannot do.
 </div>
 
+**What you will be able to do:** write tests beside the code they test, query
+accessibility and React Native trees, replace a module, run and narrow a suite,
+use browser mode and coverage, and know where the runner stands against Bun.
+
+**What you need first:** a project with its dependencies installed —
+[Dependencies](/guide/dependencies). Without them, a run stops at
+`@uniflowed/host`.
+
 ## The performance model
 
 The runner is split so the expensive and unstable work is isolated. Rust owns
@@ -581,7 +589,10 @@ actually ran.
    importing the modules.
 2. It applies path filters, `-t`, `.only`, `.skip` and `.todo`, then sorts files
    longest-expected-first.
-3. It starts one worker per core by default, or the number from `-j`.
+3. It starts at most one worker per core, or the number from `-j`. Once a run
+   has recorded durations, it starts only as many workers as the suite can keep
+   busy for longer than one takes to boot — see
+   [Timings and scheduling](#timings-and-scheduling).
 4. Each worker imports a file through the same `uf transform` path the build
    uses, runs the declarations, and streams structured events back.
 5. Rust owns retries, bail, file timeouts, the report, JUnit, JSON and coverage
@@ -628,16 +639,34 @@ first, because the slowest worker decides when a parallel suite finishes. A new
 file, or a run with no timings yet, falls back to source size. The summary says
 how many files were scheduled from each source.
 
+The same file records what one worker cost to start, and the next run uses it to
+decide **how many** workers to start, not only in what order to feed them. A
+worker is a process that has to boot and load the test API before it runs a
+line, so a suite of two-millisecond files is finished by two workers before a
+third has booted — and on a laptop whose cores are half efficiency cores, the
+extra workers take cores away from the ones doing the work. uf adds workers one
+at a time while the next one would shorten the run by more than it costs to
+start, so a short suite gets two or three and a suite with seconds of work gets
+every core. A cold run, with nothing recorded, starts one per core as it always
+has; `-j` is always taken exactly as written. The summary's `workers` row is
+the number that ran.
+
+A file's recorded duration is the file's own. The first file a worker is given
+used to be charged for the worker booting, which made one file per worker look
+tens of milliseconds slower than it was, in the slowest-files table and in the
+numbers the next run scheduled from.
+
 The timings file is a cache, not an input you have to curate. If it is missing,
 corrupt, too large, or contains a path or duration uf will not believe, the run
 schedules cold and says so. It is rewritten with only files still in the
 project, and failure to write it is a note rather than a failed test run.
 
-When a suite is short, `-j` is a performance knob rather than an automatic win:
+`-j` is still worth typing when you know something the recorded durations do
+not:
 
 ```console
 $ uf test -j 1      # serial, easiest to debug ordering-sensitive failures
-$ uf test -j 4      # often faster than all cores for tiny suites
+$ uf test -j 8      # every core, whatever the last run recorded
 $ uf test --browser -j 2
 ```
 
@@ -981,7 +1010,15 @@ appear below the tests it excludes.
 **One worker serves many files, and each one starts from the same place.**
 Between files the worker clears the registry, puts every `stubEnv` and
 `stubGlobal` back, restores the real clock, and drops the module stand-ins a
-`mock` installed. Spies and mocks live in state the runner owns; a stub and a
+`mock` installed. When a file rendered, the window goes back too: the
+properties a test assigned on it (a removed `matchMedia` is the usual one), the
+attributes on `<html>` and `<head>`, and the globals a render installed — so a
+file that never renders gets Node's own `FormData` and no `document` at all,
+exactly as in a fresh worker, and the next render puts the same window back.
+The URL is not reset, because the router keeps its own state in step with it;
+a test that depends on the address sets the one it needs. An axe
+audit a timed-out case abandoned is waited for rather than failing the next
+file's. Spies and mocks live in state the runner owns; a stub and a
 fake clock are writes to something the whole process shares, so without this a
 file that called `uft.useFakeTimers()` and forgot to restore it would leave the
 *next* file's `setTimeout` never firing — a hang, with nothing on screen,
@@ -1029,3 +1066,8 @@ between runs and a pre-bundled worker. Neither exists yet.
   module the pass could not enumerate — a path computed at run time, a file a
   test writes and then imports — is still Flow when Deno meets it, and
   `uf test --watch` is refused there.
+
+## Where to go next
+
+[Dependencies](/guide/dependencies) is next: `uf install` and the rest, and the
+lockfile CI holds a project to.

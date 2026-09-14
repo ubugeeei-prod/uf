@@ -49,6 +49,65 @@ const { execFileSync } = require("node:child_process");
 // were checked.
 const FROM = "0.0.0-alpha.4";
 
+// Versions in the order SemVer §11 gives them, which is not the order of their
+// characters.
+//
+// This check used to compare them as strings, and `"0.0.0-alpha.34" <
+// "0.0.0-alpha.4"` is true, because `3` sorts before `4`. Every release from
+// alpha.10 to alpha.39 was below where the check begins, so it compared the six
+// from alpha.4 to alpha.9 on every run, whatever had shipped since, and a dry
+// run against `uf@0.0.0-alpha.34` passed with three of its pull requests
+// missing from its notes (#1035). Nothing in the output looked wrong: "every
+// commit in 6 released version(s)" is what a working check would have printed
+// the week alpha.9 went out.
+//
+// So a version is read into its parts and compared part by part: major, minor
+// and patch as numbers; then a version with no prerelease above every
+// prerelease of it; then the prerelease identifiers from the left — two numbers
+// as numbers, two words in ASCII order, a number below a word — and, when one
+// list runs out first, it is the lower. Build metadata, after a `+`, takes no
+// part in precedence, so it is read past and dropped.
+const identifier = String.raw`0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*`;
+const semver = new RegExp(
+  String.raw`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
+    String.raw`(?:-((?:${identifier})(?:\.(?:${identifier}))*))?` +
+    String.raw`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`,
+);
+
+// `null` for anything that is not a version.
+const parseVersion = (text) => {
+  const match = semver.exec(text);
+  if (match == null) return null;
+  return { release: match.slice(1, 4).map(BigInt), prerelease: match[4]?.split(".") ?? [] };
+};
+
+const compareIdentifiers = (a, b) => {
+  if (a === b) return 0;
+  const aIsNumber = /^\d+$/.test(a);
+  const bIsNumber = /^\d+$/.test(b);
+  if (aIsNumber && bIsNumber) return BigInt(a) < BigInt(b) ? -1 : 1;
+  if (aIsNumber || bIsNumber) return aIsNumber ? -1 : 1;
+  return a < b ? -1 : 1;
+};
+
+// Negative, zero or positive as `a` ranks below, level with, or above `b`.
+const compareVersions = (a, b) => {
+  for (const [i, part] of a.release.entries()) {
+    if (part !== b.release[i]) return part < b.release[i] ? -1 : 1;
+  }
+  if (a.prerelease.length === 0 || b.prerelease.length === 0) {
+    return b.prerelease.length - a.prerelease.length;
+  }
+  for (const [i, part] of a.prerelease.entries()) {
+    if (i === b.prerelease.length) return 1;
+    const order = compareIdentifiers(part, b.prerelease[i]);
+    if (order !== 0) return order;
+  }
+  return a.prerelease.length - b.prerelease.length;
+};
+
+const from = parseVersion(FROM);
+
 // A commit the release itself made. Local commits have no pull request number
 // until they are merged, so without this rule every release would report its
 // own two commits as uncited.
@@ -85,6 +144,7 @@ const mentions = (section, { hash, subject }) => {
 };
 
 const problems = [];
+let checked = 0;
 let numbered = 0;
 let unnumbered = 0;
 
@@ -93,7 +153,14 @@ for (const [index, heading] of headings.entries()) {
   // An unreleased section is the one being written; there is nothing to
   // compare it against yet.
   if (!tags.has(tag)) continue;
-  if (heading.version < FROM) continue;
+  // A released version that cannot be put in order is checked rather than
+  // skipped: skipping quietly is how thirty releases went unread.
+  const version = parseVersion(heading.version);
+  if (version != null && compareVersions(version, from) < 0) continue;
+  // Counted where the decision is made. The count used to come from a second
+  // copy of the comparison after this loop, so it was wrong in the same way,
+  // and it is the only part of a passing run anybody reads.
+  checked += 1;
 
   const previous = headings[index + 1];
   if (previous == null || !tags.has(`uf@${previous.version}`)) {
@@ -145,9 +212,19 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-const checked = headings.filter((h) => tags.has(`uf@${h.version}`) && h.version >= FROM);
+// A run that compared nothing has shown nothing. CI checked out one commit and
+// no tags, so every section looked unreleased, and this printed "every commit
+// in 0 released version(s) is named in the changelog" and passed on every pull
+// request — before #1035 was found, and it would have gone on doing so after.
+if (checked === 0) {
+  console.error("no released version's changelog section was compared with its tag.");
+  console.error("No `uf@*` tag here has a section in CHANGELOG.md. A checkout without tags");
+  console.error("looks like this: fetch the history and the tags, and run it again.");
+  process.exit(1);
+}
+
 console.log(
-  `every commit in ${checked.length} released version(s) is named in the changelog ` +
+  `every commit in ${checked} released version(s) is named in the changelog ` +
     `(${numbered} by pull request number, ${unnumbered} with no number)`,
 );
 EOF

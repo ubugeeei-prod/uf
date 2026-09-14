@@ -12,6 +12,14 @@ Files under `app/` are the route table. There is no route configuration to
 write and no list to keep in step with the directory.
 </div>
 
+**What you will be able to do:** lay out routes as files; nest layouts,
+templates and slots; handle a missing page, an error and a slow one; load data
+and metadata before a page renders; and navigate between pages.
+
+**What you need first:** a project — [Your first project](/guide/project) — and
+[Flow, the modern parts](/guide/flow) for the `component` syntax every example
+uses.
+
 ## The file names
 
 Nine names are reserved. Everything else in `app/` is an ordinary module.
@@ -63,23 +71,18 @@ app/docs/[...path]/$page.js    →  /docs/a/b/c
 
 A directory named `@team` is a [parallel-route slot](#parallel-routes): it is
 not a URL segment at all. There is no escape hatch for a URL segment that
-really begins with `@`; capture it with a `[param]` instead.
+really begins with `@`; capture it with a `[param]` instead. Inside a slot, a
+directory named `(.)photo` is an [intercepting route](#intercepting-routes),
+and it is not a URL segment either.
 
-### One spelling that is refused
-
-A directory named `(.)photo`, `(..)photo`, `(...)photo`, `(..)(..)photo` or
-`(..)(..)(..)photo` is an **intercepting route**. uf does not have interception
-— a navigation carries where it is going and not where it came from — so the
-directory is refused by name, by `uf build`, by `uf dev` and by `uf lint`.
-
-It is refused rather than ignored, and the difference is the point. Until
-[#267](https://github.com/ubugeeei-prod/uf/issues/267) neither this name nor
-`@team` meant anything to the router, so both fell through to "an ordinary URL
-segment": `app/@team/$page.js` served `/@team`,
-`app/feed/(.)photo/$page.js` served `/feed/(.)photo` — a `(group)` is a
-segment that *ends* in `)`, which `(.)photo` does not — and both went into the
-generated `RoutePath`, so `route("/@team", …)` type checked. A person migrating
-from Next.js got a project that looked like it worked.
+Until [#267](https://github.com/ubugeeei-prod/uf/issues/267) neither spelling
+meant anything to the router, so both fell through to "an ordinary URL
+segment": `app/@team/$page.js` served `/@team`, `app/feed/(.)photo/$page.js`
+served `/feed/(.)photo` — a `(group)` is a segment that *ends* in `)`, which
+`(.)photo` does not — and both went into the generated `RoutePath`, so
+`route("/@team", …)` type checked. A person migrating from Next.js got a project
+that looked like it worked. Both are routes now, and what is spelled like one
+without being one is refused by name rather than served as a URL.
 
 A `(group)` is untouched: it ends in `)` and always did.
 
@@ -96,7 +99,7 @@ Parameters arrive as props:
 // @flow
 import type { PageProps } from "@uniflowed/router";
 
-export default component Post(params: {| +slug: string |}) {
+export default component Post(params: {| readonly slug: string |}) {
   return <article>{params.slug}</article>;
 }
 ```
@@ -198,11 +201,11 @@ Four rules, each refused by name rather than by silence:
   layout already receives — `@children` is the tempting one, because `children`
   is what Next.js calls the page, and here the page always is `children`;
 - `$default.js` belongs directly inside a slot directory, and nowhere else;
-- a slot holds pages, layouts, templates, loading fallbacks, nested slots and
-  one default — `$not-found.js`, `$route.js` or `$middleware.js` inside one is
-  refused, because uf's slots do not carry those request-level answers of
-  their own yet
-  ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
+- a slot holds pages, layouts, templates, loading fallbacks, nested slots,
+  [intercepting routes](#intercepting-routes) and one default —
+  `$not-found.js`, `$route.js` or `$middleware.js` inside one is refused,
+  because uf's slots do not carry those request-level answers of their own
+  yet ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
 
 `$loading.js` in a slot is slot-local. It wraps the slot's matched page and the
 layouts under that slot, not the segment's `children`, so a slow side panel can
@@ -233,6 +236,168 @@ A slot page's `loader` is not run — a slot's data has nowhere to be embedded f
 hydration — and a slot page that exports one says so rather than being handed
 `undefined`. Fetch inside the component, or put the data on the page the URL
 names.
+
+## Intercepting routes
+
+A directory inside a slot whose name starts with a marker — `(.)photo`,
+`(..)photo`, `(...)photo` — is an **intercepting route**: what the slot shows
+when a client navigation reaches the URL it names, *instead of* the page that
+URL names. The modal that opens over a feed, with the photo's own address in
+the bar, is the shape it exists for:
+
+```
+app/feed/$layout.js                     the frame, which renders `modal`
+app/feed/$page.js                    →  /feed
+app/feed/photo/[id]/$page.js         →  /feed/photo/:id   the photo page
+app/feed/@modal/(.)photo/[id]/$page.js  /feed/photo/:id   in `modal`, over the feed
+```
+
+```js
+// @flow
+// app/feed/$layout.js
+import * as React from "react";
+
+export default component Feed(children: React.Node, modal: React.Node) {
+  return (
+    <>
+      <main>{children}</main>
+      {modal}
+    </>
+  );
+}
+```
+
+**Two ways to arrive at one URL, and two answers.**
+
+- A **client navigation** that starts on a page the slot is on — any page
+  under `app/feed/$layout.js` — renders the intercepting page in `modal`. The
+  address bar says `/feed/photo/1`. Everything else stays exactly where it
+  was: `children` goes on rendering the page the reader came from, with its
+  data, its scroll position and the state its components were holding, and
+  every other slot keeps what it was showing.
+- **Everything else** — a reload, a link somebody was sent, a new tab, a
+  crawler, `uf build`'s prerender — renders `app/feed/photo/[id]/$page.js`.
+  A request carries where it is going and not what was on screen when it was
+  made, so the server never renders an intercepting page, and the document for
+  `/feed/photo/1` is always the photo page.
+
+A navigation from a page the slot is *not* on — `/about`, which renders no
+feed layout — is an ordinary navigation to the photo page: there is no
+`modal` on screen for it to render into.
+
+### What the marker counts
+
+The marker says which URL the directory stands in for, counted in **URL
+segments** from where the directory sits — not in directories. A `@slot` and a
+`(group)` contribute no URL segment, so they are not levels to climb past.
+
+| Directory | Intercepts |
+| --- | --- |
+| `app/feed/@modal/(.)photo/` | `/feed/photo` — the level the directory is at |
+| `app/feed/@modal/(..)photo/` | `/photo` — one URL segment up |
+| `app/shop/[category]/@modal/(..)(..)photo/` | `/photo` — two up |
+| `app/shop/[category]/@modal/(...)photo/` | `/photo` — from the router root, however deep |
+| `app/feed/@modal/(.)[id]/` | `/feed/:id` — a parameter is a segment like any other |
+
+Everything below the marked directory is ordinary: `(.)photo/[id]/` stands in
+for `/feed/photo/:id`, and a `$layout.js`, `$loading.js`, `$template.js` or
+`$error.js` inside the slot wraps an intercepting page exactly as it wraps any
+other page in the slot.
+
+### Back, forward, reload
+
+The history entry an interception writes remembers where the navigation came
+from, so the back and forward buttons put the same screen back: back from the
+modal is the feed with nothing in the slot, and forward is the modal over the
+same feed again. A second interception from inside the first — the next photo,
+opened from the modal — is intercepted from the feed too, so back from the
+second photo is the first.
+
+A reload of an intercepted entry renders the photo page, because a reload is a
+request. The entry forgets it was intercepted, so coming back to it later
+renders the photo page again rather than a modal over a page the reader never
+saw one on.
+
+A few things follow from "the page underneath stays":
+
+- `useRoute()` describes the page `children` renders — during an interception,
+  the page the navigation came from. The intercepting page gets its own
+  `params`, and the intercepted URL's `searchParams`.
+- An intercepted navigation does not scroll the window; the modal opens over
+  the post that was clicked. Pass `scroll: true` to `router.push` to scroll
+  anyway.
+- `router.refresh()` refreshes both halves: the page underneath and the
+  interception over it.
+- A `Link` prefetches what the next render will need, which for an
+  interceptable URL is the intercepting page.
+- The document title stays the page underneath's. A slot page contributes no
+  metadata, and an intercepting page is a slot page.
+- An interception arrives under the intercepting page's own
+  [`viewTransition`](#view-transitions), or that of a layout inside the slot,
+  so a stylesheet can animate a modal opening differently from a page
+  arriving. Back arrives under the page underneath's, as any navigation
+  arrives under its destination's.
+
+To close the modal, navigate back — `router.back()` — or link to where the
+reader came from.
+
+### What is refused
+
+Each of these is refused by name rather than served. The first four are about
+how a directory is spelled and where it is, so `uf lint`
+(`router/unsupported-segment`) reports them with the sentence `uf build` and
+`uf dev` give. The last two are about the route table as a whole, so they are
+refused wherever the table is read — `uf build`, `uf dev`, `uf routes`,
+`uf inspect` — and not by `uf lint`, which reads one file at a time.
+
+| Written | Why it is refused |
+| --- | --- |
+| `app/feed/(.)photo/` — outside a slot | there is no named place for it to render into |
+| `(....)photo`, `(.)(.)photo`, `(...)(..)photo` | a marker uf does not read; `(.)` and `(...)` stand alone, and `(..)` repeats |
+| `(.)(gallery)`, `(.)@photo` | no URL segment after the marker for it to stand in for |
+| `app/@modal/(..)photo/` | it climbs above the router root, and there is no URL up there |
+| `app/feed/@modal/(.)photo/[id]/` with no `app/feed/photo/[id]/$page.js` | nothing serves the URL it intercepts, so a reload of the address the modal put in the bar would be a 404 |
+| `app/docs/[...path]/@panel/(.)edit/` | the URL it stands in for has a catch-all before `edit`, and no URL can reach a segment after a catch-all |
+
+"Serves" means every URL the interception matches: `app/docs/[...path]/$page.js`
+serves what `app/docs/@panel/(.)[slug]/` intercepts, and
+`app/photo/[id]/$page.js` does not serve what `app/photo/@panel/(.)[...rest]/`
+intercepts, because that also matches `/photo/a/b`.
+
+An intercepting page is a slot page, so the slot rules apply to it too: it
+takes no `loader` — fetch inside the component, or put the data on the page
+the URL names — and `uf routes add` does not write one, because an
+intercepting route is not a URL.
+
+### Where it needs the client router
+
+Interception is something a client navigation does, so it needs a page that
+the client router is running on:
+
+- A route under a slot that intercepts always ships its page to the browser,
+  even when nothing in it is a `"use client"` module. A page served as a
+  document with nothing hydrated on it starts no client navigation, and the
+  interception would never render.
+- Under `app.rendering.navigation: "document"` every navigation is a document
+  request, so an intercepting route never renders and the page its URL names
+  always does. Nothing breaks; the modal is simply not there.
+- `@uniflowed/router/native` does not intercept. A native navigator has no
+  address bar for the screen to disagree with, and already presents a screen
+  modally over the one below it — so `/feed/photo/1` resolves to the ordinary
+  route, and presenting it as a modal is the navigator's decision.
+
+### Coming from Next.js
+
+The markers mean what they mean in Next.js, counted in route segments the same
+way. Two things are stricter here, on purpose:
+
+- **Only inside a slot.** Next.js also lets an interception replace
+  `children` outright. Here an interception is always something shown in a
+  named place, over a page that is still there.
+- **The page it stands in for has to exist.** An interception with no page at
+  its URL works for the reader who clicked and is a 404 for everybody they
+  send the link to, so it is refused where the file is rather than found out
+  from a reload.
 
 ## Not found nests too
 
@@ -377,7 +542,7 @@ and the deploy adapters stream.
 
 What none of this covers is a route handler. `$route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting
-to see — "Route handlers", below, says why.
+to see — [Route handlers](/guide/routing/requests#route-handlers) says why.
 
 ## Loading data
 
@@ -389,7 +554,7 @@ export async function loader({ params }: LoaderArgs) {
   return { post: await readPost(params.slug) };
 }
 
-export default component Post(data: {| +post: Post |}) {
+export default component Post(data: {| readonly post: Post |}) {
   return <h1>{data.post.title}</h1>;
 }
 ```
@@ -411,7 +576,9 @@ export async function loader({ params }: LoaderArgs) {
   };
 }
 
-export default component Post(data: {| +post: Post, +comments: Promise<Array<Comment>> |}) {
+export default component Post(
+  data: {| readonly post: Post, readonly comments: Promise<Array<Comment>> |},
+) {
   return (
     <article>
       <h1>{data.post.title}</h1>
@@ -650,6 +817,10 @@ and the page it lands on is the same page; the difference is a full load
 rather than a transition. `useRouter().push()` and the back button do the same
 thing for the same reason.
 
+A `Link` to a URL that a slot on screen intercepts is the other exception: it
+renders the intercepting page into that slot and leaves the page it was clicked
+on where it was — see [Intercepting routes](#intercepting-routes).
+
 ### View transitions
 
 Every client navigation goes through `document.startViewTransition` where the
@@ -691,431 +862,15 @@ a page into itself.
 None of this reaches the server. A transition is a client-only concern, and a
 prerendered document says nothing about one.
 
-## Middleware
-
-`app/dashboard/$middleware.js` runs before anything under `/dashboard`
-answers — the pages, the route handlers, and the paths under it that match
-nothing at all:
-
-```js
-// @flow
-import { cookies } from "@uniflowed/server";
-
-export default function middleware(request: Request): Response | void {
-  if (cookies().get("session") == null) {
-    return Response.redirect(new URL("/sign-in", request.url), 302);
-  }
-}
-```
-
-**Returning a `Response` is the answer.** Nothing after it runs: no page is
-resolved, no handler is called, and no middleware deeper in the tree runs
-either. **Returning nothing continues.** Both halves matter — a middleware that
-could only observe could not reject, and one that had to answer could not be a
-logger.
-
-There is no `matcher` to write. The directory the file sits in is the path it
-guards, and middleware composes down the tree exactly the way layouts do: a
-root `app/$middleware.js` runs for every request, then the one in
-`app/dashboard/`, then the one in `app/dashboard/admin/`. Root first, and the
-first one to return a `Response` wins.
-
-A middleware runs inside the request, so `cookies()`, `headers()` and `after()`
-work without anything being threaded through. Its own path parameters arrive as
-`context.params` — `app/[org]/$middleware.js` guarding `/acme/settings` gets
-`{ org: "acme" }`, which is what a tenant check needs.
-
-A middleware module never reaches the browser. It is loaded from the server
-entry and from nothing the client imports, which is the point: it is where the
-check you do not want a reader to be able to read belongs.
-
-What it deliberately cannot do yet is rewrite the request. That needs a
-spelling — a returned `Request`, or a `next(request)` argument — and one picked
-badly is harder to undo than one not yet picked. Answering and continuing are
-what exist, and they are enough for authentication, redirects and logging.
-
-### A prerendered page is not a guarded page
-
-A middleware runs on a server, when a request arrives. `uf build` prerenders
-every route without parameters to an HTML file, and a static host serves that
-file without asking anyone: there is no request for a middleware to run for,
-so the guard is not there. Keep a guarded path off the prerender — give it a
-parameter, or serve the build's server bundle rather than only `dist/` — and
-treat anything you can open in `dist/` as public. `uf preview` and `uf start`
-serve that bundle and run middleware for every request they answer, exactly as
-`uf dev` does; a static host handed `dist/` alone has nothing to run.
-
-## Route handlers
-
-A path can answer a request instead of rendering. `app/api/users/[id]/$route.js`
-serves `/api/users/42`:
-
-```js
-// @flow
-import type { HandlerContext } from "@uniflowed/router/handler";
-
-export async function GET(request: Request, context: HandlerContext): Promise<Response> {
-  const user = await find(context.params.id);
-  return user == null
-    ? new Response("not found", { status: 404 })
-    : Response.json(user);
-}
-
-export async function POST(request: Request, context: HandlerContext): Promise<Response> {
-  return Response.json(await request.json(), { status: 201 });
-}
-```
-
-A handler takes a `Request` and returns a `Response` — the platform's own
-types, not a framework's wrapper. That is what runs unchanged on Node.js, Bun,
-Deno and a Cloudflare Worker, which is the whole point of treating the host as
-a capability rather than a target.
-
-**A handler needs something serving.** `uf dev`, `uf preview`, `uf start` and a
-binary from `uf build --compile` all dispatch to it; a `dist/` handed to a
-plain static file server does not, because there is nothing there to run. That
-is the one thing to know before designing an application around handlers, and
-it is why `uf preview` exists: it is where you find out that what answered in
-development also answers from the build.
-
-One export per method: `GET`, `HEAD`, `QUERY`, `POST`, `PUT`, `PATCH`,
-`DELETE`, `OPTIONS`. Anything else a module exports is a helper, not a method —
-a dispatcher that treated every export as one would answer requests with your
-utility functions, and one that treated every upper-case export as one would
-answer a `PURGE` with your constant.
-
-Route handlers can declare their request and response schema beside those
-methods. `uf build` reads the schemas and writes `.uf/build/meta/openapi.json`;
-handlers without schemas are still listed as untyped.
-
-```js
-// @flow
-import { object, string } from "@uniflowed/validator";
-
-export const schemas = {
-  GET: {
-    response: object({ status: string() }),
-  },
-  POST: {
-    body: object({ name: string() }),
-    response: object({ echoed: string() }),
-  },
-};
-```
-
-Three things the dispatcher does so every handler does not have to:
-
-- **`HEAD` falls back to `GET`**, with the body dropped. A client asking for
-  headers expects that, and nobody remembers to write it.
-- **`405` carries `Allow`.** When the path matches and the method does not,
-  the response names the methods that do — which is what lets a client tell
-  "you may not do that here" from "there is nothing here".
-- **The most specific path wins.** `/api/users/new` beats `/api/users/[id]`,
-  which beats `/api/[...rest]`, whatever order the files are in.
-
-What it deliberately does not do is catch your errors. A handler that throws is
-a bug, and turning it into a 500 here would hide it from the host's own error
-reporting — and leave you unable to tell a 500 you meant from one you caused.
-
-A handler is not prerendered and its module never reaches the browser.
-
-## Draft mode: previewing what is not published
-
-A CMS previews unpublished content by linking to a route handler that turns
-draft mode on and redirects. Every request after that carries a signed cookie,
-`draftMode().isEnabled` is `true` for the whole of it — a guard, a handler and
-the page all see the same answer — and neither the route cache nor the
-prerendered document in `dist/` is allowed to answer it.
-
-```js
-// app/api/preview/$route.js
-// @flow
-import { draftMode } from "@uniflowed/server";
-
-export function GET(request: Request): Response {
-  const url = new URL(request.url);
-  if (url.searchParams.get("token") !== process.env.CMS_PREVIEW_TOKEN) {
-    return new Response("no", { status: 401 });
-  }
-  draftMode().enable();
-  return Response.redirect(new URL(url.searchParams.get("to") ?? "/", request.url), 307);
-}
-```
-
-A page then asks:
-
-```js
-import { draftMode } from "@uniflowed/server";
-
-export default async function Post({ params }: PageProps): Promise<Node> {
-  const post = await load(params.id, { draft: draftMode().isEnabled });
-  return <article>{post.body}</article>;
-}
-```
-
-**`enable()` and `disable()` belong in a route handler or a server action, and
-nowhere else.** They write a cookie, and a cookie is part of a response — so
-they are allowed exactly where a response is being produced, and calling one
-from a render or from a middleware is a `DraftModeError` that says so. A
-middleware that wants draft mode on redirects to the handler that turns it on.
-
-**The token check is yours.** uf checks that the cookie is one it issued and
-has not expired; it does not and cannot check who asked for it, because only
-your application knows what an editor is. A preview handler with no check is an
-open door to everything the site has not published.
-
-The cookie is `__Host-`prefixed, `Secure`, `HttpOnly`, `SameSite=Lax` and good
-for an hour, and its value is an HMAC over its own expiry — so it cannot be
-forged and a holder cannot extend it. The key is `UF_DRAFT_SECRET`:
-
-| Variable | Meaning |
-| --- | --- |
-| `UF_DRAFT_SECRET` | The key that signs the draft cookie. At least 32 bytes, and shared by every instance of the deployment. Without it uf generates one per process, which is right for `uf dev` and wrong behind a load balancer: the cookie stops working when the process restarts and a second instance never accepts it. uf says so in a `warn` line the first time it issues one. |
-
-## QUERY: the GET whose parameters did not fit in a URL
-
-`QUERY` is a safe, idempotent method that carries a body. It is what a search
-with a page of filters has been faking with a `POST` for twenty years, and the
-difference is not cosmetic: a `POST` is not safe, so nothing may retry it,
-prefetch it or cache it, and every layer between the browser and the handler
-has to treat a search as a mutation.
-
-```js
-// app/api/search/$route.js
-// @flow
-export async function QUERY(request: Request): Promise<Response> {
-  const filters = await request.json();
-  return Response.json(await search(filters));
-}
-```
-
-The client helper sends one:
-
-```js
-import { createFetch } from "@uniflowed/fetch";
-
-const api = createFetch({ baseURL: "/api" });
-const hits = await api.request("/search", { method: "QUERY", body: { filters } });
-```
-
-**What refuses it is the part worth knowing.** Nothing in uf does: the
-dispatcher matches `QUERY` like any other verb, and `@uniflowed/fetch` retries
-it like the other safe methods. What refuses it is the path in between.
-
-- **A proxy, CDN or firewall with a list of verbs** answers `405` or `501`
-  itself, so the request never arrives and the failure looks exactly like a
-  route that does not exist. `@uniflowed/fetch` says so in the error rather
-  than passing the status through, because that is the difference between an
-  afternoon and a status code.
-- **A cache in front of the application** must not store a `QUERY`: the method
-  is cacheable in principle, and the key includes the body, which almost
-  nothing implements. uf's own route cache is `GET`-only and stays that way.
-- **`<form>`, `XMLHttpRequest` and `EventSource`** cannot send it. `fetch` can,
-  in every browser and every runtime uf targets.
-
-There is no method-override header, and there will not be.
-`X-HTTP-Method-Override: QUERY` on a `POST` is the usual workaround and it is
-the shape of CVE-2025-29927 — an inbound header steering dispatch — which
-`docs/security.md` forbids. A route that has to work through infrastructure you
-do not control exports `POST` as well, in its own file, where a reader can see
-it.
-
-## Streams, sockets, and work that outlives the request
-
-A handler returns a `Response`, and a `Response` body may be a stream — so
-server-sent events need nothing new from the router:
-
-```js
-// app/api/progress/$route.js
-// @flow
-import { eventStream } from "@uniflowed/server/events";
-
-export function GET(): Response {
-  return eventStream((sink) => {
-    const timer = setInterval(() => sink.send({ event: "tick", data: stateOfPlay() }), 1000);
-    return () => clearInterval(timer);
-  });
-}
-```
-
-`eventStream` writes the format, sets the four headers that stop a proxy
-buffering the whole stream until it ends, sends a heartbeat so an idle
-connection is not closed by something in the middle, and disconnects a reader
-that falls far enough behind rather than holding it in memory.
-`useEventSource` from `@uniflowed/hooks/events` is the other end: it reports
-the connection as state, and reopens the one case the browser's own
-reconnection gives up on — a response that was not an event stream, which is
-what a deployment restarting looks like.
-
-A WebSocket is a `GET` with `Upgrade: websocket` on it, so it is a handler too:
-
-```js
-// app/api/room/[id]/$route.js
-// @flow
-import { upgradeWebSocket } from "@uniflowed/server/socket";
-
-export function GET(request: Request, context: HandlerContext): Response {
-  const { response, socket } = upgradeWebSocket(request);
-  socket.addEventListener("message", (event) => socket.send(String(event.data)));
-  return response;
-}
-```
-
-**uf defines the upgrade and your deployment supplies it.** Deno, Bun and
-Cloudflare each spell taking a socket differently and Node has no server-side
-`WebSocket` at all, so what uf owns is the shape they reduce to — a function
-from a `Request` to `{ response, socket }` — passed as `websocket` where the
-host is built. A built-in that wrapped one library would make uf the thing that
-decides which WebSocket library your project has, which is the failure
-`docs/red-lines.md` exists to prevent.
-
-And work that should outlive the response is a job:
-
-```js
-// @flow
-import { defineJob, enqueue } from "@uniflowed/server/queue";
-
-export const sendWelcome = defineJob({
-  name: "send-welcome",
-  retry: { attempts: 5 },
-  run: async (payload) => mail(payload.to),
-});
-
-export async function POST(request: Request): Promise<Response> {
-  const user = await create(await request.json());
-  await enqueue(sendWelcome, { to: user.email });
-  return Response.json(user, { status: 201 });
-}
-```
-
-**uf provides the job, the payload boundary, the retry policy and its backoff,
-and one backend that runs in this process.** Your deployment provides the two
-things no configuration flag can: storage that survives a restart, and a
-consumer — a process that is still there when no request is being answered.
-`memoryQueue` is an array, says so as `durable: false`, and is right for one
-long-lived process whose work can be lost. Delivery is at least once, so a job
-that charges a card needs its own idempotency key.
-
-A queue is not `after()`. `after()` runs a callback in this process once the
-response has gone, with no retry and no record it ever existed, which is right
-for a metric and wrong for anything a user would notice missing.
-
-And work that no request starts at all is a schedule:
-
-```js
-// @flow
-import { defineSchedule } from "@uniflowed/server/schedule";
-import { serve } from "@uniflowed/server/node";
-
-const sweep = defineSchedule({
-  name: "sweep-sessions",
-  cron: "*/15 * * * *",
-  run: async () => expireSessions(),
-});
-
-await serve({ handle, staticDir, beginRequest, schedules: [sweep] });
-```
-
-**uf provides the expression's meaning and the decision that a minute is due —
-five fields, in UTC, run at most once per minute however often the scheduler is
-ticked. Your deployment provides something alive at that minute.** On a target
-that keeps a process uf ticks it itself, and `processScheduler` says what that
-is worth: a `setInterval` and nothing more, so a restart between two ticks
-misses whatever was due in the gap and two instances each run every schedule.
-
-The expression is five fields and only the syntax every cron agrees on: `*`,
-`n`, `a-b`, `*/n`, `a-b/n`, and comma-separated lists of those. No `@daily`, no
-`JAN`/`MON`, no seconds, no `L`/`W`/`#` — each of those is spelled differently
-by Vixie cron, Quartz and every cloud, and a schedule uf accepted and a platform
-read differently would be worse than one refused at the line that wrote it.
-When day-of-month and day-of-week are both restricted a time matches when
-**either** does, which is POSIX's rule: `0 0 1 * 1` is "the first, and every
-Monday".
-
-Fields are UTC. A container's zone and a platform scheduler's zone are not the
-same, and a schedule that meant different minutes in the two would be worse
-than one that always means the same minute.
-
-A target that keeps no process is **refused** an in-process schedule where the
-host is wired, because nothing would be running at the minute it names. Those
-targets need their platform's own scheduler pointed at the deployment.
-
-### Declaring one in a route handler
-
-A route handler can say when it should run without being asked, so that
-`uf build` can tell a platform's own scheduler about it:
-
-```js
-// app/api/sweep/$route.js
-// @flow
-export const schedule = "*/15 * * * *";
-
-export function GET(): Response {
-  return Response.json({ swept: true });
-}
-```
-
-A **string written in the file**, not a call. `uf build` writes a platform's
-cron configuration without running a line of your project, so an expression it
-would have to evaluate is one it cannot write down — and a computed one is
-refused by name rather than skipped, because a schedule the build could not
-read is a schedule the deployment would not run.
-
-`uf build --adapter edge` writes it into `wrangler.json` for Cloudflare's own
-scheduler, and a `scheduled()` into `worker.js` for that scheduler to call:
-
-```json
-"triggers": { "crons": ["*/15 * * * *"] }
-```
-
-A trigger fires a `GET` at the route's own path through the application's own
-handler, so a scheduled run and a `curl` of that path are the same code, and
-the request has a context — `cookies()`, `after()` and the request id all work
-inside one. A module that declares a schedule and exports no `GET` is refused
-at the build, because that trigger would fire into a 405 nobody reads.
-
-Every other adapter **refuses the build**, and says which route, which
-expression and which file:
-
-```
-error: the `node` adapter would not run the 1 schedule(s) this project
-declares, so this build would produce a deployment whose scheduled work never
-happens:
-    /api/sweep — `*/15 * * * *`, in app/api/sweep/$route.js
-```
-
-`node`, `bun` and `container` run it too, and differently: they keep a process,
-so the `server.js` uf writes hands the declaration to `serve` and
-`@uniflowed/server/schedule` ticks it there. Which means the same declaration
-is a Cloudflare trigger on one target and a `setInterval` on another, and the
-route it runs cannot tell.
-
-`serverless` is the one that refuses, and for a reason rather than for want of
-attention: uf writes no configuration file for it — the artefact is a zip — so
-there is nowhere to say *when* to call the function.
-[#531](https://github.com/ubugeeei-prod/uf/issues/531) has that half.
-
-What each field *contains* is checked when the deployment starts rather than
-at build time: the meaning of a field lives in one place, and a second matcher
-in the build would be two implementations of one rule.
-
-### What each target can do
-
-The two questions that decide all three: does a response body reach the client
-as it is produced, and is the process still there once it has.
-
-| Target | Streams | Outlives the response | Event streams | WebSockets | In-process queue | In-process schedule |
-| --- | --- | --- | --- | --- | --- | --- |
-| `uf dev`, `uf preview`, `uf start` | yes | yes | yes | with an upgrader | yes | yes |
-| `node`, `bun`, `container`, `--compile` | yes | yes | yes | with an upgrader | yes | yes |
-| `edge` | yes | no | yes | with an upgrader | **refused** | **refused** |
-| `serverless` | no | no | **refused** | **refused** | **refused** | **refused** |
-
-Refused means refused where the host is wired, before a single connection is
-accepted and dropped — a serverless deployment handed a WebSocket upgrader
-fails to start rather than accepting handshakes all day and delivering nothing.
-A durable queue is accepted everywhere, because pushing to one is not draining
-it.
+## Answering requests
+
+<a id="middleware"></a><a id="a-prerendered-page-is-not-a-guarded-page"></a><a id="route-handlers"></a><a id="draft-mode-previewing-what-is-not-published"></a><a id="query-the-get-whose-parameters-did-not-fit-in-a-url"></a><a id="streams-sockets-and-work-that-outlives-the-request"></a><a id="declaring-one-in-a-route-handler"></a><a id="what-each-target-can-do"></a>
+
+Middleware, route handlers, draft mode, `QUERY`, and streams and sockets have a
+page of their own: [Answering requests](/guide/routing/requests). A file that
+answers a request directly is a different job from the route table and the
+layouts a page renders inside, and each section moved there whole, under the
+same heading.
 
 ## When a route is rendered
 
@@ -1206,3 +961,9 @@ route("/docs/:path*", { path: "guide" });    // a catch-all is an array
 `/` stays one segment rather than becoming two — and the link it builds matches
 the route it was built from, because the builder and the matcher are the same
 code.
+
+## Where to go next
+
+[Answering requests](/guide/routing/requests) is next: the files that answer a
+request directly — middleware, route handlers, draft mode, `QUERY`, streams and
+sockets. [Rendering modes](/guide/rendering) comes after it.

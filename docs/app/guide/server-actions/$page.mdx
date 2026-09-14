@@ -16,6 +16,14 @@ endpoint and a cross-site call, and the one guarantee uf cannot give you —
 that whoever made the call was allowed to.
 </div>
 
+**What you will be able to do:** write and call a server action, submit a form
+to one, know which arguments may cross and what is refused, and make an action
+authorize itself.
+
+**What you need first:** [Server Components](/guide/server-components) for where
+`"use server"` sits in the module graph, and [Async React](/guide/async-react)
+for the transitions an action runs in.
+
 ## Writing one
 
 A module whose first statement is `"use server";`. Every export is an action,
@@ -349,7 +357,8 @@ That is what makes a CMS whose "preview" is a button rather than a link work.
 
 The refusals stay outside that scope: a `403` for a cross-origin call carries no
 cookie, and nothing in that path ran that could have asked for one. See
-[Routing](/guide/routing) for the rest of draft mode.
+[Answering requests](/guide/routing/requests#draft-mode-previewing-what-is-not-published)
+for the rest of draft mode.
 
 ## The types the wire needs
 
@@ -414,3 +423,7 @@ imports the action already has its type.
 The whole of the split this sits inside — what a `"use client"` boundary is,
 and what is still route-shaped — is in
 [Server Components](/guide/server-components).
+
+## Where to go next
+
+[State](/guide/state) is next: atoms, for the state that stays in the browser.

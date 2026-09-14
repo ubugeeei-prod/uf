@@ -28,6 +28,47 @@ fn uf_lock_detects_the_native_resolver() {
     assert_eq!(detection.source.kind(), "lockfile");
 }
 
+/// A `uf.lock` that only locks the toolchain is not a vote for uf's resolver.
+///
+/// ubugeeei-prod/uf#940 records which release `node@26` resolved to in
+/// `uf.lock`. Counting that file as resolver evidence would turn a pnpm project
+/// that locks a Node into a uf-resolver project: here, a directory with nothing
+/// else in it reading as uf's by lockfile rather than by default, and a pnpm
+/// lockfile beside it reported as ambiguous.
+#[test]
+fn a_uf_lock_that_only_locks_the_toolchain_does_not_vote() {
+    let (_guard, root) = temp_root();
+    write(
+        &root.join("uf.lock"),
+        "{\n  \"toolchain\": {\n    \"node@26\": \"26.8.2\"\n  }\n}\n",
+    );
+
+    let detection = detect_within(&root, &root);
+    assert_eq!(detection.source, DetectionSource::Default);
+
+    write(&root.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    let detection = detect_within(&root, &root);
+    assert_eq!(detection.package_manager, PackageManager::Pnpm);
+    assert!(
+        !detection.is_ambiguous(),
+        "the toolchain record is not a second lockfile"
+    );
+    assert!(detection.alternatives.is_empty());
+
+    // The resolver's own file still votes, with a toolchain record in it or not.
+    write(
+        &root.join("uf.lock"),
+        "{\n  \"lockfileVersion\": 1,\n  \"packages\": [],\n  \"toolchain\": {}\n}\n",
+    );
+    let detection = detect_within(&root, &root);
+    assert_eq!(detection.package_manager, PackageManager::Pnpm);
+    assert_eq!(detection.alternatives.len(), 1);
+    assert_eq!(
+        detection.alternatives[0].package_manager,
+        PackageManager::Uf
+    );
+}
+
 #[test]
 fn pnpm_lockfile_detects_pnpm() {
     let (_guard, root) = temp_root();

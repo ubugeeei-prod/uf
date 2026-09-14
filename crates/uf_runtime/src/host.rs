@@ -147,9 +147,10 @@ pub const HOSTS: &[HostSupport] = &[
         enforces: &[],
         verified_by: Some("tools/ci/edge-worker-smoke.sh"),
         missing: Some(
-            "a source-level host and loader: uf can build an ahead-of-time Cloudflare Worker and \
-             smoke it under Wrangler local, but there is no `uf test --runtime edge`, no Flow \
-             loader hook and no remote worker coverage",
+            "a source-level host: uf builds an ahead-of-time Cloudflare Worker and serves it under \
+             Wrangler's local workerd, but `uf test` does not run a test file inside a Worker — \
+             workerd has no module hook but an experimental fallback service — and nothing is \
+             checked against a remote deployment",
         ),
         tracking_issue: Some(246),
     },

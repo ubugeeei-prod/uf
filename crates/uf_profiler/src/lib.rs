@@ -20,7 +20,10 @@
 //!
 //! 1. [`CountingAllocator`] — a `#[global_allocator]` over `System` that
 //!    tallies allocations, bytes, peak live bytes and a power-of-two size
-//!    histogram. [`AllocCounter`] scopes a measurement.
+//!    histogram, for the whole process and for each thread. [`AllocCounter`]
+//!    scopes a measurement of the process; [`ThreadWindow`] scopes one to a
+//!    thread, which is what a test needs, and [`Handover`] brings a worker
+//!    thread's figure back into it.
 //! 2. [`ScopeGuard`] and [`profile_span!`] — thread-local hierarchical spans
 //!    with self/inclusive time and per-span allocation deltas, behind two
 //!    gates so the hot path pays a relaxed atomic load when profiling is off.
@@ -69,7 +72,10 @@ pub mod alloc;
 pub mod report;
 pub mod scope;
 
-pub use alloc::{AllocCounter, AllocDelta, AllocSnapshot, CountingAllocator, Window};
+pub use alloc::{
+    AllocCounter, AllocDelta, AllocSnapshot, CountingAllocator, HandedBack, Handover, ThreadWindow,
+    Window,
+};
 pub use report::{IterationRecord, Report, ReportConfig, SortBy, SpanAggregate};
 pub use scope::{ScopeGuard, ScopeRecord};
 

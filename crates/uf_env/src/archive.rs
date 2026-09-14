@@ -26,6 +26,35 @@ use sha2::{Digest as _, Sha256, Sha512};
 
 use crate::EnvError;
 use crate::source::{Checksum, Digest, Format, Source};
+use crate::store::Store;
+use crate::tool::Pin;
+
+/// Make sure `pin` is in `store`, fetching, checking and unpacking it when it
+/// is not, and say whether it had to be fetched.
+///
+/// The one path every install takes — `uf env install`, and a command
+/// installing the runtime it was told to run on the first time it needs it —
+/// so a first use and an explicit install cannot check an archive two
+/// different ways. A failed install leaves no staging directory behind.
+///
+/// # Errors
+///
+/// When the publisher has no build of `pin` for its platform, or [`install`]
+/// fails.
+pub fn ensure(store: &Store, pin: &Pin) -> Result<bool, EnvError> {
+    if store.has(pin) {
+        return Ok(false);
+    }
+    let source =
+        Source::for_pin(pin).ok_or_else(|| EnvError::NoPublishedBuild { pin: pin.clone() })?;
+    let staging = store.staging(pin)?;
+    if let Err(error) = install(&source, &staging) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    store.adopt(pin, &staging)?;
+    Ok(true)
+}
 
 /// Fetch `source`, check it, and unpack it into `into`.
 ///

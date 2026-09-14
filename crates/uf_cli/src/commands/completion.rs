@@ -20,61 +20,12 @@ mod tests;
 
 use anyhow::Result;
 use camino::Utf8Path;
+use clap::CommandFactory;
 use uf_config::load_config;
 
+use crate::Cli;
 use crate::cli::Shell;
 use crate::ui::Ui;
-
-/// Every subcommand `uf` accepts, in help order.
-///
-/// Written out rather than read from clap: `Commands` is an enum whose variants
-/// clap knows the spelling of, and asking clap for them at runtime costs a
-/// command tree build on a path that has to feel instant. The list is checked
-/// against clap's own in `tests`, so it cannot drift.
-const COMMANDS: &[&str] = &[
-    "add",
-    "audit",
-    "build",
-    "pm",
-    "patch",
-    "catalog",
-    "check",
-    "init",
-    "new",
-    "dev",
-    "doc",
-    "env",
-    "exec",
-    "explain",
-    "fmt",
-    "i18n",
-    "info",
-    "inspect",
-    "install",
-    "i",
-    "clean",
-    "lint",
-    "ls",
-    "lsp",
-    "mcp",
-    "prepare",
-    "preview",
-    "publish",
-    "release",
-    "remove",
-    "uninstall",
-    "routes",
-    "run",
-    "search",
-    "start",
-    "test",
-    "update",
-    "self-update",
-    "use",
-    "why",
-    "completion",
-    "help",
-];
 
 /// Flags accepted anywhere.
 const GLOBAL_FLAGS: &[&str] = &["--cwd", "--color", "--help", "--version"];
@@ -84,9 +35,6 @@ const COLOR_VALUES: &[&str] = &["auto", "always", "never"];
 
 /// What `uf release` takes.
 const RELEASE_BUMPS: &[&str] = &["alpha", "patch", "minor", "major"];
-
-/// What `uf create` takes.
-const CREATE_KINDS: &[&str] = &["app", "lib"];
 
 /// Print the completion script for `shell`.
 pub(crate) fn completion(ui: &mut Ui, shell: Shell) {
@@ -171,10 +119,8 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
     }
 
     match positional.as_slice() {
-        [] => matching(current, COMMANDS.iter().copied()),
         ["run"] => matching(current, tasks.iter().copied()),
         ["release"] => matching(current, RELEASE_BUMPS.iter().copied()),
-        ["create"] => matching(current, CREATE_KINDS.iter().copied()),
         // `explain::KNOWN` itself, not a copy of part of it. These were two
         // hand-maintained lists and nothing compared them, so completion
         // offered a subset — missing `install`, `upgrade`, `run`, `exec` and
@@ -186,13 +132,78 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         // would have kept the second list rather than removed it. This is a
         // list that cannot drift because there is only one of it.
         ["explain"] => matching(current, super::explain::KNOWN.iter().copied()),
-        ["env"] => matching(current, ["doctor", "use"]),
-        ["catalog"] => matching(current, ["set"]),
-        ["pm"] => matching(current, ["approve-builds"]),
-        ["i18n"] => matching(current, ["extract", "merge"]),
-        ["routes"] => matching(current, ["list", "add"]),
-        _ => Vec::new(),
+        // The registry's own names, read out of this binary, so a component
+        // added to `registry/ui/` completes in the release that carries it.
+        ["ui", "add" | "diff", ..] => matching(current, ui_components()),
+        // Everything else that completes is a subcommand, and those are the
+        // parser's: at the top level, which is the empty path, and under every
+        // parent below it.
+        path => subcommands(path).map_or_else(Vec::new, |names| {
+            matching(current, names.iter().map(String::as_str))
+        }),
     }
+}
+
+/// Every name the parser accepts for a visible subcommand of the command
+/// `path` names, in `uf --help` order — or `None` when `path` names no command,
+/// or names one that takes arguments rather than subcommands.
+///
+/// Read from clap rather than written out, at every depth. Each parent's
+/// subcommands used to be a list in [`candidates`], and `env`'s had stopped at
+/// `doctor` and `use` while the parser grew `install`, `list`, `update`, `exec`
+/// and `gc` — so a person finding the toolchain commands by TAB never met
+/// `uf env install`, and the test beside the list asserted the subset
+/// (ubugeeei-prod/uf#1012). That is #425's shape one level down, and it gets
+/// #425's fix: a list that cannot drift because there is only one of it, so
+/// adding a subcommand to `cli.rs` is adding it to completion.
+///
+/// The top level is the same walk with an empty path. It had a hand-written
+/// copy, on the argument that building the command tree is a cost on a path
+/// that has to feel instant; but `uf __complete` only reaches this module
+/// through `Cli::try_parse_from`, which has built that tree once already, so
+/// the copy saved one repetition of work every completion request pays anyway.
+///
+/// `build` first, because that is what puts clap's own `help` beside every
+/// parent's subcommands — `uf env help` is a command the parser accepts — and
+/// fills in the tree under `uf help`. Hidden commands are not offered, since
+/// `uf __complete` and `uf transform` are spawned by scripts rather than typed,
+/// but a hidden command someone *has* typed is still walked into, so
+/// `uf create <TAB>` offers `app` and `lib`. Every alias is offered beside its
+/// command, hidden ones too: hiding `uninstall` keeps `uf --help` short, and
+/// completion is for finishing a word someone has already started typing.
+fn subcommands(path: &[&str]) -> Option<Vec<String>> {
+    let mut parser = Cli::command();
+    parser.build();
+
+    let mut current = &parser;
+    for word in path {
+        current = current.get_subcommands().find(|command| {
+            command.get_name() == *word || command.get_all_aliases().any(|alias| alias == *word)
+        })?;
+    }
+
+    let names = current
+        .get_subcommands()
+        .filter(|command| !command.is_hide_set())
+        .flat_map(|command| std::iter::once(command.get_name()).chain(command.get_all_aliases()))
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    (!names.is_empty()).then_some(names)
+}
+
+/// The components `uf ui add` can write, or none from a binary whose registry
+/// cannot be read — a completion has nowhere to print an error.
+fn ui_components() -> Vec<&'static str> {
+    uf_ui::Registry::embedded().map_or_else(
+        |_| Vec::new(),
+        |registry| {
+            registry
+                .components()
+                .iter()
+                .map(|component| component.name)
+                .collect()
+        },
+    )
 }
 
 /// Those of `pool` that start with `prefix`, in the order `pool` gave them.

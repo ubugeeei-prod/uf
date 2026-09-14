@@ -32,29 +32,40 @@
 // A library written in TypeScript can document those constraints; it cannot
 // state them.
 //
-// # There is no copy step, and `render` is what replaces it
+// # The copy step copies the look, never the behaviour
 //
 // shadcn's product is not a component. It is `npx shadcn add dialog`, which
 // writes the source into your repository so that you own it and change it —
 // and around that sit `init`, `view`, `search`, `build`, `migrate`, `eject`, an
 // MCP server, a `components.json` and a registry format anybody can publish to.
-// uf answers the headline question the other way. The roadmap says "typed
-// imports, preset styles, and **no copy step**", and that answer takes
-// something away, so it is argued here rather than assumed.
-// ubugeeei-prod/uf#303 is where it was argued; this is the decision.
+// The roadmap first answered that with "typed imports, preset styles, and
+// **no copy step**", and ubugeeei-prod/uf#303 is where the answer was argued.
+// ubugeeei-prod/uf#947 kept half of it and reversed the other half, and the
+// half it kept is this package.
 //
-// **Why not.** A copy is a fork with no upstream, and four things follow. A
-// focus trap fixed here reaches everyone who upgrades and reaches nobody who
-// copied. The composition constraints above are checked *across the boundary*:
-// `Tabs.List` declaring `renders* Tabs.Tab` means something while the library
-// is imported and means nothing once the source has been pasted into an
-// application, because then it is the application's own component and Flow has
-// nothing left to hold it to. `sideEffects: false` and one subpath per
-// primitive already give a bundler everything a copy would. And the
-// accessibility work stays in one place with one suite over it, rather than in
-// every consumer's repository at the version they took it at.
+// **Why this package is still never copied.** A copy is a fork with no
+// upstream, and four things follow. A focus trap fixed here reaches everyone
+// who upgrades and reaches nobody who copied. The composition constraints above
+// are checked *across the boundary*: `Tabs.List` declaring `renders* Tabs.Tab`
+// means something while the library is imported and means nothing once the
+// source has been pasted into an application, because then it is the
+// application's own component and Flow has nothing left to hold it to.
+// `sideEffects: false` and one subpath per primitive already give a bundler
+// everything a copy would. And the accessibility work stays in one place with
+// one suite over it, rather than in every consumer's repository at the version
+// they took it at.
 //
-// **What a caller gets instead of owning the source.** The reason people copy
+// **What `uf ui add` copies instead.** The styled layer. `uf ui add dialog`
+// writes `app/components/ui/dialog.js`, which imports its parts from
+// `@uniflowed/ui/dialog` and owns the scrim, the spacing and the tone of the
+// trigger — what a person means when they say "our dialog". None of the four
+// arguments above is reopened by it, because none of them is about the look:
+// the focus trap still arrives by upgrade, and the copied `TabsList` still takes
+// `renders* TabsTab` over a `TabsTab` that renders this package's tab, so the
+// constraint holds in the application's own file. `crates/uf_ui`'s header is
+// the decision in full.
+//
+// **What a caller gets without copying anything.** The reason people copy
 // is to change the markup, so that has to be answered or this is a worse
 // library for the same use. The answer is `render`, which every part that
 // renders an element of its own is growing:
@@ -76,7 +87,7 @@
 // the part: `Menu.Body`'s `renders*` still rejects a `<div>` where a
 // `Menu.Item` belongs, because a `Menu.Item` rendered as an `<a>` is a
 // `Menu.Item`. That is the half a copied source cannot keep, and it is what
-// makes "no copy step" a trade rather than a loss.
+// makes leaving this package uncopied a trade rather than a loss.
 //
 // **Where it is, today.** Every fixed-element part has it in `Accordion`,
 // `Alert`, `AlertDialog`, `Avatar`, `Breadcrumb`, `Collapsible`, `Dialog`,
@@ -109,17 +120,16 @@
 // this package would have used, and their own composition sits inside a part
 // that is still checked.
 //
-// **What the CLI adds: nothing new.** There is no `uf add`, no
-// `components.json` and no registry, and none is planned. The one affordance
-// `shadcn view` has that is worth having is "tell me what this component is
-// made of", and `uf inspect --json` already answers it: every component, its
-// parts and its readiness, out of `crates/uf_lib/src/ui.rs`, which
-// `cargo test -p uf_lib` holds to this barrel in both directions. A
-// `uf explain Dialog` that also printed the keyboard map and the ARIA is the
-// one thing #303 leaves open; it is a nicer front end for a table that already
-// exists, not a copy step, and this decision does not depend on it.
-// `uf.config.js` is the one configuration surface by design, so a UI option, if
-// there is ever one to make, belongs there rather than in a second file.
+// **What the CLI adds.** `uf ui add`, `uf ui list` and `uf ui diff`, over a
+// registry of styled components in `registry/ui/` that is embedded into the
+// binary — each one built on parts exported here, and none of them a copy of
+// one. There is still no registry of *primitives*, for the reason the previous
+// paragraph gives, and there is no `components.json`: `uf.config.js` is the one
+// configuration surface by design, so a UI option belongs there rather than in
+// a second file. The affordance `shadcn view` has — "tell me what this
+// component is made of" — is still `uf inspect --json` for the parts, out of
+// `crates/uf_lib/src/ui.rs`, which `cargo test -p uf_lib` holds to this barrel
+// in both directions.
 //
 // # Styling is a default, not a dependency
 //

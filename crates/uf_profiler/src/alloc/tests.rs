@@ -247,3 +247,166 @@ fn a_nested_counter_measures_its_own_stretch_and_the_outer_one_covers_both() {
         "and still not the 64 MiB: {outer_delta:?}"
     );
 }
+
+/// A thread window counts the thread that opened it, and nobody else.
+///
+/// The reason it exists. `cargo test` runs a binary's tests at once, so a
+/// figure read from the process-wide counters is a test's own allocations plus
+/// its neighbours' — which is how a resolver loop that makes 128 allocations
+/// read 7,239 on a CI runner. The neighbour here allocates flat out, and the
+/// window is held open until it provably has, so an exact figure is a
+/// statement about attribution rather than about timing.
+///
+/// No `exclusive()` lock, on purpose: a thread window must not need one.
+#[test]
+fn a_thread_window_counts_its_own_thread_and_not_the_one_beside_it() {
+    const OWN: u64 = 100;
+    let stop = AtomicBool::new(false);
+    let neighbour = AtomicU64::new(0);
+
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !stop.load(Ordering::Relaxed) {
+                drop(std::hint::black_box(Vec::<u8>::with_capacity(512)));
+                neighbour.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+
+        let window = ThreadWindow::open();
+        let neighbour_at_open = neighbour.load(Ordering::Relaxed);
+        for _ in 0..OWN {
+            drop(std::hint::black_box(Vec::<u8>::with_capacity(256)));
+        }
+        // Not closed until the neighbour has allocated inside the window a
+        // thousand times over, however the scheduler felt about it.
+        while neighbour.load(Ordering::Relaxed) < neighbour_at_open + 1_000 {
+            std::thread::yield_now();
+        }
+        let delta = window.close();
+        stop.store(true, Ordering::Relaxed);
+
+        assert_eq!(delta.allocations, OWN, "{delta:?}");
+        assert_eq!(delta.deallocations, OWN, "{delta:?}");
+        assert_eq!(delta.bytes_allocated, OWN * 256, "{delta:?}");
+    });
+}
+
+/// A worker's allocations reach the window of the thread that handed it work
+/// when the worker hands them back, and only then.
+///
+/// uf runs most of what a budget measures on a thread of its own — the
+/// checker, the linter's parse — so this is the difference between a budget
+/// that measures the command and one that measures starting a thread.
+#[test]
+fn a_workers_allocations_reach_the_callers_window_only_through_a_handover() {
+    const WORKER: u64 = 64;
+    fn work() {
+        for _ in 0..WORKER {
+            drop(std::hint::black_box(Box::new([0_u8; 32])));
+        }
+    }
+
+    // One thread started before anything is measured, so that whatever the
+    // first start on this thread costs once is in neither figure below.
+    std::thread::scope(|scope| {
+        scope.spawn(|| {});
+    });
+
+    let window = ThreadWindow::open();
+    let handover = Handover::capture();
+    std::thread::scope(|scope| {
+        scope
+            .spawn(move || handover.run(work))
+            .join()
+            .map(HandedBack::receive)
+            .expect("the worker runs");
+    });
+    let handed_back = window.close();
+
+    let window = ThreadWindow::open();
+    std::thread::scope(|scope| {
+        scope.spawn(work).join().expect("the worker runs");
+    });
+    let kept = window.close();
+
+    // Starting a thread costs this one a few allocations either way — the
+    // thread's handle, the slot its result comes back in — so the worker's own
+    // are exactly the difference between the two figures.
+    assert!(
+        kept.allocations < WORKER,
+        "a worker that hands nothing back is not counted: {kept:?}"
+    );
+    assert_eq!(
+        handed_back.allocations - kept.allocations,
+        WORKER,
+        "a worker that hands its figure back is counted, all of it: \
+         {handed_back:?} {kept:?}"
+    );
+}
+
+/// Thread windows nest, and their high-water marks compose.
+///
+/// The inner window measures its own stretch; the outer one, still counting,
+/// covers the inner's as well; and neither reports a peak from before it
+/// opened. Nothing but this thread can add to a thread's counters, so these
+/// are equalities where the process-wide versions above have to be ranges.
+#[test]
+fn a_nested_thread_window_measures_its_own_stretch_and_the_outer_one_covers_both() {
+    const SMALL: usize = 256 * 1024;
+    const BIG: usize = 4 * 1024 * 1024;
+
+    // Not for this test's sake — nothing another test does can reach a
+    // thread's counters — but for the process-wide tests beside it, which
+    // count every thread. The 64 MiB below lands in their peak as well, and
+    // `a_nested_counter_measures_its_own_stretch_and_the_outer_one_covers_both`
+    // asserts that nothing that size happened in its stretch. Without the lock
+    // it failed twice in four runs under load: ubugeeei-prod/uf#1015 in
+    // miniature.
+    let _lock = exclusive();
+
+    let outermost = ThreadWindow::open();
+    // A high mark set while counting, before either window under test opens:
+    // what a window that read the thread's running peak would report.
+    let heavy = Vec::<u8>::with_capacity(64 * 1024 * 1024);
+    std::hint::black_box(&heavy);
+    drop(heavy);
+
+    let outer = ThreadWindow::open();
+    let small = Vec::<u8>::with_capacity(SMALL);
+    std::hint::black_box(&small);
+
+    let inner = ThreadWindow::open();
+    let big = Vec::<u8>::with_capacity(BIG);
+    std::hint::black_box(&big);
+    let inner_delta = inner.close();
+    drop(big);
+
+    let outer_delta = outer.close();
+    drop(small);
+    let _ = outermost.close();
+
+    assert_eq!(inner_delta.allocations, 1, "{inner_delta:?}");
+    assert_eq!(
+        inner_delta.peak_above_baseline, BIG as u64,
+        "{inner_delta:?}"
+    );
+    assert_eq!(
+        inner_delta.largest_allocation, BIG as u64,
+        "{inner_delta:?}"
+    );
+
+    assert_eq!(
+        outer_delta.allocations, 2,
+        "its own and the inner window's, and no probe: {outer_delta:?}"
+    );
+    assert_eq!(outer_delta.deallocations, 1, "{outer_delta:?}");
+    assert_eq!(
+        outer_delta.peak_above_baseline,
+        (SMALL + BIG) as u64,
+        "{outer_delta:?}"
+    );
+    assert_eq!(
+        outer_delta.largest_allocation, BIG as u64,
+        "{outer_delta:?}"
+    );
+}

@@ -1,0 +1,28 @@
+declare export enum Direction {
+  Up = 0,
+  Down = 1,
+  Left = 10,
+  Right = 11,
+}
+declare export enum Color {
+  Red = "RED",
+  Green = "GREEN",
+}
+declare export enum Bits {
+  None = 0,
+  A = 1,
+  B = 2,
+  AB = 3,
+}
+declare export enum Signed {
+  Minus = -1,
+  Zero = 0,
+}
+declare export var Mixed: any;
+
+
+
+declare export var Quoted: any;
+
+
+declare export var Computed: any;

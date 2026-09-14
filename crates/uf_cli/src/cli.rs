@@ -266,6 +266,10 @@ pub(crate) enum Commands {
         command: CreateCommand,
     },
     /// Start the development server, with hot module replacement.
+    ///
+    /// For a native target the server is the project's own: `expo start` when
+    /// Expo is installed, `react-native start` otherwise, with Metro routing
+    /// every module through `uf transform`.
     Dev {
         /// Bind a routable address instead of loopback. Requires a non-empty
         /// `dev.allowedHosts` in `uf.config.js`; see `docs/security.md`.
@@ -278,6 +282,18 @@ pub(crate) enum Commands {
         /// `import.meta.env.MODE` reads.
         #[arg(long, value_name = "MODE")]
         mode: Option<String>,
+        /// Develop this application target: `web`, `native`, `ios` or
+        /// `android`. A `react-native` framework project defaults to `native`.
+        //
+        // A free-form string for `uf build --target`'s reason: the refusal has
+        // to be able to say why a target is not accepted, not only list the
+        // ones that are.
+        #[arg(long, value_name = "TARGET")]
+        target: Option<String>,
+        /// Arguments for a native target's own dev server, after `--`:
+        /// `uf dev --target native -- --tunnel`.
+        #[arg(last = true, value_name = "ARGS")]
+        passthrough: Vec<String>,
     },
     /// Generate API documentation from exported Flow source.
     ///
@@ -330,6 +346,10 @@ pub(crate) enum Commands {
         command: String,
         #[arg(long)]
         json: bool,
+        /// Describe `uf dev` for this application target: `web`, `native`,
+        /// `ios` or `android`.
+        #[arg(long, value_name = "TARGET")]
+        target: Option<String>,
     },
     /// Format every file in the project.
     ///
@@ -425,6 +445,15 @@ pub(crate) enum Commands {
         /// still parses and still formats — read the diff before committing it.
         #[arg(long, conflicts_with = "fix")]
         fix_unsafe: bool,
+        /// List every rule instead of linting: the level it runs at in this
+        /// project, and whether `--fix`, `--fix-unsafe` or `uf fmt` answers it.
+        ///
+        /// The level is the one a lint run here would use — `uf.config.js`
+        /// over the defaults, deprecated rule names included — so a rule this
+        /// project turned off says `off`. With `--json`, the same list
+        /// machine-readably.
+        #[arg(long, conflicts_with_all = ["fix", "fix_unsafe", "paths"])]
+        rules: bool,
         /// Only lint files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -512,6 +541,17 @@ pub(crate) enum Commands {
     Routes {
         #[command(subcommand)]
         command: RoutesCommand,
+    },
+    /// Styled components the project owns: add them, list them, compare them.
+    ///
+    /// `uf ui add dialog` writes `app/components/ui/dialog.js` — `@uniflowed/ui`'s
+    /// dialog, styled with `@uniflowed/stylex`'s tokens — and from then on the
+    /// file is the project's to change. The components are part of this uf, so
+    /// adding one needs no network and writes the version that matches the uf
+    /// running it. `crates/uf_ui` says why each part of that is the way it is.
+    Ui {
+        #[command(subcommand)]
+        command: UiCommand,
     },
     /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
@@ -808,6 +848,9 @@ impl Commands {
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true, .. }
                 | Self::Test { json: true, .. }
+                | Self::Ui {
+                    command: UiCommand::List { json: true } | UiCommand::Diff { json: true, .. },
+                }
         )
     }
 
@@ -844,10 +887,11 @@ pub(crate) enum RoutesCommand {
     /// The path is a URL path in the spelling the directories already use —
     /// `/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what
     /// is typed is what appears in `RoutePath`. A spelling uf reserves without
-    /// serving (`(.)photo`) is refused here with the same sentence `uf build`
-    /// and `uf lint` give, rather than written and reported later. A `@slot`
-    /// is refused too, for the opposite reason: uf serves parallel routes, and
-    /// a slot is not a URL — this command's argument is one.
+    /// serving (`(....)photo`) is refused here with the same sentence
+    /// `uf build` and `uf lint` give, rather than written and reported later. A
+    /// `@slot` and an intercepting route (`(.)photo`) are refused too, for the
+    /// opposite reason: uf serves both, and neither is a URL — this command's
+    /// argument is one.
     ///
     /// Nothing is overwritten: a route whose page exists is an error, and a
     /// run that stops has written none of its files.
@@ -871,6 +915,49 @@ pub(crate) enum RoutesCommand {
         /// Also write `$middleware.js`: what runs before this path answers.
         #[arg(long)]
         middleware: bool,
+    },
+}
+
+/// What `uf ui` can do with the components a project owns.
+#[derive(Debug, Subcommand)]
+pub(crate) enum UiCommand {
+    /// Write components into `app/components/ui/`, with the components and the
+    /// packages they need.
+    ///
+    /// A file somebody edited, or one `uf ui add` did not write, is not
+    /// replaced: the run stops, names the file and writes nothing, `uf ui diff`
+    /// shows how it differs, and `--overwrite` replaces it. A copy nobody
+    /// edited is brought up to this uf's version. Packages the components
+    /// import that `package.json` does not name are added first, through
+    /// `uf add`, at this uf's version.
+    Add {
+        /// Replace an edited file, or one `uf ui add` did not write, among the
+        /// components named.
+        #[arg(long)]
+        overwrite: bool,
+        /// The components: `button`, `dialog`, `tabs`, `select`.
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
+    },
+    /// Every component this uf carries, and which of them the project has.
+    List {
+        /// Emit machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// How the project's copies differ from this uf's components.
+    ///
+    /// A `+` line is in the project's copy and not in the registry's, so the
+    /// diff of an edited copy reads as the edit. Each copy says which uf wrote
+    /// it, and whether this uf's version has moved since.
+    Diff {
+        /// Emit machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+        /// The components to compare; every one the project has, when none is
+        /// named.
+        #[arg(value_name = "NAME")]
+        names: Vec<String>,
     },
 }
 
@@ -1056,8 +1143,14 @@ pub(crate) enum EnvCommand {
     /// Into a store shared by every repository on this machine, linked into
     /// this one. Nothing is installed globally and `PATH` is not changed.
     Install,
-    /// List what this project declares and what the store holds.
+    /// List each tool this project declares, what it is for, and what the
+    /// store holds.
     List,
+    /// Resolve every version prefix — `node@26` — against its publisher's
+    /// current release list, and move `uf.lock` to the newest release of each.
+    ///
+    /// Installs nothing: `uf env install` installs what moved.
+    Update,
     /// Run a command with this project's toolchain in front of `PATH`.
     Exec {
         /// The command and its arguments.
@@ -1085,6 +1178,7 @@ mod tests {
                 json: true,
                 fix: false,
                 fix_unsafe: false,
+                rules: false,
                 paths: Vec::new()
             }
             .wants_json()

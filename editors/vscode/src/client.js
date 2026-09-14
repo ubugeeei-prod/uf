@@ -37,13 +37,10 @@ export type Settings = {
 // The one subcommand. `uf lsp` speaks JSON-RPC over stdio and takes no
 // options that matter here.
 //
-// Notably *not* `--cwd`: `uf lsp` accepts the flag — it is a global option, so
-// clap prints it in `uf lsp --help` — and then ignores it, because the command
-// reads its configuration with `load_config(".")` rather than from the
-// resolved directory. Passing it would look like it worked and silently give
-// the project uf's defaults. Setting the child process's own working
-// directory is the thing that actually works, and it is what `serverExecutable`
-// does. See the report in the repository for the reproduction.
+// Notably *not* `--cwd`, although `uf lsp` reads its configuration from the
+// directory that flag names. `serverExecutable` sets the child process's own
+// working directory to the project folder, which says the same thing, and a
+// second statement of it would be a second thing to keep in step.
 const SERVER_ARGUMENTS = ["lsp"];
 
 // The name of the output channel and the language client's id. The id is what

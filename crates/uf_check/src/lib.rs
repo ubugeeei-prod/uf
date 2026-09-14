@@ -204,5 +204,15 @@ pub fn check_sources_cached(
     }
 }
 
+/// The counting allocator, for this crate's own test binary.
+///
+/// The resolver's allocation budget and the check thread's hand-back test
+/// measure with [`uf_profiler::ThreadWindow`], which refuses to open without
+/// it rather than report zeroes. Declared once for the binary, here, rather
+/// than inside whichever test module happened to need it first.
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: uf_profiler::CountingAllocator = uf_profiler::CountingAllocator::new();
+
 #[cfg(test)]
 mod tests;

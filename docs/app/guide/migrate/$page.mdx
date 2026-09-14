@@ -101,7 +101,7 @@ through the constructs. Most of them are a one-line change:
 | `React.FC<Props>` | `component` |
 | a custom hook | `hook useThing(…)` — the rules of hooks become type errors |
 | `unknown` | `mixed` |
-| `readonly x: T` | `+x: T` (Flow also accepts `readonly`) |
+| `readonly x: T` | `readonly x: T`, unchanged — Flow's older `+x: T` is an error under `uf check` |
 | `x as T` | `(x: T)`, or a documented `$FlowFixMe` |
 | a `.d.ts` you wrote | a libdef, or Flow types in the source |
 | `switch` with a `default: never` | [`match`](https://flow.org/en/docs/match/), which is exhaustive by construction |
@@ -207,7 +207,7 @@ The conventions line up more closely than the capabilities do:
 | `not-found.tsx` | `$not-found.js`, a segment file resolved by the nearest one above the path; a project that declares none gets uf's page inside the root's layouts |
 | `template.tsx` | `$template.js` — a layout that remounts, keyed on the pathname |
 | `@slot/` | `@slot/` — a parallel route: the segment's own layout receives it as a prop beside `children`, and the slot's pages are matched against the same URL. Slot-local `loading`, `template` and browser `error` files compose inside the slot; per-slot `not-found` is still refused ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
-| `(.)folder/` | **refused by name.** uf has no intercepting routes: a navigation carries where it is going and not where it came from ([#267](https://github.com/ubugeeei-prod/uf/issues/267)) |
+| `(.)folder/` | `@slot/(.)folder/` — an intercepting route, inside the slot it renders into: a client navigation from a page the slot is on shows it there, and a reload renders the page the URL names. Outside a slot it is refused, and so is one whose URL has no page of its own; see [Intercepting routes](/guide/routing#intercepting-routes) |
 | `default.tsx` | `$default.js`, directly inside the `@slot` it belongs to. There is no `default` for `children`: a URL that matches no page is a 404 |
 | `middleware.ts` | `$middleware.js`, never called |
 | `generateStaticParams` | `generateStaticParams` |
@@ -239,7 +239,8 @@ codebase, and it beats any figure this page could assert.
 
 ## Where to go next
 
-[Your first project](/guide/project) is the shape you are converting into.
-[What uf does not do](/guide/scope) is the list of walls, kept current with
+[Start](/guide/start) is next: install uf and make a project, which is the shape
+you are converting into — [Your first project](/guide/project) explains each file
+of it. [What uf does not do](/guide/scope) is the list of walls, kept current with
 issue numbers. If the answer turns out to be "not yet", that is a supported
 answer — it is why the list exists.

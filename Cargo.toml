@@ -6,6 +6,7 @@ members = [
   "crates/uf_cli",
   "crates/uf_config",
   "crates/uf_doc",
+  "crates/uf_dts",
   "crates/uf_env",
   "crates/uf_flow",
   "crates/uf_fmt",
@@ -30,6 +31,7 @@ members = [
   "crates/uf_test",
   "crates/uf_transform",
   "crates/uf_tui",
+  "crates/uf_ui",
 ]
 exclude = ["upstream"]
 resolver = "3"
@@ -40,7 +42,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ubugeeei-prod/uf"
 rust-version = "1.98"
-version = "0.0.0-alpha.33"
+version = "0.0.0-alpha.34"
 
 [workspace.lints.rust]
 warnings = "deny"
@@ -74,6 +76,12 @@ flow_lazy = { path = "upstream/flow/rust_port/crates/flow_lazy" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
 oxc_allocator = "0.147.0"
+# The TypeScript syntax tree `uf_dts` reads declaration files into, and the
+# visitor it walks one with. Both are already in the graph under
+# `oxc_parser` and `oxc_semantic`; named here because `uf_dts` matches on the
+# tree itself rather than through either of them.
+oxc_ast = "0.147.0"
+oxc_ast_visit = "0.147.0"
 oxc_codegen = "0.147.0"
 oxc_parser = "0.147.0"
 oxc_semantic = "0.147.0"
@@ -110,6 +118,10 @@ rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 sha2 = "0.11.0"
+# Line diffs for `uf ui diff`, which shows how a project's copy of a component
+# has moved away from the registry's. Already in the lockfile through
+# `similar-asserts`, which the test suites use for the same job.
+similar = "3.2.0"
 similar-asserts = "2.0.0"
 # Google Fonts' own font subsetter, a Rust port of HarfBuzz's `hb-subset`, for
 # `uf_assets::subset`. Rebuilding a font from a glyph closure is the work

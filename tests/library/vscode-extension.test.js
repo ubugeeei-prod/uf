@@ -224,11 +224,9 @@ describe("how the server gets started", () => {
   });
 
   it("starts the server in the project folder rather than passing --cwd", () => {
-    // `uf lsp` accepts `--cwd` and ignores it: the command reads its
-    // configuration with `load_config(".")`, so the flag would look like it
-    // worked and quietly give the project uf's default formatter width and
-    // lint levels. The child process's own working directory is what the
-    // server actually reads.
+    // One statement of which project this is, not two: the child process's
+    // own working directory is the project folder, and that is what the
+    // server reads when no `--cwd` names another.
     expect(client.SERVER_ARGUMENTS).not.toContain("--cwd");
 
     const executable = client.serverExecutable(found, FOLDER);

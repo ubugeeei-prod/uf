@@ -357,6 +357,7 @@ what a file in a repository you just cloned can make uf do.
 | A profile or mode that escapes the project — `uf env use ../../etc`, `uf build --mode ../secrets` | A mode is the end of a file name and is checked against a closed character set before anything is read or written; `local` is refused because `.env.local` already means something else | `uf_config::env_files::check_mode` |
 | Unbounded file text as an allocation vector | Every file has a byte ceiling and a typed error above it, and the parser is one hand-written pass with no regex | `uf_config::env_files` |
 | A credential printed into a log by a diagnostic | `uf inspect` reports the mode, the file names and the variable *names*; the banners report the mode and the files; a parse error names the line and the text before the `=`. No command prints a value | `uf_cli::commands::inspect`, `uf_config::env_files` |
+| A credential written to disk by the task cache, which a CI step that caches `.uf/cache` archives with everything else | The note `uf run --why` compares against keeps each variable's name and a digest of where it came from, its name and its value — enough to name the variable that changed, never the value — and a run removes the plaintext notes an earlier uf kept under `.uf/cache/task/last/`. A digest hides a value from a reader, not from somebody guessing it, and a key that has to be the same on every machine cannot do better | `uf_task::environment`, `crates/uf_cli/tests/tasks.rs` |
 
 ## Parser, formatter, linter, and test runner
 

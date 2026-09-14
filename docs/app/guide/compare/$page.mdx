@@ -13,6 +13,13 @@ the same tables as the rows it wins, because a comparison that only lists
 strengths tells you nothing you could not have guessed from the home page.
 </div>
 
+**What you will be able to do:** set uf beside the tool you use today —
+`create-react-app`, Vite and React, Next.js or Bun — reading the rows uf loses
+before the rows it wins.
+
+**What you need first:** nothing installed. If you write TypeScript, read [Flow
+and TypeScript](/guide/typescript) first: it decides most of this page.
+
 ## The one-screen version
 
 | | `create-react-app` | Vite + React | Next.js | Bun | uf |
@@ -122,7 +129,7 @@ therefore separates "there is code" from "this is mature".
 | Streaming, Suspense boundaries | yes | HTML streaming on Node, Bun, Deno, container and edge; static prerender waits, and serverless buffers the response ([Async React](/guide/async-react), [Commands](/reference/cli#serverless)) |
 | ISR, caching, revalidation | yes | route and fetch caches, opt-in, with time-based and on-demand revalidation; naming a durable `store` makes a stale document regenerate in place, which is the behaviour ISR names. The `isr` and `ppr` mode names are still planned, the build's prerender does not seed the store, and data and action caches are refused ([Caching](/guide/cache), [`rendering.modes`](/reference/config#renderingmodes)) |
 | Middleware | yes | request middleware runs before route resolution on server targets; static output cannot run it and is refused when it would be required ([Commands](/reference/cli#static)) |
-| HTTP `QUERY` | no: a [route handler](https://nextjs.org/docs/app/api-reference/file-conventions/route) exports `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` and `OPTIONS` | a route handler exports `QUERY` and `@uniflowed/fetch` sends one; a proxy with its own list of verbs can still refuse it ([Routing](/guide/routing#query-the-get-whose-parameters-did-not-fit-in-a-url)) |
+| HTTP `QUERY` | no: a [route handler](https://nextjs.org/docs/app/api-reference/file-conventions/route) exports `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD` and `OPTIONS` | a route handler exports `QUERY` and `@uniflowed/fetch` sends one; a proxy with its own list of verbs can still refuse it ([Routing](/guide/routing/requests#query-the-get-whose-parameters-did-not-fit-in-a-url)) |
 | Image optimisation | yes, plus a request-time optimizer | build time only: an imported image is resized to the declared widths and gets a real `srcset`, `sizes`, intrinsic dimensions and a blur placeholder. **No AVIF and no lossy WebP** — neither has a pure-Rust encoder uf ships — and no request-time endpoint ([Images, fonts, icons and cards](/guide/assets#what-this-does-not-do)) |
 | Font self-hosting | yes, downloaded and subsetted at build time | an imported font is self-hosted, content-hashed, declared with `font-display` and paired with a `size-adjust` fallback computed from its own metrics, and `app.builtins.fonts.subset: "ranges"` splits it by script with exact `unicode-range`s. **Not downloaded from a provider**, written as WOFF rather than WOFF2 when it is split, and not cut down to the text a page uses ([Images, fonts, icons and cards](/guide/assets#a-font)) |
 | Error boundaries | yes | `$error.js`, resolved by the nearest ancestor the way `$not-found.js` is; `unauthorized()`, `forbidden()` and a thrown error reach it as one `RouteError`, answered 401, 403 and 500 ([Routing](/guide/routing#when-a-page-throws)) |
@@ -211,6 +218,6 @@ does not.
 
 ## Where to go next
 
-[Migrating to uf](/guide/migrate) is the honest cost of moving from any of the
-above. [Flow and TypeScript](/guide/typescript) is the language decision, which
-is the one that actually matters.
+[uf and Vite+](/guide/vite-plus) is next: the toolchain uf is most often
+compared to, and why the two answer different questions. [Migrating to
+uf](/guide/migrate) is what moving from any of the above costs.

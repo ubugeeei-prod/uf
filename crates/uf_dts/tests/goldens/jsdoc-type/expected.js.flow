@@ -1,0 +1,2 @@
+export type Maybe = any;
+export type Defined = string;
