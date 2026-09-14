@@ -285,6 +285,75 @@ fn why_names_the_input_that_changed() {
     assert!(added.stderr.contains("src/b.js is new"), "{}", added.stderr);
 }
 
+/// A `.env` value is in no file a cached run writes, and `--why` names the
+/// variable that changed without printing either value.
+///
+/// Until #1006 the note `--why` reads kept the mode and every `.env` value a
+/// task was given, verbatim, under `.uf/cache/task/last/`.
+#[test]
+fn a_dotenv_value_is_in_no_file_the_task_cache_writes() {
+    const FIRST: &str = "not-a-real-secret-4f1c2b";
+    const ROTATED: &str = "not-a-real-secret-9e7a3d";
+    let dir =
+        project(r#"{ "check": { "command": "echo went >> ran.txt", "inputs": ["src/**/*.js"] } }"#);
+    fs::create_dir_all(dir.path().join("src")).unwrap();
+    fs::write(dir.path().join("src/a.js"), "let a = 1;\n").unwrap();
+
+    fs::write(dir.path().join(".env"), format!("API_TOKEN={FIRST}\n")).unwrap();
+    let first = run(dir.path(), &["check"]);
+    assert!(first.ok, "{}", first.stderr);
+    assert_no_file_holds(&dir.path().join(".uf"), &[FIRST]);
+
+    fs::write(dir.path().join(".env"), format!("API_TOKEN={ROTATED}\n")).unwrap();
+    let second = run(dir.path(), &["check", "--why"]);
+    assert!(second.ok, "{}", second.stderr);
+    assert_eq!(lines(dir.path(), "ran.txt"), vec!["went", "went"]);
+    assert!(
+        second.stderr.contains("API_TOKEN has a different value"),
+        "--why has to name the variable:\n{}",
+        second.stderr
+    );
+    assert!(
+        !second.stderr.contains(FIRST) && !second.stderr.contains(ROTATED),
+        "{}",
+        second.stderr
+    );
+    assert_no_file_holds(&dir.path().join(".uf"), &[FIRST, ROTATED]);
+}
+
+/// No file under `directory` holds any of `values` — and there are files, so
+/// a search of nothing cannot pass.
+fn assert_no_file_holds(directory: &Path, values: &[&str]) {
+    let mut pending = vec![directory.to_path_buf()];
+    let mut searched = 0;
+    while let Some(next) = pending.pop() {
+        for entry in fs::read_dir(&next).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let bytes = fs::read(&path).unwrap();
+            for value in values {
+                assert!(
+                    !bytes
+                        .windows(value.len())
+                        .any(|window| window == value.as_bytes()),
+                    "{} holds {value}",
+                    path.display()
+                );
+            }
+            searched += 1;
+        }
+    }
+    // A record and a note, at the least.
+    assert!(
+        searched >= 2,
+        "{searched} files under {}",
+        directory.display()
+    );
+}
+
 /// A result is only true while the files it produced are still the ones it
 /// produced.
 #[test]

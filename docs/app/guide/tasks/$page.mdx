@@ -186,7 +186,13 @@ every cacheable task whatever the cache holds, and still records what they
 produce. The records are under `.uf/cache/task/`, and `uf clean` removes all of
 `.uf/`.
 
-Five things the key does not know, and what each one costs:
+The note `--why` compares against keeps the name of every variable a task was
+given and a digest of its value, never the value, which is how `--why` can say
+that `API_TOKEN` changed without saying what to. A digest does not hide a value
+that can be guessed — `DEBUG=true` is one of a handful — and no cache keyed by
+content can: whoever holds `.uf/cache` can check a guess against it.
+
+Four things the key does not know, and what each one costs:
 
 - **The process environment.** A variable exported in the shell and read by the
   task is not in the key, so changing it replays a stale answer. Put a value the
@@ -204,10 +210,6 @@ Five things the key does not know, and what each one costs:
   literally, and does not follow symbolic links. So `outputs: ["packages/*/dist/**"]`
   matches nothing, and a deleted `dist` behind it is not noticed — name the
   directory, `packages/ui/dist/**`.
-- **What is private.** The note `--why` compares against, under
-  `.uf/cache/task/last/`, holds the `.env` values it was given in plain text
-  ([#1006](https://github.com/ubugeeei-prod/uf/issues/1006)). Keep `.uf/` out of
-  anything you archive.
 
 ## When a task fails
 

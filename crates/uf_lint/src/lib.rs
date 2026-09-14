@@ -275,8 +275,20 @@ fn configured_level(config: &UniflowedConfig, rule: &str) -> Option<RuleLevel> {
     })
 }
 
+/// The level `rule` runs at under `config`: deprecated aliases honoured, and
+/// `off` for a rule the config does not name.
+///
+/// This is the answer a lint run acts on, which is why `uf lint --rules` prints
+/// it rather than reading `config.lint.rules` itself. The map is keyed by what
+/// a project wrote, so reading it directly misses a level still written under a
+/// deprecated alias — the list would say one thing and the run would do
+/// another.
+pub fn rule_level(config: &UniflowedConfig, rule: &str) -> RuleLevel {
+    configured_level(config, rule).unwrap_or(RuleLevel::Off)
+}
+
 pub(crate) fn severity(config: &UniflowedConfig, rule: &'static str) -> Option<Severity> {
-    match configured_level(config, rule).unwrap_or(RuleLevel::Off) {
+    match rule_level(config, rule) {
         RuleLevel::Off => None,
         RuleLevel::Warn => Some(Severity::Warn),
         RuleLevel::Error => Some(Severity::Error),

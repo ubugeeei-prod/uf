@@ -46,10 +46,12 @@
 //! # What is on disk
 //!
 //! One JSON document per key under `.uf/cache/task/`, which `.gitignore`
-//! already covers, plus one note per task under `.uf/cache/task/last/`
+//! already covers, plus one note per task under `.uf/cache/task/notes/`
 //! recording what the previous run keyed on — that note is what lets `--why`
 //! answer "because `packages/core/index.js` changed" instead of "because the
-//! key was different". Both are files anything can write, so both are read
+//! key was different". Neither holds a value from the task's environment: the
+//! note names each variable beside a digest, for the reason
+//! [`crate::environment`] gives. Both are files anything can write, so both are read
 //! defensively: bounded in bytes, required to declare the version this crate
 //! understands, and required to restate the task and key they are filed under.
 //!
@@ -60,7 +62,7 @@
 //! caches with the same shape must not grow three eviction policies a reader
 //! has to learn separately.
 //!
-//! The `last/` notes are outside it. A sweep only looks at files directly in
+//! The notes are outside it. A sweep only looks at files directly in
 //! the directory, so they are neither counted nor removed: there is one per
 //! task, each rewritten in place, so they are not what grows — and evicting
 //! one would take away `--why`'s answer to save a kilobyte.
@@ -74,6 +76,7 @@ use camino::Utf8Path;
 use serde::{Deserialize, Serialize};
 
 use crate::digest::{Digest, hex};
+use crate::environment::Environment;
 use crate::inputs::InputFile;
 
 /// Format version this crate reads and writes.
@@ -137,8 +140,9 @@ pub(crate) struct LastRun {
     pub(crate) key: String,
     /// The command as it was, so a changed command can be named as such.
     pub(crate) command: String,
-    /// A digest over the environment the task was given.
-    pub(crate) environment: String,
+    /// The environment the task was given: names, and a digest of each value
+    /// in place of the value. See [`crate::environment`].
+    pub(crate) environment: Environment,
     /// The tasks in other packages the key was built on, in plan order.
     ///
     /// Left out of every note a run without a workspace writes, so those notes
@@ -176,8 +180,16 @@ pub enum Change {
     NeverRun,
     /// The command text is different.
     Command,
-    /// The environment uf gives the task is different.
-    Environment,
+    /// The mode the `.env` files are selected for is different.
+    Mode,
+    /// The task runs in a different directory.
+    Directory,
+    /// A variable uf gives the task has a different value.
+    VariableChanged(String),
+    /// A variable uf gives the task was not given last time.
+    VariableAdded(String),
+    /// A variable uf gave the task last time is not given now.
+    VariableRemoved(String),
     /// A file that was an input is gone.
     InputRemoved(String),
     /// A file that was not an input is one now.
@@ -197,7 +209,13 @@ impl std::fmt::Display for Change {
             Self::Dependency(task) => write!(f, "{task} changed"),
             Self::NeverRun => f.write_str("no previous run to compare against"),
             Self::Command => f.write_str("the command changed"),
-            Self::Environment => f.write_str("the environment changed"),
+            Self::Mode => f.write_str("the mode changed"),
+            Self::Directory => f.write_str("the directory it runs in changed"),
+            Self::VariableChanged(name) => {
+                write!(f, "the environment changed: {name} has a different value")
+            }
+            Self::VariableAdded(name) => write!(f, "the environment changed: {name} is new"),
+            Self::VariableRemoved(name) => write!(f, "the environment changed: {name} is gone"),
             Self::InputRemoved(path) => write!(f, "{path} is gone"),
             Self::InputAdded(path) => write!(f, "{path} is new"),
             Self::InputChanged(path) => write!(f, "{path} changed"),
@@ -213,8 +231,8 @@ impl LastRun {
         if self.command != now.command {
             return Change::Command;
         }
-        if self.environment != now.environment {
-            return Change::Environment;
+        if let Some(change) = self.environment.diff(&now.environment) {
+            return change;
         }
         // The task's own inputs before another package's result: a file the
         // reader changed in this package is the nearer cause, and the one they
@@ -243,28 +261,57 @@ impl LastRun {
         if self.inputs_truncated || now.inputs_truncated {
             return Change::Unnamed;
         }
-        let mut before = self.inputs.iter().peekable();
-        let mut after = now.inputs.iter().peekable();
-        // Both lists are in path order, so one pass over the two finds the
-        // first difference without building a map of either.
-        loop {
-            match (before.peek(), after.peek()) {
-                (None, None) => return Change::Unnamed,
-                (Some(old), None) => return Change::InputRemoved(old.path.clone()),
-                (None, Some(new)) => return Change::InputAdded(new.path.clone()),
-                (Some(old), Some(new)) => {
-                    if old.path < new.path {
-                        return Change::InputRemoved(old.path.clone());
-                    }
-                    if new.path < old.path {
-                        return Change::InputAdded(new.path.clone());
-                    }
-                    if old.digest != new.digest {
-                        return Change::InputChanged(old.path.clone());
-                    }
-                    before.next();
-                    after.next();
+        match first_difference(named(&self.inputs), named(&now.inputs)) {
+            None => Change::Unnamed,
+            Some(Difference::Removed(path)) => Change::InputRemoved(path.to_owned()),
+            Some(Difference::Added(path)) => Change::InputAdded(path.to_owned()),
+            Some(Difference::Changed(path)) => Change::InputChanged(path.to_owned()),
+        }
+    }
+}
+
+/// Inputs as `(path, digest)`, in path order.
+fn named(files: &[InputFile]) -> impl Iterator<Item = (&str, &str)> {
+    files
+        .iter()
+        .map(|file| (file.path.as_str(), file.digest.as_str()))
+}
+
+/// How two lists of named digests first differ.
+pub(crate) enum Difference<'a> {
+    Removed(&'a str),
+    Added(&'a str),
+    Changed(&'a str),
+}
+
+/// The first difference between two lists of `(name, digest)`, each in name
+/// order — a note's inputs, or its variables.
+///
+/// Both are in order, so one pass over the two finds it without building a
+/// map of either.
+pub(crate) fn first_difference<'a>(
+    before: impl Iterator<Item = (&'a str, &'a str)>,
+    after: impl Iterator<Item = (&'a str, &'a str)>,
+) -> Option<Difference<'a>> {
+    let mut before = before.peekable();
+    let mut after = after.peekable();
+    loop {
+        match (before.peek().copied(), after.peek().copied()) {
+            (None, None) => return None,
+            (Some((old, _)), None) => return Some(Difference::Removed(old)),
+            (None, Some((new, _))) => return Some(Difference::Added(new)),
+            (Some((old, was)), Some((new, is))) => {
+                if old < new {
+                    return Some(Difference::Removed(old));
                 }
+                if new < old {
+                    return Some(Difference::Added(new));
+                }
+                if was != is {
+                    return Some(Difference::Changed(old));
+                }
+                before.next();
+                after.next();
             }
         }
     }
@@ -302,8 +349,30 @@ impl TaskCache {
     ///
     /// Shared with `.uf/cache/check` and `.uf/cache/transform`; the policy is
     /// [`uf_infra::cache`]'s.
+    ///
+    /// It also removes what a uf from before #1006 kept: see
+    /// [`TaskCache::remove_plaintext_notes`].
     pub fn sweep(&self) {
         uf_infra::cache::sweep(&self.directory, uf_infra::cache::CacheBound::default());
+        self.remove_plaintext_notes();
+    }
+
+    /// Remove the notes an earlier uf kept in `last/`, which held every `.env`
+    /// value a task was given in plain text.
+    ///
+    /// Removed rather than left for the next run of each task to overwrite:
+    /// a task that is renamed, or never run again, would keep its note — and
+    /// its credentials — for as long as the checkout exists. The notes that
+    /// replaced them are in `notes/`, so finding the old directory is the
+    /// whole test, and nothing in it has to be opened to find out what it is.
+    /// An older uf run in the same project writes it again, and the next run
+    /// of this one removes it again.
+    ///
+    /// [`fs::remove_dir_all`] does not follow a symbolic link, at the top or
+    /// below it, so a `last` planted as a link loses the link and nothing it
+    /// points at.
+    fn remove_plaintext_notes(&self) {
+        let _ = fs::remove_dir_all(self.directory.join("last"));
     }
 
     /// The record filed under `key` for `task`, if there is a readable one.
@@ -347,7 +416,7 @@ impl TaskCache {
         let mut fields = crate::digest::Fields::new("uf task name v1");
         fields.push(task);
         self.directory
-            .join("last")
+            .join("notes")
             .join(format!("{}.json", hex(&fields.finish())))
     }
 }
@@ -397,7 +466,7 @@ mod tests {
             task: String::from("t"),
             key: String::from("k"),
             command: command.to_owned(),
-            environment: String::from("e"),
+            environment: Environment::new("development"),
             dependencies: Vec::new(),
             inputs: inputs
                 .iter()
@@ -523,5 +592,32 @@ mod tests {
         written.task = String::from("build#docs/thing");
         cache.write_last(&written);
         assert_eq!(cache.read_last("build#docs/thing"), Some(written));
+    }
+
+    #[test]
+    fn a_sweep_removes_the_plaintext_notes_an_earlier_uf_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join(".uf/cache/task/last");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(
+            old.join("note.json"),
+            r#"{"environment":"developmentAPI_TOKEN=x"}"#,
+        )
+        .unwrap();
+        TaskCache::open(Utf8Path::from_path(dir.path()).unwrap()).sweep();
+        assert!(!old.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removing_them_does_not_follow_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("keep.txt"), "mine").unwrap();
+        let task = dir.path().join(".uf/cache/task");
+        fs::create_dir_all(&task).unwrap();
+        std::os::unix::fs::symlink(outside.path(), task.join("last")).unwrap();
+        TaskCache::open(Utf8Path::from_path(dir.path()).unwrap()).sweep();
+        assert!(outside.path().join("keep.txt").is_file());
     }
 }

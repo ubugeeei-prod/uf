@@ -362,17 +362,13 @@ fn execute(
             command.push(' ');
             command.push_str(&args.join(" "));
         }
-        let mut fields = environment_digest(&package.env);
+        let mut given = environment_of(&package.env);
         if let Some(details) = details {
             for (key, value) in &details.env {
-                fields.push('\0');
-                fields.push_str(key);
-                fields.push('=');
-                fields.push_str(value);
+                given.task(key, value);
             }
             if let Some(cwd) = &details.cwd {
-                fields.push_str("\0cwd=");
-                fields.push_str(cwd);
+                given.directory(cwd);
             }
         }
         tasks.push(ScheduledTask {
@@ -386,7 +382,7 @@ fn execute(
             inputs: details.map(|task| task.inputs.clone()).unwrap_or_default(),
             outputs: details.map(|task| task.outputs.clone()).unwrap_or_default(),
             cacheable: definition.is_cacheable(),
-            environment: fields,
+            environment: given,
         });
     }
 
@@ -562,20 +558,18 @@ pub(crate) fn workspace_summary(resolved: &ResolvedConfig) -> Option<String> {
     ))
 }
 
-/// A digest over the environment every task in this run starts with.
+/// The environment every task of one package starts with: its mode and its
+/// `.env` values.
 ///
-/// Names *and* values, because a task that reads `API_URL` gets a different
-/// answer when it changes, and a digest is the one way to say so without
-/// putting the value anywhere a person or a log can see it.
-fn environment_digest(env: &ProjectEnv) -> String {
-    let mut fields = String::from(env.mode());
+/// Per package, because each member reads its own `.env` files. Every value is
+/// digested as it goes in, so nothing a task's note keeps can be read back as
+/// one: see `uf_task::Environment`, and #1006 for what keeping them looked like.
+fn environment_of(env: &ProjectEnv) -> uf_task::Environment {
+    let mut environment = uf_task::Environment::new(env.mode());
     for (name, value) in env.values() {
-        fields.push('\0');
-        fields.push_str(name);
-        fields.push('=');
-        fields.push_str(value);
+        environment.file(name, value);
     }
-    fields
+    environment
 }
 
 /// The error for `dependsOn` that closes a loop.
