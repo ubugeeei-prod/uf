@@ -42,6 +42,7 @@ suite can keep busy.
 
 ### Documentation
 
+- **guide**: write readonly where the samples wrote a variance sigil (#1026)
 - **router**: intercepting routes (#1022)
 - **guide**: give type checking, dependencies, tasks, editors and agents a guide (#1020)
 - **why-uf**: bring the comparisons and the gap list up to date with main (#1004)
