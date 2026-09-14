@@ -149,13 +149,18 @@ and `@uniflowed/vite`'s driver — `uf dev`, `uf build`, `uf preview` and
 `uf start` — installs the same hooks itself on Deno, at the moment it installs
 Node's.
 
-What that loader does is Node's, unchanged. `registerHooks` runs in the
-importing thread and has to return a module's source rather than a promise of
-it, so a module already in `.uf/cache/transform` is a file read, and a miss is
-handed to a transform thread that owns the `uf transform` process while the
-importing thread sleeps on a shared cell — on Deno exactly as on Node. The cache
-is shared too, one key and one framing in `packages/host/internal/flow-cache.js`,
-so a module either runtime compiled is one the other reads.
+What that loader does is Node's, with one difference in how it waits.
+`registerHooks` runs in the importing thread and has to return a module's source
+rather than a promise of it, so a module already in `.uf/cache/transform` is a
+file read on both runtimes. A miss on Node is handed to a transform thread while
+the importing thread sleeps on a shared cell; on Deno it is compiled by one
+short-lived `uf transform` child instead, because the thread crashed Deno —
+2.9.6 on Linux x86_64 panicked with `Fatal error in :0: unreachable code` in
+every test of one CI run that compiled a module through it, and in none that
+read the cache, while another run of the same commit passed. A crash that
+depends on the run is worse than the ten milliseconds a child costs. The cache
+is shared, one key and one framing in `packages/host/internal/flow-cache.js`, so
+a module either runtime compiled is one the other reads.
 
 Two things were Deno's to add, and both are about its sandbox. The variables
 the loader reads are read so that one a worker was not granted counts as unset

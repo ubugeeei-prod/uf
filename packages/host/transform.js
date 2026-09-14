@@ -13,7 +13,7 @@
 // preload, the config loader — goes through here, which is what makes them
 // all produce the same module from the same source.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -585,4 +585,91 @@ export function transformFlow(code, filename, options = {}) {
   return sharedService(options.root, {
     configBootstrap: options.configBootstrap === true,
   }).transform(filename, code, options);
+}
+
+/**
+ * The most bytes one synchronous reply may be.
+ *
+ * `spawnSync` buffers the child's whole output and needs a ceiling to do it
+ * with; its default is one megabyte, which a large module with its source map
+ * appended can pass. Sixty-four is far above anything uf's own transform
+ * ceilings let through, and still a ceiling.
+ */
+const MAX_SYNC_REPLY_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Transform one Flow module in a short-lived `uf transform`, and wait for it.
+ *
+ * Resolves nothing and returns what `transformFlow` resolves to —
+ * `{ code, map, css, diagnostics }`, or `null` for a module that is not uf's —
+ * and throws what it rejects with. One request written to the child's stdin,
+ * stdin closed, one reply read back: the same binary and the same protocol as
+ * the service, so the module cannot differ between the two ways in.
+ *
+ * For Deno's in-thread hooks (`./internal/sync-hooks.js`), which on Node sleep
+ * on a transform thread instead. On Deno that thread is not safe to rely on:
+ * measured on Deno 2.9.6 in this repository's CI, Linux x86_64, one of two runs
+ * of the same commit panicked with `Fatal error in :0: unreachable code` in
+ * every test that compiled a module through the thread, and in none that read
+ * the cache. A child process per cold module costs about ten milliseconds and
+ * involves no thread and no `Atomics.wait` at all.
+ *
+ * @param {string} code the Flow source
+ * @param {string} filename absolute path, used for the map and for errors
+ * @param {object} [options] as for `transformFlow`, plus `command`
+ */
+export function transformFlowSync(code, filename, options = {}) {
+  const command = options.command ?? ufBinary();
+  const root = options.root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd();
+  // Which binary to run is this process's business and not the compiler's.
+  const requestOptions = { ...options };
+  delete requestOptions.command;
+  const env = inheritedEnvironment();
+  if (options.configBootstrap === true) {
+    env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
+  } else {
+    delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+  }
+  const result = spawnSync(command, ["--cwd", root, "transform"], {
+    input: `${JSON.stringify({ id: filename, code, options: requestOptions })}\n`,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "inherit"],
+    env,
+    maxBuffer: MAX_SYNC_REPLY_BYTES,
+  });
+  if (result.error != null) {
+    throw new Error(`could not run \`${command} transform\`: ${result.error.message}`);
+  }
+  // A spawn a sandbox refuses is not an error on every host. Measured on Deno
+  // 2.9: a program its permission set does not name comes back with no
+  // `error`, no status and no output at all, and reading a reply out of that is
+  // a `TypeError` about `undefined` naming neither the binary nor the grant.
+  if (typeof result.stdout !== "string") {
+    throw new Error(
+      `could not run \`${command} transform\` for ${filename}: no process started, which is ` +
+        "how a sandbox answers a program it was not told about — on Deno, `--allow-run` has " +
+        `to name ${command}`,
+    );
+  }
+  const newline = result.stdout.indexOf("\n");
+  const line = newline === -1 ? result.stdout : result.stdout.slice(0, newline);
+  if (line.trim() === "") {
+    throw new Error(`uf transform exited (${result.status}) without answering for ${filename}`);
+  }
+  let reply;
+  try {
+    reply = JSON.parse(line);
+  } catch {
+    throw new Error(`uf transform sent a malformed reply: ${line}`);
+  }
+  if (reply.error != null) {
+    throw new TransformError(filename, reply.error, reply.line, reply.column);
+  }
+  if (reply.code == null) return null;
+  return {
+    code: reply.code,
+    map: reply.map ?? null,
+    css: reply.css ?? null,
+    diagnostics: reply.diagnostics ?? [],
+  };
 }
