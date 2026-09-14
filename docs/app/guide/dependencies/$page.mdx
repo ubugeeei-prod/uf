@@ -28,12 +28,13 @@ and which manager a project runs on is [Environments](/guide/env).
 
 The first of these that says something decides:
 
-1. `pm.packageManager` in `uf.config.js`;
-2. the `packageManager` field in `package.json`, such as `"bun@1.3.13"`;
-3. a lockfile in the project root — `bun.lock`, `bun.lockb`, `pnpm-lock.yaml`,
+1. `packageManager` in `uf.config.js`, such as `"pnpm@10"`;
+2. `pm.packageManager` in `uf.config.js`, its older spelling;
+3. the `packageManager` field in `package.json`, such as `"bun@1.3.13"`;
+4. a lockfile in the project root — `bun.lock`, `bun.lockb`, `pnpm-lock.yaml`,
    `yarn.lock`, `package-lock.json` or `npm-shrinkwrap.json`, in that order;
-4. a workspace root above the project that says one of the above;
-5. npm.
+5. a workspace root above the project that says one of the above;
+6. npm.
 
 Every command that runs a manager prints what it chose and why, in its `chosen by`
 row — `no lockfile or packageManager field` for a project `uf new` just wrote,
@@ -44,12 +45,13 @@ sits beside it or the lockfile has a `__metadata:` block, and Yarn 1 otherwise.
 Two lockfiles from different managers in one root are not an error: the one
 higher in the list wins, and only `uf inspect` says the choice was ambiguous.
 
-`uf.config.js` has a second way to name a manager, and it does not choose one yet.
-The top-level `packageManager` key — `packageManager: "pnpm@10"` — is read and
-checked, a range in it is refused, and `uf explain install` reports it, but the
-commands on this page still decide by the list above: a project that names pnpm
-there and has no lockfile gets npm. uf already prints a deprecation for
-`pm.packageManager` that points at the new key:
+`packageManager` can pin a release as well as name a manager.
+`packageManager: "pnpm@10"` runs the newest pnpm 10, locked in `uf.lock` and
+installed into uf's store the first time a command needs it, so every machine
+runs the same pnpm, on the project's `runtime` — see
+[Environments](/guide/env). `packageManager: "pnpm"`, with no version, is
+whichever `pnpm` is on `PATH`. A project still naming its manager in
+`pm.packageManager` is told what to write instead:
 
 <figure className="terminal">
 
@@ -59,10 +61,8 @@ there and has no lockfile gets npm. uf already prints a deprecation for
 
 </figure>
 
-Until the commands read `packageManager`
-([#940](https://github.com/ubugeeei-prod/uf/issues/940)), `pm.packageManager` is
-the key that chooses, so leave it where it is. Pinning a manager's version is
-[Environments](/guide/env).
+and a project that writes both, naming different managers, is refused with
+both keys named.
 
 `uf.lock` names uf's own resolver, and that resolver cannot fetch yet. A project
 that asks for it gets npm, and the `chosen by` row says so:

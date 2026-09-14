@@ -1126,14 +1126,14 @@ and a worker whose imports are pre-bundled, neither of which is done.
 the Rust lint/typecheck/format/test work, and the transform every module goes
 through. Users never write `vite.config.*`.
 
-Vite is the **default builder**, and `builder.module` in `uf.config.js` selects
-another. The contract between `uf` and a builder is written out under [The
-builder contract](#the-builder-contract) below; the rest of this section
-describes `@uniflowed/vite`, which is one implementation of it.
+Vite is the **default builder**, and `build.builder` in `uf.config.js` (formerly
+`builder.module`) selects another. The contract between `uf` and a builder is
+written out under [The builder contract](#the-builder-contract) below; the rest
+of this section describes `@uniflowed/vite`, which is one implementation of it.
 
-`uf dev` and `uf build` start the builder's driver on the project's
-Capability JS Host — Node.js, Bun or Deno, whichever `uf.config.js` names and
-the machine has — and keep the terminal: the driver writes one JSON event per
+`uf dev` and `uf build` start the builder's driver on the build runtime —
+`build.runtime`, then `runtime`, at the release `uf.lock` locks, or the
+project's Capability JS Host when neither names one — and keep the terminal: the driver writes one JSON event per
 line and `uf` renders them. The driver loads `uf.config.js` (through `uf
 transform`, since the config is Flow), builds Vite's inline config from it,
 and registers uf's plugins:
@@ -1299,11 +1299,11 @@ approximately right is worse than none, because TypeScript trusts it silently.
 ### The builder contract
 
 A builder is a directory with a `package.json` and a driver module. uf spawns
-the driver on the Capability JS Host, holds its stdin open, and reads one JSON
+the driver on the build runtime, holds its stdin open, and reads one JSON
 event per line from its stdout; the driver exits when that stdin closes, so it
-cannot outlive the command that started it. `builder.module` in `uf.config.js`
-selects one, and `uf explain build` names the one that will run and its
-version.
+cannot outlive the command that started it. `build.builder` in `uf.config.js`
+selects one, and `uf explain build` names the one that will run, its version
+and the runtime it runs on.
 
 **What the package declares**, under `uf.builder` in its manifest: `driver`,
 the module to spawn (default `./driver.js`), and `preload.bun`, a module handed

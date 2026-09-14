@@ -98,8 +98,8 @@ for a setting that already has one, and a second name is a thing to keep in
 sync.
 
 **Red line 3 is met for two providers, and the second is the big one.**
-`builder.module` selects which builder `uf dev`, `uf build`, `uf preview` and
-`uf start` drive. Until ubugeeei-prod/uf#549, `@uniflowed/vite` was not one
+`build.builder` (formerly `builder.module`) selects which builder `uf dev`,
+`uf build`, `uf preview` and `uf start` drive. Until ubugeeei-prod/uf#549, `@uniflowed/vite` was not one
 implementation of a seam — it was reached by name from four commands, which
 made Vite a dependency uf had rather than a provider uf orchestrates. The
 contract is written down in `docs/architecture.md`, `@uniflowed/vite` declares
