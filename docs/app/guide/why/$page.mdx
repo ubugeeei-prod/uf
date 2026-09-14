@@ -86,10 +86,10 @@ not.
 ### Exactness and variance are the default, not a flag
 
 Flow object types are exact unless you say otherwise, and property variance is
-written down: `+field` is covariant, `-field` contravariant. A read-only prop
-is expressible as a property of the type rather than as a convention. These are
-the places where a type system quietly lies to you, and Flow's answers are
-stricter.
+written down: `readonly field` is covariant, `writeonly field` contravariant. A
+read-only prop is expressible as a property of the type rather than as a
+convention. These are the places where a type system quietly lies to you, and
+Flow's answers are stricter.
 
 ## And what it does not say
 
