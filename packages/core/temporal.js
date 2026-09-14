@@ -1053,6 +1053,23 @@ export type TemporalTypes = {
 export type TemporalApi = { ...TemporalTypes, readonly Now: TemporalNow, ... };
 
 /**
+ * A host's own Temporal: the surface above, and the three constructors Lite
+ * leaves out.
+ *
+ * The three are `mixed` because this module promises nothing about them. They
+ * are the host's, handed on by `Temporal` below so that they stay reachable
+ * there, and code that reaches for one has stepped outside the subset on
+ * purpose.
+ */
+type HostTemporal = {
+  ...TemporalApi,
+  readonly PlainDateTime?: mixed,
+  readonly PlainYearMonth?: mixed,
+  readonly PlainMonthDay?: mixed,
+  ...
+};
+
+/**
  * `globalThis`, as far as this module is concerned.
  *
  * Declared rather than cast, because a cast to `any` to read one optional
@@ -1061,7 +1078,7 @@ export type TemporalApi = { ...TemporalTypes, readonly Now: TemporalNow, ... };
  * yet, and this says exactly what is being assumed about the host and nothing
  * more.
  */
-declare var globalThis: { Temporal?: TemporalApi, ... };
+declare var globalThis: { Temporal?: HostTemporal, ... };
 
 /**
  * The host's Temporal, when it has one.
@@ -1072,7 +1089,7 @@ declare var globalThis: { Temporal?: TemporalApi, ... };
  * installed is worse than no polyfill at all — this module would defer to it and
  * then call something it does not have.
  */
-const host: TemporalApi | null = (() => {
+const host: HostTemporal | null = (() => {
   const found = globalThis.Temporal;
   if (found == null) {
     return null;
@@ -1145,14 +1162,41 @@ const lite: TemporalTypes = {
 /**
  * `Temporal`, on every host.
  *
- * Spread from the host's where there is one, so that everything this module has
- * not documented — `PlainDateTime`, `round`, the calendar surface — stays
- * reachable on a host that has it rather than being hidden by uf. `Now` is
- * replaced in both cases, for the reason at the top of this file.
+ * Every constructor is named rather than spread from the host, and that is the
+ * fix for #1008 rather than a matter of taste. A spread copies own *enumerable*
+ * properties, and the constructors on a built-in namespace are not enumerable —
+ * `{ ...Math }` is `{}` for the same reason — so on Node 26, which ships a
+ * native Temporal, the export spread from it was `{ Now }` and
+ * `Temporal.Instant` was `undefined`. The Lite object is a literal, which is why
+ * no host without Temporal could see it, CI's Node 24 included.
+ *
+ * The three constructors Lite leaves out are named too, so that what this
+ * module has not documented — `PlainDateTime` and the two beside it — stays
+ * reachable on a host that has it rather than being hidden by uf. They are
+ * added only when the host is the one in use, so a Lite `Temporal` is still the
+ * five and `Now`, key for key. `named` is spread to do that, which is safe for
+ * the reason the host was not: it is a literal written two lines above. `Now`
+ * is replaced in both cases, for the reason at the top of this file.
  */
 export const Temporal: TemporalApi = (() => {
   const types: TemporalTypes = host ?? lite;
-  return { ...types, Now: nowFor(types) };
+  const named = {
+    Instant: types.Instant,
+    ZonedDateTime: types.ZonedDateTime,
+    PlainDate: types.PlainDate,
+    PlainTime: types.PlainTime,
+    Duration: types.Duration,
+    Now: nowFor(types),
+  };
+  if (host == null) {
+    return named;
+  }
+  return {
+    ...named,
+    PlainDateTime: host.PlainDateTime,
+    PlainYearMonth: host.PlainYearMonth,
+    PlainMonthDay: host.PlainMonthDay,
+  };
 })();
 
 export { LiteDuration, LiteInstant, LitePlainDate, LitePlainTime, LiteZonedDateTime };
