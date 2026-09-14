@@ -287,6 +287,12 @@
 //   itself, which of three states an image is in, whether the last crumb is a
 //   link, whether a rule is in the accessibility tree, and whether anybody is
 //   told the page is loading.
+// - `interactions.js` — the press, the hover, the focus ring, the long press,
+//   the drag and the key, and the one module here that exports hooks rather
+//   than parts. A press that is released outside does not press, a hover is
+//   never a finger's, a ring is drawn for the keyboard and not for the pointer,
+//   and a screen reader's click is a press; its header says what each rule
+//   prevents and where it differs from React Aria's.
 //
 // Every name below is exported from one of those, so a consumer may import
 // `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
@@ -554,6 +560,72 @@ export { Checkbox, Progress, Separator, Switch, Toggle };
  *     toast("Could not save", { urgency: "assertive" });
  */
 export { dismissAllToasts, dismissToast, toast, updateToast };
+
+/**
+ * The interactions every part here is made of, for a control of the caller's own.
+ *
+ * `usePress` is a press from a pointer, a key or assistive technology, with one
+ * set of events; `useHover` is a mouse's and a pen's and never a finger's;
+ * `useFocusRing` draws a ring for keyboard focus and not for pointer focus;
+ * `useLongPress`, `useMove` and `useKeyboard` are the rest; `mergeProps` puts
+ * several of them on one element. `interactions.js` says what each one gets
+ * right, and where it differs from React Aria's, at length.
+ *
+ *     const { isPressed, pressProps } = usePress({ onPress: save });
+ *     const { focusProps, isFocusVisible } = useFocusRing();
+ *     <div {...mergeProps(pressProps, focusProps)} role="button" tabIndex={0} />
+ *
+ * Hooks rather than parts, and the one module here that exports them: its rules
+ * are about input devices rather than about markup this package builds, so a
+ * control written with them is the same control a part is rather than a weaker
+ * copy of one.
+ */
+export {
+  getInteractionModality,
+  mergeProps,
+  useFocusRing,
+  useFocusVisible,
+  useHover,
+  useInteractionModality,
+  useKeyboard,
+  useLongPress,
+  useMove,
+  usePress,
+} from "./interactions.js";
+export type {
+  FocusRingOptions,
+  FocusRingProps,
+  FocusRingResult,
+  FocusVisibleResult,
+  HoverEvent,
+  HoverOptions,
+  HoverProps,
+  HoverResult,
+  InteractionEvent,
+  InteractionProps,
+  KeyboardInteraction,
+  KeyboardOptions,
+  KeyboardProps,
+  KeyboardResult,
+  LongPressEvent,
+  LongPressOptions,
+  LongPressProps,
+  LongPressResult,
+  Modality,
+  MoveEndEvent,
+  MoveMoveEvent,
+  MoveOptions,
+  MovePointerType,
+  MoveProps,
+  MoveResult,
+  MoveStartEvent,
+  PhysicalPointer,
+  PointerType,
+  PressEvent,
+  PressOptions,
+  PressProps,
+  PressResult,
+} from "./interactions.js";
 
 /**
  * An accessible form field.
