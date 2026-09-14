@@ -42,17 +42,18 @@ server and asserts each of these.
 | Formatting | `M-x eglot-format-buffer`. The same `uf_fmt` that `uf fmt` calls. |
 | Quick fixes | `M-x eglot-code-actions` on a diagnostic. |
 | Fix all | `(eglot-code-actions (point-min) (point-max) "source.fixAll" t)`, which applies every mechanical fix in the file at once. `M-x eglot-code-actions` also lists it. |
-| Hover | `M-x eldoc`, or `eldoc-mode` in the echo area. |
+| Hover | `M-x eldoc`, or `eldoc-mode` in the echo area, including over a key of `uf.config.js`. |
+| Completion | In `uf.config.js`: `completion-at-point` (`C-M-i`), which Eglot feeds from the server, or Company or Corfu on top of it. The keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. |
 
 Format on save is off. The hook to add is written out in `uf.el`.
 
 ## What you do not get
 
-`xref-find-definitions`, `eglot-rename`, completion and `xref-find-references`
-have nothing behind them: `uf lsp` advertises no definition, rename, completion
-or references provider, and Eglot reports that the server does not support the
-request. ElDoc over a plain expression says nothing rather than showing an empty
-popup — uf has no positional type query yet.
+`xref-find-definitions`, `eglot-rename` and `xref-find-references` have nothing
+behind them: `uf lsp` advertises no definition, rename or references provider,
+and Eglot reports that the server does not support the request. Completion
+answers in `uf.config.js` only. ElDoc over a plain expression says nothing
+rather than showing an empty popup — uf has no positional type query yet.
 
 ## Working directory
 

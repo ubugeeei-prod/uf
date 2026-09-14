@@ -16,6 +16,7 @@ mod lint;
 pub mod plugins;
 mod rendering;
 mod runtime;
+pub mod schema;
 
 pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,

@@ -26,6 +26,17 @@
 // parse — `orm.module` is `"@uniflowed/orm"` because there is one
 // implementation, where the loader takes any string. Where this package means
 // to be more opinionated than the parser, that is what these say.
+//
+// # What an editor shows
+//
+// `uf lsp` completes and explains `uf.config.js` from this file, compiled into
+// the binary. A key's completion shows the comment directly above the key and
+// the type as it is written here, and the members of a literal union are the
+// values it offers — so a comment above a key is written for somebody typing
+// that key. Either kind of comment counts above a key; above a type alias only
+// a `/** */` block does, because the `//` notes on the aliases are this file's
+// history rather than the key's meaning. `crates/uf_config/src/schema.rs` is
+// the reader, and says exactly what it takes.
 
 export type RuleLevel = "off" | "warn" | "error" | 0 | 1 | 2 | boolean;
 
