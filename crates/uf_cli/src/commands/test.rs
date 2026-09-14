@@ -775,9 +775,10 @@ pub(crate) fn toolchain_access(
             .iter()
             .map(|name| (*name).to_string())
             .collect(),
-        // Node's `register()` puts the module hooks on a loader thread, which
-        // its permission model calls a worker; every host command uf starts
-        // loads Flow that way.
+        // Node's Flow loader compiles a cache miss on a thread — the transform
+        // thread its in-thread hooks start, or the loader thread `register()`
+        // starts on a Node without `registerHooks` — and Node's permission
+        // model calls either one a worker.
         loader_thread: true,
     };
     if let Some(loader) = loader {

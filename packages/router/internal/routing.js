@@ -52,6 +52,26 @@ export type SlotRecord<
   readonly defaultMdx?: boolean,
   readonly defaultErrorBoundary?: ?SlotErrorBoundaryRecord<TError>,
   readonly routes: $ReadOnlyArray<SlotRouteRecord<TPage, TLayout, TTemplate, TLoading, TError>>,
+  /**
+   * The routes this slot renders when a client navigation *intercepts* the URL
+   * each one names — `app/feed/@modal/(.)photo/[id]/$page.js` is the one for
+   * `/feed/photo/:id` — keyed by that URL.
+   *
+   * A second list rather than a flag on `routes`, because the two are read by
+   * different callers at different times and neither may see the other's.
+   * `routes` is matched against every URL the segment renders, by the server and
+   * by the browser alike. These are matched only by a navigation that starts on
+   * a page this slot is already rendered on, and nothing on a server reads them
+   * — which is the whole of why a document request for an intercepted URL
+   * renders the ordinary page. `resolveInterception`, beside the rest of the
+   * rendering, is the one reader.
+   *
+   * Absent on a slot that intercepts nothing, which is every slot a table
+   * written before interception existed.
+   */
+  readonly intercepts?: $ReadOnlyArray<
+    SlotRouteRecord<TPage, TLayout, TTemplate, TLoading, TError>,
+  >,
 |};
 
 /** One page inside a slot. */
