@@ -61,6 +61,24 @@ export type Application = {|
     assets: DocumentAssets,
     options?: {| readonly onError?: (error: mixed) => void |},
   ) => Promise<RenderedDocument>,
+  /**
+   * A route's Flight payload, for a browser that is navigating.
+   *
+   * Present on a bundle React Server Components render and absent on one
+   * rendered from its modules (`app.rsc: false`), whose browser navigates by
+   * importing routes and never asks. `url` is the document's path and query,
+   * not the payload's. `stream` is `null` for a redirect, whose `location`
+   * already names the target's payload. See `./flight.js`.
+   */
+  readonly flight?: (
+    url: string,
+    options?: {| readonly onError?: (error: mixed) => void |},
+  ) => Promise<{|
+    readonly status: number,
+    readonly headers: { readonly [string]: string },
+    readonly stream: ReadableStream<Uint8Array> | null,
+    readonly error?: mixed,
+  |}>,
   /** The route handler for this request, or `null` when no handler claims it. */
   readonly dispatch: (request: Request) => Promise<Response | null>,
   /**

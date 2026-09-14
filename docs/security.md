@@ -120,13 +120,15 @@ Four things are outside it deliberately, each because admitting it would mean
 admitting a tag in the payload that says which constructor to call:
 
 - **A reference format.** React's Flight payload carries references to client
-  modules, promises and elements. uf's own payload
-  (`packages/router/internal/payload.js`) carries exactly one of the three and
-  it travels the other way — `"$P<n>"`, in a document the server writes, naming
-  a row of that same payload rather than anything to construct. This grammar is
-  the one an untrusted *sender* is decoded under, and it has none: an action's
-  arguments arrive from the network, so a tag there is a tag somebody else
-  chose.
+  modules, promises and elements, and uf now ships one — but only from server to
+  browser, and only React's own client decodes it. The server writes it into a
+  document or answers it at `<route>/__uf.flight`; the browser loads the client
+  module a reference names only from a same-origin URL, so the bytes cannot pick
+  a script from anywhere else; and a build fixes `process.env.NODE_ENV` in the
+  rsc graph, so a production payload carries no source locations or server
+  stacks. This grammar is the one an untrusted *sender* is decoded under, and it
+  has none: an action's arguments arrive from the network, so a tag there is a
+  tag somebody else chose, and Flight's `decodeReply` is not used for them.
 - **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays.** An action
   that wants a date takes an ISO string and parses it, where the parse is the
   application's and is checked.

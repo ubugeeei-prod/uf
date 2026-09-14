@@ -620,11 +620,15 @@ fn manifest(relative: &Utf8Path) -> Value {
 
 /// Flatten an `exports` map into `subpath -> target`, following conditional
 /// objects down to their string leaves.
-fn exports_targets(exports: &Value) -> BTreeMap<String, String> {
-    fn walk(subpath: &str, node: &Value, out: &mut BTreeMap<String, String>) {
+fn exports_targets(exports: &Value) -> Vec<(String, String)> {
+    // One pair per condition, not one target per subpath. `"."` can be
+    // `./server-components.js` under `react-server` and `./index.js` otherwise,
+    // and a map keyed by subpath kept whichever condition it met last — so the
+    // other target was a shipped module every check here was blind to.
+    fn walk(subpath: &str, node: &Value, out: &mut Vec<(String, String)>) {
         match node {
             Value::String(target) => {
-                out.insert(subpath.to_string(), target.clone());
+                out.push((subpath.to_string(), target.clone()));
             }
             Value::Object(conditions) => {
                 for (key, value) in conditions {
@@ -644,7 +648,7 @@ fn exports_targets(exports: &Value) -> BTreeMap<String, String> {
         }
     }
 
-    let mut out = BTreeMap::new();
+    let mut out = Vec::new();
     walk(".", exports, &mut out);
     out
 }
@@ -1058,8 +1062,8 @@ fn every_shipped_module_is_reachable_through_exports() {
             .get("exports")
             .unwrap_or_else(|| panic!("{relative} must declare exports"));
         let targets = exports_targets(exports)
-            .into_values()
-            .map(|target| target.trim_start_matches("./").to_string())
+            .into_iter()
+            .map(|(_, target)| target.trim_start_matches("./").to_string())
             .collect::<BTreeSet<_>>();
 
         for module in shipped_modules() {
@@ -1243,9 +1247,15 @@ fn a_client_entry_never_imports_a_node_builtin() {
     /// nothing from here. `react-native-testing/internal/test-renderer.js`
     /// keeps the optional React Test Renderer `createRequire` call behind a
     /// browser-mapped helper so the package entry stays browser-clean.
+    /// `router/internal/server-route.js` is the route store a Server Component's
+    /// hooks read, and only two modules import it: `router/server-components.js`,
+    /// which the package exports under the `react-server` condition alone — a
+    /// browser never resolves it — and `router/rsc.js`, whose Flight renderer
+    /// refuses to load anywhere but a `react-server` graph.
     const SERVER_MODULES: &[&str] = &[
         "router/server.js",
         "router/handler.js",
+        "router/internal/server-route.js",
         "react-testing/internal/render.js",
         "react-native-testing/internal/test-renderer.js",
         "story/collect.js",
@@ -1535,7 +1545,10 @@ fn every_advertised_module_resolves_to_a_package() {
         };
         if let Some(subpath) = subpath {
             let key = format!("./{subpath}");
-            if !exports_targets(&found["exports"]).contains_key(&key) {
+            if !exports_targets(&found["exports"])
+                .iter()
+                .any(|(subpath, _)| *subpath == key)
+            {
                 unresolvable.push(format!("{specifier}: {package} does not export {key}"));
             }
         }

@@ -43,6 +43,7 @@ import * as React from "react";
 import * as ReactDOMServer from "react-dom/server";
 import * as ReactDOMStatic from "react-dom/static";
 
+import { createChunkEncoder } from "./flight-chunks.js";
 import { type StreamRecord, inspected } from "./inspector.js";
 
 /**
@@ -656,6 +657,16 @@ export type RenderOptions = {|
    * everything before it writes a byte, so there is no order to report.
    */
   readonly onStream?: (record: StreamRecord) => void,
+  /**
+   * The Flight payload this document's tree was read from, to write into the
+   * document for the browser to hydrate from.
+   *
+   * Absent for a document rendered from the route's modules, which is what
+   * every document was before ubugeeei-prod/uf#519 and what `app.rsc: false`
+   * still asks for. Present, it is copied into the document as it arrives, by
+   * [`interleaved`], which says where it may and may not go.
+   */
+  readonly payload?: ReadableStream<Uint8Array>,
 |};
 
 /**
@@ -692,7 +703,10 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
           resolve(
             bodyOf(
               outgoing(
-                assembled(queue.chunks(), options.shell, options.transformHead),
+                withPayload(
+                  assembled(queue.chunks(), options.shell, options.transformHead),
+                  options.payload,
+                ),
                 options.onStream,
               ),
               () => abort(),
@@ -759,7 +773,10 @@ export function renderWithReadableStream(
     (stream: ByteSource) =>
       bodyOf(
         outgoing(
-          assembled(decoded(stream), options.shell, options.transformHead),
+          withPayload(
+            assembled(decoded(stream), options.shell, options.transformHead),
+            options.payload,
+          ),
           options.onStream,
         ),
         () => {
@@ -815,8 +832,144 @@ export async function prerenderDocument(node: React.Node, options: RenderOptions
       ? await ReactDOMStatic.prerenderToNodeStream(node, settings)
       : await ReactDOMStatic.prerender(node, settings);
   return bodyOf(
-    assembled(preludeChunks(result.prelude), options.shell, options.transformHead),
+    withPayload(
+      assembled(preludeChunks(result.prelude), options.shell, options.transformHead),
+      options.payload,
+    ),
   ).text();
+}
+
+/** `chunks` unchanged when there is no payload, and [`interleaved`] with one. */
+function withPayload(
+  chunks: AsyncGenerator<string, void, void>,
+  payload: ?ReadableStream<Uint8Array>,
+): AsyncGenerator<string, void, void> {
+  return payload == null ? chunks : interleaved(chunks, payload);
+}
+
+/**
+ * A document's chunks, with the Flight payload it was rendered from written
+ * into it as it arrives.
+ *
+ * Three rules, and each is the answer to a way the obvious version is wrong.
+ *
+ * **Nothing before the head.** The first chunk this is handed is the whole
+ * opening of the document — `assembled` does not let one go until the head is
+ * complete — and a payload element written in front of it would sit before
+ * `<head>`, where the parser would open a body for it and every tag after it
+ * would land in the wrong element.
+ *
+ * **Written as soon as it exists.** A payload row usually exists before the
+ * HTML rendered from it — React's client reads the row, then the boundary
+ * renders — so waiting for the next HTML chunk would put the browser's copy
+ * behind the markup it hydrates. Each HTML chunk is followed by whatever
+ * payload is waiting, and a payload that arrives while the HTML is idle is
+ * written then, without a chunk of HTML to follow.
+ *
+ * **`</body></html>` waits for the end of the payload.** The HTML can finish
+ * first — the last boundary's markup is rendered from rows that are already
+ * written — and a payload element after `</html>` is one the parser moves
+ * rather than one React expects. So the closing tags are held back, the rest of
+ * the payload and its end marker are written, and the tags go last. For a
+ * document uf wraps, the closing run is `</div></body></html>`, and only the
+ * part from `</body>` is held: the root element React hydrates must hold
+ * nothing React did not render.
+ *
+ * A consumer that stops early stops the payload too: the reader is cancelled
+ * in the `finally`, which is where `return()` on this generator lands.
+ */
+async function* interleaved(
+  chunks: AsyncGenerator<string, void, void>,
+  payload: ReadableStream<Uint8Array>,
+): AsyncGenerator<string, void, void> {
+  const encoder = createChunkEncoder();
+  const reader = payload.getReader();
+  let written = "";
+  let ended = false;
+  let wake: ?() => void = null;
+  const ring = () => {
+    const resume = wake;
+    wake = null;
+    if (resume != null) {
+      resume();
+    }
+  };
+  const pumping = (async () => {
+    try {
+      while (true) {
+        const step = await reader.read();
+        if (step.done === true) {
+          break;
+        }
+        if (step.value != null) {
+          written += encoder.encode(step.value);
+          ring();
+        }
+      }
+    } catch {
+      // A payload that failed partway is still ended, with the end marker, so
+      // the browser's reader closes and React reports the rows it never got
+      // rather than waiting for them for as long as the page is open.
+    } finally {
+      written += encoder.end();
+      ended = true;
+      ring();
+    }
+  })();
+
+  let opened = false;
+  let closing = "";
+  try {
+    let next = chunks.next();
+    while (true) {
+      if (opened && written !== "") {
+        const out = written;
+        written = "";
+        yield out;
+      }
+      const idle = new Promise<null>((resolve) => {
+        wake = () => resolve(null);
+      });
+      const outcome = await Promise.race([next, idle]);
+      if (outcome == null) {
+        continue;
+      }
+      if (outcome.done === true) {
+        break;
+      }
+      let text = outcome.value;
+      const close = text.search(/<\/body>\s*<\/html>\s*$/i);
+      if (close !== -1) {
+        closing = text.slice(close);
+        text = text.slice(0, close);
+      }
+      if (text !== "") {
+        yield text;
+      }
+      opened = true;
+      next = chunks.next();
+    }
+    while (!ended || written !== "") {
+      if (written !== "") {
+        const out = written;
+        written = "";
+        yield out;
+        continue;
+      }
+      await new Promise<void>((resolve) => {
+        wake = resolve;
+        if (ended || written !== "") {
+          ring();
+        }
+      });
+    }
+    await pumping;
+    yield closing;
+  } finally {
+    if (!ended) {
+      void reader.cancel();
+    }
+  }
 }
 
 /**
