@@ -177,14 +177,15 @@ fn install_runs_the_package_manager_that_drives_the_project() {
 }
 
 #[test]
-fn install_rejects_npm_scripts() {
+fn install_refuses_an_install_time_lifecycle_script() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("package.json"),
         r#"{
   "name": "scripted",
   "scripts": {
-    "test": "jest"
+    "start": "node server.js",
+    "postinstall": "node scripts/fetch.js"
   }
 }
 "#,
@@ -202,8 +203,11 @@ fn install_rejects_npm_scripts() {
     assert!(String::from_utf8(output.stdout).unwrap().is_empty());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.starts_with("error: "));
-    assert!(stderr.contains("declares scripts"));
-    assert!(stderr.contains("uf tasks"));
+    assert!(
+        stderr.contains("declares install-time lifecycle scripts (postinstall)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("uf tasks"), "{stderr}");
 }
 
 /// `uf upgrade` is retired, and the answer names the three commands it could
