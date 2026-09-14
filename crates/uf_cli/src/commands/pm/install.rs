@@ -175,9 +175,11 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
 
-    // A manifest that declares scripts is refused before anything is fetched,
-    // the way it was when uf planned the install itself. `--ignore-scripts`
-    // inside `run_watched` covers the dependencies; this covers the project.
+    // A manifest that declares install-time lifecycle scripts is refused before
+    // anything is fetched, the way it was when uf planned the install itself.
+    // `--ignore-scripts` inside `run_watched` covers the dependencies; this
+    // covers the project. A script no install runs is not refused: see
+    // `uf_pm::INSTALL_LIFECYCLE_SCRIPTS`.
     //
     // Which manager is about to run has to be settled here rather than left to
     // the runner, because the lockfile it is about to rewrite must be read
@@ -228,11 +230,23 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         "uf install"
     };
     let project = project_label(&resolved.root).to_string();
+    // A script no install runs, such as `start` or `ios`, is not refused, and uf
+    // does not run it either. That is said once, because a project whose
+    // `npm run ios` opens a simulator should know uf is not what will run it.
+    // See ubugeeei-prod/uf#992.
+    let unrun = unrun_scripts_line(
+        &resolved.root,
+        &uf_pm::scripts_uf_does_not_run(&resolved.root)?,
+    );
     ui.render(|renderer, out| {
         brand::render_product_card(renderer, out, "uf install");
         renderer.blank(out);
         renderer.banner(out, heading, Some(&project));
         renderer.blank(out);
+        if let Some(line) = &unrun {
+            renderer.status(out, Status::Info, line);
+            renderer.blank(out);
+        }
     });
 
     let manager_label = manager.to_string();
@@ -288,6 +302,35 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         render_summary(renderer, out, &report);
     });
     Ok(())
+}
+
+/// The one line `uf install` prints about the scripts it leaves alone, or
+/// `None` when no manifest declares any.
+///
+/// One line for the whole workspace rather than one per manifest, because the
+/// sentence is the same for every manifest, and a workspace of twelve packages
+/// should not open its install with twelve copies of it.
+fn unrun_scripts_line(
+    root: &Utf8Path,
+    unrun: &[(camino::Utf8PathBuf, Vec<String>)],
+) -> Option<String> {
+    if unrun.is_empty() {
+        return None;
+    }
+    let declared = unrun
+        .iter()
+        .map(|(manifest, names)| {
+            format!(
+                "{} declares {}",
+                crate::support::relative_to(root, manifest),
+                names.join(", ")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    Some(format!(
+        "{declared}; uf does not run package.json scripts, so project tasks belong in uf.config.js"
+    ))
 }
 
 /// Record what the workspace resolved to, in `.uf/install.json`.

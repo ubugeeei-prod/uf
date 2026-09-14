@@ -202,7 +202,8 @@ A name that is not waiting to build is refused with the list of the ones that ar
 `--dry-run` writes nothing.
 
 `pm.allowLifecycleScripts: true` lifts both refusals at once — the project's own
-`scripts` and every dependency's — and is the one switch that does.
+install-time lifecycle scripts and every dependency's — and is the one switch
+that does. A script no install runs, such as `start` or `ios`, is never refused.
 
 ## Adding and removing
 

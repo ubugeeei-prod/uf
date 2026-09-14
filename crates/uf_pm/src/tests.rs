@@ -70,15 +70,17 @@ fn install_writes_lockfile_and_store_manifest() {
 }
 
 #[test]
-fn install_rejects_package_scripts_by_default() {
+fn install_refuses_the_install_time_hooks_a_manifest_declares() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::write(
         root.join("package.json"),
         r#"{
   "name": "demo",
+  "version": "1.0.0",
   "scripts": {
-"test": "jest"
+    "start": "expo start",
+    "postinstall": "node scripts/fetch.js"
   }
 }
 "#,
@@ -87,10 +89,87 @@ fn install_rejects_package_scripts_by_default() {
 
     let error = install_workspace(&root, &UniflowedConfig::default()).unwrap_err();
 
-    assert!(matches!(
-        error,
-        PackageManagerError::ScriptsForbidden { .. }
-    ));
+    match &error {
+        PackageManagerError::ScriptsForbidden { scripts, .. } => {
+            assert_eq!(scripts, &["postinstall"]);
+        }
+        other => panic!("expected the lifecycle refusal, got {other}"),
+    }
+    let message = error.to_string();
+    assert!(
+        message.contains("declares install-time lifecycle scripts (postinstall)"),
+        "{message}"
+    );
+    assert!(!message.contains("start"), "{message}");
+    assert!(message.contains("uf tasks"), "{message}");
+}
+
+/// Scripts no install runs are the project's business, and uf leaves them.
+///
+/// `create-expo-app` and `@react-native-community/cli init` both write `start`,
+/// `android` and `ios`. Refusing those refused every project either tool
+/// generates while protecting against nothing, because no package manager runs
+/// a named script during an install. See ubugeeei-prod/uf#992.
+#[test]
+fn install_accepts_scripts_that_no_install_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{
+  "name": "demo",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "prestart": "echo before",
+    "test": "jest"
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    check_workspace_manifests(&root, &UniflowedConfig::default()).unwrap();
+    let unrun = scripts_uf_does_not_run(&root).unwrap();
+
+    assert_eq!(unrun.len(), 1, "{unrun:?}");
+    assert_eq!(unrun[0].0, root.join("package.json"));
+    let mut names = unrun[0].1.clone();
+    names.sort();
+    assert_eq!(
+        names,
+        ["android", "ios", "prestart", "start", "test", "web"]
+    );
+}
+
+/// Every hook on the list is refused on its own, and is named in the refusal.
+#[test]
+fn every_install_time_hook_is_refused_by_name() {
+    for hook in INSTALL_LIFECYCLE_SCRIPTS {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            root.join("package.json"),
+            format!(
+                "{{ \"name\": \"demo\", \"version\": \"1.0.0\", \"scripts\": {{ \"{hook}\": \"echo hook\" }} }}\n"
+            ),
+        )
+        .unwrap();
+
+        let error = check_workspace_manifests(&root, &UniflowedConfig::default()).unwrap_err();
+
+        assert!(
+            matches!(
+                &error,
+                PackageManagerError::ScriptsForbidden { scripts, .. }
+                    if scripts.len() == 1 && scripts[0] == *hook
+            ),
+            "{hook}: {error}"
+        );
+    }
 }
 
 #[test]

@@ -10,8 +10,8 @@
 //! Delegating is a complete answer, and it is a *better* answer than dropping
 //! out to npm by hand, because everything uf knows about the project stays in
 //! force: `pm.allowLifecycleScripts` becomes `--ignore-scripts` on the child,
-//! and a manifest that declares scripts of its own is refused before anything
-//! is fetched. Native uf projects also rewrite `uf.lock` and the
+//! and a manifest that declares install-time lifecycle scripts of its own is
+//! refused before anything is fetched. Native uf projects also rewrite `uf.lock` and the
 //! content-addressed store; delegated npm, pnpm, Yarn and Bun projects keep the
 //! lockfile they already use.
 //!
