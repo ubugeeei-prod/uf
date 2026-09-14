@@ -52,11 +52,32 @@ impl fmt::Display for ClientOnlyHookOrigin {
     }
 }
 
+/// How a server-only import reached the client graph, as a message ends.
+///
+/// Nothing for a chain of one: that module is a client boundary itself, and the
+/// message already calls it the client module. Otherwise the modules from the
+/// boundary down to the importer, in the order somebody would follow the
+/// imports to find where to cut — which is the half of the message a reader
+/// cannot work out from the importing module alone. See ubugeeei-prod/uf#252.
+fn chain_suffix(chain: &[Utf8PathBuf]) -> String {
+    if chain.len() < 2 {
+        return String::new();
+    }
+    let steps: Vec<String> = chain.iter().map(|module| format!("`{module}`")).collect();
+    format!(
+        ", reached from a client boundary through {}",
+        steps.join(" → ")
+    )
+}
+
 /// A violation of the React Server Components contract.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RscDiagnostic {
     /// A module in the client graph imports server-only code.
-    #[error("client module `{module}` imports server-only `{specifier}` at line {line}")]
+    #[error(
+        "client module `{module}` imports server-only `{specifier}` at line {line}{}",
+        chain_suffix(.chain)
+    )]
     ServerOnlyImportInClientModule {
         /// Importing module, relative to the project root.
         module: Utf8PathBuf,
@@ -64,6 +85,10 @@ pub enum RscDiagnostic {
         specifier: CompactString,
         /// 1-based line of the import.
         line: u32,
+        /// The shortest chain of imports from a client boundary to `module`,
+        /// both ends included. Empty until the graph is built, and a single
+        /// module when `module` is the boundary.
+        chain: Vec<Utf8PathBuf>,
     },
     /// A Server Component reaches for an API that only exists in the browser.
     #[error("server module `{module}` uses client-only `{api}` at line {line}:{column}")]

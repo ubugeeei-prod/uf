@@ -32,7 +32,7 @@ covers and what it does not yet.
 | Area | Today | Still missing |
 | --- | --- | --- |
 | Directive parsing | `"use client"` and `"use server"` are read by the same directive-prologue rules React and bundlers use | no known gap |
-| Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call; `uf build` naming the import chain that put server-only code in a client module |
+| Diagnostics | invalid directives, server-only imports in client graphs and client APIs in server modules are named | binding custom hooks to the browser APIs they call |
 | The split | a Server Component never reaches the browser: the browser gets the payload it rendered and the `"use client"` modules that payload names | no known gap |
 | HTML streaming | the document streams, and carries the Flight payload its tree was rendered from; a Suspense boundary resolves from the rows that arrive later in the same response | no known gap |
 | Navigation | a navigation fetches the next route's payload at `<route>/__uf.flight`; a prerendered route has that file beside its `index.html` | intercepting routes, which need the router that resolves routes from modules |
@@ -216,7 +216,7 @@ fixed by bundling it. The one exception is the last row.
 
 | Rule | What it means |
 | --- | --- |
-| `rsc/server-only-import-in-client` | A module the client graph reaches imports `@uniflowed/db`, `@uniflowed/server`, `server-only`, a subpath of one of those, or a `*.server.js` file |
+| `rsc/server-only-import-in-client` | A module the client graph reaches imports `@uniflowed/db`, `@uniflowed/server`, `server-only`, a subpath of one of those, or a `*.server.js` file. The message names the chain of imports from the client boundary down to that module — `` `app/Counter.js` → `app/format.js` → `app/session.js` `` — because the import to cut is on that path, and rarely in the module that did the importing |
 | `rsc/client-only-api-in-server` | A Server Component calls `useState`, `useEffect`, `createContext` and the rest, or reads `window`, `document`, `localStorage`, `sessionStorage`, `navigator` or `alert` |
 | `rsc/client-only-hook-in-server` | A Server Component calls a hook `@uniflowed/hooks` declares as browser-only |
 | `rsc/server-action-not-async` | A `"use server"` export React cannot call, because it is not an async function |
@@ -295,9 +295,6 @@ of a server component's code reaches the browser.
   modules: under React Server Components an intercepted URL is an ordinary
   navigation to the page it names
   ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)).
-- **`uf build` failing on the import chain** that put server-only code into a
-  client module; [#252](https://github.com/ubugeeei-prod/uf/issues/252) tracks
-  it.
 
 [What uf does not do](/guide/scope) lists these beside every other gap.
 
