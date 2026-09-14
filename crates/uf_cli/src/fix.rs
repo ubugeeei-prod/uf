@@ -207,12 +207,90 @@ pub(crate) struct Fix {
 /// [`Fix::safety`], and a caller that wants to *say* how many unfixed findings
 /// had an unsafe answer needs to be told about them.
 pub(crate) fn fix_for(diagnostic: &Diagnostic, line: &str) -> Option<Fix> {
-    match diagnostic.rule {
-        "flow/deprecated-type" => deprecated_type(diagnostic, line),
-        "flow/non-const-var-export" => mutable_export(diagnostic, line),
-        "vite/hot-needs-optional-chaining" => hot_optional_chaining(diagnostic, line),
-        _ => None,
+    let (_, tier, fixer) = FIXERS.iter().find(|(rule, ..)| *rule == diagnostic.rule)?;
+    let fix = fixer(diagnostic, line)?;
+    // Each fixer builds its own `Fix`, and the table's tier is what
+    // `uf lint --rules` prints, so this is the line that stops the two from
+    // telling a reader different things. Every fixer has tests that reach it.
+    debug_assert_eq!(
+        fix.safety, *tier,
+        "{} is fixed in a different tier from the one FIXERS names",
+        diagnostic.rule
+    );
+    Some(fix)
+}
+
+/// The edit for one diagnostic, given the line the document holds there.
+type Fixer = fn(&Diagnostic, &str) -> Option<Fix>;
+
+/// Every rule with a targeted fix, the tier that fix is in, and the function
+/// that spells it.
+///
+/// A table rather than a `match`, because two callers ask it different
+/// questions: [`fix_for`] wants the edit for a finding, and `uf lint --rules`
+/// wants to say which rules have a fix before there is a finding to ask about.
+/// A `match` answers only the first, and a second list answering the other is
+/// a list that drifts from the first.
+const FIXERS: &[(&str, Safety, Fixer)] = &[
+    ("flow/deprecated-type", Safety::Safe, deprecated_type),
+    ("flow/non-const-var-export", Safety::Unsafe, mutable_export),
+    (
+        "vite/hot-needs-optional-chaining",
+        Safety::Unsafe,
+        hot_optional_chaining,
+    ),
+];
+
+/// What uf can do about a rule's findings, said about the rule rather than a
+/// finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RuleFix {
+    /// `--fix` applies it.
+    Safe,
+    /// Only `--fix-unsafe` applies it.
+    Unsafe,
+    /// `uf fmt` clears it; see [`FORMATTED_AWAY`].
+    Formatter,
+}
+
+impl RuleFix {
+    /// The word `uf lint --rules --json` carries.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Safe => "safe",
+            Self::Unsafe => "unsafe",
+            Self::Formatter => "formatter",
+        }
     }
+
+    /// What a person runs to apply it, which is what the table on screen says.
+    pub(crate) fn command(self) -> &'static str {
+        match self {
+            Self::Safe => "--fix",
+            Self::Unsafe => "--fix-unsafe",
+            Self::Formatter => "uf fmt",
+        }
+    }
+}
+
+/// Whether `rule` has a fix, and which kind.
+///
+/// [`None`] for most rules, deliberately — the module documentation gives the
+/// reason for each. A rule with a fix can still offer nothing for a particular
+/// finding, because a fixer re-reads the line and declines when it no longer
+/// holds what the rule saw; so this answers "does uf know how to fix this
+/// rule", not "will every finding of it be fixed".
+pub(crate) fn rule_fix(rule: &str) -> Option<RuleFix> {
+    if FORMATTED_AWAY.contains(&rule) {
+        return Some(RuleFix::Formatter);
+    }
+    FIXERS
+        .iter()
+        .find(|(id, ..)| *id == rule)
+        .map(|(_, tier, _)| match tier {
+            Safety::Safe => RuleFix::Safe,
+            Safety::Unsafe => RuleFix::Unsafe,
+        })
 }
 
 /// Every fix that applies to `source`, in document order, with overlaps resolved.
