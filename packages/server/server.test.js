@@ -273,3 +273,42 @@ describe("isolation between requests", () => {
     expect(() => headers()).toThrow();
   });
 });
+
+describe("a second copy of this package", () => {
+  // A uf application loads `@uniflowed/server` twice on purpose: React Server
+  // Components render in a module graph resolved under the `react-server`
+  // export condition, beside the one that renders HTML, and each graph
+  // evaluates this package once. A query string is how a test gets the same
+  // situation in one process — Node keys a module by its URL, so
+  // `context.js?a-second-copy` is a second instance of the same file, with a
+  // request store of its own unless the store is the process's. See
+  // `internal/process-state.js`.
+  async function secondCopy() {
+    return import(new URL("./internal/context.js?a-second-copy", import.meta.url).href);
+  }
+
+  it("is a second instance, which is what makes the cases below mean anything", async () => {
+    const copy = await secondCopy();
+
+    expect(copy.runWithContext).not.toBe(runWithContext);
+  });
+
+  it("sees the request the first copy began", async () => {
+    const copy = await secondCopy();
+    const { run } = beginRequest(request({ cookie: "visitor=ada" }));
+
+    const seen = await run(async () => copy.currentContext()?.cookies.get("visitor") ?? null);
+
+    expect(seen).toBe("ada");
+  });
+
+  it("begins a request the first copy's bindings can read", async () => {
+    const copy = await secondCopy();
+
+    const seen = copy.runWithContext(copy.contextFor(request({ "x-who": "second" })), () =>
+      headers().get("x-who"),
+    );
+
+    expect(seen).toBe("second");
+  });
+});

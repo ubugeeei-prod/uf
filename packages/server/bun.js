@@ -145,9 +145,9 @@ export async function serve(options: {|
    * The application bundle's own `beginRequest`.
    *
    * From the bundle rather than imported here, for the reason `./node.js`
-   * spells out under "Who owns the request": the request lives in an
-   * `AsyncLocalStorage` belonging to a module *instance*, and the instance the
-   * application reads is the one linked into `handler.js`.
+   * spells out under "Who owns the request": the request store is shared by
+   * every copy of one release of this package, and the release the application
+   * reads is the one linked into `handler.js`.
    */
   readonly beginRequest: (request: Request) => RequestLifecycle,
   readonly host?: string,
