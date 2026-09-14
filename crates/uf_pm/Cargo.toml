@@ -21,6 +21,11 @@ sha2.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 uf_config = { path = "../uf_config" }
+# `uf.lock` holds `uf_env`'s toolchain record beside the resolver's packages.
+# The resolver keeps it, votes around it, and waits on the guard every writer of
+# the file holds, and all three are `uf_env::lock`'s to define — a second copy of
+# the record's shape here would be a second thing to keep in step.
+uf_env = { path = "../uf_env" }
 
 [dev-dependencies]
 tempfile.workspace = true

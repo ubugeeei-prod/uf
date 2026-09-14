@@ -194,3 +194,197 @@ fn exec_without_an_environment_names_the_command_that_makes_one() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(stderr.contains("uf env install"), "{stderr}");
 }
+
+/// A project written with the keys ubugeeei-prod/uf#940 added.
+fn declaring(dir: &std::path::Path, declarations: &str) {
+    fs::write(
+        dir.join("uf.config.js"),
+        format!(
+            "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\n\
+             export default defineConfig({declarations});\n"
+        ),
+    )
+    .unwrap();
+}
+
+/// `uf env list` names each tool with what it is for, and a prefix nothing has
+/// resolved says so without fetching anything or writing `uf.lock`.
+#[test]
+fn env_list_names_each_tool_and_what_it_is_for() {
+    let dir = tempfile::tempdir().unwrap();
+    declaring(
+        dir.path(),
+        r#"{ runtime: "node@26.8.2", test: { runner: "bun@1.4" } }"#,
+    );
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["env", "list"])
+        .env("UF_STORE", dir.path().join("store"))
+        .env("UF_ROOTS", dir.path().join("roots"))
+        // Nothing is served here, so a listing that fetched would fail.
+        .env("UF_TOOL_INDEX_BASE", "file:///nothing/is/served/here")
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("node@26.8.2  runtime, build runtime  missing"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("bun@1.4  test runtime  not locked yet"),
+        "{stdout}"
+    );
+    assert!(!dir.path().join("uf.lock").exists());
+    assert_plain(&stdout);
+}
+
+/// The publisher a fixture archive stands in for: an npm package whose one
+/// executable prints its version.
+///
+/// Built here rather than checked in, and served over `file://`, so the whole
+/// chain — resolve a prefix against a release list, lock it, fetch the archive,
+/// check its digest, unpack, link, run — is exercised with no network, the way
+/// `uf_env`'s own fixtures are.
+fn publish_pnpm(root: &std::path::Path, version: &str) {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    use std::os::unix::fs::PermissionsExt;
+
+    let package = root.join("work/package");
+    fs::create_dir_all(package.join("bin")).unwrap();
+    fs::write(
+        package.join("package.json"),
+        format!(r#"{{ "name": "pnpm", "version": "{version}", "bin": {{ "pnpm": "bin/pnpm" }} }}"#),
+    )
+    .unwrap();
+    let executable = package.join("bin/pnpm");
+    fs::write(&executable, format!("#!/bin/sh\necho {version}\n")).unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+
+    let archives = root.join("archives/pnpm/-");
+    fs::create_dir_all(&archives).unwrap();
+    let tarball = archives.join(format!("pnpm-{version}.tgz"));
+    let packed = std::process::Command::new("tar")
+        .arg("-czf")
+        .arg(&tarball)
+        .arg("-C")
+        .arg(root.join("work"))
+        .arg("package")
+        .status()
+        .unwrap();
+    assert!(packed.success());
+    let integrity = base64::engine::general_purpose::STANDARD
+        .encode(sha2::Sha512::digest(fs::read(&tarball).unwrap()));
+    fs::write(
+        root.join(format!("archives/pnpm/{version}")),
+        format!(r#"{{ "dist": {{ "integrity": "sha512-{integrity}" }} }}"#),
+    )
+    .unwrap();
+}
+
+/// A prefix resolves against the publisher's list and is locked in `uf.lock`;
+/// `uf env install` installs what the lock says and links it; and the
+/// toolchain-only `uf.lock` that leaves behind does not change which package
+/// manager the project is detected as using.
+#[test]
+fn a_prefix_is_locked_installed_and_run_and_the_lock_does_not_vote() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    declaring(&project, r#"{ packageManager: "pnpm@12" }"#);
+    fs::write(project.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    fs::write(project.join("package-lock.json"), "{}\n").unwrap();
+
+    fs::create_dir_all(root.join("lists")).unwrap();
+    fs::write(
+        root.join("lists/pnpm"),
+        r#"{ "versions": { "11.9.0": {}, "12.0.0": {}, "12.1.0": {}, "13.0.0-rc.1": {} } }"#,
+    )
+    .unwrap();
+    publish_pnpm(root, "12.1.0");
+
+    let run = |arguments: &[&str]| {
+        uf().arg("--cwd")
+            .arg(&project)
+            .args(arguments)
+            .env("UF_STORE", root.join("store"))
+            .env("UF_ROOTS", root.join("roots"))
+            .env("UF_ENVS", root.join("envs"))
+            .env("UF_INDEX_CACHE", root.join("cache"))
+            .env(
+                "UF_TOOL_INDEX_BASE",
+                format!("file://{}", root.join("lists").display()),
+            )
+            .env(
+                "UF_TOOL_BASE",
+                format!("file://{}", root.join("archives").display()),
+            )
+            .output()
+            .unwrap()
+    };
+
+    let output = run(&["env", "update"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("pnpm@12  locked at 12.1.0"), "{stdout}");
+    assert_eq!(
+        fs::read_to_string(project.join("uf.lock")).unwrap(),
+        "{\n  \"toolchain\": {\n    \"pnpm@12\": \"12.1.0\"\n  }\n}\n"
+    );
+
+    // `uf_env` wrote that file and `uf_pm` reads lockfiles to decide which
+    // manager a project uses. They are held to one shape here: the project
+    // with `package-lock.json` is still npm's, and not ambiguous.
+    let output = run(&["inspect", "--json"]);
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let detection = &value["engines"]["packageManagerDetection"];
+    assert_eq!(detection["packageManager"], "npm", "{detection:#}");
+    assert_eq!(
+        detection["alternatives"],
+        serde_json::json!([]),
+        "{detection:#}"
+    );
+
+    let output = run(&["env", "install"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("pnpm@12 (12.1.0)  package manager  installed"),
+        "{stdout}"
+    );
+
+    let output = run(&["env", "exec", "--", "pnpm"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "12.1.0\n");
+
+    // And a second update, with nothing newer published, moves nothing.
+    let output = run(&["env", "update"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("pnpm@12  12.1.0, already the newest"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("already locks the newest"), "{stdout}");
+}

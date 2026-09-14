@@ -131,6 +131,89 @@ fn polluting_json_keys_are_recognised() {
     assert!(!is_polluting_json_key("__proto__x"));
 }
 
+/// `uf install` rewrites `uf.lock` from the manifests and keeps the toolchain
+/// record `uf_env` put there.
+///
+/// ubugeeei-prod/uf#940: which release `node@26` resolved to is not the
+/// manifests' to decide, and an install that dropped it would have every prefix
+/// re-resolved on the next command.
+#[test]
+fn install_keeps_the_toolchain_record_in_uf_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(root.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    fs::write(
+        root.join("uf.lock"),
+        "{\n  \"toolchain\": {\n    \"node@26\": \"26.8.2\"\n  }\n}\n",
+    )
+    .unwrap();
+
+    install_workspace(&root, &UniflowedConfig::default()).unwrap();
+
+    let lock: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("uf.lock")).unwrap()).unwrap();
+    assert_eq!(
+        lock["toolchain"],
+        serde_json::json!({ "node@26": "26.8.2" })
+    );
+    assert_eq!(lock["packages"][0]["name"], "demo");
+
+    // A project with no record gets the file it always got.
+    fs::remove_file(root.join("uf.lock")).unwrap();
+    install_workspace(&root, &UniflowedConfig::default()).unwrap();
+    assert!(
+        !fs::read_to_string(root.join("uf.lock"))
+            .unwrap()
+            .contains("toolchain")
+    );
+}
+
+/// An install waits for a command holding `uf.lock`, and keeps what that
+/// command locked while it waited.
+///
+/// Without the guard the install reads the record before the other command
+/// writes it and renames over it afterwards, and the entry is gone.
+#[test]
+fn install_waits_for_a_command_holding_the_lock() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(root.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    let held = uf_env::lock::guard(&root.join("uf.lock")).unwrap();
+
+    let (done, finished) = mpsc::channel();
+    let worker_root = root.clone();
+    let worker = std::thread::spawn(move || {
+        let installed = install_workspace(&worker_root, &UniflowedConfig::default()).map(|_| ());
+        done.send(()).unwrap();
+        installed
+    });
+
+    assert!(
+        finished.recv_timeout(Duration::from_millis(300)).is_err(),
+        "installed while another command held the lock"
+    );
+    fs::write(
+        root.join("uf.lock"),
+        "{\n  \"toolchain\": {\n    \"node@26\": \"26.8.2\"\n  }\n}\n",
+    )
+    .unwrap();
+    drop(held);
+
+    finished
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the install finished once the lock was free");
+    worker.join().unwrap().unwrap();
+    let lock: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(root.join("uf.lock")).unwrap()).unwrap();
+    assert_eq!(
+        lock["toolchain"],
+        serde_json::json!({ "node@26": "26.8.2" })
+    );
+}
+
 #[test]
 fn install_still_detects_the_native_resolver_afterwards() {
     let dir = tempfile::tempdir().unwrap();
