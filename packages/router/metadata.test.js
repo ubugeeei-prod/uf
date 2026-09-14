@@ -16,6 +16,7 @@
 // silently ignored by the machine that reads it.
 
 import * as React from "@uniflowed/react";
+import { Temporal } from "@uniflowed/core/temporal";
 import { useRandom, useRenderedAt } from "@uniflowed/hooks";
 import { routerView, useSeo } from "@uniflowed/router";
 import type { LayoutModule, Metadata, PageModule } from "@uniflowed/router";
@@ -788,7 +789,11 @@ describe("the render anchor", () => {
     expect(typeof envelope.at).toBe("number");
     expect(typeof envelope.seed).toBe("string");
 
-    // The instant in the markup is the instant the tree was handed.
-    expect(first).toContain(new Date(envelope.at).toISOString().replace(".000Z", "Z"));
+    // The instant in the markup is the instant the tree was handed, printed the
+    // way Temporal prints one: the fewest fraction digits that say the value.
+    // `toISOString` always prints three, so an expectation built from it was
+    // right for nine renders in ten and wrong whenever the millisecond ended in
+    // a zero.
+    expect(first).toContain(Temporal.Instant.fromEpochMilliseconds(envelope.at).toString());
   });
 });
