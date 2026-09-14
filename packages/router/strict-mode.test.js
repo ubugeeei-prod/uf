@@ -87,9 +87,15 @@ describe("the flag the client entry carries", () => {
     // what keeps a production bundle from carrying the decision at all, and it
     // is why this is a generated constant rather than a runtime read of
     // `import.meta.hot`.
+    //
+    // For both kinds of application: the default, which hydrates the payload
+    // its document carries, and one rendered from its modules.
     const built = clientEntry("build");
-    expect(built).toContain("hydrate({ App, routes, notFound, errors });");
+    expect(built).toContain("hydrateFlight({ App });");
     expect(built).not.toContain("strictMode");
+    const fromModules = clientEntry("build", { app: { rsc: false } });
+    expect(fromModules).toContain("hydrate({ App, routes, notFound, errors });");
+    expect(fromModules).not.toContain("strictMode");
   });
 
   it("lets a project turn it off", () => {

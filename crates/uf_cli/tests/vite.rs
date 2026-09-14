@@ -3844,7 +3844,63 @@ fn streamed(port: u16, slow_id: &str) -> Result<(), (String, String)> {
             slow.evidence(),
         ));
     }
-    Ok(())
+    flight_order(&slow, slow_id, page)
+}
+
+/// Whether a suspending page's Flight payload arrived in the order a browser
+/// needs to read it as it arrives.
+///
+/// The document carries the payload its tree was rendered from, in chunks
+/// written as React's Flight renderer produces rows (ubugeeei-prod/uf#519), and
+/// three facts about *when* make that a stream rather than an attachment:
+///
+///   1. the first chunk — the shell's tree — is on the wire before the page is,
+///      so hydration can begin while the page is still waiting;
+///   2. the end marker comes after the page's own content, so the payload did
+///      not end before the row that resolves the boundary was written;
+///   3. `</html>` comes after the end marker, because a chunk written after it
+///      is one the HTML parser moves, and the reader would be told the payload
+///      ended before it did.
+///
+/// Byte order for the last two and arrival time for the first, for the reason
+/// [`streamed`] gives: a buffered document would still have them in order.
+fn flight_order(
+    slow: &TimedResponse,
+    slow_id: &str,
+    page: Duration,
+) -> Result<(), (String, String)> {
+    const CHUNK: &str = "data-uf-flight>";
+    let Some(first_chunk) = slow.first_at(CHUNK) else {
+        return Err((
+            "the document carries no Flight payload".to_owned(),
+            slow.evidence(),
+        ));
+    };
+    if first_chunk + STREAMING_MARGIN > page {
+        return Err((
+            format!(
+                "the payload's first chunk arrived {}ms in and the page {}ms in, so the payload \
+                 was held back rather than streamed with the document",
+                first_chunk.as_millis(),
+                page.as_millis()
+            ),
+            slow.evidence(),
+        ));
+    }
+    let text = &slow.text;
+    let content = text.rfind(&format!("slow: {slow_id}"));
+    let end = text.find(&format!("{CHUNK}null</script>"));
+    let close = text.rfind("</html>");
+    match (content, end, close) {
+        (Some(content), Some(end), Some(close)) if content < end && end < close => Ok(()),
+        _ => Err((
+            format!(
+                "the payload's end marker is not between the page's content and `</html>`: \
+                 content at {content:?}, end marker at {end:?}, `</html>` at {close:?}"
+            ),
+            slow.evidence(),
+        )),
+    }
 }
 
 /// How long `app/slow/[id]/$page.js` waits before it renders.
@@ -5657,9 +5713,12 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
 
     // 4. The summary is the bundler's own count of what it emitted, not a
     //    second implementation of the decision above.
+    //    None, under React Server Components: the browser hydrates the payload
+    //    the document carries and imports no page on any route, and the
+    //    counter reaches it as a client module of its own (ubugeeei-prod/uf#252).
     assert_eq!(
         summary_value(&stdout, "pages in the client bundle"),
-        "1 of 2",
+        "0 of 2",
         "the summary must say what the bundler emitted:\n{stdout}"
     );
 

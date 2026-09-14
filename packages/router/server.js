@@ -624,15 +624,21 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       }
       status = recovered.status;
       failure = recovered.failure;
-      body = await documentOf(recovered.stream, url, assets, {
-        onError: (late: mixed) => {
-          if (!ledger.isCopy(late)) {
-            report(late);
-          }
-        },
-        transformHead,
-        onStream,
-      });
+      try {
+        body = await documentOf(recovered.stream, url, assets, {
+          onError: (late: mixed) => {
+            if (!ledger.isCopy(late)) {
+              report(late);
+            }
+          },
+          transformHead,
+          onStream,
+        });
+      } catch (thrown) {
+        // The boundary's own render threw; see `prerender` for why what leaves
+        // is the exception as thrown rather than React's copy of it.
+        throw ledger.originalOf(thrown);
+      }
     }
 
     return { status, pipe: body.pipe, stream: body.stream, text: body.text, error: failure };
@@ -694,8 +700,16 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       }
       status = recovered.status;
       failure = recovered.failure;
-      payload = await bytesOf(recovered.stream);
-      html = await staticDocumentOf(payload, url, assets, onHtmlError);
+      try {
+        payload = await bytesOf(recovered.stream);
+        html = await staticDocumentOf(payload, url, assets, onHtmlError);
+      } catch (thrown) {
+        // The boundary's own render threw, and nothing is left to answer with.
+        // What leaves is the exception as thrown rather than the copy React's
+        // client rebuilt from its row, whose message in a build says only that
+        // the real one was omitted — which is all `uf build` would then print.
+        throw ledger.originalOf(thrown);
+      }
     }
     return { status, html, error: failure, payload };
   }

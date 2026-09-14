@@ -304,7 +304,14 @@ async function readable(file, message) {
  * at build time, and bakes the answer into what it emits.
  */
 export function assetsFromManifest(manifest) {
-  const entry = Object.values(manifest).find((chunk) => chunk.isEntry);
+  // `client` by name first. An application React Server Components render
+  // gives the client build one entry per client module as well, and the
+  // document's script is the application's entry, not whichever of those the
+  // manifest happens to list first.
+  const chunks = Object.values(manifest);
+  const entry =
+    chunks.find((chunk) => chunk.isEntry && chunk.name === "client") ??
+    chunks.find((chunk) => chunk.isEntry);
   if (entry == null) throw new Error("uf: the client manifest has no entry chunk");
 
   const styles = new Set(entry.css ?? []);

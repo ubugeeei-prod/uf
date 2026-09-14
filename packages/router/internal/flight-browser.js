@@ -185,6 +185,12 @@ export type FetchedFlight =
  * navigation lands the history entry on the target, as a document request
  * would have. Anything that is not a payload is handed back as a document to
  * load instead of being fed to React's client.
+ *
+ * The status is not what decides, the content type is. A route that resolved
+ * to its not-found or error boundary is answered with a 404 or a 500 *and a
+ * payload*, and that payload is the page to show; what is not a payload — a
+ * static host's `404.html` for a file it does not have, a middleware's own
+ * refusal — is a document, whatever its status.
  */
 export async function fetchFlight(url: string): Promise<FetchedFlight> {
   const response = await fetch(flightUrl(url), {
@@ -197,7 +203,6 @@ export async function fetchFlight(url: string): Promise<FetchedFlight> {
   if (
     landed.origin !== window.location.origin ||
     document == null ||
-    !response.ok ||
     !type.startsWith(FLIGHT_CONTENT_TYPE)
   ) {
     void response.body?.cancel();
