@@ -2637,8 +2637,12 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
                     "the `bun` artefact must actually use {expected}"
                 );
             }
+            // The call, `createServer(`, and not the letters: an application
+            // React Server Components render bundles React's Flight client, which
+            // exports `createServerReference`, and so does uf's action reference
+            // module. Neither is a server, and both are in every artefact.
             assert!(
-                !bundled.contains("createServer"),
+                !bundled.contains("createServer("),
                 "a `bun` artefact carrying `node:http`'s server is the `node` one renamed"
             );
         }
@@ -2664,8 +2668,9 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
                     "the `deno` artefact must actually use {expected}"
                 );
             }
+            // `createServer(`, the call, for the reason the `bun` arm gives.
             assert!(
-                !bundled.contains("createServer") && !bundled.contains("Bun.serve"),
+                !bundled.contains("createServer(") && !bundled.contains("Bun.serve"),
                 "a `deno` artefact carrying another runtime's server is that adapter renamed"
             );
         }

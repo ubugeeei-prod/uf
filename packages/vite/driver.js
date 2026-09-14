@@ -1375,6 +1375,19 @@ async function deploy() {
     ...inline,
     customLogger: eventLogger("warn"),
     plugins: [...inline.plugins, nativeAddonGuard()],
+    // Fixed, because this bundle inlines every dependency and so both of each
+    // React package's builds, and a runtime lookup of `NODE_ENV` in a worker
+    // finds nothing and picks the development one. React's Flight client's
+    // development build constructs a `WeakRef` for every response, which
+    // workerd does not have: every document the edge artefact rendered was a
+    // `ReferenceError`. The production build has none, and is the one a
+    // deployment means.
+    define: {
+      ...(inline.define ?? {}),
+      "process.env.NODE_ENV": JSON.stringify(
+        inline.mode === "development" ? "development" : "production",
+      ),
+    },
     ssr,
     build: {
       ...inline.build,
