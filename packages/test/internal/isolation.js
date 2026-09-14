@@ -8,10 +8,10 @@
 // the process, outlives the file, and is handed to whichever file the schedule
 // puts next in that worker.
 //
-// That second list is what this module is. It has been discovered three times,
-// once per entry, and each time the same way — a suite that passed alone and
-// failed beside another, naming the file that read the value rather than the
-// file that wrote it:
+// That second list is what this module is. It has been discovered four times,
+// and each time the same way — a suite that passed alone and failed beside
+// another, naming the file that read the value rather than the file that wrote
+// it:
 //
 //   * ubugeeei-prod/uf#417, `uft.stubEnv("NODE_ENV", …)` still set for the
 //     next file;
@@ -20,7 +20,11 @@
 //     fired and the file hung with nothing on screen;
 //   * ubugeeei-prod/uf#607, `document.body` still holding the markup a
 //     hydration test wrote into it, so the next file's "there is one image on
-//     the page" found six.
+//     the page" found six;
+//   * ubugeeei-prod/uf#944, the window around that body: a `matchMedia` a file
+//     removed, and the document's `FormData` left in place of Node's. That one is not on the list below, because this package does not
+//     make the window — `@uniflowed/react-testing` does, and registers how to
+//     put it back (see `registeredElsewhere`).
 //
 // Which files share a worker is decided by `.uf/test-timings.json`, so a leak
 // makes the *result* of a suite depend on how the machine was loaded the last
@@ -169,6 +173,37 @@ function restoreDocument(): void {
 }
 
 /**
+ * Where other packages register process-wide state of their own.
+ *
+ * A package this one does not depend on can still install something a file
+ * changes and the next file reads: `@uniflowed/react-testing` installs a window
+ * on the first render and keeps it for the process. Only that package knows
+ * what the window looked like when it made it, so it registers how to put it
+ * back — a name for the message below, and a function — in a `Map` under this
+ * symbol, and every entry runs after the list above.
+ *
+ * A symbol from the global registry rather than an export, so the package that
+ * registers needs no import of this one: under another runner the entry is
+ * never read and costs nothing.
+ */
+const SHARED_STATE: symbol = Symbol.for("@uniflowed/test/shared-state");
+
+/** Every entry another package registered, as this module's own entries are shaped. */
+function registeredElsewhere(): $ReadOnlyArray<Shared> {
+  const registry: mixed = Reflect.get(globalThis, SHARED_STATE);
+  if (!(registry instanceof Map)) {
+    return [];
+  }
+  const entries: Array<Shared> = [];
+  for (const [what, restore] of registry) {
+    if (typeof what === "string" && typeof restore === "function") {
+      entries.push({ what, restore: () => void restore() });
+    }
+  }
+  return entries;
+}
+
+/**
  * Put back everything the file that just ran may have changed.
  *
  * Called by `../worker.js` before it imports the next file. Nothing here
@@ -185,7 +220,7 @@ function restoreDocument(): void {
  */
 export function restoreSharedState(): void {
   let failure: { readonly what: string, readonly thrown: mixed } | null = null;
-  for (const shared of SHARED) {
+  for (const shared of [...SHARED, ...registeredElsewhere()]) {
     try {
       shared.restore();
     } catch (thrown) {

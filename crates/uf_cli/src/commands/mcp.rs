@@ -435,7 +435,7 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
                 .get("command")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            commands::explain::explain(cwd, &mut ui, command, json)
+            commands::explain::explain(cwd, &mut ui, command, None, json)
         }
         "uf_test" => commands::test::test(
             cwd,

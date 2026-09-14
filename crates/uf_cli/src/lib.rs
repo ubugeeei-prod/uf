@@ -297,9 +297,23 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             force,
         } => commands::create::scaffold(&cwd, ui, Some(path), template, lib, name, force),
         Commands::Create { command } => commands::create::create(&cwd, ui, command),
-        Commands::Dev { host, port, mode } => {
-            commands::dev::dev(&cwd, ui, commands::dev::DevArgs { host, port, mode })
-        }
+        Commands::Dev {
+            host,
+            port,
+            mode,
+            target,
+            passthrough,
+        } => commands::dev::dev(
+            &cwd,
+            ui,
+            commands::dev::DevArgs {
+                host,
+                port,
+                mode,
+                target,
+                passthrough,
+            },
+        ),
         Commands::Doc { out_dir, json } => commands::doc::doc(&cwd, ui, &out_dir, json),
         Commands::Env { command } => commands::env::env(&cwd, ui, command),
         Commands::Exec { yes, package, args } => {
@@ -308,7 +322,11 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Fmt { check, paths } => commands::fmt::fmt(&cwd, ui, check, &paths),
         Commands::I18n { command } => commands::i18n::i18n(&cwd, ui, command),
         Commands::Info => commands::info::info(&cwd, ui),
-        Commands::Explain { command, json } => commands::explain::explain(&cwd, ui, &command, json),
+        Commands::Explain {
+            command,
+            json,
+            target,
+        } => commands::explain::explain(&cwd, ui, &command, target.as_deref(), json),
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
         Commands::Assets => commands::assets::assets_service(&cwd),

@@ -67,13 +67,14 @@ reason is in `crates/uf_cli/src/commands/dev/hover.rs`.
 
 ## Working directory
 
-`uf lsp` reads `uf.config.js` from the directory it was started in, once. That
-read is the only channel it has for your `fmt` options and lint levels — there
-is no request that can tell it otherwise, and `uf lsp --cwd` does not work (the
-flag is accepted and ignored).
+`uf lsp` reads `uf.config.js` once, at start-up: from the directory `--cwd`
+names, or else from the directory it was started in. That read is the only
+channel it has for your `fmt` options and lint levels — there is no request
+that can tell it otherwise.
 
 `lua/uf.lua` handles this by passing `cmd_cwd = root`. If you write your own
-configuration, do the same, or start Neovim from the project root. The symptom
+configuration, do the same, pass `cmd = { "uf", "lsp", "--cwd", root }`, or
+start Neovim from the project root. The symptom
 of getting it wrong is quiet: formatting to uf's defaults rather than to yours.
 
 ## Editing `uf.config.js`
