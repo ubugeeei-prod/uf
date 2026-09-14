@@ -1391,17 +1391,17 @@ build. `tests/library/lsp.test.js` drives the real `uf lsp` binary over framed
 messages and asserts every capability those READMEs claim, including that the
 ones they disclaim are absent.
 
-The constraint every client has to satisfy is the working directory. `uf lsp`
-calls `load_config(".")` once, at start-up, so the process's own directory is
-the only channel a project's `fmt` options and lint levels travel through, and
-starting a server anywhere else silently gives it uf's defaults. The VS Code
-extension starts one server per workspace folder that has a `uf.config.js`, with
-that folder as `cwd`, and restarts it when the file changes — the server has no
-way to be told about a change. `uf lsp --cwd` is not an alternative: `--cwd` is
-a global option, so the command line accepts it and `Commands::Lsp` then ignores
-it, reading `.` instead of the directory it resolved. That is a bug in the
-server rather than in the clients; until it is fixed, `cwd` is the only thing
-that works, and every README under `editors/` says so.
+The constraint every client has to satisfy is naming the project. `uf lsp`
+reads its configuration once, at start-up — from the directory `--cwd` names, or
+else from the process's own working directory — so that is the only channel a
+project's `fmt` options and lint levels travel through, and a server pointed
+anywhere else silently gives it uf's defaults. The VS Code extension starts one
+server per workspace folder that has a `uf.config.js`, with that folder as
+`cwd`, and restarts it when the file changes — the server has no way to be told
+about a change. vim-lsp cannot set a server's working directory, so `uf.vim`
+passes `uf lsp --cwd <root>` instead. `--cwd` was once accepted by the command
+line and dropped by `Commands::Lsp`; `lsp_reads_the_config_of_the_directory_cwd_names`
+in `crates/uf_cli/tests/cli.rs` is what keeps it read.
 
 `uf mcp` is the same idea for an agent rather than an editor, and shares no code
 with `uf lsp` beyond the observation that both are JSON-RPC. The transports are

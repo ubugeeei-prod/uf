@@ -103,6 +103,20 @@ describe("toHaveNoAxeViolations", () => {
     await expect(container).toHaveNoAxeViolations();
   });
 
+  it("waits for an audit already running rather than refusing to start", async () => {
+    // Two audits at once is what a file meets when the file before it in the
+    // same worker gave up on one: a case that timed out while axe was still
+    // walking its tree leaves axe-core running, and axe-core refuses a second
+    // run outright — "Axe is already running" — so the *next* file's audit
+    // failed, naming a file that had done nothing wrong. Both are started here
+    // before either settles, which is the same situation inside one file.
+    const { container } = render(<Accessible />);
+    await Promise.all([
+      expect(container).toHaveNoAxeViolations(),
+      expect(container).toHaveNoAxeViolations(),
+    ]);
+  });
+
   it("fails over a tree axe has something to say about", async () => {
     const { container } = render(<Inaccessible />);
     let thrown: mixed = null;

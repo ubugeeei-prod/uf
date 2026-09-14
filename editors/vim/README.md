@@ -20,7 +20,6 @@ Options, before the `source` line:
 
 ```vim
 let g:uf_executable = './node_modules/.bin/uf'
-let g:uf_cd_to_root = 1
 ```
 
 `:LspStatus` says whether the server came up, and `:LspDocumentDiagnostics`
@@ -51,23 +50,19 @@ because uf has no positional type query yet.
 
 ## Working directory
 
-This is the rough edge of the Vim integration, and it is not papered over.
+`uf lsp` reads `uf.config.js` once, at start-up, and that read is the only
+source of your `fmt` options and lint levels. vim-lsp starts every server in
+Vim's own working directory and has no per-server override, so `uf.vim` names
+the project on the command line instead: it runs `uf lsp --cwd <root>`, with
+the nearest directory above the file that has a `uf.config.js` in it. Vim can
+be started anywhere, and no shell is involved, so this works on Windows too.
 
-`uf lsp` reads `uf.config.js` from the directory it was started in, once, and
-that read is the only source of your `fmt` options and lint levels. vim-lsp
-starts a server in Vim's working directory and has no per-server override, and
-`uf lsp --cwd` is accepted by the command and then ignored.
+`g:uf_cd_to_root`, which older copies of `uf.vim` read to wrap the command in
+`/bin/sh -c 'cd <root> && …'`, is no longer read and can be removed.
 
-So one of:
-
-* start Vim from the project root (`cd project && vim src/app.js`), or
-* `:cd` to the project root before opening a Flow file, or
-* set `let g:uf_cd_to_root = 1`, which wraps the command in
-  `/bin/sh -c 'cd <root> && exec uf lsp'`. Needs a POSIX shell, so not Windows.
-
-The symptom of getting it wrong is quiet: `:LspDocumentFormat` formatting to
-uf's defaults instead of yours. The check is to format in Vim and then run
-`uf fmt --check` in a terminal.
+The symptom of the server reading the wrong configuration is quiet:
+`:LspDocumentFormat` formatting to uf's defaults instead of yours. The check is
+to format in Vim and then run `uf fmt --check` in a terminal.
 
 ## Editing `uf.config.js`
 

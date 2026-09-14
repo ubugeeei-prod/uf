@@ -20,9 +20,12 @@ use uf_config::{
     DeployAdapter, LibraryPlan, Prerender, RenderingPlan, ResolvedConfig, load_config,
 };
 use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
+use uf_router::RouteTarget;
 use uf_term::KeyValue;
 
+use crate::commands::build::{application_target, default_application_target};
 use crate::commands::builder;
+use crate::commands::dev::native::{NativeServer, metro_config_file};
 use crate::commands::runtimes;
 use crate::commands::task::fetchable;
 use crate::support::{DEVELOPMENT, PRODUCTION, TEST, project_label};
@@ -84,14 +87,47 @@ pub(crate) const KNOWN: &[&str] = &[
     "ui",
 ];
 
-pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
+pub(crate) fn explain(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    command: &str,
+    target: Option<&str>,
+    as_json: bool,
+) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let Some(stages) = stages_for(command, &resolved) else {
+    let stages = match target {
+        // What `uf dev` with no `--target` will run, which for a `react-native`
+        // framework project is the native server and not the builder.
+        None if command == "dev" => Some(dev_stages_for(
+            &resolved,
+            default_application_target(&resolved.config),
+        )),
+        None => stages_for(command, &resolved),
+        // Only `uf dev` is described per target, because it is the one command
+        // whose providers change with it: a native target's server is the
+        // project's own React Native CLI rather than the builder. `uf build
+        // --target` still hands every target to the builder (#983), and a plan
+        // that varied by target there would describe a build that does not
+        // happen.
+        Some(requested) if command == "dev" => {
+            let target = application_target(&resolved.config, Some(requested), false, "uf dev")?;
+            Some(dev_stages_for(&resolved, target))
+        }
+        Some(requested) => bail!(
+            "`uf explain {command} --target {requested}`: only `uf dev` is described per \
+             application target, because it is the one command whose providers change with it"
+        ),
+    };
+    let Some(stages) = stages else {
         bail!(
             "uf explain does not describe {command:?}; it knows {}",
             KNOWN.join(", ")
         )
     };
+    let invocation = target.map_or_else(
+        || format!("uf {command}"),
+        |target| format!("uf {command} --target {target}"),
+    );
 
     let sources = config_sources(&resolved);
     // The tools this command reads, each with the key that declared it: the
@@ -104,7 +140,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
 
     if as_json {
         ui.json(&json!({
-            "command": format!("uf {command}"),
+            "command": invocation,
             "root": resolved.root.as_str(),
             "stages": stages
                 .iter()
@@ -125,7 +161,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
         .collect();
 
     let label = project_label(&resolved.root);
-    let heading = format!("uf {command}");
+    let heading = invocation;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf explain", Some(label));
         renderer.blank(out);
@@ -913,6 +949,82 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "rendering",
             provider: "@uniflowed/router".to_string(),
             detail: "server-renders each request, route handlers first".to_string(),
+        },
+    ]
+}
+
+/// `uf dev`'s stages for `target`: the builder's for the web, and the project's
+/// own React Native CLI's for a native target.
+fn dev_stages_for(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    match target {
+        RouteTarget::Web => dev_stages(resolved),
+        RouteTarget::Native | RouteTarget::Ios | RouteTarget::Android => {
+            native_dev_stages(resolved, target)
+        }
+    }
+}
+
+/// What `uf dev --target native` runs, and who runs each part.
+///
+/// Read from the filesystem only, as the rest of this command is: which server
+/// is installed, and which Metro config file is there. Whether that config
+/// really composes uf's transformer is `uf dev`'s check rather than this one's,
+/// because answering it means running the project's JavaScript, and a command
+/// whose job is to say what will happen should not have to run the thing to
+/// say it.
+fn native_dev_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    let root = &resolved.root;
+    let server = NativeServer::detect(root);
+    vec![
+        Stage {
+            name: "configuration",
+            provider: "uf".to_string(),
+            detail: format!(
+                "uf.config.js; the `{}` target needs `app.targets` to include `react-native`",
+                target.as_str()
+            ),
+        },
+        env_stage(resolved, DEVELOPMENT),
+        Stage {
+            name: "dev server",
+            provider: server.as_ref().map_or_else(
+                || "none installed: neither expo nor @react-native-community/cli".to_string(),
+                NativeServer::label,
+            ),
+            detail: "Metro, the manifest a device reads and the key commands — the project's own \
+                     CLI, started with UF_BINARY naming this uf and every argument after `--` \
+                     passed through"
+                .to_string(),
+        },
+        Stage {
+            name: "Metro config",
+            provider: metro_config_file(root).map_or_else(
+                || "none, and `uf dev` refuses to start without one".to_string(),
+                |file| file.to_string(),
+            ),
+            detail: "must compose withUniflowedMetro() from @uniflowed/react-native/metro, so \
+                     uf's transformer runs before the one the config names"
+                .to_string(),
+        },
+        transform_stage(),
+        Stage {
+            name: "device",
+            provider: server
+                .as_ref()
+                .map_or_else(|| "none".to_string(), |server| server.command().to_string()),
+            detail: match &server {
+                Some(NativeServer::Expo { .. }) => {
+                    "Expo Go or a development build opens exp://<this machine's address>:<port>, \
+                     and Expo prints the QR code"
+                        .to_string()
+                }
+                Some(NativeServer::ReactNativeCli { .. }) => {
+                    "a phone connects to <this machine's address>:<port> from the Dev Menu; a \
+                     simulator or emulator uses localhost"
+                        .to_string()
+                }
+                None => "nothing to connect to until a server is installed".to_string(),
+            },
         },
     ]
 }
