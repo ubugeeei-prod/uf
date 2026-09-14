@@ -795,7 +795,10 @@ export default defineConfig({
 
 `uf run ci` runs the task, and everything `dependsOn` reaches before it. Tasks
 with no path between them run at once; see
-[`uf run`](/reference/cli#uf-run-script-args).
+[`uf run`](/reference/cli#uf-run-script-args). In a workspace, `member#task` in
+`dependsOn` names a task another member defines in its own `uf.config.js` — by
+the member's name or its path — and a name this config defines as written is
+always that task, `#` or not.
 
 `inputs` and `outputs` are paths or globs from the project root — `*` stops at
 a `/`, `**` crosses one, and a pattern beginning `!` excludes what it matches.

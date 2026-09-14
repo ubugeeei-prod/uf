@@ -374,7 +374,7 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         uf_config::TaskRunnerEngine::ViteTask => "vite task".to_string(),
         other => format!("{other:?}"),
     };
-    vec![
+    let mut stages = vec![
         env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "task lookup",
@@ -403,7 +403,18 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                 }
             ),
         },
-    ]
+    ];
+    // The cross-package graph, when there is one: a run that spans a workspace
+    // is orchestration like any other, and the order its members run in is
+    // the part a reader cannot see from any one `uf.config.js`.
+    if let Some(detail) = crate::commands::task::workspace_summary(resolved) {
+        stages.push(Stage {
+            name: "workspace",
+            provider: "uf".to_string(),
+            detail,
+        });
+    }
+    stages
 }
 
 /// `uf exec`, which is four different commands wearing one name.
@@ -1710,5 +1721,54 @@ mod tests {
             "the plan does not mention the checksum"
         );
         assert!(stages_for("upgrade", &resolved).is_none());
+    }
+
+    /// `uf explain run` names the workspace a run can span and the order its
+    /// members run in — and says nothing of one a project does not have.
+    #[test]
+    fn run_names_the_workspace_graph() {
+        let (_guard, resolved) = defaults();
+        assert!(
+            run_stages(&resolved)
+                .iter()
+                .all(|stage| stage.name != "workspace")
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        let write = |path: &str, contents: &str| {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, contents).unwrap();
+        };
+        write(
+            "package.json",
+            r#"{ "private": true, "workspaces": ["packages/*"] }"#,
+        );
+        write("packages/ui/package.json", r#"{ "name": "ui" }"#);
+        write(
+            "packages/ui/uf.config.js",
+            r#"export default { tasks: { build: "true" } };"#,
+        );
+        write(
+            "packages/app/package.json",
+            r#"{ "name": "app", "dependencies": { "ui": "workspace:*" } }"#,
+        );
+        let resolved = load_config(root).unwrap();
+
+        let workspace = run_stages(&resolved)
+            .into_iter()
+            .find(|stage| stage.name == "workspace")
+            .expect("a workspace stage");
+        assert!(
+            workspace.detail.contains("app (0 tasks) after ui"),
+            "{}",
+            workspace.detail
+        );
+        assert!(
+            workspace.detail.contains("ui (1 task)"),
+            "{}",
+            workspace.detail
+        );
     }
 }

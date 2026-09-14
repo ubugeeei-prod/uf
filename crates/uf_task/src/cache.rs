@@ -139,10 +139,26 @@ pub(crate) struct LastRun {
     pub(crate) command: String,
     /// A digest over the environment the task was given.
     pub(crate) environment: String,
+    /// The tasks in other packages the key was built on, in plan order.
+    ///
+    /// Left out of every note a run without a workspace writes, so those notes
+    /// are byte for byte what they were before there was a field to leave out.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) dependencies: Vec<Upstream>,
     /// The inputs and their digests, in path order.
     pub(crate) inputs: Vec<InputFile>,
     /// Whether [`Self::inputs`] was cut short by [`MAX_REMEMBERED_INPUTS`].
     pub(crate) inputs_truncated: bool,
+}
+
+/// A task in another package that a key was built on, and the key that task
+/// had at the time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Upstream {
+    /// As a reader writes it: `ui#build`.
+    pub(crate) task: String,
+    pub(crate) key: String,
 }
 
 /// How many input files a note remembers.
@@ -168,6 +184,9 @@ pub enum Change {
     InputAdded(String),
     /// An input's contents are different.
     InputChanged(String),
+    /// A task in another package this one is keyed on is not what it was: its
+    /// own key changed, or it was not depended on before. Carries its label.
+    Dependency(String),
     /// Something changed that the note is too small to name.
     Unnamed,
 }
@@ -175,6 +194,7 @@ pub enum Change {
 impl std::fmt::Display for Change {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Dependency(task) => write!(f, "{task} changed"),
             Self::NeverRun => f.write_str("no previous run to compare against"),
             Self::Command => f.write_str("the command changed"),
             Self::Environment => f.write_str("the environment changed"),
@@ -196,6 +216,30 @@ impl LastRun {
         if self.environment != now.environment {
             return Change::Environment;
         }
+        // The task's own inputs before another package's result: a file the
+        // reader changed in this package is the nearer cause, and the one they
+        // are more likely to be asking about.
+        match self.input_change(now) {
+            Change::Unnamed => self.dependency_change(now).unwrap_or(Change::Unnamed),
+            named => named,
+        }
+    }
+
+    /// The first task in another package that is keyed on differently now.
+    fn dependency_change(&self, now: &LastRun) -> Option<Change> {
+        now.dependencies
+            .iter()
+            .find(|dependency| !self.dependencies.contains(dependency))
+            .or_else(|| {
+                self.dependencies
+                    .iter()
+                    .find(|dependency| !now.dependencies.contains(dependency))
+            })
+            .map(|dependency| Change::Dependency(dependency.task.clone()))
+    }
+
+    /// The first difference between the two input lists.
+    fn input_change(&self, now: &LastRun) -> Change {
         if self.inputs_truncated || now.inputs_truncated {
             return Change::Unnamed;
         }
@@ -354,6 +398,7 @@ mod tests {
             key: String::from("k"),
             command: command.to_owned(),
             environment: String::from("e"),
+            dependencies: Vec::new(),
             inputs: inputs
                 .iter()
                 .map(|(path, digest)| InputFile {
@@ -363,6 +408,40 @@ mod tests {
                 .collect(),
             inputs_truncated: false,
         }
+    }
+
+    /// Another package's task is named when it is what changed — and a file of
+    /// the task's own is named ahead of it when both did, because that is the
+    /// nearer cause.
+    #[test]
+    fn a_dependency_in_another_package_is_named_after_the_tasks_own_inputs() {
+        let upstream = |key: &str| {
+            vec![Upstream {
+                task: String::from("ui#build"),
+                key: key.to_owned(),
+            }]
+        };
+        let mut before = note("c", &[("a", "1")]);
+        before.dependencies = upstream("old");
+        let mut after = note("c", &[("a", "1")]);
+        after.dependencies = upstream("new");
+        assert_eq!(
+            before.diff(&after),
+            Change::Dependency(String::from("ui#build"))
+        );
+
+        let mut both = note("c", &[("a", "2")]);
+        both.dependencies = upstream("new");
+        assert_eq!(before.diff(&both), Change::InputChanged(String::from("a")));
+    }
+
+    /// A run with no workspace writes the note it always wrote.
+    #[test]
+    fn a_note_with_no_dependencies_does_not_mention_them() {
+        let json = serde_json::to_string(&note("c", &[])).unwrap();
+        assert!(!json.contains("dependencies"), "{json}");
+        let read: LastRun = serde_json::from_str(&json).unwrap();
+        assert!(read.dependencies.is_empty());
     }
 
     #[test]

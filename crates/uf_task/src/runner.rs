@@ -37,7 +37,7 @@ use compact_str::CompactString;
 
 use crate::cache::{
     Change, LastRun, MAX_RECORDED_OUTPUT, MAX_REMEMBERED_INPUTS, RECORD_VERSION, Record, TaskCache,
-    encode,
+    Upstream, encode,
 };
 use crate::digest::{Digest, Fields, hex};
 use crate::inputs::{InputError, Patterns};
@@ -46,10 +46,25 @@ use crate::inputs::{InputError, Patterns};
 /// was configured.
 #[derive(Debug, Clone)]
 pub struct ScheduledTask {
-    /// The task's name, as written in `uf.config.js`.
+    /// The task's name in its own `uf.config.js`, which is what its records are
+    /// filed under — so `uf run build` inside a member and `uf run build -r`
+    /// above it read and write the same ones.
     pub name: CompactString,
+    /// What the reader sees it called: [`Self::name`], or `package#name` in a
+    /// run that spans a workspace.
+    pub label: CompactString,
+    /// Which package it belongs to, counted however the caller counts them.
+    /// Never read here: it is handed back through [`Spawn`], which is the side
+    /// that knows what a package is.
+    pub package: usize,
+    /// The project it belongs to. Its `inputs` and `outputs` are relative to
+    /// this, and its records are kept in this project's `.uf/cache/task`.
+    pub root: Utf8PathBuf,
     /// Indices of tasks that must finish first.
     pub dependencies: Vec<usize>,
+    /// Those of [`Self::dependencies`] whose keys are part of this task's key —
+    /// the ones in another package. See [`run`] for why only those.
+    pub keyed_on: Vec<usize>,
     /// The command as it will be run, arguments already appended.
     ///
     /// In the key rather than reconstructed from it: two tasks that differ
@@ -134,11 +149,21 @@ pub enum RunReason {
     OutputMissing(String),
     /// A file it declares as an `output` is not what it left there.
     OutputChanged(String),
+    /// It is keyed on a task in another package that has no key of its own,
+    /// so nothing can say whether what it depends on changed. Carries that
+    /// task's label.
+    UnkeyedDependency(CompactString),
 }
 
 impl std::fmt::Display for RunReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::UnkeyedDependency(task) => {
+                write!(
+                    f,
+                    "it depends on {task}, which is not cached, so it always runs"
+                )
+            }
             Self::Forced => f.write_str("forced"),
             Self::NoInputs => f.write_str("declares no inputs, so it always runs"),
             Self::CacheDisabled => f.write_str("cache is off for this task"),
@@ -231,10 +256,14 @@ pub trait Spawn: Sync {
     /// A command ready to start, with its program, arguments, working
     /// directory and environment set and its stdio left alone.
     ///
+    /// Given the whole task rather than its name, because in a workspace a
+    /// name is not enough to find one: two packages may each define `build`,
+    /// and [`ScheduledTask::package`] is what tells them apart.
+    ///
     /// # Errors
     ///
     /// When the task cannot be turned into a process at all.
-    fn command(&self, name: &str, command: &str) -> std::io::Result<Command>;
+    fn command(&self, task: &ScheduledTask) -> std::io::Result<Command>;
 }
 
 /// Told what the runner is doing, as it happens.
@@ -243,15 +272,25 @@ pub trait Observe: Sync {
     fn finished(&self, outcome: &TaskOutcome);
 }
 
-/// Run `tasks`, which must be in dependency order with the requested task last.
+/// Run `tasks`, which must be in dependency order.
 ///
 /// Never returns an error: a task that fails is an outcome, and the caller
 /// decides what a failed outcome means for the exit code. What it does return
 /// is a report with one entry per task in the order they were given.
+///
+/// # A dependency in another package
+///
+/// Inside one package a task is replayed on its own key, and a dependency that
+/// ran again does not make it run again. What a task takes from a sibling task
+/// is a file in the same project, and naming that file in `inputs` is how the
+/// key comes to hold it. A task in another package is out of that reach —
+/// `inputs` are relative to the task's own project — so the key of every task
+/// in [`ScheduledTask::keyed_on`] is part of this one's: a change in `ui` runs
+/// `ui#build` again, then `app#build`, whose key held `ui#build`'s, and leaves
+/// `utils#build` replayed. A dependency that has no key of its own cannot say
+/// whether it changed, so a task keyed on one always runs.
 pub fn run(
     tasks: &[ScheduledTask],
-    root: &camino::Utf8Path,
-    cache: &TaskCache,
     options: RunOptions,
     spawn: &dyn Spawn,
     observer: &dyn Observe,
@@ -263,33 +302,58 @@ pub fn run(
     }
     let width = tasks
         .iter()
-        .map(|task| task.name.chars().count())
+        .map(|task| task.label.chars().count())
         .max()
         .unwrap_or(0);
+    // The last task is given the terminal only when nothing can be running
+    // beside it, which is when everything else is something it waits for. A
+    // single request always is. `uf run build -r` over packages with no edges
+    // between them is not, and handing one of several concurrent tasks the
+    // terminal would interleave its output, unprefixed, with the others'.
+    let last = tasks.len() - 1;
+    let alone = reaches_everything(tasks, last).then_some(last);
     let executor = Executor {
         tasks,
-        root: root.to_path_buf(),
-        cache,
         options,
         spawn,
         observer,
         sink: Sink::new(),
         label_width: width,
         stopping: AtomicBool::new(false),
+        alone,
+        keys: Mutex::new(vec![None; tasks.len()]),
     };
     executor.drive()
 }
 
+/// Whether every other task is something `last` waits for, directly or not.
+fn reaches_everything(tasks: &[ScheduledTask], last: usize) -> bool {
+    let mut seen = vec![false; tasks.len()];
+    let mut pending = vec![last];
+    let mut reached = 0usize;
+    while let Some(at) = pending.pop() {
+        if std::mem::replace(&mut seen[at], true) {
+            continue;
+        }
+        reached += 1;
+        pending.extend(tasks[at].dependencies.iter().copied());
+    }
+    reached == tasks.len()
+}
+
 struct Executor<'a> {
     tasks: &'a [ScheduledTask],
-    root: Utf8PathBuf,
-    cache: &'a TaskCache,
     options: RunOptions,
     spawn: &'a dyn Spawn,
     observer: &'a dyn Observe,
     sink: Sink,
     label_width: usize,
     stopping: AtomicBool,
+    /// The one task that may have the terminal, if any may.
+    alone: Option<usize>,
+    /// The key each finished task was answered or filed under, for the tasks
+    /// in other packages that are keyed on it.
+    keys: Mutex<Vec<Option<String>>>,
 }
 
 impl Executor<'_> {
@@ -324,12 +388,10 @@ impl Executor<'_> {
                         break;
                     };
                     let sender = finished_tx.clone();
-                    // The requested task is the last one, and it starts only
-                    // after everything it depends on has finished — which,
-                    // this plan being its own dependency closure, is
-                    // everything. So it is alone, and it can have the
-                    // terminal.
-                    let alone = at + 1 == count;
+                    // A requested task that waits for everything else in the
+                    // plan starts only after all of it has finished, so it is
+                    // alone and it can have the terminal. See `run`.
+                    let alone = self.alone == Some(at);
                     scope.spawn(move || {
                         let outcome = self.run_one(at, alone);
                         let _ = sender.send((at, outcome));
@@ -385,17 +447,22 @@ impl Executor<'_> {
         let presentation = if alone {
             Presentation::Plain
         } else {
-            Presentation::Prefixed(format!("{:width$} | ", task.name, width = self.label_width))
+            Presentation::Prefixed(format!(
+                "{:width$} | ",
+                task.label,
+                width = self.label_width
+            ))
         };
 
         let (reason, keyed) = match self.decide(task) {
-            Verdict::Replay(record) => {
+            Verdict::Replay { record, key } => {
                 // The output is replayed with the record, or a second run of a
                 // green pipeline prints nothing and looks like it did nothing.
                 self.sink.emit(&presentation, &record.stdout_bytes(), false);
                 self.sink.emit(&presentation, &record.stderr_bytes(), true);
+                self.remember(at, key);
                 return TaskOutcome {
-                    name: task.name.clone(),
+                    name: task.label.clone(),
                     decision: Decision::Replayed {
                         saved_micros: record.duration_micros,
                     },
@@ -417,9 +484,14 @@ impl Executor<'_> {
         {
             self.record(task, keyed, stdout, stderr, duration);
         }
+        // Remembered whether or not a record could be filed: the key says what
+        // this run was built from, and that is what a dependent keys on.
+        if let (Some(keyed), Status::Succeeded) = (&keyed, &outcome.status) {
+            self.remember(at, hex(&keyed.key));
+        }
 
         TaskOutcome {
-            name: task.name.clone(),
+            name: task.label.clone(),
             decision: Decision::Ran(reason),
             status: outcome.status,
             duration_micros: duration,
@@ -450,10 +522,21 @@ impl Executor<'_> {
             Ok(patterns) => patterns,
             Err(error) => return unkeyed(RunReason::UnusableInputs(error)),
         };
-        let files = match patterns.resolve(&self.root) {
+        let files = match patterns.resolve(&task.root) {
             Ok(files) => files,
             Err(error) => return unkeyed(RunReason::UnusableInputs(error)),
         };
+        let mut upstream = Vec::with_capacity(task.keyed_on.len());
+        for &dependency in &task.keyed_on {
+            let label = &self.tasks[dependency].label;
+            match self.key_of(dependency) {
+                Some(key) => upstream.push(Upstream {
+                    task: label.to_string(),
+                    key,
+                }),
+                None => return unkeyed(RunReason::UnkeyedDependency(label.clone())),
+            }
+        }
 
         let mut fields = Fields::new("uf task cache v1");
         fields
@@ -465,6 +548,11 @@ impl Executor<'_> {
         for pattern in &task.outputs {
             fields.push(pattern.as_str());
         }
+        // Last, and only when there are any, so that every key a run with no
+        // workspace computes is the key it computed before there was one.
+        for dependency in &upstream {
+            fields.push(&dependency.task).push(&dependency.key);
+        }
         let key = fields.finish();
 
         let truncated = files.len() > MAX_REMEMBERED_INPUTS;
@@ -474,6 +562,7 @@ impl Executor<'_> {
             key: hex(&key),
             command: task.command.clone(),
             environment: task.environment.clone(),
+            dependencies: upstream,
             inputs: files.into_iter().take(MAX_REMEMBERED_INPUTS).collect(),
             inputs_truncated: truncated,
         };
@@ -488,9 +577,9 @@ impl Executor<'_> {
             return rerun(RunReason::Forced, keyed);
         }
 
-        let Some(record) = self.cache.read(&keyed.key, task.name.as_str()) else {
-            let change = self
-                .cache
+        let cache = TaskCache::open(&task.root);
+        let Some(record) = cache.read(&keyed.key, task.name.as_str()) else {
+            let change = cache
                 .read_last(task.name.as_str())
                 .map_or(Change::NeverRun, |last| last.diff(&keyed.note));
             return rerun(RunReason::Changed(change), keyed);
@@ -501,8 +590,22 @@ impl Executor<'_> {
         // the ones it produced.
         match self.outputs_moved(task, &record) {
             Some(reason) => rerun(reason, keyed),
-            None => Verdict::Replay(record),
+            None => Verdict::Replay {
+                record,
+                key: hex(&keyed.key),
+            },
         }
+    }
+
+    /// The key task `at` finished under, if it had one.
+    fn key_of(&self, at: usize) -> Option<String> {
+        let keys = self.keys.lock();
+        keys.unwrap_or_else(std::sync::PoisonError::into_inner)[at].clone()
+    }
+
+    fn remember(&self, at: usize, key: String) {
+        let keys = self.keys.lock();
+        keys.unwrap_or_else(std::sync::PoisonError::into_inner)[at] = Some(key);
     }
 
     /// The first declared output that is not what the record says it was.
@@ -511,7 +614,7 @@ impl Executor<'_> {
             return None;
         }
         let patterns = Patterns::compile(&task.outputs).ok()?;
-        let now = patterns.resolve(&self.root).ok()?;
+        let now = patterns.resolve(&task.root).ok()?;
         for was in &record.outputs {
             match now.iter().find(|file| file.path == was.path) {
                 None => return Some(RunReason::OutputMissing(was.path.clone())),
@@ -546,7 +649,7 @@ impl Executor<'_> {
         let outputs = if task.outputs.is_empty() {
             Vec::new()
         } else {
-            match Patterns::compile(&task.outputs).and_then(|patterns| patterns.resolve(&self.root))
+            match Patterns::compile(&task.outputs).and_then(|patterns| patterns.resolve(&task.root))
             {
                 Ok(files) => files,
                 // A task whose outputs cannot be read has produced something
@@ -554,7 +657,8 @@ impl Executor<'_> {
                 Err(_) => return,
             }
         };
-        self.cache.write(
+        let cache = TaskCache::open(&task.root);
+        cache.write(
             &keyed.key,
             &Record {
                 version: RECORD_VERSION,
@@ -566,7 +670,7 @@ impl Executor<'_> {
                 duration_micros: duration,
             },
         );
-        self.cache.write_last(&keyed.note);
+        cache.write_last(&keyed.note);
     }
 
     /// Start the task, copy its output where it belongs, and wait for it.
@@ -577,13 +681,13 @@ impl Executor<'_> {
         capture: bool,
         alone: bool,
     ) -> Executed {
-        let mut command = match self.spawn.command(task.name.as_str(), &task.command) {
+        let mut command = match self.spawn.command(task) {
             Ok(command) => command,
             Err(error) => {
                 return Executed {
                     status: Status::Failed(format!(
                         "task {:?} could not be started: {error}",
-                        task.name
+                        task.label
                     )),
                     captured: Captured::None,
                 };
@@ -611,7 +715,7 @@ impl Executor<'_> {
                 return Executed {
                     status: Status::Failed(format!(
                         "task {:?} could not start `{}`: {error}",
-                        task.name,
+                        task.label,
                         command.get_program().to_string_lossy()
                     )),
                     captured: Captured::None,
@@ -645,10 +749,10 @@ impl Executor<'_> {
 
         let status = match child.wait() {
             Ok(status) if status.success() => Status::Succeeded,
-            Ok(status) => Status::Failed(format!("task {:?} exited with {status}", task.name)),
+            Ok(status) => Status::Failed(format!("task {:?} exited with {status}", task.label)),
             Err(error) => Status::Failed(format!(
                 "task {:?} could not be waited on: {error}",
-                task.name
+                task.label
             )),
         };
         Executed {
@@ -709,8 +813,8 @@ struct Keyed {
 /// What [`Executor::decide`] worked out.
 enum Verdict {
     /// There is a record for this key and its outputs are still where it left
-    /// them.
-    Replay(Record),
+    /// them. Carries the key, in hex, for whatever is keyed on this task.
+    Replay { record: Record, key: String },
     /// It has to run; why, and where to file what it produces.
     Run {
         reason: RunReason,

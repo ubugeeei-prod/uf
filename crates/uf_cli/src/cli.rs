@@ -561,6 +561,16 @@ pub(crate) enum Commands {
         /// Say, for each task, why it ran or was answered from the cache.
         #[arg(long)]
         why: bool,
+        /// Run the task in every workspace member that defines it, each one
+        /// after the members its `package.json` depends on.
+        #[arg(long, short = 'r')]
+        recursive: bool,
+        /// Run the task only in the members this selects: a name, a glob, a
+        /// path (`./packages/ui`), `name...` for a member and what it depends
+        /// on, `...name` for a member and what depends on it. Repeatable, and
+        /// implies `-r`.
+        #[arg(long, value_name = "SELECTOR")]
+        filter: Vec<String>,
         /// The task to run, as named under `tasks` in `uf.config.js`.
         /// Omit it to see what this project defines.
         script: Option<String>,
@@ -1203,6 +1213,8 @@ mod tests {
                 concurrency: None,
                 force: false,
                 why: false,
+                recursive: false,
+                filter: Vec::new(),
                 script: Some("build".to_string()),
                 args: Vec::new(),
             }
@@ -1214,6 +1226,8 @@ mod tests {
                 concurrency: None,
                 force: false,
                 why: false,
+                recursive: false,
+                filter: Vec::new(),
                 script: None,
                 args: Vec::new(),
             }
