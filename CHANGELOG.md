@@ -4,12 +4,13 @@
 
 _2026-09-14_
 
-Seventeen changes, the same day as alpha.33, and the first release of the
+Twenty changes, the same day as alpha.33, and the first release of the
 push tracked in #951. `uf.config.js` can now say which tool each command uses —
 `runtime: "node@26"`, `packageManager`, `build.runtime` and `build.builder`,
-`test.runtime` and `test.runner` — and uf can read what each publisher has
-released, which is what a version like `node@26` resolves against; the commands
-do not run the named tools yet, and that is the next part of #940. The language
+`test.runtime` and `test.runner` — a version prefix such as `node@26` resolves
+against what its publisher has released and is locked in `uf.lock`, and
+`uf env install` installs every declared tool; the commands do not run the
+named tools yet, and that is the next part of #940. The language
 server completes keys and values in `uf.config.js`. `uf ui add`, `list` and
 `diff` copy styled components from a registry into a project. The router renders
 an intercepted navigation into the slot it came from, and the manual is
@@ -21,6 +22,7 @@ suite can keep busy.
 
 ### Added
 
+- **env**: lock version prefixes in uf.lock and install every declared tool (#1014)
 - **router, vite, lint**: an interception is a route inside a slot (#1016)
 - **cli**: uf ui add, list and diff over a registry of styled components (#1025)
 - **lsp**: complete keys and values in uf.config.js (#1002)
@@ -42,6 +44,8 @@ suite can keep busy.
 
 ### Documentation
 
+- **guide**: write readonly where the samples wrote a variance sigil (#1026)
+- **readme**: make the README a front door that cannot go stale (#1028)
 - **router**: intercepting routes (#1022)
 - **guide**: give type checking, dependencies, tasks, editors and agents a guide (#1020)
 - **why-uf**: bring the comparisons and the gap list up to date with main (#1004)
