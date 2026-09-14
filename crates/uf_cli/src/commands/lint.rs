@@ -594,5 +594,9 @@ pub(crate) fn render_verdict(ui: &mut Ui, report: &LintReport, errors: usize, wa
     });
 }
 
+mod rules;
+
+pub(crate) use rules::rules_command;
+
 #[cfg(test)]
 mod tests;

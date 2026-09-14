@@ -391,3 +391,31 @@ fn the_accessibility_rules_have_no_mechanical_answer() {
         );
     }
 }
+
+#[test]
+fn every_fix_is_keyed_by_a_rule_the_linter_has() {
+    // A misspelt id here is a fix no finding ever reaches, and a row
+    // `uf lint --rules` would never print against the rule it meant.
+    for (rule, ..) in FIXERS {
+        assert!(uf_lint::rule(rule).is_some(), "{rule} is not a rule");
+    }
+    for rule in FORMATTED_AWAY {
+        assert!(uf_lint::rule(rule).is_some(), "{rule} is not a rule");
+    }
+}
+
+#[test]
+fn a_rule_is_described_by_the_tier_its_fix_is_written_in() {
+    assert_eq!(rule_fix("flow/deprecated-type"), Some(RuleFix::Safe));
+    assert_eq!(rule_fix("flow/non-const-var-export"), Some(RuleFix::Unsafe));
+    assert_eq!(
+        rule_fix("vite/hot-needs-optional-chaining"),
+        Some(RuleFix::Unsafe)
+    );
+    assert_eq!(
+        rule_fix("uniflowed/no-trailing-whitespace"),
+        Some(RuleFix::Formatter)
+    );
+    assert_eq!(rule_fix("flow/unclear-type"), None);
+    assert_eq!(rule_fix("not/a-rule"), None);
+}

@@ -141,6 +141,17 @@ Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
 alongside uf's rules rather than in a separate `.flowconfig` section, because a
 project should have one place where "this is an error here" is written down.
 
+### Which rules there are
+
+<div className="command"><code>uf lint --rules</code></div>
+
+Lists every rule instead of linting: the level it runs at in this project, the
+command that fixes its findings, and what it checks. The level is read from
+`uf.config.js` over the defaults, so the list answers "is this rule on for us"
+rather than "is it on by default", and `--json` prints the same list for a
+script. Read it rather than a list on this page — a rule name or a count written
+into a guide goes stale the day a rule is added, and the command cannot.
+
 ### What a lint run tells you
 
 `uf lint --json` is the report to feed an editor, CI annotation step, or a
@@ -198,7 +209,8 @@ count = 0` becomes `export const count = 0`, which still parses and still
 formats, and throws at run time if anything reassigns the binding. Read that
 diff before you commit it.
 
-Most of uf's 53 rules have no fix at all, which is deliberate. `flow/unclear-type`
+Most rules have no fix at all, which is deliberate — `uf lint --rules` names the
+few that do, and the flag that applies each. `flow/unclear-type`
 could turn `any` into `mixed`, an opaque type, or a generated router type
 depending on what you meant; three answers is none, and guessing at one is
 worse than leaving the finding where you can see it.

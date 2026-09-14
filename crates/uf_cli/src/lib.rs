@@ -314,10 +314,14 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Assets => commands::assets::assets_service(&cwd),
         Commands::Install { frozen_lockfile } => commands::pm::install(&cwd, ui, frozen_lockfile),
         Commands::Lint {
+            json, rules: true, ..
+        } => commands::lint::rules_command(&cwd, ui, json),
+        Commands::Lint {
             json,
             fix,
             fix_unsafe,
             paths,
+            rules: false,
         } => commands::lint::lint_command(
             &cwd,
             ui,
