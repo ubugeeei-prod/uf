@@ -153,6 +153,20 @@ describe("a client module in the rsc graph", () => {
     expect(out.code).toContain('const url = clientUrl("/project/app/counter.js");');
   });
 
+  it("forgets a module whose directive was removed, so its next edit reloads the page", () => {
+    const state = createFlightState({ root: "/project" });
+    const plugin = clientReferencePlugin(state);
+    plugin.transform(
+      `"${DIRECTIVE}";\nexport default function Counter() {}\n`,
+      "/project/app/counter.js",
+    );
+    expect([...state.clientModules]).toEqual(["/project/app/counter.js"]);
+
+    plugin.transform("export default function Counter() {}\n", "/project/app/counter.js");
+
+    expect(state.clientModules.size).toBe(0);
+  });
+
   it("leaves a module without the directive exactly as it was", () => {
     const state = createFlightState({ root: "/project" });
     const out = clientReferencePlugin(state).transform(

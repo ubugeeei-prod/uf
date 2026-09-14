@@ -243,16 +243,28 @@ export function clientReferencePlugin(state) {
       return environment.name === RSC_ENVIRONMENT;
     },
     transform(code, id) {
-      if (!code.includes(USE_CLIENT)) return null;
       const file = cleanId(id);
-      if (id.startsWith("\0") || isCSSRequest(file) || !SCRIPT.test(file)) return null;
-      let program;
-      try {
-        program = parseAst(code);
-      } catch {
+      let program = null;
+      if (
+        code.includes(USE_CLIENT) &&
+        !id.startsWith("\0") &&
+        !isCSSRequest(file) &&
+        SCRIPT.test(file)
+      ) {
+        try {
+          program = parseAst(code);
+        } catch {
+          program = null;
+        }
+      }
+      if (program == null || !opensWithUseClient(program)) {
+        // Forgotten as well as not recorded: a module whose directive was
+        // removed under `uf dev` is a server module from that edit on, so
+        // `hotUpdate` reloads the page for its next edit instead of leaving it
+        // to Fast Refresh, which has nothing of it in the browser to replace.
+        state.clientModules.delete(file);
         return null;
       }
-      if (!opensWithUseClient(program)) return null;
       state.clientModules.add(file);
       const names = clientExportNames(program, projectPath(state.root, file));
       const lines = [`import { createClientReference } from "react-server-dom-parcel/server";`];
@@ -372,10 +384,26 @@ function bindingNames(pattern, names) {
 export function devUrlOf(root, base, file) {
   const relative = path.relative(root, file);
   const inside = relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  const forward = file.split(path.sep).join("/");
+  // `/@fs/` and then the path. On Windows the path starts at its drive letter,
+  // `C:/work/button.js`, with no slash of its own to follow the prefix.
   const pathname = inside
     ? `/${relative.split(path.sep).join("/")}`
-    : `/@fs${file.split(path.sep).join("/")}`;
+    : `/@fs${forward.startsWith("/") ? "" : "/"}${forward}`;
   return `${base.replace(/\/$/, "")}${pathname}`;
+}
+
+/**
+ * The file a `/@fs/` URL's path names: the inverse of [`devUrlOf`] for a file
+ * outside the project, read the way Vite reads that prefix. A POSIX path gets
+ * its leading slash back; a Windows path starts at its drive letter.
+ *
+ * Also the body of the loader [`devReferencesSource`] generates, which is why
+ * it closes over nothing.
+ */
+export function fsFileOf(pathname) {
+  const rest = pathname.slice("/@fs/".length);
+  return /^[A-Za-z]:\//.test(rest) ? rest : `/${rest}`;
 }
 
 /** `virtual:uf/rsc`: the Flight renderer over the rsc graph's route table. */
@@ -443,9 +471,10 @@ export function clientUrl(file) {
 export function devReferencesSource(root, base) {
   return `const root = ${JSON.stringify(root)};
 const base = ${JSON.stringify(base)};
+const fsFileOf = ${fsFileOf.toString()};
 export function loadClientModule(url) {
   const pathname = url.startsWith(base) ? url.slice(base.length - 1) : url;
-  const file = pathname.startsWith("/@fs/") ? pathname.slice(4) : root + decodeURI(pathname);
+  const file = pathname.startsWith("/@fs/") ? fsFileOf(pathname) : root + decodeURI(pathname);
   return import(/* @vite-ignore */ file);
 }
 `;

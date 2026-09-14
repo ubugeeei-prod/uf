@@ -61,10 +61,12 @@ import { FLIGHT_VIRTUAL, RSC_ENVIRONMENT } from "./internal/flight.js";
 import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
 import {
   BUILD_ID_FILE,
+  DOCUMENT_ASSETS_FILE,
   assetsFromManifest,
   buildIdentity,
   createPrerenderGate,
   createServeHandler,
+  documentAssetsFor,
   loadBuild,
   nodeListener,
   providerSpecifier,
@@ -687,6 +689,10 @@ async function build() {
     flight == null
       ? assetsFromManifest(manifest)
       : flightAssets(manifest, references, rscDir, outDir);
+  // Recorded beside the server bundle, because whatever serves this build
+  // later cannot recompute them from the client manifest alone; see
+  // `documentAssetsFor`.
+  writeFileSync(path.join(serverDir, DOCUMENT_ASSETS_FILE), `${JSON.stringify(assets, null, 2)}\n`);
   const openapi = await createOpenApiDocument(server.handlers);
   const openapiFile = path.join(root, ".uf", "build", "meta", "openapi.json");
   mkdirSync(path.dirname(openapiFile), { recursive: true });
@@ -1095,7 +1101,10 @@ async function compile() {
   mkdirSync(bundleDir, { recursive: true });
   writeFileSync(
     entry,
-    entrySource(path.relative(root, assets), assetsFromManifest(readManifest(outDir))),
+    entrySource(
+      path.relative(root, assets),
+      await documentAssetsFor(path.join(root, ".uf", "build", "server"), readManifest(outDir)),
+    ),
   );
 
   // The rsc graph `uf build` built, and the client chunks its references name.
@@ -1330,7 +1339,10 @@ async function deploy() {
   // file is the version a person can open when a deployed directory
   // misbehaves.
   mkdirSync(work, { recursive: true });
-  const document = assetsFromManifest(readManifest(outDir));
+  const document = await documentAssetsFor(
+    path.join(root, ".uf", "build", "server"),
+    readManifest(outDir),
+  );
   // Whatever `build` above minted, so a durable cache in the deployed artefact
   // is keyed by the build that produced it and not by the moment it was
   // packaged. Read rather than minted again for exactly that reason: a second

@@ -193,10 +193,20 @@ export type FetchedFlight =
  * refusal — is a document, whatever its status.
  */
 export async function fetchFlight(url: string): Promise<FetchedFlight> {
-  const response = await fetch(flightUrl(url), {
-    credentials: "same-origin",
-    headers: { accept: FLIGHT_CONTENT_TYPE },
-  });
+  let response: Response;
+  try {
+    response = await fetch(flightUrl(url), {
+      credentials: "same-origin",
+      headers: { accept: FLIGHT_CONTENT_TYPE },
+    });
+  } catch {
+    // A request that could not be made or followed: a dropped connection, or a
+    // redirect to another origin — a sign-in page — which `fetch` may not
+    // follow without CORS. The browser can still load the document, and a
+    // top-level navigation follows any redirect, so that is what the router
+    // does rather than leave the click doing nothing.
+    return { kind: "document", url };
+  }
   const landed = new URL(response.url, window.location.href);
   const document = documentPathOf(landed.pathname);
   const type = response.headers.get("content-type") ?? "";
@@ -206,6 +216,10 @@ export async function fetchFlight(url: string): Promise<FetchedFlight> {
     !type.startsWith(FLIGHT_CONTENT_TYPE)
   ) {
     void response.body?.cancel();
+    // The URL the reader asked for when the redirect did not end on a payload,
+    // rather than the one it ended on. A middleware that answered with its
+    // sign-in page wrote a `next=` naming the payload URL; loading the document
+    // URL lets it see the document and name that instead.
     return { kind: "document", url: document == null ? url : `${document}${landed.search}` };
   }
   return {

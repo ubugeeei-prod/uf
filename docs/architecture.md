@@ -820,7 +820,7 @@ environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
   holds the route table, every page, layout and loader, and
   `@uniflowed/router/rsc`'s `createFlightRenderer`. A `"use client"` module is
   replaced there by one `createClientReference` per export, so its code never
-  runs in that graph and a server component's code never reaches another.
+  runs in that graph and a server component's code never reaches the browser.
 - **`ssr`** holds `@uniflowed/router/server`'s `createDocumentRenderer`, which
   reads the payload with React's own Flight client and renders that tree into
   HTML while writing the same bytes into the document, and the server copy of

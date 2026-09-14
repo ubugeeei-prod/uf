@@ -68,6 +68,13 @@ export async function flightResponse(
 
   const body = () => render(document + url.search, { onError: options.onError });
   const answered = await (options.within == null ? body() : options.within(body));
+  // The exception the route resolved to its error boundary for, which never
+  // reached `onError`: a loader that throws is caught while the route resolves,
+  // before anything renders, and the boundary's payload is what answers. It is
+  // reported here or nowhere — the response is a page, with a 500.
+  if (answered.error != null) {
+    options.onError(answered.error);
+  }
   const headers = new Headers(answered.headers);
   const stream = answered.stream;
   // A redirect has no stream, and a `HEAD` wants none: the render behind a

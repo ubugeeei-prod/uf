@@ -213,7 +213,46 @@ export async function loadBuild({ root, outDir, serverDir }) {
   const entry = await import(pathToFileURL(entryFile).href);
   await deployment();
   const build = await buildIdentity(root, serverDir);
-  return { entry, assets: assetsFromManifest(manifest), distDir, root, build };
+  return {
+    entry,
+    assets: await documentAssetsFor(path.resolve(root, serverDir), manifest),
+    distDir,
+    root,
+    build,
+  };
+}
+
+/** What `uf build` records a document's tags in, beside the server bundle. */
+export const DOCUMENT_ASSETS_FILE = "uf-document-assets.json";
+
+/**
+ * The tags a served document needs: the ones `uf build` recorded, or — for a
+ * build from before it recorded them — the client manifest's.
+ *
+ * Recorded rather than recomputed, because the client manifest is no longer the
+ * whole answer. An application React Server Components render links the
+ * stylesheets its rsc graph emitted and the ones each client module's chunk
+ * carries, and neither is reachable from the client entry the manifest is walked
+ * from — so a server that recomputed the tags rendered every page without the
+ * stylesheets its prerendered pages had. `uf start`, `uf preview`, `--adapter`
+ * and `--compile` all read them from here.
+ *
+ * @param {string} serverDir absolute path of the server bundle's directory
+ * @param {object} manifest the client build's Vite manifest
+ */
+export async function documentAssetsFor(serverDir, manifest) {
+  const file = path.join(serverDir, DOCUMENT_ASSETS_FILE);
+  let recorded;
+  try {
+    recorded = await readFile(file, "utf8");
+  } catch {
+    return assetsFromManifest(manifest);
+  }
+  try {
+    return JSON.parse(recorded);
+  } catch {
+    throw new Error(`uf: ${file} is not the JSON \`uf build\` writes; run \`uf build\` again`);
+  }
 }
 
 /**
