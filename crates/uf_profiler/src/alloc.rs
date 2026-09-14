@@ -9,14 +9,35 @@
 //! "audit hot paths for unnecessary `.clone()` calls" — and neither is
 //! checkable without counting allocations.
 //!
-//! # Why the counters are global
+//! # Two sets of counters
 //!
-//! An allocator is process-wide, so the counters are too. A scoped measurement
-//! is therefore a snapshot and a delta ([`AllocSnapshot`], [`AllocCounter`])
-//! rather than a reset: two threads measuring at once would otherwise clear
-//! each other's baseline, and the second one's numbers would be quietly wrong.
+//! An allocator is process-wide, so the first set of counters is too: every
+//! allocation on every thread lands in the same atomics. That is what a
+//! profile of a whole run wants — uf fans its work out across threads, and a
+//! report that could not see them would see almost nothing uf does. A scoped
+//! measurement over them is a snapshot and a delta ([`AllocSnapshot`],
+//! [`AllocCounter`]) rather than a reset: two threads measuring at once would
+//! otherwise clear each other's baseline, and the second one's numbers would
+//! be quietly wrong.
 //!
-//! # Why every counter is `Relaxed`
+//! The second set belongs to each thread ([`ThreadWindow`]), and it exists
+//! because the first cannot answer the question a test asks. A test wants what
+//! *its* code allocated, and `cargo test` runs every test in a binary at once,
+//! on as many threads as the machine has cores. A delta over the process-wide
+//! counters is the test's own allocations plus whatever its neighbours
+//! allocated in the same stretch. [`Window`] makes measurements exclusive; it
+//! cannot make the process quiet, and neither can taking the quietest of
+//! several windows — under load there is no quiet window to find, and the
+//! smallest of eight noisy figures is still a noisy figure. A resolver loop
+//! that makes 128 allocations read 7,239 that way on a 32-core CI runner
+//! (ubugeeei-prod/uf#1015).
+//!
+//! A thread's own counters have no neighbours in them. What the measured code
+//! hands to a thread of its own is counted by that thread handing its figure
+//! back, explicitly, with its result — [`Handover`], the allocation half of
+//! what [`crate::scope::flush_thread_spans`] does for spans.
+//!
+//! # Why the process-wide counters are `Relaxed`
 //!
 //! Nothing here orders anything else. Each counter is an independent tally
 //! whose value is read after the work has finished, so the only guarantee it
@@ -25,8 +46,24 @@
 //! nobody reads until later. The exception is `enabled`, which gates the rest
 //! and is `Acquire`/`Release` so that a run turned on before a workload starts
 //! is seen by it.
+//!
+//! # Why a thread's counters are `Cell`s in a `const` thread-local
+//!
+//! They are touched from inside `GlobalAlloc`, where the one thing a wrapper
+//! must not do is allocate. A `thread_local!` with a `const` initialiser, over
+//! a type with no `Drop`, is neither lazily initialised nor registered for
+//! destruction, so on a platform with native thread-locals — macOS, Linux and
+//! Windows all have them — reaching it is an address and nothing more. A lazy
+//! or droppable thread-local would allocate its own bookkeeping on first use,
+//! which is inside `alloc`, which would recurse.
+//!
+//! `Cell` rather than an atomic because nobody but the owning thread ever reads
+//! or writes them: a worker's figure travels back as a value ([`HandedBack`])
+//! and is added by the thread that receives it.
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
+use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
@@ -113,6 +150,177 @@ impl Counters {
 
 static COUNTERS: Counters = Counters::new();
 
+/// One thread's own tally. See [`ThreadWindow`] and the module comment.
+///
+/// The same counters as [`Counters`], so that a thread's figure is an
+/// [`AllocDelta`] like any other. A delta whose histogram nobody filled in
+/// would be a column of zeroes every reader believed.
+struct ThreadCounters {
+    /// Whether this thread's allocations are tallied. Set while a
+    /// [`ThreadWindow`] is open on the thread, and by nothing else.
+    counting: Cell<bool>,
+    allocations: Cell<u64>,
+    deallocations: Cell<u64>,
+    bytes_allocated: Cell<u64>,
+    bytes_deallocated: Cell<u64>,
+    live_bytes: Cell<u64>,
+    peak_live_bytes: Cell<u64>,
+    largest_allocation: Cell<u64>,
+    size_classes: [Cell<u64>; SIZE_CLASSES],
+}
+
+impl ThreadCounters {
+    const fn new() -> Self {
+        Self {
+            counting: Cell::new(false),
+            allocations: Cell::new(0),
+            deallocations: Cell::new(0),
+            bytes_allocated: Cell::new(0),
+            bytes_deallocated: Cell::new(0),
+            live_bytes: Cell::new(0),
+            peak_live_bytes: Cell::new(0),
+            largest_allocation: Cell::new(0),
+            size_classes: [const { Cell::new(0) }; SIZE_CLASSES],
+        }
+    }
+
+    /// Record one allocation of `size` bytes, if this thread is counting.
+    #[inline]
+    fn record_alloc(&self, size: u64) {
+        if !self.counting.get() {
+            return;
+        }
+        add(&self.allocations, 1);
+        add(&self.bytes_allocated, size);
+        add(&self.size_classes[size_class(size)], 1);
+        raise(&self.largest_allocation, size);
+        let live = self.live_bytes.get().saturating_add(size);
+        self.live_bytes.set(live);
+        raise(&self.peak_live_bytes, live);
+    }
+
+    /// Record one deallocation of `size` bytes, if this thread is counting.
+    #[inline]
+    fn record_dealloc(&self, size: u64) {
+        if !self.counting.get() {
+            return;
+        }
+        add(&self.deallocations, 1);
+        add(&self.bytes_deallocated, size);
+        // Saturating for the process-wide reason, and for one of a thread's
+        // own: a thread frees what other threads allocated as readily as what
+        // it allocated itself.
+        self.live_bytes
+            .set(self.live_bytes.get().saturating_sub(size));
+    }
+
+    /// Every counter, read at one moment — which, for cells only this thread
+    /// writes, really is one moment.
+    fn snapshot(&self) -> AllocSnapshot {
+        let mut size_classes = [0_u64; SIZE_CLASSES];
+        for (slot, counter) in size_classes.iter_mut().zip(self.size_classes.iter()) {
+            *slot = counter.get();
+        }
+        AllocSnapshot {
+            allocations: self.allocations.get(),
+            deallocations: self.deallocations.get(),
+            bytes_allocated: self.bytes_allocated.get(),
+            bytes_deallocated: self.bytes_deallocated.get(),
+            live_bytes: self.live_bytes.get(),
+            peak_live_bytes: self.peak_live_bytes.get(),
+            largest_allocation: self.largest_allocation.get(),
+            size_classes,
+        }
+    }
+
+    /// [`rebase_peaks`], for this thread's high-water marks.
+    fn rebase_peaks(&self) -> SavedPeaks {
+        SavedPeaks {
+            peak_live_bytes: self.peak_live_bytes.replace(self.live_bytes.get()),
+            largest_allocation: self.largest_allocation.replace(0),
+        }
+    }
+
+    /// [`restore_peaks`], for this thread's high-water marks.
+    fn restore_peaks(&self, saved: SavedPeaks) {
+        raise(&self.peak_live_bytes, saved.peak_live_bytes);
+        raise(&self.largest_allocation, saved.largest_allocation);
+    }
+
+    /// Add a worker's figure to this thread's, as though this thread had made
+    /// the worker's allocations itself — which, to whoever is measuring it, it
+    /// did.
+    ///
+    /// Only while this thread is counting: a figure that arrives after the
+    /// window it was meant for has closed belongs to nothing.
+    ///
+    /// The high-water mark is an estimate. The worker ran while this thread
+    /// waited for it, so this thread's live bytes then were about what they
+    /// are now, and the worker's peak stood on top of them.
+    fn absorb(&self, worker: &AllocDelta) {
+        if !self.counting.get() {
+            return;
+        }
+        add(&self.allocations, worker.allocations);
+        add(&self.deallocations, worker.deallocations);
+        add(&self.bytes_allocated, worker.bytes_allocated);
+        add(&self.bytes_deallocated, worker.bytes_deallocated);
+        for (counter, count) in self.size_classes.iter().zip(worker.size_classes) {
+            add(counter, count);
+        }
+        raise(&self.largest_allocation, worker.largest_allocation);
+        let live = self.live_bytes.get();
+        raise(
+            &self.peak_live_bytes,
+            live.saturating_add(worker.peak_above_baseline),
+        );
+        self.live_bytes
+            .set(live.saturating_add_signed(worker.live_growth));
+    }
+}
+
+/// Add to a thread's counter.
+///
+/// Wrapping rather than checked, because a panic inside a global allocator is
+/// an abort and a debug build checks every `+`. Nothing makes 2^64
+/// allocations.
+#[inline]
+fn add(counter: &Cell<u64>, amount: u64) {
+    counter.set(counter.get().wrapping_add(amount));
+}
+
+/// Raise a thread's high-water mark to `value`, if `value` is higher.
+#[inline]
+fn raise(mark: &Cell<u64>, value: u64) {
+    if value > mark.get() {
+        mark.set(value);
+    }
+}
+
+thread_local! {
+    /// This thread's counters. Why `const`, and why `Cell`s: the module
+    /// comment.
+    static THREAD: ThreadCounters = const { ThreadCounters::new() };
+}
+
+/// Record one allocation, for the process and for the thread making it.
+#[inline]
+fn record_alloc(size: usize) {
+    COUNTERS.record_alloc(size);
+    // `try_with` rather than `with`, though it cannot fail for a `const`
+    // thread-local with no `Drop`: were that ever to change, the failure would
+    // be inside the allocator, where a missed count is the only acceptable way
+    // to fail.
+    let _ = THREAD.try_with(|thread| thread.record_alloc(size as u64));
+}
+
+/// Record one deallocation, for the process and for the thread making it.
+#[inline]
+fn record_dealloc(size: usize) {
+    COUNTERS.record_dealloc(size);
+    let _ = THREAD.try_with(|thread| thread.record_dealloc(size as u64));
+}
+
 /// The high-water marks a window or a span displaced when it opened.
 ///
 /// `peak_live_bytes` and `largest_allocation` are maxima, and a maximum kept
@@ -186,9 +394,10 @@ fn size_class(size: u64) -> usize {
 /// static GLOBAL: CountingAllocator = CountingAllocator::new();
 /// ```
 ///
-/// Installing it costs nothing until [`CountingAllocator::enable`] is called:
-/// every path checks one relaxed-acquire boolean and otherwise forwards
-/// straight to [`System`].
+/// Installing it costs next to nothing until something counts: every path
+/// checks one relaxed-acquire boolean for the process-wide counters and one
+/// thread-local `bool` for the thread's own, and otherwise forwards straight
+/// to [`System`].
 pub struct CountingAllocator;
 
 impl CountingAllocator {
@@ -197,7 +406,10 @@ impl CountingAllocator {
         Self
     }
 
-    /// Start counting.
+    /// Start counting into the process-wide counters, on every thread.
+    ///
+    /// A [`ThreadWindow`] needs no switch: opening one is what turns its
+    /// thread's counters on.
     pub fn enable() {
         COUNTERS.enabled.store(true, Ordering::Release);
     }
@@ -210,7 +422,7 @@ impl CountingAllocator {
         COUNTERS.enabled.store(false, Ordering::Release);
     }
 
-    /// Whether the counters are moving.
+    /// Whether the process-wide counters are moving.
     #[must_use]
     pub fn is_enabled() -> bool {
         COUNTERS.enabled.load(Ordering::Acquire)
@@ -225,22 +437,22 @@ impl Default for CountingAllocator {
 
 // SAFETY: every method forwards to `System`, which is a correct allocator, with
 // the same layout it was given and the same pointer it returned. The counting
-// around each call touches only atomics and allocates nothing, so it cannot
-// re-enter the allocator — which is the one thing a `GlobalAlloc` wrapper must
-// not do.
+// around each call touches only atomics and this thread's own cells and
+// allocates nothing, so it cannot re-enter the allocator — which is the one
+// thing a `GlobalAlloc` wrapper must not do.
 unsafe impl GlobalAlloc for CountingAllocator {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let pointer = unsafe { System.alloc(layout) };
         if !pointer.is_null() {
-            COUNTERS.record_alloc(layout.size());
+            record_alloc(layout.size());
         }
         pointer
     }
 
     #[inline]
     unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
-        COUNTERS.record_dealloc(layout.size());
+        record_dealloc(layout.size());
         unsafe { System.dealloc(pointer, layout) }
     }
 
@@ -248,7 +460,7 @@ unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
         let pointer = unsafe { System.alloc_zeroed(layout) };
         if !pointer.is_null() {
-            COUNTERS.record_alloc(layout.size());
+            record_alloc(layout.size());
         }
         pointer
     }
@@ -261,8 +473,8 @@ unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let moved = unsafe { System.realloc(pointer, layout, new_size) };
         if !moved.is_null() {
-            COUNTERS.record_dealloc(layout.size());
-            COUNTERS.record_alloc(new_size);
+            record_dealloc(layout.size());
+            record_alloc(new_size);
         }
         moved
     }
@@ -282,7 +494,7 @@ pub struct AllocSnapshot {
 }
 
 impl AllocSnapshot {
-    /// Read the counters.
+    /// Read the process-wide counters.
     ///
     /// Not an atomic read of all of them at once — there is no such thing
     /// across this many words, and there does not need to be: a snapshot is
@@ -360,6 +572,11 @@ static WINDOW: Mutex<()> = Mutex::new(());
 /// So a window is exclusive. Opening one while another is open blocks until
 /// that one closes, which for the profiler's callers — a benchmark harness, an
 /// `alloc_report` example — is the behaviour they would have written by hand.
+///
+/// It is not what a test wants. Being exclusive stops two measurements from
+/// disturbing each other; it does nothing about a neighbouring test that is
+/// not measuring and is allocating anyway, and in a test binary there always
+/// is one. A test measures with a [`ThreadWindow`].
 pub struct Window {
     saved: SavedPeaks,
     /// Dropped last, after the peaks are back, so the next window opens onto a
@@ -388,6 +605,202 @@ impl Window {
 impl Drop for Window {
     fn drop(&mut self) {
         restore_peaks(self.saved);
+    }
+}
+
+/// A measurement of what one thread allocates, and of nothing else.
+///
+/// The counterpart to [`Window`] for code that shares its process with work it
+/// is not measuring — which is every test, because `cargo test` runs a
+/// binary's tests at once. It reads the counters of the thread that opened it,
+/// so what another thread allocates meanwhile is not in the figure at all,
+/// rather than in it less often.
+///
+/// What the measured code does on a thread of its own is that thread's, and
+/// arrives in the figure only when the thread hands it back: see [`Handover`].
+/// Measured without that, code that does its work elsewhere costs what
+/// starting a thread costs.
+///
+/// Windows nest. An inner one measures its own stretch; the outer one, still
+/// counting, covers its own stretch and the inner's, and gets its high-water
+/// marks back the way [`SavedPeaks`] describes.
+///
+/// ```
+/// # use uf_profiler::{CountingAllocator, ThreadWindow};
+/// # #[global_allocator]
+/// # static GLOBAL: CountingAllocator = CountingAllocator::new();
+/// let window = ThreadWindow::open();
+/// let buffers: Vec<Vec<u8>> = (0..8).map(|_| Vec::with_capacity(64)).collect();
+/// std::hint::black_box(&buffers);
+/// let delta = window.close();
+///
+/// // The outer vector and its eight buffers, whatever any other thread did.
+/// assert_eq!(delta.allocations, 9);
+/// ```
+#[must_use = "a window counts until it is closed, and closing it is what says how much"]
+pub struct ThreadWindow {
+    baseline: AllocSnapshot,
+    saved: SavedPeaks,
+    /// Whether the thread was already counting, for an enclosing window, so
+    /// that closing this one leaves the thread as it was found.
+    was_counting: bool,
+    /// A window is about the thread that opened it, so it cannot be sent to
+    /// another thread to be closed there.
+    _this_thread: PhantomData<*const ()>,
+}
+
+impl ThreadWindow {
+    /// Start counting this thread's allocations.
+    ///
+    /// # Panics
+    ///
+    /// When [`CountingAllocator`] is not the global allocator. A window over
+    /// counters that never move reads zero, and a budget that reads zero
+    /// passes — the failure a measurement is least able to notice about
+    /// itself. So the outermost window on a thread makes an allocation before
+    /// anything else and checks that it was seen. That allocation is in no
+    /// window's figure: nothing was counting on this thread before it, and a
+    /// window opened inside another skips it, the outer one having already
+    /// proved the same thing.
+    pub fn open() -> Self {
+        THREAD.with(|thread| {
+            let was_counting = thread.counting.replace(true);
+            if !was_counting {
+                let before_probe = thread.allocations.get();
+                drop(std::hint::black_box(Box::new(0_u8)));
+                assert!(
+                    thread.allocations.get() != before_probe,
+                    "uf_profiler::ThreadWindow counts through \
+                     uf_profiler::CountingAllocator, which is not this binary's \
+                     #[global_allocator]; every figure it reported would be zero"
+                );
+            }
+            let saved = thread.rebase_peaks();
+            Self {
+                baseline: thread.snapshot(),
+                saved,
+                was_counting,
+                _this_thread: PhantomData,
+            }
+        })
+    }
+
+    /// Stop counting, and say what this thread allocated while the window was
+    /// open: its own allocations, and every worker's handed back to it.
+    #[must_use]
+    pub fn close(self) -> AllocDelta {
+        // `self` drops on the way out, which puts the thread's high-water
+        // marks back and leaves it counting only if an enclosing window is.
+        THREAD.with(|thread| thread.snapshot().delta_from(&self.baseline))
+    }
+}
+
+impl Drop for ThreadWindow {
+    /// Put the thread back the way the window found it: on `close`, and on a
+    /// panic unwinding past a window nobody closed.
+    fn drop(&mut self) {
+        let _ = THREAD.try_with(|thread| {
+            thread.restore_peaks(self.saved);
+            thread.counting.set(self.was_counting);
+        });
+    }
+}
+
+/// What a worker needs in order to count toward a [`ThreadWindow`] on the
+/// thread that handed it work: captured there, carried across, and answered
+/// with the worker's figure on the way back.
+///
+/// A [`ThreadWindow`] counts one thread, and uf does much of its work on
+/// threads of its own — the checker on one with room for Flow's recursion,
+/// the linter's parse on another. Measured from the calling thread alone, a
+/// whole `uf_check` call would cost what starting a thread costs. So the code
+/// that starts the thread says, in three places, that the thread's work is
+/// its caller's:
+///
+/// ```
+/// # use uf_profiler::{CountingAllocator, HandedBack, Handover, ThreadWindow};
+/// # #[global_allocator]
+/// # static GLOBAL: CountingAllocator = CountingAllocator::new();
+/// let window = ThreadWindow::open();
+///
+/// // Before starting the worker: whether anything here is counting.
+/// let handover = Handover::capture();
+/// let buffers = std::thread::scope(|scope| {
+///     scope
+///         // On the worker: count the work if the caller is counting.
+///         .spawn(move || handover.run(|| vec![vec![0_u8; 64]; 8]))
+///         .join()
+///         // Back on the caller: the worker's allocations join its own.
+///         .map(HandedBack::receive)
+///         .expect("the worker runs")
+/// });
+///
+/// let delta = window.close();
+/// assert!(delta.allocations >= 9, "the worker's buffers are counted: {delta:?}");
+/// # drop(buffers);
+/// ```
+///
+/// # Why a figure comes back, rather than the worker writing into a shared one
+///
+/// A count that other threads write into is what made measuring a test through
+/// the process-wide counters a coin toss: anything that can write into it
+/// eventually does, including a worker that belongs to a different test. A
+/// figure returned with the worker's result can only arrive where that result
+/// does. It needs no lock and no atomics, and a worker that outlives its
+/// caller's window has nobody's count to corrupt.
+///
+/// When nothing is counting — every run that is not a test or a profile —
+/// `capture` reads one thread-local `bool` and `run` calls the work directly.
+#[derive(Debug, Clone, Copy)]
+pub struct Handover {
+    counting: bool,
+}
+
+impl Handover {
+    /// On the thread about to hand work off: whether a [`ThreadWindow`] is
+    /// open here.
+    #[must_use]
+    pub fn capture() -> Self {
+        Self {
+            counting: THREAD
+                .try_with(|thread| thread.counting.get())
+                .unwrap_or(false),
+        }
+    }
+
+    /// On the worker: run `work`, counting it if the handing thread was.
+    pub fn run<R>(self, work: impl FnOnce() -> R) -> HandedBack<R> {
+        if !self.counting {
+            return HandedBack {
+                value: work(),
+                allocations: None,
+            };
+        }
+        let window = ThreadWindow::open();
+        let value = work();
+        HandedBack {
+            value,
+            allocations: Some(window.close()),
+        }
+    }
+}
+
+/// A worker's result, carrying what the worker allocated to produce it.
+#[derive(Debug)]
+#[must_use = "a worker's allocations count only once `receive` adds them to the thread that joined it"]
+pub struct HandedBack<R> {
+    value: R,
+    allocations: Option<AllocDelta>,
+}
+
+impl<R> HandedBack<R> {
+    /// On the thread that joined the worker: add the worker's allocations to
+    /// this thread's, and take the result.
+    pub fn receive(self) -> R {
+        if let Some(worker) = &self.allocations {
+            let _ = THREAD.try_with(|thread| thread.absorb(worker));
+        }
+        self.value
     }
 }
 

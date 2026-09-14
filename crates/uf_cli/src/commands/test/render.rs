@@ -144,7 +144,14 @@ pub(super) fn render_report(
         Some(browser) => format!("{browser} (driven from {})", host.kind.program()),
         None => host.kind.program().to_string(),
     };
-    let workers = args.options().concurrency.threads().to_string();
+    // What the run started, which is not what `-j` allowed once `uf` sizes the
+    // pool from recorded durations; the configured count stands in for a run
+    // that started none.
+    let workers = match report.summary.workers {
+        0 => args.options().concurrency.threads(),
+        started => started,
+    }
+    .to_string();
     let cache = timings_label(root);
     let cache = crate::support::relative_to(root, &cache);
     let summary_line = summary_line(report, duration);

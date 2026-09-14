@@ -1004,9 +1004,11 @@ fn a_loading_boundary_inside_a_slot_is_discovered() {
     assert_eq!(routes[0].path, "/");
 }
 
-/// Every interception spelling Next.js defines, refused by the same rule.
+/// Every interception spelling Next.js defines is refused *outside* a slot, by
+/// the same rule: there is no named place for it to render into, and the only
+/// thing left to do with the directory would be to serve it as a URL.
 #[test]
-fn an_intercepting_route_is_refused() {
+fn an_intercepting_route_outside_a_slot_is_refused() {
     for segment in ["(.)photo", "(..)photo", "(...)photo", "(..)(..)photo"] {
         let dir = tempfile::tempdir().unwrap();
         let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
@@ -1026,7 +1028,197 @@ fn an_intercepting_route_is_refused() {
             "{segment}: {message}"
         );
         assert!(message.contains("refused"), "{segment}: {message}");
+        assert!(message.contains("`@slot`"), "{segment}: {message}");
     }
+}
+
+/// A router root holding each named file, relative to `app/`, as empty modules.
+fn project<S: AsRef<str>>(files: &[S]) -> (tempfile::TempDir, Utf8PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    for file in files {
+        let path = root.join("app").join(file.as_ref());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, "// @flow\n").unwrap();
+    }
+    (dir, root)
+}
+
+/// Inside a slot an interception is a route — and not a URL.
+///
+/// Its page is what a client navigation shows in the slot instead of the page
+/// the URL names, so it adds nothing to the route table: `/feed/photo/:id` is
+/// in `RoutePath` because `app/feed/photo/[id]/$page.js` is there, once, and
+/// nothing about the interception reaches the generated types.
+#[test]
+fn an_intercepting_route_inside_a_slot_is_discovered_and_is_not_a_url() {
+    let (_dir, root) = project(&[
+        "$layout.js",
+        "feed/$layout.js",
+        "feed/$page.js",
+        "feed/photo/[id]/$page.js",
+        "feed/@modal/(.)photo/[id]/$page.js",
+    ]);
+
+    let routes = discover_routes(&root, &UniflowedConfig::default()).unwrap();
+
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["/feed", "/feed/photo/:id"]
+    );
+    assert_eq!(routes[1].page, root.join("app/feed/photo/[id]/$page.js"));
+    let generated = generate_router_flow(&routes);
+    assert!(!generated.contains("(.)"), "{generated}");
+    assert!(!generated.contains("@modal"), "{generated}");
+}
+
+/// The URL an interception stands in for is counted in URL segments: a slot and
+/// a `(group)` are not levels, and `(..)` climbs one of what is left.
+///
+/// Read through the one message that quotes an interception's path — a handler
+/// inside one, which would claim the intercepted URL.
+#[test]
+fn an_interception_climbs_url_segments_rather_than_directories() {
+    for (interception, claimed) in [
+        ("feed/@modal/(.)photo", "/feed/photo"),
+        ("feed/@modal/(..)photo", "/photo"),
+        ("feed/(social)/@modal/(..)photo", "/photo"),
+        ("shop/[category]/@modal/(..)(..)photo", "/photo"),
+        ("shop/[category]/@modal/(...)photo", "/photo"),
+        ("feed/@modal/(.)[id]", "/feed/:id"),
+    ] {
+        let declaring = interception.split("/@").next().unwrap();
+        let (_dir, root) = project(&[
+            format!("{declaring}/$layout.js"),
+            format!("{interception}/$route.js"),
+        ]);
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("claim `{claimed}`")),
+            "{interception}: {message}"
+        );
+    }
+}
+
+/// A marker uf does not read is refused inside a slot too: the sentence is about
+/// the spelling, and the place does not rescue it.
+#[test]
+fn a_marker_nothing_reads_is_refused_inside_a_slot_too() {
+    for segment in RouteSegment::UNSUPPORTED_EXAMPLES {
+        let (_dir, root) = project(&[
+            "feed/$layout.js".to_owned(),
+            format!("feed/@modal/{segment}/$page.js"),
+        ]);
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(segment), "{segment}: {message}");
+        assert!(message.contains("refused"), "{segment}: {message}");
+        assert!(
+            !message.contains("renders into a `@slot`"),
+            "{segment} was given the sentence about its place: {message}"
+        );
+    }
+}
+
+/// A climb past the router root is refused, counted the way the path is.
+#[test]
+fn an_interception_that_climbs_past_the_router_root_is_refused() {
+    for (declaring, interception) in [
+        ("", "(..)photo"),
+        ("(shop)/", "(..)photo"),
+        ("feed/", "(..)(..)photo"),
+    ] {
+        let (_dir, root) = project(&[
+            format!("{declaring}$layout.js"),
+            format!("{declaring}@modal/{interception}/$page.js"),
+            "photo/$page.js".to_owned(),
+        ]);
+
+        let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+        let message = error.to_string();
+        assert!(message.contains(interception), "{declaring}: {message}");
+        assert!(message.contains("router root"), "{declaring}: {message}");
+    }
+}
+
+/// An interception whose URL no page serves is refused where the file is: a
+/// reload of the URL the modal put in the address bar would be a 404.
+#[test]
+fn an_interception_without_the_page_it_stands_in_for_is_refused() {
+    let (_dir, root) = project(&[
+        "$layout.js",
+        "feed/$layout.js",
+        "feed/$page.js",
+        "feed/@modal/(.)photo/[id]/$page.js",
+    ]);
+
+    let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+    let message = error.to_string();
+    assert!(message.contains("`/feed/photo/:id`"), "{message}");
+    assert!(message.contains("404"), "{message}");
+    assert!(
+        message.contains(root.join("app/feed/photo/[id]/$page.js").as_str()),
+        "the refusal names the page to add: {message}"
+    );
+    // Server-module discovery shares the preflight, and says the same.
+    let error = discover_server_modules(&root, &UniflowedConfig::default()).unwrap_err();
+    assert!(error.to_string().contains("`/feed/photo/:id`"), "{error}");
+}
+
+/// "Serves" is every URL the interception matches, not a path spelled alike.
+#[test]
+fn a_page_serves_an_interception_by_matching_every_url_it_stands_in_for() {
+    for (ordinary, interception, served) in [
+        ("docs/[name]/$page.js", "(.)[slug]", true),
+        ("docs/[...path]/$page.js", "(.)[slug]", true),
+        ("docs/[...path]/$page.js", "(.)[...rest]", true),
+        ("docs/intro/$page.js", "(.)[slug]", false),
+        ("docs/[name]/$page.js", "(.)[...rest]", false),
+        ("docs/[name]/edit/$page.js", "(.)[slug]", false),
+    ] {
+        let (_dir, root) = project(&[
+            "docs/$layout.js".to_owned(),
+            ordinary.to_owned(),
+            format!("docs/@panel/{interception}/$page.js"),
+        ]);
+
+        let discovered = discover_routes(&root, &UniflowedConfig::default());
+
+        assert_eq!(
+            discovered.is_ok(),
+            served,
+            "{ordinary} serving {interception}: {discovered:?}"
+        );
+    }
+}
+
+/// A catch-all a climb leaves in the middle of the intercepted URL makes a URL
+/// no request can reach, and is refused the way it is for an ordinary page.
+#[test]
+fn an_interception_with_a_catch_all_before_its_own_segment_is_refused() {
+    let (_dir, root) = project(&[
+        "docs/[...path]/$layout.js",
+        "docs/[...path]/$page.js",
+        "docs/[...path]/@panel/(.)edit/$page.js",
+    ]);
+
+    let error = discover_routes(&root, &UniflowedConfig::default()).unwrap_err();
+
+    assert!(
+        matches!(error, RouterError::NonTerminalCatchAll { .. }),
+        "{error}"
+    );
+    assert!(error.to_string().contains("[...path]"), "{error}");
 }
 
 /// A route group is not an interception, which is the near-miss that made

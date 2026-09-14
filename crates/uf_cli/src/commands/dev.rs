@@ -18,16 +18,21 @@
 //!   it too, and a second copy of that judgement is a second answer.
 //! - [`hover`] — what uf can honestly say about the thing under the cursor,
 //!   and what it cannot say yet.
+//! - [`config_file`] — completion and hover in `uf.config.js`, answered from
+//!   `@uniflowed/config`'s own Flow type rather than from a list kept here.
 
+mod config_file;
 mod hover;
 mod rsc;
 
+use std::cell::OnceCell;
 use std::io::{BufRead, IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Value, json};
-use uf_config::{FmtConfig, UniflowedConfig, env_files, load_config};
+use uf_config::schema::Schema;
+use uf_config::{FmtConfig, QuoteStyle, UniflowedConfig, env_files, load_config};
 use uf_infra::FxHashMap;
 use uf_lib::NativeModule;
 use uf_router::write_router_manifest;
@@ -274,6 +279,13 @@ fn serve(
 /// specifier names, and what a rule id in a suppression comment means. Not the
 /// type at a position; that module's header says exactly what is missing.
 ///
+/// Completion, from [`config_file`], and in `uf.config.js` only: the keys valid
+/// at the cursor with their documentation and type, and the values of a key
+/// whose type is a fixed set. A hover over one of those keys says what its
+/// completion said. Everywhere else completion answers `null`, because the
+/// type-aware completion a Flow file wants needs the positional query `hover`
+/// explains `uf_check` does not expose yet.
+///
 /// # Being hard to wedge
 ///
 /// The loop must survive whatever arrives on the pipe, because the thing on
@@ -367,6 +379,12 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
                         "codeActionProvider": {
                             "codeActionKinds": [QUICK_FIX, FIX_ALL],
                         },
+                        // `"` opens a value, and a key written as a string.
+                        // `@` separates a tool from its version in a spec
+                        // like `node@26`, where what comes next is a version.
+                        "completionProvider": {
+                            "triggerCharacters": ["\"", "@"],
+                        },
                     },
                 }),
             )?,
@@ -416,6 +434,10 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
             }
             "textDocument/hover" => {
                 let answer = hover_answer(&message, &documents, &modules);
+                answer_request(&mut stdout, id, answer)?;
+            }
+            "textDocument/completion" => {
+                let answer = completion_answer(&message, &documents, fmt.quotes);
                 answer_request(&mut stdout, id, answer)?;
             }
             // A request uf does not serve is answered as one, not ignored: an
@@ -523,6 +545,15 @@ struct Document {
     /// often not anything yet, and a server that fails there is a server that
     /// stops.
     diagnostics: Option<Vec<uf_lint::Diagnostic>>,
+    /// The config object, for a `uf.config.js`: read on the first completion
+    /// or hover that needs it, and then kept for this text.
+    ///
+    /// Kept for the diagnostics' reason — it cannot change without the text
+    /// changing, a hover is asked on mouse-move, and reading it runs the Flow
+    /// parser over the whole file. Lazily rather than in [`Document::lint`],
+    /// because most documents are never asked, and the one that is may be
+    /// typed into many times between two questions.
+    config: OnceCell<config_file::Outline>,
 }
 
 impl Document {
@@ -534,7 +565,17 @@ impl Document {
     /// offering a fix for a diagnostic it is not showing.
     fn lint(uri: &str, text: String, config: &UniflowedConfig) -> Self {
         let diagnostics = lint_text(uri, &text, config);
-        Self { text, diagnostics }
+        Self {
+            text,
+            diagnostics,
+            config: OnceCell::new(),
+        }
+    }
+
+    /// The config object of this text, read the first time it is asked for.
+    fn config_outline(&self) -> &config_file::Outline {
+        self.config
+            .get_or_init(|| config_file::Outline::read(&self.text))
     }
 }
 
@@ -817,12 +858,127 @@ fn hover_answer(
     documents: &FxHashMap<String, Document>,
     modules: &[NativeModule],
 ) -> Result<Value, String> {
+    let (uri, line, requested) = position_params(message, "textDocument/hover")?;
+    let Some(document) = documents.get(&uri) else {
+        return Ok(Value::Null);
+    };
+    let lines: Vec<&str> = document.text.lines().collect();
+    let text = lines.get(line).copied();
+    let path = document_path(&uri);
+
+    if let Some(answer) = hover::hover(&hover::Request {
+        path: &path,
+        source: &document.text,
+        line,
+        column: byte_column(text, requested),
+        diagnostics: document.diagnostics.as_deref().unwrap_or_default(),
+        modules,
+    }) {
+        return Ok(json!({
+            "contents": { "kind": "markdown", "value": answer.markdown },
+            "range": {
+                "start": { "line": line, "character": character(text, answer.start + 1) },
+                "end": { "line": line, "character": character(text, answer.end + 1) },
+            },
+        }));
+    }
+
+    // A key of `uf.config.js`. Asked after the questions above, so that a
+    // diagnostic sitting on a key is still the first thing said about it.
+    if config_file::is_config_file(&path) {
+        let index = LineIndex::new(&document.text);
+        if let Some(offset) = index.offset(line, requested)
+            && let Some(answer) = config_file::hover(
+                Schema::embedded(),
+                &document.text,
+                document.config_outline(),
+                offset,
+            )
+        {
+            return Ok(json!({
+                "contents": { "kind": "markdown", "value": answer.markdown },
+                "range": index.range(answer.span.start, answer.span.end),
+            }));
+        }
+    }
+    Ok(Value::Null)
+}
+
+/// What may be written at the cursor, as `CompletionItem`s.
+///
+/// `null` for every document but `uf.config.js`. The trigger characters are
+/// sent from every file this server is given, and a quote typed in a
+/// component is not a question uf has an answer to.
+fn completion_answer(
+    message: &Value,
+    documents: &FxHashMap<String, Document>,
+    quotes: QuoteStyle,
+) -> Result<Value, String> {
+    let (uri, line, requested) = position_params(message, "textDocument/completion")?;
+    let Some(document) = documents.get(&uri) else {
+        return Ok(Value::Null);
+    };
+    if !config_file::is_config_file(&document_path(&uri)) {
+        return Ok(Value::Null);
+    }
+    let index = LineIndex::new(&document.text);
+    let Some(offset) = index.offset(line, requested) else {
+        return Ok(json!([]));
+    };
+
+    let items = config_file::complete(
+        Schema::embedded(),
+        &document.text,
+        document.config_outline(),
+        offset,
+        quotes,
+    );
+    Ok(Value::Array(
+        items
+            .iter()
+            .map(|item| completion_item(&index, item))
+            .collect(),
+    ))
+}
+
+/// One completion as the protocol spells it.
+fn completion_item(index: &LineIndex<'_>, item: &config_file::Item) -> Value {
+    let mut encoded = json!({
+        "label": item.label,
+        "kind": item.kind.protocol(),
+        // An edit rather than an insertion, because what is replaced is uf's
+        // call — the inside of the quotes, or the whole half-typed key — and
+        // not the editor's idea of a word, which starts after `"` and stops
+        // at `@`.
+        "textEdit": {
+            "range": index.range(item.replace.start, item.replace.end),
+            "newText": item.new_text,
+        },
+    });
+    if let Some(detail) = &item.detail {
+        encoded["detail"] = json!(detail);
+    }
+    if let Some(documentation) = &item.documentation {
+        encoded["documentation"] = json!({ "kind": "markdown", "value": documentation });
+    }
+    if let Some(filter) = &item.filter_text {
+        encoded["filterText"] = json!(filter);
+    }
+    if let Some(sort) = &item.sort_text {
+        encoded["sortText"] = json!(sort);
+    }
+    encoded
+}
+
+/// The document and the position a positional request names: its URI, the
+/// zero-based line, and the UTF-16 character.
+fn position_params(message: &Value, method: &str) -> Result<(String, usize, usize), String> {
     let params = message
         .get("params")
-        .ok_or_else(|| String::from("`textDocument/hover` needs `params`"))?;
+        .ok_or_else(|| format!("`{method}` needs `params`"))?;
     let uri = document_uri(message)
         .ok_or_else(|| String::from("`params.textDocument.uri` is required"))?;
-    let position = params
+    let (line, character) = params
         .get("position")
         .and_then(|position| {
             Some((
@@ -831,33 +987,59 @@ fn hover_answer(
             ))
         })
         .ok_or_else(|| String::from("`params.position` needs a `line` and a `character`"))?;
+    Ok((uri, line, character))
+}
 
-    let Some(document) = documents.get(&uri) else {
-        return Ok(Value::Null);
-    };
-    let (line, requested) = position;
-    let lines: Vec<&str> = document.text.lines().collect();
-    let text = lines.get(line).copied();
-    let path = document_path(&uri);
+/// Where each line of a document starts.
+///
+/// Diagnostics, fixes and import hovers are spans on one line, and convert
+/// with [`character`] and [`byte_column`] against that line. Completion and
+/// config-key hover work in offsets into the whole document, which is the same
+/// conversion with the line found first.
+struct LineIndex<'a> {
+    text: &'a str,
+    starts: Vec<usize>,
+}
 
-    let Some(answer) = hover::hover(&hover::Request {
-        path: &path,
-        source: &document.text,
-        line,
-        column: byte_column(text, requested),
-        diagnostics: document.diagnostics.as_deref().unwrap_or_default(),
-        modules,
-    }) else {
-        return Ok(Value::Null);
-    };
+impl<'a> LineIndex<'a> {
+    fn new(text: &'a str) -> Self {
+        let mut starts = vec![0];
+        starts.extend(text.match_indices('\n').map(|(at, _)| at + 1));
+        Self { text, starts }
+    }
 
-    Ok(json!({
-        "contents": { "kind": "markdown", "value": answer.markdown },
-        "range": {
-            "start": { "line": line, "character": character(text, answer.start + 1) },
-            "end": { "line": line, "character": character(text, answer.end + 1) },
-        },
-    }))
+    /// A line's text, without its line terminator.
+    fn line(&self, line: usize) -> Option<&'a str> {
+        let start = *self.starts.get(line)?;
+        let end = self
+            .starts
+            .get(line + 1)
+            .map_or(self.text.len(), |next| next - 1);
+        let text = self.text.get(start..end)?;
+        Some(text.strip_suffix('\r').unwrap_or(text))
+    }
+
+    /// A protocol position as a byte offset, or [`None`] past the last line.
+    fn offset(&self, line: usize, character: usize) -> Option<usize> {
+        Some(self.starts.get(line)? + byte_column(self.line(line), character))
+    }
+
+    /// A byte offset as a protocol position.
+    fn position(&self, offset: usize) -> Value {
+        let line = self
+            .starts
+            .partition_point(|&start| start <= offset)
+            .saturating_sub(1);
+        let start = self.starts.get(line).copied().unwrap_or(0);
+        json!({
+            "line": line,
+            "character": character(self.line(line), offset.saturating_sub(start) + 1),
+        })
+    }
+
+    fn range(&self, start: usize, end: usize) -> Value {
+        json!({ "start": self.position(start), "end": self.position(end) })
+    }
 }
 
 /// A one-based *byte* column, as an LSP zero-based UTF-16 character offset.
@@ -1395,6 +1577,38 @@ mod tests {
         // Inside a surrogate pair: the character it is inside, not the next one.
         assert_eq!(byte_column(Some("🦀x"), 1), 0);
         assert_eq!(byte_column(Some("🦀x"), 2), 4);
+    }
+
+    /// The same inverse a level out, for completion, which works in offsets
+    /// into the whole document: across a CRLF, and after a character outside
+    /// the Basic Multilingual Plane on the line.
+    #[test]
+    fn a_document_offset_and_a_protocol_position_are_inverses() {
+        let text = "export default {\r\n  a: \"🦀\", b: 1,\n};\n";
+        let index = LineIndex::new(text);
+
+        for (offset, letter) in text.char_indices() {
+            // A line terminator is not a character a position can name.
+            if matches!(letter, '\r' | '\n') {
+                continue;
+            }
+            let position = index.position(offset);
+            let line = usize::try_from(position["line"].as_u64().unwrap()).unwrap();
+            let character = usize::try_from(position["character"].as_u64().unwrap()).unwrap();
+            assert_eq!(
+                index.offset(line, character),
+                Some(offset),
+                "offset {offset} round-tripped through {position}"
+            );
+        }
+
+        // `b` is thirteen bytes into its line and eleven UTF-16 units.
+        assert_eq!(
+            index.position(text.find("b:").unwrap()),
+            json!({ "line": 1, "character": 11 })
+        );
+        // A line past the end names nothing.
+        assert_eq!(index.offset(9, 0), None);
     }
 
     /// Code action kinds are hierarchical, which is what makes an editor's

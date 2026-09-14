@@ -1,7 +1,7 @@
 // @flow
 //
-// What a directory name means to the route path, and the one spelling uf
-// reserves inside the router root without serving.
+// What a directory name means to the route path, and the spellings uf reserves
+// inside the router root.
 //
 // Next.js spells a parallel route `@team` and an intercepting route
 // `(.)photo`. Neither router had an opinion about either, so both fell through
@@ -12,13 +12,14 @@
 // wrote one got no route and no error, which is worse than not supporting it:
 // the project looks like it works. See ubugeeei-prod/uf#267.
 //
-// `@team` is a parallel route both routers serve now, and what it does is
-// `parallel-routes.test.js`; what this file keeps is that it is not a URL.
-// `(.)photo` is still refused by both. `crates/uf_router/tests/
-// reserved_names.rs` holds the two to the same list of refused spellings; this
-// file is the build router's half of the behaviour, over real directories,
-// because `scanRoutes` is `readdirSync` and `statSync` and a fake tree would
-// prove nothing about which directory is walked into.
+// Both routers serve both now: `@team` anywhere, and `(.)photo` inside a slot —
+// `tests/library/parallel-routes.test.js` is what they do. What this file keeps
+// is the grammar: neither is a URL segment, an interception is refused outside
+// a slot, and what is spelled like an interception without being one is refused
+// everywhere. `crates/uf_router/tests/reserved_names.rs` holds the two routers
+// to the same lists; this file is the build router's half of the behaviour,
+// over real directories, because `scanRoutes` is `readdirSync` and `statSync`
+// and a fake tree would prove nothing about which directory is walked into.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -27,8 +28,10 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "@uniflowed/test";
 
 import {
+  INTERCEPTION_SEGMENTS,
   UNSUPPORTED_SEGMENTS,
   classifyRouteSegment,
+  interceptionClimb,
   resolveRouteTarget,
   routeFromSegments,
   scanRoutes,
@@ -54,6 +57,16 @@ function appRoot(files: $ReadOnlyArray<string>): string {
   return root;
 }
 
+/** The message `run` threw, or `null` when it threw nothing. */
+function thrownBy(run: () => mixed): ?string {
+  try {
+    run();
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 describe("classifying a directory name", () => {
   it("reads the three kinds a route path is built from", () => {
     expect(classifyRouteSegment("(marketing)")).toEqual({ kind: "group" });
@@ -74,19 +87,38 @@ describe("classifying a directory name", () => {
     });
   });
 
-  it("names every interception marker Next.js defines", () => {
-    for (const [segment, marker] of [
-      ["(.)photo", "(.)"],
-      ["(..)photo", "(..)"],
-      ["(...)photo", "(...)"],
-      ["(..)(..)photo", "(..)(..)"],
-      ["(..)(..)(..)photo", "(..)(..)(..)"],
+  it("names every interception marker Next.js defines, and how far each climbs", () => {
+    for (const [segment, marker, climb] of [
+      ["(.)photo", "(.)", 0],
+      ["(..)photo", "(..)", 1],
+      ["(...)photo", "(...)", "root"],
+      ["(..)(..)photo", "(..)(..)", 2],
+      ["(..)(..)(..)photo", "(..)(..)(..)", 3],
     ]) {
       expect(classifyRouteSegment(segment)).toEqual({
         kind: "interception",
         marker,
         route: "photo",
       });
+      expect(interceptionClimb(marker)).toBe(climb);
+    }
+  });
+
+  it("reads a miscounted marker as an interception that climbs nowhere", () => {
+    // The shape of an interception somebody miscounted. Reading these as
+    // literals is how `/(....)photo` becomes a page, so they are interceptions
+    // uf refuses by name.
+    for (const [segment, marker] of [
+      ["(....)photo", "(....)"],
+      ["(.)(.)photo", "(.)(.)"],
+      ["(...)(..)photo", "(...)(..)"],
+    ]) {
+      expect(classifyRouteSegment(segment)).toEqual({
+        kind: "interception",
+        marker,
+        route: "photo",
+      });
+      expect(interceptionClimb(marker)).toBe(null);
     }
   });
 
@@ -112,41 +144,67 @@ describe("classifying a directory name", () => {
     expect(routeFromSegments(["dashboard", "@team", "members"]).path).toBe("/dashboard/members");
   });
 
-  it("refuses an interception before it can become a helper-built URL", () => {
-    let thrown = null;
-    try {
-      routeFromSegments(["feed", "(.)photo"]);
-    } catch (error) {
-      thrown = error;
-    }
+  it("refuses an interception outside a slot before it can become a helper-built URL", () => {
+    const message = thrownBy(() => routeFromSegments(["feed", "(.)photo"])) ?? "";
 
-    expect(thrown instanceof Error).toBe(true);
-    const message = thrown instanceof Error ? thrown.message : "";
     expect(message).toContain("(.)photo");
     expect(message).toContain("intercepting route");
+    expect(message).toContain("`@slot`");
+    expect(message).toContain("refused");
+  });
+
+  it("builds the URL an interception stands in for, counting URL segments", () => {
+    // A slot and a group are not levels, and `(..)` climbs one of what is left.
+    expect(routeFromSegments(["feed", "@modal", "(.)photo", "[id]"]).path).toBe("/feed/photo/:id");
+    expect(routeFromSegments(["feed", "@modal", "(..)photo", "[id]"]).path).toBe("/photo/:id");
+    expect(routeFromSegments(["feed", "(social)", "@modal", "(..)photo"]).path).toBe("/photo");
+    expect(routeFromSegments(["shop", "[category]", "@modal", "(...)photo"]).path).toBe("/photo");
+
+    const standsInFor = routeFromSegments(["shop", "[category]", "@modal", "(.)[id]"]);
+    expect(standsInFor.path).toBe("/shop/:category/:id");
+    expect(standsInFor.params).toEqual([
+      { name: "category", catchAll: false },
+      { name: "id", catchAll: false },
+    ]);
+    // A parameter the climb leaves behind is not one the URL captures.
+    expect(routeFromSegments(["shop", "[category]", "@modal", "(..)photo"]).params).toEqual([]);
+  });
+
+  it("refuses a climb past the router root rather than stopping at it", () => {
+    const message = thrownBy(() => routeFromSegments(["@modal", "(..)photo"])) ?? "";
+
+    expect(message).toContain("(..)photo");
+    expect(message).toContain("router root");
     expect(message).toContain("refused");
   });
 });
 
 describe("scanning a router root that holds one", () => {
-  it("refuses every spelling, naming the directory and what it is", () => {
+  it("refuses every spelling that cannot be an interception, in a slot or not", () => {
     for (const segment of UNSUPPORTED_SEGMENTS) {
-      const root = appRoot([path.join("feed", segment, "$page.js")]);
+      for (const files of [
+        [path.join("feed", segment, "$page.js")],
+        ["$layout.js", "$page.js", path.join("@modal", segment, "$page.js")],
+      ]) {
+        // The build serving `/feed/(....)photo` is the bug. Throwing is the fix,
+        // and the message has to say the directory is *refused* — "unsupported"
+        // reads as "ignored", and ignored is what it used to be.
+        const message = thrownBy(() => scanRoutes(appRoot(files))) ?? "";
 
-      // The build serving `/feed/(.)photo` is the bug. Throwing is the fix,
-      // and the message has to say the directory is *refused* — "unsupported"
-      // reads as "ignored", and ignored is what it used to be.
-      let thrown = null;
-      try {
-        scanRoutes(root);
-      } catch (error) {
-        thrown = error;
+        expect(message).toContain(segment);
+        expect(message).toContain("refused");
+        expect(message).toContain("267");
       }
-      expect(thrown instanceof Error).toBe(true);
-      const message = thrown instanceof Error ? thrown.message : "";
-      expect(message).toContain(segment);
-      expect(message).toContain("refused");
-      expect(message).toContain("267");
+    }
+  });
+
+  it("refuses every interception outside a slot, for its place rather than its spelling", () => {
+    for (const segment of INTERCEPTION_SEGMENTS) {
+      const message = thrownBy(() => scanRoutes(appRoot([path.join("feed", segment, "$page.js")])));
+
+      expect(message ?? "").toContain(segment);
+      expect(message ?? "").toContain("`@slot`");
+      expect(message ?? "").not.toContain("is not a marker uf reads");
     }
   });
 

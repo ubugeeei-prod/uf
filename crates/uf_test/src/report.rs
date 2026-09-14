@@ -252,6 +252,14 @@ pub struct FileReport {
     /// How the file ended.
     pub status: FileStatus,
     /// Wall-clock time spent on this file, in microseconds.
+    ///
+    /// Not charged for the worker it ran on. A worker's first file used to be
+    /// timed from the moment `uf` wrote its request, which is before the
+    /// process has booted, so every worker made one file look tens of
+    /// milliseconds slower than it was — the files the slowest-files table
+    /// named, and the durations the next run scheduled and sized its pool
+    /// from. The worker's start-up is measured once and subtracted; see
+    /// [`TestSummary::worker_start_micros`].
     pub duration_micros: u64,
     /// Every declaration in the file, in source order.
     pub records: Vec<TestRecord>,
@@ -304,6 +312,23 @@ pub struct TestSummary {
     pub duration_micros: u64,
     /// Whether `--bail` stopped the run early.
     pub bailed: bool,
+    /// How many workers the run started.
+    ///
+    /// Not serialised, with the other facts about *how* a run was carried out
+    /// rather than what it found: a run on one worker and a run on sixteen
+    /// must produce equal documents, and `uf test --json` is compared across
+    /// exactly that.
+    #[serde(skip)]
+    pub workers: usize,
+    /// What starting one worker cost in this run, in microseconds, when a
+    /// worker finished a file it could time.
+    ///
+    /// The median over workers of the time from spawning the process to its
+    /// first file's answer, less the time the worker says that file took. It is
+    /// recorded beside the file durations so the next run can size its pool;
+    /// see [`crate::auto_workers`].
+    #[serde(skip)]
+    pub worker_start_micros: Option<u64>,
 }
 
 impl TestSummary {
@@ -381,6 +406,11 @@ impl TestRunReport {
     /// lets a test assert that nothing *else* differs.
     pub fn without_timings(mut self) -> Self {
         self.summary.duration_micros = 0;
+        // Not durations, but the same kind of fact: how many workers carried
+        // the run and what one cost to start say something about the machine,
+        // and nothing about what the suite did.
+        self.summary.workers = 0;
+        self.summary.worker_start_micros = None;
         for file in &mut self.files {
             file.duration_micros = 0;
         }

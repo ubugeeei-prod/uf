@@ -8,7 +8,7 @@
 
 use tempfile::TempDir;
 use uf_check::{CheckCache, CheckLimits, Source, check_sources_cached};
-use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{CountingAllocator, ThreadWindow};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
@@ -39,12 +39,12 @@ fn a_warm_import_chain_does_not_allocate_one_resolution_list_per_module() {
     let cold = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
     assert_eq!(cold.files_from_cache, 0);
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    // This thread, and the check thread `uf_check` runs the batch on, which
+    // hands its allocations back — not any other thread in the binary. See
+    // `uf_profiler::Handover`.
+    let window = ThreadWindow::open();
     let warm = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(
         warm.files_from_cache, MODULES,
@@ -52,7 +52,6 @@ fn a_warm_import_chain_does_not_allocate_one_resolution_list_per_module() {
     );
     assert!(warm.diagnostics.is_empty(), "{:#?}", warm.diagnostics);
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations <= IMPORT_CHAIN_CEILING,
         "a warm {MODULES}-module import chain took {} allocations, over the \

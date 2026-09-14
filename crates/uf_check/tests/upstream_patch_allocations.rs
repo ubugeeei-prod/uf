@@ -7,13 +7,15 @@
 //! times the SSA builder allocates to compute a normal form, and the only test
 //! that can fail without it is one that counts.
 //!
-//! # Why this is its own binary
+//! # What it counts
 //!
-//! The counters are in the allocator, so they are process-wide: a second test
-//! running on another thread of the same binary would have its allocations
-//! added to this one's. `uf_profiler::Window` makes measurement *windows*
-//! exclusive, which stops two measurements from rebasing each other's peaks —
-//! it cannot stop a neighbouring test from allocating. One test per binary can.
+//! This test's thread, and the check thread `uf_check` checks the module on,
+//! which hands its allocations back (`uf_profiler::Handover`). Not the process.
+//! The allocator's counters are process-wide, and this test used to be the
+//! only one in its binary so that nothing could add to them while it measured
+//! — an arrangement that held only for as long as nobody added a second test
+//! here. A `uf_profiler::ThreadWindow` does not depend on it: another thread's
+//! allocations are not in the figure at all.
 //!
 //! ```sh
 //! cargo test -p uf_check --test upstream_patch_allocations
@@ -22,7 +24,7 @@
 #![cfg(feature = "upstream-typecheck")]
 
 use uf_check::{CheckLimits, Source, check_source};
-use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{CountingAllocator, ThreadWindow};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
@@ -117,21 +119,15 @@ fn a_normal_form_costs_one_set_and_not_one_per_node() {
         "the module under measurement must type check clean, got {warm:#?}"
     );
 
-    // Exclusive, so nothing else can rebase the peaks mid-measurement, and
-    // taken before the baseline snapshot for the same reason.
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    let window = ThreadWindow::open();
     let diagnostics = check(&source);
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert!(
         diagnostics.is_empty(),
         "the module under measurement must type check clean, got {diagnostics:#?}"
     );
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations > 0,
         "the counting allocator recorded nothing, so this test measured nothing"

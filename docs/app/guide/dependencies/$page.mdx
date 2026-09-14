@@ -1,0 +1,382 @@
+---
+title: "Dependencies · uf"
+description: "uf install and the rest: your project's own package manager, with install scripts refused and CI held to the lockfile."
+---
+
+<p className="eyebrow">The toolchain</p>
+
+# Dependencies
+
+<div className="lede">
+uf does not resolve or fetch packages. `uf install`, `uf add` and the rest find
+the package manager your project already uses — npm, pnpm, Yarn or Bun — and run
+it, with a policy in front of it: install scripts refused, a lockfile that has
+drifted refused when CI asks for exactly what it pins, and a manager with no
+answer to a command said to have none rather than swapped for one that does.
+</div>
+
+**What you will be able to do:** install a project and keep its lockfile honest in
+CI, add and remove dependencies, find out why a package is in the tree and what is
+newer than your ranges allow, approve the dependencies that have to build, and
+read what uf checks about where a package came from.
+
+**What you need first:** a project — [Your first project](/guide/project) — and
+the package manager you mean to use; npm comes with Node.js. Pinning which Node
+and which manager a project runs on is [Environments](/guide/env).
+
+## Which manager runs
+
+The first of these that says something decides:
+
+1. `pm.packageManager` in `uf.config.js`;
+2. the `packageManager` field in `package.json`, such as `"bun@1.3.13"`;
+3. a lockfile in the project root — `bun.lock`, `bun.lockb`, `pnpm-lock.yaml`,
+   `yarn.lock`, `package-lock.json` or `npm-shrinkwrap.json`, in that order;
+4. a workspace root above the project that says one of the above;
+5. npm.
+
+Every command that runs a manager prints what it chose and why, in its `chosen by`
+row — `no lockfile or packageManager field` for a project `uf new` just wrote,
+`package-lock.json` once npm has written one, `packageManager field: bun@1.3.13`
+when the manifest names Bun. A `yarn.lock` is Yarn 2 or later when a `.yarnrc.yml`
+sits beside it or the lockfile has a `__metadata:` block, and Yarn 1 otherwise.
+
+Two lockfiles from different managers in one root are not an error: the one
+higher in the list wins, and only `uf inspect` says the choice was ambiguous.
+
+`uf.config.js` has a second way to name a manager, and it does not choose one yet.
+The top-level `packageManager` key — `packageManager: "pnpm@10"` — is read and
+checked, a range in it is refused, and `uf explain install` reports it, but the
+commands on this page still decide by the list above: a project that names pnpm
+there and has no lockfile gets npm. uf already prints a deprecation for
+`pm.packageManager` that points at the new key:
+
+<figure className="terminal">
+
+```
+! pm.packageManager is the top-level `packageManager` now, which can pin a release as well — write `packageManager: "pnpm"`
+```
+
+</figure>
+
+Until the commands read `packageManager`
+([#940](https://github.com/ubugeeei-prod/uf/issues/940)), `pm.packageManager` is
+the key that chooses, so leave it where it is. Pinning a manager's version is
+[Environments](/guide/env).
+
+`uf.lock` names uf's own resolver, and that resolver cannot fetch yet. A project
+that asks for it gets npm, and the `chosen by` row says so:
+`uf.lock names uf, whose resolver cannot fetch yet`.
+
+## Installing
+
+<figure className="terminal">
+
+```
+uf install · shop
+─────────────────
+
+  manager    npm
+  chosen by  no lockfile or packageManager field
+  command    npm install --ignore-scripts --loglevel=http
+  runtime    node · …/node/26.8.1/bin/node
+  lockfile   package-lock.json · 243 packages · 138.07 kB
+  plan       …/shop/.uf/install.json
+
+  config    ························ 565.5µs
+  workspace ························   2.1ms
+  resolve   ························   3.68s
+  fetch     ························   1.71s
+  link      ························  62.1ms
+  lockfile  ························   8.1ms
+  total     ························   8.35s
+
+  dependency tree
+    added  241
+    …
+
+  provenance
+    attested  78
+    unknown   165
+
+  next steps
+    1. uf dev
+    2. uf check
+
+✓ dependencies installed in 8.35s
+```
+
+</figure>
+
+That is a first install in a new project, with npm's own output — which uf passes
+through above its summary — left out. Run again with nothing to do, the summary
+is one line: `✓ already up to date in 1.23s`.
+
+The resolve, fetch and dependency-tree sections come from reading npm's own
+output and lockfile, so they appear for npm. pnpm, Yarn and Bun write to the
+terminal directly, and their summary is the rows, the timings uf can measure
+itself, and the next steps:
+
+<figure className="terminal">
+
+```
+  manager    bun
+  chosen by  packageManager field: bun@1.3.13
+  command    bun install --ignore-scripts
+  lockfile   bun.lock · 66.56 kB
+```
+
+</figure>
+
+`.uf/install.json` is written before the manager runs: which manager, which
+lockfile, which hosts the project needs. It is there to read after a failure too.
+
+## In CI: exactly what the lockfile pins
+
+`uf install --frozen-lockfile` installs what the lockfile pins and fails when the
+manifests have moved away from it, rather than quietly resolving the difference:
+
+| Manager | What runs |
+| --- | --- |
+| npm | `npm ci` |
+| pnpm | `pnpm install --frozen-lockfile` |
+| Yarn 1 | `yarn install --frozen-lockfile` |
+| Yarn 2+ | `yarn install --immutable` |
+| Bun | `bun install --frozen-lockfile` |
+
+Each with `--ignore-scripts`, below. [uf in CI](/guide/ci) says why this comes
+before every check: `uf check` with nothing installed types every import it cannot
+resolve as `any`.
+
+## Scripts
+
+A `package.json` that declares `scripts` is refused before anything is fetched,
+by `uf install`, `uf add`, `uf remove`, `uf update`, `uf catalog set` and
+`uf patch --commit` alike:
+
+<figure className="terminal">
+
+```
+error: package manifest …/shop/package.json declares scripts; use uf tasks in uf.config.js
+```
+
+</figure>
+
+A project's automation belongs in [tasks](/guide/tasks), and install-time scripts
+are how a freshly cloned repository runs code nobody read —
+[What uf does not do](/guide/scope) has the argument.
+
+A dependency's install scripts are off too: every command that installs hands the
+manager `--ignore-scripts`. Some dependencies genuinely need to build, and
+`uf pm approve-builds` lists the ones in your tree that would run code at install
+time:
+
+<figure className="terminal">
+
+```
+uf pm approve-builds · shop
+───────────────────────────
+
+  manager       npm
+  approvals in  nothing: it is all or none
+
+  package              version  runs     approved  attested
+  acorn                8.18.0   prepare  no        unknown
+  lightningcss         1.33.0   prepare  no        unknown
+  rollup               4.63.2   prepare  no        yes
+  …
+
+› 8 packages would run code at install time and are not approved, so uf does not let them run
+! npm cannot approve one and not another: `--ignore-scripts` is all of them or none
+› pm.allowLifecycleScripts in uf.config.js turns on every one of them, deliberately
+```
+
+</figure>
+
+On pnpm, Bun and Yarn 2+, `uf pm approve-builds esbuild` records the name in the
+field that manager reads — `pnpm.onlyBuiltDependencies`, `trustedDependencies`,
+`dependenciesMeta` — and the next install leaves `--ignore-scripts` off and lets
+the manager build exactly what the list names. npm and Yarn 1 have no such list,
+so on them an approval by name is refused rather than turned into "every package".
+A name that is not waiting to build is refused with the list of the ones that are.
+`--dry-run` writes nothing.
+
+`pm.allowLifecycleScripts: true` lifts both refusals at once — the project's own
+`scripts` and every dependency's — and is the one switch that does.
+
+## Adding and removing
+
+<figure className="terminal">
+
+```
+$ uf add --dev is-number@6
+
+  manager    npm
+  chosen by  package-lock.json
+  command    npm install --save-dev --ignore-scripts is-number@6
+  lockfile   package-lock.json · 244 packages · 138.46 kB
+
+  manifest
+
+       field            package    range
+    +  devDependencies  is-number  ^6.0.0
+
+  dependency tree
+    added  1
+
+       package    version
+    +  is-number  6.0.0
+
+✓ 1 package recorded in devDependencies in 419.6ms
+```
+
+</figure>
+
+`--dev`, `--optional` and `--peer` choose the field. A specifier goes to the
+manager exactly as written, so a range, a tag, an alias or a path means what it
+means there; one that starts with `-` is refused, because the manager would read
+it as a flag. `uf remove` — or `uf uninstall` — takes a name out of every field
+that lists it, the lockfile and `node_modules`, and a name the manifest never
+listed is not an error.
+
+## Asking about the tree
+
+`uf why`, `uf ls` and `uf audit` hand the question to the manager that resolved
+the tree, so the answer is about what was actually installed:
+
+<figure className="terminal">
+
+```
+$ uf why is-number
+
+  manager    npm
+  chosen by  package-lock.json
+  command    npm explain is-number
+
+is-number@6.0.0 dev
+node_modules/is-number
+  dev is-number@"^6.0.0" from the root project
+```
+
+</figure>
+
+They take package names and nothing else. A manager's own flags are that manager's
+surface, and uf cannot tell which of them only read — `pnpm audit --fix` rewrites a
+lockfile — so a flag after a name is refused:
+
+<figure className="terminal">
+
+```
+$ uf ls react --depth=0
+error: "--depth=0" is not a package name: it starts with `-`, which the package manager would read as a flag; write the package name, or `./--depth=0` for a path
+```
+
+</figure>
+
+`uf audit` exits 1 when the manager reports an advisory. A project `uf new` has
+just written already reports three high-severity ones today, all in `toml`, which
+arrives through `@uniflowed/vite`
+([#1009](https://github.com/ubugeeei-prod/uf/issues/1009)).
+
+`uf search` is npm's and pnpm's. Yarn and Bun have no registry search, and uf says
+so rather than running a manager the project did not choose:
+
+<figure className="terminal">
+
+```
+error: bun has no `search`: npm and pnpm can search the registry; `uf exec --yes npm search` runs npm's without changing what this project installs with
+```
+
+</figure>
+
+| Command | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
+| --- | --- | --- | --- | --- | --- |
+| `uf install` | `npm install` | `pnpm install` | `yarn install` | `yarn install` | `bun install` |
+| `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
+| `uf remove` | `npm uninstall` | `pnpm remove` | `yarn remove` | `yarn remove` | `bun remove` |
+| `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
+| `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
+| `uf ls` | `npm ls` | `pnpm list` | `yarn list` | `yarn info --all` | `bun pm ls` |
+| `uf audit` | `npm audit` | `pnpm audit` | `yarn audit` | `yarn npm audit` | `bun audit` |
+| `uf search` | `npm search` | `pnpm search` | refused | refused | refused |
+| `uf patch` | refused | `pnpm patch` | refused | `yarn patch` | refused |
+
+## Updating
+
+`uf update` with no flag is the manager's own update — every package moves to the
+newest version its range already allows, and `package.json` is not touched —
+followed by a report of what is newer than the ranges permit. `--dry-run` is the
+report alone:
+
+<figure className="terminal">
+
+```
+$ uf update --dry-run
+
+  outside the range
+
+  package    declared  newest  step
+  is-number  ^6.0.0    7.0.0   major
+
+› 1 dependency is newer than its range allows
+› uf update --latest rewrites the ranges; --minor and --patch cap the step
+```
+
+</figure>
+
+`--latest`, `--minor` and `--patch` rewrite the ranges as far as that step and then
+install, keeping the comparator the project chose — `^6.0.0` becomes `^7.0.0`. Only
+`^x.y.z`, `~x.y.z`, `x.y.z` and `>=x.y.z` are rewritten; `workspace:`, `catalog:`,
+`npm:`, a URL, and a range with more than one comparator are counted and left
+alone. Name packages to move only those.
+
+uf reads the registry for that report itself, over HTTPS, from `pm.registry` in
+`uf.config.js` — not from `.npmrc`, which is the manager's.
+
+## Workspaces, catalogues and patches
+
+`uf add#web react` runs the command in the workspace member named `web`, by its
+package name or its path. `uf catalog` lists the packages more than one manifest
+declares and the ones whose manifests disagree about the range, and
+`uf catalog set NAME RANGE` makes every manifest that declares the package agree.
+`uf patch PACKAGE` opens a copy of a dependency to edit and `uf patch --commit DIR`
+writes the patch and installs — on pnpm and Yarn 2+, the two managers with a patch
+command; on the others uf names `patch-package` rather than installing it for you.
+
+## Registries and provenance
+
+`pm.scopes` binds a scope to a registry for the reads uf makes itself, and
+`uf install` refuses a `package-lock.json` that resolved a bound scope's package
+from somewhere else — the shape of a dependency-confusion attack. The manager
+still resolves with its own configuration, so a scope has to be bound in `.npmrc`
+as well; uf never reads or sends a token, and a registry that needs one cannot
+answer uf's own reads. The keys are in the
+[configuration reference](/reference/config#pm-and-publish).
+
+With `pm.provenance` at its default, `report`, `uf install` reads the npm
+attestation of each package it added or updated, from an npm lockfile, up to 250
+per install: the statement has to name the package and the SHA-512 in the
+lockfile, and a mismatch stops the install. The Sigstore signature itself is not
+verified. On some machines a package with no attestation is counted as `unknown`
+rather than unattested ([#1005](https://github.com/ubugeeei-prod/uf/issues/1005)),
+which is what the install above shows.
+
+## What is not here
+
+- **uf's own resolver.** It cannot fetch, and `uf.lock` holds only a hash of each
+  workspace manifest, not the packages.
+- **`--json`** on any of these commands.
+- **The manager's exit status.** A manager that fails makes uf exit 1, whatever it
+  exited with.
+- **End-to-end runs of pnpm, Yarn and Bun in uf's own tests.** The command lines
+  for each manager are unit-tested, and npm is the one driven for real.
+- **Publishing.** `uf publish` writes a plan to `.uf/publish.json` and publishes
+  nothing.
+
+## Where to go next
+
+[Environments](/guide/env) is next: which Node.js, Bun or package manager a
+project runs on, pinned. [Tasks](/guide/tasks) is where a `scripts` block goes
+instead, [uf in CI](/guide/ci) is where `uf install --frozen-lockfile` goes and why
+it goes first, and the [command reference](/reference/cli#dependencies) has every
+flag.

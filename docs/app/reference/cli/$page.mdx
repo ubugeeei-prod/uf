@@ -23,6 +23,9 @@ before the subcommand; a subcommand's own flags come after it.
 
 ## Project
 
+[Your first project](/guide/project) is the guide to `uf new` and `uf init`, and
+[Routing](/guide/routing) to the route table `uf routes` prints and extends.
+
 ### uf new PATH [TEMPLATE]
 
 Scaffolds an application into a new directory: `uf.config.js`, `app.js`, a
@@ -136,17 +139,74 @@ teaching that the rule is noise.
 
 The file names come from the same grammar `uf build` discovers routes with, so
 a scaffold uf writes is a route uf finds. A spelling uf reserves without
-serving — `(.)photo` — is refused here with the sentence `uf build` and
-`uf lint` give for it, rather than written now and reported later. A `@team` is
-refused for the opposite reason: uf serves parallel routes, and a slot is not a
-URL — which is what this command's argument is. Nothing
-is overwritten: a route whose page already exists is an error, and a run that
-stops has written none of its files.
+serving — `(....)photo` — is refused here with the sentence `uf build` and
+`uf lint` give for it, rather than written now and reported later. A `@team`
+and an intercepting route like `(.)photo` are refused for the opposite reason:
+uf serves both, and neither is a URL — which is what this command's argument
+is. Nothing is overwritten: a route whose page already exists is an error, and
+a run that stops has written none of its files.
 
 `uf prepare` regenerates `router.js`, so the new path joins `RoutePath` on the
 next run of it.
 
+### uf ui add NAME... [--overwrite]
+
+Writes styled components into the project, with the components they import.
+
+```
+uf ui add button dialog tabs select
+```
+
+Each component is one file in `app/components/ui/` — `dialog.js` is
+`@uniflowed/ui`'s dialog dressed in `@uniflowed/stylex`'s tokens — and from then
+on the file is the project's to change. The behaviour stays imported from
+`@uniflowed/ui`, so a fix to a focus trap still arrives by upgrading it; what
+the file owns is the look.
+
+The components are part of the uf binary, so adding one needs no network and
+writes the version that matches the uf running it. A package a component
+imports that `package.json` does not name is added first, through `uf add`, at
+that uf's own version, and an install that fails leaves every file unwritten.
+
+What happens to a file that is already there depends on what it is:
+
+| The file | What `uf ui add` does |
+| --- | --- |
+| Not there | Writes it |
+| Written by `uf ui add`, untouched, and already this uf's version | Nothing |
+| Written by an older uf, and untouched | Brings it up to this uf's version |
+| Edited, or not written by `uf ui add`, and named | Refuses, names the file, and writes nothing; `--overwrite` replaces it |
+| Edited, or not written by `uf ui add`, and only imported by one that was named | Keeps it, because it still satisfies the import |
+
+The last line of every file it writes records the component, the uf that wrote
+it and a digest of what was written. That line is how `uf ui add` tells an
+edited copy from an untouched one, and how `uf ui diff` says whose change a
+difference is.
+
+### uf ui list [--json]
+
+Every component this uf carries, what each one is, and whether the project has
+it: not added, added and untouched, added by an older uf, edited, or a file of
+the project's own under the same name. `--json` adds the packages each component
+imports and the components it needs.
+
+### uf ui diff [NAME...] [--json]
+
+How the project's copies differ from this uf's components, as a unified diff
+with the registry's version on the old side, so a `+` line is in the copy and
+not in the registry and the diff of an edited copy reads as the edit. With no
+names, every component the project has is compared.
+
+Above each diff is the sentence that makes it more than `diff`: that the copy is
+untouched, that every line is the project's own edit because the registry has
+not moved since the copy was written, or that the lines mix the project's edits
+with the registry's changes.
+
 ## Running and building
+
+[Dev and build](/guide/dev) is the guide to `uf dev` and `uf build`,
+[Targets](/guide/targets) to serving and deploying a build, and
+[Tasks](/guide/tasks) to `uf run` and `uf exec`.
 
 ### uf dev
 
@@ -736,6 +796,10 @@ here, and it delegates to whichever package manager the project uses (`npx
 
 ## Correctness
 
+[Type checking](/guide/check) is the guide to `uf check`,
+[Formatting and linting](/guide/format) to `uf lint` and `uf fmt`, and
+[Testing](/guide/testing) to `uf test`.
+
 ### uf check
 
 Type-checks the project with Flow. `--json` for the machine-readable report.
@@ -922,6 +986,35 @@ two checks are skipped.
 staged is checked as it is on disk; uf does not stash the unstaged half the way
 `lint-staged` does.
 
+## Editors
+
+### uf lsp
+
+The language server every integration in
+[`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) starts. It
+speaks JSON-RPC over stdin and stdout, and reads the project's `uf.config.js`
+once, when it starts.
+
+| Method | What it answers |
+| --- | --- |
+| `textDocument/publishDiagnostics` | Pushed on open and on every change, from the linter `uf lint` runs |
+| `textDocument/formatting` | One edit over the whole document, from the printer `uf fmt` runs |
+| `textDocument/codeAction` | `quickfix` where a rule's fix is mechanical, and `source.fixAll.uf` for every such fix at once |
+| `textDocument/hover` | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` |
+| `textDocument/completion` | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. `"` and `@` trigger it |
+
+Completion is read from `@uniflowed/config`'s own Flow type — the declaration
+`defineConfig` checks the file against — compiled into the binary, so it needs
+nothing installed and offers no key uf does not read. It answers in a file that
+is half-typed and does not parse, which is when it is wanted. A key the object
+already has is not offered again; a string typed without quotes is written in
+the project's `fmt.quotes`; and nothing is offered under `vite`, whose options
+uf passes through unread rather than re-declaring.
+
+Not served: go-to-definition, rename, references, document symbols, the type at
+a position, organize imports, and completion in any other file.
+`tests/library/lsp.test.js` drives the binary and asserts both lists.
+
 ## Messages
 
 Two commands over `@uniflowed/i18n`'s catalogue: one that takes it out to a
@@ -1007,7 +1100,10 @@ one place this repository implements it.
 
 ## Dependencies
 
-Five commands, all of them the project's own package manager. uf's resolver
+[Dependencies](/guide/dependencies) is the guide to these commands, with what each
+one printed.
+
+Most of them run the project's own package manager. uf's resolver
 reaches no registry yet, so each one detects whether the project is npm, pnpm,
 Yarn or Bun and runs that — while keeping the three things a bare `npm install`
 would skip: lifecycle scripts stay refused, a manifest that declares scripts of
@@ -1338,6 +1434,8 @@ A configured `outDir` outside the project is refused rather than removed:
 be one typo away from taking a directory nobody named.
 
 ## Environment
+
+[Environments](/guide/env) is the guide to these commands.
 
 ### uf use TOOLCHAIN
 

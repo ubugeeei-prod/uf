@@ -239,63 +239,10 @@ answers are the narrowed command, the JSON report and the explain output.
 
 ## uf check
 
-<div className="command"><code>uf check</code></div>
-
-Runs Flow's type checker over the project and reports what it says. uf does not
-type-check anything itself: Flow is the type system, and reimplementing it
-would only create a second opinion about your code, which is the thing this
-whole toolchain exists to avoid.
-
-uf types across modules. An import of a relative path is the type that file
-exports, and an import of a package is resolved through the `package.json` that
-publishes it — `exports` map, conditions and all, using Flow's own resolver
-rather than a second opinion about what a specifier means:
-
-```js
-// money.js
-export function dollars(cents: number): Money { ... }
-
-// index.js
-import { dollars } from "./money.js";
-const wrong: Money = dollars("twelve");
-//                           ^^^^^^^^ "twelve" is incompatible with number
-```
-
-What it still cannot type is a module that is not in the batch — a package that
-is not part of this project, a file the scan did not walk. Those are `any`, and
-the command names them at the end of its report rather than leaving you to work
-it out.
-
-### Reading the type-check report
-
-`uf check` is `uf lint` plus inference, so its JSON has two diagnostic lists:
-
-```json
-{
-  "command": "uf check",
-  "errors": 0,
-  "diagnostics": [],
-  "typeCheck": {
-    "status": "checked",
-    "backend": "upstream-flow-rust-port",
-    "filesChecked": 1,
-    "filesFromCache": 0,
-    "elapsedMs": 50.2,
-    "builtinsCold": true,
-    "diagnostics": []
-  }
-}
-```
-
-`diagnostics` is lint findings. `typeCheck.diagnostics` is type errors.
-`errors` is the sum. A project can therefore fail `uf check` with an empty
-top-level `diagnostics` array, and a reporter that only reads that field will
-say the wrong thing.
-
-For performance, start with `typeCheck.filesChecked`,
-`typeCheck.filesFromCache`, `typeCheck.elapsedMs` and `typeCheck.builtinsCold`.
-The built-ins are the standard Flow environment; a cold run pays to load them,
-and a warm run should not make that cost look like application inference.
+`uf check` runs this page's linter and then Flow's type inference, so every lint
+finding here fails a check as well. The inference half — what an import resolves
+to, the library definitions it reads, and a JSON report with two lists of
+diagnostics — has a page of its own: [Type checking](/guide/check).
 
 ## In CI
 

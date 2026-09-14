@@ -513,6 +513,17 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: RoutesCommand,
     },
+    /// Styled components the project owns: add them, list them, compare them.
+    ///
+    /// `uf ui add dialog` writes `app/components/ui/dialog.js` — `@uniflowed/ui`'s
+    /// dialog, styled with `@uniflowed/stylex`'s tokens — and from then on the
+    /// file is the project's to change. The components are part of this uf, so
+    /// adding one needs no network and writes the version that matches the uf
+    /// running it. `crates/uf_ui` says why each part of that is the way it is.
+    Ui {
+        #[command(subcommand)]
+        command: UiCommand,
+    },
     /// Run a task from `uf.config.js`, or list them. Also `ufr`.
     Run {
         /// Run in this mode, which chooses `.env.<mode>` and is what
@@ -808,6 +819,9 @@ impl Commands {
                 | Self::Inspect { json: true }
                 | Self::Lint { json: true, .. }
                 | Self::Test { json: true, .. }
+                | Self::Ui {
+                    command: UiCommand::List { json: true } | UiCommand::Diff { json: true, .. },
+                }
         )
     }
 
@@ -844,10 +858,11 @@ pub(crate) enum RoutesCommand {
     /// The path is a URL path in the spelling the directories already use —
     /// `/articles/[slug]`, `/docs/[...path]`, `/(marketing)/about` — so what
     /// is typed is what appears in `RoutePath`. A spelling uf reserves without
-    /// serving (`(.)photo`) is refused here with the same sentence `uf build`
-    /// and `uf lint` give, rather than written and reported later. A `@slot`
-    /// is refused too, for the opposite reason: uf serves parallel routes, and
-    /// a slot is not a URL — this command's argument is one.
+    /// serving (`(....)photo`) is refused here with the same sentence
+    /// `uf build` and `uf lint` give, rather than written and reported later. A
+    /// `@slot` and an intercepting route (`(.)photo`) are refused too, for the
+    /// opposite reason: uf serves both, and neither is a URL — this command's
+    /// argument is one.
     ///
     /// Nothing is overwritten: a route whose page exists is an error, and a
     /// run that stops has written none of its files.
@@ -871,6 +886,49 @@ pub(crate) enum RoutesCommand {
         /// Also write `$middleware.js`: what runs before this path answers.
         #[arg(long)]
         middleware: bool,
+    },
+}
+
+/// What `uf ui` can do with the components a project owns.
+#[derive(Debug, Subcommand)]
+pub(crate) enum UiCommand {
+    /// Write components into `app/components/ui/`, with the components and the
+    /// packages they need.
+    ///
+    /// A file somebody edited, or one `uf ui add` did not write, is not
+    /// replaced: the run stops, names the file and writes nothing, `uf ui diff`
+    /// shows how it differs, and `--overwrite` replaces it. A copy nobody
+    /// edited is brought up to this uf's version. Packages the components
+    /// import that `package.json` does not name are added first, through
+    /// `uf add`, at this uf's version.
+    Add {
+        /// Replace an edited file, or one `uf ui add` did not write, among the
+        /// components named.
+        #[arg(long)]
+        overwrite: bool,
+        /// The components: `button`, `dialog`, `tabs`, `select`.
+        #[arg(value_name = "NAME", required = true)]
+        names: Vec<String>,
+    },
+    /// Every component this uf carries, and which of them the project has.
+    List {
+        /// Emit machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+    },
+    /// How the project's copies differ from this uf's components.
+    ///
+    /// A `+` line is in the project's copy and not in the registry's, so the
+    /// diff of an edited copy reads as the edit. Each copy says which uf wrote
+    /// it, and whether this uf's version has moved since.
+    Diff {
+        /// Emit machine-readable JSON on stdout.
+        #[arg(long)]
+        json: bool,
+        /// The components to compare; every one the project has, when none is
+        /// named.
+        #[arg(value_name = "NAME")]
+        names: Vec<String>,
     },
 }
 

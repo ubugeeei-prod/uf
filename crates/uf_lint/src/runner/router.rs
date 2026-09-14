@@ -57,11 +57,16 @@ fn grammar() -> String {
     format!("reserved file names are $<{roles}>[.<{variants}>].js")
 }
 
-/// `router/unsupported-segment`: `(.)segment` directories.
+/// `router/unsupported-segment`: directories spelled like an intercepting route
+/// that the router refuses.
 ///
-/// `@slot` was reported here too, until slots became routes. What is left is
-/// interception, which needs a navigation to carry where it came from — a
-/// change to what a navigation is rather than to this grammar.
+/// Three refusals, and all three sentences come from `uf_router::RouteSegment`,
+/// so the linter and the build name the same directory with the same words: a
+/// marker uf does not read, or one with no URL segment after it, anywhere
+/// (`unsupported_reason`); a correctly spelled interception outside a `@slot`
+/// (`outside_slot_reason`); and one inside a slot that climbs past the router
+/// root (`climb_reason`). `@slot` itself was reported here until slots became
+/// routes, and an interception inside a slot is a route now too.
 ///
 /// A file-scan rule for something that is not about the file, and that is the
 /// shape the linter has: a directory is only ever seen through the files under
@@ -95,6 +100,13 @@ pub(crate) fn run_router_unsupported_segment(
     let mut directories: Vec<&str> = under_root.split('/').collect();
     directories.pop();
 
+    // Whether a `@slot` is above the directory being judged, and how many URL
+    // segments the directories above it contribute. An intercepting route is a
+    // route inside a slot and a refusal outside one, and inside one it may not
+    // climb past the router root, so this walk has to carry where it is as well
+    // as what it is reading — the decisions `uf_router` makes from the path.
+    let mut inside_slot = false;
+    let mut depth = 0usize;
     for directory in directories {
         if directory.starts_with('.') || directory.starts_with('_') {
             return;
@@ -103,9 +115,32 @@ pub(crate) fn run_router_unsupported_segment(
         // `router/reserved-files` above reads the file names from there: a
         // linter with its own copy is how a linter comes to disagree with the
         // build about what is wrong.
-        let Some(reason) =
-            uf_router::classify_route_segment(directory).unsupported_reason(directory)
-        else {
+        let classified = uf_router::classify_route_segment(directory);
+        let refused = classified.unsupported_reason(directory).or_else(|| {
+            if inside_slot {
+                classified.climb_reason(directory, depth)
+            } else {
+                classified.outside_slot_reason(directory)
+            }
+        });
+        let Some(reason) = refused else {
+            match classified {
+                uf_router::RouteSegment::Group => {}
+                uf_router::RouteSegment::Slot(_) => inside_slot = true,
+                // Read and placed correctly, or it would have been refused
+                // above: the climb takes its levels away, and the segment it
+                // names is one more.
+                uf_router::RouteSegment::Interception { .. } => {
+                    depth = classified
+                        .interception_climb()
+                        .and_then(|climb| climb.remaining(depth))
+                        .unwrap_or(0)
+                        + 1;
+                }
+                uf_router::RouteSegment::Param(_)
+                | uf_router::RouteSegment::CatchAll(_)
+                | uf_router::RouteSegment::Literal(_) => depth += 1,
+            }
             continue;
         };
         push(

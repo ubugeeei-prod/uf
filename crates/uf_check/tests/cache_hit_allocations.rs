@@ -7,6 +7,17 @@
 //! allocations; this test sits far below that and far above the current warm
 //! cache cost, so it catches the fixed cost coming back without pinning every
 //! JSON or path allocation in the cache reader.
+//!
+//! # What each figure counts
+//!
+//! This test's thread, and the check thread `uf_check` runs every call on,
+//! which hands its allocations back (`uf_profiler::Handover`). Nothing else.
+//! The five tests here run at once, and three of them start with the heaviest
+//! work in the binary — a cold check, or preparing the builtins — while the
+//! others measure. Read from the allocator's process-wide counters, as these
+//! once were, a figure was the measured call plus whatever those three did in
+//! the same stretch, and the extensionless closure below read 12,346 on a CI
+//! run that changed nothing it measures (ubugeeei-prod/uf#1015).
 
 #![cfg(feature = "upstream-typecheck")]
 
@@ -14,7 +25,7 @@ use tempfile::TempDir;
 use uf_check::{
     CheckCache, CheckLimits, Source, check_sources_cached, module_closure, prepare_builtins,
 };
-use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{CountingAllocator, ThreadWindow};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
@@ -52,17 +63,13 @@ fn a_full_cache_hit_does_not_rebuild_the_check_environment() {
     let cold = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
     assert_eq!(cold.files_from_cache, 0);
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    let window = ThreadWindow::open();
     let warm = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(warm.files_from_cache, 1, "the cache should answer the file");
     assert!(warm.diagnostics.is_empty(), "{:#?}", warm.diagnostics);
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations <= CEILING,
         "a full cache hit took {} allocations, over the {CEILING} ceiling. \
@@ -86,12 +93,9 @@ fn a_full_cache_hit_reuses_dependency_walk_storage_across_the_batch() {
     let cold = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
     assert_eq!(cold.files_from_cache, 0);
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    let window = ThreadWindow::open();
     let warm = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(
         warm.files_from_cache, 64,
@@ -99,7 +103,6 @@ fn a_full_cache_hit_reuses_dependency_walk_storage_across_the_batch() {
     );
     assert!(warm.diagnostics.is_empty(), "{:#?}", warm.diagnostics);
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations <= BATCH_CEILING,
         "a 64-file full cache hit took {} allocations, over the {BATCH_CEILING} ceiling. \
@@ -119,12 +122,9 @@ fn a_parse_error_cache_miss_does_not_build_the_check_environment() {
     // master context that is shared after the first preparation.
     prepare_builtins(&[]).expect("builtins prepare");
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    let window = ThreadWindow::open();
     let report = check_sources_cached(&sources, &[], &limits, Some(&cache)).expect("checks");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(
         report.files_from_cache, 0,
@@ -135,7 +135,6 @@ fn a_parse_error_cache_miss_does_not_build_the_check_environment() {
         "the parse error should still be reported"
     );
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations <= PARSE_ERROR_CEILING,
         "a parse-error cache miss took {} allocations, over the {PARSE_ERROR_CEILING} ceiling. \
@@ -153,12 +152,9 @@ fn a_relative_only_module_closure_does_not_build_the_check_environment() {
         Source::new("value.js", "// @flow\nexport const value: number = 42;\n"),
     ];
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    let window = ThreadWindow::open();
     let closure = module_closure(&["app.js"], &sources, &[], &limits).expect("closure");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(
         closure
@@ -173,7 +169,6 @@ fn a_relative_only_module_closure_does_not_build_the_check_environment() {
         "relative-only closure should not merge builtins"
     );
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations <= RELATIVE_CLOSURE_CEILING,
         "a relative-only closure took {} allocations, over the {RELATIVE_CLOSURE_CEILING} \
@@ -192,12 +187,9 @@ fn an_extensionless_missing_closure_reuses_resolution_candidate_storage() {
     let source = format!("// @flow\n{imports}");
     let sources = [Source::new("app.js", &source)];
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    let window = ThreadWindow::open();
     let closure = module_closure(&["app.js"], &sources, &[], &limits).expect("closure");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert_eq!(
         closure
@@ -213,7 +205,6 @@ fn an_extensionless_missing_closure_reuses_resolution_candidate_storage() {
         "extensionless relative misses should not merge builtins"
     );
 
-    let delta = after.delta_from(&before);
     assert!(
         delta.allocations <= EXTENSIONLESS_MISS_CLOSURE_CEILING,
         "an extensionless-missing closure took {} allocations, over the \

@@ -7,7 +7,7 @@
 
 use uf_config::UniflowedConfig;
 use uf_lint::SourceFile;
-use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
+use uf_profiler::{CountingAllocator, ThreadWindow};
 
 #[global_allocator]
 static GLOBAL: CountingAllocator = CountingAllocator::new();
@@ -39,12 +39,12 @@ fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
         warm.diagnostics
     );
 
-    let _window = Window::open();
-    CountingAllocator::enable();
-    let before = AllocSnapshot::capture();
+    // This thread, and the thread `uf_lint` parses the module on, which hands
+    // its allocations back — not any other thread in the binary. See
+    // `uf_profiler::Handover`.
+    let window = ThreadWindow::open();
     let report = uf_lint::lint_source(&file, &config).expect("measured lint");
-    let after = AllocSnapshot::capture();
-    CountingAllocator::disable();
+    let delta = window.close();
 
     assert!(
         report.diagnostics.is_empty(),
@@ -52,7 +52,21 @@ fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
         report.diagnostics
     );
 
-    let delta = after.delta_from(&before);
+    // Linting this module parses it, on the module-tree thread, and that thread
+    // hands its allocations back to the window above. A figure smaller than
+    // one parse of the fixture costs by itself is therefore a measurement that
+    // did not see the thread — and every ceiling below would pass whatever the
+    // thread did.
+    let parse = parse_allocations(&file.source);
+    assert!(
+        delta.allocations >= parse,
+        "linting router runtime took {} allocations, fewer than the {parse} that parsing \
+         it takes on its own. Either the module-tree thread's allocations no longer reach \
+         this measurement — see `uf_profiler::Handover` in `run_module_tree_rules` — or \
+         `uf lint` stopped parsing this fixture, and the budget needs one it does parse.",
+        delta.allocations,
+    );
+
     let source_bytes = u64::try_from(file.source.len()).expect("source length fits in u64");
     let source_kib = source_bytes.div_ceil(1024);
     let allocation_ceiling = source_kib * RUNTIME_JS_ALLOCATIONS_PER_KIB_CEILING;
@@ -83,4 +97,23 @@ fn runtime_js_lint_stays_below_the_babel_tree_allocation_budget() {
 fn runtime_fixture() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../packages/router/internal/runtime.js")
+}
+
+/// What `uf_flow::parse` of `source` allocates by itself, counted on a thread
+/// with the stack the parser needs.
+fn parse_allocations(source: &str) -> u64 {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .stack_size(uf_flow::PARSE_STACK_BYTES)
+            .spawn_scoped(scope, || {
+                let window = ThreadWindow::open();
+                let parsed = uf_flow::parse(source).expect("the fixture parses");
+                let delta = window.close();
+                drop(parsed);
+                delta.allocations
+            })
+            .expect("a parse thread starts")
+            .join()
+            .expect("the parse thread survives")
+    })
 }

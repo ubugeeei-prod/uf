@@ -1,8 +1,8 @@
 //! Longest-first ordering, and the cold heuristic behind it.
 
 use crate::{
-    COLD_NANOS_PER_BYTE, ScheduleBasis, TestFilter, TestRunner, TestTimings, cold_weight_micros,
-    makespan_micros, schedule_files,
+    COLD_NANOS_PER_BYTE, ScheduleBasis, TestFilter, TestRunner, TestTimings, auto_workers,
+    cold_weight_micros, makespan_micros, schedule_files,
 };
 
 fn files(sizes: &[(&'static str, usize)]) -> Vec<(&'static str, String)> {
@@ -229,4 +229,129 @@ fn a_schedule_entry_round_trips_through_json() {
     assert!(json.contains("\"basis\":\"size\""));
     let back: crate::ScheduleEntry = serde_json::from_str(&json).unwrap();
     assert_eq!(back, schedule[0]);
+}
+
+/// A warm schedule of `durations`, one file per entry, as the next run sees it.
+fn recorded(durations: &[u64]) -> Vec<crate::ScheduleEntry> {
+    let owned: Vec<(String, String)> = (0..durations.len())
+        .map(|index| (format!("f{index:04}.test.js"), String::from("x")))
+        .collect();
+    let pairs: Vec<(&str, &str)> = owned
+        .iter()
+        .map(|(name, source)| (name.as_str(), source.as_str()))
+        .collect();
+    let mut timings = TestTimings::new();
+    for (index, micros) in durations.iter().enumerate() {
+        timings.record(&format!("f{index:04}.test.js"), *micros);
+    }
+    schedule_files(&pairs, &timings)
+}
+
+#[test]
+fn a_suite_of_short_files_does_not_start_a_worker_per_core() {
+    // The suite `docs/app/guide/testing` measures: fifty files of about two
+    // milliseconds, and a worker that costs forty to start. Eight workers
+    // would each boot, take six files, and finish long after two would have.
+    let schedule = recorded(&[2_000; 50]);
+
+    let workers = auto_workers(&schedule, Some(40_000), 8);
+
+    assert!(
+        (2..=3).contains(&workers),
+        "fifty two-millisecond files are two or three workers' work, not {workers}"
+    );
+}
+
+#[test]
+fn a_long_suite_keeps_every_core_it_can_use() {
+    // A thousand twenty-millisecond files: twenty seconds of work, where a
+    // worker that costs fifty milliseconds to start is handed seconds of it.
+    let schedule = recorded(&[20_000; 1_000]);
+
+    assert_eq!(auto_workers(&schedule, Some(50_000), 8), 8);
+
+    // On sixty-four cores the last few workers would each shave a few
+    // milliseconds off a run of three hundred, so the pool stops within one
+    // start-up of the fastest pool rather than at the core count — and never
+    // at the twenty or so a rule weighing each worker's start-up against the
+    // time it saves would stop at, when those start-ups all happen at once.
+    let wide = auto_workers(&schedule, Some(50_000), 64);
+    assert!((50..=64).contains(&wide), "{wide}");
+    assert!(
+        makespan_micros(&schedule, wide) <= makespan_micros(&schedule, 64) + 50_000,
+        "{wide} workers finish within a start-up of sixty-four"
+    );
+}
+
+#[test]
+fn a_file_that_dominates_the_suite_is_not_waited_on_by_idle_workers() {
+    // One five-second file and forty-nine short ones. The run ends when the
+    // long file does, so one worker for it and one for the rest is the whole
+    // of what more workers can buy.
+    let mut durations = vec![5_000_000];
+    durations.extend([2_000; 49]);
+    let schedule = recorded(&durations);
+
+    assert_eq!(auto_workers(&schedule, Some(40_000), 8), 2);
+}
+
+#[test]
+fn a_cold_schedule_starts_a_worker_per_core_as_it_always_did() {
+    // Size-based weights rank files; they are not times, and dividing them by
+    // a start-up measured in real microseconds would put every cold suite on
+    // one worker.
+    let owned = files(&[("a.js", 100), ("b.js", 100), ("c.js", 100)]);
+    let pairs = as_pairs(&owned);
+    let schedule = schedule_files(&pairs, &TestTimings::new());
+
+    assert_eq!(auto_workers(&schedule, Some(40_000), 8), 3);
+}
+
+#[test]
+fn without_a_recorded_start_up_every_core_is_started() {
+    let schedule = recorded(&[2_000; 50]);
+
+    assert_eq!(auto_workers(&schedule, None, 8), 8);
+}
+
+#[test]
+fn a_pool_is_never_empty_and_never_wider_than_the_suite() {
+    assert_eq!(auto_workers(&[], Some(40_000), 8), 1);
+    assert_eq!(auto_workers(&recorded(&[5_000_000; 3]), Some(1_000), 8), 3);
+    assert_eq!(auto_workers(&recorded(&[2_000; 50]), Some(40_000), 0), 1);
+}
+
+#[test]
+fn a_start_up_of_nothing_is_not_believed() {
+    // A recorded zero would say a worker is free, and every suite would be
+    // handed every core again. It is floored instead, so a suite of very short
+    // files still stops short of the core count.
+    let schedule = recorded(&[100; 50]);
+
+    assert!(
+        auto_workers(&schedule, Some(0), 8) < 8,
+        "{}",
+        auto_workers(&schedule, Some(0), 8)
+    );
+    assert_eq!(
+        auto_workers(&schedule, Some(0), 8),
+        auto_workers(&schedule, Some(crate::MIN_WORKER_START_MICROS), 8)
+    );
+}
+
+#[test]
+fn a_new_file_is_costed_like_the_files_that_were_recorded() {
+    // One file added since the last run. It has no duration, and costing it at
+    // its size would make the suite look cold; costing it at the mean keeps the
+    // answer the warm suite gets.
+    let mut schedule = recorded(&[2_000; 49]);
+    let owned = files(&[("new.test.js", 10)]);
+    let pairs = as_pairs(&owned);
+    let mut added = schedule_files(&pairs, &TestTimings::new());
+    added[0].index = schedule.len();
+    schedule.append(&mut added);
+
+    let workers = auto_workers(&schedule, Some(40_000), 8);
+
+    assert!((2..=3).contains(&workers), "{workers}");
 }

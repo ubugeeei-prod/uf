@@ -214,7 +214,7 @@
       explicitly when there is no terminal transport. The repeated-press
       gestures that widen a selection to a word or a line, item selection, and
       rich content remain ubugeeei-prod/uf#314.
-- [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and no copy step.
+- [ ] Cover the shadcn-style component catalog with typed imports, preset styles, and `uf ui add` for the styled components a project owns (ubugeeei-prod/uf#947).
 - [ ] Keep compound UI APIs cohesive, for example `Dialog.Body`.
 - [x] Add UI `renders` type utility declarations under `packages/ui`.
 - [x] Make form UI validator-backed and React Compiler-safe by contract.
