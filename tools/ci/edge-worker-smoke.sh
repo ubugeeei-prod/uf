@@ -59,10 +59,42 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/uf-edge-worker-smoke.XXXXXX")"
 log=""
 server_pid=""
 
+# Every process under <pid>, parents before children: `npx` starts Wrangler, and
+# Wrangler starts workerd.
+descendants() {
+  for child in $(pgrep -P "$1" 2>/dev/null); do
+    echo "$child"
+    descendants "$child"
+  done
+}
+
+# Stop the Worker `start_worker` began, and everything under it. The process it
+# holds is the subshell around `npx`, and signalling that alone left npm,
+# Wrangler and workerd serving: measured locally, a run left every Worker it
+# started behind, which also puts a restarted Worker beside the one it replaced.
+# Wrangler does not always stop on the first signal, so whatever is still alive
+# a few seconds later is killed.
 stop_worker() {
-  if [ -n "$server_pid" ] && kill -0 "$server_pid" >/dev/null 2>&1; then
-    kill "$server_pid" >/dev/null 2>&1 || true
+  if [ -n "$server_pid" ]; then
+    children="$(descendants "$server_pid")"
+    # shellcheck disable=SC2086
+    kill "$server_pid" $children >/dev/null 2>&1 || true
     wait "$server_pid" >/dev/null 2>&1 || true
+    alive=""
+    for _ in 1 2 3 4 5; do
+      alive=""
+      for pid in $children; do
+        if kill -0 "$pid" >/dev/null 2>&1; then
+          alive="$alive $pid"
+        fi
+      done
+      [ -n "$alive" ] || break
+      sleep 1
+    done
+    if [ -n "$alive" ]; then
+      # shellcheck disable=SC2086
+      kill -9 $alive >/dev/null 2>&1 || true
+    fi
   fi
   server_pid=""
 }
