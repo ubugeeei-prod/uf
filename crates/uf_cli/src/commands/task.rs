@@ -8,7 +8,9 @@ use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
-use uf_pm::{Operation, PackageManager, command_for, detect_package_manager};
+use uf_pm::{
+    DetectionOptions, Operation, PackageManager, command_for, detect_package_manager_with,
+};
 use uf_task::{Concurrency, Plan, PlanError, RunOptions, ScheduledTask, TaskCache};
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
@@ -32,6 +34,7 @@ pub(crate) struct RunArgs {
 
 pub(crate) fn run_task(
     cwd: &Utf8Path,
+    ui: &mut Ui,
     requested_mode: Option<&str>,
     script: &str,
     args: &[String],
@@ -44,7 +47,11 @@ pub(crate) fn run_task(
     // that runs `uf build` gets `production` from that command, because the
     // values uf injected here are marked as uf's and lose to a file. See
     // `uf_config::env_files`.
-    let env = project_env(&resolved, requested_mode, DEVELOPMENT)?;
+    let env = runtime_environment(
+        &resolved,
+        ui,
+        project_env(&resolved, requested_mode, DEVELOPMENT)?,
+    )?;
 
     let plan = match Plan::build(&resolved.config, script) {
         Ok(plan) => plan,
@@ -712,6 +719,30 @@ fn unknown_task(
 /// A binary in `node_modules/.bin` needs no such consent: it is already
 /// installed, already in the tree the lockfile pins, and running it is what
 /// `npm exec` and `pnpm exec` do without asking.
+/// `env`, with `runtime`'s release in front of `PATH` when `uf.config.js`
+/// declares one.
+///
+/// A task and a `ufx` binary are project code: a `node` they start, and every
+/// `#!/usr/bin/env node` script they run, should be the Node the project says
+/// it runs on. Only a declared runtime changes anything — a project with none
+/// runs its tasks exactly as before, and a machine with no JavaScript host at
+/// all can still run a task that needs none. See ubugeeei-prod/uf#940.
+fn runtime_environment(
+    resolved: &uf_config::ResolvedConfig,
+    ui: &mut Ui,
+    env: uf_config::env_files::ProjectEnv,
+) -> Result<uf_config::env_files::ProjectEnv> {
+    use crate::commands::runtimes::{self, Role};
+
+    if Role::Runtime.declared(&resolved.config).is_none() {
+        return Ok(env);
+    }
+    let runtime = runtimes::resolve(resolved, Role::Runtime, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+    })?;
+    Ok(runtime.environment(env))
+}
+
 pub(crate) fn exec_package(
     cwd: &Utf8Path,
     ui: &mut Ui,
@@ -738,7 +769,7 @@ pub(crate) fn exec_package(
     // Below this line it is the same environment `uf run` gives a task: `ufx`
     // runs a tool against this project, and a codegen that reads
     // `DATABASE_URL` should read the project's.
-    let env = project_env(&resolved, None, DEVELOPMENT)?;
+    let env = runtime_environment(&resolved, ui, project_env(&resolved, None, DEVELOPMENT)?)?;
 
     if let Some(binary) = installed_binary(&resolved.root, package) {
         return spawn_executable(&resolved.root, ui, &env, &binary, args, package);
@@ -756,7 +787,13 @@ pub(crate) fn exec_package(
         return spawn_executable(&resolved.root, ui, &env, &executable, args, package);
     }
 
-    let detection = detect_package_manager(&resolved.root);
+    // With the config, like every other command that runs a manager:
+    // `packageManager: "pnpm@10"` means `pnpm dlx` even beside a
+    // package-lock.json. See ubugeeei-prod/uf#940.
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
     let manager = fetchable(detection.package_manager);
     // Every manager has a fetch-and-run, which is what `fetchable` guarantees:
     // it maps a manager without one onto the one uf would use instead.
@@ -779,6 +816,23 @@ pub(crate) fn exec_package(
             lockfile = resolved.config.pm.lockfile,
         );
     }
+
+    // The release `packageManager` pins, from the store, with the one `runtime`
+    // pins behind it — in that order, so a pinned npm is not shadowed by the
+    // npm inside a pinned Node. After the consent check, so a refusal installs
+    // nothing.
+    let path =
+        crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
+            ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+        })?;
+    let env = if path.is_empty() {
+        env
+    } else {
+        path.into_iter().fold(
+            project_env(&resolved, None, DEVELOPMENT)?,
+            |env, directory| env.with_path_prefix(directory),
+        )
+    };
 
     // On stderr, so the fetched binary still owns stdout. Printed rather than
     // silent because "uf downloaded and ran something" is not a thing a person

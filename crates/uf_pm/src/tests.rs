@@ -293,6 +293,40 @@ fn install_waits_for_a_command_holding_the_lock() {
     );
 }
 
+/// The manager uf installed is the one that runs: the directory it is linked
+/// into goes in front of the child's `PATH`, and the manager's name — which
+/// is still a fixed program name, never a path — is looked up there.
+/// ubugeeei-prod/uf#940.
+#[cfg(unix)]
+#[test]
+fn a_path_prefix_decides_which_manager_runs() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(root.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    let bin = root.join("store-bin");
+    fs::create_dir_all(&bin).unwrap();
+    let marks = root.join("ran");
+    let pnpm = bin.join("pnpm");
+    fs::write(&pnpm, format!("#!/bin/sh\necho \"$@\" > '{marks}'\n")).unwrap();
+    fs::set_permissions(&pnpm, fs::Permissions::from_mode(0o755)).unwrap();
+    let detection = detect_package_manager_with(
+        &root,
+        &DetectionOptions::new()
+            .with_boundary(&root)
+            .with_config_override(PackageManager::Pnpm),
+    );
+
+    run_operation_with_detection(&root, &detection, Operation::List, &[], false, &[bin])
+        .expect("the pnpm in the prefix ran");
+
+    assert!(
+        marks.is_file(),
+        "a pnpm other than the one in the prefix ran, or none did"
+    );
+}
+
 #[test]
 fn install_still_detects_the_native_resolver_afterwards() {
     let dir = tempfile::tempdir().unwrap();

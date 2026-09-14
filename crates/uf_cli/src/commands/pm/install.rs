@@ -189,6 +189,14 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, _) = installable(&detection);
+    // The release `packageManager` pins, and the runtime it runs on, in front
+    // of `PATH` for the manager — installed the first time, and refused rather
+    // than locked when this is a frozen install that would have to write
+    // `uf.lock` to settle a prefix.
+    let path =
+        crate::commands::runtimes::manager_path(&resolved, manager, frozen, &mut |message| {
+            ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+        })?;
     let tracks_uf_lock = tracks_uf_lock(&detection);
     let guard = UfLockGuard::read(&resolved.root, &resolved.config, frozen && tracks_uf_lock);
     let workspace = if tracks_uf_lock {
@@ -258,6 +266,7 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
             operation,
             scripts_allowed(&resolved.root, manager, &plan)?,
             &mut screen,
+            &path,
         );
         screen.close();
         (run, screen.echoed)
@@ -931,7 +940,10 @@ pub(super) fn chosen_by(source: &DetectionSource, substituted: bool) -> String {
         return format!("{evidence} names uf, whose resolver cannot fetch yet");
     }
     match source {
-        DetectionSource::ConfigOverride => "pm.packageManager in uf.config.js".to_owned(),
+        // `packageManager`, or its deprecated spelling, which cannot disagree
+        // with it; the deprecation line above this summary names the one to
+        // move.
+        DetectionSource::ConfigOverride => "packageManager in uf.config.js".to_owned(),
         DetectionSource::PackageManagerField { spec, .. } => {
             format!("packageManager field: {}@{}", spec.manager, spec.version)
         }

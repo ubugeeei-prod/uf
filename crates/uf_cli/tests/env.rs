@@ -346,16 +346,27 @@ fn a_prefix_is_locked_installed_and_run_and_the_lock_does_not_vote() {
     );
 
     // `uf_env` wrote that file and `uf_pm` reads lockfiles to decide which
-    // manager a project uses. They are held to one shape here: the project
-    // with `package-lock.json` is still npm's, and not ambiguous.
+    // manager a project uses. They are held to one shape here: `packageManager`
+    // decides, `package-lock.json` is the only other voice, and the toolchain
+    // record in `uf.lock` is not a voice at all — neither an alternative nor a
+    // reason to call the choice ambiguous.
     let output = run(&["inspect", "--json"]);
     assert!(output.status.success());
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     let detection = &value["engines"]["packageManagerDetection"];
-    assert_eq!(detection["packageManager"], "npm", "{detection:#}");
+    assert_eq!(detection["packageManager"], "pnpm", "{detection:#}");
     assert_eq!(
-        detection["alternatives"],
-        serde_json::json!([]),
+        detection["source"]["kind"], "config-override",
+        "{detection:#}"
+    );
+    assert_eq!(detection["outcome"]["kind"], "unambiguous", "{detection:#}");
+    let alternatives = detection["alternatives"]
+        .as_array()
+        .expect("alternatives is a list");
+    assert_eq!(alternatives.len(), 1, "{detection:#}");
+    assert_eq!(alternatives[0]["packageManager"], "npm", "{detection:#}");
+    assert_eq!(
+        alternatives[0]["source"]["lockfile"], "package-lock",
         "{detection:#}"
     );
 
@@ -387,4 +398,100 @@ fn a_prefix_is_locked_installed_and_run_and_the_lock_does_not_vote() {
         "{stdout}"
     );
     assert!(stdout.contains("already locks the newest"), "{stdout}");
+}
+
+/// `packageManager` at a version is the manager uf starts: the release in the
+/// store, found through the directory put in front of the manager's `PATH`,
+/// and not whichever one the machine has. ubugeeei-prod/uf#940.
+#[test]
+fn a_versioned_package_manager_runs_from_the_store() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    declaring(&project, r#"{ packageManager: "pnpm@12.1.0" }"#);
+    fs::write(project.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    let marks = fake_pnpm_in_store(root, "12.1.0");
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&project)
+        .arg("ls")
+        .env("UF_STORE", root.join("store"))
+        .env("UF_ENVS", root.join("envs"))
+        .env("UF_ROOTS", root.join("roots"))
+        .env("UF_INDEX_CACHE", root.join("cache"))
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    let marked = fs::read_to_string(&marks).unwrap_or_default();
+    assert!(
+        !marked.is_empty(),
+        "the pnpm in the store did not run:\n{stderr}"
+    );
+    // Already in the store, so nothing was installed and nothing said.
+    assert!(!stderr.contains("installing"), "{stderr}");
+}
+
+/// `uf exec --yes` fetches through the manager the config names, like every
+/// other command that runs one: `packageManager` beats a `package-lock.json`,
+/// and the pnpm that runs `dlx` is the release in the store.
+#[test]
+fn a_fetch_and_run_goes_through_the_package_manager_the_config_pins() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let project = root.join("project");
+    fs::create_dir_all(&project).unwrap();
+    declaring(&project, r#"{ packageManager: "pnpm@12.1.0" }"#);
+    fs::write(project.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    fs::write(project.join("package-lock.json"), "{}\n").unwrap();
+    let marks = fake_pnpm_in_store(root, "12.1.0");
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(&project)
+        .args(["exec", "--yes", "cowsay", "hello"])
+        .env("UF_STORE", root.join("store"))
+        .env("UF_ENVS", root.join("envs"))
+        .env("UF_ROOTS", root.join("roots"))
+        .env("UF_INDEX_CACHE", root.join("cache"))
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    let marked = fs::read_to_string(&marks).unwrap_or_default();
+    assert!(
+        marked.contains("cowsay hello"),
+        "the pnpm in the store did not fetch and run the package:\n{marked}\n{stderr}"
+    );
+}
+
+/// A `pnpm` at `version` in the store under `root`, named the way the store
+/// names an entry for this machine, that appends the arguments it was started
+/// with to the file it returns.
+fn fake_pnpm_in_store(root: &std::path::Path, version: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        other => other,
+    };
+    let bin = root.join(format!("store/pnpm-{version}-{os}-{arch}/bin"));
+    fs::create_dir_all(&bin).unwrap();
+    let marks = root.join("pnpm.log");
+    fs::write(
+        bin.join("pnpm"),
+        format!("#!/bin/sh\necho \"$@\" >> '{}'\n", marks.display()),
+    )
+    .unwrap();
+    fs::set_permissions(bin.join("pnpm"), fs::Permissions::from_mode(0o755)).unwrap();
+    marks
 }
