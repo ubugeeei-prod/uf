@@ -23,7 +23,9 @@ use std::time::Duration;
 use camino::Utf8PathBuf;
 use uf_test::{FileStatus, HostCommand, HostKind, TestStatus, Worker};
 
-use support::{Project, assert_plain, host_ready, uf, worker_command};
+use support::{
+    Project, assert_plain, host_ready, store_with_marked_node, uf, uf_with_tools, worker_command,
+};
 
 /// A suite with one of every outcome, so one project exercises the whole
 /// reporting surface.
@@ -1448,5 +1450,87 @@ fn a_bun_test_runner_is_refused_with_the_issue_that_will_run_it() {
     assert!(stderr.contains("`test.runner` is `bun@1.4`"), "{stderr}");
     assert!(stderr.contains("ubugeeei-prod/uf#942"), "{stderr}");
     // Refused before anything ran, so no case was reported.
+    assert!(!stdout.contains("adds"), "{stdout}");
+}
+
+/// `test.runtime` at a version runs the suite on the release in the store, and
+/// a `node` the tests start themselves finds that same release first on
+/// `PATH`.
+///
+/// Both halves, because either alone is a suite running on two Nodes: a worker
+/// started from the store whose child processes find the machine's, or the
+/// reverse. ubugeeei-prod/uf#940.
+#[test]
+fn a_versioned_test_runtime_runs_the_suite_on_the_release_in_the_store() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[(
+        "src/path.test.js",
+        "// @flow\nimport { execFileSync } from \"node:child_process\";\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"finds node on PATH\", () => {\n  expect(String(execFileSync(\"node\", [\"-p\", \"40 + 2\"])).trim()).toBe(\"42\");\n});\n",
+    )]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runtime: \"node@99.0.0\" } });\n",
+    );
+    let (tools, marks) = store_with_marked_node("99.0.0");
+
+    let output = uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "--json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(output.status.success(), "{stdout}\n{stderr}");
+    let document: serde_json::Value = serde_json::from_str(&stdout).expect("--json output");
+    assert_eq!(document["passed"], 1, "{stdout}");
+    let marked = std::fs::read_to_string(&marks).unwrap_or_default();
+    assert!(
+        !marked.is_empty(),
+        "the suite ran on the machine's node rather than the store's:\n{stderr}"
+    );
+    assert!(
+        marked.contains("-p 40 + 2"),
+        "a node the test started found another release first on PATH:\n{marked}"
+    );
+    // Already in the store, so there was nothing to install and nothing said.
+    assert!(!stderr.contains("installing"), "{stderr}");
+}
+
+/// A release that cannot be installed — offline, or not published — stops the
+/// run with the key and the spec that asked for it.
+#[test]
+fn a_test_runtime_that_cannot_be_installed_is_refused_naming_the_spec() {
+    let project = Project::new(&[(
+        "src/sum.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => { expect(1 + 1).toBe(2); });\n",
+    )]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runtime: \"node@99.0.1\" } });\n",
+    );
+    let (tools, _) = store_with_marked_node("99.0.0");
+
+    let output = uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("test")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(!output.status.success(), "{stdout}\n{stderr}");
+    assert!(
+        stderr.contains("installing node@99.0.1"),
+        "said first:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("test.runtime is `node@99.0.1`, and node@99.0.1 could not be installed"),
+        "{stderr}"
+    );
     assert!(!stdout.contains("adds"), "{stdout}");
 }

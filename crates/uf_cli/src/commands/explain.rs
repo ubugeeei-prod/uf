@@ -23,6 +23,7 @@ use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, inst
 use uf_term::KeyValue;
 
 use crate::commands::builder;
+use crate::commands::runtimes;
 use crate::commands::task::fetchable;
 use crate::support::{DEVELOPMENT, PRODUCTION, TEST, project_label};
 use crate::ui::Ui;
@@ -871,6 +872,27 @@ fn host_stage(resolved: &ResolvedConfig) -> Stage {
     }
 }
 
+/// The runtime a command in `role` starts: the one `uf.config.js` declares for
+/// it, or — when nothing does — [`host_stage`]'s answer, which is the host uf
+/// has always found.
+///
+/// A project that declares one is told the release, the key that named it,
+/// the lock, and whether the store has it yet: the four facts a command acts
+/// on, and the line ubugeeei-prod/uf#940 asks `uf explain` to print. Read
+/// rather than resolved, like every other stage here — see
+/// [`runtimes::describe`] — so explaining a command never downloads the
+/// runtime it would run on.
+fn runtime_stage(resolved: &ResolvedConfig, role: runtimes::Role) -> Stage {
+    match runtimes::describe(resolved, role) {
+        Some(described) => Stage {
+            name: "JavaScript host",
+            provider: described.provider,
+            detail: described.detail,
+        },
+        None => host_stage(resolved),
+    }
+}
+
 fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     vec![
         Stage {
@@ -878,7 +900,7 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "uf".to_string(),
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "dev server",
@@ -939,7 +961,7 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                      entry and prerenders what it can"
                 .to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
         transform_stage(),
         assets_stage(resolved),
@@ -994,7 +1016,7 @@ fn library_build_stages(resolved: &ResolvedConfig, plan: &LibraryPlan) -> Vec<St
             provider: "uf".to_string(),
             detail: format!("library: {}", plan.because()),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
         transform_stage(),
         assets_stage(resolved),
@@ -1158,7 +1180,7 @@ fn preview_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "uf".to_string(),
             detail: "uf.config.js, with `vite` merged over what uf generates".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Build),
         env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
@@ -1234,7 +1256,7 @@ fn start_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: "uf".to_string(),
             detail: "uf.config.js; the build is read, not rebuilt".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Runtime),
         env_stage(resolved, PRODUCTION),
         Stage {
             name: "server",
@@ -1290,7 +1312,7 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: format!("{:?}", resolved.config.test.native_runner().scheduler),
             detail: "one file per worker, longest expected first".to_string(),
         },
-        host_stage(resolved),
+        runtime_stage(resolved, runtimes::Role::Test),
     ];
     stages.extend(permissions_stage(resolved));
     stages.push(transform_stage());
@@ -1317,18 +1339,26 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 /// project did not write down anywhere. That is exactly the run whose limits
 /// somebody needs to be able to read.
 ///
-/// It names the host from `capabilityJsHost.default` rather than resolving one
-/// on PATH: `uf explain` describes a plan and must not fail because the machine
-/// it is run on has no host installed. A project whose configured default is
-/// not the host `uf test` would auto-detect is told about the configured one,
-/// which is the one its configuration is about.
+/// It names the host `test.runtime` declares — or the runtime the runner
+/// brings, or `runtime` — and `capabilityJsHost.default` when nothing declares
+/// one, rather than resolving one on PATH: `uf explain` describes a plan and
+/// must not fail because the machine it is run on has no host installed. A
+/// project whose configured default is not the host `uf test` would
+/// auto-detect is told about the configured one, which is the one its
+/// configuration is about.
 ///
 /// The counts include the grants uf makes for itself — the project root, the
 /// packages directory, `.uf`, the `uf` binary — because a permission model
 /// whose additions are invisible is one nobody can check. See
 /// `commands::test::toolchain_access`.
 fn permissions_stage(resolved: &ResolvedConfig) -> Option<Stage> {
-    let kind = resolved.config.app.runtime.capability_js_host.default;
+    // The host `uf test` starts is the declared test runtime when there is one,
+    // and a permission set means something different on Deno than on Node, so
+    // grading the configured default instead would describe another run.
+    let kind = runtimes::Role::Test.declared(&resolved.config).map_or(
+        resolved.config.app.runtime.capability_js_host.default,
+        |declared| declared.spec.name,
+    );
     // Absent unless there is a set to describe — **or the host is Deno**, where
     // there is no such thing as "no permission set". Deno's default grants
     // nothing at all, so `uf test` has to hand it *something*, and what it

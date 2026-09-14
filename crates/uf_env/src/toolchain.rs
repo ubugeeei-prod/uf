@@ -338,6 +338,72 @@ pub fn resolve(
     })
 }
 
+/// The release one declared spec runs, locking a prefix nothing has locked
+/// yet.
+///
+/// What a command calls for the one tool it is about to run — `uf build` for
+/// `build.runtime` — where [`resolve`] is what `uf env` calls for all of them.
+/// The difference is what it writes: this adds the one prefix it had to
+/// resolve and leaves every other entry in `uf.lock` alone, because a command
+/// that knows one of the project's tools is in no position to decide that the
+/// rest are stale.
+///
+/// # Errors
+///
+/// As [`resolve`] with [`Lookup::Missing`], for the one spec.
+pub fn release(
+    root: &Utf8Path,
+    config: &UniflowedConfig,
+    tool: Tool,
+    version: &ToolVersion,
+    releases: &dyn Releases,
+) -> Result<Resolution, EnvError> {
+    let prefix = match version {
+        ToolVersion::OnPath => return Ok(Resolution::OnPath),
+        ToolVersion::Exact(version) => return Ok(Resolution::Exact(version.to_string())),
+        ToolVersion::Prefix(prefix) => prefix,
+    };
+    let lock_path = root.join(config.pm.lockfile.as_str());
+    // Nearly every run finds the prefix locked and has nothing to write, so it
+    // answers without the guard and never waits on an install beside it. Only
+    // a prefix nothing has locked takes the guard — and reads the lock again
+    // under it, because the command that held it may have locked this very
+    // prefix in the meantime. See [`lock::Guard`].
+    if let Some(version) = lock::read(&lock_path)?.get(tool, prefix) {
+        return Ok(Resolution::Locked {
+            prefix: prefix.to_string(),
+            version: version.to_owned(),
+        });
+    }
+    let _guard = lock::guard(&lock_path)?;
+    let mut lock = lock::read(&lock_path)?;
+    let mut lists = BTreeMap::new();
+    let resolution = Session {
+        lookup: Lookup::Missing,
+        lock_path: &lock_path,
+        lock: &mut lock,
+        lists: &mut lists,
+        releases,
+    }
+    .resolve(tool, prefix)?;
+    if matches!(resolution, Resolution::Resolved { .. }) {
+        lock::write(&lock_path, &lock)?;
+    }
+    Ok(resolution)
+}
+
+/// The tool a runtime spec names: `node`, `bun` or `deno`.
+#[must_use]
+pub const fn tool_for_runtime(host: CapabilityJsHost) -> Tool {
+    runtime(host)
+}
+
+/// The tool a package manager spec names: `npm`, `pnpm`, `yarn` or `bun`.
+#[must_use]
+pub const fn tool_for_manager(name: PackageManagerName) -> Tool {
+    manager(name)
+}
+
 /// One resolution run's state: the lock being written and the lists fetched so
 /// far, so a project naming `node@26` and `node@24` fetches Node's list once.
 struct Session<'a> {
