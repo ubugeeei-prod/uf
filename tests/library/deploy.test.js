@@ -72,7 +72,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "@uniflowed/test";
+import { describe, expect, it, uft } from "@uniflowed/test";
 
 /**
  * The half of a `ReadableStream` controller these fixtures use.
@@ -88,10 +88,11 @@ type StreamController = {
   ...
 };
 
-import { createWorkerFetch } from "@uniflowed/server/edge";
+import { createWorkerFetch, installWorkerLogger } from "@uniflowed/server/edge";
 import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 import { createLambdaHandler } from "@uniflowed/server/lambda";
+import { installLogger, processLogger, recordingLogger } from "@uniflowed/server/log";
 import { createServeHandler, createStaticHandler } from "@uniflowed/server/node";
 import { createHandler as createStandaloneHandler } from "@uniflowed/server/standalone";
 
@@ -358,6 +359,85 @@ describe("the Cloudflare front door an adapter's worker.js runs", () => {
     expect(response.status).toBe(200);
     expect(await response.text()).toContain("guide");
     expect(asked).toEqual(["/guide", "/guide/"]);
+  });
+
+  it("logs each level through the console method a Worker files it under", async () => {
+    const written: Array<string> = [];
+    const spies = ["debug", "info", "warn", "error"].map((method) =>
+      uft.spyOn(console, method).mockImplementation((line: mixed) => {
+        written.push(`${method}: ${String(line)}`);
+      }),
+    );
+    try {
+      installWorkerLogger();
+      const handle = createWorkerFetch({
+        handle: createFetchHandler({ app: appWith({}), document: assets }),
+        beginRequest,
+      });
+      const ok = await handle(
+        request("/assets/site.css"),
+        {
+          ASSETS: {
+            fetch: async (): Promise<Response> =>
+              new Response("body{}", { headers: { "content-type": "text/css" } }),
+          },
+        },
+        executionContext(),
+      );
+      processLogger().error("something broke", {});
+
+      expect(ok.status).toBe(200);
+      // The access line for a 200 is information, and a Worker's log store
+      // reads the method: `console.error` for it made every request an error.
+      expect(
+        written.some((line) => line.startsWith("info: ") && line.includes("path=/assets/site.css")),
+      ).toBe(true);
+      expect(
+        written.some(
+          (line) => line.startsWith("error: ") && line.includes("path=/assets/site.css"),
+        ),
+      ).toBe(false);
+      expect(
+        written.some((line) => line.startsWith("error: ") && line.includes("something broke")),
+      ).toBe(true);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+      installLogger(null);
+    }
+  });
+
+  it("keeps a logger the application installed before the worker's default", () => {
+    const { logger } = recordingLogger();
+    installLogger(logger);
+    try {
+      installWorkerLogger();
+      expect(processLogger()).toBe(logger);
+    } finally {
+      installLogger(null);
+    }
+  });
+
+  it("names the Node API a Worker does not provide, in the log and never in the body", async () => {
+    const { logger, records } = recordingLogger();
+    installLogger(logger);
+    try {
+      const handle = createWorkerFetch({
+        handle: async (): Promise<Response> => {
+          throw new Error("[unenv] fs.readFileSync is not implemented yet!");
+        },
+        beginRequest,
+      });
+      const response = await handle(request("/api/files"), {}, executionContext());
+
+      expect(response.status).toBe(500);
+      expect(await response.text()).toBe("500 Internal Server Error\n");
+      const failure = records.find((record) => record.fields.api != null);
+      expect(failure?.level).toBe("error");
+      expect(failure?.fields.api).toBe("fs.readFileSync");
+      expect(failure?.message).toContain("does not provide");
+    } finally {
+      installLogger(null);
+    }
   });
 
   it("falls through to the application when the binding says 404", async () => {

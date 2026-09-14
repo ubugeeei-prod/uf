@@ -48,7 +48,8 @@ import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilit
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
-import { elapsedMs, logRequest, processLogger } from "./log.js";
+import { createLevelConsoleLogger } from "./internal/log.js";
+import { elapsedMs, installLoggerUnlessChosen, logRequest, processLogger } from "./log.js";
 import { runScheduled } from "./schedule.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
@@ -72,6 +73,46 @@ export type { RequestLifecycle } from "./internal/context.js";
  */
 export function edgeCapabilities(options?: CapabilityOptions): ServerCapabilities {
   return assertCapable(capabilitiesFor("edge", { stream: true, persistent: false }, options));
+}
+
+/**
+ * Log through the `console` method each level is named for, as a Worker should.
+ *
+ * The process logger's default writes every level to `console.error`, because
+ * in the process that runs `uf start` stdout is a protocol (see
+ * `./internal/log.js`). A Worker has no such process, and its `console` is the
+ * log store: `wrangler tail`, Workers Logs and `wrangler dev` all file a line by
+ * the method that wrote it. Measured under `wrangler dev`, the default turned
+ * every request's `info` access line into an `ERROR` — a Worker answering 200s
+ * that its own platform reported as failing on every request.
+ *
+ * Called by the generated `worker.js` after its imports, which is after the
+ * application's modules have been evaluated, and only takes effect when nothing
+ * chose a logger first: an application that installed its own keeps it.
+ */
+export function installWorkerLogger(): void {
+  installLoggerUnlessChosen(createLevelConsoleLogger);
+}
+
+/**
+ * The Node API named by an error a Worker's polyfills throw, or `null`.
+ *
+ * Wrangler links a module Workers provide only as a stub — `node:fs` at the
+ * compatibility date uf writes, `node:child_process` at any — to a polyfill whose
+ * every function throws `[unenv] <name> is not implemented yet!`. Read off the
+ * message with string operations rather than a pattern: it is short, its shape
+ * is fixed, and `docs/security.md` keeps regular expressions away from text
+ * uf did not write.
+ */
+function unavailableApi(error: mixed): string | null {
+  const message = error instanceof Error ? error.message : null;
+  const prefix = "[unenv] ";
+  const suffix = " is not implemented yet!";
+  if (message == null || !message.startsWith(prefix) || !message.endsWith(suffix)) {
+    return null;
+  }
+  const api = message.slice(prefix.length, message.length - suffix.length);
+  return api.length > 0 && api.length <= 128 ? api : null;
 }
 
 /**
@@ -239,7 +280,21 @@ export function createWorkerFetch(
       // Without this the answer would be Cloudflare's own error page, which is
       // a different answer from `uf start`'s for the same failure — and the
       // whole claim of the seam is that there is one answer.
-      processLogger().error("request failed", { error });
+      //
+      // A Node API this Worker does not have is named in uf's words as well as
+      // unenv's, because the reader of this line is deciding between a code
+      // change and a different adapter, and "not implemented yet" reads like a
+      // bug somebody will fix. `uf build --adapter edge` warned about the module
+      // already; this is the same fact at the moment it cost a request.
+      const api = unavailableApi(error);
+      if (api != null) {
+        processLogger().error(
+          "request failed: the application called a Node API this Worker does not provide",
+          { api, error },
+        );
+      } else {
+        processLogger().error("request failed", { error });
+      }
       return new Response("500 Internal Server Error\n", {
         status: 500,
         headers: { "content-type": "text/plain; charset=utf-8" },
