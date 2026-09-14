@@ -31,13 +31,18 @@ eighty lines long.
   whole document, because the printer reprints from the syntax tree.
 * **Code actions** — `quickfix` for the diagnostics with a mechanical answer,
   and `source.fixAll.uf` for all of them at once.
-* **Hover** — the rule behind a diagnostic, what an import specifier names, and
-  what a rule id in a suppression comment means.
+* **Hover** — the rule behind a diagnostic, what an import specifier names,
+  what a rule id in a suppression comment means, and a key of `uf.config.js`.
+* **Completion**, in `uf.config.js` and nowhere else — the keys valid at the
+  cursor, each with the documentation and type `@uniflowed/config` declares for
+  it, and the values of a key whose type is a fixed set. It works while the
+  file is half-typed, and it needs nothing installed: the declaration it reads
+  is compiled into `uf`.
 
-Not go-to-definition, rename, references, completion, document symbols, the
-type at a position, or organize imports. The server advertises none of them;
-`tests/library/lsp.test.js` asserts that it does not, so a README here cannot
-quietly start over-claiming.
+Not go-to-definition, rename, references, document symbols, the type at a
+position, organize imports, or completion in any other file. The server
+advertises none of them; `tests/library/lsp.test.js` asserts that it does not,
+so a README here cannot quietly start over-claiming.
 
 ## The one thing every integration has to get right
 

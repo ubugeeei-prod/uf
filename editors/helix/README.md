@@ -34,19 +34,20 @@ server and asserts each of these.
 | Formatting | `:format`, and on write, because `auto-format = true`. |
 | Quick fixes | `Space + a` on a diagnostic. |
 | Fix all | `Space + a` offers "Fix all uf lint problems in this file" as a separate action; Helix has no dedicated fix-all binding. |
-| Hover | `Space + k`. |
+| Hover | `Space + k`, including over a key of `uf.config.js`. |
+| Completion | In `uf.config.js`, as you type and after `"`; `Ctrl + x` in insert mode asks for it. The keys valid at the cursor, with their documentation and type, and the values of a key whose type is a fixed set. |
 
 ## What you do not get
 
-`gd`, `gr`, rename and completion have no server behind them — `uf lsp`
-advertises none of them, and Helix will say the language server does not
-support the request. Hover over a plain expression answers nothing: uf has no
-positional type query yet.
+`gd`, `gr` and rename have no server behind them — `uf lsp` advertises none of
+them, and Helix will say the language server does not support the request.
+Completion answers in `uf.config.js` only. Hover over a plain expression
+answers nothing: uf has no positional type query yet.
 
 The `language-servers = ["uf"]` lines **replace** Helix's defaults for
 JavaScript and JSX. If you want `typescript-language-server` alongside uf for
-completion, list both — and expect them to disagree about formatting, since
-only one of them reads your `uf.config.js`.
+completion in your own modules, list both — and expect them to disagree about
+formatting, since only one of them reads your `uf.config.js`.
 
 ## Working directory
 
