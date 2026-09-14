@@ -1,0 +1,18 @@
+export type Unknown = unknown;
+export type Never = never;
+export type Undefined = undefined;
+export type Void = void;
+export type Nullish = null | undefined;
+export type AnyObject = object;
+export type NonNullish = {};
+export type NotNull<T> = T & {};
+export type AutocompletedString = "NFC" | "NFD" | (string & {});
+export type Primitive = string | number | boolean | bigint | symbol;
+export type Literals = "a" | 'b' | 1 | -1 | 1.5 | 10n | -10n | true | false | `plain`;
+export type Escaped = "quote \" and \\ backslash";
+export type Mixed = (string | number)[] & { tag: "x" };
+export declare const version = "4.6.5";
+export declare const answer = 42;
+export declare const sym: unique symbol;
+export declare let loose: any;
+export declare var untyped;

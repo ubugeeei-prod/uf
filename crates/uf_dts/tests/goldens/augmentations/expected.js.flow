@@ -1,0 +1,15 @@
+import type { Base } from "some-package";
+
+
+
+
+
+
+
+
+
+
+
+export interface Uses {
+  readonly base: Base;
+}

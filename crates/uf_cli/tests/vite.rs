@@ -6653,6 +6653,69 @@ fn a_second_builder_is_resolved_named_and_driven() {
     );
 }
 
+/// `build.runtime` at a version drives the builder on the release in the store,
+/// and `uf explain build` names that release and the key before anything runs.
+///
+/// `paper-builder` runs on whatever it is started with and says nothing about
+/// it, so the mark the store's `node` leaves is the whole of the evidence — the
+/// one thing a build on the machine's Node could not produce.
+/// ubugeeei-prod/uf#940.
+#[test]
+fn a_build_runtime_at_a_version_drives_the_builder_on_the_release_in_the_store() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    copy_tree(
+        &paper_builder_root(),
+        &project.path().join("tools/paper-builder"),
+    );
+    project.write(
+        "uf.config.js",
+        &config_with(
+            "  build: { builder: \"./tools/paper-builder\", runtime: \"node@99.0.0\" },\n",
+        ),
+    );
+    let (tools, marks) = support::store_with_marked_node("99.0.0");
+
+    let explained = support::uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(plan.contains("node 99.0.0"), "{plan}");
+    assert!(
+        plan.contains("`build.runtime` names exactly 99.0.0"),
+        "{plan}"
+    );
+    assert!(plan.contains("in the store"), "{plan}");
+    assert!(
+        fs::read_to_string(&marks).unwrap_or_default().is_empty(),
+        "explaining a build ran something"
+    );
+
+    let output = support::uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{said}");
+    let marked = fs::read_to_string(&marks).unwrap_or_default();
+    assert!(
+        marked.contains("paper-builder/driver.js"),
+        "the builder was not started from the store's node:\n{marked}\n{said}"
+    );
+}
+
 /// A builder the project named and did not install is a sentence, not a stack.
 #[test]
 fn a_builder_that_is_not_there_is_refused_by_name() {

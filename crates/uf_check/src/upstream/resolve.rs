@@ -193,10 +193,7 @@ fn normalize(path: &str) -> CompactString {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uf_profiler::{AllocSnapshot, CountingAllocator, Window};
-
-    #[global_allocator]
-    static GLOBAL: CountingAllocator = CountingAllocator::new();
+    use uf_profiler::ThreadWindow;
 
     #[test]
     fn a_sibling_resolves_against_the_importing_directory() {
@@ -334,47 +331,42 @@ mod tests {
         assert_eq!(index.resolve("a.js", "./missing.js"), None);
     }
 
+    /// One candidate buffer per resolution, however many fallbacks it tries.
+    ///
+    /// An extensionless miss looks the path up as written, then with each of
+    /// four extensions, then with each of four `index` basenames, and every
+    /// one of those lookups goes through a single `String` the resolution
+    /// allocates once. So the ceiling is that invariant, one allocation per
+    /// resolution, rather than a guess at how much noise to tolerate. A fresh
+    /// candidate per fallback, which this exists to catch, costs the same 128
+    /// misses 2,358.
+    ///
+    /// It can be exact because it is counted on this thread alone. It used to
+    /// be read from the allocator's process-wide counters, in a binary whose
+    /// other tests run on other threads at the same moment, so the figure was
+    /// this loop plus whatever they allocated meanwhile: 7,239 in the quietest
+    /// of eight windows on a CI runner, against a 6,500 ceiling that had been
+    /// raised twice to absorb exactly that — and that the regression itself
+    /// sat far underneath (ubugeeei-prod/uf#1015).
     #[test]
     fn repeated_extensionless_misses_reuse_one_candidate_buffer_per_resolution() {
-        // Linux CI's all-features profile sees allocator bookkeeping from the
-        // surrounding lookup stack here. Keep enough headroom for that profile
-        // while still catching the much larger cost of allocating one candidate
-        // String per extension and index fallback.
-        const EXTENSIONLESS_MISS_CEILING: u64 = 6_500;
-        // This is a unit test in a binary whose other tests run in parallel, and
-        // the counting allocator is process-wide. Taking the quietest short
-        // window keeps the budget about this resolver path instead of whichever
-        // unrelated test happened to allocate during one measurement.
-        const MEASUREMENT_ATTEMPTS: usize = 8;
-
         let index = ModuleIndex::new(["app.js"]);
         let bases: Vec<String> = (0..128).map(|index| format!("missing{index}")).collect();
+        let one_per_resolution = u64::try_from(bases.len()).expect("the count fits in u64");
 
-        let _window = Window::open();
-        CountingAllocator::enable();
-        let mut best_allocations = u64::MAX;
-        let mut worst_allocations = 0;
-        for _ in 0..MEASUREMENT_ATTEMPTS {
-            std::thread::sleep(std::time::Duration::from_millis(5));
-            let before = AllocSnapshot::capture();
-            for base in &bases {
-                assert_eq!(index.resolve_file(base), None);
-            }
-            let after = AllocSnapshot::capture();
-            let delta = after.delta_from(&before);
-            best_allocations = best_allocations.min(delta.allocations);
-            worst_allocations = worst_allocations.max(delta.allocations);
+        let window = ThreadWindow::open();
+        for base in &bases {
+            assert_eq!(index.resolve_file(base), None);
         }
-        CountingAllocator::disable();
+        let delta = window.close();
 
         assert!(
-            best_allocations <= EXTENSIONLESS_MISS_CEILING,
-            "128 extensionless misses took {best_allocations} allocations in the \
-             quietest of {MEASUREMENT_ATTEMPTS} measurement windows, over the \
-             {EXTENSIONLESS_MISS_CEILING} ceiling. \
-             The noisiest window took {worst_allocations}. \
-             That usually means path resolution is allocating a fresh candidate for \
-             every extension and index fallback.",
+            delta.allocations <= one_per_resolution,
+            "{} extensionless misses took {} allocations, over the ceiling of one per \
+             resolution. That usually means path resolution is allocating a fresh \
+             candidate for every extension and index fallback.",
+            bases.len(),
+            delta.allocations,
         );
     }
 

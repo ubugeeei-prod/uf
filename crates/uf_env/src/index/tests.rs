@@ -263,6 +263,29 @@ fn a_cache_uf_cannot_trust_is_a_miss() {
     assert_eq!(cached_in(&cache, Tool::Node), None);
 }
 
+/// A release becomes a directory in the store and part of a URL, so anything
+/// that is not one version is dropped when a list is read and never answered
+/// by `resolve` — build metadata included, the one part of a version a numeric
+/// check does not look at.
+#[test]
+fn an_entry_that_is_not_one_release_is_never_the_answer() {
+    let parsed =
+        parse_packument(r#"{"versions":{"26.8.2+../../outside":{},"26.8.1":{},"latest":{}}}"#)
+            .unwrap();
+    assert_eq!(versions(&parsed), ["26.8.1"]);
+
+    let parsed = parse_node_index(r#"[{"version":"v26.9.0/../x"},{"version":"v26.8.1"}]"#).unwrap();
+    assert_eq!(versions(&parsed), ["26.8.1"]);
+
+    // A list that reaches `resolve` without being parsed — a cache edited by
+    // hand — is held to the same rule.
+    let list = releases(&["26.8.2+../../outside", "26.8.1"]);
+    assert_eq!(
+        resolve("26", &list).map(|release| release.version.as_str()),
+        Some("26.8.1")
+    );
+}
+
 /// One override puts both publishers' lists under a fixture directory.
 #[test]
 fn one_base_serves_every_list() {

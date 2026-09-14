@@ -14,6 +14,13 @@ from anywhere, with no provider to mount. If you know Jotai you know the shape
 there are four constructors instead of one.
 </div>
 
+**What you will be able to do:** declare atoms, read and write them inside and
+outside React, derive, compose and persist state, and know where
+`@uniflowed/state` parts company with Jotai.
+
+**What you need first:** a project — [Your first project](/guide/project) — and
+[Flow, the modern parts](/guide/flow) for `hook`.
+
 ## Four constructors, not one overload
 
 Jotai spells every kind of atom `atom(...)` and works out which was meant from
@@ -517,3 +524,8 @@ import to it, and a few name something a real module would have declared —
 point of the example. `packages/state/state.test.js` is where the behaviour above
 is pinned, with that setup written out — `uf test packages/state/state.test.js`, and
 `cell.test.js` for the layer below.
+
+## Where to go next
+
+[Forms](/guide/form) is next: uncontrolled inputs, typed values and narrow
+subscriptions.

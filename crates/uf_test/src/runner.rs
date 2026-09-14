@@ -41,7 +41,7 @@ use crate::filter::TestFilter;
 use crate::host::{FileOutcome, HostCommand, SpawnError, Worker};
 use crate::options::{Bail, Concurrency, RunOptions};
 use crate::report::{FileReport, FileStatus, TestRunReport, TestStatus, TestSummary};
-use crate::schedule::{ScheduleEntry, schedule_files};
+use crate::schedule::{ScheduleEntry, auto_workers, schedule_files};
 use crate::timings::TestTimings;
 
 /// One file a run will execute.
@@ -205,19 +205,26 @@ impl TestRunner {
 
         let host = self.host.as_ref().ok_or(RunError::NoHost)?;
 
+        let workers = self.worker_count(&schedule);
+        // A host that will not start is a run that cannot happen. Finding that
+        // out once, here, turns it into one clear error instead of `workers`
+        // identical file failures.
+        //
+        // The process started to find out is the first worker, handed to the
+        // first thread that wants one. It used to be a probe killed on the
+        // spot, which was a whole host process started and thrown away on
+        // every run, before any worker that did work had been started.
+        let first = Worker::spawn(host)?;
+
         let state = RunState {
             next: AtomicUsize::new(0),
             failures: AtomicUsize::new(0),
             completed: AtomicUsize::new(0),
             total: schedule.len(),
             outcomes: Mutex::new(vec![None; schedule.len()]),
+            first: Mutex::new(Some(first)),
+            start_ups: Mutex::new(Vec::with_capacity(workers)),
         };
-
-        let workers = self.worker_count(schedule.len());
-        // A host that will not start is a run that cannot happen. Finding that
-        // out once, here, turns it into one clear error instead of `workers`
-        // identical file failures.
-        Worker::spawn(host)?.kill();
 
         std::thread::scope(|scope| {
             let mut handles = Vec::with_capacity(workers);
@@ -230,31 +237,46 @@ impl TestRunner {
             }
         });
 
+        let mut start_ups = state
+            .start_ups
+            .into_inner()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let outcomes = state
             .outcomes
             .into_inner()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        Ok(assemble(
+        let mut report = assemble(
             outcomes,
             selected,
             &schedule,
             started,
             self.options.bail,
             state.failures.load(Ordering::Relaxed),
-        ))
+        );
+        report.summary.workers = workers;
+        report.summary.worker_start_micros = median(&mut start_ups);
+        Ok(report)
     }
 
-    /// How many workers to start: never more than there are files, and never
-    /// more than the configured concurrency.
-    fn worker_count(&self, files: usize) -> usize {
-        let requested = match self.options.concurrency {
+    /// How many workers to start: never more than there are files, never more
+    /// than the configured concurrency, and — when the concurrency was left to
+    /// `uf` — no more than the recorded durations can keep busy for longer than
+    /// a worker takes to start. See [`crate::auto_workers`].
+    ///
+    /// `-j` is taken as asked. A person who wrote a number has already decided
+    /// what the machine can afford, and a run that second-guessed it would be
+    /// impossible to reason about when comparing two numbers.
+    fn worker_count(&self, schedule: &[ScheduleEntry]) -> usize {
+        let files = schedule.len().max(1);
+        match self.options.concurrency {
             Concurrency::Serial => 1,
-            Concurrency::Fixed(count) => count.get(),
-            Concurrency::Auto => {
-                std::thread::available_parallelism().map_or(1, |count| count.get())
-            }
-        };
-        requested.min(files.max(1)).max(1)
+            Concurrency::Fixed(count) => count.get().min(files),
+            Concurrency::Auto => auto_workers(
+                schedule,
+                self.timings.worker_start_micros(),
+                std::thread::available_parallelism().map_or(1, |count| count.get()),
+            ),
+        }
     }
 
     /// Files that survive the path filter, in the caller's order, each with
@@ -301,6 +323,9 @@ impl TestRunner {
             let file = selected.file;
 
             if worker.is_none() {
+                worker = state.take_first();
+            }
+            if worker.is_none() {
                 worker = match Worker::spawn(host) {
                     Ok(worker) => Some(worker),
                     Err(error) => {
@@ -333,6 +358,23 @@ impl TestRunner {
                     records: Vec::new(),
                     output: Vec::new(),
                 });
+
+            // A worker's first file is also the worker booting: `uf` starts the
+            // clock when it writes the request, and the process is not ready to
+            // read it for tens of milliseconds. Measured here — before a retry
+            // sends the worker another request, or a failure retires it — and
+            // taken back out of the file's duration below, so the slowest-files
+            // table and the recorded timings describe files rather than which
+            // file each worker happened to start on.
+            let first_answer = micros(started.elapsed());
+            let start_up = worker.as_ref().and_then(Worker::start_micros);
+            let charged = match (start_up, worker.as_ref().and_then(Worker::reported_micros)) {
+                (Some(_), Some(reported)) => first_answer.saturating_sub(reported),
+                _ => 0,
+            };
+            if let Some(start_up) = start_up {
+                state.note_start_up(start_up);
+            }
 
             // A file that timed out or lost its host killed the worker; the
             // next file needs a fresh one.
@@ -368,7 +410,7 @@ impl TestRunner {
             let report = FileReport {
                 file: file.relative.clone(),
                 status: outcome.status,
-                duration_micros: u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX),
+                duration_micros: micros(started.elapsed()).saturating_sub(charged),
                 records: outcome.records,
                 output: outcome.output,
             };
@@ -511,6 +553,13 @@ struct RunState {
     completed: AtomicUsize,
     total: usize,
     outcomes: Mutex<Vec<Option<FileReport>>>,
+    /// The worker started to prove the host starts, until a thread takes it.
+    ///
+    /// Still here when the run ends only if no thread ever wanted a worker, and
+    /// then dropping it kills it.
+    first: Mutex<Option<Worker>>,
+    /// What each worker cost to start, from the ones that timed a first file.
+    start_ups: Mutex<Vec<u64>>,
 }
 
 impl RunState {
@@ -521,6 +570,35 @@ impl RunState {
             outcomes[at] = Some(report);
         }
     }
+
+    /// The first worker, for the first thread to ask.
+    fn take_first(&self) -> Option<Worker> {
+        self.first.lock().ok().and_then(|mut first| first.take())
+    }
+
+    /// Keep one worker's start-up for the run's estimate.
+    fn note_start_up(&self, micros: u64) {
+        if let Ok(mut start_ups) = self.start_ups.lock() {
+            start_ups.push(micros);
+        }
+    }
+}
+
+/// The median of `values`, or `None` when there are none.
+///
+/// The median rather than the mean, because one worker that started behind a
+/// compile on the same core is not what the next run should plan around.
+fn median(values: &mut [u64]) -> Option<u64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_unstable();
+    Some(values[values.len() / 2])
+}
+
+/// A duration in whole microseconds, saturating rather than wrapping.
+fn micros(duration: Duration) -> u64 {
+    u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
 
 fn sources_of<'a>(files: &[SelectedFile<'a>]) -> Vec<(&'a str, &'a str)> {

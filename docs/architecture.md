@@ -58,6 +58,19 @@ does. When a file is expected to grow, the guard is written as a ratio against
 source bytes or KiB, not as a frozen number that turns every legitimate feature
 into a perf test rewrite.
 
+A budget counts a thread, not the process. `cargo test` runs a binary's tests
+at once, so a delta over `uf_profiler::CountingAllocator`'s process-wide
+counters is the guarded path plus whatever every neighbouring test allocated in
+the same stretch — the resolver budget read 7,239 allocations for a loop that
+makes 128, and neither a higher ceiling nor the quietest of several windows
+made that reliable (#1015). So a budget opens a `uf_profiler::ThreadWindow`,
+which counts the thread that opened it, and work the command does on a thread
+of its own is counted because that thread hands its figure back through
+`uf_profiler::Handover`: `uf_check`'s check thread and `uf_lint`'s module-tree
+parse thread both do. A command that moves its work onto a new thread has to
+hand back there as well, or its budget measures the cost of starting a thread
+and passes whatever the thread does.
+
 The failure message is part of the contract. It names the command to run next
 — usually an `alloc_report` example with `--phases` — and says which historical
 failure mode the ceiling is meant to catch. A red allocation test should leave
@@ -117,6 +130,7 @@ the fix from leaking away while the next slice is being cut.
 - `uf_assets`: image resizing and re-encoding, and the font metrics behind `Image` and `Font`
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
+- `uf_dts`: a dependency's TypeScript declaration files, translated into Flow declaration modules with every hole named
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
 - `uf_infra`: Arena, FxHash, PHF, SIMD UTF-8, SmallVec, CompactString, and the byte bound every `.uf/cache/` directory is swept to

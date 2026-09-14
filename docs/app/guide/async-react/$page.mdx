@@ -14,6 +14,14 @@ on React's model instead of adding a second one, and the file-system router,
 server actions and client router all make that choice visible.
 </div>
 
+**What you will be able to do:** place Suspense boundaries, keep the current
+page visible through a transition, show optimistic updates, and choose where
+each boundary goes.
+
+**What you need first:** [Routing](/guide/routing), for `$loading.js` and
+loaders, and [Server Components](/guide/server-components) for the client
+boundary these hooks live behind.
+
 ## The map
 
 Use the smallest primitive that names the wait you actually have.
@@ -319,7 +327,7 @@ import { useRouter } from "@uniflowed/router";
 
 import { postMessage } from "../_actions/messages.js";
 
-type Message = {| +id: string, +body: string, +sending?: boolean |};
+type Message = {| readonly id: string, readonly body: string, readonly sending?: boolean |};
 
 component Thread(messages: $ReadOnlyArray<Message>) {
   const router = useRouter();
@@ -410,3 +418,8 @@ When in doubt, choose by what you want to preserve.
 That is the whole contract. Suspense says "this subtree is not ready".
 Transitions say "keep the old subtree useful while preparing the new one".
 Optimistic state says "show the intended result until the Action settles".
+
+## Where to go next
+
+[Server actions](/guide/server-actions) is next: the functions a form or a
+transition calls on the server, and what uf refuses about them.

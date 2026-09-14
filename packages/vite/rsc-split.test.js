@@ -232,6 +232,37 @@ describe("the client route table", () => {
     );
   });
 
+  it("keeps every route under a slot that intercepts, whatever its modules are", () => {
+    // An interception renders only for a client navigation that starts on a
+    // page the slot is on. A page served as a document with no router hydrated
+    // on it starts no client navigation, so dropping these routes would leave
+    // the interception a file that never renders — with no `"use client"`
+    // anywhere to say otherwise.
+    const page = "// @flow\nexport default function Page() {}\n";
+    const root = project({
+      "app/$layout.js": page,
+      "app/$page.js": page,
+      "app/photo/[id]/$page.js": page,
+      "app/@modal/(.)photo/[id]/$page.js": page,
+    });
+    const table = scanRoutes(path.join(root, "app"));
+    const manifest = manifestIn(root, {
+      ...splitManifest(),
+      modules: [
+        manifestModule("app/$layout.js", false),
+        manifestModule("app/$page.js", false),
+        manifestModule("app/photo/[id]/$page.js", false),
+        manifestModule("app/@modal/(.)photo/[id]/$page.js", false),
+      ],
+    });
+    const shipsPage = clientRouteFilter(manifest, root, table);
+
+    expect(table.routes.map((route) => [route.path, shipsPage(route)])).toEqual([
+      ["/", true],
+      ["/photo/:id", true],
+    ]);
+  });
+
   it("still imports dropped slot modules for their stylesheets", () => {
     // The side-effect import rule applies to slots too. A route that needs no
     // browser JavaScript can still render a slotted subtree whose CSS is part

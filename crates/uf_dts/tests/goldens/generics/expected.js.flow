@@ -1,0 +1,31 @@
+export type Box<in out T> = interface { readonly value: T; };
+export interface Producer<out T> {
+  produce(): T;
+  readonly latest: T;
+  readonly current: T;
+}
+export interface Consumer<in T> {
+  consume(value: T): void;
+}
+export type Keys<T> = keyof T;
+type Values$type<T> = T[keyof T]; export type { Values$type as Values };
+export type Property<T, K extends keyof T> = T[K];
+export type Unwrap<T> = T extends Promise<infer U> ? U : T;
+export type Head<T> = T extends [infer H extends string, ...infer _Rest] ? H : empty;
+export type Last<T extends $ReadOnlyArray<mixed>> = T extends $ReadOnly<[...infer _, infer L]> ? L : void;
+export type Nested<T> = T extends string ? "string" : T extends number ? "number" : "other";
+export type CheckFunction<T> = T extends (...args: Array<any>) => infer R ? R : empty;
+export type Partialize<T> = { [K in keyof T]?: T[K] };
+export type Mutable<T> = { -readonly [K in keyof T]-?: T[K] };
+export type Frozen<T> = { readonly [K in keyof T]: T[K] };
+export type Getters<T> = { [K in keyof T as `get${K & string}`]: () => T[K] };
+export type Flags<K extends string> = { [P in K]: boolean };
+export type Inferred<out T> = T;
+export type WithThis = interface { method(): void; };
+declare export const settings: interface { readonly mode: "a" | "b"; };
+export type Settings = typeof settings;
+export type Mode = (typeof settings)["mode"];
+export type Utility = Partial<Settings> & Required<Settings> & Readonly<Settings> & Pick<Settings, "mode"> & Omit<Settings, "mode"> & interface { readonly [key: string]: number };
+export type Returned = ReturnType<() => string>;
+export type Settled = Awaited<Promise<string>>;
+export type NonNull = NonNullable<string | null>;

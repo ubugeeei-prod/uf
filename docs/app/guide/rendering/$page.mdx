@@ -13,6 +13,12 @@ when a visitor clicks a link? uf answers them with two settings, because the
 answers compose.
 </div>
 
+**What you will be able to do:** choose where each route's document comes from
+and what a click does, read the route decisions `uf build` reports, and pick a
+deployment shape.
+
+**What you need first:** routes to render — [Routing](/guide/routing).
+
 ## The two axes
 
 `app.rendering.modes` says where a document comes from, and `uf build` picks
@@ -346,3 +352,8 @@ And when not to: an application with state that has to survive a navigation —
 a media player that keeps playing, a form half filled in, a list scrolled to
 where the visitor left it — is asking for the client router, which is why it is
 the default.
+
+## Where to go next
+
+[Server Components](/guide/server-components) is next: the `"use client"`
+boundary, and how uf decides which modules reach the browser.

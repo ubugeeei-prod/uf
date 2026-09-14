@@ -564,3 +564,167 @@ fn a_profile_that_cannot_be_copied_leaves_the_original_alone() {
         "the profile was removed with the directory it could not leave"
     );
 }
+
+/// A pin's links are made once, point into the store, and leave nothing
+/// behind.
+#[test]
+fn a_pins_links_are_made_once_and_point_into_the_store() {
+    let (_guard, root) = temp();
+    let store = Store::new(root.join("store"));
+    let envs = project::Envs::new(root.join("envs"));
+    let pin = Pin {
+        tool: Tool::Pnpm,
+        version: "12.1.0".to_owned(),
+        platform: Platform {
+            os: Os::Darwin,
+            arch: Arch::Arm64,
+        },
+    };
+
+    let error = project::link_pin(&envs, &store, &pin).unwrap_err();
+    assert!(matches!(error, EnvError::NotInstalled { .. }), "{error:?}");
+
+    // pnpm's executable is not named `pnpm`, which is why these are links.
+    let staged = store.staging(&pin).unwrap();
+    std::fs::create_dir_all(staged.join("bin")).unwrap();
+    std::fs::write(
+        staged.join("package.json"),
+        r#"{ "name": "pnpm", "bin": { "pnpm": "bin/pnpm.cjs" } }"#,
+    )
+    .unwrap();
+    std::fs::write(staged.join("bin/pnpm.cjs"), "#!/usr/bin/env node\n").unwrap();
+    store.adopt(&pin, &staged).unwrap();
+
+    let bin = project::link_pin(&envs, &store, &pin).unwrap();
+    assert_eq!(bin, envs.pin_bin_dir(&pin));
+    assert_eq!(
+        std::fs::read_link(bin.join("pnpm")).unwrap(),
+        store.path(&pin).join("bin/pnpm.cjs").into_std_path_buf()
+    );
+
+    // Asked again, the same directory, not rebuilt.
+    let made = std::fs::symlink_metadata(bin.join("pnpm"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert_eq!(project::link_pin(&envs, &store, &pin).unwrap(), bin);
+    assert_eq!(
+        std::fs::symlink_metadata(bin.join("pnpm"))
+            .unwrap()
+            .modified()
+            .unwrap(),
+        made
+    );
+    let names: Vec<String> = std::fs::read_dir(root.join("envs/pins"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(
+        names,
+        ["pnpm-12.1.0-darwin-arm64"],
+        "no staging left behind"
+    );
+}
+
+/// A command that installs one tool adds it to what the repository holds,
+/// rather than replacing the list and leaving the rest to be collected.
+#[test]
+fn adding_to_a_root_keeps_what_was_there() {
+    let (_guard, root) = temp();
+    let roots = Roots::new(root.join("roots"));
+    let repository = root.join("repo");
+    std::fs::create_dir_all(&repository).unwrap();
+
+    roots
+        .register(
+            &repository,
+            &[
+                "node-26.8.2-darwin-arm64".to_owned(),
+                "pnpm-12.1.0-darwin-arm64".to_owned(),
+            ],
+        )
+        .unwrap();
+    roots
+        .add(
+            &repository,
+            &[
+                "bun-1.4.2-darwin-arm64".to_owned(),
+                "node-26.8.2-darwin-arm64".to_owned(),
+            ],
+        )
+        .unwrap();
+
+    let all = roots.all().unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(
+        all[0].1.entries,
+        [
+            "bun-1.4.2-darwin-arm64",
+            "node-26.8.2-darwin-arm64",
+            "pnpm-12.1.0-darwin-arm64"
+        ]
+    );
+
+    // A repository with no root yet gets one.
+    let other = root.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    roots
+        .add(&other, &["deno-2.9.6-darwin-arm64".to_owned()])
+        .unwrap();
+    assert_eq!(roots.all().unwrap().len(), 2);
+
+    // And one that does not parse is refused rather than replaced.
+    std::fs::write(&all[0].0, "not json").unwrap();
+    let error = roots
+        .add(&repository, &["deno-2.9.6-darwin-arm64".to_owned()])
+        .unwrap_err();
+    assert!(matches!(error, EnvError::Decode { .. }), "{error:?}");
+}
+
+/// Yarn 1 is the `yarn` package and every later Yarn is `@yarnpkg/cli-dist`,
+/// so each is fetched from the package that publishes it.
+///
+/// The `yarn` package stops at 1.22 bar three releases, so asking it for
+/// `yarn@4.9.2` — which is what every Yarn pin did — was a 404.
+#[test]
+fn a_yarn_is_fetched_from_the_package_that_publishes_it() {
+    use crate::source::{Checksum, Source};
+
+    let yarn = |version: &str| Pin {
+        tool: Tool::Yarn,
+        version: version.to_owned(),
+        platform: Platform {
+            os: Os::Linux,
+            arch: Arch::X64,
+        },
+    };
+
+    let berry = Source::for_pin(&yarn("4.18.0")).unwrap();
+    assert_eq!(
+        berry.archive,
+        "https://registry.npmjs.org/@yarnpkg/cli-dist/-/cli-dist-4.18.0.tgz"
+    );
+    assert_eq!(
+        berry.checksum,
+        Checksum::NpmIntegrity {
+            url: "https://registry.npmjs.org/@yarnpkg/cli-dist/4.18.0".to_owned()
+        }
+    );
+
+    assert_eq!(
+        Source::for_pin(&yarn("1.22.22")).unwrap().archive,
+        "https://registry.npmjs.org/yarn/-/yarn-1.22.22.tgz"
+    );
+    // The one 2.x release that never left the `yarn` package, beside one that
+    // was only ever published as the dist.
+    assert_eq!(
+        Source::for_pin(&yarn("2.4.3")).unwrap().archive,
+        "https://registry.npmjs.org/yarn/-/yarn-2.4.3.tgz"
+    );
+    assert!(
+        Source::for_pin(&yarn("2.4.2"))
+            .unwrap()
+            .archive
+            .contains("/@yarnpkg/cli-dist/")
+    );
+}

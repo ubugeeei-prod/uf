@@ -274,13 +274,98 @@ describe("what a slot may not be written as", () => {
     }
   });
 
-  it("still refuses an intercepting route", () => {
-    // The other half of #267, and it is still a name without a route:
-    // interception needs a navigation to carry where it came from.
-    const message = refusal(["$layout.js", "feed/(.)photo/$page.js"]);
+  it("refuses an intercepting route outside a slot", () => {
+    // Inside a slot it is a route; beside an ordinary page there is no named
+    // place for it to render into.
+    const message = refusal(["$layout.js", "feed/$page.js", "feed/(.)photo/$page.js"]);
 
     expect(message).not.toBe(null);
     expect(message ?? "").toContain("intercepting route");
+    expect(message ?? "").toContain("`@slot`");
+  });
+});
+
+/** The feed with a photo modal, which is the shape interception exists for. */
+const FEED = [
+  "$layout.js",
+  "feed/$layout.js",
+  "feed/$page.js",
+  "feed/photo/[id]/$page.js",
+  "feed/@modal/$layout.js",
+  "feed/@modal/(.)photo/[id]/$page.js",
+  "feed/@modal/(..)photo/[id]/$page.js",
+  "photo/[id]/$page.js",
+];
+
+describe("scanning a slot that intercepts", () => {
+  it("puts an interception in the slot's intercepts, at the URL it stands in for", () => {
+    // `app/feed/@modal/(.)photo/[id]/$page.js` is not one of the slot's
+    // routes — nothing matching those, the server least of all, may render it
+    // — and its path is the URL a client navigation reaches, climb applied.
+    const root = appRoot(FEED);
+    const { routes } = scanRoutes(root);
+    const modal = routes
+      .find((route) => route.path === "/feed")
+      ?.slots.find((slot) => slot.name === "modal");
+
+    expect(modal?.routes).toEqual([]);
+    expect(modal?.intercepts.map((route) => route.path)).toEqual(["/feed/photo/:id", "/photo/:id"]);
+    expect(modal?.intercepts[0].params).toEqual([{ name: "id", catchAll: false }]);
+    // The slot's own layout wraps an interception the way it wraps any page in
+    // the slot.
+    expect(modal?.intercepts[0].layouts.map((file) => path.relative(root, file))).toEqual([
+      path.join("feed", "@modal", "$layout.js"),
+    ]);
+  });
+
+  it("adds no URL: the table holds the pages the directories name, and nothing more", () => {
+    const { routes } = scanRoutes(appRoot(FEED));
+
+    expect(routes.map((route) => route.path)).toEqual(["/feed", "/feed/photo/:id", "/photo/:id"]);
+  });
+
+  it("carries the interceptions into the generated module, and nothing for a slot without", () => {
+    const source = routesModuleSource(scanRoutes(appRoot(FEED)));
+
+    expect(source).toContain("intercepts: [");
+    expect(source).toContain('path: "/feed/photo/:id"');
+    // A slot that intercepts nothing is emitted exactly as it was before
+    // interception existed.
+    expect(routesModuleSource(scanRoutes(appRoot(DASHBOARD)))).not.toContain("intercepts");
+  });
+
+  it("refuses an interception whose URL no page serves", () => {
+    // A reload of the URL the modal put in the address bar would be a 404.
+    const message = refusal([
+      "$layout.js",
+      "feed/$layout.js",
+      "feed/$page.js",
+      "feed/@modal/(.)photo/[id]/$page.js",
+    ]);
+
+    expect(message).not.toBe(null);
+    expect(message ?? "").toContain("`/feed/photo/:id`");
+    expect(message ?? "").toContain("404");
+  });
+
+  it("refuses a climb past the router root", () => {
+    const message = refusal([
+      "$layout.js",
+      "$page.js",
+      "photo/$page.js",
+      "@modal/(..)photo/$page.js",
+    ]);
+
+    expect(message).not.toBe(null);
+    expect(message ?? "").toContain("router root");
+  });
+
+  it("refuses a marker nothing reads, inside a slot as well", () => {
+    const message = refusal(["$layout.js", "$page.js", "@modal/(....)photo/$page.js"]);
+
+    expect(message).not.toBe(null);
+    expect(message ?? "").toContain("(....)");
+    expect(message ?? "").toContain("refused");
   });
 });
 

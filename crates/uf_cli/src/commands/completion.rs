@@ -64,6 +64,7 @@ const COMMANDS: &[&str] = &[
     "remove",
     "uninstall",
     "routes",
+    "ui",
     "run",
     "search",
     "start",
@@ -191,8 +192,27 @@ fn candidates(words: &[String], tasks: &[&str]) -> Vec<String> {
         ["pm"] => matching(current, ["approve-builds"]),
         ["i18n"] => matching(current, ["extract", "merge"]),
         ["routes"] => matching(current, ["list", "add"]),
+        ["ui"] => matching(current, ["add", "list", "diff"]),
+        // The registry's own names, read out of this binary, so a component
+        // added to `registry/ui/` completes in the release that carries it.
+        ["ui", "add" | "diff", ..] => matching(current, ui_components()),
         _ => Vec::new(),
     }
+}
+
+/// The components `uf ui add` can write, or none from a binary whose registry
+/// cannot be read — a completion has nowhere to print an error.
+fn ui_components() -> Vec<&'static str> {
+    uf_ui::Registry::embedded().map_or_else(
+        |_| Vec::new(),
+        |registry| {
+            registry
+                .components()
+                .iter()
+                .map(|component| component.name)
+                .collect()
+        },
+    )
 }
 
 /// Those of `pool` that start with `prefix`, in the order `pool` gave them.

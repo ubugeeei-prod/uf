@@ -1,0 +1,219 @@
+---
+title: "Editors · uf"
+description: "uf lsp in VS Code, Cursor, Neovim, Vim, Helix and Emacs: what it answers, what it does not, and the config it reads."
+---
+
+<p className="eyebrow">Start</p>
+
+# Editors
+
+<div className="lede">
+`uf lsp` is uf's language server, and every integration under
+[`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client of
+it. What an editor shows — a lint finding under a line, a file formatted on save,
+a quick fix — comes from the same crates `uf lint` and `uf fmt` run in a terminal,
+so the editor and CI cannot disagree about a file.
+</div>
+
+**What you will be able to do:** set up your editor, know exactly what the server
+answers and what it does not, and make sure it formats and lints to your project's
+configuration rather than to uf's defaults.
+
+**What you need first:** uf [installed](/guide/install), and a project with a
+`uf.config.js` — [Your first project](/guide/project) makes one.
+
+## What the server answers
+
+A session with one file, `app/flags.js`, which declares `export type Flag = bool;`:
+
+<figure className="terminal">
+
+```
+initialize
+{"serverInfo":{"name":"uf-lsp","version":"…"},"capabilities":{"textDocumentSync":1,"documentFormattingProvider":true,"hoverProvider":true,"codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.uf"]},"completionProvider":{"triggerCharacters":["\"","@"]}}}
+
+textDocument/publishDiagnostics
+flow/deprecated-type  severity 1  4:20  the `bool` type alias is deprecated; write `boolean`
+
+textDocument/codeAction
+quickfix          Replace `bool` with `boolean`  (preferred)
+source.fixAll.uf  Fix all uf lint problems in this file
+
+textDocument/hover on `bool`
+**`flow/deprecated-type`** · error
+
+the `bool` type alias is deprecated; write `boolean`
+
+---
+
+Flow's own lint set · default `error` · decided from the source text
+```
+
+</figure>
+
+| | What it is | Where it comes from |
+| --- | --- | --- |
+| **Diagnostics** | Pushed when a document opens and on every change, cleared when it closes. The source is `uf` and the code is the rule id | `uf_lint` — the rules `uf lint` runs, at the levels your `uf.config.js` sets. Not type errors: those are [`uf check`](/guide/check)'s |
+| **Formatting** | One edit over the whole document | `uf_fmt`, the printer `uf fmt` uses, with your `fmt` options — not the editor's tab settings |
+| **Quick fixes** | `quickfix` actions for a diagnostic with a mechanical answer, and a "format this document" action where formatting clears a whitespace finding | the fix catalogue `uf lint --fix` uses |
+| **Fix all** | `source.fixAll.uf`: every **safe** fix in the file at once | the same catalogue; the unsafe tier is a quick fix you pick, never part of fix-all |
+| **Hover** | The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, and a key of `uf.config.js` | the lint rules, uf's module registry, and `@uniflowed/config` |
+| **Completion** | In `uf.config.js` only: the keys valid at the cursor, with their documentation and type; the values of a key whose type is a fixed set; and in a tool spec like `runtime: "node@26"`, the names its key takes and, after `@`, that tool's versions, newest first | `@uniflowed/config`'s Flow type, compiled into `uf`, so it works in a file that is half-typed; versions from the release lists uf caches under `$XDG_CACHE_HOME/uf/index`, fetched in the background and never on a request's time |
+
+What it does not answer: go-to-definition, rename, find-references, document
+symbols, the type at a position, and completion anywhere but `uf.config.js`. It
+advertises none of the first five, and a request for one is refused rather than
+left waiting:
+
+<figure className="terminal">
+
+```
+textDocument/definition
+{"code":-32601,"message":"uf lsp does not serve `textDocument/definition`"}
+```
+
+</figure>
+
+Until the server answers types, the terminal is where they are: `uf check`.
+
+## Which configuration it reads
+
+The server reads the project's configuration **once, when it starts**: from the
+directory `--cwd` names, or its working directory, walking up to the nearest
+`uf.config.js`, `package.json` or `.git`. Three consequences:
+
+- **Editing `uf.config.js` needs a restart.** The server has no way to be told.
+  The VS Code extension watches the file and restarts by itself; every other
+  integration says below how to restart it.
+- **A configuration it cannot read is not reported.** The server falls back to
+  uf's defaults, and the editor formats and lints to those without a word. The
+  check is to format a file in the editor and run `uf fmt --check` in a terminal:
+  if they disagree, the server is reading something else.
+- **The walk stops at the first `package.json`.** In a workspace, a member with
+  its own `package.json` and no `uf.config.js` gets uf's defaults, not the root's
+  configuration.
+
+Every integration starts the server in the project folder, which is correct
+however the directory is chosen. The READMEs under `editors/` say that
+`uf lsp --cwd` is ignored; it is honoured, and
+[#998](https://github.com/ubugeeei-prod/uf/issues/998) is correcting them.
+
+The project's `ignore` list does not reach the server either: a file you have
+opened is linted, even one `uf lint` would skip.
+
+## VS Code and Cursor
+
+An extension in [`editors/vscode`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vscode),
+built from source. It is not published to the Marketplace or Open VSX yet
+([#977](https://github.com/ubugeeei-prod/uf/issues/977)):
+
+```sh
+cd editors/vscode
+npm install
+npx @vscode/vsce package        # writes uf-0.0.0.vsix
+code --install-extension uf-0.0.0.vsix
+```
+
+Cursor installs the same file with `cursor --install-extension uf-0.0.0.vsix`.
+
+It activates in a workspace containing `uf.config.js` and starts one server per
+workspace folder that has a `uf.config.js` at its root, in that folder. A folder
+without one gets no server, and a uf project nested below the folder you opened is
+not picked up — open that folder, or add it to the workspace.
+
+| Setting | Default | |
+| --- | --- | --- |
+| `uf.server.path` | `""` | The `uf` binary, absolute or relative to the workspace folder. Empty means search: `node_modules/.bin/uf` in the folder, then `PATH` |
+| `uf.formatOnSave` | `false` | Format with the server on save |
+| `uf.trace.server` | `"off"` | `messages` or `verbose` logs the traffic to the uf output channel |
+
+A `uf.server.path` that points nowhere is an error naming the path, not a quiet
+fall back to another `uf`. To apply every safe fix on save:
+
+```jsonc
+"editor.codeActionsOnSave": { "source.fixAll.uf": "explicit" }
+```
+
+**uf: Restart Language Server** re-resolves the binary and restarts every server;
+**uf: Show Language Server Log** lists every path it searched. The extension's
+logic — finding the binary, what counts as a project, the command it starts — is
+tested in `tests/library/vscode-extension.test.js`; the wiring inside VS Code
+itself is not, because no editor host runs in CI.
+
+## Neovim
+
+[`editors/neovim/lua/uf.lua`](https://github.com/ubugeeei-prod/uf/tree/main/editors/neovim),
+on core `vim.lsp.start`, with no plugin manager and no `nvim-lspconfig`. Copy it to
+`~/.config/nvim/lua/uf.lua`, then:
+
+```lua
+require("uf").setup({
+  cmd = { "./node_modules/.bin/uf", "lsp" }, -- optional; "uf" on PATH by default
+  format_on_save = true,                     -- optional; off by default
+})
+```
+
+A buffer gets a client when its filetype is `javascript` or `javascriptreact` and a
+`uf.config.js` is found in or above its directory; the server starts in that
+directory. Fix all is
+`vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })`.
+The README has the `vim.lsp.config` form for a setup that already uses it.
+
+## Vim
+
+[`editors/vim/uf.vim`](https://github.com/ubugeeei-prod/uf/tree/main/editors/vim),
+a registration for [vim-lsp](https://github.com/prabirshrestha/vim-lsp):
+
+```vim
+Plug 'prabirshrestha/vim-lsp'
+source /path/to/uf/editors/vim/uf.vim
+```
+
+vim-lsp starts a server in Vim's working directory, so start Vim from the project
+root, or set `let g:uf_cd_to_root = 1` before the `source` line, which starts the
+server through `/bin/sh -c 'cd <root> && exec uf lsp'`. `g:uf_executable` names a
+different binary. Format on save is a commented-out autocommand at the bottom of
+the file; restart with `:LspStopServer uf` and reopen the file.
+
+## Helix
+
+[`editors/helix/languages.toml`](https://github.com/ubugeeei-prod/uf/tree/main/editors/helix),
+copied into the project or merged into `~/.config/helix/languages.toml`:
+
+```sh
+mkdir -p .helix && cp path/to/uf/editors/helix/languages.toml .helix/languages.toml
+```
+
+It replaces Helix's default servers for JavaScript and JSX with `uf`, roots them at
+`uf.config.js`, and formats on write. Restart with `:lsp-restart`.
+
+## Emacs
+
+[`editors/emacs/uf.el`](https://github.com/ubugeeei-prod/uf/tree/main/editors/emacs),
+for Eglot, built into Emacs 29, or lsp-mode:
+
+```elisp
+(add-to-list 'load-path "/path/to/uf/editors/emacs")
+(require 'uf)
+```
+
+Then `M-x uf-start` in a file inside a uf project. `uf.el` makes a directory with a
+`uf.config.js` a project.el project, which is what starts Eglot's server in the
+right directory. `uf-executable` names a different binary; restart with
+`M-x eglot-reconnect`.
+
+## Zed
+
+Not working. [`editors/zed`](https://github.com/ubugeeei-prod/uf/tree/main/editors/zed)
+holds the extension manifest, and a Zed extension that provides a language server
+also needs a Rust half compiled to WebAssembly, which is not written
+([#977](https://github.com/ubugeeei-prod/uf/issues/977)). Meanwhile `uf fmt`,
+`uf lint` and `uf check` run as tasks from Zed's terminal.
+
+## Where to go next
+
+[Build a reading list](/guide/tutorial) is next: one application end to end,
+written with the server's findings in front of you.
+[Formatting and linting](/guide/format) is where those findings and the
+formatting come from, and [Type checking](/guide/check) is the half an editor
+does not show yet.

@@ -62,10 +62,13 @@ Once the Rust half exists, `uf lsp` answers exactly this much, and
   `"formatter": "language_server"` for JavaScript in Zed's settings.
 * **Quick fixes** and a **fix-all** action (`source.fixAll.uf`).
 * **Hover**: the rule behind a diagnostic, what an import specifier names, what
-  a rule id in a suppression comment means.
+  a rule id in a suppression comment means, and a key of `uf.config.js`.
+* **Completion** in `uf.config.js`: the keys valid at the cursor with their
+  documentation and type, the values of a key whose type is a fixed set, and
+  a tool spec's names and, after `@`, its versions.
 
-Not go-to-definition, rename, references, completion, or the type at a
-position. `uf lsp` advertises none of them.
+Not go-to-definition, rename, references, completion in any other file, or the
+type at a position. `uf lsp` advertises none of them.
 
 ## Meanwhile
 

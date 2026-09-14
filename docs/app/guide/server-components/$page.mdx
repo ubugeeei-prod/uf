@@ -17,6 +17,13 @@ anything smaller than a route, and that is written down here rather than left
 for you to discover by measuring `dist/`.
 </div>
 
+**What you will be able to do:** mark a client boundary, read what the module
+graph decided, know what reaches the client bundle and what stays on the server,
+and know what uf reports and where `uf lint` fits.
+
+**What you need first:** a project with routes — [Routing](/guide/routing) — and
+[Rendering modes](/guide/rendering) for where a document comes from.
+
 ## The current contract
 
 Routes render as React Server Components by default. The table says what that
@@ -286,9 +293,16 @@ of a server component's code reaches the browser.
 - **Inline `"use server"` closures**, which have no export name to reference.
 - **Intercepting routes**, which need the router that resolves routes from their
   modules: under React Server Components an intercepted URL is an ordinary
-  navigation to the page it names.
+  navigation to the page it names
+  ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)).
 - **`uf build` failing on the import chain** that put server-only code into a
   client module; [#252](https://github.com/ubugeeei-prod/uf/issues/252) tracks
   it.
 
 [What uf does not do](/guide/scope) lists these beside every other gap.
+
+## Where to go next
+
+[Async React](/guide/async-react) is next: Suspense, transitions and optimistic
+UI, and what a reader sees while work is unfinished. [Server
+actions](/guide/server-actions) is the other half of the server boundary.

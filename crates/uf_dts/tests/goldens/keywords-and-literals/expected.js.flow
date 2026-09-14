@@ -1,0 +1,18 @@
+export type Unknown = mixed;
+export type Never = empty;
+export type Undefined = void;
+export type Void = void;
+export type Nullish = null | void;
+export type AnyObject = interface {};
+export type NonNullish = $NonMaybeType<mixed>;
+export type NotNull<out T> = $NonMaybeType<T>;
+export type AutocompletedString = "NFC" | "NFD" | $NonMaybeType<string>;
+export type Primitive = string | number | boolean | bigint | symbol;
+export type Literals = "a" | "b" | 1 | -1 | 1.5 | 10n | -10n | true | false | "plain";
+export type Escaped = "quote \" and \\ backslash";
+export type Mixed = Array<string | number> & interface { readonly tag: "x"; };
+declare export const version: "4.6.5";
+declare export const answer: 42;
+declare export const sym: unique symbol;
+declare export let loose: any;
+declare export var untyped: any;

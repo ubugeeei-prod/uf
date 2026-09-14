@@ -2223,6 +2223,12 @@ fn lsp_initialize_returns_native_capabilities() {
         stdout.contains(r#""codeActionKinds":["quickfix","source.fixAll.uf"]"#),
         "{stdout}"
     );
+    // Completion, which `uf.config.js` answers: `"` opens a value or a quoted
+    // key, and `@` separates a tool from its version.
+    assert!(
+        stdout.contains(r#""completionProvider":{"triggerCharacters":["\"","@"]}"#),
+        "{stdout}"
+    );
     // `diagnosticProvider` is the *pull* model, where the editor asks. uf
     // pushes `textDocument/publishDiagnostics` instead, which is a
     // notification and has no capability to advertise. Advertising a pull
@@ -2511,6 +2517,72 @@ fn hover_at(id: u64, uri: &str, line: u64, character: u64) -> String {
     framed(&format!(
         r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/hover","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":{line},"character":{character}}}}}}}"#
     ))
+}
+
+fn completion_at(id: u64, uri: &str, line: u64, character: u64) -> String {
+    framed(&format!(
+        r#"{{"jsonrpc":"2.0","id":{id},"method":"textDocument/completion","params":{{"textDocument":{{"uri":"{uri}"}},"position":{{"line":{line},"character":{character}}}}}}}"#
+    ))
+}
+
+/// Completion in `uf.config.js`, over the wire: the keys valid at the cursor
+/// with the schema's own documentation, the members of a string union inside
+/// its quotes, and nothing at all for a file that is not a config.
+#[test]
+fn lsp_completes_uf_config_js_from_the_config_schema() {
+    let uri = "file:///project/uf.config.js";
+    let source = "export default defineConfig({\n  fmt: { quotes: \"\" },\n  te\n});\n";
+    let messages = lsp_session(&[
+        did_open(uri, source),
+        // After the half-typed `te`.
+        completion_at(1, uri, 2, 4),
+        // Between the quotes of `quotes: ""`.
+        completion_at(2, uri, 1, 18),
+        did_open("file:///project/app.js", "// @flow\nconst a = \"\";\n"),
+        completion_at(3, "file:///project/app.js", 1, 11),
+        framed(r#"{"jsonrpc":"2.0","method":"exit"}"#),
+    ]);
+
+    let keys = answer(&messages, 1)["result"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a list of keys in:\n{messages:#?}"));
+    let test = keys
+        .iter()
+        .find(|item| item["label"] == "test")
+        .unwrap_or_else(|| panic!("`test` is offered: {keys:#?}"));
+    assert_eq!(test["kind"], 10);
+    assert_eq!(test["detail"], "{ … }");
+    assert_eq!(test["textEdit"]["newText"], "test: ");
+    assert_eq!(
+        test["textEdit"]["range"],
+        serde_json::json!({
+            "start": { "line": 2, "character": 2 },
+            "end": { "line": 2, "character": 4 },
+        })
+    );
+    // Written already, so not offered again.
+    assert!(!keys.iter().any(|item| item["label"] == "fmt"), "{keys:#?}");
+    let ignore = keys
+        .iter()
+        .find(|item| item["label"] == "ignore")
+        .unwrap_or_else(|| panic!("`ignore` is offered: {keys:#?}"));
+    assert_eq!(ignore["documentation"]["kind"], "markdown");
+    assert!(
+        ignore["documentation"]["value"]
+            .as_str()
+            .is_some_and(|text| text.contains("Paths no command walks into")),
+        "{ignore:#?}"
+    );
+
+    let values: Vec<&str> = answer(&messages, 2)["result"]
+        .as_array()
+        .unwrap_or_else(|| panic!("a list of values in:\n{messages:#?}"))
+        .iter()
+        .filter_map(|item| item["label"].as_str())
+        .collect();
+    assert_eq!(values, ["single", "double"]);
+
+    assert_eq!(answer(&messages, 3)["result"], serde_json::Value::Null);
 }
 
 /// The whole point of a code action: an edit that, applied, fixes the thing.

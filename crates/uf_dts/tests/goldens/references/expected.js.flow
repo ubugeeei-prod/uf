@@ -1,0 +1,4 @@
+
+import type { Ambient } from "./globals.d.ts.flow"; import { ambientCounter } from "./globals.d.ts.flow";
+declare export function read(path: string): Uint8Array;
+declare export function ambient(): Ambient;

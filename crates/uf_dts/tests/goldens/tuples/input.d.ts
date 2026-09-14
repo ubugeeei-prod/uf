@@ -1,0 +1,10 @@
+export type Pair = [string, number];
+export type Named = [first: string, second?: number];
+export type Optional = [string, number?];
+export type Spread<T extends unknown[]> = [head: string, ...tail: T];
+export type ArrayRest = [string, ...number[]];
+export type NamedArrayRest = [head: string, ...tail: boolean[]];
+export type Frozen = readonly [string, number];
+export type FrozenList = readonly string[];
+export type List = string[];
+export type Nested = [[string], { inner: [number] }];

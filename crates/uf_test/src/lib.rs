@@ -116,8 +116,8 @@ pub use crate::runner_plan::{
     TestPerformanceTarget, TestRuntime, TestScheduler,
 };
 pub use crate::schedule::{
-    COLD_NANOS_PER_BYTE, ScheduleBasis, ScheduleEntry, cold_weight_micros, makespan_micros,
-    schedule_files,
+    COLD_NANOS_PER_BYTE, MIN_WORKER_START_MICROS, ScheduleBasis, ScheduleEntry, auto_workers,
+    cold_weight_micros, makespan_micros, schedule_files,
 };
 pub use crate::timings::{
     CACHE_DIRECTORY, MAX_TIMING_ENTRIES, MAX_TIMING_MICROS, MAX_TIMINGS_BYTES, TIMINGS_FILE_NAME,

@@ -25,6 +25,47 @@ fn a_valid_document_is_read() {
 }
 
 #[test]
+fn a_document_from_before_the_start_up_was_recorded_still_reads() {
+    let (timings, audit) = parse(r#"{"version": 1, "files": {"src/a.test.js": 1234}}"#).unwrap();
+
+    assert_eq!(timings.worker_start_micros(), None);
+    assert!(audit.is_clean());
+}
+
+#[test]
+fn the_worker_start_up_survives_a_round_trip() {
+    let mut timings = TestTimings::new();
+    timings.record("src/a.test.js", 1234);
+    timings.record_worker_start(41_500);
+
+    let (back, audit) = parse(&timings.to_json()).unwrap();
+
+    assert_eq!(back.worker_start_micros(), Some(41_500));
+    assert_eq!(back.get("src/a.test.js"), Some(1234));
+    assert!(audit.is_clean());
+}
+
+#[test]
+fn an_unbelievable_worker_start_up_is_dropped_rather_than_trusted() {
+    for value in ["-1", "1.5", "\"fast\"", "null", "{}", "86400000001"] {
+        let text = format!(r#"{{"version": 1, "workerStartMicros": {value}, "files": {{}}}}"#);
+        let (timings, audit) = parse(&text).unwrap();
+
+        assert_eq!(timings.worker_start_micros(), None, "{value}");
+        let rejected = usize::from(value != "null");
+        assert_eq!(audit.rejected_durations, rejected, "{value}");
+    }
+}
+
+#[test]
+fn recording_a_worker_start_up_clamps_it() {
+    let mut timings = TestTimings::new();
+    timings.record_worker_start(u64::MAX);
+
+    assert_eq!(timings.worker_start_micros(), Some(MAX_TIMING_MICROS));
+}
+
+#[test]
 fn an_unknown_version_is_rejected_whole() {
     let error = parse(r#"{"version": 99, "files": {}}"#).unwrap_err();
     assert!(matches!(

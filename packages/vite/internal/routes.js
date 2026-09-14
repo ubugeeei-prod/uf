@@ -39,24 +39,44 @@ export const RESERVED = Object.freeze({
  * spelling one router refuses and the other serves as a URL is exactly the
  * disagreement that made this necessary.
  *
- * `(.)photo` is Next.js's intercepting route. `@team`, its parallel-route
- * slot, was on this list too: until #267 both fell through to "a literal URL
- * segment", so `@team` became `/@team`, `(.)photo` became `/(.)photo` — the
- * test for a `(group)` is that the segment *ends* in `)` — and the generated
- * `RoutePath` union contained them, so `route("/@team", …)` type checked. A
+ * Until #267 neither `@team` nor `(.)photo` meant anything to this scan, so
+ * both fell through to "a literal URL segment": `@team` became `/@team`,
+ * `(.)photo` became `/(.)photo` — the test for a `(group)` is that the segment
+ * *ends* in `)` — and the generated `RoutePath` union contained them. A
  * convention served as nonsense is worse than one that is refused, because the
  * project looks like it works.
  *
- * A slot is a route this router serves now; see {@link scanRoutes}. An
- * interception is not: it needs a navigation to carry where it came from,
- * which is a change to what a navigation is rather than to this scan.
+ * Both are routes this router serves now: a slot everywhere, and an
+ * interception inside a slot; see {@link INTERCEPTION_SEGMENTS}. What is left
+ * here is what is spelled like an interception and cannot be one — a marker
+ * that climbs nowhere, or a marker with no URL segment after it.
  */
 export const UNSUPPORTED_SEGMENTS = Object.freeze([
+  "(.)(.)photo",
+  "(.)(..)photo",
+  "(...)(..)photo",
+  "(....)photo",
+  "(.)(gallery)",
+  "(.)@photo",
+]);
+
+/**
+ * Directory names this router serves inside a `@slot` and refuses outside one:
+ * intercepting routes.
+ *
+ * The same list as `uf_router::RouteSegment::SLOT_ONLY_EXAMPLES`, held to it by
+ * `crates/uf_router/tests/reserved_names.rs`. A second list rather than more
+ * entries on {@link UNSUPPORTED_SEGMENTS}, because the refusal is a different
+ * sentence: these are spelled correctly and are in the wrong place, and telling
+ * somebody to rename a correct directory is the worse of the two mistakes.
+ */
+export const INTERCEPTION_SEGMENTS = Object.freeze([
   "(.)photo",
   "(..)photo",
   "(...)photo",
   "(..)(..)photo",
   "(..)(..)(..)photo",
+  "(.)[id]",
 ]);
 
 /**
@@ -183,6 +203,12 @@ const MAX_DEPTH = 32;
  * renders nothing, which is what an unaddressed slot on a soft navigation does
  * in Next.js too.
  *
+ * `intercepts` is what the slot renders for a client navigation that starts on
+ * a page it is on and reaches the URL each entry names — the pages under an
+ * interception directory such as `@modal/(.)photo/[id]/`, each at the URL it
+ * stands in for. A list of its own, because nothing that matches `routes`
+ * may reach one: the server renders the ordinary page for that URL, always.
+ *
  * @typedef {object} Slot
  * @property {string} name the slot's name, without the `@`
  * @property {number} above how many of the route's layouts are outside it
@@ -191,6 +217,8 @@ const MAX_DEPTH = 32;
  * @property {?{above: number, module: string}} defaultErrorBoundary the
  *   `$error.js` boundary that catches the default page in the browser
  * @property {ReadonlyArray<SlotRoute>} routes what the slot may render, by URL
+ * @property {ReadonlyArray<SlotRoute>} intercepts what the slot renders when a
+ *   client navigation is intercepted, by the URL it stands in for
  */
 
 /**
@@ -311,16 +339,17 @@ const MAX_DEPTH = 32;
  * Directories that do not exist yield an empty table rather than an error: a
  * library project has no router root, and that is not a mistake.
  *
- * Throws for a directory named the way an intercepting route is spelled: uf
- * does not have interception, and the spelling used to become a literal URL
- * segment. See {@link UNSUPPORTED_SEGMENTS}.
- *
  * A `@slot` directory is a parallel route and is scanned; see {@link Slot}. It
- * throws for the three ways one can be written without being renderable: a
- * slot on a segment with no layout of its own, a `$default.js` that is not
- * directly inside a slot, a not-found boundary or handler inside a slot, and
+ * throws for the ways one can be written without being renderable: a slot on a
+ * segment with no layout of its own, a `$default.js` that is not directly
+ * inside a slot, a not-found boundary or handler inside a slot, and
  * boundary-like files with names uf does not open. Each is a file the router
  * would otherwise never open, which is the failure #267 is about.
+ *
+ * An interception directory — `(.)photo` — is scanned inside a slot, into that
+ * slot's `intercepts`, and throws everywhere it cannot be one: outside a slot,
+ * spelled so nothing reads it ({@link UNSUPPORTED_SEGMENTS}), climbing past the
+ * router root, or standing in for a URL no page serves.
  *
  * @param {string} appRoot absolute path of the router root (`app/`)
  * @param {{target?: "web" | "native" | "ios" | "android"}} [options]
@@ -484,8 +513,10 @@ export function scanRoutes(appRoot, options = {}) {
       if (classifyRouteSegment(entry.name).kind === "slot") continue;
       // Checked before descending, and after the private-directory test for
       // the same reason `uf_router` prunes them: `app/_drafts/(.)photo/` is not
-      // a route uf would have served, so it is not one to refuse.
-      const refused = unsupportedSegmentReason(entry.name);
+      // a route uf would have served, so it is not one to refuse. This walk is
+      // everywhere a slot is not, so a correctly spelled interception is
+      // refused here too — for where it is rather than how it is written.
+      const refused = unsupportedSegmentReason(entry.name) ?? outsideSlotReason(entry.name);
       if (refused != null) {
         throw new Error(`${path.join(directory, entry.name)}: ${refused}`);
       }
@@ -546,7 +577,86 @@ export function scanRoutes(appRoot, options = {}) {
   // parallel-route trees uf does not have yet; see ubugeeei-prod/uf#267.
   notFound.sort(byPath);
   errors.sort(byPath);
+  // Last, because it is about the table rather than a directory: an
+  // intercepting page is only as good as the ordinary page that serves its URL
+  // to everybody the interception does not.
+  refuseInterceptionsWithoutPages(appRoot, routes);
   return { routes, handlers, middleware, notFound, errors };
+}
+
+/**
+ * Refuse an intercepting route whose URL no page serves.
+ *
+ * An interception renders in its slot only for a client navigation that starts
+ * on a page the slot is on. Everybody else who arrives at the URL — a reload, a
+ * shared link, a crawler, the prerender — is given the page the URL names, and
+ * with none the photo a reader opened in a modal is a 404 the moment they reload
+ * it or send it to somebody. Mirrors `uf_router`'s `check_interceptions`.
+ *
+ * Each slot record is visited once, because a record is shared by every route
+ * under the segment that declares it.
+ */
+function refuseInterceptionsWithoutPages(appRoot, routes) {
+  const seen = new Set();
+  const visit = (slots) => {
+    for (const slot of slots) {
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      for (const intercepting of slot.intercepts ?? []) {
+        if (!routes.some((route) => servesEveryUrlOf(route.path, intercepting.path))) {
+          const directories = intercepting.path
+            .split("/")
+            .filter((part) => part !== "")
+            .map((part) =>
+              part.startsWith(":") && part.endsWith("*")
+                ? `[...${part.slice(1, -1)}]`
+                : part.startsWith(":")
+                  ? `[${part.slice(1)}]`
+                  : part,
+            );
+          const ordinary = path.join(appRoot, ...directories, `${RESERVED.page}.js`);
+          throw new Error(
+            `${intercepting.page}: this intercepting route stands in for \`${intercepting.path}\` ` +
+              "when a client navigation reaches it, and no page serves " +
+              `\`${intercepting.path}\`, so a reload of that URL, a link to it and the prerender ` +
+              `would all be a 404. Add \`${ordinary}\`, the page everybody who does not arrive by ` +
+              "that navigation gets, or remove the interception.",
+          );
+        }
+        visit(intercepting.slots);
+      }
+      for (const route of slot.routes) {
+        visit(route.slots);
+      }
+    }
+  };
+  for (const route of routes) {
+    visit(route.slots ?? []);
+  }
+}
+
+/**
+ * Whether every URL the route path `intercepted` matches is one `ordinary`
+ * serves: segment by segment, the way the runtime's matcher reads both. A
+ * static segment serves only itself, a parameter any one segment but not a
+ * catch-all's many, and a catch-all whatever is left as long as something is.
+ * Mirrors `uf_router`'s `serves_every_url_of`.
+ */
+function servesEveryUrlOf(ordinary, intercepted) {
+  const theirs = ordinary.split("/").filter((part) => part !== "");
+  const ours = intercepted.split("/").filter((part) => part !== "");
+  for (let index = 0; index < theirs.length; index += 1) {
+    const segment = theirs[index];
+    if (segment.startsWith(":") && segment.endsWith("*")) return ours.length > index;
+    const other = ours[index];
+    if (other === undefined) return false;
+    const otherIsCatchAll = other.startsWith(":") && other.endsWith("*");
+    const serves = segment.startsWith(":")
+      ? !otherIsCatchAll
+      : !other.startsWith(":") && other === segment;
+    if (!serves) return false;
+  }
+  return ours.length === theirs.length;
 }
 
 /**
@@ -600,6 +710,12 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
   }
 
   const routes = [];
+  // What the slot renders *instead of* the page a client navigation reaches:
+  // the pages under an interception directory. A list of its own rather than
+  // more `routes`, because `routes` is matched against every URL the segment
+  // renders — by the server as much as the browser — and nothing but a
+  // navigation that starts on a page this slot is on may render one of these.
+  const intercepts = [];
   const defaultPage = findModule(directory, RESERVED.default, PAGE_EXTENSIONS, target);
   const defaultError = findModule(directory, RESERVED.error, MODULE_EXTENSIONS, target);
 
@@ -611,6 +727,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
     templates,
     errorBoundary,
     atSlotRoot,
+    intercepting,
     currentDepth,
   ) => {
     if (currentDepth > MAX_DEPTH) return;
@@ -710,8 +827,11 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
 
     const page = findModule(current, RESERVED.page, PAGE_EXTENSIONS, target);
     if (page) {
+      // Under an interception directory the path is the URL the page stands in
+      // for — `routeFromSegments` applies the climb — and the page goes in the
+      // slot's other list.
       const { path: routePath, params } = routeFromSegments(currentSegments);
-      routes.push({
+      (intercepting ? intercepts : routes).push({
         path: routePath,
         params,
         page,
@@ -729,9 +849,18 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
       if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
       const classified = classifyRouteSegment(entry.name);
       if (classified.kind === "slot") continue;
-      const refused = unsupportedSegmentReason(entry.name);
-      if (refused != null) {
-        throw new Error(`${path.join(current, entry.name)}: ${refused}`);
+      if (classified.kind === "interception") {
+        // Inside a slot, so the place is right. What is left to refuse is a
+        // spelling nothing reads and a climb past the router root, and the
+        // depth is what the directories above it really contribute, climbs
+        // applied.
+        const depthHere = routeFromSegments(currentSegments)
+          .path.split("/")
+          .filter((part) => part !== "").length;
+        const refused = unsupportedSegmentReason(entry.name) ?? climbReason(entry.name, depthHere);
+        if (refused != null) {
+          throw new Error(`${path.join(current, entry.name)}: ${refused}`);
+        }
       }
       walkSlot(
         path.join(current, entry.name),
@@ -741,24 +870,30 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
         nextTemplates,
         nextErrorBoundary,
         false,
+        intercepting || classified.kind === "interception",
         currentDepth + 1,
       );
     }
   };
 
+  // The slot's own directory is in the segments from here down. It adds nothing
+  // to a path, and it is how `routeFromSegments` knows that an interception
+  // below it is inside a slot.
   walkSlot(
     directory,
-    segments,
+    [...segments, directoryName],
     [],
     [],
     [],
     defaultError == null ? null : { above: 0, module: defaultError },
     true,
+    false,
     depth + 1,
   );
 
   const byPath = (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
   routes.sort(byPath);
+  intercepts.sort(byPath);
   return {
     name,
     above,
@@ -766,6 +901,7 @@ function scanSlot(parent, directoryName, name, segments, ownLayout, above, targe
     defaultMdx: defaultPage != null && defaultPage.endsWith(".mdx"),
     defaultErrorBoundary: defaultError == null ? null : { above: 0, module: defaultError },
     routes,
+    intercepts,
   };
 }
 
@@ -848,10 +984,12 @@ export function classifyRouteSegment(segment) {
 /**
  * The `(.)`-style prefix of `segment` and the route after it, or `null`.
  *
- * One or more of `(.)`, `(..)` and `(...)` — every marker Next.js defines;
- * `(..)(..)` is two of them rather than a fourth — followed by something for
- * them to intercept. A marker with nothing after it names no route and is the
- * `(group)` it has always been.
+ * One or more parenthesised runs of dots, followed by something for them to
+ * intercept. Which runs *mean* anything is {@link interceptionClimb}'s question
+ * and deliberately not this one: `(....)photo` is the shape of an interception
+ * written by somebody who miscounted, and reading it as a literal URL segment is
+ * how the miscount becomes a page at `/(....)photo`. A marker with nothing after
+ * it names no route and is the `(group)` it has always been.
  */
 function interceptionMarker(segment) {
   let consumed = 0;
@@ -859,7 +997,7 @@ function interceptionMarker(segment) {
     const close = segment.indexOf(")", consumed);
     if (close === -1) break;
     const inner = segment.slice(consumed + 1, close);
-    if (inner.length === 0 || inner.length > 3 || /[^.]/.test(inner)) break;
+    if (inner.length === 0 || /[^.]/.test(inner)) break;
     consumed = close + 1;
   }
   if (consumed === 0 || consumed === segment.length) return null;
@@ -867,26 +1005,122 @@ function interceptionMarker(segment) {
 }
 
 /**
- * Why uf refuses a directory named `segment`, or `null` when it serves it.
+ * How far a marker climbs, in URL segments: a number for `(.)` and `(..)`
+ * repeated, `"root"` for `(...)`, and `null` for a marker uf does not read.
+ *
+ * Mirrors `uf_router::interception_climb`. `(.)` and `(...)` only as the whole
+ * marker, because each already says where the climb ends; `(..)` as many times
+ * as there are levels to climb.
+ *
+ * @param {string} marker
+ * @returns {number | "root" | null}
+ */
+export function interceptionClimb(marker) {
+  const runs = marker.match(/\(\.+\)/g) ?? [];
+  if (runs.length === 0 || runs.join("") !== marker) return null;
+  if (runs.length === 1 && runs[0] === "(.)") return 0;
+  if (runs.length === 1 && runs[0] === "(...)") return "root";
+  return runs.every((run) => run === "(..)") ? runs.length : null;
+}
+
+/**
+ * The interception a classified directory name is, when it is one uf reads: a
+ * marker that climbs, with a URL segment after it to stand in for.
+ *
+ * @returns {{climb: number | "root", route: {kind: string, name: string}} | null}
+ */
+function readInterception(classified) {
+  if (classified.kind !== "interception") return null;
+  const climb = interceptionClimb(classified.marker);
+  const route = classifyRouteSegment(classified.route);
+  if (climb == null) return null;
+  if (route.kind !== "literal" && route.kind !== "param" && route.kind !== "catchAll") {
+    return null;
+  }
+  return { climb, route };
+}
+
+/**
+ * Why uf refuses a directory named `segment` wherever it is, or `null` when it
+ * serves it somewhere.
  *
  * The message is this router's own rather than `uf_router`'s, because the two
  * are reached differently: the Rust one fails `uf build` and `uf dev` through
  * the route manifest, and this one fails a project driving Vite itself. Both
- * say the same two things — which feature the spelling belongs to, and that it
- * is refused rather than served as a URL.
+ * say the same things — what is wrong with the spelling, and that it is refused
+ * rather than served as a URL.
+ *
+ * A correctly spelled interception has two more refusals, about where it is
+ * rather than how it is written: {@link outsideSlotReason} and `climbReason`.
  */
 export function unsupportedSegmentReason(segment) {
   const classified = classifyRouteSegment(segment);
-  if (classified.kind === "interception") {
+  if (classified.kind !== "interception") return null;
+  const { marker, route } = classified;
+  if (interceptionClimb(marker) == null) {
     return (
-      `\`${segment}\` is an intercepting route, and uf does not have interception — a navigation ` +
-      "carries where it is going and not where it came from, so nothing here could match " +
-      `\`${classified.route}\`. It is refused rather than served as the URL segment ` +
-      `\`/${segment}\`, which is what it used to become. Move the route to the path it belongs ` +
-      "at, or rename the directory. https://github.com/ubugeeei-prod/uf/issues/267"
+      `\`${segment}\` is spelled like an intercepting route and \`${marker}\` is not a marker uf ` +
+      "reads. The markers are `(.)` for the level the directory is at, `(..)` for one above it — " +
+      "repeated for each further level — and `(...)` for the router root. It is refused rather " +
+      `than served as the URL segment \`/${segment}\`, which is what it used to become. Spell the ` +
+      "marker as one of those and put the directory inside a `@slot`, or rename it to the literal " +
+      `segment \`${route}\`. https://github.com/ubugeeei-prod/uf/issues/267`
+    );
+  }
+  if (readInterception(classified) == null) {
+    return (
+      `\`${segment}\` is spelled like an intercepting route, and \`${route}\` after the marker is ` +
+      "not a URL segment, so there is no path for it to intercept: an interception names the " +
+      `segment it stands in for, the way \`${marker}photo\` and \`${marker}[id]\` do. It is ` +
+      `refused rather than served as the URL segment \`/${segment}\`, which is what it used to ` +
+      "become. Put a segment name after the marker, or rename the directory. " +
+      "https://github.com/ubugeeei-prod/uf/issues/267"
     );
   }
   return null;
+}
+
+/**
+ * Why uf refuses the intercepting route `segment` outside a `@slot`, where it
+ * would serve it inside one; `null` for any other directory name.
+ *
+ * A sentence of its own rather than another case of
+ * {@link unsupportedSegmentReason}, because this one is spelled correctly and
+ * placed wrongly, and telling its author to rename it would be wrong.
+ */
+export function outsideSlotReason(segment) {
+  const classified = classifyRouteSegment(segment);
+  if (readInterception(classified) == null) return null;
+  return (
+    `\`${segment}\` is an intercepting route, and an intercepting route renders into a \`@slot\`: ` +
+    "it is what a client navigation shows in a named place instead of the page its URL names, " +
+    "and outside a slot there is no named place for it to show in. It is refused rather than " +
+    `served as the URL segment \`/${segment}\`, which is what it used to become. Move it inside a ` +
+    "slot directory beside the layout that renders the slot, or rename the directory to the " +
+    `literal segment \`${classified.route}\`. https://github.com/ubugeeei-prod/uf/issues/267`
+  );
+}
+
+/**
+ * Why an interception `depth` URL segments below the router root climbs past
+ * it, or `null` when it does not. Mirrors `RouteSegment::climb_reason`.
+ */
+function climbReason(segment, depth) {
+  const read = readInterception(classifyRouteSegment(segment));
+  if (read == null || read.climb === "root" || read.climb <= depth) return null;
+  const climbs = read.climb === 1 ? "one level" : `${read.climb} levels`;
+  const sits =
+    depth === 0
+      ? "at the router root"
+      : depth === 1
+        ? "one level below it"
+        : `${depth} levels below it`;
+  return (
+    `\`${segment}\` climbs ${climbs} from the directory it is in, which is ${sits}, so the URL it ` +
+    "intercepts would be above the router root, and there is no such URL. It is refused rather " +
+    "than read as a climb to the root. Remove a `(..)`, or write `(...)` to intercept from the " +
+    "router root. https://github.com/ubugeeei-prod/uf/issues/267"
+  );
 }
 
 /**
@@ -896,32 +1130,48 @@ export function unsupportedSegmentReason(segment) {
  * captures one segment, and `[...name]` captures the rest of the path. A
  * `@slot` contributes nothing either — it is a named place a route renders
  * into, matched against the URL of the segment that declares it — so a slot's
- * pages are matched against ordinary paths and add none of their own. An
- * interception never reaches here: {@link scanRoutes} refuses the directory
- * before it walks into it.
+ * pages are matched against ordinary paths and add none of their own.
+ *
+ * An intercepting route is where "one directory, one segment" stops holding.
+ * Inside a slot, `(..)photo` takes a segment *away* before it adds its own, so
+ * `["feed", "@modal", "(..)photo", "[id]"]` is `/photo/:id`: the URL the
+ * interception stands in for. That is `uf_router`'s `path_segments`, spelled
+ * again. Wherever an interception cannot be — outside a slot, climbing past the
+ * root, written so nothing reads it — this throws the refusal
+ * {@link scanRoutes} would give the directory rather than build a URL from it.
  */
 export function routeFromSegments(segments) {
-  const params = [];
-  const out = [];
+  let out = [];
+  let insideSlot = false;
   for (const segment of segments) {
     const classified = classifyRouteSegment(segment);
-    if (classified.kind === "group" || classified.kind === "slot") continue;
-    if (classified.kind === "catchAll") {
-      params.push({ name: classified.name, catchAll: true });
-      out.push(`:${classified.name}*`);
+    if (classified.kind === "group") continue;
+    if (classified.kind === "slot") {
+      insideSlot = true;
       continue;
     }
-    if (classified.kind === "param") {
-      params.push({ name: classified.name, catchAll: false });
-      out.push(`:${classified.name}`);
-      continue;
-    }
+    let named = classified;
     if (classified.kind === "interception") {
-      throw new Error(unsupportedSegmentReason(segment));
+      const refused =
+        unsupportedSegmentReason(segment) ??
+        (insideSlot ? climbReason(segment, out.length) : outsideSlotReason(segment));
+      if (refused != null) {
+        throw new Error(refused);
+      }
+      const read = readInterception(classified);
+      out = read.climb === "root" ? [] : out.slice(0, out.length - read.climb);
+      named = read.route;
     }
-    out.push(segment);
+    if (named.kind === "catchAll") {
+      out.push({ spelling: `:${named.name}*`, param: { name: named.name, catchAll: true } });
+    } else if (named.kind === "param") {
+      out.push({ spelling: `:${named.name}`, param: { name: named.name, catchAll: false } });
+    } else {
+      out.push({ spelling: named.name, param: null });
+    }
   }
-  const routePath = out.length === 0 ? "/" : `/${out.join("/")}`;
+  const routePath = out.length === 0 ? "/" : `/${out.map((entry) => entry.spelling).join("/")}`;
+  const params = out.flatMap((entry) => (entry.param == null ? [] : [entry.param]));
   return { path: routePath, pattern: routePath.replace(/:(\w+)\*/g, "*$1"), params };
 }
 
@@ -1101,18 +1351,16 @@ export function routesModuleSource(table, options = {}) {
     boundary == null
       ? "null"
       : `{ above: ${boundary.above}, module: () => import(${JSON.stringify(boundary.module)}) }`;
-  const slotId = (slot) => {
-    let id = slotIds.get(slot);
-    if (id !== undefined) {
-      return id;
-    }
-    const routes = slot.routes.map((route) => {
-      slotFiles.add(route.page);
-      for (const file of route.layouts) slotFiles.add(file);
-      for (const entry of route.loading ?? []) slotFiles.add(entry.module);
-      const nested = route.slots.map(slotId);
-      if (route.errorBoundary != null) slotFiles.add(route.errorBoundary.module);
-      return `    {
+  // One route a slot may render, as source. The same shape for a slot's own
+  // routes and for its interceptions, because an intercepting page is composed
+  // exactly the way every other page in the slot is.
+  const slotRoute = (route) => {
+    slotFiles.add(route.page);
+    for (const file of route.layouts) slotFiles.add(file);
+    for (const entry of route.loading ?? []) slotFiles.add(entry.module);
+    const nested = route.slots.map(slotId);
+    if (route.errorBoundary != null) slotFiles.add(route.errorBoundary.module);
+    return `    {
       path: ${JSON.stringify(route.path)},
       params: ${JSON.stringify(route.params)},
       mdx: ${route.mdx},
@@ -1128,7 +1376,14 @@ export function routesModuleSource(table, options = {}) {
       errorBoundary: ${slotErrorBoundary(route.errorBoundary ?? null)},
       slots: [${nested.join(", ")}],
     }`;
-    });
+  };
+  const slotId = (slot) => {
+    let id = slotIds.get(slot);
+    if (id !== undefined) {
+      return id;
+    }
+    const routes = slot.routes.map(slotRoute);
+    const intercepts = (slot.intercepts ?? []).map(slotRoute);
     // After the routes, so a nested slot's `const` is already emitted.
     id = `slot${slotIds.size}`;
     slotIds.set(slot, id);
@@ -1143,6 +1398,15 @@ export function routesModuleSource(table, options = {}) {
         ? "    defaultPage: null,"
         : `    defaultPage: () => import(${JSON.stringify(slot.defaultPage)}),
     defaultFile: ${JSON.stringify(displayFile(slot.defaultPage))},`;
+    // Only when there is one, so a slot that intercepts nothing is emitted byte
+    // for byte the way it was before interception existed.
+    const intercepting =
+      intercepts.length === 0
+        ? ""
+        : `
+    intercepts: [
+${intercepts.join(",\n")}
+    ],`;
     slotDefinitions.push(`const ${id} = {
     name: ${JSON.stringify(slot.name)},
     above: ${slot.above},
@@ -1151,7 +1415,7 @@ ${fallback}
     defaultErrorBoundary: ${slotErrorBoundary(slot.defaultErrorBoundary ?? null)},
     routes: [
 ${routes.join(",\n")}
-    ],
+    ],${intercepting}
   };`);
     return id;
   };
@@ -1316,7 +1580,9 @@ function slotModuleFiles(slots) {
   for (const slot of slots) {
     if (slot.defaultPage != null) files.push(slot.defaultPage);
     if (slot.defaultErrorBoundary != null) files.push(slot.defaultErrorBoundary.module);
-    for (const route of slot.routes) {
+    // An interception's modules with the slot's own: its stylesheet is part of
+    // what the page looks like when a navigation opens it over this route.
+    for (const route of [...slot.routes, ...(slot.intercepts ?? [])]) {
       files.push(
         route.page,
         ...route.layouts,

@@ -15,6 +15,13 @@ system React itself is written in — and one fact about Flow's implementation i
 the reason a toolchain like uf can be built at all.
 </div>
 
+**What you will be able to do:** weigh Flow against TypeScript row by row — the
+ecosystem, editors, and the rows uf itself loses — and know which Flow
+constructs have no TypeScript spelling.
+
+**What you need first:** TypeScript you already write. [Why Flow](/guide/why) is
+the shorter argument this page tests.
+
 ## The rows TypeScript wins
 
 **The ecosystem.** A package on npm ships `.d.ts`. Flow reads
@@ -27,9 +34,11 @@ dependencies, this is the bill, and it does not get smaller by choosing uf.
 [`editors/`](https://github.com/ubugeeei-prod/uf/tree/main/editors) is a client
 of it. What it can do is the diagnostics it pushes when a document opens or
 changes, and what it advertises in `initialize`: `textDocument/formatting`,
-`textDocument/codeAction` (`quickfix` and `source.fixAll.uf`) and
-`textDocument/hover`. There is no rename, no go-to-definition, no
-find-references, no auto-import.
+`textDocument/codeAction` (`quickfix` and `source.fixAll.uf`),
+`textDocument/hover`, and `textDocument/completion` — which answers in
+`uf.config.js` only, from `@uniflowed/config`'s own type. There is no rename,
+no go-to-definition, no find-references, no auto-import, and no completion in
+your own modules.
 `tests/library/lsp.test.js` drives the real binary and asserts both the
 capabilities the READMEs claim and the absence of the ones they disclaim.
 
@@ -221,3 +230,9 @@ move without warning.
 The syntax argument in full is [Why Flow](/guide/why). The boundaries are
 [What uf does not do](/guide/scope). If you want the head-to-head against the
 tool you are actually using today, that is [uf compared](/guide/compare).
+
+## Where to go next
+
+[uf compared](/guide/compare) is next: uf against Next.js, Vite, Bun and
+`create-react-app`, with the rows it loses in the same tables. [What uf does not
+do](/guide/scope) is the full list of refusals and gaps.

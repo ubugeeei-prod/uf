@@ -643,7 +643,11 @@ export default defineConfig({
     // The unit is the commit and not the `(#NNN)` in its subject, which is the
     // second way this went wrong: a commit GitHub did not stamp was not
     // unmatched, it was uncounted, and `uf@0.0.0-alpha.8` shipped one while
-    // this check reported sixteen of sixteen.
+    // this check reported sixteen of sixteen. The third and fourth were about
+    // which releases it read at all (#1035): it compared versions as strings,
+    // so alpha.10 to alpha.39 sorted below alpha.4, where it begins; and CI
+    // checked out one commit and no tags, so there it read none and passed. A
+    // run that compares nothing is now a failure.
     "release:changelog": "tools/ci/changelog-covers-the-release.sh",
     "release:changelog:test": "tools/ci/test-changelog-covers.sh",
     // `npm trust` binds a name the registry already has and cannot create

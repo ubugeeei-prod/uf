@@ -11,8 +11,8 @@ use uf_config::UniflowedConfig;
 use walkdir::WalkDir;
 
 pub use crate::reserved::{
-    ReservedFile, ReservedName, ReservedRole, ReservedVariant, RouteSegment,
-    classify_reserved_file, classify_route_segment,
+    InterceptionClimb, ReservedFile, ReservedName, ReservedRole, ReservedVariant, RouteSegment,
+    classify_reserved_file, classify_route_segment, interception_climb,
 };
 
 pub const RESERVED_LAYOUT: &str = "$layout.js";
@@ -350,29 +350,60 @@ pub enum RouterError {
         /// The catch-all's parameter name, for the suggested spelling.
         parameter: String,
     },
-    /// A directory spelled the way an intercepting route is: `(.)photo`.
+    /// A directory spelled like an intercepting route that uf refuses: a
+    /// marker it does not read, an interception outside a `@slot`, or one that
+    /// climbs past the router root.
     ///
-    /// Refused rather than served, and the refusal is the whole of what
-    /// ubugeeei-prod/uf#267 asks for first. Neither this spelling nor `@team`
-    /// was one this grammar had an opinion about, so both fell through to a
-    /// literal segment: `@team` became the URL `/@team`, and `(.)photo` became
-    /// `/(.)photo`, because the test for a `(group)` is that the segment
+    /// Refused rather than served, and the refusal was the whole of what
+    /// ubugeeei-prod/uf#267 asked for first. Neither `(.)photo` nor `@team`
+    /// was a spelling this grammar had an opinion about, so both fell through
+    /// to a literal segment: `@team` became the URL `/@team`, and `(.)photo`
+    /// became `/(.)photo`, because the test for a `(group)` is that the segment
     /// *ends* in `)`. Both then appeared in the generated `RoutePath` union
     /// and in `uf inspect`, so a project migrating from Next.js got output
     /// that looked like it worked.
     ///
-    /// `@team` is a slot uf serves now. Interception is not, and this is what
-    /// is left of the refusal.
+    /// `@team` is a slot uf serves now, and `(.)photo` is an interception it
+    /// serves inside one. What is left of the refusal is the ways an
+    /// interception can be written without being one.
     ///
-    /// `reason` comes from [`RouteSegment::unsupported_reason`], so this and
-    /// `uf lint`'s `router/unsupported-segment` say the same sentence about
-    /// the same directory.
+    /// `reason` comes from [`RouteSegment::unsupported_reason`],
+    /// [`RouteSegment::outside_slot_reason`] or [`RouteSegment::climb_reason`],
+    /// so this and `uf lint`'s `router/unsupported-segment` say the same
+    /// sentence about the same directory.
     #[error("{directory}: {reason}")]
     UnsupportedRouteDirectory {
         /// The directory, as it is written on disk.
         directory: Utf8PathBuf,
         /// What is wrong with it and what to do instead.
         reason: String,
+    },
+    /// An intercepting route whose URL no page serves.
+    ///
+    /// An interception renders in its slot only for a client navigation that
+    /// starts on a page the slot is on. Everybody else who arrives at the URL —
+    /// a reload, a shared link, a crawler, the prerender — is given the page
+    /// the URL names, and here there is none: the photo a reader opened in a
+    /// modal would be a 404 the moment they reloaded it or sent it to somebody,
+    /// and nothing would say so until then. So it is refused where the file is.
+    ///
+    /// "Serves" is every URL the interception matches, not a path spelled the
+    /// same way: `app/docs/[...path]/$page.js` serves what
+    /// `app/docs/@panel/(.)[slug]/$page.js` intercepts, and
+    /// `app/photo/[id]/$page.js` does not serve `(.)[...rest]`.
+    #[error(
+        "{page}: this intercepting route stands in for `{intercepts}` when a client navigation \
+         reaches it, and no page serves `{intercepts}`, so a reload of that URL, a link to it and \
+         the prerender would all be a 404. Add `{ordinary}`, the page everybody who does not \
+         arrive by that navigation gets, or remove the interception."
+    )]
+    InterceptionWithoutPage {
+        /// The intercepting `$page.js`, as it is written on disk.
+        page: Utf8PathBuf,
+        /// The URL it intercepts, as a route path: `/feed/photo/:id`.
+        intercepts: String,
+        /// Where the page that serves that URL would go.
+        ordinary: Utf8PathBuf,
     },
     /// A file name that looks like a route template but is not one uf opens.
     ///
@@ -769,7 +800,177 @@ fn preflight_router_root(app_root: &Utf8Path, target: RouteTarget) -> Result<(),
     // routes uf renders, so what is wrong with a slot has to be said here
     // rather than discovered as a missing prop at render time.
     check_slots(app_root, target)?;
+    // Last, because it is about the tree rather than a directory: an
+    // intercepting page is only as good as the ordinary page that serves its
+    // URL to everybody the interception does not.
+    check_interceptions(app_root, target)?;
     Ok(())
+}
+
+/// Every page under an interception has an ordinary page that serves its URL,
+/// and its URL is one a request can reach.
+///
+/// A walk of its own rather than a question for [`discover_routes`], because
+/// the preflight is shared with [`discover_server_modules`] and the two views
+/// have to refuse the same trees. It collects the route path of every ordinary
+/// page for `target` and of every page under an interception, and asks of each
+/// of the second whether some page in the first serves every URL it matches.
+///
+/// A catch-all that is not last in an intercepted URL is refused the way it is
+/// for an ordinary page, as [`RouterError::NonTerminalCatchAll`]: nothing could
+/// ever match it. A climb is what can put one there — `(.)edit` in a slot under
+/// `docs/[...path]/` stands in for `/docs/:path*/edit` — which is why this is
+/// asked of the path rather than left to the directory names.
+///
+/// Private directories are pruned for the reason every other walk here prunes
+/// them.
+fn check_interceptions(app_root: &Utf8Path, target: RouteTarget) -> Result<(), RouterError> {
+    let walk = WalkDir::new(app_root)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !entry.file_type().is_dir()
+                || !entry.file_name().to_string_lossy().starts_with(['.', '_'])
+        });
+
+    let mut served: Vec<Vec<PathSegment>> = Vec::new();
+    let mut intercepting: Vec<(Utf8PathBuf, Vec<PathSegment>)> = Vec::new();
+    for entry in walk {
+        let entry = entry.map_err(|source| RouterError::Walk {
+            path: app_root.to_path_buf(),
+            source,
+        })?;
+        if !entry.file_type().is_file()
+            || !entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| is_reserved_page_for_target(name, target))
+        {
+            continue;
+        }
+        let page = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
+            .map_err(|path| RouterError::NonUtf8(path.display().to_string()))?;
+        let directory = page.parent().unwrap_or(app_root);
+        let relative = directory.strip_prefix(app_root).unwrap_or(directory);
+        // A climb past the root has been refused already, by
+        // `refuse_unsupported_directories`, which runs first.
+        let Some(segments) = path_segments(relative) else {
+            continue;
+        };
+        let under_interception = relative.as_str().split('/').any(|segment| {
+            matches!(
+                classify_route_segment(segment),
+                RouteSegment::Interception { .. }
+            )
+        });
+        if under_interception {
+            intercepting.push((page, segments));
+        } else if slot_in(relative).is_none() {
+            served.push(segments);
+        }
+    }
+
+    for (page, segments) in intercepting {
+        let catch_all = segments.iter().position(|segment| {
+            segment
+                .param
+                .as_ref()
+                .is_some_and(|param| param.kind == RouteParamKind::CatchAll)
+        });
+        if let Some(position) = catch_all
+            && let Some(following) = segments.get(position + 1)
+        {
+            let parameter = segments[position]
+                .param
+                .as_ref()
+                .map_or_else(String::new, |param| param.name.to_string());
+            return Err(RouterError::NonTerminalCatchAll {
+                catch_all: directory_spelling(&segments[position]),
+                following: directory_spelling(following),
+                parameter,
+                page,
+            });
+        }
+        if served
+            .iter()
+            .any(|ordinary| serves_every_url_of(ordinary, &segments))
+        {
+            continue;
+        }
+        let ordinary = segments
+            .iter()
+            .fold(app_root.to_path_buf(), |directory, segment| {
+                directory.join(directory_spelling(segment))
+            })
+            .join(RESERVED_PAGE);
+        return Err(RouterError::InterceptionWithoutPage {
+            intercepts: path_from(&segments),
+            ordinary,
+            page,
+        });
+    }
+    Ok(())
+}
+
+/// Whether every URL `intercepted` matches is one `ordinary` serves.
+///
+/// Segment by segment, the way the runtime's matcher reads both: a static
+/// segment serves only itself, a parameter serves any one segment but not a
+/// catch-all's many, and a catch-all serves whatever is left as long as
+/// something is. Not whether the two are spelled alike — `/docs/:path*` serves
+/// `/docs/:slug`, and `/photo/:id` does not serve `/photo/:rest*`.
+fn serves_every_url_of(ordinary: &[PathSegment], intercepted: &[PathSegment]) -> bool {
+    for (position, segment) in ordinary.iter().enumerate() {
+        let kind = segment.param.as_ref().map(|param| param.kind);
+        if kind == Some(RouteParamKind::CatchAll) {
+            return intercepted.len() > position;
+        }
+        let Some(other) = intercepted.get(position) else {
+            return false;
+        };
+        let other_kind = other.param.as_ref().map(|param| param.kind);
+        let serves = if kind == Some(RouteParamKind::Single) {
+            other_kind != Some(RouteParamKind::CatchAll)
+        } else {
+            other_kind.is_none() && other.spelling == segment.spelling
+        };
+        if !serves {
+            return false;
+        }
+    }
+    intercepted.len() == ordinary.len()
+}
+
+/// The directory name that would produce `segment`: `photo`, `[id]`,
+/// `[...rest]`.
+fn directory_spelling(segment: &PathSegment) -> String {
+    match &segment.param {
+        Some(RouteParam {
+            name,
+            kind: RouteParamKind::CatchAll,
+        }) => format!("[...{name}]"),
+        Some(RouteParam {
+            name,
+            kind: RouteParamKind::Single,
+        }) => format!("[{name}]"),
+        None => segment.spelling.clone(),
+    }
+}
+
+/// The route path `segments` spell: `/` for none.
+fn path_from(segments: &[PathSegment]) -> String {
+    if segments.is_empty() {
+        return "/".to_string();
+    }
+    format!(
+        "/{}",
+        segments
+            .iter()
+            .map(|segment| segment.spelling.as_str())
+            .collect::<Vec<_>>()
+            .join("/")
+    )
 }
 
 /// Refuse the directory spellings uf reserves without serving.
@@ -806,7 +1007,29 @@ fn refuse_unsupported_directories(app_root: &Utf8Path) -> Result<(), RouterError
             continue;
         }
         let segment = entry.file_name().to_string_lossy().into_owned();
-        let Some(reason) = classify_route_segment(&segment).unsupported_reason(&segment) else {
+        let classified = classify_route_segment(&segment);
+        // Three refusals, and which one a reader gets is the difference between
+        // "you spelled the marker wrong", "you put it in the wrong place" and
+        // "it climbs to somewhere that is not there". An interception inside a
+        // slot is a route; the same directory beside an ordinary page is not,
+        // because there is no named place for it to render into; and inside a
+        // slot it still may not climb past the router root. The path is what
+        // says which, so the decision is here rather than in the grammar.
+        let parents = Utf8Path::from_path(entry.path())
+            .and_then(|path| path.strip_prefix(app_root).ok())
+            .and_then(Utf8Path::parent)
+            .unwrap_or(Utf8Path::new(""));
+        let reason = classified.unsupported_reason(&segment).or_else(|| {
+            if slot_in(parents).is_none() {
+                return classified.outside_slot_reason(&segment);
+            }
+            // The walk is top-down and stops at the first refusal, so every
+            // directory above this one was judged first and none of them
+            // climbs past the root: this counts what they really contribute.
+            let depth = path_segments(parents).map_or(0, |segments| segments.len());
+            classified.climb_reason(&segment, depth)
+        });
+        let Some(reason) = reason else {
             continue;
         };
         let directory = Utf8PathBuf::from_path_buf(entry.path().to_path_buf())
@@ -1225,53 +1448,111 @@ fn non_terminal_catch_all(relative: &Utf8Path) -> Option<(String, String)> {
     None
 }
 
-fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
-    let mut params = Vec::new();
-    let mut segments = Vec::new();
+/// One segment of a route path, with the parameter it captures, if any.
+struct PathSegment {
+    /// As a route path spells it: `posts`, `:slug`, `:rest*`.
+    spelling: String,
+    param: Option<RouteParam>,
+}
 
+/// The route path segments `relative` contributes, with every interception in
+/// it applied, or [`None`] when an interception in it climbs past the router
+/// root.
+///
+/// The one place a directory path becomes a route path, so that an ordinary
+/// page's path, the URL an intercepting route stands in for, and the path a
+/// refusal quotes are one computation rather than three. An interception is
+/// where "one directory, one segment" stops holding: `(..)photo` takes a
+/// segment *away* before it adds its own, which is what
+/// [`InterceptionClimb::remaining`] counts.
+///
+/// A marker uf does not read is spelled back as a literal. The preflight
+/// refuses such a directory before any caller builds a path from it, so no
+/// project is given that path; it keeps this total for a path handed over
+/// unchecked.
+fn path_segments(relative: &Utf8Path) -> Option<Vec<PathSegment>> {
+    let mut segments: Vec<PathSegment> = Vec::new();
     for segment in relative
         .as_str()
         .split('/')
         .filter(|segment| !segment.is_empty())
     {
-        match classify_route_segment(segment) {
-            RouteSegment::Group => {}
-            RouteSegment::CatchAll(name) => {
-                params.push(RouteParam {
-                    name: name.to_compact_string(),
-                    kind: RouteParamKind::CatchAll,
-                });
-                segments.push(format!(":{name}*"));
-            }
-            RouteSegment::Param(name) => {
-                params.push(RouteParam {
-                    name: name.to_compact_string(),
-                    kind: RouteParamKind::Single,
-                });
-                segments.push(format!(":{name}"));
-            }
+        let classified = classify_route_segment(segment);
+        let named = match classified {
+            RouteSegment::Group => continue,
             // A slot contributes no URL segment, exactly as a group does: it
             // is a named place a route renders *into*, and the URL it is
             // matched against is the declaring segment's. The two arms are
             // separate because they are separate decisions — a group organises
             // files and a slot organises rendering — and folding them together
             // is how the next spelling gets one of the two answers by accident.
-            RouteSegment::Slot(_) => {}
-            RouteSegment::Literal(name) => segments.push(name.to_string()),
-            // An interception cannot reach here: `discover_routes` refuses the
-            // directory before it builds a path. Spelled out rather than
-            // folded into the literal arm so that a second unsupported
-            // spelling has to be decided about here too.
-            RouteSegment::Interception { .. } => {
-                segments.push(segment.to_string());
+            RouteSegment::Slot(_) => continue,
+            RouteSegment::Interception { route, .. } => {
+                let Some(climb) = classified.interception_climb() else {
+                    segments.push(PathSegment {
+                        spelling: segment.to_owned(),
+                        param: None,
+                    });
+                    continue;
+                };
+                let kept = climb.remaining(segments.len())?;
+                segments.truncate(kept);
+                // And then the segment it names, read the way any directory's
+                // name is.
+                classify_route_segment(route)
             }
+            RouteSegment::Param(_) | RouteSegment::CatchAll(_) | RouteSegment::Literal(_) => {
+                classified
+            }
+        };
+        match named {
+            RouteSegment::CatchAll(name) => segments.push(PathSegment {
+                spelling: format!(":{name}*"),
+                param: Some(RouteParam {
+                    name: name.to_compact_string(),
+                    kind: RouteParamKind::CatchAll,
+                }),
+            }),
+            RouteSegment::Param(name) => segments.push(PathSegment {
+                spelling: format!(":{name}"),
+                param: Some(RouteParam {
+                    name: name.to_compact_string(),
+                    kind: RouteParamKind::Single,
+                }),
+            }),
+            RouteSegment::Literal(name) => segments.push(PathSegment {
+                spelling: name.to_owned(),
+                param: None,
+            }),
+            // Only what follows a marker reaches here as anything else, and a
+            // group or a slot there names no segment: `unsupported_reason`
+            // refuses that directory by name.
+            RouteSegment::Group | RouteSegment::Slot(_) | RouteSegment::Interception { .. } => {}
         }
     }
+    Some(segments)
+}
 
+fn route_path_and_params(relative: &Utf8Path) -> (String, Vec<RouteParam>) {
+    // A climb past the root is refused before any table is built — see
+    // `refuse_unsupported_directories` — so the root path here keeps this total
+    // rather than being an answer any project is given.
+    let segments = path_segments(relative).unwrap_or_default();
+    let params = segments
+        .iter()
+        .filter_map(|segment| segment.param.clone())
+        .collect();
     let path = if segments.is_empty() {
         "/".to_string()
     } else {
-        format!("/{}", segments.join("/"))
+        format!(
+            "/{}",
+            segments
+                .iter()
+                .map(|segment| segment.spelling.as_str())
+                .collect::<Vec<_>>()
+                .join("/")
+        )
     };
     (path, params)
 }

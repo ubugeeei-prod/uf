@@ -1,0 +1,13 @@
+import * as helpers from "./helpers.d.ts.flow";
+declare function createServer$value(options?: createServer.Options): createServer.Server;
+declare namespace createServer {
+  interface Options {
+    readonly port: number;
+  }
+  interface Server {
+    listen(): void;
+    readonly helpers: typeof helpers;
+  }
+  type Handler<in T = string> = (request: T) => void;
+}
+declare module.exports: typeof createServer$value; export type Options = createServer.Options; export type Server = createServer.Server; export type Handler<T = string> = createServer.Handler<T>;

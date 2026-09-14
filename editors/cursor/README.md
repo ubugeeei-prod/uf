@@ -28,7 +28,8 @@ Nothing is published to any marketplace.
 Everything: the manifest, the four settings, both commands, and the language
 client. The extension activates on `workspaceContains:uf.config.js`, starts one
 `uf lsp` per uf project with that project as the working directory, and wires
-diagnostics, formatting, quick fixes, `source.fixAll.uf` and hover.
+diagnostics, formatting, quick fixes, `source.fixAll.uf`, hover, and completion
+in `uf.config.js`.
 
 The settings are spelled the same — `uf.server.path`, `uf.formatOnSave`,
 `uf.trace.server` — and go in Cursor's own `settings.json`.

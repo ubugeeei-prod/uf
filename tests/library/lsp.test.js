@@ -18,7 +18,7 @@
 // whole conversation, in order — the same shape `crates/uf_cli/tests/cli.rs`
 // uses.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -55,16 +55,23 @@ type Diagnostic = {
 };
 
 // One entry of a `result` that is a list. `textDocument/formatting` answers
-// with `TextEdit`s (`range` and `newText`) and `textDocument/codeAction` with
-// `CodeAction`s (`title`, `kind`, `edit`); the tests tell them apart by which
-// fields are set, which is itself part of what they check.
+// with `TextEdit`s (`range` and `newText`), `textDocument/codeAction` with
+// `CodeAction`s (`title`, `kind`, `edit`), and `textDocument/completion` with
+// `CompletionItem`s (`label`, a numeric `kind`, `textEdit`); the tests tell
+// them apart by which fields are set, which is itself part of what they check.
 type Entry = {
   range?: Range,
   newText?: string,
   title?: string,
-  kind?: string,
+  kind?: string | number,
   diagnostics?: Array<Diagnostic>,
   edit?: { changes: { [uri: string]: Array<Entry> } },
+  label?: string,
+  detail?: string,
+  documentation?: { kind: string, value: string },
+  textEdit?: Entry,
+  filterText?: string,
+  sortText?: string,
 };
 
 // A `result` that is not a list: `initialize`'s, and `hover`'s.
@@ -77,12 +84,16 @@ type Answer = {
     codeActionProvider?: { codeActionKinds: Array<string> },
     definitionProvider?: boolean,
     renameProvider?: boolean,
-    completionProvider?: { ... },
+    completionProvider?: { triggerCharacters: Array<string> },
     referencesProvider?: boolean,
     documentSymbolProvider?: boolean,
   },
   contents?: { kind: string, value: string },
   range?: Range,
+  // A `CompletionList`, which completion sends instead of a bare list when
+  // the list is not finished.
+  isIncomplete?: boolean,
+  items?: Array<Entry>,
 };
 
 type Wire = {
@@ -106,10 +117,15 @@ const framed = (message: Message): string => {
  * `cwd` matters: the server reads `uf.config.js` from its working directory,
  * once, at start-up.
  */
-const session = (messages: Array<Message>, cwd: string = process.cwd()): Array<Wire> => {
+const session = (
+  messages: Array<Message>,
+  cwd: string = process.cwd(),
+  env: { [string]: string } = {},
+): Array<Wire> => {
   const run = spawnSync(UF, ["lsp"], {
     input: messages.map(framed).join(""),
     cwd,
+    env: { ...process.env, ...env },
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -233,12 +249,15 @@ describe("what uf lsp tells an editor it can do", () => {
       "quickfix",
       "source.fixAll.uf",
     ]);
+    // Completion, which only `uf.config.js` answers. `"` opens a value or a
+    // quoted key; `@` separates a tool from its version.
+    expect(result.capabilities.completionProvider?.triggerCharacters).toEqual(['"', "@"]);
   });
 
   it("does not advertise what it cannot do", () => {
     // The READMEs are written from this list. `source.organizeImports` is
     // absent because uf has no import-order opinion, and go-to-definition,
-    // rename and completion are absent because nothing serves them.
+    // rename, references and symbols are absent because nothing serves them.
     const messages = session([
       { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: {} } },
       EXIT,
@@ -247,7 +266,6 @@ describe("what uf lsp tells an editor it can do", () => {
 
     expect(capabilities.definitionProvider).toBe(undefined);
     expect(capabilities.renameProvider).toBe(undefined);
-    expect(capabilities.completionProvider).toBe(undefined);
     expect(capabilities.referencesProvider).toBe(undefined);
     expect(capabilities.documentSymbolProvider).toBe(undefined);
     expect(capabilities.codeActionProvider.codeActionKinds).not.toContain("source.organizeImports");
@@ -464,6 +482,313 @@ describe("hover", () => {
     const messages = session([didOpen("// @flow\nconst x = 1;\n"), hover(5, 1, 6), EXIT]);
 
     expect(answer(messages, 5).result).toBe(null);
+  });
+});
+
+describe("completion in uf.config.js", () => {
+  const CONFIG = "file:///project/uf.config.js";
+
+  const complete = (
+    id: number,
+    line: number,
+    character: number,
+    uri: string = CONFIG,
+  ): Message => ({
+    jsonrpc: "2.0",
+    id,
+    method: "textDocument/completion",
+    params: { textDocument: { uri }, position: { line, character } },
+  });
+
+  // A document with `‸` where the cursor is: the text without it, and the
+  // protocol position of the cursor. A JavaScript string is indexed in UTF-16
+  // code units, which is what `character` counts.
+  const marked = (document: string): { text: string, line: number, character: number } => {
+    const before = document.slice(0, document.indexOf("‸")).split("\n");
+    return {
+      text: document.replace("‸", ""),
+      line: before.length - 1,
+      character: before[before.length - 1].length,
+    };
+  };
+
+  const completeAt = (
+    document: string,
+    cwd?: string,
+    env?: { [string]: string },
+  ): { text: string, items: Array<Entry> } => {
+    const { text, line, character } = marked(document);
+    const messages = session([didOpen(text, CONFIG), complete(9, line, character), EXIT], cwd, env);
+    return { text, items: listed(messages, 9) };
+  };
+
+  const labels = (items: Array<Entry>): Array<string> => items.map((item) => item.label ?? "");
+
+  // Node's releases, newest first, with a prerelease that is never offered.
+  const NODE_RELEASES: Array<{ version: string, date: string, lts?: string }> = [
+    { version: "27.0.0-rc.1", date: "2026-10-02" },
+    { version: "26.10.0", date: "2026-10-01" },
+    { version: "24.14.0", date: "2026-08-20", lts: "Krypton" },
+    { version: "22.20.0", date: "2026-06-01", lts: "Jod" },
+  ];
+  const NODE_VERSIONS = ["26", "24", "22", "26.10.0", "24.14.0", "22.20.0"];
+
+  // Where release lists are cached and fetched from, for one test: a fresh
+  // cache — holding Node's list, fetched just now, when `cached` — and a
+  // publisher on `file://` serving nodejs.org's `index.json` when `published`,
+  // and serving nothing otherwise. Nothing here reaches a network.
+  const releaseLists = (options: {
+    cached?: boolean,
+    published?: boolean,
+  }): { env: { [string]: string }, cache: string, cleanup: () => void } => {
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-releases-cache-"));
+    const publisher = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-releases-publisher-"));
+    if (options.cached === true) {
+      const index = {
+        format: 1,
+        tool: "node",
+        fetchedAt: Math.floor(Date.now() / 1000),
+        sources: ["fixture"],
+        releases: NODE_RELEASES,
+      };
+      fs.writeFileSync(path.join(cache, "node.json"), JSON.stringify(index));
+    }
+    if (options.published === true) {
+      const rows = NODE_RELEASES.map((release) => ({
+        version: `v${release.version}`,
+        date: release.date,
+        files: [],
+        lts: release.lts ?? false,
+      }));
+      fs.writeFileSync(path.join(publisher, "index.json"), JSON.stringify(rows));
+    }
+    return {
+      env: { UF_INDEX_CACHE: cache, UF_TOOL_INDEX_BASE: `file://${publisher}` },
+      cache,
+      cleanup: () => {
+        fs.rmSync(cache, { recursive: true, force: true });
+        fs.rmSync(publisher, { recursive: true, force: true });
+      },
+    };
+  };
+
+  it("completes the tool names a key typed as a runtime takes", () => {
+    const lists = releaseLists({});
+    try {
+      const { text, items } = completeAt(
+        'export default defineConfig({ test: { runtime: "‸" } });\n',
+        undefined,
+        lists.env,
+      );
+
+      expect(labels(items)).toEqual(["node", "bun", "deno"]);
+      expect(apply(text, [items[1].textEdit ?? {}])).toBe(
+        'export default defineConfig({ test: { runtime: "bun" } });\n',
+      );
+    } finally {
+      lists.cleanup();
+    }
+  });
+
+  it("completes a tool's versions after its `@`, majors first, from the cached release list", () => {
+    const lists = releaseLists({ cached: true });
+    try {
+      const { text, items } = completeAt(
+        'export default defineConfig({ runtime: "node@‸" });\n',
+        undefined,
+        lists.env,
+      );
+
+      expect(labels(items)).toEqual(NODE_VERSIONS);
+      expect(items[1].kind).toBe(12);
+      expect(items[1].detail).toBe("24.14.0 · LTS Krypton");
+      expect(apply(text, [items[1].textEdit ?? {}])).toBe(
+        'export default defineConfig({ runtime: "node@24" });\n',
+      );
+    } finally {
+      lists.cleanup();
+    }
+  });
+
+  it("fetches a missing release list behind the request instead of waiting for it", async () => {
+    // A server held open the way an editor holds it, because the point is what
+    // happens between one request and the next.
+    const lists = releaseLists({ published: true });
+    const child = spawn(UF, ["lsp"], {
+      env: { ...process.env, ...lists.env },
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    const closed = new Promise((resolve) => child.on("close", resolve));
+    const answers: Map<number, Wire> = new Map();
+    let pending = Buffer.alloc(0);
+    child.stdout.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      for (;;) {
+        const split = pending.indexOf("\r\n\r\n");
+        if (split < 0) {
+          return;
+        }
+        const header = pending.subarray(0, split).toString("utf8");
+        const length = Number.parseInt(header.replace(/^Content-Length:\s*/i, ""), 10);
+        if (pending.length < split + 4 + length) {
+          return;
+        }
+        const message: Wire = JSON.parse(
+          pending.subarray(split + 4, split + 4 + length).toString("utf8"),
+        );
+        pending = pending.subarray(split + 4 + length);
+        if (message.id != null) {
+          answers.set(message.id, message);
+        }
+      }
+    });
+    const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const text = 'export default defineConfig({ runtime: "node@" });\n';
+    const character = text.indexOf("@") + 1;
+    const ask = async (id: number): Promise<Wire> => {
+      child.stdin.write(framed(complete(id, 0, character)));
+      for (let waited = 0; waited < 10_000; waited += 10) {
+        const found = answers.get(id);
+        if (found != null) {
+          return found;
+        }
+        await pause(10);
+      }
+      throw new Error(`no answer for id ${id}`);
+    };
+
+    try {
+      child.stdin.write(framed(didOpen(text, CONFIG)));
+
+      // Answered at once, with nothing yet — and told to ask again.
+      expect((await ask(1)).result).toEqual({ isIncomplete: true, items: [] });
+
+      // Asked again as somebody types, until the list has landed.
+      let versions: Array<Entry> = [];
+      for (let id = 2; id < 500 && versions.length === 0; id += 1) {
+        const result = (await ask(id)).result;
+        if (Array.isArray(result)) {
+          versions = result;
+        } else {
+          await pause(20);
+        }
+      }
+      expect(labels(versions)).toEqual(NODE_VERSIONS);
+      // And it is cached, so the next session does not wait even once.
+      expect(fs.existsSync(path.join(lists.cache, "node.json"))).toBe(true);
+    } finally {
+      child.stdin.end(framed(EXIT));
+      await closed;
+      lists.cleanup();
+    }
+  });
+
+  it("completes a half-typed key from the config schema, with its documentation and type", () => {
+    // Unclosed and mid-word: the state a document is in when somebody wants a
+    // completion, and one the Flow parser cannot read.
+    const { text, items } = completeAt("export default defineConfig({\n  test: {\n    cov‸\n");
+    const coverage = items.find((item) => item.label === "coverage") ?? {};
+
+    expect(coverage.kind).toBe(10);
+    expect(coverage.detail).toBe("{ … }");
+    expect(coverage.documentation?.kind).toBe("markdown");
+    expect(coverage.documentation?.value).toContain("What `uf test --coverage` measures");
+    // The half-typed word is replaced, and the cursor is left where the value goes.
+    expect(apply(text, [coverage.textEdit ?? {}])).toBe(
+      "export default defineConfig({\n  test: {\n    coverage: \n",
+    );
+  });
+
+  it("does not offer a key the object already has", () => {
+    const { items } = completeAt(
+      'export default defineConfig({\n  fmt: { quotes: "single" },\n  ‸\n});\n',
+    );
+
+    expect(labels(items)).toContain("lint");
+    expect(labels(items)).not.toContain("fmt");
+  });
+
+  it("completes the members of a string union inside its quotes", () => {
+    const { text, items } = completeAt('export default defineConfig({ fmt: { quotes: "‸" } });\n');
+
+    expect(labels(items)).toEqual(["single", "double"]);
+    expect(items[0].kind).toBe(20);
+    expect(apply(text, [items[1].textEdit ?? {}])).toBe(
+      'export default defineConfig({ fmt: { quotes: "double" } });\n',
+    );
+  });
+
+  it("writes a value typed without quotes in the project's own quote style", () => {
+    // The style comes from the `uf.config.js` the server was started with,
+    // which is not the document being edited.
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-quotes-"));
+    try {
+      fs.writeFileSync(
+        path.join(project, "uf.config.js"),
+        '// @flow\nexport default { fmt: { quotes: "single" } };\n',
+      );
+      const { text, items } = completeAt(
+        "export default defineConfig({ fmt: { quotes: ‸ } });\n",
+        project,
+      );
+
+      expect(labels(items)).toEqual(["'single'", "'double'"]);
+      expect(apply(text, [items[0].textEdit ?? {}])).toBe(
+        "export default defineConfig({ fmt: { quotes: 'single' } });\n",
+      );
+    } finally {
+      fs.rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("completes true and false for a boolean, and nothing inside quotes", () => {
+    expect(
+      labels(completeAt("export default defineConfig({ fmt: { semicolons: ‸ } });\n").items),
+    ).toEqual(["true", "false"]);
+    expect(
+      completeAt('export default defineConfig({ fmt: { semicolons: "‸" } });\n').items,
+    ).toEqual([]);
+  });
+
+  it("puts the edit in UTF-16 units after a character outside the Basic Multilingual Plane", () => {
+    const { text, items } = completeAt(
+      'export default defineConfig({ docs: { app: "🦀" }, fmt: { quotes: "‸" } });\n',
+    );
+
+    expect(apply(text, [items[0].textEdit ?? {}])).toBe(
+      'export default defineConfig({ docs: { app: "🦀" }, fmt: { quotes: "single" } });\n',
+    );
+  });
+
+  it("answers nothing in a file that is not uf.config.js", () => {
+    // The trigger characters fire in every file an editor gives the server.
+    const messages = session([didOpen('// @flow\nconst a = "";\n'), complete(9, 1, 11, URI), EXIT]);
+
+    expect(answer(messages, 9).result).toBe(null);
+  });
+
+  it("explains the key under the pointer with the documentation completion shows", () => {
+    const text = "export default defineConfig({ test: { coverage: {} } });\n";
+    const start = text.indexOf("coverage");
+    const messages = session([
+      didOpen(text, CONFIG),
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "textDocument/hover",
+        params: { textDocument: { uri: CONFIG }, position: { line: 0, character: start + 2 } },
+      },
+      EXIT,
+    ]);
+    const result = answered(messages, 9);
+
+    expect(result.contents?.value).toContain("**`test.coverage`**");
+    expect(result.contents?.value).toContain("What `uf test --coverage` measures");
+    expect(result.range).toEqual({
+      start: { line: 0, character: start },
+      end: { line: 0, character: start + "coverage".length },
+    });
   });
 });
 
