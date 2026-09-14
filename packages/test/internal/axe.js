@@ -208,6 +208,33 @@ function excerpt(html: string): string {
 }
 
 /**
+ * The audit this process started last, settled or not.
+ *
+ * axe-core runs one audit at a time per process and refuses a second outright
+ * ("Axe is already running") rather than queueing it. One file never starts two
+ * on purpose, but a worker serves many files: a case that timed out in the
+ * middle of an audit leaves that audit running, and the next file's first audit
+ * used to fail on it — reported under a file that had done nothing wrong.
+ */
+let running: Promise<mixed> = Promise.resolve();
+
+/**
+ * Run `audit` once the audit already running has settled, however it settles.
+ *
+ * Waiting rather than failing is safe because the audit being waited on always
+ * ends — axe-core walks a finite tree — and a case that waits too long is still
+ * bounded by its own timeout.
+ */
+function afterTheAuditRunning<T>(audit: () => Promise<T>): Promise<T> {
+  const turn = running.then(audit, audit);
+  running = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  return turn;
+}
+
+/**
  * Audit `node` and report what it found, weakest results already dropped.
  *
  * Rejects when axe-core is not installed or the host has no document to audit.
@@ -229,7 +256,7 @@ export async function auditElement(
   }
   const axe = await axeEngine();
   const options = resolveOptions(overrides);
-  const results = await axe.run(node, axeRunOptions(options));
+  const results = await afterTheAuditRunning(() => axe.run(node, axeRunOptions(options)));
   const found: Array<AxeViolation> = [];
   for (const raw of arrayAt(results, "violations")) {
     const violation: AxeViolation = {
