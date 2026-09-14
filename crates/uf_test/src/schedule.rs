@@ -14,6 +14,9 @@
 //! before, and from its size when it has not. The two are put on one scale so a
 //! partially warm cache still produces one ordering rather than two tiers.
 
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+
 use compact_str::CompactString;
 use serde::{Deserialize, Serialize};
 
@@ -98,13 +101,161 @@ pub fn cold_weight_micros(bytes: usize) -> u64 {
 /// Used by the benchmark and by the tests that assert LPT actually shortens the
 /// makespan compared with source order.
 pub fn makespan_micros(entries: &[ScheduleEntry], workers: usize) -> u64 {
+    lpt_loads(entries.iter().map(|entry| entry.weight_micros), workers).busiest
+}
+
+/// How loaded the busiest and the idlest worker end up when `weights`, in
+/// the order given, are each handed to the worker that is free soonest.
+#[derive(Debug, Clone, Copy)]
+struct Loads {
+    /// The makespan: when the last worker finishes.
+    busiest: u64,
+    /// The work the least-loaded worker was handed.
+    idlest: u64,
+}
+
+/// [`Loads`] for `weights` on `workers` workers.
+///
+/// A heap of finish times rather than a scan of them, because
+/// [`auto_workers`] asks this for several pool sizes over every file in the
+/// suite, and a scan made each question as expensive as the core count.
+fn lpt_loads(weights: impl Iterator<Item = u64>, workers: usize) -> Loads {
     let workers = workers.max(1);
-    let mut finish = vec![0u64; workers];
-    for entry in entries {
-        let Some(earliest) = finish.iter_mut().min_by_key(|value| **value) else {
-            break;
-        };
-        *earliest = earliest.saturating_add(entry.weight_micros);
+    let mut finish: BinaryHeap<Reverse<u64>> = (0..workers).map(|_| Reverse(0)).collect();
+    for weight in weights {
+        if let Some(Reverse(earliest)) = finish.pop() {
+            finish.push(Reverse(earliest.saturating_add(weight)));
+        }
     }
-    finish.into_iter().max().unwrap_or(0)
+    let mut loads = Loads {
+        busiest: 0,
+        idlest: u64::MAX,
+    };
+    for Reverse(load) in finish {
+        loads.busiest = loads.busiest.max(load);
+        loads.idlest = loads.idlest.min(load);
+    }
+    if loads.idlest == u64::MAX {
+        loads.idlest = 0;
+    }
+    loads
+}
+
+/// The smallest `workers` in `1..=upper` for which `holds` is true, assuming
+/// that once it holds it goes on holding; `upper` when it never does.
+fn first_pool_where(upper: usize, holds: impl Fn(usize) -> bool) -> usize {
+    let (mut low, mut high) = (1, upper.max(1));
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if holds(middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+/// The least a worker's start-up is taken to cost when sizing a pool, in
+/// microseconds.
+///
+/// A recorded start-up is a measurement, and a measurement can come back as
+/// zero: a coarse clock, or a host that answered before it had done anything.
+/// Dividing work by a start-up of nothing says every core is worth starting for
+/// any suite at all — the behaviour sizing exists to replace — so the estimate
+/// is never believed below a millisecond.
+pub const MIN_WORKER_START_MICROS: u64 = 1_000;
+
+/// How many workers a run should start on `cores` cores, given the schedule it
+/// is about to run and what starting one worker cost last time.
+///
+/// # Why not one per core
+///
+/// A worker is a process, and starting one is work. A Node worker spends tens of
+/// milliseconds booting and loading `@uniflowed/test` before it runs a line of a
+/// test, and that time is spent on a core whether or not the worker is ever
+/// handed a file. A suite of two-millisecond files is finished by two workers
+/// before a third has booted, and on a machine whose cores are partly efficiency
+/// cores and partly somebody else's compile the extra workers are not idle —
+/// they take the cores the useful ones were running on.
+///
+/// # The rule
+///
+/// Two questions, both about the longest-first schedule on a pool of a given
+/// size, whose length is [`makespan_micros`]:
+///
+/// 1. **Which pool keeps every worker busy?** The widest in which the
+///    least-loaded worker is still handed a start-up's worth of work. A worker
+///    handed less than that spends longer booting than working.
+/// 2. **Which pool is worth its workers?** The narrowest that finishes within
+///    one start-up of the pool from the first question. Start-ups happen at the
+///    same time, so a wider pool is not slower for them; but each one is a
+///    core's worth of work, and giving up at most a start-up of wall clock not
+///    to do it is what keeps a short suite off every core of a busy machine.
+///
+/// A suite of many short files stops at two or three. One long file beside
+/// many short ones stops at two, because every further worker finishes its
+/// share long before the long file does. A suite with seconds of work keeps
+/// every core of a laptop, and all but a few of a large machine's.
+///
+/// The first version of this weighed each worker's start-up against the time
+/// that worker saves, and was wrong in the direction that matters: start-ups
+/// run side by side, so on sixty-four cores it stopped a twenty-second suite at
+/// about twenty workers — a run three times longer than it needed to be.
+///
+/// # When it does not apply
+///
+/// It needs durations. With no recorded start-up, or no file in the schedule
+/// with a recorded duration, the answer is `cores` — capped at the number of
+/// files — exactly as before sizing existed: the size-based weights of a cold
+/// schedule rank files against each other and are not times. A file that is new
+/// since the last run is costed at the mean of the files that were recorded, so
+/// adding one file does not turn a warm suite cold.
+pub fn auto_workers(
+    schedule: &[ScheduleEntry],
+    worker_start_micros: Option<u64>,
+    cores: usize,
+) -> usize {
+    let cap = cores.min(schedule.len()).max(1);
+    if cap == 1 {
+        return 1;
+    }
+    let Some(start) = worker_start_micros else {
+        return cap;
+    };
+    let start = start.max(MIN_WORKER_START_MICROS);
+
+    let (recorded_total, recorded) = schedule
+        .iter()
+        .filter(|entry| entry.basis == ScheduleBasis::Recorded)
+        .fold((0u64, 0u64), |(total, count), entry| {
+            (total.saturating_add(entry.weight_micros), count + 1)
+        });
+    if recorded == 0 {
+        return cap;
+    }
+    let mean = recorded_total / recorded;
+
+    let mut weights: Vec<u64> = schedule
+        .iter()
+        .map(|entry| match entry.basis {
+            ScheduleBasis::Recorded => entry.weight_micros,
+            ScheduleBasis::Size => mean,
+        })
+        .collect();
+    weights.sort_unstable_by(|a, b| b.cmp(a));
+    let loads = |workers: usize| lpt_loads(weights.iter().copied(), workers);
+
+    // The narrowest pool too wide for its idlest worker, less one: the widest
+    // in which every worker is handed a start-up's worth of work. Both searches
+    // are binary, because a wider pool never hands its idlest worker more nor
+    // finishes later — so a suite of a hundred thousand files on sixty-four
+    // cores asks for a dozen schedules, not a few thousand.
+    let too_wide = first_pool_where(cap + 1, |workers| {
+        workers > cap || loads(workers).idlest < start
+    });
+    let busy = too_wide.saturating_sub(1).max(1);
+
+    let good_enough = loads(busy).busiest.saturating_add(start);
+    first_pool_where(busy, |workers| loads(workers).busiest <= good_enough)
 }

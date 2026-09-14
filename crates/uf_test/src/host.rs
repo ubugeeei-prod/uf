@@ -507,6 +507,15 @@ struct FileEvent {
     message: Option<String>,
     #[serde(default)]
     stack: Option<String>,
+    /// How long the worker says the file took, from taking the request to
+    /// answering it.
+    ///
+    /// The worker's own clock rather than `uf`'s, and that is the point: `uf`
+    /// starts timing when it writes the request, so the first file a worker is
+    /// given is also charged for the worker booting. See
+    /// [`Worker::start_micros`].
+    #[serde(default)]
+    duration_micros: Option<u64>,
     /// The request this was written under. See [`Request::generation`].
     #[serde(default)]
     generation: u64,
@@ -794,6 +803,13 @@ pub struct Worker {
     /// rather than only the number. One short path per file the worker ran,
     /// against a source text per file the run already holds.
     served: Vec<String>,
+    /// When the process was started, for [`Worker::start_micros`].
+    spawned: Instant,
+    /// How long the worker said its most recent file took, when it said.
+    ///
+    /// Cleared as each request is sent, so a request that ended any way other
+    /// than with the worker's own answer never reports the previous file's.
+    reported_micros: Option<u64>,
 }
 
 /// Why a worker could not be started.
@@ -896,6 +912,12 @@ impl Worker {
             events,
             reader: Some(reader),
             served: Vec::new(),
+            // After the pipes and the reader rather than before the spawn: a
+            // few hundred microseconds against a start-up of tens of
+            // milliseconds, and an instant taken before `spawn` would be one
+            // for a process that might never have existed.
+            spawned: Instant::now(),
+            reported_micros: None,
         })
     }
 
@@ -947,6 +969,7 @@ impl Worker {
         // place in this worker's history whether or not the send succeeds. A
         // send that fails ends the worker anyway.
         self.served.push(relative.to_string());
+        self.reported_micros = None;
         let generation = u64::try_from(self.served.len()).unwrap_or(u64::MAX);
         let request = Request {
             file,
@@ -1005,6 +1028,7 @@ impl Worker {
                     }
                     Ok(Event::Output(event)) => pending.push(event),
                     Ok(Event::File(event)) => {
+                        self.reported_micros = event.duration_micros;
                         return FileOutcome {
                             status: file_status(event),
                             records,
@@ -1047,6 +1071,28 @@ impl Worker {
                 }
             }
         }
+    }
+
+    /// How long the worker said its most recent file took, when it said.
+    pub fn reported_micros(&self) -> Option<u64> {
+        self.reported_micros
+    }
+
+    /// What this worker cost to start, in microseconds.
+    ///
+    /// Only answered for a worker that has served exactly one request and was
+    /// told how long it took: the time from spawning the process to now, less
+    /// that. It is meant to be asked as the first request returns, which is
+    /// when "now" is the moment the answer arrived; asked any later it would
+    /// count the wait, and once a second request has been sent the question
+    /// has no answer at all.
+    pub fn start_micros(&self) -> Option<u64> {
+        if self.served.len() != 1 {
+            return None;
+        }
+        let reported = self.reported_micros?;
+        let since_spawn = u64::try_from(self.spawned.elapsed().as_micros()).unwrap_or(u64::MAX);
+        Some(since_spawn.saturating_sub(reported))
     }
 
     fn host_failed(file: &str, message: String) -> FileOutcome {
@@ -1544,6 +1590,27 @@ mod tests {
         }
 
         assert_eq!(pending.drain().len(), 1);
+    }
+
+    #[test]
+    fn a_file_event_carries_the_duration_the_worker_measured() {
+        // The worker's clock is the one that does not include the worker
+        // booting, so it is the one a first file's duration is corrected by.
+        let Ok(Event::File(event)) = serde_json::from_str::<Event>(
+            r#"{"event":"file","status":"completed","durationMicros":1234,"generation":1}"#,
+        ) else {
+            panic!("a file line must parse as a file event");
+        };
+        assert_eq!(event.duration_micros, Some(1234));
+
+        // A worker older than the field says nothing, and nothing is corrected
+        // on its behalf.
+        let Ok(Event::File(event)) = serde_json::from_str::<Event>(
+            r#"{"event":"file","status":"completed","generation":1}"#,
+        ) else {
+            panic!("a file line must parse as a file event");
+        };
+        assert_eq!(event.duration_micros, None);
     }
 
     #[test]

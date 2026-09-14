@@ -979,6 +979,13 @@ pub(crate) fn record_timings(
             timings.record(&file.file, file.duration_micros);
         }
     }
+    // What a worker cost to start in this run, for the next run to size its
+    // pool from. A run that timed no worker keeps the previous estimate rather
+    // than forgetting it: one run of a file that crashed its host says nothing
+    // about how long a host takes to start.
+    if let Some(micros) = report.summary.worker_start_micros {
+        timings.record_worker_start(micros);
+    }
     timings.retain_files(|recorded| {
         files
             .iter()
