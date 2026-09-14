@@ -30,6 +30,10 @@
 //! transform is reached — so it is plain JavaScript by necessity, and its
 //! entry points (`register.js`, `bun-preload.js`, `driver.js`) run at import
 //! time by design. Everything else about it is held to the same bar.
+//!
+//! One module inside a Flow package is exempt the same way: `@uniflowed/test`'s
+//! `bun/index.js`, which only a `bun test` that `uf test` started ever loads.
+//! See [`PLAIN_JAVASCRIPT_MODULES`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -93,6 +97,20 @@ const EXPORTED_INTERNALS: &[&str] = &[
 /// `@uniflowed/vite` is executed by Vite before any transform is reachable.
 const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["host", "vite"];
 
+/// Individual modules that are plain JavaScript by necessity, inside a package
+/// that is otherwise Flow. Named files, for the reason [`ENTRY_POINT_MODULES`]
+/// gives.
+///
+/// * `test/bun/index.js` — `@uniflowed/test` as `bun test` sees it. It imports
+///   `bun:test`, which has no Flow library definition, and nothing but a
+///   `bun test` that `uf test` started ever resolves it: the package's
+///   `exports` send the `uniflowed-bun-test` condition here, and neither Node
+///   nor Flow sets that condition. Like the plain JavaScript packages, it does
+///   work when it loads (see [`runs_at_import`]): it extends Bun's `expect`
+///   with a refusal for each of uf's matchers Bun has no counterpart for, and
+///   that has to be in place before the first test file calls `expect`.
+const PLAIN_JAVASCRIPT_MODULES: &[&str] = &["test/bun/index.js"];
+
 /// Individual modules that are entry points, and so run when they are loaded
 /// because that is what running them means. Everything else in their package is
 /// held to the ordinary bar — including the Flow pragma: an entry point is
@@ -125,10 +143,11 @@ const ENTRY_POINT_MODULES: &[&str] = &[
 /// `packages/test/worker.js` — Flow, and a process entry point — ended up
 /// exempt from the `// @flow` pragma it in fact carries.
 fn is_plain_javascript(module: &Utf8Path) -> bool {
-    module
-        .iter()
-        .next()
-        .is_some_and(|package| PLAIN_JAVASCRIPT_PACKAGES.contains(&package))
+    PLAIN_JAVASCRIPT_MODULES.contains(&module.as_str())
+        || module
+            .iter()
+            .next()
+            .is_some_and(|package| PLAIN_JAVASCRIPT_PACKAGES.contains(&package))
 }
 
 /// Whether `module` is allowed to run something when it is imported.
@@ -618,13 +637,22 @@ fn manifest(relative: &Utf8Path) -> Value {
     serde_json::from_str(&source).unwrap_or_else(|error| panic!("parse {relative}: {error}"))
 }
 
-/// Flatten an `exports` map into `subpath -> target`, following conditional
-/// objects down to their string leaves.
-fn exports_targets(exports: &Value) -> BTreeMap<String, String> {
-    fn walk(subpath: &str, node: &Value, out: &mut BTreeMap<String, String>) {
+/// Flatten an `exports` map into `(subpath, target)` pairs, following
+/// conditional objects down to every string leaf.
+///
+/// Every leaf, not one per subpath. A subpath with several conditions has a
+/// target under each, and a map keyed by subpath kept whichever came last:
+/// `@uniflowed/test`'s `.` sends the `uniflowed-bun-test` condition to
+/// `./bun/index.js` and every other to `./index.js`, so only `./index.js` was
+/// ever checked. `bun/index.js` then failed
+/// [`every_shipped_module_is_reachable_through_exports`] although it is
+/// reachable, and a condition naming a file that does not exist would have
+/// passed [`every_exports_subpath_resolves_to_a_shipped_file`].
+fn exports_targets(exports: &Value) -> BTreeSet<(String, String)> {
+    fn walk(subpath: &str, node: &Value, out: &mut BTreeSet<(String, String)>) {
         match node {
             Value::String(target) => {
-                out.insert(subpath.to_string(), target.clone());
+                out.insert((subpath.to_string(), target.clone()));
             }
             Value::Object(conditions) => {
                 for (key, value) in conditions {
@@ -644,7 +672,7 @@ fn exports_targets(exports: &Value) -> BTreeMap<String, String> {
         }
     }
 
-    let mut out = BTreeMap::new();
+    let mut out = BTreeSet::new();
     walk(".", exports, &mut out);
     out
 }
@@ -1058,8 +1086,8 @@ fn every_shipped_module_is_reachable_through_exports() {
             .get("exports")
             .unwrap_or_else(|| panic!("{relative} must declare exports"));
         let targets = exports_targets(exports)
-            .into_values()
-            .map(|target| target.trim_start_matches("./").to_string())
+            .into_iter()
+            .map(|(_, target)| target.trim_start_matches("./").to_string())
             .collect::<BTreeSet<_>>();
 
         for module in shipped_modules() {
@@ -1535,7 +1563,10 @@ fn every_advertised_module_resolves_to_a_package() {
         };
         if let Some(subpath) = subpath {
             let key = format!("./{subpath}");
-            if !exports_targets(&found["exports"]).contains_key(&key) {
+            if !exports_targets(&found["exports"])
+                .iter()
+                .any(|(subpath, _)| *subpath == key)
+            {
                 unresolvable.push(format!("{specifier}: {package} does not export {key}"));
             }
         }
