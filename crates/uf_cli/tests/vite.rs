@@ -3888,7 +3888,11 @@ fn flight_order(
         ));
     }
     let text = &slow.text;
-    let content = text.rfind(&format!("slow: {slow_id}"));
+    // The page's content *as a payload row*: a JSON string inside a chunk's own
+    // JSON string, so its quotes arrive escaped, which the HTML's text never is.
+    // The HTML renderer's completion of the same boundary is rendered from that
+    // row, so it may land after the end marker, and is not what this is about.
+    let content = text.find(&format!(r#"\"slow: {slow_id}\""#));
     let end = text.find(&format!("{CHUNK}null</script>"));
     let close = text.rfind("</html>");
     match (content, end, close) {
