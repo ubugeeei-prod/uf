@@ -666,16 +666,19 @@ In an app `create-expo-app` made:
 3. Write screens and components in Flow, run `uf dev --target native`, and scan
    Expo's QR code.
 4. Keep installing native modules with `npx expo install`, and building and
-   updating with EAS. `uf install` refuses the template's `package.json` today,
-   because it declares scripts ([#992](https://github.com/ubugeeei-prod/uf/issues/992)).
+   updating with EAS. `uf install` accepts the template's `start`, `android`,
+   `ios` and `web` scripts and says it does not run them. It refuses only
+   install-time hooks such as `postinstall` (see
+   [Scope](/guide/scope#it-will-not-run-npm-lifecycle-scripts)).
 
 ## What is still missing
 
 - **Routes as navigators.** Each platform's route table is written for Metro,
   but nothing turns it into React Navigation stacks and tabs yet
   ([#991](https://github.com/ubugeeei-prod/uf/issues/991)).
-- **An Expo project without workarounds.** `uf install` refuses the template's
-  scripts, and `uf` has to be installed wherever EAS Build or Xcode bundles
+- **An Expo project without workarounds.** `uf` has to be installed wherever
+  EAS Build or Xcode bundles. `@uniflowed/router` needs React 19.3, while Expo
+  SDK 57 ships 19.2.3, so the router does not install in an SDK 57 app yet
   ([#992](https://github.com/ubugeeei-prod/uf/issues/992)).
 - **A native host renderer.** `render()` can use React Test Renderer as an
   optional JSON adapter, but uf cannot render React Native's own components or
