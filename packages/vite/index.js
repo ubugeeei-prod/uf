@@ -428,7 +428,18 @@ function flowPlugin({
     },
 
     resolveId(id, importer, resolveOptions) {
-      if (id === "@uniflowed/react" && !isSsr(this, resolveOptions)) {
+      // The client's graph, and the rsc graph too. `@uniflowed/react` is
+      // `export * from "react"`, and the rsc graph pre-bundles React's CommonJS
+      // under `react-server`: a star re-export of that namespace names nothing
+      // Vite's module runner can forward, so under `uf dev` every hook a server
+      // component imported from `@uniflowed/react` was `undefined` — `use` first.
+      // Importing `react` itself is the module those names are on. The ssr graph
+      // keeps its own resolution, because React is external there and Node's
+      // interop forwards the names.
+      if (
+        id === "@uniflowed/react" &&
+        (this.environment?.name === RSC_ENVIRONMENT || !isSsr(this, resolveOptions))
+      ) {
         return this.resolve("react", importer, { ...resolveOptions, skipSelf: true });
       }
       if (id === RUNTIME_PUBLIC_PATH) return RUNTIME_RESOLVED_ID;
