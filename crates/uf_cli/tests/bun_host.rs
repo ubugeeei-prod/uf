@@ -70,6 +70,17 @@ struct Run {
 /// talkative failure would look exactly like the hang these tests exist to
 /// catch — and would say so in the panic message.
 fn run_on_bun(project: &Project, entry: &str) -> Run {
+    run_on_bun_with(project, entry, Path::new(uf_path()))
+}
+
+/// [`run_on_bun`], transforming through `compiler` rather than this checkout's
+/// `uf`.
+///
+/// The preload's whole contract with `uf` is the newline-delimited JSON in
+/// `packages/host/transform.js`, so a program that honours it is a compiler as
+/// far as the preload can tell — which is what lets a test see whether a
+/// compile happened at all.
+fn run_on_bun_with(project: &Project, entry: &str, compiler: &Path) -> Run {
     let preload = repo_root().join("packages/host/bun-preload.js");
     let out_path = project.path().join("bun.stdout");
     let err_path = project.path().join("bun.stderr");
@@ -78,7 +89,7 @@ fn run_on_bun(project: &Project, entry: &str) -> Run {
         .arg(&preload)
         .arg(project.path().join(entry))
         .current_dir(project.path())
-        .env("UF_BINARY", uf_path())
+        .env("UF_BINARY", compiler)
         .env("UF_PROJECT_ROOT", project.path())
         .stdout(Stdio::from(std::fs::File::create(&out_path).unwrap()))
         .stderr(Stdio::from(std::fs::File::create(&err_path).unwrap()))
@@ -163,6 +174,141 @@ fn a_bun_project_transforms_flow_and_leaves_its_dependencies_alone() {
         "the dependency lost its default export:\nstdout:\n{}\nstderr:\n{}",
         run.stdout,
         run.stderr
+    );
+}
+
+/// A stand-in for `uf transform` that says on stderr what it compiled.
+///
+/// It replaces `__BUILD__` with `build` and passes every other byte through, so
+/// the project it compiles has to be JavaScript already. It answers with a
+/// source map when the request asks for one, and only then, because whether a
+/// host asks is part of what the cache has to agree on.
+fn stand_in_compiler(project: &Project, build: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let path = project.path().join("uf-stand-in");
+    std::fs::write(
+        &path,
+        format!(
+            r#"#!/usr/bin/env node
+const BUILD = {build:?};
+let rest = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {{
+  rest += chunk;
+  let at = rest.indexOf("\n");
+  while (at !== -1) {{
+    const request = JSON.parse(rest.slice(0, at));
+    rest = rest.slice(at + 1);
+    process.stderr.write("compiled " + request.id + "\n");
+    const code = request.code.split("__BUILD__").join(BUILD);
+    const map = request.options && request.options.sourceMap
+      ? JSON.stringify({{ version: 3, sources: [request.id], names: [], mappings: "" }})
+      : undefined;
+    process.stdout.write(JSON.stringify({{ code, map }}) + "\n");
+    at = rest.indexOf("\n");
+  }}
+}});
+"#
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+/// A second run on Bun reads what the first compiled, and so does Node.
+///
+/// Until ubugeeei-prod/uf#944 the preload compiled every Flow module on every
+/// run — a `uf test` on Bun, and every suite `test.runner: "bun"` hands to
+/// `bun test`, waited on `uf transform` for the whole graph each time — while
+/// Node's loaders read the same modules back from `.uf/cache/transform`.
+///
+/// The Node half is the part a Bun-only test would miss. Both hosts share one
+/// key, so they must write the same bytes: an entry Bun wrote without a source
+/// map would be served to the next Node run as a module with none, and every
+/// stack frame would point at generated lines depending on which host ran
+/// first.
+#[test]
+fn a_second_run_on_bun_is_served_from_the_cache_node_reads_too() {
+    if !host_ready() || !bun_ready() {
+        return;
+    }
+    let project = Project::new(&[
+        (
+            "thing.js",
+            "// @flow\nexport const compiledBy = \"__BUILD__\";\n",
+        ),
+        (
+            "main.js",
+            "import { compiledBy } from \"./thing.js\";\nconsole.log(`built=${compiledBy}`);\n",
+        ),
+    ]);
+    let compiler = stand_in_compiler(&project, "first-build");
+
+    let cold = run_on_bun_with(&project, "main.js", &compiler);
+    assert_eq!(
+        cold.status,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        cold.stdout,
+        cold.stderr
+    );
+    assert!(cold.stdout.contains("built=first-build"), "{}", cold.stdout);
+    assert!(
+        cold.stderr.contains("compiled "),
+        "the cold run compiles: {}",
+        cold.stderr
+    );
+
+    // Both modules, each with its map inline: the framing Node's loaders write.
+    let entries: Vec<String> = std::fs::read_dir(project.path().join(".uf/cache/transform"))
+        .expect("the cold run filled the cache")
+        .map(|entry| std::fs::read_to_string(entry.unwrap().path()).unwrap())
+        .collect();
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    for entry in &entries {
+        assert!(
+            entry.contains("//# sourceMappingURL=data:application/json;base64,"),
+            "a Bun entry without the map Node expects: {entry}"
+        );
+    }
+
+    let warm = run_on_bun_with(&project, "main.js", &compiler);
+    assert_eq!(
+        warm.status,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        warm.stdout,
+        warm.stderr
+    );
+    assert!(warm.stdout.contains("built=first-build"), "{}", warm.stdout);
+    assert!(
+        !warm.stderr.contains("compiled "),
+        "the warm run on Bun compiled again: {}",
+        warm.stderr
+    );
+
+    // And Node serves what Bun wrote.
+    let node = Command::new("node")
+        .arg("--import")
+        .arg(repo_root().join("packages/host/register.js"))
+        .arg(project.path().join("main.js"))
+        .current_dir(project.path())
+        .env("UF_BINARY", &compiler)
+        .env("UF_PROJECT_ROOT", project.path())
+        .output()
+        .expect("node is on PATH");
+    let stdout = String::from_utf8_lossy(&node.stdout);
+    let stderr = String::from_utf8_lossy(&node.stderr);
+    assert!(
+        node.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    assert!(stdout.contains("built=first-build"), "{stdout}");
+    assert!(
+        !stderr.contains("compiled "),
+        "Node compiled what Bun had already cached: {stderr}"
     );
 }
 

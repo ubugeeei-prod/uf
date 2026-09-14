@@ -132,9 +132,12 @@ naming the hosts that can enforce it. That refusal is deliberate: a set that
 four hosts enforce and one silently ignores is worse than no set at all,
 because somebody would rely on it.
 
-Coverage does not work here. The preload transforms with `sourceMap: false` and
-Bun implements no `NODE_V8_COVERAGE`, so `uf test --coverage` says so rather
-than reporting a run of zeroes.
+The preload keeps what it compiles in `.uf/cache/transform/`, under the same
+key and in the same bytes as Node's loaders, source map included — so a warm
+run on Bun compiles nothing, and either host warms the cache for the other.
+
+Coverage does not work here. Bun implements no `NODE_V8_COVERAGE`, so
+`uf test --coverage` says so rather than reporting a run of zeroes.
 
 ## Deno
 
