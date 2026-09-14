@@ -101,7 +101,7 @@ through the constructs. Most of them are a one-line change:
 | `React.FC<Props>` | `component` |
 | a custom hook | `hook useThing(…)` — the rules of hooks become type errors |
 | `unknown` | `mixed` |
-| `readonly x: T` | `+x: T` (Flow also accepts `readonly`) |
+| `readonly x: T` | `readonly x: T`, unchanged — Flow's older `+x: T` is an error under `uf check` |
 | `x as T` | `(x: T)`, or a documented `$FlowFixMe` |
 | a `.d.ts` you wrote | a libdef, or Flow types in the source |
 | `switch` with a `default: never` | [`match`](https://flow.org/en/docs/match/), which is exhaustive by construction |
