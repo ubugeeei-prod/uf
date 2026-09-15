@@ -175,7 +175,7 @@ export type RegeneratedPage = {|
 
 /** Every page a build regenerates, by the pathname it was prerendered for. */
 export type Regeneration = {|
-  readonly pages: { +[pathname: string]: RegeneratedPage },
+  readonly pages: { readonly [pathname: string]: RegeneratedPage },
 |};
 
 /** A whole document, as an entry: what a hit answers with without rendering. */

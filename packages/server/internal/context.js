@@ -195,7 +195,7 @@ export type RequestContext = {
    * KV namespace is something it can only reach from inside the request using
    * it. See `../cache-kv.js`.
    */
-  bindings: { +[string]: mixed } | null,
+  bindings: { readonly [string]: mixed } | null,
 };
 
 /**

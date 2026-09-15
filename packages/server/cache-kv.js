@@ -74,9 +74,9 @@ export type KvNamespace = {
   put(key: string, value: string, options?: {| expiration?: number |}): Promise<void>,
   delete(key: string): Promise<void>,
   list(options: {| prefix: string, cursor?: string |}): Promise<{
-    +keys: $ReadOnlyArray<{ +name: string, ... }>,
-    +list_complete: boolean,
-    +cursor?: string,
+    readonly keys: $ReadOnlyArray<{ readonly name: string, ... }>,
+    readonly list_complete: boolean,
+    readonly cursor?: string,
     ...
   }>,
   ...
