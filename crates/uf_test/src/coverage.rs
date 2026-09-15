@@ -26,9 +26,8 @@
 //! * The worker is a process that ends by closing its stdin
 //!   (`packages/test/worker.js`), so there is an exit for Node to flush at.
 //!
-//! The cost is stated rather than hidden: this is Node-only. Bun's preload
-//! transforms with `sourceMap: false` and Bun does not implement
-//! `NODE_V8_COVERAGE`; Deno's ahead-of-time loader has no equivalent coverage
+//! The cost is stated rather than hidden: this is Node-only. Bun does not
+//! implement `NODE_V8_COVERAGE`; Deno's ahead-of-time loader has no equivalent coverage
 //! flush or source-map cache to read back. `uf test --coverage` on either says
 //! so instead of reporting zeroes.
 //!

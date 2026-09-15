@@ -10,8 +10,8 @@
 //! Delegating is a complete answer, and it is a *better* answer than dropping
 //! out to npm by hand, because everything uf knows about the project stays in
 //! force: `pm.allowLifecycleScripts` becomes `--ignore-scripts` on the child,
-//! and a manifest that declares scripts of its own is refused before anything
-//! is fetched. Native uf projects also rewrite `uf.lock` and the
+//! and a manifest that declares install-time lifecycle scripts of its own is
+//! refused before anything is fetched. Native uf projects also rewrite `uf.lock` and the
 //! content-addressed store; delegated npm, pnpm, Yarn and Bun projects keep the
 //! lockfile they already use.
 //!
@@ -146,6 +146,12 @@ pub(crate) fn query(
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, substituted) = installable(&detection);
+    // The release `packageManager` pins, and the runtime it runs on, in front
+    // of `PATH` for the manager's process — installed the first time.
+    let path =
+        crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
+            ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+        })?;
 
     let invocation = uf_pm::invocation_for(&resolved.root, manager, operation, operands, true)?;
     let project = project_label(&resolved.root).to_string();
@@ -168,14 +174,13 @@ pub(crate) fn query(
         renderer.blank(out);
     });
 
-    run_operation_with_detection(&resolved.root, &detection, operation, operands, true).map_err(
-        |error| {
+    run_operation_with_detection(&resolved.root, &detection, operation, operands, true, &path)
+        .map_err(|error| {
             failed_hint(
                 error,
                 &format!("{manager_label} reported a problem; its output is above"),
             )
-        },
-    )?;
+        })?;
     Ok(())
 }
 
@@ -227,6 +232,12 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, substituted) = installable(&detection);
+    // The release `packageManager` pins, and the runtime it runs on, in front
+    // of `PATH` for the manager's process — installed the first time.
+    let path =
+        crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
+            ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+        })?;
     let operands = [package.to_owned()];
 
     // Before the manager runs, because its answer is what the reader came for
@@ -252,7 +263,15 @@ pub(crate) fn why(cwd: &Utf8Path, ui: &mut Ui, package: &str) -> Result<()> {
         renderer.blank(out);
     });
 
-    run_operation_with_detection(&resolved.root, &detection, Operation::Why, &operands, true).map_err(|error| {
+    run_operation_with_detection(
+        &resolved.root,
+        &detection,
+        Operation::Why,
+        &operands,
+        true,
+        &path,
+    )
+    .map_err(|error| {
         failed_hint(
             error,
             &format!(
@@ -315,6 +334,10 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     let manifest_path = resolved.root.join("package.json");
     let manifest_before = dependency_entries(&manifest_path);
     let (manager, _) = installable(&detection);
+    let path =
+        crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
+            ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+        })?;
     let tree_before = uf_pm::delta::snapshot(&resolved.root, manager);
 
     let project = project_label(&resolved.root).to_string();
@@ -332,6 +355,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         request.operation,
         request.operands,
         scripts_allowed(&resolved.root, manager, &plan)?,
+        &path,
     )
     .map_err(|error| {
         failed_hint(

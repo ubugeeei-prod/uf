@@ -38,6 +38,10 @@ import { prerenderedMayAnswer } from "./draft.js";
 const CONTENT_TYPES: { readonly [string]: string } = Object.freeze({
   ".avif": "image/avif",
   ".css": "text/css; charset=utf-8",
+  // A route's prerendered Flight payload, `<route>/__uf.flight`: what a browser
+  // that is navigating fetches instead of the document. The type is React's,
+  // and it is what the router checks before handing the bytes to React.
+  ".flight": "text/x-component",
   ".gif": "image/gif",
   ".html": "text/html; charset=utf-8",
   ".ico": "image/x-icon",
@@ -151,7 +155,11 @@ export async function locateStatic(
   const prerendered = prerenderedMayAnswer(request.headers.get("cookie"));
 
   for (const candidate of candidates) {
-    if (!prerendered && candidate.toLowerCase().endsWith(".html")) continue;
+    // A prerendered payload is the same render as the document beside it, so a
+    // draft request declines it too: an editor who navigates gets the draft
+    // rather than the build's copy of the page.
+    const name = path.basename(candidate).toLowerCase();
+    if (!prerendered && (name.endsWith(".html") || name === "__uf.flight")) continue;
     const info = await statFile(candidate);
     if (info == null || !info.isFile()) continue;
     // The containment check above is textual, and a symlink is how a path

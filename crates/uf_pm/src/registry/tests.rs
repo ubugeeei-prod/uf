@@ -281,3 +281,58 @@ fn an_unbound_name_that_is_not_published_is_just_unreadable() {
 
     assert!(matches!(error, RegistryError::Fetch { .. }), "{error:?}");
 }
+
+/// #1005. curl 8.7.1 on macOS exits 56, not 22, for a 404 it was told to fail
+/// on, and every package the registry holds no attestation for was reported
+/// as *unknown* when the registry had answered. The status decides, whatever
+/// curl exits with.
+#[test]
+fn a_404_is_an_answer_whatever_curl_exits_with() {
+    for exit in [Some(22), Some(56), Some(0)] {
+        let failure = classify(
+            exit,
+            b"\n404",
+            b"curl: (56) The requested URL returned error: 404",
+        )
+        .expect_err("a 404 is not a body");
+        assert!(failure.answered(), "exit {exit:?}: {failure:?}");
+    }
+}
+
+#[test]
+fn a_success_is_the_body_without_the_status_after_it() {
+    assert_eq!(
+        classify(Some(0), b"{\"name\":\"react\"}\n200", b""),
+        Ok(b"{\"name\":\"react\"}".to_vec())
+    );
+    // Only the last line is curl's: a body that ends in a newline keeps it.
+    assert_eq!(classify(Some(0), b"{}\n\n200", b""), Ok(b"{}\n".to_vec()));
+}
+
+/// `000` is curl for no response at all, which says nothing about the package.
+#[test]
+fn no_response_is_not_an_answer() {
+    let failure = classify(
+        Some(6),
+        b"\n000",
+        b"curl: (6) Could not resolve host: registry.npmjs.org",
+    )
+    .expect_err("no body");
+    assert!(!failure.answered(), "{failure:?}");
+    assert_eq!(
+        failure.detail(),
+        "curl: (6) Could not resolve host: registry.npmjs.org"
+    );
+}
+
+/// A success status on a transfer curl did not finish is half a body.
+#[test]
+fn a_success_curl_did_not_finish_is_not_an_answer() {
+    let failure = classify(
+        Some(28),
+        b"{\"name\":\n200",
+        b"curl: (28) Operation timed out",
+    )
+    .expect_err("no body");
+    assert!(!failure.answered(), "{failure:?}");
+}

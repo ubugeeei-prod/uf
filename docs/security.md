@@ -120,13 +120,15 @@ Four things are outside it deliberately, each because admitting it would mean
 admitting a tag in the payload that says which constructor to call:
 
 - **A reference format.** React's Flight payload carries references to client
-  modules, promises and elements. uf's own payload
-  (`packages/router/internal/payload.js`) carries exactly one of the three and
-  it travels the other way — `"$P<n>"`, in a document the server writes, naming
-  a row of that same payload rather than anything to construct. This grammar is
-  the one an untrusted *sender* is decoded under, and it has none: an action's
-  arguments arrive from the network, so a tag there is a tag somebody else
-  chose.
+  modules, promises and elements, and uf now ships one — but only from server to
+  browser, and only React's own client decodes it. The server writes it into a
+  document or answers it at `<route>/__uf.flight`; the browser loads the client
+  module a reference names only from a same-origin URL, so the bytes cannot pick
+  a script from anywhere else; and a build fixes `process.env.NODE_ENV` in the
+  rsc graph, so a production payload carries no source locations or server
+  stacks. This grammar is the one an untrusted *sender* is decoded under, and it
+  has none: an action's arguments arrive from the network, so a tag there is a
+  tag somebody else chose, and Flight's `decodeReply` is not used for them.
 - **Class instances, `Map`, `Set`, `Date`, `RegExp`, typed arrays.** An action
   that wants a date takes an ISO string and parses it, where the parse is the
   application's and is checked.
@@ -237,7 +239,7 @@ answered where the record is built rather than at each call site.
 | Tarballs from `codeload.github.com` not hash-pinned in the lockfile | Every resolved artifact carries an integrity hash in `uf.lock`; a source without one is a hard error, not a warning | todo |
 | Binary planting through the `bin` field | `bin` targets are validated as single path segments inside the package, and shims are written only into the store's own bin directory | todo |
 | `npx`-style execution of a package the project never installed | `uf exec` runs an installed binary from `node_modules/.bin` without ceremony, and **refuses** to fetch a name that is not in the lockfile unless the caller passes `--yes`. Fetching and running an unpinned package is strictly more dangerous than a `postinstall`, so it asks at least as loudly | `crates/uf_cli/tests/cli.rs` |
-| Lifecycle scripts as an RCE vector | npm scripts are **forbidden by default** — `uf install` fails on a manifest that declares them, and `--ignore-scripts` goes to the manager so no *dependency* runs one either. `uf pm approve-builds` is the way back in, one package at a time; see below | `crates/uf_pm`, `uf_pm::builds` |
+| Lifecycle scripts as an RCE vector | Install-time lifecycle hooks are **forbidden by default**. `uf install` and `uf add` fail, before anything is fetched, on a manifest of the project's own that declares `preinstall`, `install`, `postinstall`, `prepublish`, `preprepare`, `prepare`, `postprepare`, `prepack`, `postpack`, `dependencies` or `pnpm:devPreinstall`. `--ignore-scripts` goes to the manager, so no *dependency* runs one either. A script no install runs, such as `start`, `ios` or `test`, is not a hook and is not refused: uf never runs it, and `uf install` says so. Refusing every `scripts` entry refused every Expo and React Native project without closing any path an install takes (#992). `uf pm approve-builds` is the way back in for a dependency, one package at a time; see below | `crates/uf_pm`, `uf_pm::builds` |
 | Shell injection through the `packageManager` field | Parsed by a hand-written single-pass parser with no regex (ReDoS), and `Invocation.program` comes only from a fixed program table, so no manifest text can name a program or inject an argument | `uf_pm::detect` |
 | Prototype-pollution keys in manifest JSON | `__proto__`, `constructor`, and `prototype` are reported and dropped wherever manifest JSON becomes a map | `uf_pm::detect` |
 | Terminal escape sequences in a package name, injected into a progress display that steers the cursor | Every name taken out of a manager's output is stripped of control characters and length-capped before it can be drawn, and the redrawn region cuts each row to a fixed width, so no registry text can move the cursor | `uf_pm::progress` |
@@ -472,7 +474,7 @@ Where the code comes from, asked with the same directness.
 | Attack | uf's answer | Where |
 | --- | --- | --- |
 | A dependency runs code at install time | `--ignore-scripts` to every manager, always, by default. Getting one package back is `uf pm approve-builds <name>`, recorded in the field the project's own manager reads; the flag comes off only when the manager can enforce a list *and* the list has something in it | `crates/uf_pm/src/builds.rs` |
-| A package's own manifest declares scripts | `uf install` refuses the workspace before anything is fetched. Project automation is `uf.config.js` tasks | `crates/uf_pm` |
+| A package's own manifest declares an install-time lifecycle hook | `uf install` refuses the workspace before anything is fetched, naming the hook. A script no install runs, such as `start` or `ios`, is left alone and reported as one uf does not run. Project automation is `uf.config.js` tasks | `crates/uf_pm` |
 | A tarball's bytes are not the bytes that were resolved | Every artefact carries an integrity hash in `uf.lock`; a source without one is a hard error. SHA-1 is refused outright — a check that can be forged is a check in name only | `crates/uf_env/src/archive.rs` |
 | Fetching and running a package the project never installed | `uf exec` refuses a name that is not in the lockfile without `--yes`. It is strictly more dangerous than a `postinstall`, so it asks at least as loudly | `crates/uf_cli/tests/cli.rs` |
 | A registry read leaks credentials | Packument reads are HTTPS only — `http://` refused, loopback included — a URL with an authority is refused outright, and curl is given `--proto =https --proto-redir =https` so a `301` cannot undo either | `crates/uf_pm/src/registry.rs` |

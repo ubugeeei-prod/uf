@@ -66,23 +66,46 @@ already has one, in a place a reader is not looking.
 
 ### It will not run npm lifecycle scripts
 
-`uf install` refuses a manifest that declares `scripts` before it fetches
-anything:
+`uf install` refuses a manifest that declares an install-time lifecycle
+script, a hook a package manager runs by itself while it installs, before it
+fetches anything:
 
 <figure className="terminal">
 
 ```
-error: package manifest /…/my-site/package.json declares scripts;
-       use uf tasks in uf.config.js
+error: package manifest /…/my-site/package.json declares install-time
+       lifecycle scripts (postinstall), which run code during an install;
+       move that automation to uf tasks in uf.config.js
 ```
 
 </figure>
 
-Install-time scripts are a remote-code-execution path on a machine that just
-cloned a repository, and the threat model is written down in
+The hooks are npm's `preinstall`, `install`, `postinstall`, `prepublish`,
+`preprepare`, `prepare`, `postprepare`, `prepack`, `postpack` and
+`dependencies`, plus pnpm's `pnpm:devPreinstall`. Install-time scripts are a
+remote-code-execution path on a machine that just cloned a repository, and the
+threat model is written down in
 [`docs/security.md`](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
 Project automation lives in `uf.config.js` tasks instead, which is also why a
 generated project has no npm scripts.
+
+A script no install runs is not refused. `create-expo-app` and the React Native
+template both write `start`, `android` and `ios`, and those run only when a
+person types `npm run ios`. uf does not run them either, and `uf install` says
+so in one line:
+
+<figure className="terminal">
+
+```
+› package.json declares start, android, ios, web; uf does not run package.json
+  scripts, so project tasks belong in uf.config.js
+```
+
+</figure>
+
+The refusal used to cover any `scripts` at all. That refused every Expo and
+React Native project while closing no path an install takes, and
+[#992](https://github.com/ubugeeei-prod/uf/issues/992) narrowed it to the hooks.
 
 A dependency's own install scripts do not run either: by default every manager
 uf drives is handed `--ignore-scripts`. The dependencies you have read can be

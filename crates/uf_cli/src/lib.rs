@@ -375,6 +375,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         } => match script {
             Some(script) => commands::task::run_task(
                 &cwd,
+                ui,
                 mode.as_deref(),
                 &script,
                 &args,

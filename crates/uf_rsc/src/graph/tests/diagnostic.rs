@@ -52,6 +52,72 @@ fn a_module_pulled_into_the_client_graph_may_not_import_server_only_code() {
     );
 }
 
+/// The message names the chain of imports that put server-only code in the
+/// client graph, from the boundary down — the import to cut is on that path,
+/// and rarely in the module that did the importing. ubugeeei-prod/uf#252.
+#[test]
+fn a_server_only_import_the_client_graph_reaches_names_the_chain_to_it() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(server("app/page.js").with_import("./Counter.js"));
+    builder.add_module(client("app/Counter.js").with_import("./format.js"));
+    builder.add_module(server("app/format.js").with_import("./session.js"));
+    builder.add_module(server("app/session.js").with_import("@uniflowed/server"));
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let message = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.rule() == "rsc/server-only-import-in-client")
+        .expect("the server-only import is reported")
+        .to_string();
+    assert!(
+        message.contains("`app/Counter.js` → `app/format.js` → `app/session.js`"),
+        "{message}"
+    );
+}
+
+/// A chain starts at the nearest boundary, however many there are.
+#[test]
+fn the_chain_starts_at_the_nearest_client_boundary() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(client("app/Outer.js").with_import("./one.js"));
+    builder.add_module(server("app/one.js").with_import("./two.js"));
+    builder.add_module(server("app/two.js").with_import("./session.js"));
+    builder.add_module(client("app/Inner.js").with_import("./session.js"));
+    builder.add_module(server("app/session.js").with_import("@uniflowed/server"));
+    // Both boundaries are loaded by the browser, which is what puts `session.js`
+    // in the client graph at all; with no entry, no module is reachable.
+    builder.add_entry("app/Outer.js", EntryKind::Client);
+    builder.add_entry("app/Inner.js", EntryKind::Client);
+    let graph = builder.build();
+
+    let message = graph
+        .diagnostics()
+        .iter()
+        .find(|diagnostic| diagnostic.rule() == "rsc/server-only-import-in-client")
+        .expect("the server-only import is reported")
+        .to_string();
+    assert!(
+        message.contains("through `app/Inner.js` → `app/session.js`"),
+        "{message}"
+    );
+}
+
+/// A client module that imports server-only code itself is the whole story.
+#[test]
+fn a_client_module_importing_server_only_code_itself_has_no_chain_to_name() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(client("app/Counter.js").with_import("@uniflowed/server"));
+    let message = builder.build().diagnostics()[0].to_string();
+    assert!(
+        message
+            .starts_with("client module `app/Counter.js` imports server-only `@uniflowed/server`")
+            && !message.contains("→"),
+        "{message}"
+    );
+}
+
 #[test]
 fn a_server_module_may_import_server_only_code() {
     let mut builder = RscGraphBuilder::new();

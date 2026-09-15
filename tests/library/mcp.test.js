@@ -121,6 +121,19 @@ const brokenProject = (): string => {
   return root;
 };
 
+/** A source file `uf fmt` rewrites. */
+const UGLY = "// @flow\nexport const a    =   1\n";
+
+/** A project uf can load, holding one file `uf fmt` would change. */
+const uglyProject = (): string => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-mcp-ugly-"));
+  fs.writeFileSync(path.join(root, "uf.config.js"), "export default {};\n");
+  fs.writeFileSync(path.join(root, "package.json"), '{"name":"ugly","private":true}\n');
+  fs.mkdirSync(path.join(root, "src"));
+  fs.writeFileSync(path.join(root, "src", "ugly.js"), UGLY);
+  return root;
+};
+
 describe("uf mcp", () => {
   it("speaks newline-delimited JSON, not LSP's framing", () => {
     const root = brokenProject();
@@ -213,6 +226,37 @@ describe("uf mcp", () => {
     expect(out.find((message) => message.id === 2)?.error).toBeUndefined();
     expect(answered(out, 2).isError).toBe(true);
     expect(blocks(out, 2)[0].text).toContain("uf_rm_rf");
+  });
+
+  // #994. Every schema says `additionalProperties: false`, and until something
+  // read it a misspelled `pathz` was dropped and `uf_lint` answered for the
+  // whole project, as a success.
+  it("refuses arguments its schema does not allow, and runs nothing", () => {
+    const root = uglyProject();
+    const refused = session(
+      [
+        INITIALIZE,
+        callTool(2, "uf_lint", { pathz: ["matches-nothing"] }),
+        callTool(3, "uf_fmt_write", { pathz: ["src"] }),
+        callTool(4, "uf_explain", {}),
+      ],
+      root,
+    );
+
+    for (const id of [2, 3, 4]) {
+      expect(refused.find((message) => message.id === id)?.error).toBeUndefined();
+      expect(answered(refused, id).isError).toBe(true);
+      expect(blocks(refused, id)).toHaveLength(1);
+    }
+    expect(blocks(refused, 2)[0].text).toContain("`pathz` is not an argument");
+    expect(blocks(refused, 4)[0].text).toContain("`command` is required");
+    expect(fs.readFileSync(path.join(root, "src", "ugly.js"), "utf8")).toBe(UGLY);
+
+    // And the same call spelled right does rewrite it, so the file above being
+    // untouched is evidence that nothing ran rather than that nothing would.
+    const accepted = session([INITIALIZE, callTool(2, "uf_fmt_write", { paths: ["src"] })], root);
+    expect(answered(accepted, 2).isError).toBe(false);
+    expect(fs.readFileSync(path.join(root, "src", "ugly.js"), "utf8")).not.toBe(UGLY);
   });
 
   it("answers an unknown method as a protocol error", () => {

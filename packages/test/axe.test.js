@@ -117,6 +117,18 @@ describe("toHaveNoAxeViolations", () => {
     ]);
   });
 
+  it("waits for an audit it did not start, such as the one `uf dev` runs over a page", async () => {
+    // `uf dev`'s overlay runs axe-core itself, outside the queue above, and
+    // stopping the overlay cannot recall an audit already walking the page. A
+    // file that stops it can leave that audit running into the next file in the
+    // same worker, whose first assertion then met "Axe is already running".
+    const { container } = render(<Accessible />);
+    const axe = (await import("axe-core")).default;
+    const foreign = axe.run(container);
+    await expect(container).toHaveNoAxeViolations();
+    await foreign;
+  });
+
   it("fails over a tree axe has something to say about", async () => {
     const { container } = render(<Inaccessible />);
     let thrown: mixed = null;

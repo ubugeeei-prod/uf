@@ -36,23 +36,63 @@ of any key whose type is a fixed set — and explains a key you hover. See
 
 | Key | What it configures |
 | --- | --- |
+| `runtime` | The runtime commands run on when no key nearer the command names one: `"node@24"`. See [below](#runtime-and-packagemanager) |
+| `packageManager` | The manager `uf install` and the other package commands drive: `"pnpm@10"` |
 | `app` | The application: router, runtime, React, rendering, built-ins |
-| `build` | The production build: entries, output, budgets, source maps |
-| `builder` | Which builder uf drives. Vite by default |
+| `build` | The production build: entries, output, budgets, source maps, and the runtime and builder it runs |
+| `builder` | Deprecated: `builder.module` is [`build.builder`](#build) now |
 | `dev` | The dev server: host, port, file access, allowed hosts |
 | `docs` | The documentation build, if the project has one |
 | `site` | Where the built site is served from, and what `uf build` writes for a crawler |
-| `env` | The `.env` files, the default mode, and the pinned toolchain |
+| `env` | The `.env` files and the default mode. Its `toolchain` is deprecated |
 | `fmt` | `uf fmt` |
 | `ignore` | Paths no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test`, `uf doc` |
 | `lint` | `uf lint` and Flow's built-in lints |
-| `test` | `uf test` |
+| `test` | `uf test`, and the runtime and runner it runs on |
 | `permissions` | What the project's own code may reach. Absent means no limit |
 | `plugins` | Vite plugins, appended to uf's own |
 | `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
 | `pm`, `publish`, `package`, `release` | Which registry uf reads from and publishes to, and how a release is built |
 | `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
+
+## runtime and packageManager
+
+The tools a project runs on, each written `name[@version]` and declared where
+it is used. This pair is the default; `build.runtime`, `test.runtime` and
+`test.runner` name a tool for one command.
+
+```js
+export default defineConfig({
+  runtime: "node@24",
+  packageManager: "pnpm@10",
+  build: { runtime: "node@26" },
+  test: { runtime: "bun@1.4" },
+});
+```
+
+| Key | Names | Read by |
+| --- | --- | --- |
+| `runtime` | `node`, `bun` or `deno` | `uf start`, `uf run` and `uf exec`, and every command whose own key is absent |
+| `build.runtime` | `node`, `bun` or `deno` | `uf dev`, `uf build` and `uf preview`, before `runtime` |
+| `test.runtime` | `node`, `bun` or `deno` | `uf test`, before the runtime `test.runner` brings and then `runtime` |
+| `packageManager` | `npm`, `pnpm`, `yarn` or `bun` | `uf install`, `uf add`, `uf remove`, `uf update` and the other package commands, before `pm.packageManager`, `package.json#packageManager` and the lockfiles |
+
+| Written | Means |
+| --- | --- |
+| `"node"` | Whichever `node` is on `PATH`. A machine without one is refused rather than handed another runtime |
+| `"node@26"` | The newest release with that prefix, resolved the first time a command needs it and locked in `uf.lock` |
+| `"node@26.8.2"` | Exactly that release |
+| `"node@^26"`, `"node@>=24"` | Refused: a range can resolve to a different release tomorrow. The message names the prefix to write |
+
+A versioned tool runs from the store every project on the machine shares,
+installed the first time a command needs it, with its directory first on `PATH`
+for everything the command starts. With none of these keys, a command starts
+the host [`app.runtime.capabilityJsHost`](#app) finds and drives the manager
+[Dependencies](/guide/dependencies#which-manager-runs) describes, as it always
+has. `uf inspect` and `uf explain <command>` print each tool, the key it came
+from and the release it is locked at. [Environments](/guide/env) is the whole
+of it.
 
 ## app
 
@@ -63,7 +103,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `router.enabled` | `true` | Turning it off makes the project a library, and makes `uf build` [build one](#buildlib) |
 | `runtime.default` | `"node"` | The runtime this project is written for. `node`, `deno` and `bun`; naming a runtime uf has no host for is an error that says which key was meant ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
 | `runtime.compatibility` | `["node", "bun", "deno"]` | The other runtimes it states it runs on, from the same three. Written into `.uf/install.json` as the hosts that must be available |
-| `runtime.capabilityJsHost.default` | `"node"` | **The host a command actually starts.** `uf dev`, `uf test` and `uf build` resolve through this key, not through `runtime.default` |
+| `runtime.capabilityJsHost.default` | `"node"` | **The host a command starts when no tool key names one.** `uf dev`, `uf build`, `uf preview`, `uf start` and `uf test` resolve through this key, not through `runtime.default`, when [`runtime`](#runtime-and-packagemanager) and the keys nearer the command are absent. `uf build --compile` embeds its runtime from this key whatever they say ([#1036](https://github.com/ubugeeei-prod/uf/issues/1036)) |
 | `runtime.capabilityJsHost.hosts` | `["node", "deno", "bun"]` | Hosts uf may use |
 | `runtime.capabilityJsHost.autoDetect` | `true` | Pick a host by what is installed |
 | `runtime.deploy.adapter` | none | The deploy target `uf build` writes an artefact for; `--adapter` overrides it |
@@ -221,6 +261,8 @@ your source tree; the reasoning is in
 
 | Key | Default | Meaning |
 | --- | --- | --- |
+| `runtime` | [`runtime`](#runtime-and-packagemanager) | What `uf dev`, `uf build` and `uf preview` run the builder on: `"node@26"` |
+| `builder` | `"vite"` | The builder those three drive. `"vite"` is `@uniflowed/vite`; anything else is a module, resolved as [below](#builder) |
 | `entries` | `["app.js"]` | Entry modules |
 | `outDir` | `"dist"` | Output directory |
 | `sourcemap` | `true` | Emit source maps |
@@ -390,7 +432,7 @@ times and a site that has both should keep them the same.
 | --- | --- | --- |
 | `active` | `""` | The mode when nothing else says. Empty means the command decides: `development` for `uf dev`, `production` for `uf build`, `uf preview` and `uf start`, `test` for `uf test` |
 | `files` | `[]` | The `.env` files to read, instead of the cascade. Empty means `.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`, in that order, the later file winning |
-| `toolchain` | `{}` | The runtimes and package managers this project pins, by exact version — `{ node: "24.14.0" }` |
+| `toolchain` | `{}` | **Deprecated.** The runtimes and package managers this project pins, by exact version — `{ node: "24.14.0" }`. `uf env install` still installs them; declare each where it is used instead, as [`runtime`](#runtime-and-packagemanager), `build.runtime`, `test.runtime` or `packageManager`. A tool this key and one of those name at different releases is an error naming both keys |
 
 `--mode` beats `active`, and so does the profile `uf env use` wrote. A variable
 already set in the environment beats every file. Only a name starting with
@@ -590,6 +632,8 @@ uf's rule table, and a test asserts the table matches the descriptors.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
+| `runtime` | the runner's, then [`runtime`](#runtime-and-packagemanager) | What `uf test` runs tests on: `"bun@1.4"` |
+| `runner` | `"uf"` | The runner. `"uf"` is the one built into uf. `"bun@1.4"` is read, implies Bun 1.4 as the test runtime, and is refused by `uf test` until [#942](https://github.com/ubugeeei-prod/uf/issues/942); beside a `runtime` naming anything else it is an error naming both keys |
 | `module` | `"@uniflowed/test"` | The module test files import |
 | `runner.jsHosts` | `["node", "deno", "bun"]` | Hosts that may run workers |
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
@@ -603,6 +647,13 @@ uf's rule table, and a test asserts the table matches the descriptors.
 | `coverage.thresholds` | `{}` | `lines`, `functions`, `branches` the project as a whole must reach, as whole percentages |
 | `coverage.perFileThresholds` | `{}` | The same three, required of every single file |
 
+The object form of `runner` — `jsHosts`, `scheduler`, `officialFlowParser` and
+`applicationTarget` — describes uf's own runner, and is deprecated in favour of
+`runner: "uf"`. An object whose `applicationTarget` differs from what
+`app.framework` implies is the exception: uf says to keep it until
+[#953](https://github.com/ubugeeei-prod/uf/issues/953) gives that setting
+another spelling.
+
 A threshold that is not reached fails the run. They are checked whenever
 coverage was collected, so `enabled: false` plus `--coverage` still gates — the
 number CI fails on is the number a laptop fails on. A metric nobody names is not
@@ -610,15 +661,19 @@ checked, which is not the same as requiring zero.
 
 ## builder
 
-Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive.
+Which builder `uf dev`, `uf build`, `uf preview` and `uf start` drive. The key
+is `build.builder`, beside the build it describes. `builder.module` still
+works, with a deprecation naming the key to write, and a project that writes
+both with different answers is refused naming both keys.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `module` | `"@uniflowed/vite"` | The module implementing the builder contract |
+| `build.builder` | `"vite"` | The module implementing the builder contract. `"vite"` is `@uniflowed/vite` |
+| `builder.module` | `"@uniflowed/vite"` | **Deprecated.** The same module, under the old key |
 
 ```js
 export default defineConfig({
-  builder: { module: "./tools/my-builder" },
+  build: { builder: "./tools/my-builder" },
 });
 ```
 
@@ -640,10 +695,10 @@ A builder is a directory whose `package.json` declares one:
 }
 ```
 
-`driver` is the module uf spawns on the project's Capability JS Host, and
-`preload` names what to `--preload` when that host is Bun, which is how a
-builder that transforms Flow installs its hooks on a runtime with no
-`module.register`. Both are optional; `./driver.js` is assumed when neither is
+`driver` is the module uf spawns on the build runtime — `build.runtime`, then
+`runtime`, then the project's Capability JS Host — and `preload` names what to
+`--preload` when that runtime is Bun, which is how a builder that transforms
+Flow installs its hooks on a runtime with no `module.register`. Both are optional; `./driver.js` is assumed when neither is
 declared, so a builder published before this key existed still runs.
 
 What uf hands that driver and what it expects back — the subcommands, the
@@ -706,7 +761,7 @@ report is against.
 | `pm.lockfile` | `"uf.lock"` | The lockfile `uf install` writes |
 | `pm.storeDir` | `".uf/store"` | The content-addressed store |
 | `pm.allowLifecycleScripts` | `false` | Every dependency's install scripts, including the ones nobody has read |
-| `pm.packageManager` | `"auto"` | Override the manager uf infers from the project |
+| `pm.packageManager` | `"auto"` | **Deprecated** for every value but `"uf"`, which has no other spelling. Overrides the manager uf infers from the project; [`packageManager`](#runtime-and-packagemanager) does the same ahead of it, and can pin a release. The two naming different managers is an error naming both keys |
 | `publish.registry` | `"https://registry.npmjs.org"` | Where `uf publish` pushes |
 
 ### Migrating from `publish.registry`

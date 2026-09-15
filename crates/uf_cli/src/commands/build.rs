@@ -179,8 +179,18 @@ pub(crate) fn build(
     let routes = timer.measure("routes", || {
         discover_routes_for_target(&resolved.root, &resolved.config, app_target)
     })?;
-    let router_manifest = timer.measure("router types", || {
-        write_router_manifest_for_target(&resolved.root, &resolved.config, app_target)
+    // A native target's route table is a module per platform beside the web
+    // router's `router.js`, rather than `router.js` itself: Metro gives an iOS
+    // bundle that imports `./router` the `router.ios.js` table, and a project
+    // with both targets keeps its web route types. See ubugeeei-prod/uf#981.
+    let router_modules = timer.measure("router types", || {
+        if app_target == RouteTarget::Web {
+            write_router_manifest_for_target(&resolved.root, &resolved.config, app_target)
+                .map(|manifest| manifest.into_iter().collect::<Vec<_>>())
+        } else {
+            uf_router::native::write_native_router_modules(&resolved.root, &resolved.config)
+                .map(|modules| modules.files)
+        }
     })?;
     // The other half of the same tree: the route handlers and middleware,
     // which have no page and so appear in no `Route`. Only `--adapter static`
@@ -614,8 +624,8 @@ pub(crate) fn build(
     if openapi_document.is_file() {
         outputs.push(relative_to(&resolved.root, &openapi_document));
     }
-    if let Some(manifest) = &router_manifest {
-        outputs.push(relative_to(&resolved.root, manifest));
+    for module in &router_modules {
+        outputs.push(relative_to(&resolved.root, module));
     }
     for page in &vite.pages {
         outputs.push(page.file.clone());

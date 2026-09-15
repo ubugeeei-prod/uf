@@ -1,7 +1,8 @@
 //! `uf run` and `ufx`: the two commands that hand control to another process.
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::process::Command as ProcessCommand;
 
@@ -10,7 +11,9 @@ use camino::{Utf8Path, Utf8PathBuf};
 use compact_str::CompactString;
 use uf_config::env_files::ProjectEnv;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
-use uf_pm::{Operation, PackageManager, command_for, detect_package_manager};
+use uf_pm::{
+    DetectionOptions, Operation, PackageManager, command_for, detect_package_manager_with,
+};
 use uf_task::{Concurrency, Plan, PlanError, PlanPackage, RunOptions, ScheduledTask, TaskCache};
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
@@ -51,42 +54,31 @@ struct Package {
     /// Where it is, relative to the workspace root.
     path: String,
     resolved: ResolvedConfig,
-    env: ProjectEnv,
     /// Indices of the packages its `package.json` depends on.
     dependencies: Vec<usize>,
 }
 
 impl Package {
-    fn load(
+    fn new(
         resolved: ResolvedConfig,
         name: CompactString,
         path: String,
-        mode: Option<&str>,
         dependencies: Vec<usize>,
-    ) -> Result<Self> {
-        // A task is project code with a shell in front of it, so it reads the
-        // project's `.env` files like everything else uf runs. `development`
-        // is the default because a task is something a person runs at a
-        // terminal; a task that runs `uf build` gets `production` from that
-        // command, because the values uf injected here are marked as uf's and
-        // lose to a file. See `uf_config::env_files`.
-        let env = project_env(&resolved, mode, DEVELOPMENT)?;
-        Ok(Self {
+    ) -> Self {
+        Self {
             name,
             path,
             resolved,
-            env,
             dependencies,
-        })
+        }
     }
 
     /// The project `uf run` started in, on its own.
-    fn alone(resolved: ResolvedConfig, mode: Option<&str>) -> Result<Self> {
-        Self::load(
+    fn alone(resolved: ResolvedConfig) -> Self {
+        Self::new(
             resolved,
             CompactString::default(),
             String::new(),
-            mode,
             Vec::new(),
         )
     }
@@ -94,6 +86,7 @@ impl Package {
 
 pub(crate) fn run_task(
     cwd: &Utf8Path,
+    ui: &mut Ui,
     requested_mode: Option<&str>,
     script: &str,
     args: &[String],
@@ -113,7 +106,7 @@ pub(crate) fn run_task(
         (packages, plan)
     } else {
         match Plan::build(&resolved.config, script) {
-            Ok(plan) => (vec![Package::alone(resolved, requested_mode)?], plan),
+            Ok(plan) => (vec![Package::alone(resolved)], plan),
             Err(PlanError::UnknownPackage { .. }) => {
                 let started_in = resolved.root.clone();
                 let (packages, _) = workspace(resolved, requested_mode)?;
@@ -125,12 +118,12 @@ pub(crate) fn run_task(
                 (packages, plan)
             }
             Err(error) => {
-                let packages = [Package::alone(resolved, requested_mode)?];
+                let packages = [Package::alone(resolved)];
                 return Err(plan_error(&packages, error));
             }
         }
     };
-    execute(&packages, &plan, script, args, &options)
+    execute(ui, requested_mode, &packages, &plan, script, args, &options)
 }
 
 /// The workspace around `resolved`, loaded: every package a run can reach, and
@@ -143,14 +136,14 @@ pub(crate) fn run_task(
 fn workspace(resolved: ResolvedConfig, mode: Option<&str>) -> Result<(Vec<Package>, usize)> {
     let Some((root, members)) = uf_project::enclosing_workspace(&resolved.root, &resolved.config)
     else {
-        return Ok((vec![Package::alone(resolved, mode)?], 1));
+        return Ok((vec![Package::alone(resolved)], 1));
     };
     let dependencies = uf_project::workspace_dependencies(&root, &members);
 
     let mut packages = Vec::with_capacity(members.len() + 1);
     let mut started_in = Some(resolved);
     if let Some(resolved) = started_in.take_if(|resolved| resolved.root == root) {
-        packages.push(Package::alone(resolved, mode)?);
+        packages.push(Package::alone(resolved));
     }
     let first_member = packages.len();
     for (member, depends_on) in members.iter().zip(dependencies) {
@@ -160,13 +153,12 @@ fn workspace(resolved: ResolvedConfig, mode: Option<&str>) -> Result<(Vec<Packag
             None => load_project_config(&member_root, mode, DEVELOPMENT)?,
         };
         let depends_on = depends_on.into_iter().map(|at| at + first_member).collect();
-        packages.push(Package::load(
+        packages.push(Package::new(
             resolved,
             member.name.clone(),
             member.path.to_string(),
-            mode,
             depends_on,
-        )?);
+        ));
     }
     Ok((packages, first_member))
 }
@@ -330,12 +322,28 @@ fn unknown_package(packages: &[Package], reference: &str, through: &[CompactStri
 
 /// Run a plan that has been built, and report it.
 fn execute(
+    ui: &mut Ui,
+    mode: Option<&str>,
     packages: &[Package],
     plan: &Plan,
     script: &str,
     args: &[String],
     options: &RunArgs,
 ) -> Result<()> {
+    // Each package's environment, loaded when its first task is scheduled. A
+    // task is project code with a shell in front of it, so it reads its
+    // project's `.env` files like everything else uf runs, with the runtime
+    // that project's `uf.config.js` declares in front of `PATH`. `development`
+    // is the default because a task is something a person runs at a terminal;
+    // a task that runs `uf build` gets `production` from that command, because
+    // the values uf injected here are marked as uf's and lose to a file. See
+    // `uf_config::env_files`.
+    //
+    // After planning, and only for the packages the plan runs a task in:
+    // resolving a declared runtime can mean installing one, and neither a
+    // mistyped task name nor a member no task reaches is a reason to — nor is
+    // that member's `.env.development` failing to parse.
+    let mut envs: BTreeMap<usize, ProjectEnv> = BTreeMap::new();
     let mut tasks = Vec::with_capacity(plan.len());
     for (at, node) in plan.nodes().iter().enumerate() {
         let package = &packages[node.package];
@@ -362,7 +370,14 @@ fn execute(
             command.push(' ');
             command.push_str(&args.join(" "));
         }
-        let mut given = environment_of(&package.env);
+        let env = match envs.entry(node.package) {
+            Entry::Occupied(slot) => slot.into_mut(),
+            Entry::Vacant(slot) => {
+                let env = project_env(&package.resolved, mode, DEVELOPMENT)?;
+                slot.insert(runtime_environment(&package.resolved, ui, env)?)
+            }
+        };
+        let mut given = environment_of(env);
         if let Some(details) = details {
             for (key, value) in &details.env {
                 given.task(key, value);
@@ -388,6 +403,7 @@ fn execute(
 
     let spawner = TaskSpawner {
         packages,
+        envs: &envs,
         requested: plan
             .requested()
             .iter()
@@ -603,6 +619,8 @@ fn dependency_cycle(cycle: &[compact_str::CompactString]) -> String {
 /// what `uf run build` inside the package would have given it.
 struct TaskSpawner<'a> {
     packages: &'a [Package],
+    /// The environment of each package the plan runs a task in.
+    envs: &'a BTreeMap<usize, ProjectEnv>,
     /// The tasks that were asked for, by package and name: the only ones that
     /// take the caller's arguments.
     requested: Vec<(usize, CompactString)>,
@@ -613,6 +631,12 @@ impl uf_task::Spawn for TaskSpawner<'_> {
     fn command(&self, scheduled: &ScheduledTask) -> std::io::Result<ProcessCommand> {
         let package = self.packages.get(scheduled.package).ok_or_else(|| {
             std::io::Error::other(format!("task {:?} belongs to no package", scheduled.label))
+        })?;
+        let env = self.envs.get(&scheduled.package).ok_or_else(|| {
+            std::io::Error::other(format!(
+                "task {:?} was given no environment",
+                scheduled.label
+            ))
         })?;
         let task = package
             .resolved
@@ -632,7 +656,7 @@ impl uf_task::Spawn for TaskSpawner<'_> {
         if task.command().trim().is_empty()
             && package.resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
         {
-            return Ok(self.vite_task(package, scheduled));
+            return Ok(self.vite_task(package, env, scheduled));
         }
 
         let details = task.details();
@@ -696,7 +720,7 @@ impl uf_task::Spawn for TaskSpawner<'_> {
         // from a file, so a marker naming it let `.env.production` win over the
         // task inside a nested `uf build` — the exact override the task was
         // written to make.
-        package.env.apply_over(&mut process, &overrides);
+        env.apply_over(&mut process, &overrides);
         process.current_dir(&directory);
         Ok(process)
     }
@@ -816,10 +840,15 @@ impl TaskSpawner<'_> {
         Ok(process)
     }
 
-    fn vite_task(&self, package: &Package, scheduled: &ScheduledTask) -> ProcessCommand {
+    fn vite_task(
+        &self,
+        package: &Package,
+        env: &ProjectEnv,
+        scheduled: &ScheduledTask,
+    ) -> ProcessCommand {
         let runner = std::env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
         let mut process = ProcessCommand::new(runner);
-        package.env.apply(&mut process);
+        env.apply(&mut process);
         process.arg("run").arg(scheduled.name.as_str());
         // Only a task that was asked for takes the caller's arguments; a
         // dependency was not the thing they typed them after.
@@ -1114,6 +1143,30 @@ fn unknown_task(
 /// A binary in `node_modules/.bin` needs no such consent: it is already
 /// installed, already in the tree the lockfile pins, and running it is what
 /// `npm exec` and `pnpm exec` do without asking.
+/// `env`, with `runtime`'s release in front of `PATH` when `uf.config.js`
+/// declares one.
+///
+/// A task and a `ufx` binary are project code: a `node` they start, and every
+/// `#!/usr/bin/env node` script they run, should be the Node the project says
+/// it runs on. Only a declared runtime changes anything — a project with none
+/// runs its tasks exactly as before, and a machine with no JavaScript host at
+/// all can still run a task that needs none. See ubugeeei-prod/uf#940.
+fn runtime_environment(
+    resolved: &uf_config::ResolvedConfig,
+    ui: &mut Ui,
+    env: uf_config::env_files::ProjectEnv,
+) -> Result<uf_config::env_files::ProjectEnv> {
+    use crate::commands::runtimes::{self, Role};
+
+    if Role::Runtime.declared(&resolved.config).is_none() {
+        return Ok(env);
+    }
+    let runtime = runtimes::resolve(resolved, Role::Runtime, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+    })?;
+    Ok(runtime.environment(env))
+}
+
 pub(crate) fn exec_package(
     cwd: &Utf8Path,
     ui: &mut Ui,
@@ -1140,7 +1193,7 @@ pub(crate) fn exec_package(
     // Below this line it is the same environment `uf run` gives a task: `ufx`
     // runs a tool against this project, and a codegen that reads
     // `DATABASE_URL` should read the project's.
-    let env = project_env(&resolved, None, DEVELOPMENT)?;
+    let env = runtime_environment(&resolved, ui, project_env(&resolved, None, DEVELOPMENT)?)?;
 
     if let Some(binary) = installed_binary(&resolved.root, package) {
         return spawn_executable(&resolved.root, ui, &env, &binary, args, package);
@@ -1158,7 +1211,13 @@ pub(crate) fn exec_package(
         return spawn_executable(&resolved.root, ui, &env, &executable, args, package);
     }
 
-    let detection = detect_package_manager(&resolved.root);
+    // With the config, like every other command that runs a manager:
+    // `packageManager: "pnpm@10"` means `pnpm dlx` even beside a
+    // package-lock.json. See ubugeeei-prod/uf#940.
+    let detection = detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    );
     let manager = fetchable(detection.package_manager);
     // Every manager has a fetch-and-run, which is what `fetchable` guarantees:
     // it maps a manager without one onto the one uf would use instead.
@@ -1181,6 +1240,23 @@ pub(crate) fn exec_package(
             lockfile = resolved.config.pm.lockfile,
         );
     }
+
+    // The release `packageManager` pins, from the store, with the one `runtime`
+    // pins behind it — in that order, so a pinned npm is not shadowed by the
+    // npm inside a pinned Node. After the consent check, so a refusal installs
+    // nothing.
+    let path =
+        crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
+            ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+        })?;
+    let env = if path.is_empty() {
+        env
+    } else {
+        path.into_iter().fold(
+            project_env(&resolved, None, DEVELOPMENT)?,
+            |env, directory| env.with_path_prefix(directory),
+        )
+    };
 
     // On stderr, so the fetched binary still owns stdout. Printed rather than
     // silent because "uf downloaded and ran something" is not a thing a person

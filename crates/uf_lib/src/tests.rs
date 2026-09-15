@@ -999,7 +999,13 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
     // And every one of them is importable on its own, which is the other half
     // of the claim: `sideEffects: false` and one subpath per component is what
     // `@uniflowed/ui` offers instead of a copy step.
-    let expected: BTreeSet<String> = implemented.iter().map(|name| subpath_of(name)).collect();
+    // The hook modules are the one other kind of subpath, and they are named
+    // rather than tolerated: see `UI_HOOK_MODULES`.
+    let expected: BTreeSet<String> = implemented
+        .iter()
+        .map(|name| subpath_of(name))
+        .chain(UI_HOOK_MODULES.iter().map(|module| (*module).to_owned()))
+        .collect();
     assert_eq!(
         expected, subpaths,
         "`packages/ui/package.json` and the table disagree about the subpaths"
@@ -1018,6 +1024,45 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
         claimed.is_empty(),
         "the package exports these and the table does not call them implemented: {claimed:?}"
     );
+}
+
+/// Each hook module of `@uniflowed/ui` exports hooks, and nothing that reads as a
+/// component.
+///
+/// [`UI_HOOK_MODULES`] is the one exemption from "a subpath is a component", and
+/// an exemption is exactly where a component could ship without the table
+/// hearing of it: a capitalised export from `interactions.js` would be
+/// importable, reported by nothing, and absent from `uf inspect`. So every name
+/// on the list has to be a module that exists, exports at least one hook, and
+/// exports no value whose name is capitalised — the rule JSX and
+/// [`ui_components_shipped`] both use to tell a component from anything else.
+#[test]
+fn the_ui_hook_modules_export_hooks_and_no_component() {
+    let root = repository_root();
+    for module in UI_HOOK_MODULES {
+        let path = root.join("packages/ui").join(format!("{module}.js"));
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} cannot be read: {error}", path.display()));
+        let exported = exported_values(&source)
+            .unwrap_or_else(|error| panic!("{} does not parse: {error}", path.display()))
+            .unwrap_or_else(|| panic!("{} hands on another module's surface", path.display()));
+
+        let capitalised: Vec<&str> = exported
+            .iter()
+            .map(String::as_str)
+            .filter(|name| starts_capitalised(name))
+            .collect();
+        assert!(
+            capitalised.is_empty(),
+            "{} is a hook module and exports what reads as a component, which the table would never report: {capitalised:?}",
+            path.display()
+        );
+        assert!(
+            exported.iter().any(|name| is_hook_name(name)),
+            "{} is listed as a hook module and exports no hook",
+            path.display()
+        );
+    }
 }
 
 /// The parts of an implemented component are the ones its namespace holds.
