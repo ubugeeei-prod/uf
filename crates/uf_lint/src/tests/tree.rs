@@ -12,7 +12,7 @@ use super::*;
 
 /// A module with `component` syntax around `body`, which is where JSX lives in
 /// a uf project and is also what `a11y/heading-order` scopes to.
-fn component(body: &str) -> String {
+pub(super) fn component(body: &str) -> String {
     format!("// @flow\ncomponent Page() renders React.Node {{\n  return (\n{body}\n  );\n}}\n")
 }
 

@@ -82,6 +82,8 @@
 //! finishes in under a second.
 
 mod aria;
+mod content;
+mod value;
 
 use uf_config::UniflowedConfig;
 use uf_flow::ast::jsx;
@@ -185,6 +187,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
     let mut tree = Tree {
         hot: work.wants_hot,
         alt_text: levels.alt_text.is_some(),
+        content: levels.content,
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
         label_control: levels.label_control.is_some(),
@@ -245,6 +248,8 @@ pub(super) fn report(
 /// Configured severity for each rule this runner owns.
 struct Levels {
     alt_text: Option<Severity>,
+    /// The rules that ask whether an element has something to say.
+    content: content::Levels,
     aria_props: Option<Severity>,
     heading_order: Option<Severity>,
     label_control: Option<Severity>,
@@ -257,6 +262,7 @@ impl Levels {
     fn for_config(config: &UniflowedConfig) -> Self {
         Self {
             alt_text: severity(config, ALT_TEXT),
+            content: content::Levels::for_config(config),
             aria_props: severity(config, ARIA_PROPS),
             heading_order: severity(config, HEADING_ORDER),
             label_control: severity(config, LABEL_CONTROL),
@@ -273,6 +279,7 @@ impl Levels {
     /// Whether any rule that reads JSX is on.
     fn any_jsx(&self) -> bool {
         self.alt_text.is_some()
+            || self.content.any()
             || self.aria_props.is_some()
             || self.heading_order.is_some()
             || self.label_control.is_some()
@@ -289,7 +296,7 @@ impl Levels {
             STATIC_INTERACTIONS => self.static_interactions,
             INVALID_NESTING => self.invalid_nesting,
             HOT_OPTIONAL_CHAINING => self.hot_optional_chaining,
-            _ => None,
+            _ => self.content.of(rule),
         }
     }
 }
@@ -319,6 +326,8 @@ enum Ancestor<'a> {
 struct Tree<'a> {
     hot: bool,
     alt_text: bool,
+    /// Levels for the rules in [`content`], copied so each check can ask.
+    content: content::Levels,
     aria_props: bool,
     heading_order: bool,
     label_control: bool,
@@ -372,6 +381,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
         if let Some(name) = tag {
             if self.alt_text {
                 self.check_alt_text(name, opening);
+            }
+            if self.content.any() {
+                content::check(self, name, element);
             }
             if self.static_interactions {
                 self.check_static_interactions(name, opening);
