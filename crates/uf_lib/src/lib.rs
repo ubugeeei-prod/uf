@@ -18,7 +18,7 @@ pub use registry::{
     CLIENT_MODULE_PACKAGE, CLIENT_MODULE_SUBPATHS, builtin_modules, hook_descriptors,
     is_client_module, module_by_specifier, std_module_descriptors, tui_contract,
 };
-pub use ui::ui_components;
+pub use ui::{UI_HOOK_MODULES, ui_components};
 // Re-exported beside [`std_module_descriptors`] rather than left to callers to
 // reach for: a consumer that reads the table has to read the status to know
 // which of an entry's other fields are facts, and making it take a second

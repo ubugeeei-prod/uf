@@ -209,7 +209,7 @@ pub(crate) fn prepare(cwd: &camino::Utf8Path, ui: &mut Ui, fix: bool) -> Result<
             PrepareStep::DiscoverStagedFiles => run.discover_staged(),
             PrepareStep::GenerateRouterTypes => run.generate_router_types(),
             PrepareStep::GenerateServerActionTypes => run.generate_server_action_types(),
-            PrepareStep::RunStagedTasks => run.run_staged_tasks(),
+            PrepareStep::RunStagedTasks => run.run_staged_tasks(ui),
             PrepareStep::RunLint => run.run_lint(),
             PrepareStep::RunFormatCheck => run.run_format_check(),
         };
@@ -375,7 +375,7 @@ impl Run<'_> {
     /// about to be stopped should not have had anything added to it. A rewrite
     /// of a half-staged file cannot be staged without staging the other half
     /// too, so it fails the step and the run puts the working tree back.
-    fn run_staged_tasks(&mut self) -> StepReport {
+    fn run_staged_tasks(&mut self, ui: &mut Ui) -> StepReport {
         let step = PrepareStep::RunStagedTasks;
         if self.resolved.config.staged.is_empty() {
             return StepReport::skipped(step, "`staged` in uf.config.js names no tasks");
@@ -428,7 +428,8 @@ impl Run<'_> {
                 .collect();
             for task in &staged_run.tasks {
                 ran += 1;
-                if let Err(error) = run_task(&root, None, task, &arguments, RunArgs::default()) {
+                if let Err(error) = run_task(&root, ui, None, task, &arguments, RunArgs::default())
+                {
                     let said = error.to_string();
                     failures.push(format!(
                         "{task}, for {}: {}",

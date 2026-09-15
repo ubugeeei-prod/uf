@@ -254,6 +254,90 @@ its own benches and allocation reports, but a project run should not depend on
 an internal profiling interface. Until a public profiler exists, the stable
 answers are the narrowed command, the JSON report and the explain output.
 
+### Coming from ESLint
+
+Where each rule of the four ESLint plugins React projects most often run lands
+in uf. A rule id on the right is the uf rule that answers the same question, and
+`uf lint --rules` shows its level in your project and whether it has a fix. The
+other answers:
+
+- **Flow** — `uf check`'s type inference reports it, so no lint rule has to
+  guess.
+- **`uf fmt`** — layout, which is the formatter's to decide.
+- **React Compiler** — uf compiles components with it, and it memoizes what the
+  rule would have you hoist or wrap.
+- **Not needed** — what the rule guards against does not exist in a uf project;
+  the row says why.
+- **Not planned** — rules for class components, their lifecycle methods and the
+  legacy APIs around them. uf's React rules are written for component syntax.
+- **Project rule** — a team's convention rather than a defect. uf does not ship
+  conventions as defaults; a project's own rules are how a team keeps them
+  ([#974](https://github.com/ubugeeei-prod/uf/issues/974)).
+- **Not yet** — a defect uf does not catch today, tracked in the linked issue.
+
+"Needs inference" marks a uf rule that waits on Flow type inference, which uf
+does not implement yet: a run names it under `unavailableRules` instead of
+running it.
+
+#### eslint-plugin-react
+
+| ESLint | uf |
+| --- | --- |
+| `no-danger`, `no-danger-with-children` | `security/no-dangerously-set-inner-html` |
+| `no-unstable-nested-components` | `flow/nested-component` |
+| `display-name`, `function-component-definition` | `react/component-syntax` — a `component` declaration always has a name |
+| `jsx-no-leaked-render` | `flow/sketchy-number` (needs inference) |
+| `prop-types`, `default-props-match-prop-types`, `require-default-props`, `prefer-exact-props`, `prefer-read-only-props`, `jsx-no-undef` | Flow — component syntax types, defaults, exactness and read-only props, and inference reports an undefined name |
+| `forbid-prop-types`, `forbid-foreign-prop-types`, `sort-prop-types`, `no-typos` | Not needed — they check PropTypes, which Flow types replace |
+| `react-in-jsx-scope`, `jsx-uses-react` | Not needed — the automatic JSX runtime needs no `React` in scope |
+| `jsx-uses-vars` | Not needed — it exists to feed ESLint's `no-unused-vars` |
+| `jsx-filename-extension` | Not needed — Flow's JSX lives in `.js` files |
+| `no-find-dom-node`, `no-render-return-value` | Not needed — `findDOMNode` and `ReactDOM.render` are gone from React 19 |
+| `jsx-no-bind`, `jsx-no-constructed-context-values`, `no-object-type-as-default-prop` | React Compiler — see `react/no-redundant-memo` |
+| `jsx-child-element-spacing`, `jsx-closing-bracket-location`, `jsx-closing-tag-location`, `jsx-curly-newline`, `jsx-curly-spacing`, `jsx-equals-spacing`, `jsx-first-prop-new-line`, `jsx-indent`, `jsx-indent-props`, `jsx-max-props-per-line`, `jsx-newline`, `jsx-one-expression-per-line`, `jsx-props-no-multi-spaces`, `jsx-space-before-closing`, `jsx-tag-spacing`, `jsx-wrap-multilines` | `uf fmt` |
+| `forward-ref-uses-ref`, `no-access-state-in-setstate`, `no-arrow-function-lifecycle`, `no-deprecated`, `no-did-mount-set-state`, `no-did-update-set-state`, `no-direct-mutation-state`, `no-is-mounted`, `no-redundant-should-component-update`, `no-set-state`, `no-string-refs`, `no-unsafe`, `no-unused-class-component-methods`, `no-unused-state`, `no-will-update-set-state`, `prefer-es6-class`, `prefer-stateless-function`, `require-optimization`, `require-render-return`, `sort-comp`, `state-in-constructor`, `static-property-placement` | Not planned |
+| `boolean-prop-naming`, `destructuring-assignment`, `forbid-component-props`, `forbid-dom-props`, `forbid-elements`, `hook-use-state`, `jsx-boolean-value`, `jsx-curly-brace-presence`, `jsx-fragments`, `jsx-handler-names`, `jsx-max-depth`, `jsx-no-literals`, `jsx-no-useless-fragment`, `jsx-pascal-case`, `jsx-props-no-spread-multi`, `jsx-props-no-spreading`, `jsx-sort-default-props`, `jsx-sort-props`, `no-adjacent-inline-elements`, `no-multi-comp`, `self-closing-comp`, `sort-default-props` | Project rule |
+| `jsx-key`, `jsx-no-duplicate-props`, `no-array-index-key`, `no-children-prop`, `no-unknown-property`, `no-invalid-html-attribute`, `no-unescaped-entities`, `void-dom-elements-no-children`, `jsx-no-comment-textnodes`, `jsx-no-script-url`, `jsx-no-target-blank`, `iframe-missing-sandbox`, `button-has-type`, `checked-requires-onchange-or-readonly`, `style-prop-object`, `no-namespace`, `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062) |
+
+#### eslint-plugin-react-hooks
+
+| ESLint | uf |
+| --- | --- |
+| `rules-of-hooks` | `react/hooks-rules`, with `flow/nested-hook` |
+| `component-hook-factories` | `flow/nested-component` and `flow/nested-hook` |
+| `static-components` | `flow/nested-component` |
+| `purity` | `react/no-render-side-effects` |
+| `set-state-in-effect` | Partly `react/no-derived-state-effect`, which covers state derived from props or state; the rest is not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
+| `config`, `gating` | Not needed — they check a Babel setup of the React Compiler, and uf runs the compiler itself |
+| `exhaustive-deps`, `set-state-in-render`, `refs`, `immutability`, `globals`, `error-boundaries`, `incompatible-library`, `preserve-manual-memoization`, `unsupported-syntax`, `use-memo` | Not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
+
+#### eslint-plugin-jsx-a11y
+
+`a11y/heading-order` and `markup/no-invalid-nesting` have no counterpart in the
+plugin.
+
+| ESLint | uf |
+| --- | --- |
+| `alt-text` | `a11y/alt-text` |
+| `aria-props` | `a11y/aria-props` |
+| `label-has-associated-control`, `label-has-for` | `a11y/label-has-associated-control` |
+| `no-static-element-interactions` | `a11y/no-static-element-interactions` |
+| `accessible-emoji`, `no-onchange` | Not needed — deprecated in the plugin itself |
+| `anchor-ambiguous-text`, `anchor-has-content`, `anchor-is-valid`, `aria-activedescendant-has-tabindex`, `aria-proptypes`, `aria-role`, `aria-unsupported-elements`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `heading-has-content`, `html-has-lang`, `iframe-has-title`, `img-redundant-alt`, `interactive-supports-focus`, `lang`, `media-has-caption`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `no-redundant-roles`, `prefer-tag-over-role`, `role-has-required-aria-props`, `role-supports-aria-props`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+
+#### eslint-plugin-import
+
+| ESLint | uf |
+| --- | --- |
+| `named`, `default`, `namespace`, `export`, `no-unresolved` | Flow — `uf check` resolves every import and types what it names |
+| `no-mutable-exports` | `flow/non-const-var-export` |
+| `no-named-as-default-member` | `flow/default-import-access` (needs inference) |
+| `no-import-module-exports` | `flow/mixed-import-and-require` |
+| `no-default-export` | `react/no-default-export-component` for modules that declare components; a project rule elsewhere |
+| `dynamic-import-chunkname`, `no-webpack-loader-syntax` | Not needed — webpack syntax, which Vite does not read |
+| `amd`, `commonjs`, `consistent-type-specifier-style`, `enforce-node-protocol-usage`, `exports-last`, `extensions`, `first`, `group-exports`, `imports-first`, `max-dependencies`, `newline-after-import`, `no-amd`, `no-anonymous-default-export`, `no-commonjs`, `no-dynamic-require`, `no-empty-named-blocks`, `no-internal-modules`, `no-named-default`, `no-named-export`, `no-namespace`, `no-nodejs-modules`, `no-relative-parent-imports`, `no-restricted-paths`, `no-unassigned-import`, `order`, `prefer-default-export`, `unambiguous` | Project rule |
+| `no-cycle`, `no-self-import`, `no-unused-modules`, `no-extraneous-dependencies`, `no-duplicates`, `no-named-as-default`, `no-useless-path-segments`, `no-absolute-path`, `no-relative-packages`, `no-deprecated` | Not yet — [#1065](https://github.com/ubugeeei-prod/uf/issues/1065) |
+
 ## uf check
 
 `uf check` runs this page's linter and then Flow's type inference, so every lint

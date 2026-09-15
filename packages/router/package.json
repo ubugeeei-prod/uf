@@ -44,6 +44,11 @@
     "react-dom": ">=19.3.0",
     "react-server-dom-parcel": ">=19.3.0"
   },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
+  },
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.34",
     "@uniflowed/server": "0.0.0-alpha.34"

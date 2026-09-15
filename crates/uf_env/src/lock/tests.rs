@@ -196,7 +196,27 @@ fn the_guard_is_held_until_it_is_dropped() {
     );
 
     drop(held);
-    assert!(other.try_lock().is_ok());
+    // Released when dropped, but not always by the next instruction: a lock
+    // taken with `flock` belongs to the open file description, and a process
+    // that another test in this binary spawns holds a copy of every descriptor
+    // this process has open, this one included, until it execs and its
+    // close-on-exec copies are closed. Asserting on the first try failed in CI
+    // when one did (ubugeeei-prod/uf#1050). So the second holder is given a
+    // moment, and a guard that is never released still fails the test.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let released = loop {
+        if other.try_lock().is_ok() {
+            break true;
+        }
+        if std::time::Instant::now() >= deadline {
+            break false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    };
+    assert!(
+        released,
+        "the guard was still held five seconds after it was dropped"
+    );
 }
 
 /// Only a file whose one key is the record is toolchain-only; everything else

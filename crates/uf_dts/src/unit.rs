@@ -17,6 +17,7 @@ use compact_str::{CompactString, ToCompactString};
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+use serde::{Deserialize, Serialize};
 use uf_infra::{Bump, FxHashMap, FxHashSet};
 
 use crate::emit;
@@ -25,7 +26,11 @@ use crate::resolve::{self, candidates, is_relative};
 use crate::summary::{self, Export, Imported, Kinds, Summary, Target};
 
 /// What a translation produced.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serializable because a translation is a function of the files it read, so
+/// a caller that has recorded those files can keep one and hand it back
+/// without translating again — which is what `uf check` does between runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Translation {
     /// One module per declaration file the entries reach, sorted by path.
     pub modules: Vec<Module>,
@@ -41,7 +46,7 @@ impl Translation {
 }
 
 /// One declaration file, translated.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Module {
     /// The declaration file's package path, as the reader passed it.
     pub path: CompactString,

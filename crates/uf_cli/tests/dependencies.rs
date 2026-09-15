@@ -511,10 +511,37 @@ fn a_specifier_that_would_be_read_as_a_flag_is_refused_before_anything_is_writte
     assert_plain(&stderr);
 }
 
-/// The project's own refusal of npm scripts guards `uf add`, not only
-/// `uf install` — and adding a dependency is when a script most often arrives.
+/// Scripts no install runs do not stop an install. That covers the `start`,
+/// `android` and `ios` every Expo and React Native template writes. `uf install`
+/// says once that uf does not run them. See ubugeeei-prod/uf#992.
 #[test]
-fn a_manifest_that_declares_scripts_stops_an_add_before_anything_is_fetched() {
+fn a_manifest_whose_scripts_no_install_runs_installs_and_is_told_uf_does_not_run_them() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[("tiny", "1.2.3")]);
+    fs::write(
+        dir.path().join("package.json"),
+        "{\n  \"name\": \"deps-fixture\",\n  \"version\": \"1.0.0\",\n  \
+         \"scripts\": { \"start\": \"expo start\", \"ios\": \"expo start --ios\" },\n  \
+         \"dependencies\": { \"tiny\": \"file:vendor/tiny\" }\n}\n",
+    )
+    .unwrap();
+
+    let stdout = ok(dir.path(), &["install"]);
+
+    assert!(
+        stdout.contains("declares ios, start") || stdout.contains("declares start, ios"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("uf does not run"), "{stdout}");
+    assert!(stdout.contains("uf.config.js"), "{stdout}");
+    assert!(dir.path().join("node_modules/tiny/package.json").is_file());
+}
+
+/// The project's own refusal of install-time lifecycle scripts guards `uf add`,
+/// not only `uf install`, and adding a dependency is when such a script most
+/// often arrives.
+#[test]
+fn a_manifest_that_declares_a_lifecycle_script_stops_an_add_before_anything_is_fetched() {
     let dir = tempfile::tempdir().unwrap();
     project(dir.path(), &[("tiny", "1.2.3")]);
     fs::write(
@@ -527,7 +554,10 @@ fn a_manifest_that_declares_scripts_stops_an_add_before_anything_is_fetched() {
     let (stdout, stderr, success) = run(dir.path(), &["add", "./vendor/tiny"]);
 
     assert!(!success, "{stdout}{stderr}");
-    assert!(stderr.contains("declares scripts"), "{stderr}");
+    assert!(
+        stderr.contains("declares install-time lifecycle scripts (postinstall)"),
+        "{stderr}"
+    );
     assert!(stderr.contains("uf tasks"), "{stderr}");
     assert!(
         !dir.path().join("node_modules").exists(),

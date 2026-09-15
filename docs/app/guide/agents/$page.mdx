@@ -68,16 +68,20 @@ prints the working directory the server was given.
 what the tool does to your checkout. Every tool runs the command it is named
 after, in the server's own process, with the arguments below:
 
-| Tool | Runs | Arguments | Its description says |
+| Tool | Runs | Arguments | Its description ends |
 | --- | --- | --- | --- |
-| `uf_check` | `uf check --json` | `paths` | Reads only. |
-| `uf_lint` | `uf lint --json` | `paths` | Reads only. |
-| `uf_info` | `uf info` | — | Reads only. |
-| `uf_routes` | `uf routes list` | — | Reads only. |
-| `uf_explain` | `uf explain <command> --json` | `command`, required | Reads only. |
+| `uf_check` | `uf check --json` | `paths` | Changes none of your files, … |
+| `uf_lint` | `uf lint --json` | `paths` | Changes none of your files, … |
+| `uf_info` | `uf info` | — | Changes none of your files, … |
+| `uf_routes` | `uf routes list` | — | Changes none of your files, … |
+| `uf_explain` | `uf explain <command> --json` | `command`, required | Changes none of your files, … |
 | `uf_test` | `uf test --json` | `filter`, `paths` | RUNS the project's own code. |
 | `uf_fmt_write` | `uf fmt` | `paths` | WRITES to files in the checkout. |
 | `uf_lint_fix` | `uf lint --fix --json` | `paths` | WRITES to files in the checkout. |
+
+The first five end "Changes none of your files, though uf may write its own
+cache under `.uf/cache/`", and `uf_check`'s description names the one it keeps:
+what it inferred, in `.uf/cache/check/`.
 
 `paths` narrows a command to files whose path contains one of the strings, the
 way the command line's own `PATH` arguments do. `uf_lint_fix` applies the
@@ -119,16 +123,20 @@ second block: "uf check failed with 1 error"
 
 A failing check is `isError: true` inside an ordinary result, not a protocol
 error: the call worked, and its answer is that the project does not check. A tool
-that does not exist is answered the same way, and only a method the server has no
-answer for at all is a JSON-RPC error:
+that does not exist is answered the same way, and so is a call whose arguments do
+not fit the tool's `inputSchema` — a key it does not have, a value of the wrong
+type, a missing `command` — which names the argument and runs nothing. Only a
+method the server has no answer for at all is a JSON-RPC error:
 
 <figure className="terminal">
 
 ```
 tools/call uf_build
 ← {"jsonrpc":"2.0","id":5,"result":{"content":[{"type":"text","text":"no tool named \"uf_build\""}],"isError":true}}
+tools/call uf_lint {"pathz":["app/"]}
+← {"jsonrpc":"2.0","id":6,"result":{"content":[{"type":"text","text":"uf_lint did not run: `pathz` is not an argument; the arguments are `paths`"}],"isError":true}}
 resources/list
-← {"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"this server has no method \"resources/list\""}}
+← {"jsonrpc":"2.0","id":7,"error":{"code":-32601,"message":"this server has no method \"resources/list\""}}
 ```
 
 </figure>
@@ -142,22 +150,17 @@ returns, including the one trap in it: `errors` is the sum of the lint findings 
 These are the limits of the server as it is, and the ones that are defects have
 issues:
 
-- **Arguments are not checked against the schemas.** Every schema says
-  `additionalProperties: false`, and nothing enforces it: a misspelled `pathz` is
-  ignored and the tool runs over the whole project
-  ([#994](https://github.com/ubugeeei-prod/uf/issues/994)).
 - **`paths` is not confined to the project.** An entry that climbs out of it is
   followed, and `uf_fmt_write` with `../outside` rewrites what it finds there
   ([#993](https://github.com/ubugeeei-prod/uf/issues/993)). There is no
   confirmation step, allow-list or read-only mode in the server, so a client that
   asks before a tool writes is the only guard.
-- **"Reads only" is about your source.** `uf_check` writes its inference cache
-  under `.uf/cache/check/`, and `uf_test` writes `.uf/test-timings.json`, beside
-  whatever the tests themselves write.
+- **Changing none of your files is not writing nothing.** `uf_check` writes its
+  inference cache under `.uf/cache/check/`, and `uf_test` writes
+  `.uf/test-timings.json`, beside whatever the tests themselves write.
 - **`uf_info` does not describe the project.** It prints uf's version, the
-  machine and the working directory, and reads no `uf.config.js`, whatever its
-  description says (#994). `uf_explain` is the tool that says what a command will
-  do and why.
+  machine and the working directory, and reads no `uf.config.js`. `uf_explain` is
+  the tool that says what a command will do and why.
 - **`uf_test` runs your tests with the access your project gives them.** It needs
   the project installed — it stops at `@uniflowed/host` is not installed
   otherwise — and on a host with no `permissions` declared, nothing restricts what

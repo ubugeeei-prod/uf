@@ -96,6 +96,24 @@ impl PackageManager {
         }
     }
 
+    /// The manager a top-level `packageManager` spec names.
+    ///
+    /// Yarn's edition is its major: `yarn@1` is Classic and every later major
+    /// is Berry, which is also what a `yarn` with no version means — the same
+    /// answer `pm.packageManager: "yarn"` has always given.
+    #[must_use]
+    pub fn from_spec(spec: &uf_config::PackageManagerSpec) -> Self {
+        match spec.name {
+            uf_config::PackageManagerName::Npm => Self::Npm,
+            uf_config::PackageManagerName::Pnpm => Self::Pnpm,
+            uf_config::PackageManagerName::Bun => Self::Bun,
+            uf_config::PackageManagerName::Yarn => match spec.version.major() {
+                Some(1) => Self::Yarn(YarnEdition::Classic),
+                _ => Self::Yarn(YarnEdition::Berry),
+            },
+        }
+    }
+
     /// Lockfile this manager writes.
     #[must_use]
     pub const fn lockfile(self) -> Lockfile {
