@@ -123,6 +123,10 @@ const COVERAGE: &[(&str, &str)] = &[
         "self-update",
         "toolchain.rs: installs, checks and rolls back, killed at every step",
     ),
+    (
+        "self-uninstall",
+        "toolchain.rs: lists, asks, and removes the installer's layout",
+    ),
     ("use", "toolchain.rs: acquires, activates, and refuses"),
     ("ls", "dependencies.rs: asks the package manager"),
     ("audit", "dependencies.rs: asks the package manager"),

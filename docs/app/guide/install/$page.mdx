@@ -104,6 +104,15 @@ Every switch, the installer's and uf's, renames each link over the old one with
 is interrupted leaves the old version working, or the new one — never a `uf`
 that points at nothing.
 
+### Uninstalling
+
+<div className="command"><code>uf self-uninstall</code></div>
+
+lists the links, the runtimes and the toolchain store it would remove, asks, and
+removes them. `uf self-uninstall --dry-run` only lists them. A `uf` it did not
+link, your projects and your shell profile are left as they are — the installer
+never edits a profile, so there is no line of uf's to take back out.
+
 ## With Nix
 
 The repository is a flake, and it is the whole install: it pins the Rust
