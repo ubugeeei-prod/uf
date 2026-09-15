@@ -2010,6 +2010,113 @@ fn dev_pre_bundles_the_flight_client_an_installed_router_imports() {
     });
 }
 
+/// Vite's dependency cache stays inside the project, whatever is above it.
+///
+/// Left to itself, Vite keeps the optimizer's cache in the nearest
+/// `package.json`'s `node_modules/.vite`, and a uf project needs no
+/// `package.json`. A project inside another repository therefore pre-bundled
+/// into that repository's `node_modules`, into one directory shared with every
+/// other such project there, which each dev server empties when it starts.
+/// That is how this file's own dev tests, on projects under the repository
+/// root, came to answer each other's pre-bundled files with `504 Outdated
+/// Optimize Dep` (ubugeeei-prod/uf#1141). This project sits below a
+/// `package.json` and has none of its own; every `deps*` directory any of its
+/// environments writes has to land in its own `node_modules/.vite`.
+#[test]
+fn dev_keeps_the_vite_cache_inside_a_project_with_no_package_json() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    // The repository around the project: a `package.json` at the top, and no
+    // `uf.config.js`, so nothing uf would take for a project of its own.
+    let outer = Project::new(&[(
+        "package.json",
+        "{\n  \"name\": \"outer\",\n  \"private\": true\n}\n",
+    )]);
+    fs::remove_file(outer.path().join("uf.config.js")).unwrap();
+    outer.write(
+        "app/uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({});\n",
+    );
+    for (name, source) in minimal_app() {
+        outer.write(&format!("app/{name}"), source);
+    }
+    let root = outer.path().join("app");
+
+    serve_dev_on_any_port(&root, |_, _, said, body| {
+        assert!(
+            body.starts_with("HTTP/1.1 200"),
+            "`uf dev` did not render `/`\n{body}\n{}",
+            server_said(said)
+        );
+        // Rendering `/` runs the optimizer. Wait until it has written a cache
+        // somewhere under the outer directory, then ask where.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let caches = loop {
+            let caches = vite_caches(outer.path());
+            if caches.iter().any(|cache| !written_deps(cache).is_empty())
+                || Instant::now() >= deadline
+            {
+                break caches;
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        assert!(
+            caches.iter().any(|cache| !written_deps(cache).is_empty()),
+            "`uf dev` wrote no pre-bundle under {} within a minute of rendering `/`; Vite \
+             caches there: {caches:?}\n{}",
+            outer.path().display(),
+            server_said(said)
+        );
+        assert!(
+            caches == [root.join("node_modules/.vite")],
+            "`uf dev` kept Vite's cache at {caches:?}, not only in {}; `deps*` written: {:?}\n{}",
+            root.join("node_modules/.vite").display(),
+            caches
+                .iter()
+                .map(PathBuf::as_path)
+                .map(written_deps)
+                .collect::<Vec<_>>(),
+            server_said(said)
+        );
+    });
+}
+
+/// Every directory named `.vite` under `directory`, without following links.
+fn vite_caches(directory: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        // Read leniently: the optimizer renames `deps_temp_*` directories while
+        // this walks.
+        for entry in fs::read_dir(&current).into_iter().flatten().flatten() {
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            if entry.file_name() == ".vite" {
+                found.push(entry.path());
+            } else {
+                pending.push(entry.path());
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// The `deps*` directories in a Vite cache that hold a finished pre-bundle.
+fn written_deps(cache: &Path) -> Vec<String> {
+    let mut written: Vec<String> = fs::read_dir(cache)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.path().join("_metadata.json").is_file())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    written.sort();
+    written
+}
+
 /// Runtime imports of `@uniflowed/react` go straight to the application's
 /// React peer.
 ///

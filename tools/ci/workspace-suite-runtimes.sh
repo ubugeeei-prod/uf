@@ -2,10 +2,10 @@
 # Every job that runs the workspace test suite installs the runtimes it starts.
 #
 # `crates/uf_cli/tests/{bun_host,deno_host,permissions}.rs` start real Bun,
-# Deno and Node processes, and they **fail rather than skip** when the runtime
-# is absent. That is the policy working — a host claim nobody checked must not
-# be green — but it makes `cargo test --workspace` runnable only in a job that
-# installed all three.
+# Deno and Node processes, and `crates/uf_cli/tests/managers.rs` real pnpm and
+# Yarn releases, and they **fail rather than skip** when one is absent. That is
+# the policy working — a claim nobody checked must not be green — but it makes
+# `cargo test --workspace` runnable only in a job that installed all of them.
 #
 # `publish.yml` was not such a job. `uf@0.0.0-alpha.14` was tagged, its four
 # binaries were built and released, and the publish job failed on six Deno
@@ -34,9 +34,13 @@ cd "$root"
 # parses under dash is a script that fails somebody's check.
 TAB=$(printf '\t')
 
+#
+# pnpm and both Yarns are not an action but a script, which pins their
+# releases in one place; a job that runs the script installs all four.
 RUNTIMES="bun:oven-sh/setup-bun:crates/uf_cli/tests/bun_host.rs
 deno:denoland/setup-deno:crates/uf_cli/tests/deno_host.rs
-node:actions/setup-node:crates/uf_cli/tests/permissions.rs"
+node:actions/setup-node:crates/uf_cli/tests/permissions.rs
+package-managers:tools/ci/install-package-managers.sh:crates/uf_cli/tests/managers.rs"
 
 # One pass, emitting `RUNS <workflow> <job>` and
 # `MISSING <workflow> <job> <runtime> <file>`, so the results survive the
