@@ -458,7 +458,7 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
 
     let mut ui = Ui::capturing(spec.speaks.mode());
     let outcome = match spec.name {
-        "uf_check" => commands::check::check(cwd, &mut ui, json, FixMode::Report, &paths),
+        "uf_check" => commands::check::check(cwd, &mut ui, json, FixMode::Report, &paths, None),
         "uf_lint" => commands::lint::lint_command(
             cwd,
             &mut ui,

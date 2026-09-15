@@ -99,7 +99,7 @@ fn statuses_are_stable() {
 
 #[test]
 fn a_build_with_a_checker_reports_it_and_one_without_says_so() {
-    let types = type_check(&[], &[], Utf8Path::new("."));
+    let types = type_check(&[], &[], Utf8Path::new("."), None);
 
     #[cfg(feature = "upstream-typecheck")]
     if uf_check::is_available() {
@@ -185,6 +185,7 @@ fn a_file_checked_with_nothing_else_cannot_see_the_package_it_imports() {
         &project[..1],
         &[],
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
+        None,
     );
 
     assert_eq!(codes(&types), ["value-as-type"]);
@@ -203,6 +204,7 @@ fn a_narrowed_check_types_the_file_against_what_it_imports() {
         &project[..1],
         &project,
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
+        None,
     );
 
     assert_eq!(codes(&types), Vec::<&str>::new());
@@ -232,6 +234,7 @@ fn a_narrowed_check_reports_only_the_files_it_was_asked_about() {
         &project[..1],
         &project,
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
+        None,
     );
 
     assert_eq!(
@@ -261,6 +264,7 @@ fn an_unnarrowed_check_reports_every_file_it_was_given() {
         &project,
         &[],
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
+        None,
     );
 
     assert_eq!(codes(&types), ["incompatible-type"]);
@@ -301,6 +305,7 @@ fn checked_in(root: &tempfile::TempDir, sources: &[SourceFile]) -> TypeCheck {
         sources,
         &[],
         Utf8Path::from_path(root.path()).expect("a UTF-8 path"),
+        None,
     )
 }
 
