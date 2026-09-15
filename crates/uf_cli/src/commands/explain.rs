@@ -1489,8 +1489,18 @@ fn doc_stages() -> Vec<Stage> {
 }
 
 fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let runner = resolved.config.test_runner_tool();
+    if let uf_config::TestRunnerSpec::Bun(_) = &runner.spec {
+        return bun_test_stages(resolved, &runner.spec, runner.source);
+    }
     let mut stages = vec![
         env_stage(resolved, TEST),
+        Stage {
+            name: "runner",
+            provider: "uf_test (in this binary)".to_string(),
+            detail: "the default `test.runner`; `bun` hands the suite to `bun test` instead"
+                .to_string(),
+        },
         Stage {
             name: "discovery",
             provider: "uf_test (in this binary)".to_string(),
@@ -1511,6 +1521,53 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         detail: "runs the bodies and streams one line per case".to_string(),
     });
     stages
+}
+
+/// `uf test` when `test.runner` names Bun: which Bun runs the suite, and the
+/// command it is started with.
+///
+/// Named rather than resolved, like every stage here: `uf explain` prints a
+/// plan, and must not fail because this machine has no Bun or the project's
+/// packages are not installed yet. That is why the preload is written as the
+/// package path a run resolves, and the files as the shape they take.
+fn bun_test_stages(
+    resolved: &ResolvedConfig,
+    spec: &uf_config::TestRunnerSpec,
+    source: uf_config::ToolSource,
+) -> Vec<Stage> {
+    let from = source
+        .key()
+        .map_or_else(String::new, |key| format!(", from `{key}`"));
+    vec![
+        env_stage(resolved, TEST),
+        Stage {
+            name: "discovery",
+            provider: "uf_test (in this binary)".to_string(),
+            detail: "reads which files declare tests; those files, and only those, are what \
+                     `bun test` is given"
+                .to_string(),
+        },
+        runtime_stage(resolved, runtimes::Role::Test),
+        Stage {
+            name: "runner",
+            provider: format!("bun test ({spec}{from})"),
+            detail: format!(
+                "the Bun above runs `bun --conditions={condition} test --preload \
+                 <node_modules>/@uniflowed/host/bun-preload.js --reporter=junit \
+                 --reporter-outfile=.uf/bun-test/junit.xml ./<file>…`, and under that condition \
+                 `@uniflowed/test` is `bun:test`",
+                condition = crate::commands::test::bun::CONDITION,
+            ),
+        },
+        transform_stage(),
+        Stage {
+            name: "report",
+            provider: "uf (in this binary)".to_string(),
+            detail: "reads the JUnit report back, and fails the run on a file `bun test` ran no \
+                     case from"
+                .to_string(),
+        },
+    ]
 }
 
 /// Which host enforces the project's permission set, and how much of it.

@@ -161,8 +161,10 @@ export type PackageManagerSpec = string;
  * because it is the binary that is running. `"bun"` is `bun test`, on the Bun
  * it names — so it also decides the test runtime when `test.runtime` is
  * absent, and a `test.runtime` naming anything else is an error. The version
- * follows the same grammar as a runtime's. `uf test` refuses a Bun runner until
- * ubugeeei-prod/uf#942 lands, rather than running its own suite in its place.
+ * follows the same grammar as a runtime's. Under a Bun runner `uf test` hands
+ * the files its discovery found to `bun test`, with uf's Flow preload, and
+ * `@uniflowed/test` resolves to `bun:test`; what Bun has no equivalent for
+ * raises `UnsupportedError` by name. See guide/testing, "Choosing a runner".
  *
  * The type of `test.runner`.
  */

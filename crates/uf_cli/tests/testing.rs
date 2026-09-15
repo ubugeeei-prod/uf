@@ -1528,40 +1528,194 @@ fn a_react_native_project_refuses_the_web_document_test_runner() {
     assert!(stderr.contains("document shim"), "{stderr}");
 }
 
-/// A Bun runner parses, and `uf test` refuses it with the issue that will run
-/// it rather than running uf's own suite in its place.
-///
-/// Answering for a suite by rules the project did not choose is worse than not
-/// answering. ubugeeei-prod/uf#940 declares the runner; ubugeeei-prod/uf#942
-/// runs it.
-#[test]
-fn a_bun_test_runner_is_refused_with_the_issue_that_will_run_it() {
-    let project = Project::new(&[(
-        "src/sum.test.js",
-        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => { expect(1 + 1).toBe(2); });\n",
-    )]);
+/// A project whose `uf.config.js` names `runner`.
+fn with_runner(runner: &str, files: &[(&str, &str)]) -> Project {
+    let project = Project::new(files);
     project.write(
         "uf.config.js",
-        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runner: \"bun@1.4\" } });\n",
+        &format!(
+            "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\nexport default defineConfig({{ test: {{ runner: \"{runner}\" }} }});\n"
+        ),
     );
+    project
+}
 
-    let output = uf()
+/// One Flow test file with a case that passes and a case that fails.
+const PASS_AND_FAIL: (&str, &str) = (
+    "src/math.test.js",
+    r#"// @flow
+import { describe, expect, it } from "@uniflowed/test";
+
+const add = (a: number, b: number): number => a + b;
+
+describe("math", () => {
+  it("adds", () => {
+    expect(add(1, 2)).toBe(3);
+  });
+
+  it("fails on purpose", () => {
+    expect(add(1, 1)).toBe(3);
+  });
+});
+"#,
+);
+
+/// `test.runner: "bun"` runs the suite with `bun test`, Flow and all, and says
+/// what it ran. ubugeeei-prod/uf#942.
+#[test]
+fn a_bun_runner_runs_the_suite_with_bun_test() {
+    if !host_ready() || !support::bun_ready() {
+        return;
+    }
+    let project = with_runner("bun", &[PASS_AND_FAIL]);
+
+    let (success, stdout, stderr) = run(project.path(), &[]);
+
+    assert!(!success, "one case fails:\n{stdout}\n{stderr}");
+    assert!(
+        stdout.contains("1 passed, 1 failed, 0 skipped"),
+        "{stdout}\n{stderr}"
+    );
+    assert!(
+        stderr.contains("bun test failed with 1 failure"),
+        "{stderr}"
+    );
+}
+
+/// The claim `test.runner` makes: the same suite under either runner reports
+/// the same passes and the same failures.
+#[test]
+fn both_runners_report_the_same_passes_and_failures() {
+    if !host_ready() || !support::bun_ready() {
+        return;
+    }
+    let ours = Project::new(&[PASS_AND_FAIL]);
+    let document = json(ours.path(), &[]);
+    let mut by_uf: Vec<(String, String)> = document["tests"]
+        .as_array()
+        .expect("the report lists every case")
+        .iter()
+        .map(|case| {
+            (
+                case["name"].as_str().unwrap_or_default().to_owned(),
+                case["status"].as_str().unwrap_or_default().to_owned(),
+            )
+        })
+        .collect();
+    by_uf.sort();
+
+    let theirs = with_runner("bun", &[PASS_AND_FAIL]);
+    let (_, stdout, stderr) = run(theirs.path(), &[]);
+    let report = std::fs::read_to_string(theirs.path().join(".uf/bun-test/junit.xml"))
+        .unwrap_or_else(|error| {
+            panic!("the Bun run wrote its report: {error}\n{stdout}\n{stderr}")
+        });
+
+    assert_eq!(
+        by_uf,
+        vec![
+            (String::from("math > adds"), String::from("passed")),
+            (
+                String::from("math > fails on purpose"),
+                String::from("failed")
+            ),
+        ]
+    );
+    assert!(report.contains("<testcase name=\"adds\""), "{report}");
+    assert!(
+        report.contains("<testcase name=\"fails on purpose\""),
+        "{report}"
+    );
+    assert_eq!(report.matches("<failure").count(), 1, "{report}");
+}
+
+/// A pinned Bun is installed the way `test.runtime` installs one, so a Bun that
+/// cannot be settled is refused naming the spec, before anything runs. The
+/// publishers serve nothing here, so the attempt cannot reach the network.
+#[test]
+fn a_pinned_bun_that_cannot_be_installed_is_refused_before_anything_runs() {
+    let project = with_runner("bun@0.0.1", &[PASS_AND_FAIL]);
+    let tools = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir_all(tools.path().join("nothing")).expect("the empty publisher");
+
+    let output = uf_with_tools(tools.path())
         .arg("--cwd")
         .arg(project.path())
         .arg("test")
         .output()
-        .unwrap();
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    let stderr = String::from_utf8(output.stderr).unwrap();
+        .expect("uf started");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert!(
-        !output.status.success(),
-        "a Bun runner must not fall through to uf's own:\n{stdout}\n{stderr}"
+    assert!(!output.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.contains("`bun@0.0.1`"), "{stderr}");
+    assert!(!stdout.contains("adds"), "nothing ran: {stdout}");
+}
+
+/// `bun test` runs on Bun alone, so a `test.runtime` naming another runtime is
+/// refused by name, before anything runs, rather than ignored — which is what
+/// the Bun runner did with it before it resolved its Bun through
+/// `test.runtime`.
+#[test]
+fn a_bun_runner_on_a_runtime_that_is_not_bun_is_refused_by_name() {
+    let project = Project::new(&[PASS_AND_FAIL]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runner: \"bun\", runtime: \"node\" } });\n",
     );
-    assert!(stderr.contains("`test.runner` is `bun@1.4`"), "{stderr}");
-    assert!(stderr.contains("ubugeeei-prod/uf#942"), "{stderr}");
-    // Refused before anything ran, so no case was reported.
-    assert!(!stdout.contains("adds"), "{stdout}");
+
+    let (success, stdout, stderr) = run(project.path(), &[]);
+
+    assert!(!success, "{stdout}\n{stderr}");
+    assert!(stderr.contains("test.runtime"), "{stderr}");
+    assert!(
+        stderr.contains("a Bun runner runs on the Bun it names"),
+        "{stderr}"
+    );
+    assert!(!stdout.contains("adds"), "nothing ran: {stdout}");
+}
+
+/// A flag `bun test` has no meaning for is refused by name rather than dropped.
+#[test]
+fn a_flag_bun_test_cannot_honour_is_refused_by_name() {
+    let project = with_runner("bun", &[PASS_AND_FAIL]);
+
+    let (success, _, stderr) = run(project.path(), &["--list"]);
+
+    assert!(!success);
+    assert!(
+        stderr.contains("`bun test` cannot honour 1 flag"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("--list"), "{stderr}");
+}
+
+/// A file whose cases never reach `bun test` fails the run by name, where
+/// `bun test` itself would report nothing about it and exit 0.
+#[test]
+fn a_file_bun_runs_nothing_from_fails_the_run() {
+    if !host_ready() || !support::bun_ready() {
+        return;
+    }
+    let project = with_runner(
+        "bun",
+        &[
+            (
+                "src/sum.test.js",
+                "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => {\n  expect(1 + 1).toBe(2);\n});\n",
+            ),
+            (
+                "src/hidden.test.js",
+                "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nif (globalThis.ufNeverSet === true) {\n  it(\"never registers\", () => {\n    expect(1).toBe(1);\n  });\n}\n",
+            ),
+        ],
+    );
+
+    let (success, stdout, stderr) = run(project.path(), &[]);
+
+    assert!(!success, "{stdout}\n{stderr}");
+    assert!(stderr.contains("ran no case from 1 file"), "{stderr}");
+    assert!(stderr.contains("src/hidden.test.js"), "{stderr}");
 }
 
 /// `test.runtime` at a version runs the suite on the release in the store, and
