@@ -228,6 +228,24 @@ async function viteConfig(config, mode) {
     configFile: false,
     envDir: false,
     mode,
+    // Vite's dependency cache, kept in the project whatever is above it.
+    // Vite's own default is the nearest `package.json`'s `node_modules/.vite`,
+    // and a uf project needs no `package.json`. One inside another repository
+    // pre-bundled into that repository's `node_modules`, in one directory
+    // shared with every other such project there and emptied by each dev
+    // server that started — which is how two `uf dev` servers came to answer
+    // each other's pre-bundled files with `504 Outdated Optimize Dep`
+    // (ubugeeei-prod/uf#1141).
+    //
+    // This directory rather than `.vite` or `.uf/cache/vite`, because it is
+    // where Vite already puts the cache for a project with its own
+    // `package.json`, so nothing moves for one: the URLs stay
+    // `/node_modules/.vite/deps/…`, and the files stay under `node_modules`,
+    // which git ignores, Vite's watcher skips and Vite's sourcemap ignore list
+    // treats as somebody else's code. `cacheDir` is shared config, so every
+    // environment's optimizer follows it — `deps`, `deps_ssr`, `deps_rsc` —
+    // and a project's own `vite.cacheDir` is merged over it like any option.
+    cacheDir: path.join(root, "node_modules", ".vite"),
     // `app.router.basePath`: where Vite serves the modules in development, and
     // what it puts in front of every asset URL a build writes.
     base: basePathOf(config) === "" ? "/" : `${basePathOf(config)}/`,
