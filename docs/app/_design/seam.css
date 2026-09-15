@@ -1145,3 +1145,30 @@ tbody tr:last-child :is(td, th) {
   width: max-content;
   min-width: 100%;
 }
+
+/* The components reference's registry. Each example runs in a frame of its
+   own, in the tokens' default theme whatever this site's theme is, with its two
+   files folded under it. No overflow on the frame: a menu or a panel an example
+   opens is drawn past its edge. */
+.registry-example {
+  background: #ffffff;
+  border: 1px solid var(--doc-rule-strong);
+  border-radius: 6px;
+  color: #1b1b1f;
+  color-scheme: light;
+  margin: 1rem 0;
+  padding: 1.5rem;
+}
+
+.registry-source {
+  margin: 0.5rem 0;
+}
+
+.registry-source > summary {
+  cursor: pointer;
+}
+
+.registry-source pre {
+  max-height: 32rem;
+  overflow: auto;
+}

@@ -120,6 +120,12 @@ pub(crate) fn refused_flags(args: &TestArgs) -> Vec<RefusedFlag> {
         "--coverage-reporter cobertura",
         "`bun test` writes `text` and `lcov` coverage only",
     );
+    refuse(
+        args.shard.is_some(),
+        "--shard",
+        "a shard is cut from uf's own schedule and records uf's own report, and `bun test` has \
+         neither; split the suite with `runner: \"uf\"`",
+    );
     refused
 }
 
@@ -555,6 +561,21 @@ mod tests {
             ]
         );
         assert!(refused_flags(&TestArgs::default()).is_empty());
+    }
+
+    #[test]
+    fn a_shard_is_refused_because_bun_test_has_no_schedule_to_cut() {
+        let args = TestArgs {
+            shard: Some(uf_test::Shard::new(1, 2).expect("a shard")),
+            ..TestArgs::default()
+        };
+
+        let refused: Vec<&str> = refused_flags(&args)
+            .iter()
+            .map(|refusal| refusal.flag)
+            .collect();
+
+        assert_eq!(refused, vec!["--shard"]);
     }
 
     #[test]

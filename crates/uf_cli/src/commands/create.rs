@@ -77,6 +77,7 @@ pub(crate) fn scaffold(
         (false, None) => CreateKind::AppReact,
         (false, Some(named)) => match AppTemplate::parse(named) {
             Some(AppTemplate::React) => CreateKind::AppReact,
+            Some(AppTemplate::Monorepo) => CreateKind::Monorepo,
             None => bail!(
                 "`{named}` is not a template.\n  templates: {templates}\n  to \
                  scaffold into a directory called `{named}`, write \
@@ -89,6 +90,7 @@ pub(crate) fn scaffold(
     let fallback = match kind {
         CreateKind::AppReact => "uniflowed-app",
         CreateKind::Lib => "uniflowed-lib",
+        CreateKind::Monorepo => "uniflowed-monorepo",
     };
     let name = name.unwrap_or_else(|| project_name(&target, fallback));
     render_created(cwd, ui, spelling, kind, target, name, force)
@@ -103,10 +105,13 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
             force,
         } => {
             let (template, path) = app_arguments(template_or_path, path)?;
-            let AppTemplate::React = template;
+            let (kind, fallback) = match template {
+                AppTemplate::React => (CreateKind::AppReact, "uniflowed-app"),
+                AppTemplate::Monorepo => (CreateKind::Monorepo, "uniflowed-monorepo"),
+            };
             let target = resolve_target(cwd, path)?;
-            let name = name.unwrap_or_else(|| project_name(&target, "uniflowed-app"));
-            (CreateKind::AppReact, target, name, force)
+            let name = name.unwrap_or_else(|| project_name(&target, fallback));
+            (kind, target, name, force)
         }
         CreateCommand::Lib { path, name, force } => {
             let target = resolve_target(cwd, path)?;
@@ -149,6 +154,11 @@ fn render_created(
     steps.push(match kind {
         CreateKind::AppReact => "uf dev",
         CreateKind::Lib => "uf test",
+        // The root is a repository rather than an application, so the dev
+        // server is the application package's. By path, because a workspace
+        // package is otherwise named by its manifest, and that name is the
+        // project's scope.
+        CreateKind::Monorepo => "uf dev#apps/web",
     });
 
     ui.render(|renderer, out| {

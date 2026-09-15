@@ -1463,7 +1463,8 @@ describe("invalidating a durable store", () => {
       },
     );
 
-    expect(provider.entries.size).toBe(1);
+    // What the third process rendered, and the record that the invalidation ran.
+    expect(provider.entries.size).toBe(2);
     expect(result.value).toBe("new");
     expect(rendered).toBe(1);
     expect(three.stats().restored).toBe(0);
@@ -1486,7 +1487,12 @@ describe("invalidating a durable store", () => {
     expect(two.revalidatePath("/posts")).toBe(0);
     await two.settled();
 
-    expect(provider.entries.size).toBe(0);
+    // Nothing but the record that the invalidation ran: an entry with no tags
+    // and no path, which a process starting a regenerated page from its build
+    // reads. See `recordInvalidation` in internal/cache-store.js.
+    const held = Array.from(provider.entries.values());
+    expect(held.filter((entry) => entry.tags.length > 0 || entry.path != null)).toEqual([]);
+    expect(held.length).toBe(1);
   });
 
   it("answers with what went here, having taken out what is shared", async () => {
@@ -1517,7 +1523,12 @@ describe("invalidating a durable store", () => {
     // handler should not wait on a disk to learn an integer it is going to put
     // in a log. The invalidation is the larger, shared thing beside it.
     expect(dropped).toBe(2);
-    expect(provider.entries.size).toBe(0);
+    // Nothing but the record that the invalidation ran: an entry with no tags
+    // and no path, which a process starting a regenerated page from its build
+    // reads. See `recordInvalidation` in internal/cache-store.js.
+    const held = Array.from(provider.entries.values());
+    expect(held.filter((entry) => entry.tags.length > 0 || entry.path != null)).toEqual([]);
+    expect(held.length).toBe(1);
   });
 });
 
@@ -1643,8 +1654,14 @@ describe("the route cache, on a disk", () => {
     await two.settled();
 
     // Both halves of the entry, gone from the directory the other three
-    // processes fill from.
-    expect(fs.readdirSync(directory)).toEqual([]);
+    // processes fill from. What is left is the record that the invalidation
+    // ran: one entry, with no tags and no path.
+    const left = fs.readdirSync(directory);
+    const records = left
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => JSON.parse(fs.readFileSync(nodePath.join(directory, name), "utf8")));
+    expect(records.map((record) => [record.tags, record.path])).toEqual([[[], null]]);
+    expect(left.length).toBe(2);
     fs.rmSync(directory, { recursive: true, force: true });
   });
 

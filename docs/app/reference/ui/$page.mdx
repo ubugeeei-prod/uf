@@ -3,6 +3,8 @@ title: "Components · uf"
 description: "The headless primitives, their parts, and the keys each one owns."
 ---
 
+import { Registry } from "./registry.js";
+
 <p className="eyebrow">Reference</p>
 
 # Components
@@ -1978,9 +1980,26 @@ switch with `aria-checked` and the switch keyboard contract; a rendered checkbox
 keeps `role="checkbox"` and preserves `aria-checked="mixed"` when
 `indeterminate` is set.
 
+## Registry components
+
+[`uf ui add`](/reference/cli) writes styled components into a project, each one
+built on the parts above and owned by the project from then on;
+[Owned or headless](/guide/ui#owned-or-headless) says when to reach for which.
+Every component the registry has is below: the command that writes it, its
+example running on this page, and its two files, folded under it.
+
+The list is `registry/ui/` itself, read when this site is built from the same
+directory `uf` embeds, so a component `uf ui list` offers is a component shown
+here. The examples render in the tokens' default theme whatever this site's
+theme is, because that is what a project sees before it applies one of its own.
+
+<Registry />
+
 ## What this page is
 
-A reference for what `@uniflowed/ui` guarantees, not a gallery. The guarantees
+A reference for what `@uniflowed/ui` guarantees, not a gallery. The one look on
+it is under [Registry components](#registry-components), since those are files
+a project owns rather than parts of the package. The guarantees
 are stated as tests in `packages/ui/ui.test.js`, where every assertion is
 either "a reader is told X" or "this key does Y" — a snapshot of the markup
 would pass while every one of them was broken.

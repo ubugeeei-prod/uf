@@ -56,6 +56,7 @@ import { assetPlugin } from "./internal/assets.js";
 import { emit, reportRenderError } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
+import { moduleId } from "./internal/module-graph.js";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 
@@ -610,10 +611,17 @@ function flowPlugin({
       // business: Vite already injects a stylesheet in dev, extracts it in a
       // build, code-splits it per chunk, and replaces it over HMR. A module
       // whose styles are gone stops importing it, and Vite notices.
+      //
+      // The stylesheet is named by the module's path from the project root, the
+      // spelling `moduleId` gives the module graph report, and not by its
+      // absolute path. In a client chunk the stylesheet is one of the chunk's
+      // sources, so its name is written into the source map a site publishes,
+      // and an absolute name would publish where the machine that built it
+      // keeps its files. A module outside the root climbs out with `../`.
       const styled = out.css != null && out.css !== "";
       let output = out.code;
       if (styled) {
-        const styleId = `${STYLE_PREFIX}${cleanId(id)}.css`;
+        const styleId = `${STYLE_PREFIX}${moduleId(root, cleanId(id))}.css`;
         styles.set(styleId, out.css);
         output = `import ${JSON.stringify(styleId)};\n${output}`;
       }

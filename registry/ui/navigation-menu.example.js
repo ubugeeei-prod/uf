@@ -17,19 +17,19 @@ export component Example() {
         <NavigationMenuItem value="guides">
           <NavigationMenuTrigger>Guides</NavigationMenuTrigger>
           <NavigationMenuContent>
-            <NavigationMenuLink href="#install">Installation</NavigationMenuLink>
-            <NavigationMenuLink href="#routing">Routing</NavigationMenuLink>
+            <NavigationMenuLink href="?section=install">Installation</NavigationMenuLink>
+            <NavigationMenuLink href="?section=routing">Routing</NavigationMenuLink>
           </NavigationMenuContent>
         </NavigationMenuItem>
         <NavigationMenuItem value="reference">
           <NavigationMenuTrigger>Reference</NavigationMenuTrigger>
           <NavigationMenuContent>
-            <NavigationMenuLink href="#cli">CLI</NavigationMenuLink>
-            <NavigationMenuLink href="#config">Configuration</NavigationMenuLink>
+            <NavigationMenuLink href="?section=cli">CLI</NavigationMenuLink>
+            <NavigationMenuLink href="?section=config">Configuration</NavigationMenuLink>
           </NavigationMenuContent>
         </NavigationMenuItem>
         <NavigationMenuItem value="blog">
-          <NavigationMenuTopLink href="#blog">Blog</NavigationMenuTopLink>
+          <NavigationMenuTopLink href="?section=blog">Blog</NavigationMenuTopLink>
         </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>

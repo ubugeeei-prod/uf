@@ -326,9 +326,14 @@ URL, and the server answers the page:
   refresh succeeds, the new document replaces the old one in memory and in the
   durable store in one step. Only an `expire` the page stated makes a reader
   wait.
-- `revalidateTag` and `revalidatePath` expire it like any other entry, and a
-  process never starts a page from the build twice, so an invalidated page is
-  rendered rather than served from the build's older copy.
+- `revalidateTag` and `revalidatePath` expire it like any other entry, and they
+  also write down when they ran, in the store every process reads. So a process
+  that comes to the page afterwards — another one, or one that restarted —
+  renders it rather than serving the build's older copy. A build that rendered
+  its copy after the invalidation is still served from; one built before it and
+  deployed after it is not. The record is one more entry through the provider's
+  `write`, with no tags, no path and no end, and it counts towards a provider's
+  bound like any entry.
 - A query string does not make a second entry, because the page was prerendered
   for its path.
 
@@ -389,13 +394,6 @@ hop instead of 52 ms, on every process rather than on the one that rendered it.
 
 - **The data cache and the action cache.** `rendering.cache.data` and
   `rendering.cache.actions` are refused rather than ignored.
-- **An invalidation a restart remembers.** A process keeps "this page was
-  already started from the build" in memory. One that restarts after
-  `revalidateTag` expired a regenerated page, and before anything regenerated
-  it, finds nothing in the store and starts the page from the build's copy
-  again — so that copy can be served until the page's lifetime, counted from the
-  build, has passed. Recording invalidations in the store would close the
-  window, and no provider uf ships does.
 - **`uf build --compile`.** A compiled binary answers from bytes it carries
   rather than from a directory, so it has its own copy of the resolution order
   and not its own copy of the cache — and a regenerating page, whose document is

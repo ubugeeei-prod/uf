@@ -497,11 +497,21 @@ impl RscGraph {
         seen[id.index()] = true;
         work.push_back(id);
 
+        let boundaries = self.client_boundaries();
         while let Some(current) = work.pop_front() {
-            if let Some(specifier) = self.modules[current.index()]
-                .external_imports
+            // The module's package boundaries rather than its external imports:
+            // a name imported from the `@uniflowed/ui` barrel is a boundary at
+            // the module that exports it, and the import alone says only
+            // `@uniflowed/ui`. The boundaries are sorted by importer, so this is
+            // a search rather than a scan.
+            let first = boundaries.partition_point(|boundary| boundary.importer < current);
+            if let Some(specifier) = boundaries[first..]
                 .iter()
-                .find(|specifier| uf_lib::is_client_module(specifier))
+                .take_while(|boundary| boundary.importer == current)
+                .find_map(|boundary| match &boundary.target {
+                    ClientBoundaryTarget::Package(specifier) => Some(specifier),
+                    ClientBoundaryTarget::Module(_) => None,
+                })
             {
                 return ClientBundleReason::ImportsPackage {
                     chain: self.chain_to(id, current, &predecessor),

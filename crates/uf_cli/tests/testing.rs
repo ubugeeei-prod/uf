@@ -1148,6 +1148,172 @@ fn changed_narrows_what_a_bun_runner_is_handed() {
     assert!(!report.contains("reaches other"), "{report}");
 }
 
+/// `MIXED`, with a third test file, so two shards cannot hold one file each.
+fn sharded_project() -> Project {
+    let project = Project::new(&MIXED);
+    project.write(
+        "src/third.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"counts to three\", () => {\n  expect(1 + 2).toBe(3);\n});\n",
+    );
+    project
+}
+
+/// A JUnit document without its `time` attributes: the one thing two runs of
+/// one suite may disagree about.
+fn without_times(document: &str) -> String {
+    const TIME: &str = " time=\"";
+    let mut out = String::with_capacity(document.len());
+    let mut rest = document;
+    while let Some(at) = rest.find(TIME) {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + TIME.len()..];
+        rest = after.find('"').map_or("", |end| &after[end + 1..]);
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The test files a shard's record says it ran.
+fn record_files(dir: &Path, name: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(dir.join(".uf/test-shards").join(name))
+        .unwrap_or_else(|error| panic!("the shard wrote {name}: {error}"));
+    let record: serde_json::Value = serde_json::from_str(&text).expect("a record is JSON");
+    record["report"]["files"]
+        .as_array()
+        .expect("the record lists its files")
+        .iter()
+        .map(|file| file["file"].as_str().expect("a path").to_owned())
+        .collect()
+}
+
+/// The promise `--shard` and `--merge-shards` make together: every file runs in
+/// one shard, and the merge reports what one run over the suite reports.
+#[test]
+fn shards_run_every_file_once_and_merge_into_the_report_one_run_makes() {
+    if !host_ready() {
+        return;
+    }
+    let project = sharded_project();
+    let dir = project.path();
+
+    let (whole, _, stderr) = run(
+        dir,
+        &["--reporter", "junit", "--reporter-outfile", "whole.xml"],
+    );
+    assert!(!whole, "one case fails on purpose: {stderr}");
+    let (_, first, first_err) = run(dir, &["--shard", "1/2"]);
+    let (_, second, second_err) = run(dir, &["--shard", "2/2"]);
+    assert!(
+        first.contains(".uf/test-shards/1-of-2.json"),
+        "{first}\n{first_err}"
+    );
+    assert!(second.contains("of 3 test files"), "{second}\n{second_err}");
+
+    let mut ran = record_files(dir, "1-of-2.json");
+    let rest = record_files(dir, "2-of-2.json");
+    assert!(!ran.is_empty() && !rest.is_empty(), "{ran:?} {rest:?}");
+    ran.extend(rest);
+    ran.sort();
+    assert_eq!(
+        ran,
+        [
+            "src/math.test.js",
+            "src/third.test.js",
+            "src/ui/button.test.js"
+        ]
+    );
+
+    let (merged, stdout, stderr) = run(
+        dir,
+        &[
+            "--merge-shards",
+            "--reporter",
+            "junit",
+            "--reporter-outfile",
+            "merged.xml",
+        ],
+    );
+    assert!(
+        !merged,
+        "the merged suite fails as the whole one did:\n{stdout}"
+    );
+    assert!(stdout.contains("3 test files from 2 shards"), "{stdout}");
+    assert!(stderr.contains("uf test failed with 1 failure"), "{stderr}");
+    let whole_xml = std::fs::read_to_string(dir.join("whole.xml")).expect("the whole run's JUnit");
+    let merged_xml = std::fs::read_to_string(dir.join("merged.xml")).expect("the merge's JUnit");
+    similar_asserts::assert_eq!(without_times(&whole_xml), without_times(&merged_xml));
+
+    let whole_json = json(dir, &[]);
+    let merged_json = json(dir, &["--merge-shards"]);
+    for key in ["files", "passed", "failed", "skipped", "todo", "success"] {
+        assert_eq!(whole_json[key], merged_json[key], "{key}");
+    }
+    let cases = |document: &serde_json::Value| {
+        without_timings(&serde_json::to_string_pretty(&document["tests"]).expect("serialises"))
+    };
+    similar_asserts::assert_eq!(cases(&whole_json), cases(&merged_json));
+    assert_eq!(merged_json["shards"]["count"], 2);
+    assert_eq!(merged_json["host"], serde_json::Value::Null);
+}
+
+/// Shards cut from different durations ran some files twice and others never,
+/// and the merge says so rather than reporting either.
+#[test]
+fn shards_cut_from_different_timings_are_refused_when_merged() {
+    if !host_ready() {
+        return;
+    }
+    let project = sharded_project();
+    let dir = project.path();
+
+    // One shard cut before any duration was recorded, the other after a whole
+    // run recorded them.
+    run(dir, &["--shard", "1/2"]);
+    run(dir, &[]);
+    run(dir, &["--shard", "2/2"]);
+    let (merged, stdout, stderr) = run(dir, &["--merge-shards"]);
+
+    assert!(!merged, "{stdout}");
+    assert!(stderr.contains("cut from different suites"), "{stderr}");
+}
+
+#[test]
+fn a_merge_refuses_a_missing_shard_and_the_flags_that_shape_a_run() {
+    if !host_ready() {
+        return;
+    }
+    let project = sharded_project();
+    let dir = project.path();
+    run(dir, &["--shard", "1/2"]);
+
+    let (merged, _, stderr) = run(dir, &["--merge-shards"]);
+    assert!(!merged);
+    assert!(stderr.contains("no record for shard 2 of 2"), "{stderr}");
+
+    let (merged, _, stderr) = run(dir, &["--merge-shards", "-j", "2", "src"]);
+    assert!(!merged);
+    assert!(
+        stderr.contains("runs nothing, so it cannot take 2 flags: -j, PATH"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_shard_is_refused_with_watch_and_named_when_it_is_not_one() {
+    let project = Project::new(&MIXED);
+
+    let (success, _, stderr) = run(project.path(), &["--watch", "--shard", "1/2"]);
+    assert!(!success);
+    assert!(
+        stderr.contains("--watch and --shard cannot be combined"),
+        "{stderr}"
+    );
+
+    let (success, _, stderr) = run(project.path(), &["--shard", "3/2"]);
+    assert!(!success);
+    assert!(stderr.contains("there is no shard 3 of 2"), "{stderr}");
+}
+
 #[test]
 fn a_project_with_no_tests_is_a_green_run() {
     if !host_ready() {
