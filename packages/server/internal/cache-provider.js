@@ -50,6 +50,16 @@
 // entry, and a provider cannot forget to include it because it never had the
 // choice. That is why there is no `build` on this type: an input every
 // implementation must handle identically is an input none of them should hold.
+//
+// # One record that is not an entry
+//
+// `./cache-store.js` writes one more kind of record through `write`, and a
+// provider keeps it exactly as it keeps an entry, without being told the
+// difference. When a tag or a path is invalidated, the store writes down the
+// instant under a key of its own, with no tags, no path and no end, so no
+// invalidation takes it out and no lifetime does. A process that starts later
+// reads it before it serves a prerendered page from the build's copy. Its key
+// is the one without a build in it; `CacheStore.recordInvalidation` says why.
 
 /** One stored answer, as it survives a process. */
 export type DurableCacheEntry = {|

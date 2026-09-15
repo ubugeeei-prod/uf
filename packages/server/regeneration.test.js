@@ -31,7 +31,9 @@ import {
   collectCacheDeclarations,
   createCacheStore,
   noStore,
+  revalidateTag,
 } from "@uniflowed/server/cache";
+import { createFilesystemCache } from "@uniflowed/server/cache/filesystem";
 import { KvBindingMissingError, createKvCache } from "@uniflowed/server/cache/kv";
 import { createWorkerFetch } from "@uniflowed/server/edge";
 import { createFetchHandler } from "@uniflowed/server/fetch";
@@ -606,5 +608,241 @@ describe("the Workers KV provider", () => {
     expect(refused).toBeInstanceOf(KvBindingMissingError);
     expect(String(refused)).toContain("UF_CACHE");
     expect(String(refused)).toContain("kv_namespaces");
+  });
+});
+
+/** The regenerating app, with the route an application invalidates the page's tag from. */
+function invalidatingApp() {
+  return {
+    ...regeneratingApp(),
+    dispatch: async (incoming: Request) =>
+      new URL(incoming.url).pathname === "/revalidate"
+        ? Response.json({ expired: revalidateTag("clock") })
+        : null,
+  };
+}
+
+/** One server process over a build's files, wired the way `uf start` wires one. */
+function nodeProcess(
+  time: {| now: () => number, advance: (seconds: number) => void |},
+  options: {|
+    staticDir: string,
+    renderedAt: number,
+    provider?: $FlowFixMe,
+    build?: string,
+    onError?: (error: mixed) => void,
+  |},
+) {
+  const onError = options.onError ?? (() => {});
+  const store =
+    options.provider == null
+      ? createCacheStore({ now: time.now, onError })
+      : createCacheStore({
+          now: time.now,
+          onError,
+          provider: options.provider,
+          build: options.build ?? "build-one",
+        });
+  const handle = createServeHandler({
+    staticDir: options.staticDir,
+    handle: createFetchHandler({
+      app: invalidatingApp(),
+      document: assets,
+      cache: { store, route: true, fetch: false },
+      regeneration: manifestFor(options.renderedAt),
+    }),
+  });
+  return { store, handle };
+}
+
+/** Invalidate the page's tag through the application, the way a mutation does. */
+async function invalidate(handle): Promise<mixed> {
+  const asRequest = request("/revalidate", { method: "POST" });
+  const { run, settle } = beginRequest(asRequest);
+  try {
+    return await (await run(() => handle(asRequest))).json();
+  } finally {
+    await settle();
+  }
+}
+
+/** A directory for a filesystem provider that several processes share. */
+const cacheDirectory = () => fs.mkdtempSync(nodePath.join(os.tmpdir(), "uf-regenerate-cache-"));
+
+describe("an invalidation a restart remembers", () => {
+  it("renders a page invalidated before a restart, rather than the build's copy, from a disk", async () => {
+    const time = clock();
+    const built = time.now();
+    const staticDir = buildDirectory();
+    const directory = cacheDirectory();
+
+    const before = nodeProcess(time, {
+      staticDir,
+      renderedAt: built,
+      provider: createFilesystemCache({ directory }),
+    });
+    expect(await (await serve(before.handle, "/clock")).text()).toContain("the build's copy");
+    time.advance(1);
+    expect(await invalidate(before.handle)).toEqual({ expired: 1 });
+    await before.store.settled();
+
+    // Nothing in memory, the same directory, and a build's copy still inside
+    // the lifetime it was rendered with.
+    const after = nodeProcess(time, {
+      staticDir,
+      renderedAt: built,
+      provider: createFilesystemCache({ directory }),
+    });
+    const answer = await serve(after.handle, "/clock");
+    expect(await answer.text()).toContain("rendered /clock");
+    expect(answer.headers.get("x-uf-cache")).toBe("MISS");
+  });
+
+  it("renders it in a process that never served it, beside the one that invalidated it", async () => {
+    const time = clock();
+    const built = time.now();
+    const staticDir = buildDirectory();
+    const directory = cacheDirectory();
+    const one = nodeProcess(time, {
+      staticDir,
+      renderedAt: built,
+      provider: createFilesystemCache({ directory }),
+    });
+    const two = nodeProcess(time, {
+      staticDir,
+      renderedAt: built,
+      provider: createFilesystemCache({ directory }),
+    });
+
+    time.advance(1);
+    expect(one.store.revalidatePath("/clock")).toBe(0);
+    await one.store.settled();
+
+    const answer = await serve(two.handle, "/clock");
+    expect(await answer.text()).toContain("rendered /clock");
+    expect(answer.headers.get("x-uf-cache")).toBe("MISS");
+  });
+
+  it("renders it where it was invalidated before anybody asked, with no durable store", async () => {
+    const time = clock();
+    const server = nodeProcess(time, { staticDir: buildDirectory(), renderedAt: time.now() });
+    time.advance(1);
+    expect(server.store.revalidateTag("clock")).toBe(0);
+
+    const answer = await serve(server.handle, "/clock");
+    expect(await answer.text()).toContain("rendered /clock");
+    expect(answer.headers.get("x-uf-cache")).toBe("MISS");
+  });
+
+  it("weighs an invalidation against when a build rendered, whichever build wrote it down", async () => {
+    const time = clock();
+    const staticDir = buildDirectory();
+    const directory = cacheDirectory();
+    const renderedBefore = time.now();
+    time.advance(1);
+    const serving = nodeProcess(time, {
+      staticDir,
+      renderedAt: renderedBefore,
+      provider: createFilesystemCache({ directory }),
+    });
+    serving.store.revalidateTag("clock");
+    await serving.store.settled();
+
+    // Built before the invalidation and deployed after it, as a deploy is.
+    const deployed = nodeProcess(time, {
+      staticDir,
+      renderedAt: renderedBefore,
+      provider: createFilesystemCache({ directory }),
+      build: "build-two",
+    });
+    expect((await serve(deployed.handle, "/clock")).headers.get("x-uf-cache")).toBe("MISS");
+
+    time.advance(1);
+    const rebuilt = nodeProcess(time, {
+      staticDir,
+      renderedAt: time.now(),
+      provider: createFilesystemCache({ directory }),
+      build: "build-three",
+    });
+    const answer = await serve(rebuilt.handle, "/clock");
+    expect(await answer.text()).toContain("the build's copy");
+    expect(answer.headers.get("x-uf-cache")).toBe("HIT");
+  });
+
+  it("renders rather than serve the build's copy when the store cannot say", async () => {
+    const time = clock();
+    const failures: Array<mixed> = [];
+    const unreachable = {
+      name: "unreachable",
+      read: async () => {
+        throw new Error("the store is unreachable");
+      },
+      write: async () => {},
+      remove: async () => {},
+      invalidateTag: async () => 0,
+      invalidatePath: async () => 0,
+      clear: async () => {},
+    };
+    const server = nodeProcess(time, {
+      staticDir: buildDirectory(),
+      renderedAt: time.now(),
+      provider: unreachable,
+      onError: (error) => failures.push(error),
+    });
+
+    const answer = await serve(server.handle, "/clock");
+    expect(await answer.text()).toContain("rendered /clock");
+    expect(failures.map(String)).toContain("Error: the store is unreachable");
+  });
+
+  it("renders a page invalidated before a Worker restarted, from Workers KV", async () => {
+    const time = clock();
+    const built = time.now();
+    const kv = fakeNamespace();
+    const files = {
+      fetch: async (asset: Request): Promise<Response> =>
+        new URL(asset.url).pathname === "/__uf/regenerate/clock/"
+          ? new Response("<!doctype html><p>the build's copy</p>", {
+              headers: { "content-type": "text/html" },
+            })
+          : new Response("not found", { status: 404 }),
+    };
+    const worker = () => {
+      const store = createCacheStore({
+        now: time.now,
+        provider: createKvCache(),
+        build: "build-one",
+        onError: () => {},
+      });
+      const handle = createWorkerFetch({
+        handle: createFetchHandler({
+          app: invalidatingApp(),
+          document: assets,
+          cache: { store, route: true, fetch: false },
+          regeneration: manifestFor(built),
+        }),
+        beginRequest,
+      });
+      return async (url: string, init?: mixed): Promise<Response> => {
+        const waiting: Array<Promise<mixed>> = [];
+        const response = await handle(
+          request(url, init),
+          { UF_CACHE: kv, ASSETS: files },
+          { waitUntil: (promise: Promise<mixed>) => waiting.push(promise) },
+        );
+        await Promise.all(waiting);
+        return response;
+      };
+    };
+
+    const before = worker();
+    expect(await (await before("/clock")).text()).toContain("the build's copy");
+    time.advance(1);
+    expect(await (await before("/revalidate", { method: "POST" })).json()).toEqual({ expired: 1 });
+
+    const after = worker();
+    const answer = await after("/clock");
+    expect(await answer.text()).toContain("rendered /clock");
+    expect(answer.headers.get("x-uf-cache")).toBe("MISS");
   });
 });
