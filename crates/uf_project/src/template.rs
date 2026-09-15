@@ -38,6 +38,158 @@ pub(crate) fn lib_files(name: &str) -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The files `uf new <path> monorepo` writes: an application and the library
+/// it imports, as workspace packages of one repository.
+///
+/// The two members are the two templates above, so a package here is shaped
+/// exactly like the project `uf new` would write on its own, and anything
+/// learnt from one shape carries to the other. What the root adds is the part
+/// a repository of several packages needs and one package does not:
+///
+/// * **One configuration for the checks.** `uf fmt`, `uf lint`, `uf check`
+///   and `uf test` run at the root read every package with the root's
+///   `uf.config.js`, so formatting and lint levels are decided once. Each
+///   member keeps its own config for what is only its own business — an
+///   application's router, a library's build.
+/// * **Tasks across the packages.** A command is sent to one member with the
+///   `#member` selector, so `build` builds the library before the application
+///   that bundles it, which is the ordering a repository otherwise encodes in a
+///   script nobody reads.
+/// * **Workspaces in the standard field.** `workspaces` in the root manifest is
+///   what npm, Yarn and Bun read, and the application depends on the library
+///   by name with a range any workspace version satisfies, so a workspace
+///   install links it rather than fetching it.
+pub(crate) fn monorepo_files(name: &str) -> Vec<(&'static str, String)> {
+    let named = |text: &str| text.replace("__NAME__", name);
+    vec![
+        ("package.json", monorepo_package_json(name)),
+        ("uf.config.js", monorepo_config()),
+        (".gitignore", gitignore()),
+        ("apps/web/package.json", named(&web_package_json())),
+        ("apps/web/uf.config.js", app_config()),
+        ("apps/web/app.js", app_entry()),
+        ("apps/web/app/$layout.js", app_layout()),
+        ("apps/web/app/$page.js", named(WEB_PAGE)),
+        ("packages/ui/package.json", named(&ui_package_json())),
+        ("packages/ui/uf.config.js", lib_config()),
+        ("packages/ui/index.js", UI_INDEX.to_string()),
+        ("packages/ui/index.test.js", UI_TEST.to_string()),
+    ]
+}
+
+fn monorepo_package_json(name: &str) -> String {
+    let uf = UNIFLOWED_VERSION;
+    format!(
+        r#"{{
+  "name": "{name}",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {{
+    "@uniflowed/config": "{uf}",
+    "@uniflowed/test": "{uf}"
+  }}
+}}
+"#
+    )
+}
+
+fn monorepo_config() -> String {
+    r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+// The repository's configuration. `uf fmt`, `uf lint`, `uf check` and `uf test`
+// run here cover every package with it, so formatting and lint levels are
+// written down once. Each package's own `uf.config.js` holds what is only that
+// package's: `apps/web` is an application and `packages/ui` a library.
+//
+// `uf build#packages/ui` runs `uf build` in that package, which is how a task
+// here reaches one package, and `build` depends on `build:ui` because the
+// application bundles what the library builds.
+export default defineConfig({
+  tasks: {
+    dev: { command: "uf dev#apps/web" },
+    build: { command: "uf build#apps/web", dependsOn: ["build:ui"] },
+    "build:ui": { command: "uf build#packages/ui" },
+    check: { command: "uf check" },
+    lint: { command: "uf lint" },
+    fmt: { command: "uf fmt" },
+    test: { command: "uf test" },
+  },
+});
+"#
+    .to_string()
+}
+
+/// The application's manifest: the application template's, depending on the
+/// library by name.
+fn web_package_json() -> String {
+    let uf = UNIFLOWED_VERSION;
+    format!(
+        r#"{{
+  "name": "@__NAME__/web",
+  "private": true,
+  "type": "module",
+  "dependencies": {{
+    "@__NAME__/ui": "*",
+    "@uniflowed/config": "{uf}",
+    "@uniflowed/react": "{uf}",
+    "@uniflowed/router": "{uf}",
+    "@uniflowed/vite": "{uf}",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-server-dom-parcel": "^19.3.0"
+  }},
+  "devDependencies": {{
+    "@uniflowed/test": "{uf}"
+  }}
+}}
+"#
+    )
+}
+
+/// The library's manifest: the library template's, under the repository's
+/// scope.
+fn ui_package_json() -> String {
+    lib_package_json("@__NAME__/ui")
+}
+
+const WEB_PAGE: &str = r#"// @flow
+import * as React from "@uniflowed/react";
+
+import { greeting } from "@__NAME__/ui";
+
+export component Page() {
+  return (
+    <main>
+      <h1>{greeting("web")}</h1>
+      <p>Edit packages/ui/index.js and this page follows.</p>
+    </main>
+  );
+}
+"#;
+
+const UI_INDEX: &str = r#"// @flow
+export function greeting(who: string): string {
+  return `hello from ${who}`;
+}
+"#;
+
+const UI_TEST: &str = r#"// @flow
+import { describe, expect, it } from "@uniflowed/test";
+
+import { greeting } from "./index.js";
+
+describe("greeting", () => {
+  it("names who it greets", () => {
+    expect(greeting("web")).toBe("hello from web");
+  });
+});
+"#;
+
 /// What uf writes into a project that the project should not commit.
 ///
 /// A scaffolded project had none, so the first `uf build` left `dist/`,

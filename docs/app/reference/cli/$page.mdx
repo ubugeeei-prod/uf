@@ -32,10 +32,33 @@ Scaffolds an application into a new directory: `uf.config.js`, `app.js`, a
 layout, a page and a `package.json`. Writes files and nothing else — no
 install, no git.
 
-`react` is the only template today, so `uf new my-site` is the usual form. A
-word in the template's place that is not a template is refused rather than read
-as a directory: `uf new my-site raect` says so, and scaffolding into `raect/`
-would be the worse answer.
+`react` is the default template, so `uf new my-site` is the usual form, and
+`monorepo` is the other. A word in the template's place that is not a template
+is refused rather than read as a directory: `uf new my-site raect` says so, and
+scaffolding into `raect/` would be the worse answer.
+
+### uf new PATH monorepo
+
+Scaffolds a repository of two workspace packages: `apps/web`, an application
+shaped like the `react` template, and `packages/ui`, a library shaped like
+`--lib`, which the application imports by name. The root holds what a
+repository of several packages needs and one package does not:
+
+- a `package.json` whose `workspaces` field lists `apps/*` and `packages/*` —
+  the field npm, Yarn and Bun read. The application depends on the library as
+  `"@NAME/ui": "*"`, which a workspace install links rather than fetches. pnpm
+  reads `pnpm-workspace.yaml` and the `workspace:` protocol instead, and needs
+  both added by hand.
+- a `uf.config.js` that `uf fmt`, `uf lint`, `uf check` and `uf test` run at the
+  root read for every package, so formatting and lint levels are written once.
+  Each package keeps its own config for its router or its library build.
+- tasks that reach one package with the `#member` selector, by path:
+  `uf run build` runs `uf build#packages/ui` and then `uf build#apps/web`, and
+  `uf run dev` is `uf dev#apps/web`. A package is also selected by its
+  manifest's name, `@NAME/web`.
+
+Every template — `react`, `monorepo` and `--lib` — is formatted, linted, type
+checked, tested and built in CI, in `crates/uf_cli/tests/templates.rs`.
 
 `--name` sets the package's name when it should not be the directory's, and
 `--force` writes into a directory that already holds files.
