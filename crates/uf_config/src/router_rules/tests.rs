@@ -159,12 +159,18 @@ fn names_the_list_and_the_entry() {
 fn reads_a_base_path_and_a_trailing_slash_policy() {
     let config = load(r#"{ basePath: "/docs", trailingSlash: "always" }"#).unwrap();
     assert_eq!(config.app.router.base_path, "/docs");
-    assert_eq!(config.app.router.trailing_slash, crate::TrailingSlash::Always);
+    assert_eq!(
+        config.app.router.trailing_slash,
+        crate::TrailingSlash::Always
+    );
 
     // What every project that says nothing gets: the root, and both spellings.
     let unset = load("{ root: \"app\" }").unwrap();
     assert_eq!(unset.app.router.base_path, "");
-    assert_eq!(unset.app.router.trailing_slash, crate::TrailingSlash::Ignore);
+    assert_eq!(
+        unset.app.router.trailing_slash,
+        crate::TrailingSlash::Ignore
+    );
 }
 
 /// A boolean is Next.js's spelling, and uf's is one of three words.

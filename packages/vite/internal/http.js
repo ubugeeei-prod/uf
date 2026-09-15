@@ -36,10 +36,7 @@
 export async function toRequest(incoming, config, path) {
   const host = incoming.headers.host ?? "localhost";
   const protocol = config?.server?.https == null ? "http" : "https";
-  const url = new URL(
-    path ?? incoming.originalUrl ?? incoming.url ?? "/",
-    `${protocol}://${host}`,
-  );
+  const url = new URL(path ?? incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${host}`);
 
   const headers = new Headers();
   for (const [name, value] of Object.entries(incoming.headers)) {

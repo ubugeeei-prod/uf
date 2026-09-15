@@ -130,9 +130,7 @@ describe("a trailing-slash policy", () => {
     expect(admitted({ trailingSlash: "never" }, "/guide/?x=1")).toBe("308 /guide?x=1");
     expect(admitted({ trailingSlash: "always" }, "/guide?x=1")).toBe("308 /guide/?x=1");
     expect(admitted({ trailingSlash: "never" }, "/guide")).toBe("continue http://uf.test/guide");
-    expect(admitted({ trailingSlash: "always" }, "/guide/")).toBe(
-      "continue http://uf.test/guide/",
-    );
+    expect(admitted({ trailingSlash: "always" }, "/guide/")).toBe("continue http://uf.test/guide/");
   });
 
   it("spells the root of a base path as the base, unless it is always", () => {
@@ -148,9 +146,9 @@ describe("a trailing-slash policy", () => {
     expect(admitted({ trailingSlash: "always" }, "/guide/__uf.flight")).toBe(
       "continue http://uf.test/guide/__uf.flight",
     );
-    expect(admitted({ trailingSlash: "always" }, "/api/items", { method: "POST", body: "{}" })).toBe(
-      "continue http://uf.test/api/items",
-    );
+    expect(
+      admitted({ trailingSlash: "always" }, "/api/items", { method: "POST", body: "{}" }),
+    ).toBe("continue http://uf.test/api/items");
   });
 
   it("spells a redirect's destination so following it is not a second redirect", () => {
@@ -162,7 +160,9 @@ describe("a trailing-slash policy", () => {
     for (const policy of ["never", "always", "ignore"]) {
       for (const underBase of [false, true]) {
         for (const path of ["/", "/guide", "/guide/", "/a/b", "/robots.txt", "/docs/"]) {
-          expect(`${policy} ${String(underBase)} ${path}: ${spellPath(path, policy, underBase)}`).toBe(
+          expect(
+            `${policy} ${String(underBase)} ${path}: ${spellPath(path, policy, underBase)}`,
+          ).toBe(
             `${policy} ${String(underBase)} ${path}: ${routerSpellPath(path, policy, underBase)}`,
           );
         }

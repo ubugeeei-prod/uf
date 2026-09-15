@@ -129,7 +129,9 @@ impl SiteUrl {
     /// answers without a redirect.
     #[must_use]
     pub(crate) fn within(mut self, base_path: &str, slash: TrailingSlash) -> Self {
-        base_path.trim_end_matches('/').clone_into(&mut self.application);
+        base_path
+            .trim_end_matches('/')
+            .clone_into(&mut self.application);
         self.slash = slash;
         self
     }
