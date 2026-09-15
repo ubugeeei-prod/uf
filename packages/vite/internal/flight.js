@@ -199,6 +199,29 @@ export function rscEnvironment({ production, exclude }) {
 }
 
 /**
+ * What the browser's graph pre-bundles for an application React Server
+ * Components render: React's Flight client, spelled the way the router's
+ * `internal/flight-browser.js` imports it, because the optimizer finds a
+ * pre-bundled dependency by the specifier that imports it.
+ *
+ * Named rather than left to be discovered, because in a project that installs
+ * the router nothing discovers it (ubugeeei-prod/uf#1126). The package is
+ * CommonJS. `uf:flow` excludes every `@uniflowed/*` package from the optimizer,
+ * since they ship Flow, and Vite pre-bundles a dependency it first meets while
+ * serving only when the module importing it is outside `node_modules`. An
+ * installed router is inside it, so the browser was sent the CommonJS file and
+ * hydration stopped at "does not provide an export named 'createFromFetch'". A
+ * linked router, the layout of this repository, is outside it, which is why
+ * nothing here failed.
+ *
+ * It resolves from the project, which installs `react-server-dom-parcel` as the
+ * router's peer.
+ */
+export const FLIGHT_BROWSER_DEPENDENCIES = Object.freeze([
+  "react-server-dom-parcel/client.browser",
+]);
+
+/**
  * The state the plugins and the driver share for one application.
  *
  * `clientModules` is filled by the rsc graph's transform and read by the client

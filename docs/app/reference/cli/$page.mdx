@@ -1912,6 +1912,36 @@ It refuses, changing nothing, when no version is recorded, and when the
 recorded one is no longer in the store — naming `uf self-update <version>`,
 which downloads it again.
 
+### uf self-uninstall [--dry-run] [--yes]
+
+Removes uf from this machine, after listing exactly what that means:
+
+- `uf`, `ufr` and `ufx` in `~/.local/bin` (`UF_BIN_DIR`), when they are links
+  into the runtime store;
+- every runtime in `~/.local/share/uf/runtimes` (`UF_INSTALL_ROOT`), and the
+  record of the version to roll back to;
+- the toolchain store [`uf env install`](#uf-env-install) fills, the project
+  environments linked to it and the roots that keep it;
+- `uf env`'s cache of release lists, and `active-runtime.json`.
+
+The links go first, so an uninstall that is interrupted leaves a `uf` that is
+off `PATH` rather than one that points at nothing. A `uf` in the link directory
+that is not a link into the store — installed by Nix or `cargo install`, or
+copied there — is listed as left alone and stays. So do the link directory
+itself, every project's `.uf` and `uf.lock`, and whatever line puts
+`~/.local/bin` on `PATH`: the installer prints that line for you to add, and
+never writes it.
+
+It asks before removing anything. `--yes` answers for a script, and
+`--dry-run` prints the list and stops. With no terminal to ask on and neither
+flag, it removes nothing and says to pass `--yes`. A variable that would have it
+remove your home directory, or a directory holding it, is refused before
+anything goes.
+
+It is not `uf uninstall`, which is [`uf remove`](#uf-remove-name): npm and pnpm
+spell removing a dependency that way, and a command that deletes the toolchain
+must not be one mistyped verb away from it.
+
 ## Publishing
 
 ### uf release BUMP

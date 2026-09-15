@@ -1,5 +1,60 @@
 # Changelog
 
+## uf@0.0.0-alpha.37
+
+_2026-09-15_
+
+Ten changes. `uf@0.0.0-alpha.36` never reached npm. Its publish job installed
+Deno 1.x, and every Deno test there failed before a package was sent. This
+release installs Deno 2 in that job, and CI now refuses workflows that install
+different Deno versions (#1133). That makes this the first release to publish
+`@uniflowed/ui`, `@uniflowed/state`, `@uniflowed/cell` and `@uniflowed/temporal`
+from the workflow. **Breaking:** `@uniflowed/ui` is imported through its barrel
+alone (`import { Switch } from "@uniflowed/ui"`), and its per-component subpaths
+are gone (#1130). A project that copied components with `uf ui add` before this
+release has to replace those imports, or re-run `uf ui add --overwrite`.
+Bundles do not grow: a barrel import is rewritten at build time to the module
+that defines each name, so a one-component page builds to the same bytes as
+before (#1127). `uf dev` no longer loads a second copy of a component in a
+project that installs the packages, which had split its React context. It also
+hydrates Server Components in a project that installs `@uniflowed/router`
+(#1134). `uf self-update` gains `--check`, `--rollback` and a named version,
+and it swaps the binary in a way that killing the process cannot break (#1128).
+`uf self-uninstall` removes uf's runtimes, links and store after listing them
+(#1131). The router takes a `basePath` and a `trailingSlash` policy, applied
+the same way by every server (#1129). aarch64 Linux binaries are now linked
+with GNU ld instead of wild, so they carry the Cortex-A53 erratum 843419
+workaround wild skipped (#1125). A CI test run that crashes now keeps its core
+dump (#1124).
+
+### Breaking
+
+- **ui**: import @uniflowed/ui through its barrel alone (#1130)
+
+### Added
+
+- **self-uninstall**: remove uf's runtimes, links and store, after saying what goes (#1131)
+- **router**: basePath and trailingSlash, asked of every front door (#1129)
+- **self-update**: --check, --rollback, a named version, and a switch a kill cannot break (#1128)
+
+### Fixed
+
+- **vite**: pre-bundle React's Flight client so uf dev hydrates an installed router (#1134)
+- **release**: install Deno 2 in the publish job, and hold every suite job to one Deno (#1133)
+- **fmt**: read comments in the guarantee helpers on the parser's stack (#1123)
+
+### Performance
+
+- **vite**: rewrite @uniflowed/ui barrel imports to the modules that define them (#1127)
+
+### Internal
+
+- **test**: keep a core, and the binary that wrote it, when the suite crashes (#1124)
+
+### Other
+
+- ci, release: link Linux binaries with rustc's default linker instead of wild (#1125)
+
 ## uf@0.0.0-alpha.36
 
 _2026-09-15_

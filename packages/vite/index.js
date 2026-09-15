@@ -96,6 +96,7 @@ import {
 import { TransformService, isFlowModule } from "@uniflowed/host/transform";
 import {
   DEV_RSC_HOOK,
+  FLIGHT_BROWSER_DEPENDENCIES,
   FLIGHT_VIRTUAL,
   RSC_ENVIRONMENT,
   builtBridgeSource,
@@ -422,6 +423,9 @@ function flowPlugin({
             "react/compiler-runtime",
             "react-dom",
             "react-dom/client",
+            // React's Flight client, for an application whose routes render as
+            // Server Components; `FLIGHT_BROWSER_DEPENDENCIES` says why.
+            ...(flightState == null ? [] : FLIGHT_BROWSER_DEPENDENCIES),
             // The accessibility audit's engine, when this project has one.
             //
             // Named up front rather than left to be discovered. axe-core is

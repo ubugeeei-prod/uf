@@ -1588,6 +1588,8 @@ fn completion_offers_every_command_explain_accepts() {
 /// to finish — `routes` walks the router root with `discover_routes` and
 /// writes files, `i18n` parses the project with `uf_flow` and writes a
 /// catalogue, and there is no second implementation of any of them to name.
+/// `self-uninstall` is `clean` for the machine: it lists uf's own directories
+/// and links and removes them with `std::fs`, running nothing else.
 ///
 /// `exec` left this list when it started running things: three of its four
 /// paths hand control to something else, so there is a provider to name.
@@ -1603,6 +1605,7 @@ const SELF_CONTAINED: &[&str] = &[
     "inspect",
     "new",
     "routes",
+    "self-uninstall",
 ];
 
 /// Every command `uf` has is either explained or classified.

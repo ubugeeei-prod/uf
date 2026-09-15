@@ -1,4 +1,4 @@
-//! `uf use` and `uf self-update`: the uf binary itself.
+//! `uf use`, `uf self-update` and `uf self-uninstall`: the uf binary itself.
 //!
 //! Everything here is about *uf*, not about a project's dependencies — those
 //! are [`super::pm`] — and not about the JavaScript hosts a project runs on,
@@ -65,6 +65,9 @@
 //! kinds of file.
 
 mod switch;
+mod uninstall;
+
+pub(crate) use uninstall::self_uninstall;
 
 use std::cmp::Ordering;
 use std::io::Write as _;
