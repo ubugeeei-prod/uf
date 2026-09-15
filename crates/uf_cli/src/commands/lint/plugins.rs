@@ -525,11 +525,18 @@ fn host_command(root: &Utf8Path, config: &UniflowedConfig) -> Result<HostCommand
     let kind = match host.kind {
         CapabilityJsHost::Node => HostKind::Node,
         CapabilityJsHost::Bun => HostKind::Bun,
+        // Deno has a Flow loader, and `uf test` starts workers on it. What a
+        // lint worker there would also need is a permission set — Deno grants
+        // nothing by default, and `uf test` builds one from the project's
+        // `permissions` — and a lint run that granted itself one nobody wrote
+        // down is the thing that set exists to prevent. Refused by name until
+        // that set is argued for this worker too.
         CapabilityJsHost::Deno => bail!(
             "project rules run on Node.js or Bun, and this project's Capability JS Host is \
-             Deno, which has no Flow loader to import a plugin through. Install Node.js or Bun \
-             and name it in `app.runtime.capabilityJsHost.default`, or turn the project rules \
-             in `lint.rules` off."
+             Deno, where the rule worker would need a permission set uf does not grant a lint \
+             run yet. Install Node.js or Bun and name it in \
+             `app.runtime.capabilityJsHost.default`, or turn the project rules in `lint.rules` \
+             off."
         ),
     };
     let package = uniflowed_package(root, "host", WORKER).map_err(|_| {
@@ -544,6 +551,7 @@ fn host_command(root: &Utf8Path, config: &UniflowedConfig) -> Result<HostCommand
             .with_flow_loader(
                 Utf8Path::new("@uniflowed/host/register"),
                 &package.join("bun-preload.js"),
+                &package.join("deno-preload.js"),
             )
             .with_uf_binary(uf_binary()?),
     )
