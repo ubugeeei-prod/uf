@@ -26,6 +26,8 @@ pub(crate) const ERROR_BOUNDARIES: &str = "react-compiler/error-boundaries";
 /// `EffectExhaustiveDependencies`: an effect's dependency array.
 pub(crate) const EXHAUSTIVE_EFFECT_DEPENDENCIES: &str =
     "react-compiler/exhaustive-effect-dependencies";
+/// `FBT`: Meta's `fbt` internationalization library.
+pub(crate) const FBT: &str = "react-compiler/fbt";
 /// `Globals`: a variable from outside the component or hook changed in render.
 pub(crate) const GLOBALS: &str = "react-compiler/globals";
 /// `Hooks`: the Rules of Hooks.
@@ -34,6 +36,8 @@ pub(crate) const HOOKS: &str = "react-compiler/hooks";
 pub(crate) const IMMUTABILITY: &str = "react-compiler/immutability";
 /// `IncompatibleLibrary`: an API known to break memoization.
 pub(crate) const INCOMPATIBLE_LIBRARY: &str = "react-compiler/incompatible-library";
+/// `Invariant`: an internal assumption of the compiler that did not hold.
+pub(crate) const INVARIANT: &str = "react-compiler/invariant";
 /// `MemoDependencies`: a `useMemo` or `useCallback` dependency array.
 pub(crate) const MEMO_DEPENDENCIES: &str = "react-compiler/memo-dependencies";
 /// `EffectDerivationsOfState`: state derived in an effect.
@@ -50,6 +54,10 @@ pub(crate) const SET_STATE_IN_EFFECT: &str = "react-compiler/set-state-in-effect
 pub(crate) const SET_STATE_IN_RENDER: &str = "react-compiler/set-state-in-render";
 /// `StaticComponents`: a component created during render.
 pub(crate) const STATIC_COMPONENTS: &str = "react-compiler/static-components";
+/// `Syntax`: code the compiler rejects as invalid syntax.
+pub(crate) const SYNTAX: &str = "react-compiler/syntax";
+/// `Todo`: code the compiler does not compile yet.
+pub(crate) const TODO: &str = "react-compiler/todo";
 /// `UnsupportedSyntax`: syntax the compiler does not support.
 pub(crate) const UNSUPPORTED_SYNTAX: &str = "react-compiler/unsupported-syntax";
 /// `UseMemo`: a `useMemo` callback the hook cannot use.
@@ -58,14 +66,16 @@ pub(crate) const USE_MEMO: &str = "react-compiler/use-memo";
 pub(crate) const VOID_USE_MEMO: &str = "react-compiler/void-use-memo";
 
 /// Every `react-compiler/*` rule.
-const RULES: [&str; 18] = [
+const RULES: [&str; 22] = [
     CAPITALIZED_CALLS,
     ERROR_BOUNDARIES,
     EXHAUSTIVE_EFFECT_DEPENDENCIES,
+    FBT,
     GLOBALS,
     HOOKS,
     IMMUTABILITY,
     INCOMPATIBLE_LIBRARY,
+    INVARIANT,
     MEMO_DEPENDENCIES,
     NO_DERIVING_STATE_IN_EFFECTS,
     PRESERVE_MANUAL_MEMOIZATION,
@@ -74,13 +84,15 @@ const RULES: [&str; 18] = [
     SET_STATE_IN_EFFECT,
     SET_STATE_IN_RENDER,
     STATIC_COMPONENTS,
+    SYNTAX,
+    TODO,
     UNSUPPORTED_SYNTAX,
     USE_MEMO,
     VOID_USE_MEMO,
 ];
 
-/// The rule a category is filed under, or `None` for a category `uf lint` does
-/// not report.
+/// The rule a category is filed under, or `None` for a category no module can
+/// produce under the options [`uf_transform::lint`] runs the compiler with.
 ///
 /// A `match` with no wildcard, so that a category a newer compiler adds does
 /// not compile until somebody decides where it goes.
@@ -91,34 +103,38 @@ pub(super) const fn rule_for(category: ErrorCategory) -> Option<&'static str> {
         ErrorCategory::EffectExhaustiveDependencies => Some(EXHAUSTIVE_EFFECT_DEPENDENCIES),
         ErrorCategory::EffectSetState => Some(SET_STATE_IN_EFFECT),
         ErrorCategory::ErrorBoundaries => Some(ERROR_BOUNDARIES),
+        ErrorCategory::FBT => Some(FBT),
         ErrorCategory::Globals => Some(GLOBALS),
         ErrorCategory::Hooks => Some(HOOKS),
         ErrorCategory::Immutability => Some(IMMUTABILITY),
         ErrorCategory::IncompatibleLibrary => Some(INCOMPATIBLE_LIBRARY),
+        ErrorCategory::Invariant => Some(INVARIANT),
         ErrorCategory::MemoDependencies => Some(MEMO_DEPENDENCIES),
         ErrorCategory::PreserveManualMemo => Some(PRESERVE_MANUAL_MEMOIZATION),
         ErrorCategory::Purity => Some(PURITY),
         ErrorCategory::Refs => Some(REFS),
         ErrorCategory::RenderSetState => Some(SET_STATE_IN_RENDER),
         ErrorCategory::StaticComponents => Some(STATIC_COMPONENTS),
+        ErrorCategory::Syntax => Some(SYNTAX),
+        ErrorCategory::Todo => Some(TODO),
         ErrorCategory::UnsupportedSyntax => Some(UNSUPPORTED_SYNTAX),
         ErrorCategory::UseMemo => Some(USE_MEMO),
         ErrorCategory::VoidUseMemo => Some(VOID_USE_MEMO),
         // No validation in this compiler reports it.
         ErrorCategory::EffectDependencies => None,
-        // The compiler's own limits: a function it could not compile, which
-        // says nothing about the function. `uf build` reports these.
-        ErrorCategory::Invariant | ErrorCategory::Todo => None,
-        // Code the compiler's lowering refuses; the plugin's preset leaves it
-        // off, and `flow/syntax` reports what the parser refuses.
-        ErrorCategory::Syntax => None,
-        // They check how the compiler was configured, and uf configures it.
-        ErrorCategory::Config | ErrorCategory::Gating => None,
-        // Only reported when the compiler is asked to honour ESLint or Flow
-        // suppression comments itself, which these options do not ask.
+        // Reported only for a malformed `use memo if(…)` directive, which the
+        // compiler reads only when it is given `dynamicGating`. Neither the
+        // plugin nor uf gives it that.
+        ErrorCategory::Gating => None,
+        // Reported only for a module type configuration that contradicts
+        // itself. The compiler's own table is the only one it has: neither the
+        // plugin nor uf supplies `moduleTypeProvider`.
+        ErrorCategory::Config => None,
+        // Reported only for a suppression comment the compiler looks for
+        // itself. It looks for ESLint's only while hook usage or exhaustive
+        // memoization dependencies go unvalidated, and both are validated; it
+        // looks for Flow's only under `flowSuppressions`, which is `false`.
         ErrorCategory::Suppression => None,
-        // Meta's `fbt` internationalization library.
-        ErrorCategory::FBT => None,
     }
 }
 

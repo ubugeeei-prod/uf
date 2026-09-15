@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 79] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 82] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -231,28 +231,35 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 79] = [
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),
-    // The official React Compiler's diagnostics, at the levels
-    // `eslint-plugin-react-hooks`' `recommended-latest` preset gives the same
-    // categories. `hooks` (`error`) and `memo-dependencies` (`warn`) are on
-    // although the plugin leaves those compiler rules off, because the plugin
-    // answers both questions again with its classic `rules-of-hooks` and
-    // `exhaustive-deps` at those levels and uf has only the compiler's answer.
+    // The official React Compiler's diagnostics: a rule for every category a
+    // module can produce under `eslint-plugin-react-hooks`' options, at the
+    // level that plugin's `recommended-latest` preset gives the category.
+    //
+    // Two differ. `hooks` (`error`) and `memo-dependencies` (`warn`) are on
+    // although the preset leaves those compiler rules off, because the plugin
+    // answers both questions a second time with its classic `rules-of-hooks`
+    // (`error`) and `exhaustive-deps` (`warn`), and uf has only the compiler's
+    // answer.
+    //
     // `exhaustive-effect-dependencies` is off because the plugin ships that
-    // validation switched off.
+    // validation switched off; turning the rule on turns the validation on. The
+    // other rules at `off` are off in the preset.
     ("react-compiler/capitalized-calls", RuleLevel::Off),
     ("react-compiler/error-boundaries", RuleLevel::Error),
     (
         "react-compiler/exhaustive-effect-dependencies",
         RuleLevel::Off,
     ),
+    ("react-compiler/fbt", RuleLevel::Off),
     ("react-compiler/globals", RuleLevel::Error),
     ("react-compiler/hooks", RuleLevel::Error),
     ("react-compiler/immutability", RuleLevel::Error),
     ("react-compiler/incompatible-library", RuleLevel::Warn),
+    ("react-compiler/invariant", RuleLevel::Off),
     ("react-compiler/memo-dependencies", RuleLevel::Warn),
     (
         "react-compiler/no-deriving-state-in-effects",
-        RuleLevel::Error,
+        RuleLevel::Off,
     ),
     (
         "react-compiler/preserve-manual-memoization",
@@ -263,6 +270,8 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 79] = [
     ("react-compiler/set-state-in-effect", RuleLevel::Error),
     ("react-compiler/set-state-in-render", RuleLevel::Error),
     ("react-compiler/static-components", RuleLevel::Error),
+    ("react-compiler/syntax", RuleLevel::Off),
+    ("react-compiler/todo", RuleLevel::Off),
     ("react-compiler/unsupported-syntax", RuleLevel::Warn),
     ("react-compiler/use-memo", RuleLevel::Error),
     ("react-compiler/void-use-memo", RuleLevel::Error),
@@ -271,14 +280,6 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 79] = [
     ("react/hook-syntax", RuleLevel::Warn),
     // Framework routes are wired by name; `warn` while the scaffold migrates.
     ("react/no-default-export-component", RuleLevel::Warn),
-    // An effect whose whole body writes state computed from its own
-    // dependencies. `error`, because the code is wrong rather than untidy: the
-    // component renders once with the value it had before the effect ran, and
-    // then again, so a user sees the stale one — and the fix is to move the
-    // expression into render, which is mechanical. The rule reports only the
-    // shape where that move is provably safe; `uf_lint::runner::react_tree`
-    // lists what it leaves alone and why.
-    ("react/no-derived-state-effect", RuleLevel::Error),
     // A `useMemo`/`useCallback` the official React Compiler removed when it
     // compiled the function around it. `warn`, not `error`: nothing is broken
     // — the compiler already did the work, so the hand-written call is a

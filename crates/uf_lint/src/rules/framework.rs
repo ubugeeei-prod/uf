@@ -97,14 +97,12 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`uf-lint-disable` comments must name a rule this linter knows",
     },
     // The official React Compiler's categories, each at the level
-    // `eslint-plugin-react-hooks`' `recommended-latest` preset gives it. Three
-    // differ, each because the plugin answers the question a second way and uf
-    // has only the compiler's answer: `hooks` is `error` and `memo-dependencies`
-    // is `warn` where the plugin leaves its compiler rules off, because the
-    // plugin also ships its classic `rules-of-hooks` (`error`) and
-    // `exhaustive-deps` (`warn`) for the same questions.
-    // `exhaustive-effect-dependencies` is off because the plugin ships that
-    // validation switched off; turning the rule on turns the validation on.
+    // `eslint-plugin-react-hooks`' `recommended-latest` preset gives it, except
+    // `hooks` (`error`) and `memo-dependencies` (`warn`), which the plugin also
+    // answers with its classic `rules-of-hooks` and `exhaustive-deps` at those
+    // levels while uf has only the compiler's answer. `uf_config`'s default
+    // table argues each level, and `runner::react_compiler::rule_for` says why
+    // the categories without a rule have none.
     RuleDescriptor {
         id: "react-compiler/capitalized-calls",
         category: RuleCategory::ReactCompiler,
@@ -125,6 +123,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Off,
         requirement: SourceText,
         description: "the React Compiler's `EffectExhaustiveDependencies` diagnostics: an effect's dependency array missing or adding a value",
+    },
+    RuleDescriptor {
+        id: "react-compiler/fbt",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "the React Compiler's `FBT` diagnostics, about Meta's `fbt` internationalization library",
     },
     RuleDescriptor {
         id: "react-compiler/globals",
@@ -162,6 +167,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "the React Compiler's `IncompatibleLibrary` diagnostics: an API known to break memoization",
     },
     RuleDescriptor {
+        id: "react-compiler/invariant",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "the React Compiler's `Invariant` diagnostics: an internal assumption of the compiler that did not hold",
+    },
+    RuleDescriptor {
         id: "react-compiler/memo-dependencies",
         category: RuleCategory::ReactCompiler,
         default_level: RuleLevel::Warn,
@@ -171,7 +183,7 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
     RuleDescriptor {
         id: "react-compiler/no-deriving-state-in-effects",
         category: RuleCategory::ReactCompiler,
-        default_level: RuleLevel::Error,
+        default_level: RuleLevel::Off,
         requirement: SourceText,
         description: "the React Compiler's `EffectDerivationsOfState` diagnostics: a value derived from props or state, computed in an effect",
     },
@@ -211,6 +223,20 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "the React Compiler's `StaticComponents` diagnostics: a component created during render",
     },
     RuleDescriptor {
+        id: "react-compiler/syntax",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "the React Compiler's `Syntax` diagnostics: code the compiler rejects as invalid syntax",
+    },
+    RuleDescriptor {
+        id: "react-compiler/todo",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "the React Compiler's `Todo` diagnostics: code the compiler does not compile yet",
+    },
+    RuleDescriptor {
         id: "react-compiler/unsupported-syntax",
         category: RuleCategory::ReactCompiler,
         default_level: RuleLevel::Warn,
@@ -244,13 +270,6 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "declare React hooks with Flow `hook` syntax",
-    },
-    RuleDescriptor {
-        id: "react/no-derived-state-effect",
-        category: RuleCategory::React,
-        default_level: RuleLevel::Error,
-        requirement: SourceText,
-        description: "compute state derived from props or state during render, not in an effect",
     },
     // `warn`, not `error`, for the same reason as `react/component-syntax`: this
     // is a convention the ecosystem (and uf's own `uf create app` scaffold) is
