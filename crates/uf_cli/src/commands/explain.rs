@@ -1490,8 +1490,8 @@ fn doc_stages() -> Vec<Stage> {
 
 fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
     let runner = resolved.config.test_runner_tool();
-    if let uf_config::TestRunnerSpec::Bun(version) = &runner.spec {
-        return bun_test_stages(resolved, &runner.spec, version, runner.source);
+    if let uf_config::TestRunnerSpec::Bun(_) = &runner.spec {
+        return bun_test_stages(resolved, &runner.spec, runner.source);
     }
     let mut stages = vec![
         env_stage(resolved, TEST),
@@ -1533,13 +1533,8 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 fn bun_test_stages(
     resolved: &ResolvedConfig,
     spec: &uf_config::TestRunnerSpec,
-    version: &uf_config::ToolVersion,
     source: uf_config::ToolSource,
 ) -> Vec<Stage> {
-    let bun = match version.as_str() {
-        None => String::from("the `bun` on PATH"),
-        Some(version) => format!("Bun {version}, as `uf env install` links it for this project"),
-    };
     let from = source
         .key()
         .map_or_else(String::new, |key| format!(", from `{key}`"));
@@ -1552,11 +1547,12 @@ fn bun_test_stages(
                      `bun test` is given"
                 .to_string(),
         },
+        runtime_stage(resolved, runtimes::Role::Test),
         Stage {
             name: "runner",
             provider: format!("bun test ({spec}{from})"),
             detail: format!(
-                "{bun} runs `bun --conditions={condition} test --preload \
+                "the Bun above runs `bun --conditions={condition} test --preload \
                  <node_modules>/@uniflowed/host/bun-preload.js --reporter=junit \
                  --reporter-outfile=.uf/bun-test/junit.xml ./<file>…`, and under that condition \
                  `@uniflowed/test` is `bun:test`",

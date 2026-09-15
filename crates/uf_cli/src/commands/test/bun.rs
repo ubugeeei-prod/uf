@@ -48,14 +48,13 @@ use std::process::Command;
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_config::env_files::ProjectEnv;
-use uf_config::tools::ToolVersion;
 use uf_config::{CoverageThresholdConfig, ResolvedConfig};
 use uf_project::ProjectFile;
 
 use super::TestArgs;
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
-use crate::commands::vite::find_program;
+use crate::commands::runtimes;
 use crate::support::plural;
 use crate::ui::Ui;
 
@@ -233,71 +232,24 @@ pub(crate) fn escape_pattern(pattern: &str) -> String {
     out
 }
 
-/// The Bun a runner spec names.
-///
-/// `bun` is whatever `bun` is on `PATH`, the way every runtime spec without a
-/// version is. `bun@1.4` is the Bun `uf env install` linked for this project,
-/// checked against the version the spec asks for; a project that has not
-/// installed it is told the command that does.
-pub(crate) fn program(
-    root: &Utf8Path,
-    version: &ToolVersion,
-    on_path: &dyn Fn(&str) -> Option<Utf8PathBuf>,
-    linked: &dyn Fn(&Utf8Path) -> Option<Utf8PathBuf>,
-    reported_version: &dyn Fn(&Utf8Path) -> Option<String>,
-) -> Result<Utf8PathBuf> {
-    match version {
-        ToolVersion::OnPath => on_path("bun").ok_or_else(|| {
-            anyhow!(
-                "`test.runner` is `bun`, and there is no `bun` on PATH. Install Bun, or pin one \
-                 with `runner: \"bun@<version>\"` and run `uf env install`."
-            )
-        }),
-        ToolVersion::Prefix(wanted) | ToolVersion::Exact(wanted) => {
-            let Some(bun) = linked(root) else {
-                bail!(
-                    "`test.runner` is `bun@{wanted}`, and no Bun is installed for this project. \
-                     Run `uf env install`, which installs every tool uf.config.js declares."
-                );
-            };
-            let found = reported_version(&bun)
-                .with_context(|| format!("could not ask {bun} for its version"))?;
-            let matches = match version {
-                ToolVersion::Exact(_) => found == wanted.as_str(),
-                _ => found == wanted.as_str() || found.starts_with(&format!("{wanted}.")),
-            };
-            if !matches {
-                bail!(
-                    "`test.runner` is `bun@{wanted}`, and the Bun installed for this project is \
-                     {found}. Run `uf env install` to install the one uf.config.js names."
-                );
-            }
-            Ok(bun)
-        }
-    }
-}
-
-/// Ask a Bun binary what version it is.
-pub(crate) fn bun_version(bun: &Utf8Path) -> Option<String> {
-    let output = Command::new(bun.as_std_path())
-        .arg("--version")
-        .output()
-        .ok()?;
-    output
-        .status
-        .success()
-        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
 /// Run the suite with `bun test`, and say whether it passed.
 ///
 /// `files` are the test-bearing files uf's discovery found, already narrowed by
 /// any path arguments — the files uf's own runner would have run.
+///
+/// # Which Bun
+///
+/// The one [`runtimes::resolve`] settles for `uf test`, the same resolution uf's
+/// own runner starts its workers from: `test.runtime`, then the runtime the
+/// runner brings, then `runtime`. So `runner: "bun"` is the `bun` on `PATH`,
+/// and `runner: "bun@1.4"` is locked in `uf.lock` and installed into the store
+/// the first time a run needs it, exactly as `test: { runtime: "bun@1.4" }` is.
+/// It is resolved after every refusal below, so a run that was never going to
+/// start downloads nothing.
 pub(crate) fn run(
     ui: &mut Ui,
     resolved: &ResolvedConfig,
-    version: &ToolVersion,
-    env: &ProjectEnv,
+    env: ProjectEnv,
     files: &[ProjectFile],
     args: &TestArgs,
 ) -> Result<()> {
@@ -347,7 +299,13 @@ pub(crate) fn run(
         return Ok(());
     }
 
-    let program = program(root, version, &find_program, &linked_bun, &bun_version)?;
+    // Always a Bun: loading the config already refused a `test.runtime` that
+    // names anything else beside a Bun runner.
+    let runtime = runtimes::resolve(resolved, runtimes::Role::Test, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
+    })?;
+    let env = runtime.environment(env);
+    let program = runtime.host.program;
     let preload = uniflowed_package(root, "host", "bun-preload.js")?.join("bun-preload.js");
     let report = report_path(root, args);
     if let Some(parent) = report.parent() {
@@ -441,15 +399,6 @@ fn read_report(file: std::fs::File, limit: usize) -> Result<String> {
         bail!("{error}");
     }
     Ok(String::from_utf8(bytes)?)
-}
-
-/// The Bun `uf env install` linked for the project at `root`, when there is one.
-fn linked_bun(root: &Utf8Path) -> Option<Utf8PathBuf> {
-    let bun = uf_env::project::Envs::discover()
-        .ok()?
-        .bin_dir(root)
-        .join("bun");
-    bun.is_file().then_some(bun)
 }
 
 /// The files uf's discovery says declare tests that Bun reported no case for.
@@ -619,51 +568,6 @@ mod tests {
         ];
 
         assert_eq!(in_source_files(&files), vec!["src/slug.js"]);
-    }
-
-    #[test]
-    fn a_pinned_bun_must_be_installed_and_be_the_version_named() {
-        let root = Utf8Path::new("/p");
-        let installed = |_: &Utf8Path| Some(Utf8PathBuf::from("/envs/p/bin/bun"));
-        let nothing = |_: &Utf8Path| None;
-        let on_path = |_: &str| None;
-
-        let prefix = ToolVersion::Prefix("1.3".into());
-        assert!(
-            program(root, &prefix, &on_path, &installed, &|_| Some(
-                "1.3.13".into()
-            ))
-            .is_ok()
-        );
-        assert!(
-            program(root, &prefix, &on_path, &installed, &|_| Some(
-                "1.4.0".into()
-            ))
-            .is_err()
-        );
-        assert!(
-            program(root, &prefix, &on_path, &installed, &|_| Some(
-                "1.30.0".into()
-            ))
-            .is_err()
-        );
-
-        let error = program(root, &prefix, &on_path, &nothing, &|_| None).unwrap_err();
-        assert!(error.to_string().contains("uf env install"), "{error}");
-
-        let exact = ToolVersion::Exact("1.3.13".into());
-        assert!(
-            program(root, &exact, &on_path, &installed, &|_| Some(
-                "1.3.13".into()
-            ))
-            .is_ok()
-        );
-        assert!(
-            program(root, &exact, &on_path, &installed, &|_| Some(
-                "1.3.14".into()
-            ))
-            .is_err()
-        );
     }
 
     #[test]

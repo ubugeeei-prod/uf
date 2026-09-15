@@ -1036,9 +1036,14 @@ it would fail differently every run.
 
 ```js
 export default defineConfig({
-  test: { runner: "bun" }, // or "bun@1.4", which `uf env install` installs
+  test: { runner: "bun" }, // or "bun@1.4"
 });
 ```
+
+`"bun"` is the `bun` on `PATH`. `"bun@1.4"` is locked in `uf.lock` and installed
+into uf's store the first time `uf test` needs it, as `test: { runtime:
+"bun@1.4" }` would be. A `test.runtime` that names anything but Bun is refused,
+because `bun test` runs on Bun alone.
 
 With `runner: "bun"`, uf still discovers the test files — the same files its own
 runner would run — and hands exactly those to `bun test`, with uf's Flow preload

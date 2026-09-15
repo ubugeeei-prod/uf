@@ -219,7 +219,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // running the files, and not for anything after it. What reaches Bun, and
     // why a report is always read back, is [`bun`].
     let runner = resolved.config.test_runner_tool();
-    if let uf_config::TestRunnerSpec::Bun(version) = &runner.spec {
+    if let uf_config::TestRunnerSpec::Bun(_) = &runner.spec {
         let refused = bun::refused_flags(&args);
         if !refused.is_empty() {
             let reasons: Vec<String> = refused
@@ -248,7 +248,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             .into_iter()
             .filter(|file| args.paths.is_empty() || selects(&args.paths, &file.relative_path))
             .collect();
-        return bun::run(ui, &resolved, version, &env, &selected, &args);
+        return bun::run(ui, &resolved, env, &selected, &args);
     }
 
     if args.list {

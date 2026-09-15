@@ -1629,17 +1629,49 @@ fn both_runners_report_the_same_passes_and_failures() {
     assert_eq!(report.matches("<failure").count(), 1, "{report}");
 }
 
-/// A pinned Bun that is not installed is refused with the command that
-/// installs it, before anything runs.
+/// A pinned Bun is installed the way `test.runtime` installs one, so a Bun that
+/// cannot be settled is refused naming the spec, before anything runs. The
+/// publishers serve nothing here, so the attempt cannot reach the network.
 #[test]
-fn a_pinned_bun_that_is_not_installed_names_the_command_that_installs_it() {
+fn a_pinned_bun_that_cannot_be_installed_is_refused_before_anything_runs() {
     let project = with_runner("bun@0.0.1", &[PASS_AND_FAIL]);
+    let tools = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir_all(tools.path().join("nothing")).expect("the empty publisher");
+
+    let output = uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("test")
+        .output()
+        .expect("uf started");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(!output.status.success(), "{stdout}\n{stderr}");
+    assert!(stderr.contains("`bun@0.0.1`"), "{stderr}");
+    assert!(!stdout.contains("adds"), "nothing ran: {stdout}");
+}
+
+/// `bun test` runs on Bun alone, so a `test.runtime` naming another runtime is
+/// refused by name, before anything runs, rather than ignored — which is what
+/// the Bun runner did with it before it resolved its Bun through
+/// `test.runtime`.
+#[test]
+fn a_bun_runner_on_a_runtime_that_is_not_bun_is_refused_by_name() {
+    let project = Project::new(&[PASS_AND_FAIL]);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runner: \"bun\", runtime: \"node\" } });\n",
+    );
 
     let (success, stdout, stderr) = run(project.path(), &[]);
 
     assert!(!success, "{stdout}\n{stderr}");
-    assert!(stderr.contains("`bun@0.0.1`"), "{stderr}");
-    assert!(stderr.contains("uf env install"), "{stderr}");
+    assert!(stderr.contains("test.runtime"), "{stderr}");
+    assert!(
+        stderr.contains("a Bun runner runs on the Bun it names"),
+        "{stderr}"
+    );
     assert!(!stdout.contains("adds"), "nothing ran: {stdout}");
 }
 
