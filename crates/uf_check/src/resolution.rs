@@ -12,7 +12,7 @@
 //! * `import`, because uf projects load packages as ES modules, not CommonJS.
 //!
 //! It deliberately answers no JavaScript host condition. One type check
-//! produces one graph, while uf claims Node, Bun, and experimental Deno hosts;
+//! produces one graph, while uf claims Node, Bun, and Deno hosts;
 //! choosing `node`, `bun`, `deno`, or `browser` here would make the checker a
 //! checker for that host rather than for the portable graph. The host-specific
 //! miss is reported separately so the cost is visible.

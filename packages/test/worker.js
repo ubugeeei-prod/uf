@@ -58,26 +58,19 @@ import { installInSourceTests } from "./in-source.js";
 import { restoreSharedState } from "./internal/isolation.js";
 import { run } from "./internal/run.js";
 
-// `process` is imported rather than read off the global, and then put *on*
-// the global, because one host in three does not have it there.
+// `process` is imported rather than read off the global because this file is
+// the process entry point, and an entry point that names what it depends on is
+// one a reader does not have to trust.
 //
-// Deno exposes the whole object as `node:process` and nothing as
-// `globalThis.process` — `crates/uf_cli/tests/deno_host.rs` starts a real one
-// and asserts both halves. Every module this worker reaches that wants the
-// process reaches for the global: `internal/output.js` replaces
-// `process.stdout.write` so a test's printing cannot land in the middle of the
-// protocol, `internal/namespace.js` reads `process.env` for `stubEnv`, and
-// `internal/axe.js` reads `UF_AXE` from it. Threading an import through all
-// three would put a `node:` specifier into modules a browser build resolves,
-// for a difference no other host has.
-//
-// So the entry point installs it, once, before anything below runs. `??=`
-// rather than `=`: on Node and Bun the global is already the real object and
-// this must not replace it with a second view of the same thing.
-//
-// It is a shim of the host, in the one file that is a process entry point, and
-// it stops here — nothing else in `@uniflowed/test` may do this.
-globalThis.process ??= process;
+// It used to be put *on* the global as well. Deno 1.x exposed the object as
+// `node:process` and nothing as `globalThis.process`, and every module this
+// worker reaches that wants the process reads the global: `internal/output.js`
+// replaces `process.stdout.write`, `internal/namespace.js` reads
+// `process.env` for `stubEnv`, and `internal/axe.js` reads `UF_AXE`. The Deno
+// uf starts is 2.8 or newer — `@uniflowed/host/deno-preload` is built on that
+// release's `registerHooks`, and `uf test` refuses anything older — and Deno 2
+// has the global like Node and Bun. A shim for a host uf no longer starts would
+// be a line claiming to be load-bearing while holding nothing up.
 
 /** What `uf` sends for one file. */
 type Request = {|
