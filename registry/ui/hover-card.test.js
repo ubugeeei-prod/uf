@@ -33,7 +33,7 @@ describe("HoverCard", () => {
     render(<Example />);
     expect(screen.getByRole("link", { name: "Ada Lovelace" })).toHaveAttribute(
       "href",
-      "/people/ada",
+      "?person=ada",
     );
     expect(screen.queryByText("Writes the notes that outlive the engine.")).toBeNull();
   });

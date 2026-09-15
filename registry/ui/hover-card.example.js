@@ -31,12 +31,12 @@ export component Example() {
     <div>
       Reviewed by{" "}
       <HoverCard>
-        <HoverCardTrigger href="/people/ada">Ada Lovelace</HoverCardTrigger>
+        <HoverCardTrigger href="?person=ada">Ada Lovelace</HoverCardTrigger>
         <HoverCardContent>
           <div {...props(styles.stack)}>
             <p {...props(styles.name)}>Ada Lovelace</p>
             <p {...props(styles.note)}>Writes the notes that outlive the engine.</p>
-            <a {...props(styles.link)} href="/people/ada/notes">
+            <a {...props(styles.link)} href="?person=ada&view=notes">
               Read her notes
             </a>
           </div>

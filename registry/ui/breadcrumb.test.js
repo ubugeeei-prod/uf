@@ -18,7 +18,7 @@ describe("Breadcrumb", () => {
   it("is a named navigation landmark with links up the trail", () => {
     render(<Example />);
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "/projects/atlas");
+    expect(screen.getByRole("link", { name: "Atlas" })).toHaveAttribute("href", "?project=atlas");
   });
 
   it("marks the current page, and does not link to it", () => {
