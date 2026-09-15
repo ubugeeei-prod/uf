@@ -113,6 +113,178 @@ fn status_of(record: &serde_json::Value, step: &str) -> String {
     field_of(record, step, "status")
 }
 
+// --- what is staged, and what runs over it ----------------------------------
+
+/// Fails on any file it is handed that says `BAD`.
+const REFUSES_BAD: &str = "for file in \"$@\"; do\n  if grep -q BAD \"$file\"; then echo \"$file says BAD\"; exit 1; fi\ndone\n";
+
+/// Rewrites every file it is handed to say `fixed`.
+const FIXES: &str = "for file in \"$@\"; do printf 'fixed\\n' > \"$file\"; done\n";
+
+/// A config whose `staged` hands every staged `.txt` to `task`, which runs
+/// `script` with `sh`.
+fn with_staged_task(root: &Path, task: &str, script: &str) {
+    fs::write(root.join(format!("{task}.sh")), script).expect("the task's script");
+    fs::write(
+        root.join("uf.config.js"),
+        format!(
+            "export default defineConfig({{ tasks: {{ {task}: \"sh {task}.sh\" }}, \
+             staged: {{ \"*.txt\": \"{task}\" }} }});\n"
+        ),
+    )
+    .expect("a config with a staged task");
+}
+
+/// What the index holds for `path`.
+fn staged_content(dir: &Path, path: &str) -> String {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(["show", &format!(":{path}")])
+        .output()
+        .expect("git started");
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// A half-staged file is checked as it is staged — whichever half is the bad
+/// one — and its unstaged half is on disk again afterwards.
+#[test]
+fn a_half_staged_file_is_checked_as_it_is_staged() {
+    let dir = a_repository();
+    with_staged_task(dir.path(), "check", REFUSES_BAD);
+    let notes = dir.path().join("notes.txt");
+
+    // The commit holds the good half, so the bad one on disk does not fail it.
+    fs::write(&notes, "good\n").expect("notes");
+    git(dir.path(), &["add", "notes.txt"]);
+    fs::write(&notes, "good\nBAD\n").expect("notes");
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+    assert_eq!(
+        code, SUCCESS,
+        "the unstaged half failed the commit\n{stdout}{stderr}"
+    );
+    assert_eq!(
+        fs::read_to_string(&notes).expect("notes"),
+        "good\nBAD\n",
+        "the unstaged half was not put back"
+    );
+
+    // The commit holds the bad half, so the good one on disk does not save it.
+    fs::write(&notes, "BAD\n").expect("notes");
+    git(dir.path(), &["add", "notes.txt"]);
+    fs::write(&notes, "good\n").expect("notes");
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+    assert_eq!(
+        code, FOUND_A_PROBLEM,
+        "the staged half was never looked at\n{stdout}{stderr}"
+    );
+    assert_eq!(status_of(&record(dir.path()), "run-staged-tasks"), "failed");
+    assert_eq!(fs::read_to_string(&notes).expect("notes"), "good\n");
+}
+
+/// The built-in checks read the same half: a lint error only on disk does not
+/// fail the commit, and one only in the index does.
+#[test]
+fn the_lint_step_reads_the_staged_half_of_a_file() {
+    let dir = a_repository();
+    let module = dir.path().join("module.js");
+
+    fs::write(&module, CLEAN).expect("a clean module");
+    git(dir.path(), &["add", "module.js"]);
+    fs::write(&module, LINTS_BADLY).expect("an unstaged lint error");
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+    assert_eq!(code, SUCCESS, "{stdout}{stderr}");
+    assert_eq!(fs::read_to_string(&module).expect("module"), LINTS_BADLY);
+
+    fs::write(&module, LINTS_BADLY).expect("a staged lint error");
+    git(dir.path(), &["add", "module.js"]);
+    fs::write(&module, CLEAN).expect("a clean working tree");
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+    assert_eq!(code, FOUND_A_PROBLEM, "{stdout}{stderr}");
+    assert!(stdout.contains("security/no-eval"), "{stdout}");
+    assert_eq!(fs::read_to_string(&module).expect("module"), CLEAN);
+}
+
+/// A fix a staged task makes to a fully staged file lands in the commit — and
+/// the commit is made by `git commit`, through the hook `--install-hooks`
+/// wrote, with nothing but that hook asking uf to run.
+#[test]
+fn a_fix_to_a_fully_staged_file_lands_in_the_commit_through_the_hook() {
+    let dir = a_repository();
+    with_staged_task(dir.path(), "fix", FIXES);
+    let (code, stdout, stderr) = run(dir.path(), &["prepare", "--install-hooks"]);
+    assert_eq!(code, SUCCESS, "{stdout}{stderr}");
+    assert!(dir.path().join(".githooks/pre-commit").is_file());
+
+    fs::write(dir.path().join("notes.txt"), "broken\n").expect("notes");
+    git(dir.path(), &["add", "notes.txt"]);
+    let binaries = Path::new(support::uf_path())
+        .parent()
+        .expect("the binary is in a directory");
+    let path = std::env::join_paths(std::iter::once(binaries.to_path_buf()).chain(
+        std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()),
+    ))
+    .expect("a PATH");
+    let commit = Command::new("git")
+        .arg("-C")
+        .arg(dir.path())
+        .args(["-c", "user.name=uf", "-c", "user.email=uf@example.invalid"])
+        .args(["commit", "--quiet", "-m", "notes"])
+        .env("PATH", path)
+        .env("UF_STORE", dir.path().join(".uf/store"))
+        .env("UF_ROOTS", dir.path().join(".uf/roots"))
+        .output()
+        .expect("git started");
+    assert!(
+        commit.status.success(),
+        "the hook refused the commit\n{}{}",
+        String::from_utf8_lossy(&commit.stdout),
+        String::from_utf8_lossy(&commit.stderr)
+    );
+
+    let committed = Command::new("git")
+        .arg("-C")
+        .arg(dir.path())
+        .args(["show", "HEAD:notes.txt"])
+        .output()
+        .expect("git started");
+    assert_eq!(
+        String::from_utf8_lossy(&committed.stdout),
+        "fixed\n",
+        "the fix is not in the commit"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("notes.txt")).expect("notes"),
+        "fixed\n"
+    );
+}
+
+/// A fix to a half-staged file cannot be staged without the unstaged half, so
+/// it is not kept, and the commit stops with the working tree as it was.
+#[test]
+fn a_fix_to_a_half_staged_file_is_not_kept_and_stops_the_commit() {
+    let dir = a_repository();
+    with_staged_task(dir.path(), "fix", FIXES);
+    let notes = dir.path().join("notes.txt");
+    fs::write(&notes, "broken\n").expect("notes");
+    git(dir.path(), &["add", "notes.txt"]);
+    fs::write(&notes, "broken\nmine\n").expect("notes");
+
+    let (code, stdout, stderr) = run(dir.path(), &["prepare"]);
+    assert_eq!(code, FOUND_A_PROBLEM, "{stdout}{stderr}");
+    assert!(stdout.contains("only partly staged"), "{stdout}");
+    assert_eq!(
+        fs::read_to_string(&notes).expect("notes"),
+        "broken\nmine\n",
+        "the unstaged half was lost"
+    );
+    assert_eq!(
+        staged_content(dir.path(), "notes.txt"),
+        "broken\n",
+        "a rewrite of a half-staged file was staged"
+    );
+}
+
 /// A file that is not staged is not checked, and the same file staged is.
 ///
 /// The whole premise of a pre-commit command in one test: a project can have a
