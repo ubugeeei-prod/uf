@@ -902,8 +902,7 @@ mod tests {
 
     #[test]
     fn a_declaring_identifier_is_recorded_as_a_reference_to_its_binding() {
-        let (file, info) =
-            analyzed("function f() { let y = {}; const g = () => { y = 1; }; }\n");
+        let (file, info) = analyzed("function f() { let y = {}; const g = () => { y = 1; }; }\n");
         let declarator = &file["program"]["body"][0]["body"]["body"][0]["declarations"][0];
         let declared = node_id(&declarator["id"]).unwrap();
         let binding = info.ref_node_id_to_binding[&declared];
