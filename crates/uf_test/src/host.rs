@@ -54,7 +54,12 @@ pub enum HostKind {
     Node,
     /// Bun, with the plugin from `@uniflowed/host/bun-preload`.
     Bun,
-    /// Deno.
+    /// Deno 2.8 or newer, with the hooks from `@uniflowed/host/deno-preload`.
+    ///
+    /// 2.8 is where Deno implemented `node:module`'s `registerHooks`, the
+    /// synchronous hook the preload is built on. An older Deno has no hook to
+    /// install anything in, and `uf test` refuses it by version rather than
+    /// starting workers that cannot read a line of Flow.
     Deno,
     /// A real browser, driven by `@uniflowed/test/browser-worker.js`.
     ///
@@ -163,17 +168,6 @@ pub struct HostCommand {
     /// not know it is being measured; see [`crate::coverage`] for why that is
     /// the property worth having.
     pub coverage_dir: Option<Utf8PathBuf>,
-    /// The import map that is Deno's Flow loader, when one has been built.
-    ///
-    /// Node and Bun are handed a *module* that transforms on import; Deno has
-    /// nowhere to install one, so what it is handed instead is a tree of
-    /// already-compiled modules and a map pointing the project's specifiers at
-    /// them. `uf`'s `commands::deno_loader` writes both.
-    ///
-    /// `None` is a Deno that has not been given one, and
-    /// [`HostCommand::loads_flow`] answers `false` for it — which is the same
-    /// answer, and the same refusal, that host had before the pass existed.
-    pub deno_import_map: Option<Utf8PathBuf>,
 }
 
 impl HostCommand {
@@ -200,7 +194,6 @@ impl HostCommand {
             axe: None,
             browser: None,
             coverage_dir: None,
-            deno_import_map: None,
         }
     }
 
@@ -220,11 +213,17 @@ impl HostCommand {
 
     /// Register the host's Flow loader, so an imported module is transformed.
     ///
-    /// A host without one can still run the worker; it just cannot import
-    /// Flow, which [`HostCommand::loads_flow`] reports so a caller can say so
-    /// rather than let the failure arrive as a syntax error.
+    /// One argument per host that needs a module named, because the three
+    /// are reached three ways: Node imports `register` with `--import`, Bun
+    /// preloads its plugin, and Deno preloads the hooks. Each command uses the
+    /// one for its own kind.
     #[must_use]
-    pub fn with_flow_loader(mut self, register: &Utf8Path, bun_preload: &Utf8Path) -> Self {
+    pub fn with_flow_loader(
+        mut self,
+        register: &Utf8Path,
+        bun_preload: &Utf8Path,
+        deno_preload: &Utf8Path,
+    ) -> Self {
         self.leading_args = match self.kind {
             // `--enable-source-maps` is what makes a stack frame name the line
             // the author wrote rather than the line the transform produced:
@@ -242,10 +241,10 @@ impl HostCommand {
                 register.to_string(),
             ],
             HostKind::Bun => vec![String::from("--preload"), bun_preload.to_string()],
-            // Deno's loader is not a module, so there is nothing for this to
-            // register: the subcommand, and then whatever
-            // [`HostCommand::with_deno_import_map`] and
-            // [`HostCommand::with_permissions`] add.
+            // `run`, then the hooks: `registerHooks` from `node:module`, which
+            // Deno implements from 2.8 and runs synchronously in the importing
+            // thread, installed before the worker's first import. Then
+            // whatever [`HostCommand::with_permissions`] adds.
             //
             // What is deliberately *not* here is `-A`. It used to be, on the
             // reasoning that Deno's default — no filesystem, no network, no
@@ -261,26 +260,12 @@ impl HostCommand {
             // `uf_runtime::permissions::host_arguments` with an empty declared
             // set, which is the project root, its packages and nothing else.
             // `uf explain test` prints it. See ubugeeei-prod/uf#246.
-            HostKind::Deno => vec![String::from("run")],
+            HostKind::Deno => vec![
+                String::from("run"),
+                String::from("--preload"),
+                deno_preload.to_string(),
+            ],
         };
-        self
-    }
-
-    /// Hand Deno the import map that is its Flow loader.
-    ///
-    /// The map is written by `uf`'s ahead-of-time pass before the host starts,
-    /// and it is what makes [`HostCommand::loads_flow`] true for this host: a
-    /// Deno without one runs plain JavaScript and meets the first Flow
-    /// annotation as a syntax error, which is what `uf test` refuses rather
-    /// than allows.
-    ///
-    /// Placed immediately after `run`, before any permission flag, because
-    /// Deno reads its own flags in either order and a reader does not: the
-    /// loader belongs beside the subcommand that needs it.
-    #[must_use]
-    pub fn with_deno_import_map(mut self, map: &Utf8Path) -> Self {
-        self.leading_args.push(format!("--import-map={map}"));
-        self.deno_import_map = Some(map.to_path_buf());
         self
     }
 
@@ -306,23 +291,23 @@ impl HostCommand {
 
     /// Whether this host transforms Flow on import.
     ///
-    /// Deno's answer depends on the *command* rather than only on the host:
-    /// its modules are compiled ahead of time, so what makes Flow loadable
-    /// there is the import map this command was given and not something
-    /// installed in the runtime.
+    /// Node, Bun and Deno each have a hook installed by the arguments
+    /// [`HostCommand::with_flow_loader`] wrote, and every module the worker
+    /// imports goes through it. Deno's answered `false` until its hook existed:
+    /// before 2.8 its loader was an ahead-of-time pass over the modules uf
+    /// could enumerate, and a command that had not been handed the pass's
+    /// output could not read Flow.
     ///
-    /// A browser answers unconditionally, and for neither of the other two
-    /// reasons: the page is not what reads a module. The driver serves it
-    /// every one through the same `uf transform` the Node loader calls, so
-    /// there is nothing to install in the runtime and nothing to compile
-    /// beforehand — which is also why this arm is spelled out rather than
-    /// folded in with Node and Bun's.
+    /// A browser answers `true` for a different reason: the page is not what
+    /// reads a module. The driver serves it every one through the same
+    /// `uf transform` the Node loader calls, so there is nothing to install in
+    /// the runtime — which is why this arm is spelled out rather than folded
+    /// in with the other three.
     #[must_use]
     pub const fn loads_flow(&self) -> bool {
         match self.kind {
-            HostKind::Node | HostKind::Bun => true,
+            HostKind::Node | HostKind::Bun | HostKind::Deno => true,
             HostKind::Browser => true,
-            HostKind::Deno => self.deno_import_map.is_some(),
         }
     }
 
@@ -353,10 +338,10 @@ impl HostCommand {
     /// Whether this host can collect coverage at all.
     ///
     /// Node only, and the reason is not a missing feature of uf's: Bun
-    /// implements no `NODE_V8_COVERAGE`, and Deno's ahead-of-time loader has no
-    /// equivalent
-    /// coverage flush or source-map cache to read back. A caller is expected to
-    /// say so rather than report a run of zeroes.
+    /// implements no `NODE_V8_COVERAGE`, and Deno writes its counts through
+    /// `--coverage` in a profile format of its own, with no source-map cache
+    /// beside them for [`crate::coverage`] to map back through. A caller is
+    /// expected to say so rather than report a run of zeroes.
     ///
     /// The browser is the interesting `false`, because the counters are right
     /// there — V8 is counting in the renderer exactly as it counts in Node. The
@@ -878,6 +863,29 @@ impl Worker {
         if let Some(directory) = &command.coverage_dir {
             process.env("NODE_V8_COVERAGE", directory.as_str());
         }
+        // Deno will not let a process whose run permission names programs
+        // start one while a dynamic-loader variable is in its environment —
+        // `LD_LIBRARY_PATH`, `LD_PRELOAD`, `DYLD_*` — unless `--allow-run` is
+        // unscoped, and uf's never is. Measured on Deno 2.9.6: `spawnSync` then
+        // answers with no process at all, so every module the transform cache
+        // does not hold fails to load. `cargo test` sets `LD_LIBRARY_PATH` on
+        // Linux for the process it tests, which is how CI met it, and a shell
+        // that exports one for a native toolchain meets it the same way. A
+        // worker has no use for them, because Deno has already loaded its own
+        // libraries, so none is passed on — whether uf's environment or the
+        // project's supplied it.
+        if matches!(command.kind, HostKind::Deno) {
+            let inherited = std::env::vars_os().map(|(name, _)| name);
+            let declared = command
+                .env
+                .iter()
+                .map(|(name, _)| std::ffi::OsString::from(name));
+            for name in inherited.chain(declared) {
+                if is_loader_variable(&name) {
+                    process.env_remove(name);
+                }
+            }
+        }
 
         let mut child = process.spawn().map_err(|error| SpawnError {
             message: format!("could not start `{}`: {error}", command.program),
@@ -1210,9 +1218,35 @@ fn record_of(file: &str, event: TestEvent) -> TestRecord {
     }
 }
 
+/// Whether `name` is a variable the platform's dynamic loader reads.
+///
+/// The `LD_` and `DYLD_` families, which Deno will not pass to a child started
+/// under a scoped `--allow-run`; see [`Worker::spawn`].
+fn is_loader_variable(name: &std::ffi::OsStr) -> bool {
+    name.to_str()
+        .is_some_and(|name| name.starts_with("LD_") || name.starts_with("DYLD_"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The variables a Deno worker is started without, and nothing else: a
+    /// name that merely contains `LD` is somebody's own.
+    #[test]
+    fn loader_variables_are_the_ld_and_dyld_families() {
+        for name in [
+            "LD_LIBRARY_PATH",
+            "LD_PRELOAD",
+            "DYLD_FALLBACK_LIBRARY_PATH",
+            "DYLD_INSERT_LIBRARIES",
+        ] {
+            assert!(is_loader_variable(std::ffi::OsStr::new(name)), "{name}");
+        }
+        for name in ["PATH", "OLDPWD", "LDFLAGS", "UF_BINARY", "BUILD_LD_PATH"] {
+            assert!(!is_loader_variable(std::ffi::OsStr::new(name)), "{name}");
+        }
+    }
 
     #[test]
     fn a_node_command_registers_the_flow_loader() {
@@ -1225,6 +1259,7 @@ mod tests {
         .with_flow_loader(
             Utf8Path::new("@uniflowed/host/register"),
             Utf8Path::new("/p/bun-preload.js"),
+            Utf8Path::new("/p/deno-preload.js"),
         );
 
         assert_eq!(
@@ -1249,6 +1284,7 @@ mod tests {
         .with_flow_loader(
             Utf8Path::new("@uniflowed/host/register"),
             Utf8Path::new("/p/bun-preload.js"),
+            Utf8Path::new("/p/deno-preload.js"),
         );
 
         assert_eq!(command.leading_args, ["--preload", "/p/bun-preload.js"]);
@@ -1272,6 +1308,7 @@ mod tests {
         .with_flow_loader(
             Utf8Path::new("@uniflowed/host/register"),
             Utf8Path::new("/p/bun-preload.js"),
+            Utf8Path::new("/p/deno-preload.js"),
         )
         .with_browser(Utf8PathBuf::from("/usr/bin/chromium"));
 
@@ -1293,45 +1330,47 @@ mod tests {
         // caller writes from it names a host that does.
         assert!(!command.can_collect_coverage());
         assert_eq!(HostKind::Browser.name(), "the browser");
-        // A browser command is never handed an import map, and does not need
-        // one to load Flow. The check above must not be reading Deno's.
-        assert!(command.deno_import_map.is_none());
+        // The driver is Node, so it is the Node loader it registers and not
+        // either preload.
+        assert!(
+            !command
+                .leading_args
+                .iter()
+                .any(|argument| argument.ends_with("preload.js")),
+            "{:?}",
+            command.leading_args
+        );
     }
 
-    /// Deno with no import map is the host ubugeeei-prod/uf#246 found: it
-    /// starts, and it cannot read a line of Flow.
+    /// Deno preloads the hooks, and loads Flow on the worker it was given.
+    ///
+    /// The worker is the installed `@uniflowed/test/worker.js`, the same file
+    /// Node and Bun run, rather than a compiled copy under `.uf/deno` — which
+    /// is the difference a hook makes over the ahead-of-time pass this host
+    /// used to need. See ubugeeei-prod/uf#246.
     #[test]
-    fn deno_without_an_import_map_cannot_load_flow() {
+    fn a_deno_command_preloads_the_hooks() {
         let command = HostCommand::new(
             HostKind::Deno,
             Utf8PathBuf::from("/usr/bin/deno"),
-            Utf8PathBuf::from("/p/worker.js"),
+            Utf8PathBuf::from("/p/node_modules/@uniflowed/test/worker.js"),
             Utf8PathBuf::from("/p"),
         )
-        .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"));
-
-        assert_eq!(command.leading_args, ["run"]);
-        assert!(!command.loads_flow());
-    }
-
-    /// And with one it is a host that loads Flow, which is what the
-    /// ahead-of-time pass buys.
-    #[test]
-    fn an_import_map_is_what_makes_deno_load_flow() {
-        let command = HostCommand::new(
-            HostKind::Deno,
-            Utf8PathBuf::from("/usr/bin/deno"),
-            Utf8PathBuf::from("/p/.uf/deno/packages/@uniflowed/test/worker.js"),
-            Utf8PathBuf::from("/p"),
-        )
-        .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"))
-        .with_deno_import_map(Utf8Path::new("/p/.uf/deno/import-map.json"));
+        .with_flow_loader(
+            Utf8Path::new("@uniflowed/host/register"),
+            Utf8Path::new("/p/bun-preload.js"),
+            Utf8Path::new("/p/deno-preload.js"),
+        );
 
         assert_eq!(
             command.leading_args,
-            ["run", "--import-map=/p/.uf/deno/import-map.json"]
+            ["run", "--preload", "/p/deno-preload.js"]
         );
         assert!(command.loads_flow());
+        assert!(
+            !command.can_collect_coverage(),
+            "Deno's coverage profile is not a format uf reads"
+        );
     }
 
     /// No `-A`, on any path through the builder.
@@ -1351,8 +1390,11 @@ mod tests {
             Utf8PathBuf::from("/p/worker.js"),
             Utf8PathBuf::from("/p"),
         )
-        .with_flow_loader(Utf8Path::new("a"), Utf8Path::new("b"))
-        .with_deno_import_map(Utf8Path::new("/p/map.json"))
+        .with_flow_loader(
+            Utf8Path::new("a"),
+            Utf8Path::new("b"),
+            Utf8Path::new("/p/deno-preload.js"),
+        )
         .with_permissions(vec![String::from("--allow-read=/p")]);
 
         assert!(
@@ -1381,6 +1423,7 @@ mod tests {
         .with_flow_loader(
             Utf8Path::new("@uniflowed/host/register"),
             Utf8Path::new("/p/bun-preload.js"),
+            Utf8Path::new("/p/deno-preload.js"),
         )
         .with_permissions(vec![
             String::from("--permission"),

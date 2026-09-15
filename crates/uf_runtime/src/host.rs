@@ -25,11 +25,11 @@ use crate::permissions::Permission;
 
 /// How much of a uf *project* runs on a host.
 ///
-/// About the project, not about every claim in the row: Deno enforces the
-/// whole permission set and is still [`SupportLevel::Planned`], because
-/// nothing a uf project is made of can be imported there yet. Grading the row
-/// by its best feature is how "Deno is supported" got written down in the
-/// first place.
+/// About the project, not about every claim in the row: Deno enforced the
+/// whole permission set for as long as it was [`SupportLevel::Planned`],
+/// because nothing a uf project is made of could be imported there. Grading
+/// the row by its best feature is how "Deno is supported" got written down in
+/// the first place, a long time before it was true.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SupportLevel {
     /// Runs uf projects, and a test in this repository starts it and checks.
@@ -119,22 +119,27 @@ pub const HOSTS: &[HostSupport] = &[
     },
     HostSupport {
         host: RuntimeHost::Deno,
-        level: SupportLevel::Experimental,
-        // Not a module, which is the whole of what is different about this
-        // host: Deno has no hook to install one in, so what teaches it Flow is
-        // a pass that has already run. See `uf_cli`'s `commands::deno_loader`.
-        flow_loader: Some("uf's ahead-of-time transform and import map"),
+        level: SupportLevel::Implemented,
+        // A module, like the other two, and that is what moved this row. Deno
+        // 2.8 implemented `node:module`'s `registerHooks`, and the preload
+        // installs the transform there, so a module is compiled as Deno asks
+        // for it. Before 2.8 there was nothing to install, this row named an
+        // ahead-of-time pass and an import map, and it was experimental for
+        // exactly the modules a pass cannot enumerate.
+        flow_loader: Some("@uniflowed/host/deno-preload"),
         // The only host that enforces the whole set, which is the reason the
         // model has the shape it has.
         enforces: Permission::ALL,
         verified_by: Some("crates/uf_cli/tests/deno_host.rs"),
         missing: Some(
-            "a module hook. uf compiles the project ahead of time and hands Deno an import map, \
-             which covers every module uf can enumerate — so a module reached by a path computed \
-             at run time is still met as Flow, `uf test --watch` is refused rather than run \
-             against the tree the first pass wrote, and there is no coverage",
+            "coverage, a Deno older than 2.8, and a native addon required under the hook. Deno \
+             writes its counts in a profile format of its own with no source-map cache beside \
+             them, so `uf test --coverage` is refused here; a Deno before 2.8 has no \
+             `registerHooks` to install the loader in, so it is refused by version; and while a \
+             `load` hook is registered Deno cannot `require()` a `.node` addon, so a test that \
+             imports one fails — the Vite driver loads its own before the hooks go in",
         ),
-        tracking_issue: Some(246),
+        tracking_issue: None,
     },
     HostSupport {
         host: RuntimeHost::Edge,

@@ -978,10 +978,10 @@ JavaScript execution is delegated to a Capability JS Host.
 
 The zero-config host set is Node.js, Deno, and Bun — as *targets*. What each of
 them does today is a different question and is answered in one place,
-[`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
-test that starts the binary; Deno has no module hook to install one in, so uf
-compiles the project ahead of time and hands it an import map, which runs a
-suite and leaves a named gap; and Edge starts the generated Cloudflare Worker
+[`docs/hosts.md`](./hosts.md): Node.js, Bun and Deno each have a Flow loader
+and a test that starts the binary — Deno's installed through the synchronous
+`registerHooks` it implemented in 2.8, where it used to be an ahead-of-time pass
+and an import map; and Edge starts the generated Cloudflare Worker
 under Wrangler local while still lacking a source-level host or Flow loader.
 Reading the host set as a support matrix is how "uf runs on Deno" came to be
 written down; the matrix is the matrix.

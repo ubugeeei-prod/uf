@@ -129,22 +129,20 @@ jobs:
         with:
           bun-version: latest
       - run: bun --version
-      # Deno runs no uf project — it has no Flow loader — and it is installed
-      # here anyway, because `crates/uf_cli/tests/deno_host.rs` is what keeps
-      # `uf_runtime::HOSTS`'s Deno row honest: it starts the binary to establish
-      # that the gaps the row names are the real gaps, and that the permission
-      # set uf translates is one Deno actually enforces. Those tests fail rather
-      # than skip when Deno is absent, for the reason the Bun ones do.
-      # `v1.x` and not `latest`, because one of those tests is a measurement of a
-      # particular Deno rather than of Deno: a global `process` is something a
-      # later line may have added, and a test asserting its absence on a version
-      # nobody ran it against would be the same unchecked claim in a new place.
-      # It gates itself on the major version and says so when it steps aside.
-      # Raising this line is the first piece of ubugeeei-prod/uf#246's Deno
-      # work, not a maintenance chore.
+      # Deno runs uf projects through `@uniflowed/host/deno-preload`, which is
+      # built on `node:module`'s `registerHooks` — a hook Deno implemented in
+      # 2.8 — and `crates/uf_cli/tests/deno_host.rs` is what keeps
+      # `uf_runtime::HOSTS`'s Deno row honest: it starts the binary, loads Flow
+      # through the preload, runs `uf test` on it, and checks that the
+      # permission set uf translates is one Deno actually enforces. Those tests
+      # fail rather than skip when Deno is absent or older than the hook, for
+      # the reason the Bun ones do.
+      # `v2.x`, the line that has the hook. It was `v1.x` while one test
+      # measured an absence particular to that line — no global `process` — and
+      # uf no longer starts a Deno that old.
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - run: deno --version
       # Blacksmith's image carries Chromium, but the distro binary can spend
       # browser-mode's start budget talking to a broken DBus session before it
@@ -634,7 +632,7 @@ jobs:
       # cannot be green.
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - run: deno --version
       # Same browser-host test suite as the `Test` job, this time under
       # `--all-features`.

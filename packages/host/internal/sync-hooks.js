@@ -36,12 +36,37 @@
 // whether anything needed compiling could be asked. A cold run pays for one
 // thread and one `uf transform`, which is what the loader thread cost every
 // run.
+//
+// # Deno runs these too
+//
+// Deno implements `registerHooks` from 2.8 and never implemented `register()`,
+// so these are the only hooks it can take: `../deno-preload.js` installs them
+// for `uf test`'s workers, and `@uniflowed/vite`'s driver installs them on Deno
+// where it would call `register()` on Node. The hooks, the cache and the
+// `"import"` condition an `import` carries hold there exactly as here. The one
+// difference is how a miss waits: Deno compiles it in a short-lived child
+// process rather than on the transform thread, because on Deno that thread has
+// crashed the process — see `spawnedCompiler` below.
+//
+// One thing a registered `load` hook does on Deno and not on Node: while one is
+// installed, `require()` of a native `.node` addon fails with `Invalid or
+// unexpected token`, whatever the hook answers — even a hook that only calls
+// `nextLoad`, and even for an addon these hooks decline. So on Deno a native
+// addon has to be loaded before these are installed, which is why the driver
+// installs them after its static imports have loaded Vite. That is Deno's to
+// fix; see `docs/hosts.md`.
 
 import * as nodeModule from "node:module";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { TransformError, isFlowModule, ufBinaryIdentity } from "../transform.js";
+import {
+  TransformError,
+  isFlowModule,
+  transformFlowSync,
+  ufBinary,
+  ufBinaryIdentity,
+} from "../transform.js";
 import {
   cacheDirectoryFor,
   cacheEntryFor,
@@ -59,6 +84,23 @@ import {
  * back out — a test, not `../register.js` — can.
  */
 export function installFlowHooks(root) {
+  // Named here rather than left to `registerHooks is not a function`, because
+  // this is installed on two runtimes and the fix differs: `../register.js`
+  // falls back to `register()` on an old Node, and on Deno there is nothing to
+  // fall back to — `../deno-preload.js` and `@uniflowed/vite`'s driver call
+  // this directly there.
+  if (typeof nodeModule.registerHooks !== "function") {
+    const deno = globalThis.Deno?.version?.deno;
+    throw new Error(
+      deno == null
+        ? "@uniflowed/host's in-thread Flow loader needs `registerHooks` from `node:module`, which " +
+          "Node has from 22.15 and 23.5; on an older Node, `@uniflowed/host/register` installs " +
+          "the loader-thread hooks instead."
+        : "@uniflowed/host's Flow loader needs `registerHooks` from `node:module`, which Deno " +
+          `implemented in 2.8, and this is Deno ${deno}. Run \`deno upgrade\`, or run the ` +
+          "project on Node.js or Bun.",
+    );
+  }
   const cacheDirectory = cacheDirectoryFor(root);
   let compiler = null;
 
@@ -78,7 +120,7 @@ export function installFlowHooks(root) {
         return { format: "module", source: cached, shortCircuit: true };
       }
 
-      compiler ??= startCompiler();
+      compiler ??= globalThis.Deno != null ? spawnedCompiler() : startCompiler();
       const reply = compiler.compile(filename, source, compileOptions(root));
       if (reply.code == null) return nextLoad(url, context);
       const output = framed(reply);
@@ -127,6 +169,33 @@ function isImport(context) {
  * a module that hangs while it evaluates.
  */
 const WAIT_SLICE_MS = 50;
+
+/**
+ * A compiler with no thread in it: one short-lived `uf transform` per miss.
+ *
+ * Deno's. The hooks and the cache are the same on both runtimes; what differs
+ * is how the importing thread waits for a compile. On Node it sleeps on the
+ * transform thread below. On Deno that thread has crashed the process — Deno
+ * 2.9.6, Linux x86_64, `Fatal error in :0: unreachable code`, in every test of
+ * one CI run that compiled a module through it and in none that read the cache,
+ * while a second run of the same commit passed — and a crash that depends on the
+ * run is worse than a slower compile. So Deno waits on `transformFlowSync`, a
+ * child process and a pipe, which is what its loader was built on and measured
+ * with before the transform thread existed. A warm run starts nothing on either.
+ *
+ * The identity an entry is written under is the binary's as it was read just
+ * before the child started, which is the binary that child executed.
+ */
+function spawnedCompiler() {
+  return {
+    compile(filename, source, options) {
+      const command = ufBinary();
+      const identity = ufBinaryIdentity(command);
+      const out = transformFlowSync(source, filename, { ...options, command });
+      return out == null ? { code: null } : { code: out.code, map: out.map, identity };
+    },
+  };
+}
 
 /**
  * Start the transform thread, and return the one call that talks to it.
