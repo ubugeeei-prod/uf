@@ -175,6 +175,60 @@ YAML
 expect 1 "a check that checks nothing has stopped being a check"
 names "stopped checking anything"
 
+echo "two jobs that install different Deno versions are refused, naming both"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v7
+      - run: cargo test --workspace
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+      - uses: actions/setup-node@v7
+      - run: cargo test --workspace --profile ci
+YAML
+expect 1 "v1.x beside v2.x is how uf@0.0.0-alpha.36 failed to publish"
+names "v1.x"
+names "v2.x"
+
+echo "jobs that install the same Deno pass"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v7
+      - run: cargo test --workspace
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v7
+      - run: cargo test --workspace --profile ci
+YAML
+expect 0 "the same Deno in every suite job"
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures case(s) failed" >&2
   exit 1
