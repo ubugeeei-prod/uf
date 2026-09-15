@@ -65,6 +65,10 @@ jobs:
         with:
           bun-version: latest
       - run: bun --version
+      # And pnpm and both Yarns, for `crates/uf_cli/tests/managers.rs`, which
+      # fails rather than skips without them. The releases are the ones
+      # `ci.yml` installs, from the same script.
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/uf-package-managers"
       # And Deno, for `crates/uf_cli/tests/deno_host.rs`. Those tests fail
       # rather than skip when the runtime is absent — deliberately, so that a
       # host claim nobody checked cannot be green — and this job runs the same
