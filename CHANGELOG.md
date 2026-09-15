@@ -4,7 +4,7 @@
 
 _2026-09-14_
 
-Thirty changes. The tool keys alpha.34 added to `uf.config.js` now take
+Thirty-one changes. The tool keys alpha.34 added to `uf.config.js` now take
 effect, which completes #940: each command runs on the runtime named for it
 (#1040), `uf install` and `uf run` use the package manager and tools the file
 names (#1050), the language server completes tool names and versions (#1031),
@@ -73,6 +73,10 @@ and prints and refuses what the specification does (#1053, #1069).
 - **editors**: `uf lsp --cwd` is read, so stop saying it is ignored (#1045)
 - **guide**: give answering a request its own page, out of Routing (#1044)
 - **guide**: open each guide with what it teaches, and close it with the next page (#1030)
+
+### Internal
+
+- **deps**: bump the actions group with 3 updates (#1085)
 
 ## uf@0.0.0-alpha.34
 
