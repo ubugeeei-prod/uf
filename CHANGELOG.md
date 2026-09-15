@@ -1,5 +1,79 @@
 # Changelog
 
+## uf@0.0.0-alpha.35
+
+_2026-09-14_
+
+Thirty changes. The tool keys alpha.34 added to `uf.config.js` now take
+effect, which completes #940: each command runs on the runtime named for it
+(#1040), `uf install` and `uf run` use the package manager and tools the file
+names (#1050), the language server completes tool names and versions (#1031),
+and the environment guide teaches the keys first (#1051). Routes render as React
+Server Components through React's own Flight payload, and the docs site's
+client page chunks go from 49 to 0 (#1037); when server-only code reaches the
+client graph, the diagnostic names the import chain that put it there (#1082).
+With that, `@uniflowed/router` needs React 19.3 and `react-server-dom-parcel`
+as peers, so for now it does not install beside the React 19.2 that Expo SDK 57
+and React Native 0.87 ship (#992). `uf check` translates a dependency's
+TypeScript declarations into Flow and types the dependency from them instead of
+`any` (#1034, #1056). The edge target serves server actions, assets and the
+access log under workerd (#1032). For React Native, `uf dev` runs the project's
+own Expo or React Native CLI (#1042), the router writes the route table Metro
+bundles, one module per platform (#1055), and `uf install` refuses only the
+install-time lifecycle scripts in a project's manifest (#1066). `@uniflowed/ui`
+gains its interactions layer (#1013), and the registry gains alert-dialog,
+sheet, drawer, popover, tooltip and hover-card (#1043). `uf lint --rules` lists
+every rule with its level and its fix (#1058), and the lint guide maps
+eslint-plugin-react, react-hooks, jsx-a11y and import onto uf (#1067). A new
+project no longer fails `uf audit` on toml 3.0.0 (#1080), the MCP server holds
+tool arguments to the schemas it publishes (#1072), and the package manager
+decides whether a registry answered by its HTTP status rather than curl's exit
+code (#1076). Flow transforms under Bun are cached on disk (#1068), and
+`Temporal` from `@uniflowed/core/temporal` keeps its constructors on Node 26
+and prints and refuses what the specification does (#1053, #1069).
+
+### Added
+
+- **rsc**: name the import chain that put server-only code in the client graph (#1082)
+- **check**: type a dependency from its TypeScript declarations (#1056)
+- **router**: write the route table Metro bundles, one module per platform (#1055)
+- **ui**: add the interactions layer (#1013)
+- **pm**: run the package manager and uf run on the tools uf.config.js names (#1050)
+- render routes as React Server Components through React's own Flight payload (#1037)
+- **lint**: `uf lint --rules` lists every rule, its level here and its fix (#1058)
+- **dev**: run a native target's own Expo or React Native CLI from `uf dev` (#1042)
+- **edge**: serve a server action, an asset and the access log under workerd, and name the Node built-ins a Worker stubs (#1032)
+- **ui**: alert-dialog, sheet, drawer, popover, tooltip and hover-card in the registry (#1043)
+- **cli**: run each command on the runtime uf.config.js names for it (#1040)
+- **lsp**: complete tool names and versions in uf.config.js (#1031)
+- **check**: translate TypeScript declaration files into Flow declaration modules (#1034)
+
+### Fixed
+
+- **pm**: decide whether a registry answered by its HTTP status, not curl's exit (#1076)
+- **test**: wait out an axe-core audit the matcher did not start (#1073)
+- **mcp**: hold tool arguments to the schemas tools/list publishes (#1072)
+- **core**: make Lite Temporal print and refuse what the specification does (#1069)
+- **vite**: read YAML front matter without a package that installs toml 3.0.0 (#1080)
+- **pm**: refuse only install-time lifecycle scripts in the project's manifest (#1066)
+- **completion**: read every parent's subcommands from clap (#1054)
+- **run**: keep a digest of each task variable, never its value, in the --why note (#1057)
+- **core**: hand on a native Temporal's constructors, which a spread cannot see (#1053)
+- **react-testing, test**: hand the next file the window a fresh worker would (#1041)
+- **ci**: order changelog versions by SemVer precedence and fetch the tags the check compares (#1039)
+
+### Performance
+
+- **host**: cache Bun's Flow transforms on disk, in the bytes Node reads (#1068)
+
+### Documentation
+
+- **lint**: map eslint-plugin-react, react-hooks, jsx-a11y and import onto uf (#1067)
+- **env**: teach the tool keys first and moving from env.toolchain second (#1051)
+- **editors**: `uf lsp --cwd` is read, so stop saying it is ignored (#1045)
+- **guide**: give answering a request its own page, out of Routing (#1044)
+- **guide**: open each guide with what it teaches, and close it with the next page (#1030)
+
 ## uf@0.0.0-alpha.34
 
 _2026-09-14_

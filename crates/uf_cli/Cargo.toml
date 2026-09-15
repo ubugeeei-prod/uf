@@ -32,7 +32,6 @@ upstream-typecheck = ["dep:uf_check", "dep:uf_dts", "uf_check/upstream-typecheck
 
 [dependencies]
 anyhow.workspace = true
-base64.workspace = true
 camino.workspace = true
 clap.workspace = true
 uf_assets = { path = "../uf_assets" }
@@ -81,6 +80,9 @@ uf_infra = { path = "../uf_infra" }
 # wrote, which is the difference between checking enforcement and
 # checking that a `format!` still works.
 uf_runtime = { path = "../uf_runtime" }
+# `tests/env.rs` publishes a fixture npm package, and the registry document it
+# writes carries the tarball's `sha512-` integrity, which is base64.
+base64.workspace = true
 assert_cmd.workspace = true
 image.workspace = true
 similar-asserts.workspace = true

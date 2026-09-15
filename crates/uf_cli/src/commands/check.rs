@@ -69,6 +69,8 @@ struct Batch {
     /// and a reader deciding how far to trust a clean check has to know by
     /// how much.
     translated: Vec<declarations::TranslatedPackage>,
+    /// What `--explain-any` asked about, when it was passed.
+    explained: Option<declarations::Explanation>,
 }
 
 /// Severity counts from the type-checking half of `uf check`.
@@ -93,8 +95,12 @@ enum TypeCheck {
     /// The batch beside the report is not derivable from it: a report describes
     /// the files it was handed, and which of them a *reader* asked about is the
     /// caller's question.
+    ///
+    /// Boxed because it is several times the size of the other variants —
+    /// the translated packages and an `--explain-any` answer ride in it — and
+    /// there is one of these per run, so the allocation is nothing.
     #[cfg(feature = "upstream-typecheck")]
-    Checked(CheckReport, Batch),
+    Checked(CheckReport, Box<Batch>),
     /// Inference could not run.
     #[cfg(feature = "upstream-typecheck")]
     Failed(CheckError),
@@ -168,6 +174,7 @@ pub(crate) fn check(
     json: bool,
     fix: FixMode,
     paths: &[String],
+    explain_any: Option<&str>,
 ) -> Result<()> {
     let mut progress = ui.progress();
     // Before the scan, and only the *lint* fixes: `uf check` is `uf lint` plus
@@ -189,7 +196,7 @@ pub(crate) fn check(
         ignore_deprecation,
     } = run_lint(cwd, paths)?;
     progress.draw("type checking");
-    let types = type_check(&sources, &available, &root);
+    let types = type_check(&sources, &available, &root, explain_any);
     progress.finish();
     drop(progress);
 
@@ -231,7 +238,12 @@ pub(crate) fn check(
 /// nobody asked about**, because a dependency is in the batch to be typed
 /// against, not to be reported on.
 #[cfg(feature = "upstream-typecheck")]
-fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path) -> TypeCheck {
+fn type_check(
+    sources: &[SourceFile],
+    available: &[SourceFile],
+    root: &Utf8Path,
+    explain_any: Option<&str>,
+) -> TypeCheck {
     let limits = CheckLimits::default();
     // The project's own library definitions, before anything is merged: they
     // are part of the environment every file is checked in, so a batch that
@@ -345,6 +357,7 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
         // Filled once the check has run: what a translated package reports
         // includes the errors Flow finds inside it.
         translated: Vec::new(),
+        explained: None,
     };
 
     // Under the project root, because that is what the cache is about: the same
@@ -363,6 +376,8 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
             // Before the filter below, which drops every diagnostic about a
             // file nobody asked about — and a translation is such a file.
             counts.translated = declarations.translated(&report.diagnostics);
+            counts.explained =
+                explain_any.map(|name| declarations.explain(name, &report.diagnostics));
             let asked_about: FxHashSet<&str> =
                 checked.iter().map(|source| source.path.as_str()).collect();
             report.diagnostics.retain(|diagnostic| {
@@ -374,7 +389,7 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
                 diagnostic.kind != uf_check::DiagnosticKind::Parse
                     && asked_about.contains(diagnostic.primary.path.as_str())
             });
-            TypeCheck::Checked(report, counts)
+            TypeCheck::Checked(report, Box::new(counts))
         }
         Err(error) if error.is_unavailable() => TypeCheck::Unavailable,
         Err(error) => TypeCheck::Failed(error),
@@ -388,7 +403,12 @@ fn as_input(source: &SourceFile) -> Source<'_> {
 }
 
 #[cfg(not(feature = "upstream-typecheck"))]
-fn type_check(_sources: &[SourceFile], _available: &[SourceFile], _root: &Utf8Path) -> TypeCheck {
+fn type_check(
+    _sources: &[SourceFile],
+    _available: &[SourceFile],
+    _root: &Utf8Path,
+    _explain_any: Option<&str>,
+) -> TypeCheck {
     TypeCheck::Unavailable
 }
 
@@ -419,6 +439,9 @@ fn type_check_payload(types: &TypeCheck) -> Value {
             value["imported"] = json!(batch.imported);
             value["libdefs"] = json!(batch.libdefs);
             value["translatedPackages"] = json!(batch.translated);
+            if let Some(explained) = &batch.explained {
+                value["explainAny"] = json!(explained);
+            }
         }
         value["filesSkipped"] = json!(report.files_skipped);
         value["filesFromCache"] = json!(report.files_from_cache);
@@ -661,6 +684,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             let untyped = untyped_module_list(report);
             let host_conditional = host_conditional_module_list(report);
             let translated = translated_package_list(&batch.translated);
+            let explained = batch.explained.as_ref().map(explanation_lines);
             ui.render(|renderer, out| {
                 renderer.blank(out);
                 renderer.key_values(out, 2, &rows);
@@ -697,9 +721,59 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                     let items: Vec<&str> = translated.iter().map(String::as_str).collect();
                     renderer.bullet_list(out, 4, &items);
                 }
+                if let Some((heading, lines)) = &explained {
+                    renderer.blank(out);
+                    push_spaces(out, 2);
+                    renderer.status(out, Status::Info, heading);
+                    let items: Vec<&str> = lines.iter().map(String::as_str).collect();
+                    renderer.bullet_list(out, 4, &items);
+                }
             });
         }
     }
+}
+
+/// `--explain-any`'s answer: a heading, then one line per place — the holes,
+/// then the errors Flow reports inside the translation — each naming the
+/// declaration file, the line, the declaration and why.
+#[cfg(feature = "upstream-typecheck")]
+fn explanation_lines(explained: &declarations::Explanation) -> (String, Vec<String>) {
+    let package = &explained.package;
+    if !explained.translated {
+        return (
+            format!(
+                "uf check typed no package named {package} from TypeScript declarations in this \
+                 run: nothing imported it, it ships Flow, or it has no declarations"
+            ),
+            Vec::new(),
+        );
+    }
+    let heading = format!(
+        "{package}: {} typed as any, {} inside its translation",
+        plural(explained.holes.len(), "hole"),
+        plural(explained.findings.len(), "Flow error"),
+    );
+    let mut lines = Vec::with_capacity(explained.holes.len() + explained.findings.len());
+    for hole in &explained.holes {
+        lines.push(format!(
+            "{}:{} {} [{}] {}",
+            hole.path, hole.line, hole.declaration, hole.construct, hole.reason
+        ));
+    }
+    for finding in &explained.findings {
+        lines.push(format!(
+            "{}:{} {} [{}] {}",
+            finding.path,
+            finding.line,
+            finding
+                .declaration
+                .as_deref()
+                .unwrap_or("(outside a declaration)"),
+            finding.code.as_deref().unwrap_or("error"),
+            finding.message
+        ));
+    }
+    (heading, lines)
 }
 
 /// Each translated package as the footer names it: its name, its version, and
