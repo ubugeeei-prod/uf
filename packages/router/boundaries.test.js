@@ -353,6 +353,61 @@ describe("the marks a boundary renders", () => {
     expect(html).toContain("the post");
   });
 
+  it("hydrates a boundary that hydrates after another boundary's marks went live", async () => {
+    // Under React Server Components a client reference loads when the payload
+    // names it, so a page hydrates in passes: the part above a lazily loaded
+    // component commits first, its edges' effects latch the marks live, and an
+    // edge inside the lazy part hydrates afterwards. That edge has to render
+    // what the server wrote — nothing — or React throws the tree away.
+    const { installDom } = await import("../../packages/react-testing/internal/dom.js");
+    installDom();
+    forgetBoundaries();
+    const { act } = await import("@uniflowed/react-testing");
+    const { hydrateRoot } = await import("react-dom/client");
+    const { renderToString } = await import("react-dom/server");
+
+    const outer = suspense(suspenseId(0), 0);
+    const inner = suspense(suspenseId(1), 1);
+    const later = () => insideBoundary(inner, <p className="later">later</p>);
+    const tree = (Inner: React.ComponentType<{}>) => (
+      <main>
+        {insideBoundary(outer, <article className="post">the post</article>)}
+        <React.Suspense fallback={null}>
+          <Inner />
+        </React.Suspense>
+      </main>
+    );
+
+    let loaded = (_: mixed) => {};
+    const Lazy = React.lazy(
+      () =>
+        new Promise((resolve) => {
+          loaded = resolve;
+        }),
+    );
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(tree(later));
+    document.body?.appendChild(container);
+    // Taken out again before the next test, whose report reads every mark in the
+    // document; see `mountedContainers`.
+    mountedContainers.push(container);
+
+    const recovered: Array<mixed> = [];
+    await act(async () => {
+      hydrateRoot(container, tree(Lazy), {
+        onRecoverableError: (error) => recovered.push(error),
+      });
+    });
+    // The outer edges have mounted and latched the marks live by now.
+    await act(async () => {
+      loaded({ default: later });
+    });
+
+    expect(recovered).toEqual([]);
+    expect(elementIn(container, ".later").textContent).toBe("later");
+    expect(elementsIn(container, `[${BOUNDARY_ATTRIBUTE}="${inner.id}"]`).length).toBe(2);
+  });
+
   it("returns the children untouched when there is no boundary to mark", () => {
     const container = mount(<Frame>{insideBoundary(null, <article>the post</article>)}</Frame>);
 

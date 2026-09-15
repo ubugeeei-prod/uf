@@ -19,10 +19,17 @@ use uf_config::env_files;
 use uf_config::{
     DeployAdapter, LibraryPlan, Prerender, RenderingPlan, ResolvedConfig, load_config,
 };
-use uf_pm::{DependencyKind, Operation, command_for, detect_package_manager, installable};
+use uf_pm::{
+    DependencyKind, DetectionOptions, Operation, command_for, detect_package_manager_with,
+    installable,
+};
+use uf_router::RouteTarget;
+use uf_router::native::{NATIVE_PLATFORMS, native_router_module};
 use uf_term::KeyValue;
 
+use crate::commands::build::{application_target, default_application_target};
 use crate::commands::builder;
+use crate::commands::dev::native::{NativeServer, metro_config_file};
 use crate::commands::runtimes;
 use crate::commands::task::fetchable;
 use crate::support::{DEVELOPMENT, PRODUCTION, TEST, project_label};
@@ -84,14 +91,47 @@ pub(crate) const KNOWN: &[&str] = &[
     "ui",
 ];
 
-pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool) -> Result<()> {
+pub(crate) fn explain(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    command: &str,
+    target: Option<&str>,
+    as_json: bool,
+) -> Result<()> {
     let resolved = load_config(cwd)?;
-    let Some(stages) = stages_for(command, &resolved) else {
+    let stages = match target {
+        // What `uf dev` with no `--target` will run, which for a `react-native`
+        // framework project is the native server and not the builder.
+        None if command == "dev" => Some(dev_stages_for(
+            &resolved,
+            default_application_target(&resolved.config),
+        )),
+        None => stages_for(command, &resolved),
+        // Only `uf dev` is described per target, because it is the one command
+        // whose providers change with it: a native target's server is the
+        // project's own React Native CLI rather than the builder. `uf build
+        // --target` still hands every target to the builder (#983), and a plan
+        // that varied by target there would describe a build that does not
+        // happen.
+        Some(requested) if command == "dev" => {
+            let target = application_target(&resolved.config, Some(requested), false, "uf dev")?;
+            Some(dev_stages_for(&resolved, target))
+        }
+        Some(requested) => bail!(
+            "`uf explain {command} --target {requested}`: only `uf dev` is described per \
+             application target, because it is the one command whose providers change with it"
+        ),
+    };
+    let Some(stages) = stages else {
         bail!(
             "uf explain does not describe {command:?}; it knows {}",
             KNOWN.join(", ")
         )
     };
+    let invocation = target.map_or_else(
+        || format!("uf {command}"),
+        |target| format!("uf {command} --target {target}"),
+    );
 
     let sources = config_sources(&resolved);
     // The tools this command reads, each with the key that declared it: the
@@ -104,7 +144,7 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
 
     if as_json {
         ui.json(&json!({
-            "command": format!("uf {command}"),
+            "command": invocation,
             "root": resolved.root.as_str(),
             "stages": stages
                 .iter()
@@ -114,18 +154,35 @@ pub(crate) fn explain(cwd: &Utf8Path, ui: &mut Ui, command: &str, as_json: bool)
                     "detail": stage.detail,
                 }))
                 .collect::<Vec<_>>(),
-            "tools": tools,
+            // `locked` beside each row, as `uf inspect` prints it: the release a
+            // prefix resolved to, or `null`. Read, never resolved.
+            "tools": tools
+                .iter()
+                .map(|tool| {
+                    let mut row = serde_json::to_value(tool).unwrap_or_default();
+                    if let Some(object) = row.as_object_mut() {
+                        object.insert(
+                            String::from("locked"),
+                            json!(runtimes::locked(&resolved, tool.role)),
+                        );
+                    }
+                    row
+                })
+                .collect::<Vec<_>>(),
             "configurationSources": sources,
         }))?;
         return Ok(());
     }
     let tool_summaries: Vec<String> = tools
         .iter()
-        .map(uf_config::ToolDeclaration::summary)
+        .map(|tool| match runtimes::locked(&resolved, tool.role) {
+            Some(version) => format!("{} · locked at {version}", tool.summary()),
+            None => tool.summary(),
+        })
         .collect();
 
     let label = project_label(&resolved.root);
-    let heading = format!("uf {command}");
+    let heading = invocation;
     ui.render(|renderer, out| {
         renderer.banner(out, "uf explain", Some(label));
         renderer.blank(out);
@@ -259,7 +316,7 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
 /// come from uf, the directory is the project's, and the packages are the
 /// manager's — which is the one a reader would otherwise not know was run.
 fn ui_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    let manager = installable(&detect_package_manager(&resolved.root)).0;
+    let manager = installable(&detected(resolved)).0;
     let components = uf_ui::Registry::embedded().map_or(0, |registry| registry.components().len());
     vec![
         Stage {
@@ -328,6 +385,20 @@ fn resolver_name(resolved: &ResolvedConfig) -> &'static str {
     match resolved.config.pm.resolver {
         uf_config::PackageManagerResolver::UfNative => "uf (its own resolver)",
     }
+}
+
+/// The manager this project's commands drive, detected the way those commands
+/// detect it.
+///
+/// With the config, which is the half a detection from files alone leaves out:
+/// `packageManager` and `pm.packageManager` both override what the lockfiles
+/// say, and a plan that ignored them would name a manager the command then does
+/// not run.
+fn detected(resolved: &ResolvedConfig) -> uf_pm::Detection {
+    detect_package_manager_with(
+        &resolved.root,
+        &DetectionOptions::from_config(&resolved.config),
+    )
 }
 
 /// `uf run`, whose whole question is which runner executes a task.
@@ -412,7 +483,7 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         Stage {
             name: "everything else",
             provider: provider_for(
-                fetchable(detect_package_manager(&resolved.root).package_manager),
+                fetchable(detected(resolved).package_manager),
                 Operation::DlxExec,
             ),
             detail: format!(
@@ -424,7 +495,7 @@ fn exec_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
+    let stages = vec![
         Stage {
             name: "workspace discovery",
             provider: "uf_pm".to_string(),
@@ -447,7 +518,8 @@ fn install_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                 "refused; a dependency does not get to run code at install".to_string()
             },
         },
-    ]
+    ];
+    after_manager(resolved, stages)
 }
 
 /// `uf add`, `uf remove` and `uf update`, which differ only in the row above.
@@ -462,8 +534,8 @@ fn dependency_stages(
     operation: Operation<'_>,
     what: &str,
 ) -> Vec<Stage> {
-    let manager = installable(&detect_package_manager(&resolved.root)).0;
-    vec![
+    let manager = installable(&detected(resolved)).0;
+    let stages = vec![
         Stage {
             name: "workspace discovery",
             provider: "uf_pm".to_string(),
@@ -491,7 +563,8 @@ fn dependency_stages(
                 resolved.config.pm.lockfile, resolved.config.pm.store_dir
             ),
         },
-    ]
+    ];
+    after_manager(resolved, stages)
 }
 
 /// The command a manager runs for an operation, or the fact that it has none.
@@ -512,25 +585,45 @@ fn provider_for(manager: uf_pm::PackageManager, operation: Operation<'_>) -> Str
 /// that has no such command is the interesting one, and [`provider_for`] is
 /// where it is said.
 fn query_stages(resolved: &ResolvedConfig, operation: Operation<'_>, what: &str) -> Vec<Stage> {
-    let manager = installable(&detect_package_manager(&resolved.root)).0;
-    vec![Stage {
+    let manager = installable(&detected(resolved)).0;
+    let stages = vec![Stage {
         name: "the answer",
         provider: provider_for(manager, operation),
         detail: what.to_owned(),
-    }]
+    }];
+    after_manager(resolved, stages)
 }
 
 /// `uf why`, which changes nothing and therefore has one stage.
 fn why_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    let manager = installable(&detect_package_manager(&resolved.root)).0;
-    vec![Stage {
+    let manager = installable(&detected(resolved)).0;
+    let stages = vec![Stage {
         name: "the answer",
         provider: provider_for(manager, Operation::Why),
         detail: format!(
             "the manager reads its own lockfile and prints the chain; uf writes nothing, not even {}",
             resolved.config.pm.lockfile
         ),
-    }]
+    }];
+    after_manager(resolved, stages)
+}
+
+/// `stages`, after one naming the manager they run, when `packageManager`
+/// declares it.
+///
+/// The package commands' half of the line ubugeeei-prod/uf#940 asks `uf explain`
+/// to print — the release, the key, the lock and the store — read rather than
+/// resolved, like [`runtime_stage`], so explaining `uf install` never downloads
+/// the manager it would run. A manager found any other way adds nothing: it is
+/// the one on `PATH`, and the stages already name it.
+fn after_manager(resolved: &ResolvedConfig, stages: Vec<Stage>) -> Vec<Stage> {
+    let manager = installable(&detected(resolved)).0;
+    let pinned = runtimes::describe_manager(resolved, manager).map(|described| Stage {
+        name: "package manager",
+        provider: described.provider,
+        detail: described.detail,
+    });
+    pinned.into_iter().chain(stages).collect()
 }
 
 /// `uf self-update`, whose every stage is somebody else's and says so.
@@ -913,6 +1006,102 @@ fn dev_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "rendering",
             provider: "@uniflowed/router".to_string(),
             detail: "server-renders each request, route handlers first".to_string(),
+        },
+    ]
+}
+
+/// `uf dev`'s stages for `target`: the builder's for the web, and the project's
+/// own React Native CLI's for a native target.
+fn dev_stages_for(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    match target {
+        RouteTarget::Web => dev_stages(resolved),
+        RouteTarget::Native | RouteTarget::Ios | RouteTarget::Android => {
+            native_dev_stages(resolved, target)
+        }
+    }
+}
+
+/// What `uf dev --target native` runs, and who runs each part.
+///
+/// Read from the filesystem only, as the rest of this command is: which server
+/// is installed, and which Metro config file is there. Whether that config
+/// really composes uf's transformer is `uf dev`'s check rather than this one's,
+/// because answering it means running the project's JavaScript, and a command
+/// whose job is to say what will happen should not have to run the thing to
+/// say it.
+fn native_dev_stages(resolved: &ResolvedConfig, target: RouteTarget) -> Vec<Stage> {
+    let root = &resolved.root;
+    let server = NativeServer::detect(root);
+    let router_root = resolved.config.app.router.root.as_str();
+    let modules = NATIVE_PLATFORMS
+        .iter()
+        .map(|platform| {
+            let module = native_router_module(root, &resolved.config, *platform);
+            module
+                .strip_prefix(root)
+                .map_or_else(|_| module.to_string(), ToString::to_string)
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    vec![
+        Stage {
+            name: "configuration",
+            provider: "uf".to_string(),
+            detail: format!(
+                "uf.config.js; the `{}` target needs `app.targets` to include `react-native`",
+                target.as_str()
+            ),
+        },
+        env_stage(resolved, DEVELOPMENT),
+        Stage {
+            name: "routes",
+            provider: "uf".to_string(),
+            detail: format!(
+                "a route table for each platform, as {modules}, written when {router_root}/ exists \
+                 and rewritten while the server runs; Metro gives each platform's bundle its own \
+                 file when a module imports `./router`"
+            ),
+        },
+        Stage {
+            name: "dev server",
+            provider: server.as_ref().map_or_else(
+                || "none installed: neither expo nor @react-native-community/cli".to_string(),
+                NativeServer::label,
+            ),
+            detail: "Metro, the manifest a device reads and the key commands — the project's own \
+                     CLI, started with UF_BINARY naming this uf and every argument after `--` \
+                     passed through"
+                .to_string(),
+        },
+        Stage {
+            name: "Metro config",
+            provider: metro_config_file(root).map_or_else(
+                || "none, and `uf dev` refuses to start without one".to_string(),
+                |file| file.to_string(),
+            ),
+            detail: "must compose withUniflowedMetro() from @uniflowed/react-native/metro, so \
+                     uf's transformer runs before the one the config names"
+                .to_string(),
+        },
+        transform_stage(),
+        Stage {
+            name: "device",
+            provider: server
+                .as_ref()
+                .map_or_else(|| "none".to_string(), |server| server.command().to_string()),
+            detail: match &server {
+                Some(NativeServer::Expo { .. }) => {
+                    "Expo Go or a development build opens exp://<this machine's address>:<port>, \
+                     and Expo prints the QR code"
+                        .to_string()
+                }
+                Some(NativeServer::ReactNativeCli { .. }) => {
+                    "a phone connects to <this machine's address>:<port> from the Dev Menu; a \
+                     simulator or emulator uses localhost"
+                        .to_string()
+                }
+                None => "nothing to connect to until a server is installed".to_string(),
+            },
         },
     ]
 }

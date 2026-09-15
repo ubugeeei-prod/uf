@@ -142,18 +142,16 @@ in `uf`.
 - Fully type-safe `useRoute`, `useRouter`, navigation guards, Remix-style
   loaders/actions, Next-style metadata/static params, and React Router-style
   route modules.
-- RSC module graph split. **The route level is done**: a route with no
-  `"use client"` boundary reachable from its page, its layouts or its
-  fallbacks keeps its page module out of the client bundle, and the browser is
-  not asked to hydrate it. Splitting a *module* — dropping a Server Component
-  that sits above a boundary — is not, and is blocked on a Flight-shaped
-  payload the client can re-render a tree from. That payload is a second module
-  graph rather than a second dependency: React's Flight renderer loads only
-  under the `react-server` export condition, which resolves `react` to the
-  build with no `useState` in it, while the renderer that turns the payload
-  into HTML needs the ordinary one — so `@uniflowed/vite` grows an environment
-  before anything else can happen (`docs/architecture.md`). **The split can now
-  be read**:
+- RSC module graph split. **The module level is done**: routes render as React
+  Server Components by default, through React's own Flight renderer in a third
+  Vite environment resolved under `react-server` (`docs/architecture.md`). A
+  document carries the payload its tree was rendered from, the browser hydrates
+  that payload and navigates by fetching the next one, and no Server Component
+  reaches the client bundle — the docs site went from 49 page chunks to none.
+  A server-only import a client component reaches fails `uf build`, naming the
+  chain of imports from the client boundary that put it there. Still open:
+  server functions passed as props, and intercepting routes under the payload
+  router. **The split can now be read**:
   `uf dev` reports what moved across the client bundle on each save and names
   the shortest chain of imports that put it there, so `"use client"` costs what
   it costs in the terminal rather than in a bundle somebody measures later.

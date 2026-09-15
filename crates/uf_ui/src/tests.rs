@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use camino::{Utf8Path, Utf8PathBuf};
-use uf_lib::{UiReadiness, ui_components};
+use uf_lib::{UI_HOOK_MODULES, UiReadiness, ui_components};
 
 use crate::diff::unified;
 use crate::project::{
@@ -225,10 +225,22 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
     }
 }
 
-/// The modules `packages/ui` ships, by file name.
+/// The component modules `packages/ui` ships, by file name.
+///
+/// Every module but the hook modules. `@uniflowed/ui/interactions` exports
+/// `usePress` and the rest of the interactions layer rather than a component, so
+/// it has no styled half to wait for, and counting it would put it on `NOT_YET`
+/// — a list that is only allowed to shrink, which it never could.
+///
+/// The exemption is `uf_lib`'s list rather than one written here. That crate
+/// holds every name on it to a module that exports hooks and nothing
+/// capitalised, which is what stops a component hiding behind it, and a second
+/// list here would be a second place to forget. A name on it with no module
+/// behind it fails here too, so a module renamed on one side cannot quietly
+/// turn the exemption into nothing.
 fn headless_modules() -> BTreeSet<String> {
     let directory = repository_root().join("packages/ui");
-    let modules: BTreeSet<String> = fs::read_dir(&directory)
+    let mut modules: BTreeSet<String> = fs::read_dir(&directory)
         .unwrap_or_else(|error| panic!("{} cannot be listed: {error}", directory.display()))
         .map(|entry| {
             entry
@@ -240,6 +252,12 @@ fn headless_modules() -> BTreeSet<String> {
         .filter(|file| file != "index.js" && !file.ends_with(".test.js"))
         .filter_map(|file| file.strip_suffix(".js").map(ToOwned::to_owned))
         .collect();
+    for hooks in UI_HOOK_MODULES {
+        assert!(
+            modules.remove(*hooks),
+            "`UI_HOOK_MODULES` names `{hooks}`, and `packages/ui` has no such module"
+        );
+    }
     assert!(
         modules.len() > 20,
         "`packages/ui` listed almost nothing, so this is not checking anything: {modules:?}"

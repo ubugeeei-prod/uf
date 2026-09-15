@@ -19,12 +19,14 @@ oxc_ast_visit.workspace = true
 oxc_parser.workspace = true
 oxc_span.workspace = true
 serde.workspace = true
+# A package manifest is JSON, and which declaration file TypeScript reads for a
+# specifier is decided by what the manifest says; see `package`.
+serde_json.workspace = true
 smallvec.workspace = true
 uf_infra = { path = "../uf_infra" }
 
 [dev-dependencies]
 criterion.workspace = true
-serde_json.workspace = true
 similar-asserts.workspace = true
 
 [[bench]]

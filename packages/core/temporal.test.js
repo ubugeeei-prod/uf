@@ -35,7 +35,15 @@ import {
   systemClock,
 } from "@uniflowed/core/clock";
 import { currentRandom, hostSeed, seededRandom, setRandom, shuffled } from "@uniflowed/core/random";
-import { Temporal, isLite } from "@uniflowed/core/temporal";
+import {
+  LiteDuration,
+  LiteInstant,
+  LitePlainDate,
+  LitePlainTime,
+  LiteZonedDateTime,
+  Temporal,
+  isLite,
+} from "@uniflowed/core/temporal";
 
 /** Every `setClock` and `setRandom` a test installs, undone after it. */
 const undo: Array<() => void> = [];
@@ -117,15 +125,24 @@ describe("Temporal.Instant", () => {
     expect(Temporal.Instant.from("2026-09-04T15:00:00+09:00").epochMilliseconds).toBe(AFTERNOON);
   });
 
-  it("prints no fraction when there is none, as native Temporal does", () => {
-    // `Date.prototype.toISOString` always prints `.000`. A text difference
-    // between the Lite implementation and the host's would only show up on a
-    // browser that had shipped Temporal, which is the worst place to find one.
+  it("prints the fewest fraction digits that say the value, as native Temporal does", () => {
+    // `Date.prototype.toISOString` always prints three: `.000`, and `.250` for a
+    // quarter of a second. Temporal prints none and `.25`. A text difference
+    // between the Lite implementation and the host's only shows up on a host
+    // that has shipped Temporal, which is the worst place to find one — and
+    // this case asserted `.250` until Node 26 was that host (#1052).
     expect(Temporal.Instant.fromEpochMilliseconds(AFTERNOON).toString()).toBe(
       "2026-09-04T06:00:00Z",
     );
     expect(Temporal.Instant.fromEpochMilliseconds(AFTERNOON + 250).toString()).toBe(
-      "2026-09-04T06:00:00.250Z",
+      "2026-09-04T06:00:00.25Z",
+    );
+    expect(Temporal.Instant.fromEpochMilliseconds(AFTERNOON + 5).toString()).toBe(
+      "2026-09-04T06:00:00.005Z",
+    );
+    expect(Temporal.Instant.fromEpochMilliseconds(-750).toString()).toBe("1969-12-31T23:59:59.25Z");
+    expect(Temporal.Instant.from("2026-09-04T06:00:00.25Z").epochMilliseconds).toBe(
+      AFTERNOON + 250,
     );
   });
 
@@ -209,9 +226,17 @@ describe("Temporal.ZonedDateTime", () => {
 
     expect(zoned.toString()).toBe("2026-09-04T15:00:00+09:00[Asia/Tokyo]");
     expect(Temporal.ZonedDateTime.from(zoned.toString()).equals(zoned)).toBe(true);
+
+    // With a fraction, which is printed the way `Instant` prints one.
+    const fractional = Temporal.Instant.fromEpochMilliseconds(AFTERNOON + 250).toZonedDateTimeISO(
+      "Asia/Tokyo",
+    );
+    expect(fractional.toString()).toBe("2026-09-04T15:00:00.25+09:00[Asia/Tokyo]");
+    expect(Temporal.ZonedDateTime.from(fractional.toString()).equals(fractional)).toBe(true);
+    expect(fractional.toPlainTime().toString()).toBe("15:00:00.25");
   });
 
-  it("formats in its own zone rather than in the machine's", () => {
+  it("formats in its own zone rather than in the machine's, and refuses a second one", () => {
     // The difference from `Date.prototype.toLocaleString`, and the reason this
     // component can be prerendered: the zone is a property of the value, so a
     // caller who does not name one still does not get the host's.
@@ -221,13 +246,22 @@ describe("Temporal.ZonedDateTime", () => {
     expect(
       zoned.toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
     ).toBe("15:00");
-    expect(
+    // A `timeZone` in the options is refused, as Temporal refuses it, rather
+    // than chosen over the one the value carries. Somewhere else is a
+    // conversion first.
+    expect(() =>
       zoned.toLocaleString("en-US", {
         timeZone: "UTC",
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
       }),
+    ).toThrow(TypeError);
+    expect(
+      zoned
+        .toInstant()
+        .toZonedDateTimeISO("UTC")
+        .toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false }),
     ).toBe("06:00");
   });
 
@@ -313,8 +347,8 @@ describe("Temporal.Duration", () => {
     // an hour and a half would print something the caller did not write.
     expect(Temporal.Duration.from("PT90M").toString()).toBe("PT90M");
     expect(Temporal.Duration.from({ days: 1, hours: 2 }).toString()).toBe("P1DT2H");
-    expect(Temporal.Duration.from({}).toString()).toBe("PT0S");
-    expect(Temporal.Duration.from({}).blank).toBe(true);
+    expect(Temporal.Duration.from({ seconds: 0 }).toString()).toBe("PT0S");
+    expect(Temporal.Duration.from({ seconds: 0 }).blank).toBe(true);
   });
 
   it("totals what has a fixed length and refuses what does not", () => {
@@ -332,9 +366,13 @@ describe("Temporal.Duration", () => {
     expect(Temporal.Duration.from("-PT30M").total({ unit: "minute" })).toBe(-30);
   });
 
-  it("refuses text that is not a duration", () => {
+  it("refuses what is not a duration, written as text or as fields", () => {
     expect(() => Temporal.Duration.from("30 minutes")).toThrow();
     expect(() => Temporal.Duration.from("P")).toThrow();
+    // No fields at all is refused, as Temporal refuses it, rather than read as
+    // zero: it is what a duration built from optional fields looks like when
+    // every one was left out.
+    expect(() => Temporal.Duration.from({})).toThrow(TypeError);
   });
 });
 
@@ -357,6 +395,136 @@ describe("Temporal.Now", () => {
 
     expect(Temporal.Now.zonedDateTimeISO("Asia/Tokyo").hour).toBe(15);
     expect(Temporal.Now.plainTimeISO("UTC").toString()).toBe("06:00:00");
+  });
+});
+
+/**
+ * `globalThis`, as far as the cases below are concerned: they install a
+ * `Temporal` on it and put back whatever was there.
+ *
+ * Declared for the reason `temporal.js` declares it — Flow's library definitions
+ * have no Temporal yet — and as `mixed`, because what is installed is a
+ * stand-in shaped like a host rather than the type the module reads.
+ */
+declare var globalThis: { Temporal?: mixed, ... };
+
+describe("Temporal on a host that has one of its own", () => {
+  // Node 26 ships a native `Temporal`, and on it this module exported `{ Now }`
+  // and nothing else. The export was spread from the host, a
+  // spread copies own *enumerable* properties, and the constructors on a
+  // built-in namespace are not enumerable — `{ ...Math }` is `{}` for the same
+  // reason. A host without Temporal gets the Lite object, which is a literal,
+  // so 107 library cases failed on Node 26 while CI, on Node 24, was green.
+  // See #1008.
+  //
+  // So the host here is built the way a native one is, and handed to a second
+  // copy of the module rather than to the one imported above: `temporal.js`
+  // reads `globalThis.Temporal` once, when it is evaluated, and Node keys a
+  // module by its URL, so `temporal.js?a-native-host` is a copy that reads it
+  // again. That is what makes these cases mean the same thing on a Node with a
+  // Temporal of its own and on one without.
+  //
+  // Its constructors are the Lite classes from the import above — not the
+  // wrappers a Lite `Temporal` hands out, and not the copy's own classes, which
+  // are new ones — so a constructor the copy exposes is one it can only have
+  // been handed.
+  const hostNow = {
+    instant: () => {
+      throw new Error("the host's Temporal.Now was read");
+    },
+  };
+  const host = nativeShaped({
+    Now: hostNow,
+    PlainDate: LitePlainDate,
+    PlainTime: LitePlainTime,
+    PlainDateTime: class PlainDateTime {},
+    ZonedDateTime: LiteZonedDateTime,
+    Duration: LiteDuration,
+    Instant: LiteInstant,
+    PlainYearMonth: class PlainYearMonth {},
+    PlainMonthDay: class PlainMonthDay {},
+  });
+
+  /** A namespace shaped like a built-in one: every member there, none enumerable. */
+  function nativeShaped(members: { readonly [string]: mixed }): { readonly [string]: mixed } {
+    const namespace: { [string]: mixed } = {};
+    for (const [name, value] of Object.entries(members)) {
+      Object.defineProperty(namespace, name, {
+        value,
+        writable: true,
+        enumerable: false,
+        configurable: true,
+      });
+    }
+    Object.defineProperty(namespace, Symbol.toStringTag, { value: "Temporal", configurable: true });
+    return namespace;
+  }
+
+  /**
+   * The copy, evaluated with `host` installed as the global it reads.
+   *
+   * What was there is put back as soon as the copy exists, because nothing
+   * reads the global after that — and what was there is nothing at all on
+   * Node 24 and the real `Temporal` on Node 26, which the rest of this suite is
+   * running against.
+   */
+  async function copyOnNativeHost() {
+    const found = Object.getOwnPropertyDescriptor(globalThis, "Temporal");
+    Object.defineProperty(globalThis, "Temporal", {
+      value: host,
+      writable: true,
+      enumerable: false,
+      configurable: true,
+    });
+    try {
+      return await import(new URL("./temporal.js?a-native-host", import.meta.url).href);
+    } finally {
+      if (found == null) {
+        Reflect.deleteProperty(globalThis, "Temporal");
+      } else {
+        Object.defineProperty(globalThis, "Temporal", found);
+      }
+    }
+  }
+
+  it("is a host a spread copies nothing from, which is what makes the cases below mean anything", () => {
+    // The nine names Node 26's `Temporal` has, in the order it has them.
+    expect(Object.getOwnPropertyNames(host)).toEqual([
+      "Now",
+      "PlainDate",
+      "PlainTime",
+      "PlainDateTime",
+      "ZonedDateTime",
+      "Duration",
+      "Instant",
+      "PlainYearMonth",
+      "PlainMonthDay",
+    ]);
+    expect(Object.keys({ ...host })).toEqual([]);
+  });
+
+  it("hands on every constructor the host has, including the ones Lite leaves out", async () => {
+    const copy = await copyOnNativeHost();
+
+    expect(copy.isLite).toBe(false);
+    for (const name of Object.getOwnPropertyNames(host)) {
+      if (name !== "Now") {
+        expect(copy.Temporal[name]).toBe(host[name]);
+      }
+    }
+  });
+
+  it("still reads uf's clock rather than the host's, and leaves the host as it found it", async () => {
+    const copy = await copyOnNativeHost();
+    install(fixedClock(AFTERNOON, "UTC"));
+
+    const now = copy.Temporal.Now.instant();
+    expect(now.epochMilliseconds).toBe(AFTERNOON);
+    // Made by the host's `Instant`, which is what lets it meet every other
+    // Temporal value on that host.
+    expect(now instanceof LiteInstant).toBe(true);
+    expect(Object.getOwnPropertyDescriptor(host, "Now")?.value).toBe(hostNow);
+    expect(Object.keys({ ...host })).toEqual([]);
   });
 });
 

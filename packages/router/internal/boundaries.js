@@ -83,8 +83,10 @@
 // package is `sideEffects: false`, so with the references folded away the
 // module is dropped rather than merely unused.
 
+"use client";
+
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 import { SYNTHESISED_SOURCE } from "./boundary-data.js";
 import { reportDiagnostic } from "./diagnostics.js";
@@ -114,12 +116,31 @@ export const BOUNDARY_GLOBAL: string = "__ufBoundaries";
 /**
  * Whether an edge that mounts now should be in the DOM immediately.
  *
- * Latched by the first edge to mount and never cleared. Read through
- * `useState`'s initialiser rather than during the render body, which is the
- * difference between "this component's first state" and "a module variable a
+ * Latched by the first edge to mount and never cleared, and read through
+ * `useSyncExternalStore` rather than during the render body, which is the
+ * difference between "a value React asked for" and "a module variable a
  * memoising compiler is entitled to hold on to".
  */
 let marksAreLive = false;
+
+/** The edges waiting to hear that marks have gone live. */
+const liveListeners: Set<() => void> = new Set();
+
+function subscribeToLiveMarks(listener: () => void): () => void {
+  liveListeners.add(listener);
+  return () => {
+    liveListeners.delete(listener);
+  };
+}
+
+function marksAreLiveNow(): boolean {
+  return marksAreLive;
+}
+
+/** What a server rendered, and so what every hydrating edge renders: nothing. */
+function noMarksOnTheServer(): boolean {
+  return false;
+}
 
 /**
  * One end of one boundary.
@@ -128,12 +149,25 @@ let marksAreLive = false;
  * This used to be a `<template>`, but React 19.3 reports template insertion
  * during document-root hydration as a browser error. A `span hidden` carries
  * the same marker data without entering layout or the accessibility tree.
+ *
+ * # Why the server snapshot, and not a first state
+ *
+ * An edge used to take `marksAreLive` as its first state, which is right only
+ * if every edge on a page hydrates in the same pass. Under React Server
+ * Components they do not: a client reference loads when the payload names it,
+ * so the part of the tree above it hydrates, commits and runs this effect
+ * first, and an edge that hydrates afterwards read `true` and rendered a mark
+ * the server never wrote — a hydration mismatch on every page with a boundary
+ * below a client component, under `uf dev` only. `useSyncExternalStore` hands a
+ * hydrating edge the server's answer whenever it hydrates, and an edge mounted
+ * by a navigation or by HMR the live one, in its own commit, as before.
  */
-component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
-  const [live, setLive] = useState<boolean>(() => marksAreLive);
+export component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
+  const live = useSyncExternalStore(subscribeToLiveMarks, marksAreLiveNow, noMarksOnTheServer);
   useEffect(() => {
+    if (marksAreLive) return;
     marksAreLive = true;
-    setLive(true);
+    for (const listener of [...liveListeners]) listener();
   }, []);
   if (!live) {
     return null;
@@ -154,25 +188,14 @@ component BoundaryEdge(boundary: RouteBoundary, edge: "open" | "close") {
 /**
  * `children`, between the two marks of `boundary`.
  *
- * `children` unchanged when there is no boundary to mark, so a caller never has
- * to ask twice. The marks are the first and last children of a fragment rather
- * than a wrapper's, so the nodes between them are siblings of them, and every
- * position in the fragment is fixed — an edge going from `null` to a hidden
- * mark after mount is an insertion beside `children` and not around it,
- * which is why it costs no remount.
+ * Kept importable from here, where the marks are, and written in
+ * `./compose.js`, where they are placed. This module is a client module — an
+ * edge has state and an effect — and a server composing a tree for React Server
+ * Components calls the factory rather than rendering it, so the factory has to
+ * live in a module that graph evaluates while the edges it places stay
+ * references to this one. See ubugeeei-prod/uf#519.
  */
-export function insideBoundary(boundary: ?RouteBoundary, children: React.Node): React.Node {
-  if (boundary == null) {
-    return children;
-  }
-  return (
-    <>
-      <BoundaryEdge boundary={boundary} edge="open" />
-      {children}
-      <BoundaryEdge boundary={boundary} edge="close" />
-    </>
-  );
-}
+export { insideBoundary } from "./compose.js";
 
 /**
  * How far a walk between two marks will go before giving up.

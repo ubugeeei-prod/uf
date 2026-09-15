@@ -3,13 +3,12 @@
 " Configuration, not a plugin. Source this from your vimrc after vim-lsp is on
 " the runtime path.
 "
-" The awkward part is the working directory, and it is not hidden here.
-" `uf lsp` reads `uf.config.js` from the directory the process was started in,
-" once, at start-up, and that read is where a project's formatter width, quote
-" style and lint levels come from. vim-lsp starts a server in Vim's working
-" directory and has no per-server override, and `uf lsp --cwd` is accepted and
-" ignored. So either start Vim from the project root, or use the wrapper at the
-" bottom of this file, which does the `cd` itself.
+" The part that matters is which project the server reads. `uf lsp` reads
+" `uf.config.js` once, at start-up — from the directory `--cwd` names, or else
+" from its own working directory — and that read is where a project's formatter
+" width, quote style and lint levels come from. vim-lsp starts every server in
+" Vim's working directory and has no per-server override, so the command below
+" names the project with `--cwd` instead.
 
 if exists('g:loaded_uf_lsp')
   finish
@@ -21,13 +20,6 @@ if !exists('g:uf_executable')
   let g:uf_executable = 'uf'
 endif
 
-" Start the server through a shell that changes into the project root first.
-" Off by default because it needs a POSIX shell; on Windows, start Vim from the
-" project root instead.
-if !exists('g:uf_cd_to_root')
-  let g:uf_cd_to_root = 0
-endif
-
 " uf's single configuration surface, and therefore the project marker.
 let s:config = 'uf.config.js'
 
@@ -36,16 +28,14 @@ function! s:root() abort
         \ lsp#utils#get_buffer_path(), s:config)
 endfunction
 
+" The project root as an argument rather than a `cd`: no shell to find or quote
+" for, so it is the same command on every platform Vim runs on.
 function! s:cmd() abort
-  if !g:uf_cd_to_root
-    return [g:uf_executable, 'lsp']
-  endif
   let l:root = s:root()
   if empty(l:root)
     return [g:uf_executable, 'lsp']
   endif
-  return ['/bin/sh', '-c', 'cd ' . shellescape(l:root) . ' && exec '
-        \ . shellescape(g:uf_executable) . ' lsp']
+  return [g:uf_executable, 'lsp', '--cwd', l:root]
 endfunction
 
 function! s:register() abort

@@ -70,15 +70,17 @@ fn install_writes_lockfile_and_store_manifest() {
 }
 
 #[test]
-fn install_rejects_package_scripts_by_default() {
+fn install_refuses_the_install_time_hooks_a_manifest_declares() {
     let dir = tempfile::tempdir().unwrap();
     let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
     fs::write(
         root.join("package.json"),
         r#"{
   "name": "demo",
+  "version": "1.0.0",
   "scripts": {
-"test": "jest"
+    "start": "expo start",
+    "postinstall": "node scripts/fetch.js"
   }
 }
 "#,
@@ -87,10 +89,87 @@ fn install_rejects_package_scripts_by_default() {
 
     let error = install_workspace(&root, &UniflowedConfig::default()).unwrap_err();
 
-    assert!(matches!(
-        error,
-        PackageManagerError::ScriptsForbidden { .. }
-    ));
+    match &error {
+        PackageManagerError::ScriptsForbidden { scripts, .. } => {
+            assert_eq!(scripts, &["postinstall"]);
+        }
+        other => panic!("expected the lifecycle refusal, got {other}"),
+    }
+    let message = error.to_string();
+    assert!(
+        message.contains("declares install-time lifecycle scripts (postinstall)"),
+        "{message}"
+    );
+    assert!(!message.contains("start"), "{message}");
+    assert!(message.contains("uf tasks"), "{message}");
+}
+
+/// Scripts no install runs are the project's business, and uf leaves them.
+///
+/// `create-expo-app` and `@react-native-community/cli init` both write `start`,
+/// `android` and `ios`. Refusing those refused every project either tool
+/// generates while protecting against nothing, because no package manager runs
+/// a named script during an install. See ubugeeei-prod/uf#992.
+#[test]
+fn install_accepts_scripts_that_no_install_runs() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(
+        root.join("package.json"),
+        r#"{
+  "name": "demo",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "prestart": "echo before",
+    "test": "jest"
+  }
+}
+"#,
+    )
+    .unwrap();
+
+    check_workspace_manifests(&root, &UniflowedConfig::default()).unwrap();
+    let unrun = scripts_uf_does_not_run(&root).unwrap();
+
+    assert_eq!(unrun.len(), 1, "{unrun:?}");
+    assert_eq!(unrun[0].0, root.join("package.json"));
+    let mut names = unrun[0].1.clone();
+    names.sort();
+    assert_eq!(
+        names,
+        ["android", "ios", "prestart", "start", "test", "web"]
+    );
+}
+
+/// Every hook on the list is refused on its own, and is named in the refusal.
+#[test]
+fn every_install_time_hook_is_refused_by_name() {
+    for hook in INSTALL_LIFECYCLE_SCRIPTS {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+        fs::write(
+            root.join("package.json"),
+            format!(
+                "{{ \"name\": \"demo\", \"version\": \"1.0.0\", \"scripts\": {{ \"{hook}\": \"echo hook\" }} }}\n"
+            ),
+        )
+        .unwrap();
+
+        let error = check_workspace_manifests(&root, &UniflowedConfig::default()).unwrap_err();
+
+        assert!(
+            matches!(
+                &error,
+                PackageManagerError::ScriptsForbidden { scripts, .. }
+                    if scripts.len() == 1 && scripts[0] == *hook
+            ),
+            "{hook}: {error}"
+        );
+    }
 }
 
 #[test]
@@ -211,6 +290,40 @@ fn install_waits_for_a_command_holding_the_lock() {
     assert_eq!(
         lock["toolchain"],
         serde_json::json!({ "node@26": "26.8.2" })
+    );
+}
+
+/// The manager uf installed is the one that runs: the directory it is linked
+/// into goes in front of the child's `PATH`, and the manager's name — which
+/// is still a fixed program name, never a path — is looked up there.
+/// ubugeeei-prod/uf#940.
+#[cfg(unix)]
+#[test]
+fn a_path_prefix_decides_which_manager_runs() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).unwrap();
+    fs::write(root.join("package.json"), r#"{ "name": "demo" }"#).unwrap();
+    let bin = root.join("store-bin");
+    fs::create_dir_all(&bin).unwrap();
+    let marks = root.join("ran");
+    let pnpm = bin.join("pnpm");
+    fs::write(&pnpm, format!("#!/bin/sh\necho \"$@\" > '{marks}'\n")).unwrap();
+    fs::set_permissions(&pnpm, fs::Permissions::from_mode(0o755)).unwrap();
+    let detection = detect_package_manager_with(
+        &root,
+        &DetectionOptions::new()
+            .with_boundary(&root)
+            .with_config_override(PackageManager::Pnpm),
+    );
+
+    run_operation_with_detection(&root, &detection, Operation::List, &[], false, &[bin])
+        .expect("the pnpm in the prefix ran");
+
+    assert!(
+        marks.is_file(),
+        "a pnpm other than the one in the prefix ran, or none did"
     );
 }
 
