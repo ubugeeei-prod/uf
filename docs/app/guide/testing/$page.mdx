@@ -93,8 +93,8 @@ it("runs the portable half", () => {
 });
 
 it.skipBecause(
-  "uses Node's synchronous module hook",
-  "Deno runs through uf's ahead-of-time loader and import map, so this cannot exercise Node's hook.",
+  "reads Node's coverage switch",
+  "Deno counts coverage in a format of its own, so NODE_V8_COVERAGE is not there to read.",
 );
 ```
 
@@ -499,15 +499,15 @@ exports is fine and misspelling one of them is not.
 
 ### Which hosts
 
-Node only. Interception needs synchronous, in-thread module customization hooks
-— `node:module`'s `registerHooks` — because a mock is a value the test built and
-a loader running on a thread of its own cannot see it. Bun's `node:module` has
-no such hook, and Deno runs a suite that uf compiled before the host started
-rather than through a hook it could intercept
-([#246](https://github.com/ubugeeei-prod/uf/issues/246)), so on either host all
-seven bindings raise `UnsupportedError` naming the host, the hook and what to do
-instead. None of them silently does nothing, and on Bun that is checked by
-starting a real Bun and asking.
+Node, and Deno from 2.8. Interception needs synchronous, in-thread module
+customization hooks — `node:module`'s `registerHooks` — because a mock is a
+value the test built and a loader running on a thread of its own cannot see it.
+Deno implemented that hook in 2.8, which is also what its Flow loader is built
+on, so `uft.mock` works there the way it does on Node
+([#246](https://github.com/ubugeeei-prod/uf/issues/246)). Bun's `node:module`
+has no such hook, so there all seven bindings raise `UnsupportedError` naming
+the host, the hook and what to do instead. None of them silently does nothing,
+and both answers are checked by starting a real Bun and a real Deno and asking.
 
 Bun's plugin API is not a second route to this, which is worth saying because it
 looks like one:
@@ -960,9 +960,9 @@ to tell "not measured" from "measured, and bad".
 
 Coverage is **Node only**. It is V8's own count, written through
 `NODE_V8_COVERAGE` and mapped through the source map Node's loader attached;
-Bun implements neither, and Deno, which runs a suite uf compiled ahead of time,
-has no such switch either. `uf test --coverage` on either says so rather than
-reporting zeroes.
+Bun implements neither, and Deno counts in a profile format of its own that uf
+does not read. `uf test --coverage` on either says so rather than reporting
+zeroes.
 
 `--watch` and `--coverage` cannot be combined: watch mode re-runs the files an
 edit affected, so its coverage would be a number about three files wearing the
@@ -1066,10 +1066,11 @@ between runs and a pre-bundled worker. Neither exists yet.
   audit runs in a real browser and answers them.
 - `@uniflowed/react-testing` needs a DOM and says so when called; component
   tests need one supplied.
-- Deno runs a suite through an ahead-of-time pass rather than a loader, so a
-  module the pass could not enumerate — a path computed at run time, a file a
-  test writes and then imports — is still Flow when Deno meets it, and
-  `uf test --watch` is refused there.
+- Deno needs 2.8 or newer, the release with the `registerHooks` its Flow loader
+  is built on; an older Deno is refused by version rather than failing later on
+  syntax it cannot read. And on Deno a test that imports a package with a native
+  addon fails, because Deno cannot `require()` one while a module hook is
+  installed — which is Deno's to fix.
 
 ## Where to go next
 

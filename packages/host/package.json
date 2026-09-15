@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/host",
-  "version": "0.0.0-alpha.34",
+  "version": "0.0.0-alpha.35",
   "description": "Running Flow on a Capability JS Host, with no bundler in the way.",
   "type": "module",
   "license": "MIT",
@@ -13,7 +13,9 @@
   "exports": {
     "./assets": "./assets.js",
     "./bun-preload": "./bun-preload.js",
+    "./deno-preload": "./deno-preload.js",
     "./internal/node-hooks.js": "./internal/node-hooks.js",
+    "./internal/sync-hooks.js": "./internal/sync-hooks.js",
     "./lint-worker": "./lint-worker.js",
     "./module-mocks": "./module-mocks.js",
     "./register": "./register.js",
@@ -33,6 +35,7 @@
     "register.js",
     "assets.js",
     "bun-preload.js",
+    "deno-preload.js",
     "lint-worker.js",
     "module-mocks.js",
     "transform.js",

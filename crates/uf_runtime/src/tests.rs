@@ -118,20 +118,25 @@ fn a_host_that_is_not_implemented_says_what_is_missing() {
     }
 }
 
-/// The two hosts a uf project runs on today, and no others.
+/// The three hosts a uf project runs on today, and no others.
 ///
 /// Written as an assertion rather than left implicit because the whole point of
 /// the table is that adding a name to it is a decision somebody makes on
-/// purpose. A third row turning `Implemented` has to change this line, and the
-/// person changing it has to have the test in `verified_by` in front of them.
+/// purpose. Deno turning `Implemented` changed this line, and the change came
+/// with `crates/uf_cli/tests/deno_host.rs` starting a Deno that loads Flow
+/// through `@uniflowed/host/deno-preload` — the next row to change it has to
+/// arrive the same way.
 #[test]
-fn node_and_bun_are_the_implemented_hosts() {
+fn node_bun_and_deno_are_the_implemented_hosts() {
     let implemented: Vec<RuntimeHost> = HOSTS
         .iter()
         .filter(|support| support.level == SupportLevel::Implemented)
         .map(|support| support.host)
         .collect();
-    assert_eq!(implemented, vec![RuntimeHost::Node, RuntimeHost::Bun]);
+    assert_eq!(
+        implemented,
+        vec![RuntimeHost::Node, RuntimeHost::Bun, RuntimeHost::Deno]
+    );
 }
 
 /// Deno enforces the whole permission set; Node enforces half of it.
@@ -469,9 +474,9 @@ mod documentation {
         }
     }
 
-    /// The two hosts a project runs on are the two the page calls implemented.
+    /// The hosts a project runs on are the ones the page calls implemented.
     #[test]
-    fn only_node_and_bun_are_documented_as_implemented() {
+    fn only_the_implemented_hosts_are_documented_as_implemented() {
         let page = std::fs::read_to_string(repo_root().join("docs/hosts.md"))
             .expect("docs/hosts.md is part of this repository");
         assert_eq!(
@@ -482,7 +487,7 @@ mod documentation {
                 .count(),
             "adding a host to the table means grading it on the page too"
         );
-        for host in [RuntimeHost::Node, RuntimeHost::Bun] {
+        for host in [RuntimeHost::Node, RuntimeHost::Bun, RuntimeHost::Deno] {
             assert_eq!(HostSupport::for_host(host).level, SupportLevel::Implemented);
         }
     }

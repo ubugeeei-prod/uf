@@ -51,7 +51,7 @@ jobs:
           package-manager-cache: false
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Mount npm cache
-        uses: useblacksmith/stickydisk@25e27b93b68733b532d9af6b201df28ffaf7dbfc # v1.7.0
+        uses: useblacksmith/stickydisk@94697d49e77d0dd78b77deb85ad3de63a28b4b8a # v1.7.1
         with:
           key: ${{ github.repository }}-npm-${{ runner.os }}-node-24
           path: ~/.npm
