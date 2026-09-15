@@ -783,8 +783,9 @@ prerendered page that states a lifetime is written under
 `.uf/build/server/regenerate.json`. The fetch handler seeds the page's entry
 from that document, through a reader the front door puts on the request; keeps
 it servable past its lifetime until a background refresh replaces it; and never
-seeds a key twice, so an invalidated page renders rather than going back to the
-build's copy.
+seeds a key twice, or from a build older than an invalidation the store has
+recorded, so an invalidated page renders rather than going back to the build's
+copy, after a restart and in every other process too.
 
 Nothing is cached without a stated lifetime: a route says `cacheLife` and
 `cacheTag` from inside its own render, a request says `cache` at the call, and a
@@ -792,8 +793,12 @@ page or a call that says nothing behaves exactly as it did. A rendered document
 is refused outright if the render read `cookies()`, `headers()` or `draftMode()`
 — counted across the whole document rather than up to the shell, because a
 component inside a `<Suspense>` boundary renders long after the shell resolved.
-That is a runtime refusal; `uf_rsc` already answers the reachability question
-that would make it a build error, and does not answer it for cached scopes yet.
+That refusal is the run-time backstop. `uf build` refuses first: a route whose
+document is written once, because it is prerendered or states a lifetime with
+the route cache on, fails the build under `rsc/request-state-in-static-route`
+when its render reaches an import of one of those three. The error names the
+route, the function and the chain of imports from its page or layout, which
+`uf_rsc`'s `RscGraph::request_state_read` finds.
 
 One page whose loader takes 50 ms, served twice (`uf run bench:route-cache`,
 Node 24, twenty pairs, medians):

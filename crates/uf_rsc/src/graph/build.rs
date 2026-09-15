@@ -113,7 +113,11 @@ impl RscGraphBuilder {
                 &hook_classifications,
                 &mut diagnostics,
             );
+            let (request_state_imports, cache_lifetime_import) =
+                super::render::import_sites(&resolved[position].external);
             graph_modules.push(RscModule {
+                request_state_imports,
+                cache_lifetime_import,
                 path: module.path.clone(),
                 environment: module.environment,
                 reachability,
