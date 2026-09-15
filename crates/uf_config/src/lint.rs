@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 64] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 79] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -232,13 +232,40 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 64] = [
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),
     // The official React Compiler's diagnostics, at the levels
-    // `eslint-plugin-react-hooks` gives the same categories. `hooks` is `error`
-    // although the plugin leaves its compiler rule off, because the plugin
-    // answers the question with its separate `rules-of-hooks` rule at `error`
-    // and uf has no second rule for it.
+    // `eslint-plugin-react-hooks`' `recommended-latest` preset gives the same
+    // categories. `hooks` (`error`) and `memo-dependencies` (`warn`) are on
+    // although the plugin leaves those compiler rules off, because the plugin
+    // answers both questions again with its classic `rules-of-hooks` and
+    // `exhaustive-deps` at those levels and uf has only the compiler's answer.
+    // `exhaustive-effect-dependencies` is off because the plugin ships that
+    // validation switched off.
+    ("react-compiler/capitalized-calls", RuleLevel::Off),
+    ("react-compiler/error-boundaries", RuleLevel::Error),
+    (
+        "react-compiler/exhaustive-effect-dependencies",
+        RuleLevel::Off,
+    ),
     ("react-compiler/globals", RuleLevel::Error),
     ("react-compiler/hooks", RuleLevel::Error),
+    ("react-compiler/immutability", RuleLevel::Error),
+    ("react-compiler/incompatible-library", RuleLevel::Warn),
+    ("react-compiler/memo-dependencies", RuleLevel::Warn),
+    (
+        "react-compiler/no-deriving-state-in-effects",
+        RuleLevel::Error,
+    ),
+    (
+        "react-compiler/preserve-manual-memoization",
+        RuleLevel::Error,
+    ),
     ("react-compiler/purity", RuleLevel::Error),
+    ("react-compiler/refs", RuleLevel::Error),
+    ("react-compiler/set-state-in-effect", RuleLevel::Error),
+    ("react-compiler/set-state-in-render", RuleLevel::Error),
+    ("react-compiler/static-components", RuleLevel::Error),
+    ("react-compiler/unsupported-syntax", RuleLevel::Warn),
+    ("react-compiler/use-memo", RuleLevel::Error),
+    ("react-compiler/void-use-memo", RuleLevel::Error),
     // Style preferences during the migration to Flow component/hook syntax.
     ("react/component-syntax", RuleLevel::Warn),
     ("react/hook-syntax", RuleLevel::Warn),

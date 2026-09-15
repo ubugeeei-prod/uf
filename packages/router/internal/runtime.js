@@ -1393,9 +1393,15 @@ component RenderedPage(data: mixed) {
   }
   const resolved = view.resolved;
   const Page = pageComponent(resolved.page);
+  // The route module's own export, looked up by route: `pageComponent` hands
+  // back its `default` or `Page` as it is, so this is the same component on
+  // every render of the same route. The React Compiler cannot see through the
+  // lookup and reports a component created during render.
+  // uf-lint-disable-next-line react-compiler/static-components
+  const page = <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />;
   return (
     <>
-      <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />
+      {page}
       {payloadElements(data)}
     </>
   );

@@ -412,6 +412,11 @@ component SlotView(slot: ResolvedSlot, pathname: string, searchParams: SearchPar
   const at = slot.intercepted?.pathname ?? pathname;
   const query = slot.intercepted?.searchParams ?? searchParams;
   const Page = pageComponent(page);
+  // The slot module's own export, looked up by slot: `pageComponent` hands back
+  // its `default` or `Page` as it is, so this is the same component on every
+  // render of the same slot. The React Compiler cannot see through the lookup
+  // and reports a component created during render.
+  // uf-lint-disable-next-line react-compiler/static-components
   let element: React.Node = <Page params={slot.params} searchParams={query} data={undefined} />;
   const templateContext = {
     pathname: at,

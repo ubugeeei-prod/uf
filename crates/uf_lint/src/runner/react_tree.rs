@@ -451,10 +451,16 @@ pub(super) fn analyse_parsed(
     // compile, and only those — the plugin's own test, not one of uf's. A
     // module the compiler has already answered with exactly this text is
     // answered from that, without building the tree again.
+    let switches = uf_transform::LintSwitches {
+        effect_dependencies: work
+            .compiler
+            .as_ref()
+            .is_some_and(super::react_compiler::CompilerWork::checks_effect_dependencies),
+    };
     let remembered = work
         .compiler
         .as_ref()
-        .and_then(|_| uf_transform::lint::cached(&scan.file.path, source));
+        .and_then(|_| uf_transform::lint::cached(&scan.file.path, source, switches));
     let compile = work.compiler.is_some()
         && remembered.is_none()
         && uf_transform::may_contain_react_code(&parsed.program);
@@ -510,7 +516,8 @@ pub(super) fn analyse_parsed(
     }
     if compile
         && let Some(compiler) = &work.compiler
-        && let Ok(diagnostics) = uf_transform::lint::lint(&file, scope, source, &scan.file.path)
+        && let Ok(diagnostics) =
+            uf_transform::lint::lint(&file, scope, source, &scan.file.path, switches)
     {
         found.extend(compiler_findings(compiler, diagnostics));
     }

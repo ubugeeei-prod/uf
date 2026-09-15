@@ -97,10 +97,35 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`uf-lint-disable` comments must name a rule this linter knows",
     },
     // The official React Compiler's categories, each at the level
-    // `eslint-plugin-react-hooks` gives it. `hooks` is `error` although the
-    // plugin leaves its compiler rule off: the plugin ships a separate
-    // `rules-of-hooks` rule at `error` for the same question, and uf has no such
-    // second rule — the compiler's is the answer.
+    // `eslint-plugin-react-hooks`' `recommended-latest` preset gives it. Three
+    // differ, each because the plugin answers the question a second way and uf
+    // has only the compiler's answer: `hooks` is `error` and `memo-dependencies`
+    // is `warn` where the plugin leaves its compiler rules off, because the
+    // plugin also ships its classic `rules-of-hooks` (`error`) and
+    // `exhaustive-deps` (`warn`) for the same questions.
+    // `exhaustive-effect-dependencies` is off because the plugin ships that
+    // validation switched off; turning the rule on turns the validation on.
+    RuleDescriptor {
+        id: "react-compiler/capitalized-calls",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "the React Compiler's `CapitalizedCalls` diagnostics: a capitalized function called instead of rendered with JSX",
+    },
+    RuleDescriptor {
+        id: "react-compiler/error-boundaries",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `ErrorBoundaries` diagnostics: JSX built inside `try`/`catch` instead of under an error boundary",
+    },
+    RuleDescriptor {
+        id: "react-compiler/exhaustive-effect-dependencies",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "the React Compiler's `EffectExhaustiveDependencies` diagnostics: an effect's dependency array missing or adding a value",
+    },
     RuleDescriptor {
         id: "react-compiler/globals",
         category: RuleCategory::ReactCompiler,
@@ -121,6 +146,90 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "the React Compiler's `Purity` diagnostics: a known-impure function called during render",
+    },
+    RuleDescriptor {
+        id: "react-compiler/immutability",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `Immutability` diagnostics: props, state or another value React treats as immutable, mutated",
+    },
+    RuleDescriptor {
+        id: "react-compiler/incompatible-library",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "the React Compiler's `IncompatibleLibrary` diagnostics: an API known to break memoization",
+    },
+    RuleDescriptor {
+        id: "react-compiler/memo-dependencies",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "the React Compiler's `MemoDependencies` diagnostics: a `useMemo` or `useCallback` dependency array missing or adding a value",
+    },
+    RuleDescriptor {
+        id: "react-compiler/no-deriving-state-in-effects",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `EffectDerivationsOfState` diagnostics: a value derived from props or state, computed in an effect",
+    },
+    RuleDescriptor {
+        id: "react-compiler/preserve-manual-memoization",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `PreserveManualMemo` diagnostics: a `useMemo` or `useCallback` the compiler cannot preserve",
+    },
+    RuleDescriptor {
+        id: "react-compiler/refs",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `Refs` diagnostics: a ref read or written during render",
+    },
+    RuleDescriptor {
+        id: "react-compiler/set-state-in-effect",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `EffectSetState` diagnostics: `setState` called synchronously in an effect",
+    },
+    RuleDescriptor {
+        id: "react-compiler/set-state-in-render",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `RenderSetState` diagnostics: `setState` called during render",
+    },
+    RuleDescriptor {
+        id: "react-compiler/static-components",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `StaticComponents` diagnostics: a component created during render",
+    },
+    RuleDescriptor {
+        id: "react-compiler/unsupported-syntax",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "the React Compiler's `UnsupportedSyntax` diagnostics: syntax the compiler does not support",
+    },
+    RuleDescriptor {
+        id: "react-compiler/use-memo",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `UseMemo` diagnostics: a `useMemo` callback that is async, a generator, or takes parameters",
+    },
+    RuleDescriptor {
+        id: "react-compiler/void-use-memo",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `VoidUseMemo` diagnostics: a `useMemo` callback that returns nothing",
     },
     RuleDescriptor {
         id: "react/component-syntax",
