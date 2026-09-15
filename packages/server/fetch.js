@@ -79,8 +79,13 @@
 
 import { noStore } from "./cache.js";
 import type { Application, DocumentAssets } from "./internal/application.js";
-import type { CacheOptions, CacheOutcome } from "./internal/cache-store.js";
-import { newScope, runInScope } from "./internal/cache-store.js";
+import type {
+  CacheEntry,
+  CacheOptions,
+  CacheOutcome,
+  CacheResult,
+} from "./internal/cache-store.js";
+import { END_OF_TIME, newScope, runInScope } from "./internal/cache-store.js";
 import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
@@ -131,6 +136,46 @@ export type FetchHandlerOptions = {|
    * argues that asymmetry.
    */
   readonly capabilities?: ServerCapabilities,
+  /**
+   * The pages this build regenerates, from what `uf build` recorded.
+   *
+   * Absent for a build that regenerates nothing, which is every build whose
+   * prerendered pages stated no lifetime and no tag. See [`Regeneration`].
+   */
+  readonly regeneration?: Regeneration,
+|};
+
+/**
+ * One page `uf build` prerendered and a server regenerates.
+ *
+ * A page is one of these when its prerender stated a lifetime with `cacheLife`,
+ * called `noStore` nowhere, answered 200, and the project allows `isr` with
+ * `rendering.cache.route` on. The build then writes its document where no
+ * static half answers the page's own URL, so every request for it reaches this
+ * handler — and this handler answers it from that document until the page's
+ * lifetime has passed.
+ *
+ * A tag alone does not make a page one of these. The route cache keeps nothing
+ * without a lifetime, and the reason holds here with more force: a regenerated
+ * page with no end is one another process could keep serving from its memory
+ * long after `revalidateTag` took it out of the shared store.
+ */
+export type RegeneratedPage = {|
+  /** Where the build's copy is: a URL path the host's static half answers. */
+  readonly document: string,
+  /** When the prerender rendered it, in milliseconds since the epoch. */
+  readonly renderedAt: number,
+  /** `cacheLife`'s `revalidate`, in seconds. */
+  readonly revalidate: number,
+  /** `cacheLife`'s `expire`, in seconds, or `null` when it stated none. */
+  readonly expire: number | null,
+  /** What `cacheTag` named during the prerender. */
+  readonly tags: $ReadOnlyArray<string>,
+|};
+
+/** Every page a build regenerates, by the pathname it was prerendered for. */
+export type Regeneration = {|
+  readonly pages: { readonly [pathname: string]: RegeneratedPage },
 |};
 
 /** A whole document, as an entry: what a hit answers with without rendering. */
@@ -279,6 +324,18 @@ export function createFetchHandler(
     // an answer from before the draft existed, so serving it to an editor who
     // came to look at the draft answers a different question from the one they
     // asked. See ubugeeei-prod/uf#282.
+    //
+    // A page the build regenerates comes first. Its own URL has no file behind
+    // it — the build wrote the document somewhere no static half answers — so
+    // this is the only thing that can answer it, and the build recorded it only
+    // because `rendering.cache.route` was on.
+    const regenerated =
+      method === "GET" && cache != null && context?.draft !== true
+        ? regeneratedPage(options.regeneration, url.pathname)
+        : null;
+    if (cache != null && regenerated != null) {
+      return regeneratedDocument(app, cache, context, regenerated, document, onError);
+    }
     if (method === "GET" && cache != null && cache.route === true && context?.draft !== true) {
       return cachedDocument(app, cache, context, url, target, document, onError);
     }
@@ -337,24 +394,141 @@ async function cachedDocument(
 ): Promise<Response> {
   const result = await cache.store.resolve(
     { key: ["route", "GET", url.pathname, url.search], path: url.pathname },
-    async (): Promise<CachedDocument> => {
-      const before = context?.requestStateReads ?? 0;
-      const rendered = await app.render(target, document, { onError });
-      const body = await drain(rendered.stream());
-      const status = rendered.status ?? 200;
-      const headers: { [string]: string } = { ...(rendered.headers ?? {}) };
-
-      if (status !== 200) {
-        noStore(`the render answered ${status}`);
-      } else if (Object.keys(headers).some((name) => name.toLowerCase() === "set-cookie")) {
-        noStore("the render set a cookie");
-      } else if ((context?.requestStateReads ?? 0) > before) {
-        noStore("the render read cookies(), headers() or draftMode()");
-      }
-      return { status, headers, body };
-    },
+    () => renderForCache(app, context, target, document, onError),
   );
+  return cachedResponse(result);
+}
 
+/**
+ * Answer a page the build regenerates.
+ *
+ * The route cache, with three differences, and each is what makes a
+ * prerendered page a regenerated one rather than a cached render:
+ *
+ * * **It starts from the build.** The first request for the page in a process
+ *   is answered with the document `uf build` wrote, read through the front
+ *   door's `buildFile` and dated when the prerender rendered it, so it is
+ *   `HIT` while that is inside the page's lifetime and `STALE` once it is not —
+ *   exactly as if this process had rendered it then. A durable store is asked
+ *   before the build, because a copy another process regenerated is newer.
+ * * **A clock never makes it unservable.** Once its lifetime has passed, a
+ *   reader is answered with the document there is and one refresh starts
+ *   behind it. When the refresh succeeds, the new document replaces the old in
+ *   one step, in memory and in the durable store. Only an `expire` the page
+ *   stated, or `revalidateTag` and `revalidatePath`, make a reader wait on a
+ *   render, the last two because an invalidated page is known to be wrong.
+ * * **It is keyed by pathname alone.** A query string never reached a
+ *   prerendered page, which is rendered once for its path, and keying
+ *   `/posts?ref=x` apart from `/posts` would render one document twice.
+ */
+async function regeneratedDocument(
+  app: Application,
+  cache: CacheOptions,
+  context: RequestContext | null,
+  regenerated: {| readonly pathname: string, readonly page: RegeneratedPage |},
+  document: DocumentAssets,
+  onError: (error: mixed) => void,
+): Promise<Response> {
+  const { pathname, page } = regenerated;
+  const result = await cache.store.resolve(
+    {
+      key: ["route", "GET", pathname, ""],
+      path: pathname,
+      tags: page.tags,
+      staleUntilReplaced: true,
+      seed: () => buildCopy(context, pathname, page),
+    },
+    () => renderForCache(app, context, pathname, document, onError),
+  );
+  return cachedResponse(result);
+}
+
+/**
+ * The page `pathname` names in `regeneration`, or `null`.
+ *
+ * Decoded and without a trailing slash, because that is how the build named
+ * it: the prerender renders `/guide`, and `/guide/` and `/gu%69de` are the same
+ * page to every static half that has ever answered it.
+ */
+function regeneratedPage(
+  regeneration: Regeneration | void,
+  pathname: string,
+): {| readonly pathname: string, readonly page: RegeneratedPage |} | null {
+  if (regeneration == null) return null;
+  let decoded;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const name = decoded.length > 1 && decoded.endsWith("/") ? decoded.slice(0, -1) : decoded;
+  if (!Object.hasOwn(regeneration.pages, name)) return null;
+  return { pathname: name, page: regeneration.pages[name] };
+}
+
+/**
+ * The document the build wrote for `page`, as the entry it would have been.
+ *
+ * `null` when the front door offered no way to read the build's files, or its
+ * static half has nothing at `page.document`. Either way the store renders the
+ * page instead, which is slower on the first request and right on every one.
+ */
+async function buildCopy(
+  context: RequestContext | null,
+  pathname: string,
+  page: RegeneratedPage,
+): Promise<CacheEntry<mixed> | null> {
+  const read = context?.buildFile;
+  if (read == null) return null;
+  const response = await read(page.document);
+  if (response == null) return null;
+  if (response.status !== 200) {
+    await response.body?.cancel();
+    return null;
+  }
+  const value: CachedDocument = {
+    status: 200,
+    headers: {},
+    body: new Uint8Array(await response.arrayBuffer()),
+  };
+  const at = page.renderedAt;
+  return {
+    value,
+    storedAt: at,
+    revalidateAt:
+      page.revalidate == null ? END_OF_TIME : Math.min(at + page.revalidate * 1000, END_OF_TIME),
+    expiresAt: page.expire == null ? END_OF_TIME : Math.min(at + page.expire * 1000, END_OF_TIME),
+    tags: page.tags,
+    path: pathname,
+  };
+}
+
+/** Render `target` whole, refusing to keep it for every reason it can name. */
+async function renderForCache(
+  app: Application,
+  context: RequestContext | null,
+  target: string,
+  document: DocumentAssets,
+  onError: (error: mixed) => void,
+): Promise<CachedDocument> {
+  const before = context?.requestStateReads ?? 0;
+  const rendered = await app.render(target, document, { onError });
+  const body = await drain(rendered.stream());
+  const status = rendered.status ?? 200;
+  const headers: { [string]: string } = { ...(rendered.headers ?? {}) };
+
+  if (status !== 200) {
+    noStore(`the render answered ${status}`);
+  } else if (Object.keys(headers).some((name) => name.toLowerCase() === "set-cookie")) {
+    noStore("the render set a cookie");
+  } else if ((context?.requestStateReads ?? 0) > before) {
+    noStore("the render read cookies(), headers() or draftMode()");
+  }
+  return { status, headers, body };
+}
+
+/** A document the cache answered with, as a response that says how. */
+function cachedResponse(result: CacheResult<CachedDocument>): Response {
   const headers = new Headers(result.value.headers);
   headers.set("content-type", "text/html; charset=utf-8");
   // What this request did to the cache, in one word. It is the only way to see

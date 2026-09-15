@@ -67,8 +67,12 @@
 // constructed with a provider and no `build` is refused rather than allowed to
 // serve the last deployment's documents.
 //
-// What is still not here is **prerendering into it** — `uf build` filling the
-// store so the first request to a cold URL is a read rather than a render. See
+// **Prerendering into it** is here too. A page `uf build` prerendered that
+// stated a lifetime is written for regeneration: the first request for it is
+// answered from the document the build wrote, dated when it was rendered, and
+// once its lifetime has passed the next request gets that document and starts
+// one refresh behind it. [`collectCacheDeclarations`] is how the build reads
+// what a page stated, and `./fetch.js` is how a server answers the page. See
 // the guide.
 
 import type {
@@ -77,7 +81,7 @@ import type {
   CacheRequest,
   CacheStoreOptions,
 } from "./internal/cache-store.js";
-import { CacheStore, currentScope } from "./internal/cache-store.js";
+import { CacheStore, currentScope, newScope, runInScope } from "./internal/cache-store.js";
 import type { CacheKey } from "./internal/cache-key.js";
 import { currentContext } from "./internal/context.js";
 
@@ -218,6 +222,44 @@ export function noStore(reason: string = "noStore() was called"): void {
     throw new OutsideCacheScopeError("noStore");
   }
   scope.denied ??= reason;
+}
+
+/** What a render said about the entry it would fill, beside what it produced. */
+export type CacheDeclarations<T> = {|
+  readonly value: T,
+  /** The shortest lifetime `cacheLife` was called with, or `null`. */
+  readonly lifetime: CacheLifetime | null,
+  /** Every tag `cacheTag` named, once each. */
+  readonly tags: $ReadOnlyArray<string>,
+  /** Why `noStore` was called, or `null` when it was not. */
+  readonly denied: string | null,
+|};
+
+/**
+ * Run `body` as a fill that stores nothing, and answer what it declared.
+ *
+ * For a host that renders outside any request and still has to honour what the
+ * render said, which is `uf build` prerendering a page. Inside this,
+ * `cacheLife`, `cacheTag` and `noStore` are statements the build can read
+ * rather than calls that throw for want of a scope — and a page that stated a
+ * lifetime is one the build can write for regeneration instead of as a
+ * document that never changes.
+ *
+ * Nothing is kept. What to do with a declaration is the caller's decision, and
+ * a build that stored entries in a process that is about to exit would be
+ * doing work for nobody.
+ */
+export async function collectCacheDeclarations<T>(
+  body: () => Promise<T>,
+): Promise<CacheDeclarations<T>> {
+  const scope = newScope({ key: [] });
+  const value = await runInScope(scope, body);
+  return {
+    value,
+    lifetime: scope.lifetime,
+    tags: Array.from(new Set(scope.tags)),
+    denied: scope.denied,
+  };
 }
 
 /** The cache the host installed for this request, or a named failure. */

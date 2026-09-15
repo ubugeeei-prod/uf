@@ -59,10 +59,13 @@ import { send, toRequest } from "./internal/http.js";
 import { createOpenApiDocument } from "./internal/openapi.js";
 import { withProjectConfig } from "./merge.js";
 import { FLIGHT_VIRTUAL, RSC_ENVIRONMENT } from "./internal/flight.js";
+import { MODULE_GRAPH_FILE, createModuleGraphCollector } from "./internal/module-graph.js";
 import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
 import {
   BUILD_ID_FILE,
   DOCUMENT_ASSETS_FILE,
+  REGENERATED_DIRECTORY,
+  REGENERATION_FILE,
   assetsFromManifest,
   buildIdentity,
   createPrerenderGate,
@@ -71,6 +74,7 @@ import {
   loadBuild,
   nodeListener,
   providerSpecifier,
+  readRegeneration,
   withRequest,
 } from "./internal/serve.js";
 
@@ -626,6 +630,18 @@ async function build() {
   //    First, because it is what finds the client modules the next pass has
   //    to build; `./internal/flight.js` has the order and the reason for it.
   const flight = flightStateOf(inline);
+  // `uf build --analyze`: the graph every bundle below is built from, for uf
+  // to attribute to routes; see `./internal/module-graph.js`. A client module
+  // is an entry the browser loads because a server component names it, not on
+  // every page, so it is not one of the client bundle's shared entries.
+  const graph = flag("--analyze")
+    ? createModuleGraphCollector(root, {
+        isReference: (file) => flight?.clientModules.has(file) ?? false,
+      })
+    : null;
+  if (graph != null) {
+    inline.plugins = [...(inline.plugins ?? []), graph.plugin];
+  }
   const rscDir = path.join(root, ".uf", "build", "rsc");
   if (flight != null) {
     emit("phase", { name: "rsc" });
@@ -689,6 +705,9 @@ async function build() {
   // `packages/server/internal/cache-key.js`, which argues the whole of it, and
   // `internal/serve.js`'s `buildIdentity`, which is what reads this.
   writeFileSync(path.join(serverDir, BUILD_ID_FILE), `${mintBuildId()}\n`);
+
+  // Every bundle is built by here, and the prerender below builds none.
+  graph?.write(path.join(root, ".uf", "build", "meta", MODULE_GRAPH_FILE));
 
   // 3. Which routes this build renders when, and every route it renders now.
   //
@@ -756,32 +775,76 @@ async function build() {
     failures.push(url);
     emit("page-failed", { url, ...errorEvent(error) });
   };
+  //
+  // Each prerender runs inside a fill that stores nothing, so what a page states
+  // with `cacheLife`, `cacheTag` and `noStore` is something this loop can read
+  // rather than a call that throws for want of a scope.
+  //
+  // A page is written for regeneration when `uf` passed `--regenerate` — `isr`
+  // allowed in `app.rendering.modes`, `rendering.cache.route` on, and a server
+  // deployed to regenerate it — and the page stated a lifetime, called no
+  // `noStore`, and answered 200. Its document goes under
+  // `REGENERATED_DIRECTORY` rather than at its own URL, so no static half
+  // answers the page: the server does, starting from this document, until the
+  // lifetime has passed. What it stated goes into `REGENERATION_FILE` beside the
+  // server bundle. Every other page is the document it has always been.
+  //
+  // A tag without a lifetime is not enough, for the route cache's own reason:
+  // an entry with no end is one another process could serve from its memory
+  // for ever after `revalidateTag` took it out of the shared store.
+  const { collectCacheDeclarations } = await import("@uniflowed/server/cache");
+  const regenerate = flag("--regenerate");
+  const regenerated = {};
   for (const url of pages) {
-    let result;
+    let declared;
+    const renderedAt = Date.now();
     try {
-      result = await server.prerender(url, assets);
+      declared = await collectCacheDeclarations(() => server.prerender(url, assets));
     } catch (error) {
       failed(url, error);
       continue;
     }
+    const result = declared.value;
     if (result.error != null) {
       failed(url, result.error);
       continue;
     }
-    const file = htmlPathFor(outDir, url);
+    const lifetime = declared.lifetime;
+    const regenerates =
+      regenerate && result.status === 200 && declared.denied == null && lifetime != null;
+    const file = htmlPathFor(regenerates ? path.join(outDir, REGENERATED_DIRECTORY) : outDir, url);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, result.html);
     // The payload the document was rendered from, beside it: what a browser
-    // navigating to this route fetches, from whatever serves the files.
+    // navigating to this route fetches, from whatever serves the files. Beside
+    // the document wherever the document went, so a page written for
+    // regeneration leaves no file at its route's own payload URL answering with
+    // the build's copy for ever; the server answers that URL instead.
     if (result.payload != null) {
       writeFileSync(path.join(path.dirname(file), "__uf.flight"), result.payload);
+    }
+    if (regenerates) {
+      regenerated[url] = {
+        document: regeneratedDocumentUrl(url),
+        renderedAt,
+        revalidate: lifetime.revalidate,
+        expire: lifetime.expire ?? null,
+        tags: declared.tags,
+      };
     }
     emit("page", {
       url,
       file: path.relative(root, file),
       status: result.status,
       bytes: Buffer.byteLength(result.html),
+      regenerates,
     });
+  }
+  if (Object.keys(regenerated).length > 0) {
+    writeFileSync(
+      path.join(serverDir, REGENERATION_FILE),
+      `${JSON.stringify({ pages: regenerated }, null, 2)}\n`,
+    );
   }
   // One `404.html`, from the boundary at the router root: a static host serves
   // a single error document for the whole site, so the nested boundaries a
@@ -1163,13 +1226,21 @@ async function compile() {
  * `static` is deliberately absent; `uf_config`'s
  * `DeployAdapter::is_implemented` is the other half of that fact and
  * `docs/app/reference/cli/$page.mdx` says why.
+ *
+ * `regenerationStore` is where a target keeps the pages a build regenerates
+ * when `rendering.cache.store` names nothing: a disk for a process with one,
+ * Workers KV for a Worker, and `null` for a Lambda, which keeps nothing between
+ * invocations and is refused by name instead. A regenerated page kept only in
+ * memory would go back to the build's copy on every restart, which is a page
+ * that travels back in time. See [`deploy`].
  */
 const ADAPTERS = {
   node: {
-    entries: (document, cache, build, schedules) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build),
+    entries: (document, cache, build, schedules, regeneration) => ({
+      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration),
       server: nodeEntrySource("./handler.js", schedules),
     }),
+    regenerationStore: "filesystem",
   },
   // The same two files as `node`, with `@uniflowed/server/bun` in place of
   // `@uniflowed/server/node`. That module is `./internal/static.js` for every
@@ -1186,32 +1257,40 @@ const ADAPTERS = {
   // nobody here. `edge` pays that price because it must: there is no
   // `node:stream` in a Worker.
   bun: {
-    entries: (document, cache, build, schedules) => ({
-      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build),
+    entries: (document, cache, build, schedules, regeneration) => ({
+      handler: handlerEntrySource(document, cache, BUN_CAPABILITIES, build, regeneration),
       server: bunEntrySource("./handler.js", schedules),
     }),
+    regenerationStore: "filesystem",
   },
   deno: {
-    entries: (document, cache, build, schedules) => ({
-      handler: handlerEntrySource(document, cache, DENO_CAPABILITIES, build),
+    entries: (document, cache, build, schedules, regeneration) => ({
+      handler: handlerEntrySource(document, cache, DENO_CAPABILITIES, build, regeneration),
       server: denoEntrySource("./handler.js", schedules),
     }),
+    regenerationStore: "filesystem",
   },
   // The same two files. What `--adapter container` adds is a `Dockerfile` and
   // a `.dockerignore`, and both are plain text that `uf` writes beside this
   // output rather than anything the bundler produces — see `uf_cli`'s
   // `commands::deploy`.
   container: {
-    entries: (document, cache, build, schedules) => ({
-      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build),
+    entries: (document, cache, build, schedules, regeneration) => ({
+      handler: handlerEntrySource(document, cache, NODE_CAPABILITIES, build, regeneration),
       server: nodeEntrySource("./handler.js", schedules),
     }),
+    regenerationStore: "filesystem",
   },
   edge: {
-    entries: (document, cache, build, schedules) => ({
-      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build),
+    entries: (document, cache, build, schedules, regeneration) => ({
+      handler: handlerEntrySource(document, cache, EDGE_CAPABILITIES, build, regeneration),
       worker: workerEntrySource("./handler.js", schedules),
     }),
+    // Workers KV, through the same module seam a project's own provider goes
+    // through. `packages/server/cache-kv.js` argues KV over the Cache API: the
+    // seam has to find every entry under a tag, and the Cache API cannot list
+    // what it holds.
+    regenerationStore: "@uniflowed/server/cache/kv",
     // `workerd` first, so React resolves to the build that has
     // `renderToReadableStream` and no `node:stream`. `browser` and `module`
     // after it are Vite's own SSR defaults, kept so a dependency with no
@@ -1228,10 +1307,14 @@ const ADAPTERS = {
     workerBuiltins: true,
   },
   serverless: {
-    entries: (document, cache, build) => ({
-      handler: handlerEntrySource(document, cache, SERVERLESS_CAPABILITIES, build),
+    entries: (document, cache, build, _schedules, regeneration) => ({
+      handler: handlerEntrySource(document, cache, SERVERLESS_CAPABILITIES, build, regeneration),
       lambda: lambdaEntrySource("./handler.js"),
     }),
+    // A Lambda's memory lasts one instance and its disk is that instance's
+    // `/tmp`, so neither is somewhere a regenerated page survives. A build that
+    // regenerates pages has to name a provider module; see [`deploy`].
+    regenerationStore: null,
   },
 };
 
@@ -1362,8 +1445,8 @@ async function deploy() {
   // `randomUUID()` here would key the adapter's copy differently from the one
   // `uf start` serves out of `.uf/build/`, which is two caches for one build.
   const buildId = await buildIdentity(root, path.join(".uf", "build", "server"));
-  const cacheConfig = config.app?.rendering?.cache;
-  if (shape.filesystem === false && cacheConfig?.store === "filesystem") {
+  const declaredCache = config.app?.rendering?.cache;
+  if (shape.filesystem === false && declaredCache?.store === "filesystem") {
     throw new Error(
       `uf: rendering.cache.store is "filesystem" and \`--adapter ${adapter}\` has no ` +
         "filesystem. Name a module exporting `createCacheProvider` instead — a KV " +
@@ -1371,7 +1454,28 @@ async function deploy() {
         "docs/app/guide/cache.",
     );
   }
-  const entries = shape.entries(document, cacheConfig, buildId, schedules);
+  // The pages this build regenerates, and where this target keeps what it
+  // regenerates when the project named no store: the adapter's
+  // `regenerationStore`. A target with nowhere refuses by name and lists the
+  // pages, rather than deploying pages that every cold start takes back to the
+  // build's copy.
+  const regeneration = await readRegeneration(path.join(root, ".uf", "build", "server"));
+  let cacheConfig = declaredCache;
+  if (regeneration != null && declaredCache?.store == null) {
+    if (shape.regenerationStore == null) {
+      const pages = Object.keys(regeneration.pages);
+      throw new Error(
+        `uf: this build regenerates ${pages.length} ${plural(pages.length, "page")} ` +
+          `(${pages.join(", ")}), and \`--adapter ${adapter}\` has nowhere of its own to keep ` +
+          "a regenerated page: an instance's memory and its /tmp both go with the instance. " +
+          "Name a module exporting `createCacheProvider` in rendering.cache.store, or leave " +
+          "`isr` out of app.rendering.modes to prerender those pages as documents that do not " +
+          "change. See docs/app/guide/rendering.",
+      );
+    }
+    cacheConfig = { ...declaredCache, store: shape.regenerationStore };
+  }
+  const entries = shape.entries(document, cacheConfig, buildId, schedules, regeneration);
   const input = {};
   for (const name of Object.keys(entries)) {
     writeFileSync(path.join(work, `${name}.js`), entries[name]);
@@ -1508,7 +1612,7 @@ async function deploy() {
  * `buildIdentity` is where it came from and
  * `packages/server/internal/cache-key.js` is why it exists.
  */
-function handlerEntrySource(document, cache, capabilities, build) {
+function handlerEntrySource(document, cache, capabilities, build, regeneration) {
   const route = cache?.route === true;
   const fetchCache = cache?.fetch === true;
   // Nothing at all when both switches are off, so a default project's
@@ -1522,6 +1626,10 @@ function handlerEntrySource(document, cache, capabilities, build) {
     `document: ${JSON.stringify(document)}`,
     ...(store ? ["cache"] : []),
     "capabilities",
+    // The pages this build regenerates, baked in beside the document and for
+    // the same reason: the manifest exists on the machine doing the build, and
+    // the deployed directory has only what this file carries.
+    ...(store && regeneration != null ? [`regeneration: ${JSON.stringify(regeneration)}`] : []),
   ].join(", ");
   const cacheImport = store ? 'import { createCacheStore } from "@uniflowed/server/cache";\n' : "";
   const providerImport = durable == null ? "" : `${durable.import}\n`;
@@ -2264,4 +2372,22 @@ function htmlPathFor(outDir, url) {
   return pathname === ""
     ? path.join(outDir, "index.html")
     : path.join(outDir, pathname, "index.html");
+}
+
+/**
+ * The URL path at which a static half answers the document `htmlPathFor`
+ * wrote for `url` under `REGENERATED_DIRECTORY`.
+ *
+ * Ending in a slash, so every host answers it with that directory's
+ * `index.html` in the same way: a Node static half tries `index.html` for such
+ * a path, and a Worker's assets binding serves it without the redirect it
+ * answers `…/index.html` with.
+ */
+function regeneratedDocumentUrl(url) {
+  const pathname = url.split("?")[0].replace(/^\/+/, "").replace(/\/+$/, "");
+  const encoded = pathname
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return pathname === "" ? `/${REGENERATED_DIRECTORY}/` : `/${REGENERATED_DIRECTORY}/${encoded}/`;
 }

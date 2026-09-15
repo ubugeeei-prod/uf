@@ -132,6 +132,14 @@ pub(crate) enum Commands {
         /// Print the emitted bundle's size, by chunk.
         #[arg(long)]
         size_report: bool,
+        /// Write a per-route analysis of the bundles: each module a route ships
+        /// to the browser and runs on the server, its raw, gzip and brotli
+        /// size, and the chain of imports that put it there.
+        ///
+        /// Written to `.uf/build/meta/uf-bundle-analysis.json`, with
+        /// `uf-bundle-analysis.html` beside it, a page that opens from disk.
+        #[arg(long)]
+        analyze: bool,
         /// Run in this mode, which chooses `.env.<mode>` and is what
         /// `import.meta.env.MODE` reads.
         #[arg(long, value_name = "MODE")]
@@ -609,6 +617,16 @@ pub(crate) enum Commands {
         /// Say, for each task, why it ran or was answered from the cache.
         #[arg(long)]
         why: bool,
+        /// Run the task in every workspace member that defines it, each one
+        /// after the members its `package.json` depends on.
+        #[arg(long, short = 'r')]
+        recursive: bool,
+        /// Run the task only in the members this selects: a name, a glob, a
+        /// path (`./packages/ui`), `name...` for a member and what it depends
+        /// on, `...name` for a member and what depends on it. Repeatable, and
+        /// implies `-r`.
+        #[arg(long, value_name = "SELECTOR")]
+        filter: Vec<String>,
         /// The task to run, as named under `tasks` in `uf.config.js`.
         /// Omit it to see what this project defines.
         script: Option<String>,
@@ -648,6 +666,16 @@ pub(crate) enum Commands {
         /// Re-run the affected tests whenever a source file changes.
         #[arg(long)]
         watch: bool,
+        /// Run only the test files a change since REF reaches.
+        ///
+        /// A change is anything that differs from the commit where HEAD's
+        /// history left REF — committed since, staged or not — and any
+        /// untracked file git does not ignore. A test file is reached when it
+        /// imports a changed file, directly or through other modules. A change
+        /// to `uf.config.js`, a `package.json`, a lockfile or a `.env` file
+        /// runs the whole suite.
+        #[arg(long, value_name = "REF")]
+        changed: Option<String>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
@@ -1238,6 +1266,7 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
+                analyze: false,
                 mode: None,
                 compile: false,
                 target: None,
@@ -1256,6 +1285,8 @@ mod tests {
                 concurrency: None,
                 force: false,
                 why: false,
+                recursive: false,
+                filter: Vec::new(),
                 script: Some("build".to_string()),
                 args: Vec::new(),
             }
@@ -1267,6 +1298,8 @@ mod tests {
                 concurrency: None,
                 force: false,
                 why: false,
+                recursive: false,
+                filter: Vec::new(),
                 script: None,
                 args: Vec::new(),
             }
@@ -1276,6 +1309,7 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
+                analyze: false,
                 mode: None,
                 compile: false,
                 target: None,

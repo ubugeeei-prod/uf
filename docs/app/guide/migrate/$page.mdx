@@ -132,7 +132,7 @@ export default defineConfig({
 | `build.runtime` | `uf dev`, `uf build` and `uf preview`, before `runtime` |
 | `build.builder` | the builder those commands drive: `"vite"`, the default, or a module of your own |
 | `test.runtime` | `uf test`, before the runtime `test.runner` brings and then `runtime` |
-| `test.runner` | `"uf"`, the default. `"bun@1.4"` is read and refused by `uf test` until [#942](https://github.com/ubugeeei-prod/uf/issues/942) |
+| `test.runner` | `"uf"`, the default, or `"bun@1.4"`, which hands the suite to `bun test` without module mocking or the DOM matchers — see [Choosing a runner](/guide/testing#choosing-a-runner) |
 | `packageManager` | `uf install`, `uf add` and the other package commands, before `package.json#packageManager` and the lockfiles |
 
 `"node@24"` is the newest 24.x, resolved the first time a command needs it,
@@ -275,7 +275,7 @@ export component Page(params: {| readonly id: string |}) {
 | `jest.spyOn`, `vi.spyOn` | `uft.spyOn` |
 | `jest.useFakeTimers()`, `vi.useFakeTimers()` | `uft.useFakeTimers()`, with `advanceTimersByTime`, `runAllTimers` and `setSystemTime` beside it |
 | `vi.stubEnv`, `vi.stubGlobal` | `uft.stubEnv`, `uft.stubGlobal` |
-| `jest.mock(path)`, `vi.mock(path)` | `await uft.mock(path, factory)`, then `await import(path)` — [not hoisted, and Node only](/guide/testing#replacing-a-module) |
+| `jest.mock(path)`, `vi.mock(path)` | `await uft.mock(path, factory)`, then `await import(path)` — [not hoisted, and on Node or Deno 2.8 or newer only](/guide/testing#replacing-a-module) |
 | `@testing-library/react` | `@uniflowed/react-testing`, which installs happy-dom on the first render |
 | `toMatchSnapshot()`, `-u` | `toMatchSnapshot()`, `uf test -u` |
 | `import.meta.vitest` | [`import.meta.uf.test`](/guide/testing#a-test-beside-the-code-it-tests) |
@@ -295,8 +295,8 @@ which a static host serves as documents.
 ### What is still different
 
 - **Mocks are not hoisted.** A `jest.mock` anywhere in a file becomes a
-  `uft.mock` above the `await import(…)` that reaches it, and module mocking and
-  coverage run on Node only
+  `uft.mock` above the `await import(…)` that reaches it. Module mocking runs on
+  Node and on Deno 2.8 or newer, and coverage on Node only
   ([#972](https://github.com/ubugeeei-prod/uf/issues/972) is a suite split
   across machines).
 - **Some ESLint plugin rules have no answer yet** — React
@@ -413,9 +413,11 @@ deployment record does not have yet.
    ([Middleware](/guide/routing/requests#middleware)).
 6. **Restate caching.** Turn on `app.rendering.cache.route`, then call
    `cacheLife({ revalidate: 60 })` and `cacheTag("posts")` inside the render,
-   from `@uniflowed/server/cache`; `export const revalidate` is not read. Name a
-   durable `rendering.cache.store` and a stale document regenerates in place,
-   which is the behaviour ISR names ([Caching](/guide/cache)).
+   from `@uniflowed/server/cache`; `export const revalidate` is not read. A
+   prerendered page that states a lifetime is served from the build and
+   regenerated in the background once it passes, which is the behaviour ISR
+   names, and `rendering.cache.store` decides where the regenerated pages are
+   kept ([Caching](/guide/cache)).
 7. **Rename what reaches the browser.** `NEXT_PUBLIC_API` becomes `VITE_API`, or
    keep the name with `vite: { envPrefix: "NEXT_PUBLIC_" }`. Server code reads
    every variable through `process.env`, as before.
@@ -445,11 +447,14 @@ deployment record does not have yet.
   ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot holds
   no `$not-found.js`, `$route.js` or `$middleware.js`
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
-- **The rest of ISR.** `uf build` does not seed the durable store from its
-  prerender ([#996](https://github.com/ubugeeei-prod/uf/issues/996)), there is no
+- **The rest of ISR.** A cached render that reads `cookies()` is refused when it
+  runs rather than when it builds
+  ([#996](https://github.com/ubugeeei-prod/uf/issues/996)), a process that
+  restarts after an invalidation can serve the build's copy of a page until its
+  lifetime has passed, a `--compile` binary carries no cache, there is no
   function-level cache or `"use cache"`
-  ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `isr` and
-  `ppr` mode names select nothing yet.
+  ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `ppr` mode
+  name selects nothing yet.
 - **Middleware and request APIs.** A middleware cannot rewrite the request, and
   `cookies()` reads without writing.
 - **Images and fonts.** Resized at build time only, with no AVIF or lossy WebP
