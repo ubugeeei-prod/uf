@@ -17,14 +17,15 @@ use super::runtime_host;
 
 /// Build the document.
 pub(super) fn test_payload(
-    host: &HostCommand,
+    host: Option<&HostCommand>,
     report: &TestRunReport,
     coverage: Option<&Coverage>,
 ) -> Value {
     let summary = &report.summary;
     let mut document = json!({
         "command": "uf test",
-        "host": host_payload(host),
+        // `null` for `uf test --merge-shards`, which started no host.
+        "host": host.map_or(Value::Null, host_payload),
         "files": summary.files,
         "passed": summary.passed,
         "failed": summary.failed,

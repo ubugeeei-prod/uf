@@ -658,6 +658,27 @@ pub(crate) enum Commands {
         /// runs the whole suite.
         #[arg(long, value_name = "REF")]
         changed: Option<String>,
+        /// Run one part of a suite split across machines, like `2/3`.
+        ///
+        /// Every shard cuts the same partition from the test files and the
+        /// durations `.uf/test-timings.json` recorded, so each machine can run
+        /// its part alone, and together they run every test file once. Each
+        /// shard writes a record to `.uf/test-shards` for `--merge-shards`.
+        #[arg(long, value_name = "INDEX/COUNT", conflicts_with = "merge_shards")]
+        shard: Option<uf_test::Shard>,
+        /// Report the shard records in DIR as one run over the whole suite.
+        ///
+        /// Runs nothing. Writes what one run would have written: the summary or
+        /// `--json`, `--reporter junit`, and the coverage reports when the
+        /// shards measured. It records the suite's durations for the next split
+        /// and fails when the suite failed. DIR defaults to `.uf/test-shards`.
+        #[arg(
+            long,
+            value_name = "DIR",
+            num_args = 0..=1,
+            default_missing_value = ".uf/test-shards"
+        )]
+        merge_shards: Option<String>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
