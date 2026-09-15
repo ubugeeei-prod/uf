@@ -18,7 +18,7 @@
 // # What this file owns, and what it does not
 //
 // The look: the scrim, the panel, the two answers in the footer. The behaviour
-// is imported from `@uniflowed/ui/alert-dialog`: `role="alertdialog"`, which
+// is imported from `@uniflowed/ui`'s `AlertDialog`: `role="alertdialog"`, which
 // makes a screen reader announce the description the moment focus arrives;
 // focus starting on the answer that does least; no dismissal by a press beside
 // the panel; `Escape` as the way to decline; focus given back to the trigger;
@@ -47,7 +47,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/alert-dialog";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

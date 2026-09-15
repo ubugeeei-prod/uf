@@ -717,22 +717,21 @@ fn collect_boundaries(
 /// The package client modules an external import reaches, each named
 /// `package/module`.
 ///
-/// A subpath uf knows carries `"use client"` is itself the boundary. The
-/// `@uniflowed/ui` barrel is not a client module; it is the other way in. Each
-/// name imported from it reaches the client module that exports it
+/// `@uniflowed/ui` is the package whose modules uf knows carry `"use client"`,
+/// and its barrel is the only way in: the package exports no subpath, so
+/// `@uniflowed/ui/switch` is not an import a project can write and names no
+/// boundary here. The barrel is not a client module. Each name imported from it
+/// reaches the client module that exports it
 /// ([`uf_lib::client_modules_exporting`]), so a page importing `{ Switch }` from
-/// the barrel has its boundary at `@uniflowed/ui/switch`, exactly as if it had
-/// imported the subpath, and not at the whole package. A name from a Server
-/// Component module reaches nothing, and so does a type, which the scanner
-/// drops.
+/// the barrel has its boundary at `@uniflowed/ui/switch` and not at the whole
+/// package, and the client code its route needs is that one component's. A
+/// name from a Server Component module reaches nothing, and so does a type,
+/// which the scanner drops.
 ///
 /// A form that binds no name the scanner can read — `import * as ui`,
 /// `export * from`, a dynamic `import()` or a `require` — may use any of the
 /// modules, so its boundary is the barrel itself.
 fn package_boundary_targets(import: &ImportSpecifier) -> Vec<CompactString> {
-    if uf_lib::is_client_module(&import.specifier) {
-        return vec![import.specifier.clone()];
-    }
     if import.specifier != uf_lib::CLIENT_MODULE_PACKAGE {
         return Vec::new();
     }

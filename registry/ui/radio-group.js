@@ -10,7 +10,7 @@
 // # What this file owns, and what it does not
 //
 // The circles, the dot in the chosen one, and the layout of the list.
-// `@uniflowed/ui/radio-group` owns the pattern: `role="radiogroup"`, radios
+// `@uniflowed/ui`'s `RadioGroup` owns the pattern: `role="radiogroup"`, radios
 // with `aria-checked`, one tab stop for the whole group — the chosen answer, or
 // the first while there is none — arrow keys that check as they move, and the
 // hidden input a form submits under `name`. The dot follows `aria-checked`
@@ -31,7 +31,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/radio-group";
+import * as Primitive from "@uniflowed/ui";
 
 /** Which way the answers are listed, and which arrow keys move between them. */
 export type RadioGroupOrientation = "horizontal" | "vertical";

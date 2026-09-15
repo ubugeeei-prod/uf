@@ -794,7 +794,7 @@ fn is_hook_name(name: &str) -> bool {
 
 /// The components `@uniflowed/ui` ships, and the parts each one exposes.
 ///
-/// Read from `packages/ui/index.js`, which is where the parts are: a subpath
+/// Read from `packages/ui/index.js`, which is where the parts are: `tabs.js`
 /// exports `TabsList` and `TabsTab`, and only the barrel says those two are
 /// `Tabs.List` and `Tabs.Tab`. Two shapes, because the package has two.
 ///
@@ -825,6 +825,12 @@ fn ui_components_shipped(source: &str) -> Result<BTreeMap<String, Vec<String>>, 
     }
 
     let mut shipped = BTreeMap::new();
+    // The values the namespaces hold, and the capitalised names exported on
+    // their own. A name a namespace holds is a part the barrel also exports
+    // under its own name (`DialogRoot` is `Dialog.Root`); a name none holds is a
+    // component with nothing to compose.
+    let mut held = BTreeSet::new();
+    let mut alone = Vec::new();
     for node in parsed.program.statements.iter() {
         let statement::StatementInner::ExportNamedDeclaration { inner, .. } = &**node else {
             continue;
@@ -854,10 +860,14 @@ fn ui_components_shipped(source: &str) -> Result<BTreeMap<String, Vec<String>>, 
                 for property in inner.properties.iter() {
                     if let object::Property::NormalProperty(object::NormalProperty::Init {
                         key: object::Key::Identifier(key),
+                        value,
                         ..
                     }) = property
                     {
                         parts.push(key.name.to_string());
+                        if let ExpressionInner::Identifier { inner, .. } = &**value {
+                            held.insert(inner.name.to_string());
+                        }
                     }
                 }
                 shipped.insert(name, parts);
@@ -874,9 +884,14 @@ fn ui_components_shipped(source: &str) -> Result<BTreeMap<String, Vec<String>>, 
                 let exported = specifier.exported.as_ref().unwrap_or(&specifier.local);
                 let name = exported.name.to_string();
                 if starts_capitalised(&name) {
-                    shipped.insert(name, vec!["Root".to_owned()]);
+                    alone.push(name);
                 }
             }
+        }
+    }
+    for name in alone {
+        if !held.contains(&name) {
+            shipped.insert(name, vec!["Root".to_owned()]);
         }
     }
     Ok(shipped)
@@ -887,7 +902,7 @@ fn starts_capitalised(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }
 
-/// `AlertDialog` as `alert-dialog`: the subpath a component is imported from.
+/// `AlertDialog` as `alert-dialog`: the module a component lives in.
 ///
 /// A rule rather than a table, and it holds for every one of them — `InputOtp`
 /// is `input-otp`, `DatePicker` is `date-picker`, `NavigationMenu` is
@@ -895,19 +910,19 @@ fn starts_capitalised(name: &str) -> bool {
 /// produce would fail the check below rather than be quietly exempted, which is
 /// the right way round: two spellings of one component is the thing the table
 /// was full of.
-fn subpath_of(name: &str) -> String {
-    let mut subpath = String::with_capacity(name.len() + 2);
+fn module_of(name: &str) -> String {
+    let mut module = String::with_capacity(name.len() + 2);
     for (index, character) in name.char_indices() {
         if character.is_ascii_uppercase() {
             if index != 0 {
-                subpath.push('-');
+                module.push('-');
             }
-            subpath.push(character.to_ascii_lowercase());
+            module.push(character.to_ascii_lowercase());
         } else {
-            subpath.push(character);
+            module.push(character);
         }
     }
-    subpath
+    module
 }
 
 /// The `Implemented` entries are exactly the components the package ships.
@@ -938,8 +953,8 @@ fn subpath_of(name: &str) -> String {
 ///
 /// # Three sources, not two
 ///
-/// The subpaths in `package.json` are what a caller can import, the namespace
-/// objects in `index.js` are what they get, and this table is what
+/// The modules in `packages/ui` are what a caller's import is built from, the
+/// namespace objects in `index.js` are what they get, and this table is what
 /// `uf inspect` says they have. All three are checked against each other,
 /// because two of them agreeing is how the third goes stale.
 #[test]
@@ -951,18 +966,14 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
     let shipped = ui_components_shipped(&source)
         .unwrap_or_else(|error| panic!("{} does not parse: {error}", barrel.display()));
 
-    let manifest = root.join("packages/ui/package.json");
-    let package: serde_json::Value = serde_json::from_str(
-        &fs::read_to_string(&manifest)
-            .unwrap_or_else(|error| panic!("{} cannot be read: {error}", manifest.display())),
-    )
-    .unwrap_or_else(|error| panic!("{} does not parse: {error}", manifest.display()));
-    let subpaths: BTreeSet<String> = package["exports"]
-        .as_object()
-        .expect("`exports` is a map")
-        .keys()
-        .filter(|key| *key != ".")
-        .map(|key| key.trim_start_matches("./").to_owned())
+    // Every module beside the barrel, by name: `alert-dialog.js` is
+    // `alert-dialog`. A test sits beside the module it tests and is not one.
+    let modules: BTreeSet<String> = fs::read_dir(root.join("packages/ui"))
+        .expect("packages/ui can be listed")
+        .map(|entry| entry.expect("a directory entry").file_name())
+        .filter_map(|file| file.into_string().ok())
+        .filter(|file| file != "index.js" && !file.ends_with(".test.js"))
+        .filter_map(|file| file.strip_suffix(".js").map(ToOwned::to_owned))
         .collect();
 
     let components = ui_components();
@@ -996,19 +1007,20 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
          listed as implemented and not exported: {unbuilt:?}"
     );
 
-    // And every one of them is importable on its own, which is the other half
-    // of the claim: `sideEffects: false` and one subpath per component is what
-    // `@uniflowed/ui` offers instead of a copy step.
-    // The hook modules are the one other kind of subpath, and they are named
+    // And every one of them is a module of its own, which is the other half of
+    // the claim: `sideEffects: false` and one module per component is what
+    // `@uniflowed/ui` offers instead of a copy step, since a bundler keeps the
+    // module a name comes from and drops the rest.
+    // The hook modules are the one other kind of module, and they are named
     // rather than tolerated: see `UI_HOOK_MODULES`.
     let expected: BTreeSet<String> = implemented
         .iter()
-        .map(|name| subpath_of(name))
+        .map(|name| module_of(name))
         .chain(UI_HOOK_MODULES.iter().map(|module| (*module).to_owned()))
         .collect();
     assert_eq!(
-        expected, subpaths,
-        "`packages/ui/package.json` and the table disagree about the subpaths"
+        expected, modules,
+        "`packages/ui` and the table disagree about the modules"
     );
 
     // Nothing planned or declined is quietly shipped. This is the direction
@@ -1026,10 +1038,70 @@ fn the_ui_table_names_exactly_what_the_package_ships() {
     );
 }
 
+/// Every name a module of `@uniflowed/ui` exports is a name its barrel exports.
+///
+/// The barrel is the package's one entry point — `package.json` exports `.` and
+/// nothing else — so an export the barrel leaves out is an export nobody can
+/// import, and a type a caller needs for a prop of their own is a type they
+/// cannot name. `@uniflowed/form` is such a caller: it takes `FieldSource` from
+/// here.
+///
+/// One export is not for callers: `radioSet`, which `radio-group.js` and
+/// `toggle-group.js` share and which no page composes.
+#[test]
+fn every_name_a_ui_module_exports_is_exported_by_the_barrel() {
+    const SHARED_BETWEEN_MODULES: &[&str] = &["radioSet"];
+
+    let root = repository_root().join("packages/ui");
+    let read = |file: &str| {
+        let path = root.join(file);
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("{} cannot be read: {error}", path.display()));
+        exported_names(&source)
+            .unwrap_or_else(|error| panic!("{} does not parse: {error}", path.display()))
+            .unwrap_or_else(|| panic!("{} hands on another module's surface", path.display()))
+    };
+    let barrel = read("index.js");
+
+    let mut missing = Vec::new();
+    let mut modules = 0usize;
+    for entry in fs::read_dir(&root).expect("packages/ui can be listed") {
+        let file = entry
+            .expect("a directory entry")
+            .file_name()
+            .into_string()
+            .expect("a UTF-8 file name");
+        if !file.ends_with(".js") || file == "index.js" || file.ends_with(".test.js") {
+            continue;
+        }
+        modules += 1;
+        let exports = read(&file);
+        for value in &exports.values {
+            if !SHARED_BETWEEN_MODULES.contains(&value.as_str()) && !barrel.values.contains(value) {
+                missing.push(format!("{file}: {value}"));
+            }
+        }
+        for name in &exports.types {
+            if !barrel.types.contains(name) {
+                missing.push(format!("{file}: type {name}"));
+            }
+        }
+    }
+    assert!(
+        modules > 20,
+        "packages/ui listed almost nothing, so this is not checking anything: {modules}"
+    );
+    assert!(
+        missing.is_empty(),
+        "packages/ui/index.js leaves out what its modules export, so nothing can import it:\n  {}",
+        missing.join("\n  ")
+    );
+}
+
 /// Each hook module of `@uniflowed/ui` exports hooks, and nothing that reads as a
 /// component.
 ///
-/// [`UI_HOOK_MODULES`] is the one exemption from "a subpath is a component", and
+/// [`UI_HOOK_MODULES`] is the one exemption from "a module is a component", and
 /// an exemption is exactly where a component could ship without the table
 /// hearing of it: a capitalised export from `interactions.js` would be
 /// importable, reported by nothing, and absent from `uf inspect`. So every name

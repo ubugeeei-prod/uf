@@ -12,7 +12,7 @@
 //
 // The box, the tracks and the thumbs, and hiding the platform's own scrollbar
 // inside the box. A thumb's length and position come from what
-// `@uniflowed/ui/scroll-area` writes on its scrollbar: `--uf-scroll-thumb-size`
+// `@uniflowed/ui`'s `ScrollArea` writes on its scrollbar: `--uf-scroll-thumb-size`
 // and `--uf-scroll-thumb-offset` down the box, and the same names ending in
 // `-x` across it, each a fraction of the track. The part owns the rest: a
 // viewport that is a named `role="region"` and a tab stop, so the keyboard
@@ -31,7 +31,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/scroll-area";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

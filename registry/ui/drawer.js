@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The look: the panel at its snap point, the grip, and the way the panel
-// follows a drag. The behaviour is imported from `@uniflowed/ui/drawer`: every
+// follows a drag. The behaviour is imported from `@uniflowed/ui`'s `Drawer`: every
 // modal promise a sheet makes, a handle that is a `role="slider"` over the snap
 // points with `Home`, `End` and the arrow keys, the closing key at the smallest
 // snap point, and the refusal to render a handle with no `DrawerClose` beside
@@ -46,8 +46,8 @@ import { createContext, useContext } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { Edge } from "@uniflowed/ui/drawer";
-import * as Primitive from "@uniflowed/ui/drawer";
+import type { Edge } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

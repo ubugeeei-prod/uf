@@ -12,7 +12,7 @@
 //
 // The bar and its triggers. The panels and their rows are `menu.js`'s parts
 // under menubar names, so a menubar's menus and a menu look alike and change
-// together. `@uniflowed/ui/menubar` owns the pattern: `role="menubar"`, one tab
+// together. `@uniflowed/ui`'s `Menubar` owns the pattern: `role="menubar"`, one tab
 // stop for the whole bar with the arrow keys moving between triggers, each
 // trigger opening and naming its menu, and moving on to the next menu while
 // one is open. A trigger is drawn highlighted while `aria-expanded` says its
@@ -32,7 +32,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/menubar";
+import * as Primitive from "@uniflowed/ui";
 
 import {
   MenuCheckboxItem,

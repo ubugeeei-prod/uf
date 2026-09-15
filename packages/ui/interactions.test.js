@@ -1,6 +1,6 @@
 // @flow
 //
-// `@uniflowed/ui/interactions`.
+// `@uniflowed/ui`'s interactions: `interactions.js`.
 //
 // Every case drives one input the way its platform does — a mouse, a finger
 // followed by the mouse events a tap is followed by, a key, and a screen
@@ -16,7 +16,7 @@ import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
 import { act, fireEvent, render, screen } from "@uniflowed/react-testing";
 
-import type { PressEvent } from "@uniflowed/ui/interactions";
+import type { PressEvent } from "@uniflowed/ui";
 import {
   getInteractionModality,
   mergeProps,
@@ -28,7 +28,7 @@ import {
   useLongPress,
   useMove,
   usePress,
-} from "@uniflowed/ui/interactions";
+} from "@uniflowed/ui";
 import { bodyOf } from "../../tests/library/dom.js";
 
 /**

@@ -879,44 +879,226 @@ pub fn builtin_modules() -> Vec<NativeModule> {
             Stability::Experimental,
             &[
                 "Accordion",
+                "AccordionContent",
+                "AccordionHeader",
+                "AccordionItem",
+                "AccordionRoot",
+                "AccordionTrigger",
                 "Alert",
+                "AlertDescription",
                 "AlertDialog",
+                "AlertDialogAction",
+                "AlertDialogBody",
+                "AlertDialogCancel",
+                "AlertDialogDescription",
+                "AlertDialogFooter",
+                "AlertDialogHeader",
+                "AlertDialogOverlay",
+                "AlertDialogRoot",
+                "AlertDialogTitle",
+                "AlertDialogTrigger",
+                "AlertRoot",
+                "AlertTitle",
                 "Avatar",
+                "AvatarFallback",
+                "AvatarImage",
+                "AvatarRoot",
                 "Breadcrumb",
+                "BreadcrumbItem",
+                "BreadcrumbLink",
+                "BreadcrumbList",
+                "BreadcrumbPage",
+                "BreadcrumbRoot",
+                "BreadcrumbSeparator",
                 "Calendar",
+                "CalendarDay",
+                "CalendarMonth",
+                "CalendarNext",
+                "CalendarPrevious",
+                "CalendarRoot",
                 "Carousel",
+                "CarouselContent",
+                "CarouselItem",
+                "CarouselNext",
+                "CarouselPause",
+                "CarouselPrevious",
+                "CarouselRoot",
                 "Checkbox",
                 "Collapsible",
+                "CollapsibleContent",
+                "CollapsibleRoot",
+                "CollapsibleTrigger",
                 "Combobox",
+                "ComboboxEmpty",
+                "ComboboxGroup",
+                "ComboboxGroupLabel",
+                "ComboboxInput",
+                "ComboboxLabel",
+                "ComboboxList",
+                "ComboboxOption",
+                "ComboboxRoot",
+                "ComboboxStatus",
                 "ContextMenu",
+                "ContextMenuRoot",
+                "ContextMenuTrigger",
                 "DatePicker",
+                "DatePickerCalendar",
+                "DatePickerInput",
+                "DatePickerRoot",
+                "DatePickerTrigger",
                 "Dialog",
+                "DialogBody",
+                "DialogClose",
+                "DialogDescription",
+                "DialogFooter",
+                "DialogHeader",
+                "DialogOverlay",
+                "DialogRoot",
+                "DialogTitle",
+                "DialogTrigger",
                 "Drawer",
+                "DrawerBody",
+                "DrawerClose",
+                "DrawerDescription",
+                "DrawerFooter",
+                "DrawerHandle",
+                "DrawerHeader",
+                "DrawerOverlay",
+                "DrawerRoot",
+                "DrawerTitle",
+                "DrawerTrigger",
                 "Field",
+                "FieldControl",
+                "FieldDescription",
+                "FieldError",
+                "FieldLabel",
+                "FieldRoot",
+                "FieldStatus",
                 "HoverCard",
+                "HoverCardBody",
+                "HoverCardRoot",
+                "HoverCardTrigger",
                 "InputOtp",
+                "InputOtpGroup",
+                "InputOtpRoot",
+                "InputOtpSeparator",
+                "InputOtpSlot",
                 "Menu",
+                "MenuBody",
+                "MenuCheckboxItem",
+                "MenuGroup",
+                "MenuItem",
+                "MenuLabel",
+                "MenuRadioGroup",
+                "MenuRadioItem",
+                "MenuRoot",
+                "MenuSeparator",
+                "MenuSub",
+                "MenuSubTrigger",
+                "MenuTrigger",
                 "Menubar",
+                "MenubarMenu",
+                "MenubarRoot",
+                "MenubarTrigger",
                 "NavigationMenu",
+                "NavigationMenuBody",
+                "NavigationMenuItem",
+                "NavigationMenuLink",
+                "NavigationMenuList",
+                "NavigationMenuRoot",
+                "NavigationMenuTrigger",
                 "Pagination",
+                "PaginationContent",
+                "PaginationItem",
+                "PaginationNext",
+                "PaginationPrevious",
+                "PaginationRoot",
                 "Popover",
+                "PopoverBody",
+                "PopoverRoot",
+                "PopoverTrigger",
                 "Progress",
                 "RadioGroup",
+                "RadioGroupIndicator",
+                "RadioGroupItem",
+                "RadioGroupRoot",
                 "Resizable",
+                "ResizableHandle",
+                "ResizablePanel",
+                "ResizablePanelGroup",
                 "ScrollArea",
+                "ScrollAreaRoot",
+                "ScrollAreaScrollbar",
+                "ScrollAreaViewport",
                 "Select",
+                "SelectGroup",
+                "SelectGroupLabel",
+                "SelectLabel",
+                "SelectList",
+                "SelectOption",
+                "SelectRoot",
+                "SelectSeparator",
+                "SelectTrigger",
+                "SelectValue",
                 "Separator",
                 "Sheet",
+                "SheetBody",
+                "SheetClose",
+                "SheetDescription",
+                "SheetFooter",
+                "SheetHeader",
+                "SheetOverlay",
+                "SheetRoot",
+                "SheetTitle",
+                "SheetTrigger",
                 "Sidebar",
+                "SidebarBody",
+                "SidebarFooter",
+                "SidebarHeader",
+                "SidebarItem",
+                "SidebarRoot",
+                "SidebarTrigger",
                 "Skeleton",
+                "SkeletonBox",
+                "SkeletonRoot",
                 "Slider",
+                "SliderRange",
+                "SliderRoot",
+                "SliderThumb",
+                "SliderTrack",
                 "Switch",
                 "Table",
+                "TableBody",
+                "TableCaption",
+                "TableCell",
+                "TableHead",
+                "TableHeader",
+                "TableRoot",
+                "TableRow",
+                "TableRowHeader",
+                "TableRowSelect",
+                "TableSelectAll",
                 "Tabs",
+                "TabsList",
+                "TabsPanel",
+                "TabsRoot",
+                "TabsTab",
                 "Toast",
+                "ToastAction",
+                "ToastClose",
+                "ToastDescription",
+                "ToastRegion",
+                "ToastRoot",
+                "ToastTitle",
                 "Toggle",
                 "ToggleGroup",
+                "ToggleGroupItem",
+                "ToggleGroupRoot",
                 "Tooltip",
+                "TooltipBody",
+                "TooltipProvider",
+                "TooltipRoot",
+                "TooltipTrigger",
                 "dismissAllToasts",
                 "dismissToast",
                 "getInteractionModality",
@@ -1101,10 +1283,15 @@ pub fn module_by_specifier(specifier: &str) -> Option<NativeModule> {
         .find(|module| module.specifier == specifier)
 }
 
-/// The package whose subpaths [`CLIENT_MODULE_SUBPATHS`] lists.
+/// The package whose modules [`CLIENT_MODULE_SUBPATHS`] lists.
 pub const CLIENT_MODULE_PACKAGE: &str = "@uniflowed/ui";
 
-/// The exported subpaths of [`CLIENT_MODULE_PACKAGE`] that are client modules.
+/// The modules of [`CLIENT_MODULE_PACKAGE`] that are client modules, by the name
+/// uf gives each after the package: `switch` is `@uniflowed/ui/switch`.
+///
+/// Named for the subpaths the package exported until its barrel became its one
+/// entry point. A project imports `{ Switch }` from `@uniflowed/ui`, and
+/// [`client_modules_exporting`] is how that name reaches `switch`.
 ///
 /// uf's RSC scan walks a project and skips `node_modules`, which is the right
 /// default — a dependency tree is enormous and almost none of it is in the
@@ -1118,14 +1305,15 @@ pub const CLIENT_MODULE_PACKAGE: &str = "@uniflowed/ui";
 /// [`hook_descriptors`] is here: a fact about a package uf ships belongs beside
 /// the registry of packages uf ships, and a walk of an installed tree is the
 /// expense this exists to avoid. `the_client_module_list_names_exactly_the_ui_
-/// subpaths_that_are_client_modules` in `uf_rsc` holds the list to the files —
+/// modules_that_are_client_modules` in `uf_rsc` holds the list to the files —
 /// with the parser that decides the question in production, not a second
 /// answer to it — which is the whole value of writing the names down.
 ///
-/// Exported subpaths only, so this says what a project can *import*.
-/// `internal/form-value` and `internal/menu-tree` are client modules too and
-/// are deliberately absent: `package.json` does not export them, so no
-/// specifier reaches them and the ones that do are already here.
+/// The modules the barrel re-exports from, and no others, so this says where a
+/// name a project imports can come from. `internal/form-value` and
+/// `internal/menu-tree` are client modules too and are deliberately absent: the
+/// barrel exports nothing of theirs, and the modules that import them are
+/// already here.
 ///
 /// Not the whole package, which is the reason this is a list and not a rule.
 /// `alert`, `breadcrumb`, `pagination`, `progress` and `separator` are markup
@@ -1174,14 +1362,15 @@ pub const CLIENT_MODULE_SUBPATHS: &[&str] = &[
     "tooltip",
 ];
 
-/// Whether a bare specifier resolves to a module uf knows carries `"use client"`.
+/// Whether `@uniflowed/ui/<module>`, the name uf gives one of the package's
+/// modules, is a module uf knows carries `"use client"`.
 ///
-/// Takes the specifier as written in the source — `@uniflowed/ui/dialog` — and
-/// answers for the package's exported subpaths only. The barrel,
-/// `@uniflowed/ui`, is a server module: it re-exports the client ones, which
-/// makes it a module that *imports* client modules rather than one that is
-/// one, and that distinction is the difference between a bundle root and an
-/// edge leading to one.
+/// Not a specifier a project writes: the package exports its barrel alone, and
+/// a name imported from the barrel reaches its module through
+/// [`client_modules_exporting`]. The barrel, `@uniflowed/ui`, is a server
+/// module: it re-exports the client ones, which makes it a module that
+/// *imports* client modules rather than one that is one, and that distinction
+/// is the difference between a bundle root and an edge leading to one.
 #[must_use]
 pub fn is_client_module(specifier: &str) -> bool {
     specifier

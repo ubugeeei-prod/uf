@@ -5,7 +5,7 @@
 //! people reach for shadcn/ui for is a different thing — a styled component *in
 //! their own repository*, which they read and change — and `uf ui add` is that
 //! half. `uf ui add dialog` writes `app/components/ui/dialog.js`, a dialog built
-//! on `@uniflowed/ui/dialog` and styled with `@uniflowed/stylex`'s tokens, and
+//! on `@uniflowed/ui` and styled with `@uniflowed/stylex`'s tokens, and
 //! from then on the file is the project's. ubugeeei-prod/uf#947 asked for it.
 //!
 //! This crate is the registry and the decisions a reader has to be able to
@@ -70,8 +70,9 @@
 //!
 //! Nothing is written down twice. The source is the manifest:
 //!
-//! * **Its npm dependencies** are the packages it imports — `@uniflowed/ui/tabs`
-//!   is `@uniflowed/ui` — and an `@uniflowed/*` package is added at this uf's
+//! * **Its npm dependencies** are the packages it imports —
+//!   `@uniflowed/stylex/tokens.stylex.js` is `@uniflowed/stylex` — and an
+//!   `@uniflowed/*` package is added at this uf's
 //!   own version, for the reason `uf_project`'s template pins it: the packages
 //!   and the binary are two halves of one release.
 //! * **The components it needs** are the siblings it imports. `./button.js` is

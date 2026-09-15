@@ -11,7 +11,7 @@
 //
 // The track, the thumb and the label beside them, all inside the one button the
 // part renders, so the whole row is the target and its words are the name.
-// `@uniflowed/ui/switch` owns `role="switch"`, `aria-checked`, and `Space` and
+// `@uniflowed/ui`'s `Switch` owns `role="switch"`, `aria-checked`, and `Space` and
 // `Enter` both flipping it. The thumb and the track follow `aria-checked`
 // through `:is([aria-checked=true])`, so a click, a key and a controlled
 // `checked` all draw the same thing.
@@ -32,7 +32,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { Switch as SwitchPart } from "@uniflowed/ui/switch";
+import { Switch as SwitchPart } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

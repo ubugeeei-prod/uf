@@ -99,8 +99,8 @@ most product UI. Reach for the parts directly when the design system already
 exists somewhere else, when the styling is not StyleX, or when a surface is
 unusual enough that the owned component would be edited beyond recognition.
 
-The two are not forks of each other. An owned `dialog.js` imports
-`@uniflowed/ui/dialog`, so the focus trap, `Escape`, focus restore and the inert
+The two are not forks of each other. An owned `dialog.js` imports its parts
+from `@uniflowed/ui`, so the focus trap, `Escape`, focus restore and the inert
 page behind it keep arriving by upgrade, and what the file owns is only what a
 person means by "our dialog". The composition constraints hold in the copy
 too: the owned `TabsList` takes `renders* TabsTab`, so a `<button>` dropped
@@ -148,7 +148,8 @@ the suite fails if that table stops matching the files.
 [#303](https://github.com/ubugeeei-prod/uf/issues/303) is the argument, and
 `packages/ui/index.js`'s header is where the decision is recorded.
 
-Import from the package root, where each family is a namespace:
+Import from `@uniflowed/ui`, the one entry point the package has. Each family is
+a namespace there:
 
 ```js
 import {
@@ -166,22 +167,22 @@ import {
 } from "@uniflowed/ui";
 ```
 
-or from a subpath — `@uniflowed/ui/dialog`, `/menu`, `/select`, `/combobox`,
-`/tabs`, `/table`, `/toast`, `/field`, `/checkbox`, `/switch`, and the rest of
-the module names in [Components](/reference/ui) — which is where the flat names
-(`DialogRoot`, `MenuSubTrigger`) live. `internal/` has no subpath and is not
-importable, on purpose: it holds the roving-focus reader, the controlled-state
-hook and the prop merger, and each of their headers says why publishing it would
-be a weaker promise than not.
+and every part is there under its own name as well — `DialogRoot`,
+`MenuSubTrigger` — so `Dialog.Root` and `DialogRoot` are the same component. The
+package exports no subpath, and `internal/` is not importable, on purpose: it
+holds the roving-focus reader, the controlled-state hook and the prop merger,
+and each of their headers says why publishing it would be a weaker promise than
+not.
 
-Use the namespace import when a page composes several parts of one primitive;
-it keeps the JSX readable. Use the subpath import when you are writing a small
-wrapper or preset around one primitive and want the dependency edge to name the
-same unit a bundler can keep or drop:
+Use the namespace when a page composes several parts of one primitive; it keeps
+the JSX readable. Use the flat names when you are writing a small wrapper or
+preset around one primitive. Either way a bundler keeps the modules the names
+come from and drops the rest, because the package declares `sideEffects: false`,
+and uf's Server Component analysis sees through the barrel to the one module
+each name comes from:
 
 ```js
-import { Dialog } from "@uniflowed/ui";
-import { DialogRoot, DialogTrigger } from "@uniflowed/ui/dialog";
+import { Dialog, DialogRoot, DialogTrigger } from "@uniflowed/ui";
 ```
 
 Every example on this page was rendered and asserted before it was published;

@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The bar, its triggers and plain links, the arrow beside a trigger, and the
-// panel of links a trigger opens. `@uniflowed/ui/navigation-menu` owns the
+// panel of links a trigger opens. `@uniflowed/ui`'s `NavigationMenu` owns the
 // pattern: a `<nav>` of list items, a disclosure button for each panel with
 // `aria-expanded` and `aria-controls`, a panel named by its trigger that is not
 // in the page while it is closed, one panel open at a time, and a link that
@@ -34,7 +34,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/navigation-menu";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

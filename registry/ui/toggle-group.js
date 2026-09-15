@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The look: segments joined into one bordered row or column, with the chosen
-// ones filled. `@uniflowed/ui/toggle-group` owns the two behaviours `type`
+// ones filled. `@uniflowed/ui`'s `ToggleGroup` owns the two behaviours `type`
 // selects between. `multiple` is a `group` of `aria-pressed` buttons; `single`
 // is a radio group drawn as segments, with `aria-checked` and the arrow keys
 // that check as they move. Both have one tab stop for the whole row. A segment
@@ -35,8 +35,8 @@ import { createContext, useContext } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { ToggleGroupType } from "@uniflowed/ui/toggle-group";
-import * as Primitive from "@uniflowed/ui/toggle-group";
+import type { ToggleGroupType } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /** Which way the segments run. */
 export type ToggleGroupOrientation = "horizontal" | "vertical";
