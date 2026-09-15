@@ -110,7 +110,8 @@ A copy remembers where it came from. Its last line names the uf that wrote it
 and a digest of what was written, so `uf ui add` never replaces a file somebody
 edited without `--overwrite`, and `uf ui diff` says whether a difference is your
 edit, the registry's change, or both. [Commands](/reference/cli) has the whole
-of all three commands.
+of all three commands, and [Components](/reference/ui#registry-components)
+renders every component the registry has, live and beside its source.
 
 Every owned component is styled with the tokens `@uniflowed/stylex` compiles,
 so [dark mode](/guide/styling#dark-mode) is one spread on the document, and a
