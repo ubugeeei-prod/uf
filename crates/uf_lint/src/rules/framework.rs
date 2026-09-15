@@ -118,6 +118,46 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "call hooks only at the top level of a component, hook, or `useX` function",
     },
     RuleDescriptor {
+        id: "react/jsx-key",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an element built in an array or by `map` needs a `key`",
+    },
+    RuleDescriptor {
+        id: "react/jsx-no-comment-textnodes",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`//` and `/*` between JSX tags are text on the page, not comments",
+    },
+    RuleDescriptor {
+        id: "react/jsx-no-duplicate-props",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "give each prop once; a repeated one silently replaces the first",
+    },
+    // `warn`: an index is the wrong key only for a list that reorders, filters
+    // or grows at the front, and a list that does none of those is correct code.
+    RuleDescriptor {
+        id: "react/no-array-index-key",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "key a list item by what it is, not by where it stands",
+    },
+    // `warn`: a `children` prop renders exactly what nesting would, and the one
+    // shape that loses content — the prop and nested children together — is
+    // the one the message calls out.
+    RuleDescriptor {
+        id: "react/no-children-prop",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "write `children` between the tags, not as a prop",
+    },
+    RuleDescriptor {
         id: "react/no-derived-state-effect",
         category: RuleCategory::React,
         default_level: RuleLevel::Error,
@@ -148,6 +188,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "keep render idempotent; no clocks, randomness, or storage reads",
+    },
+    RuleDescriptor {
+        id: "react/void-dom-elements-no-children",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "void elements such as `img` and `br` take no children",
     },
     RuleDescriptor {
         id: "react-native/platform-split",

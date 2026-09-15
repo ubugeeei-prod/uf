@@ -1,8 +1,9 @@
 //! One parse, for every rule that needs the module's tree.
 //!
-//! Three runners in this crate want a module read: `flow/syntax` wants what
-//! the parser said about it, the JSX and `import.meta` rules want to walk the
-//! tree, and the two `react/*` rules want it lowered and rendered as ESTree.
+//! Four runners in this crate want a module read: `flow/syntax` wants what
+//! the parser said about it, the accessibility, markup and `import.meta` rules
+//! and the JSX rules `eslint-plugin-react` users know want to walk the tree,
+//! and the two `react/*` tree rules want it lowered and rendered as ESTree.
 //! Each of them used to read the module for itself, so `uf lint` over one file
 //! that trips all three gates parsed it **three times** — and
 //! `uf_transform::estree` has always said the intent was "one file, one
@@ -43,7 +44,8 @@ pub(crate) fn run_module_tree_rules(
     let syntax = super::flow_syntax::wanted(scan, config);
     let tree_work = super::tree::wanted(scan, config);
     let react_work = super::react_tree::wanted(scan, config);
-    if syntax.is_none() && tree_work.is_none() && react_work.is_none() {
+    let jsx_work = super::react_jsx::wanted(scan, config);
+    if syntax.is_none() && tree_work.is_none() && react_work.is_none() && jsx_work.is_none() {
         return Ok(());
     }
 
@@ -75,6 +77,9 @@ pub(crate) fn run_module_tree_rules(
                 if parsed.is_ok() {
                     if let Some(work) = &tree_work {
                         outcome.tree = super::tree::walk(&parsed, work);
+                    }
+                    if let Some(work) = &jsx_work {
+                        outcome.jsx = super::react_jsx::walk(&parsed, work);
                     }
                     if let Some(work) = &react_work {
                         outcome.react =
@@ -117,6 +122,9 @@ pub(crate) fn run_module_tree_rules(
     if let Some(work) = &tree_work {
         super::tree::report(scan, work, outcome.tree, diagnostics);
     }
+    if let Some(work) = &jsx_work {
+        super::react_jsx::report(scan, work, outcome.jsx, diagnostics);
+    }
     if let Some(work) = &react_work {
         super::react_tree::report(scan, work, outcome.react, diagnostics);
     }
@@ -128,5 +136,6 @@ pub(crate) fn run_module_tree_rules(
 struct Outcome {
     syntax: Vec<uf_flow::ParseDiagnostic>,
     tree: Vec<super::tree::Finding>,
+    jsx: Vec<super::react_jsx::Finding>,
     react: Vec<super::react_tree::TreeFinding>,
 }

@@ -370,6 +370,12 @@ running it.
 | --- | --- |
 | `no-danger`, `no-danger-with-children` | `security/no-dangerously-set-inner-html` |
 | `no-unstable-nested-components` | `flow/nested-component` |
+| `jsx-key` | `react/jsx-key`, which also reports a `<>` fragment in a list, and leaves `React.Children.map` alone because React keys what it returns |
+| `no-array-index-key` | `react/no-array-index-key` |
+| `jsx-no-duplicate-props` | `react/jsx-no-duplicate-props` |
+| `no-children-prop` | `react/no-children-prop` |
+| `void-dom-elements-no-children` | `react/void-dom-elements-no-children` |
+| `jsx-no-comment-textnodes` | `react/jsx-no-comment-textnodes`, which leaves text inside `<code>` and `<pre>` alone |
 | `display-name`, `function-component-definition` | `react/component-syntax` — a `component` declaration always has a name |
 | `jsx-no-leaked-render` | `flow/sketchy-number` (needs inference) |
 | `prop-types`, `default-props-match-prop-types`, `require-default-props`, `prefer-exact-props`, `prefer-read-only-props`, `jsx-no-undef` | Flow — component syntax types, defaults, exactness and read-only props, and inference reports an undefined name |
@@ -382,7 +388,7 @@ running it.
 | `jsx-child-element-spacing`, `jsx-closing-bracket-location`, `jsx-closing-tag-location`, `jsx-curly-newline`, `jsx-curly-spacing`, `jsx-equals-spacing`, `jsx-first-prop-new-line`, `jsx-indent`, `jsx-indent-props`, `jsx-max-props-per-line`, `jsx-newline`, `jsx-one-expression-per-line`, `jsx-props-no-multi-spaces`, `jsx-space-before-closing`, `jsx-tag-spacing`, `jsx-wrap-multilines` | `uf fmt` |
 | `forward-ref-uses-ref`, `no-access-state-in-setstate`, `no-arrow-function-lifecycle`, `no-deprecated`, `no-did-mount-set-state`, `no-did-update-set-state`, `no-direct-mutation-state`, `no-is-mounted`, `no-redundant-should-component-update`, `no-set-state`, `no-string-refs`, `no-unsafe`, `no-unused-class-component-methods`, `no-unused-state`, `no-will-update-set-state`, `prefer-es6-class`, `prefer-stateless-function`, `require-optimization`, `require-render-return`, `sort-comp`, `state-in-constructor`, `static-property-placement` | Not planned |
 | `boolean-prop-naming`, `destructuring-assignment`, `forbid-component-props`, `forbid-dom-props`, `forbid-elements`, `hook-use-state`, `jsx-boolean-value`, `jsx-curly-brace-presence`, `jsx-fragments`, `jsx-handler-names`, `jsx-max-depth`, `jsx-no-literals`, `jsx-no-useless-fragment`, `jsx-pascal-case`, `jsx-props-no-spread-multi`, `jsx-props-no-spreading`, `jsx-sort-default-props`, `jsx-sort-props`, `no-adjacent-inline-elements`, `no-multi-comp`, `self-closing-comp`, `sort-default-props` | Project rule |
-| `jsx-key`, `jsx-no-duplicate-props`, `no-array-index-key`, `no-children-prop`, `no-unknown-property`, `no-invalid-html-attribute`, `no-unescaped-entities`, `void-dom-elements-no-children`, `jsx-no-comment-textnodes`, `jsx-no-script-url`, `jsx-no-target-blank`, `iframe-missing-sandbox`, `button-has-type`, `checked-requires-onchange-or-readonly`, `style-prop-object`, `no-namespace`, `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062) |
+| `no-unknown-property`, `no-invalid-html-attribute`, `no-unescaped-entities`, `jsx-no-script-url`, `jsx-no-target-blank`, `iframe-missing-sandbox`, `button-has-type`, `checked-requires-onchange-or-readonly`, `style-prop-object`, `no-namespace`, `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062) |
 
 #### eslint-plugin-react-hooks
 

@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 69] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -236,6 +236,22 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     ("react/hook-syntax", RuleLevel::Warn),
     // Breaking the rules of hooks corrupts React's hook state.
     ("react/hooks-rules", RuleLevel::Error),
+    // A list item with no `key` is matched to the next render by position, so
+    // reordering or filtering the list hands one item's state to another.
+    ("react/jsx-key", RuleLevel::Error),
+    // Text that starts `//` or `/*` between tags renders on the page, and a
+    // comment was never meant to be read there.
+    ("react/jsx-no-comment-textnodes", RuleLevel::Error),
+    // The last of two identical props wins, so the first is code that does
+    // nothing while looking like it does something.
+    ("react/jsx-no-duplicate-props", RuleLevel::Error),
+    // An index is only the wrong key for a list that reorders, filters or
+    // grows at the front; a list that never does is correct code, so `warn`.
+    ("react/no-array-index-key", RuleLevel::Warn),
+    // A `children` prop renders what nesting would. The shape that loses
+    // content — the prop and nested children at once — is named in the
+    // message, and the rule stays `warn` for the rest.
+    ("react/no-children-prop", RuleLevel::Warn),
     // Framework routes are wired by name; `warn` while the scaffold migrates.
     ("react/no-default-export-component", RuleLevel::Warn),
     // An effect whose whole body writes state computed from its own
@@ -257,6 +273,9 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     ("react/no-redundant-memo", RuleLevel::Warn),
     // Non-idempotent render breaks streaming SSR and hydration.
     ("react/no-render-side-effects", RuleLevel::Error),
+    // React throws when it renders a void element such as `<img>` with
+    // children or `dangerouslySetInnerHTML`.
+    ("react/void-dom-elements-no-children", RuleLevel::Error),
     // Platform branches are a preference, not a correctness problem.
     ("react-native/platform-split", RuleLevel::Warn),
     // Leaking a secret into a client bundle is unrecoverable.
