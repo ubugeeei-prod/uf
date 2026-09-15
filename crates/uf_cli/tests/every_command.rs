@@ -100,12 +100,20 @@ const COVERAGE: &[(&str, &str)] = &[
     ("test", "here, and testing.rs for the runner"),
     ("update", "dependencies.rs: runs the package manager"),
     (
+        "dedupe",
+        "dependencies.rs: runs the package manager, or says it cannot",
+    ),
+    (
         "pm",
         "here, and approve/tests.rs for the listing and npm's sentence",
     ),
     (
         "patch",
         "dependencies.rs: asks the package manager, or names patch-package",
+    ),
+    (
+        "link",
+        "dependencies.rs: links a directory, or says the manager cannot",
     ),
     (
         "catalog",

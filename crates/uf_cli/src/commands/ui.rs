@@ -116,15 +116,20 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, names: &[String], overwrite: bool) -> Result
             .iter()
             .map(|package| project::package_spec(package))
             .collect();
-        crate::commands::pm::add(&place.root, ui, &specs, DependencyKind::Prod).with_context(
-            || {
-                format!(
-                    "`uf ui add` wrote no component, because the packages they import could not \
+        crate::commands::pm::add(
+            &place.root,
+            ui,
+            &specs,
+            DependencyKind::Prod,
+            &crate::commands::pm::Scope::Project,
+        )
+        .with_context(|| {
+            format!(
+                "`uf ui add` wrote no component, because the packages they import could not \
                      be added: {}",
-                    specs.join(" ")
-                )
-            },
-        )?;
+                specs.join(" ")
+            )
+        })?;
     }
 
     project::apply(&plan)

@@ -35,7 +35,8 @@ use uf_config::UniflowedConfig;
 
 pub use crate::builds::{Approvals, Buildable, LIFECYCLE_SCRIPTS, approvals_for};
 pub use crate::command::{
-    DependencyKind, Invocation, InvocationArgs, Operation, PROGRAMS, command_for,
+    DependencyKind, Invocation, InvocationArgs, InvocationEnv, LinkTarget, Operation, PROGRAMS,
+    command_for,
 };
 pub use crate::confusion::Confusion;
 pub use crate::delta::{
@@ -46,8 +47,9 @@ pub use crate::detect::{
     DetectionOptions, DetectionOutcome, DetectionSource, Lockfile, LockfileList,
     MAX_ANCESTOR_DEPTH, MAX_MANIFEST_BYTES, MAX_PACKAGE_MANAGER_FIELD_BYTES, ManifestFault,
     PackageManager, PackageManagerFieldError, PackageManagerSpec, UnknownPackageManager, Version,
-    WorkspaceMarker, YarnEdition, detect_package_manager, detect_package_manager_with,
-    is_pnpm_workspace_root, parse_package_manager_field, scan_lockfiles, yarn_edition_in,
+    WorkspaceMarker, YarnEdition, declares_workspaces, detect_package_manager,
+    detect_package_manager_with, is_pnpm_workspace_root, parse_package_manager_field,
+    scan_lockfiles, yarn_edition_in,
 };
 pub use crate::manifests::{Changes, DEPENDENCY_FIELDS, Declaration};
 pub use crate::progress::{
@@ -60,9 +62,9 @@ pub use crate::provenance::{
 pub use crate::ranges::{Level, Prefix, Range};
 pub use crate::registry::{MAX_PACKUMENT_BYTES, Packument, RegistryError, RegistryRouting, Route};
 pub use crate::run::{
-    InstallObserver, ManagerRun, ManagerRunError, ManagerStream, check_operands, installable,
-    invocation_for, run_install, run_install_watched, run_operation, run_operation_with_detection,
-    run_watched, run_watched_with_detection,
+    InstallObserver, ManagerRun, ManagerRunError, ManagerStream, check_member_operation,
+    check_operands, installable, invocation_for, run_install, run_install_watched, run_operation,
+    run_operation_with_detection, run_watched, run_watched_with_detection,
 };
 
 /// JSON object keys that must never be treated as data.

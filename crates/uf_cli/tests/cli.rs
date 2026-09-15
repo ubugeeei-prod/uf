@@ -1510,7 +1510,8 @@ fn explain_says_which_commands_it_knows() {
         "{stderr}"
     );
     assert!(
-        stderr.contains("install, add, remove, uninstall, update, patch, pm, catalog"),
+        stderr
+            .contains("install, add, remove, uninstall, update, dedupe, link, patch, pm, catalog"),
         "{stderr}"
     );
     // The four that `uf explain` answered and this list did not name, before

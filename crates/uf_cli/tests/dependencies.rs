@@ -612,6 +612,8 @@ fn explain_names_the_command_each_of_these_will_spawn() {
         ("add", "npm install"),
         ("remove", "npm uninstall"),
         ("update", "npm update"),
+        ("dedupe", "npm dedupe"),
+        ("link", "npm link"),
         ("why", "npm explain"),
     ] {
         let stdout = ok(dir.path(), &["explain", command]);
@@ -661,5 +663,272 @@ fn patch_on_a_manager_that_has_none_is_a_refusal_rather_than_a_passthrough() {
         !dir.path().join("patches").exists(),
         "`uf patch` wrote a patch directory for a manager that cannot patch"
     );
+    assert_plain(&stderr);
+}
+
+/// A workspace of two members, `a` and `b`, declared the way npm reads one,
+/// with a local package in `vendor/` for them to depend on.
+fn workspace(dir: &Path) {
+    project(dir, &[("tiny", "1.2.3")]);
+    fs::write(
+        dir.join("package.json"),
+        "{\n  \"name\": \"deps-workspace\",\n  \"version\": \"1.0.0\",\n  \"private\": true,\n  \
+         \"workspaces\": [\"packages/*\"]\n}\n",
+    )
+    .unwrap();
+    for member in ["a", "b"] {
+        let path = dir.join("packages").join(member);
+        fs::create_dir_all(&path).unwrap();
+        fs::write(
+            path.join("package.json"),
+            format!("{{\n  \"name\": \"{member}\",\n  \"version\": \"1.0.0\"\n}}\n"),
+        )
+        .unwrap();
+    }
+}
+
+/// `--filter` changes the members it selects, and nothing else: not the other
+/// member, not the root, and not a second lockfile inside the member.
+///
+/// A path specifier is read from the member's directory, because that is where
+/// the manager runs — which is the whole of how `--filter` means the same thing
+/// to every manager.
+#[test]
+fn a_filter_adds_to_the_members_it_selects_and_to_nothing_else() {
+    let dir = tempfile::tempdir().unwrap();
+    workspace(dir.path());
+
+    let stdout = ok(
+        dir.path(),
+        &["add", "--filter", "a", "file:../../vendor/tiny"],
+    );
+
+    assert_eq!(
+        json(dir.path(), "packages/a/package.json")["dependencies"]["tiny"],
+        "file:../../vendor/tiny"
+    );
+    assert!(json(dir.path(), "packages/b/package.json")["dependencies"].is_null());
+    assert!(json(dir.path(), "package.json")["dependencies"].is_null());
+    assert!(
+        dir.path().join("package-lock.json").is_file(),
+        "the workspace root's lockfile was not written"
+    );
+    assert!(
+        !dir.path().join("packages/a/package-lock.json").exists(),
+        "the member grew a lockfile of its own"
+    );
+    assert!(row(&stdout, "command").ends_with("(a)"), "{stdout}");
+    assert!(stdout.contains("workspace"), "{stdout}");
+}
+
+/// `-w` from inside a member is the workspace root, which is where a
+/// workspace's development tools belong.
+#[test]
+fn workspace_root_from_inside_a_member_changes_the_root() {
+    let dir = tempfile::tempdir().unwrap();
+    workspace(dir.path());
+
+    ok(
+        &dir.path().join("packages/b"),
+        &["add", "--dev", "-w", "file:./vendor/tiny"],
+    );
+
+    // npm writes the specifier back normalised, as `file:vendor/tiny`.
+    assert!(
+        json(dir.path(), "package.json")["devDependencies"]["tiny"].is_string(),
+        "the workspace root's manifest did not get the dependency"
+    );
+    assert!(json(dir.path(), "packages/b/package.json")["devDependencies"].is_null());
+}
+
+/// And it runs under the workspace root's config, not the member's defaults:
+/// the member here has no `uf.config.js`, and having none is not "scripts
+/// refused" when the root allows them. The same reading is what finds a manager
+/// the root pins in uf's store, which a member with no config would otherwise
+/// look for on `PATH` and not find.
+#[test]
+fn workspace_root_from_a_member_runs_under_the_roots_config() {
+    let dir = tempfile::tempdir().unwrap();
+    workspace(dir.path());
+    fs::write(
+        dir.path().join("uf.config.js"),
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\
+         export default defineConfig({\n  \
+           app: { router: { enabled: false } },\n  \
+           pm: { allowLifecycleScripts: true },\n\
+         });\n",
+    )
+    .unwrap();
+
+    let stdout = ok(
+        &dir.path().join("packages/b"),
+        &["add", "-w", "file:./vendor/tiny"],
+    );
+
+    assert!(
+        !row(&stdout, "command").contains("--ignore-scripts"),
+        "the member's defaults decided rather than the root's config:\n{stdout}"
+    );
+}
+
+/// And `remove --filter` takes a package out of the member it names while the
+/// other member keeps it.
+#[test]
+fn a_filter_removes_from_the_members_it_selects() {
+    let dir = tempfile::tempdir().unwrap();
+    workspace(dir.path());
+    ok(
+        dir.path(),
+        &[
+            "add",
+            "--filter",
+            "a",
+            "--filter",
+            "b",
+            "file:../../vendor/tiny",
+        ],
+    );
+
+    ok(dir.path(), &["remove", "--filter", "b", "tiny"]);
+
+    assert_eq!(
+        json(dir.path(), "packages/a/package.json")["dependencies"]["tiny"],
+        "file:../../vendor/tiny"
+    );
+    assert!(json(dir.path(), "packages/b/package.json")["dependencies"]["tiny"].is_null());
+}
+
+/// A selector that picks nothing is refused before anything is installed, with
+/// the members it could have picked.
+#[test]
+fn a_filter_that_selects_nothing_changes_nothing_and_names_the_members() {
+    let dir = tempfile::tempdir().unwrap();
+    workspace(dir.path());
+
+    let (stdout, stderr, success) = run(
+        dir.path(),
+        &["add", "--filter", "nobody", "file:../../vendor/tiny"],
+    );
+
+    assert!(
+        !success,
+        "a filter that picked nothing succeeded:\n{stdout}"
+    );
+    assert!(stderr.contains("nobody"), "{stderr}");
+    assert!(
+        stderr.contains("a, b"),
+        "the members were not named:\n{stderr}"
+    );
+    assert!(!dir.path().join("package-lock.json").exists());
+    assert!(!dir.path().join("node_modules").exists());
+}
+
+/// And one outside any workspace is refused the same way, rather than quietly
+/// adding to the project that is there.
+#[test]
+fn a_filter_outside_a_workspace_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[("tiny", "1.2.3")]);
+
+    let (_, stderr, success) = run(dir.path(), &["add", "--filter", "a", "./vendor/tiny"]);
+
+    assert!(!success);
+    assert!(stderr.contains("not in one"), "{stderr}");
+    assert!(json(dir.path(), "package.json")["dependencies"].is_null());
+}
+
+/// `uf install --prod` leaves `devDependencies` out of `node_modules`, with
+/// the manager's own flag for it on the `command` row.
+#[test]
+fn a_production_install_leaves_dev_dependencies_out() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[("tiny", "1.2.3"), ("devtool", "2.0.0")]);
+    ok(dir.path(), &["add", "./vendor/tiny"]);
+    ok(dir.path(), &["add", "--dev", "./vendor/devtool"]);
+    fs::remove_dir_all(dir.path().join("node_modules")).unwrap();
+
+    let stdout = ok(dir.path(), &["install", "--prod"]);
+
+    assert!(dir.path().join("node_modules/tiny").exists(), "{stdout}");
+    assert!(
+        !dir.path().join("node_modules/devtool").exists(),
+        "a devDependency was installed by a production install:\n{stdout}"
+    );
+    assert!(row(&stdout, "command").contains("--omit=dev"), "{stdout}");
+}
+
+/// `uf dedupe` is the manager's dedupe, with scripts refused, and a tree with
+/// nothing to collapse says so in a line.
+#[test]
+fn dedupe_runs_the_managers_own_and_reports_the_tree() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[("tiny", "1.2.3")]);
+    ok(dir.path(), &["add", "./vendor/tiny"]);
+
+    let stdout = ok(dir.path(), &["dedupe"]);
+
+    assert_eq!(
+        row(&stdout, "command")
+            .split_whitespace()
+            .skip(1)
+            .collect::<Vec<_>>(),
+        ["npm", "dedupe", "--ignore-scripts"]
+    );
+    assert!(stdout.contains("already up to date"), "{stdout}");
+}
+
+/// `uf link ./dir` links the directory into `node_modules` as a link, not a
+/// copy.
+///
+/// npm links through its global directory, so the test gives it one of its
+/// own rather than letting it write into the machine's.
+#[test]
+fn link_a_directory_links_it_into_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[("tiny", "1.2.3")]);
+    let prefix = dir.path().join("npm-global");
+    fs::create_dir_all(prefix.join("lib/node_modules")).unwrap();
+    fs::create_dir_all(prefix.join("bin")).unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["--color", "never", "link", "./vendor/tiny"])
+        .env("npm_config_prefix", &prefix)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        output.status.success(),
+        "{stdout}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let linked = fs::symlink_metadata(dir.path().join("node_modules/tiny"))
+        .unwrap_or_else(|error| panic!("nothing was linked: {error}\n{stdout}"));
+    assert!(linked.file_type().is_symlink(), "a copy, not a link");
+    assert!(row(&stdout, "command").contains("npm link --ignore-scripts ./vendor/tiny"));
+}
+
+/// Yarn 2+ links by path and keeps no registry of names, so `uf link <name>`
+/// there is a refusal that says to link the path — before anything is read or
+/// written, and without Yarn needing to be installed at all.
+#[test]
+fn link_by_name_on_yarn_2_is_refused_with_the_form_it_has() {
+    let dir = tempfile::tempdir().unwrap();
+    project(dir.path(), &[]);
+    fs::write(
+        dir.path().join("yarn.lock"),
+        "__metadata:\n  version: 8\n  cacheKey: 10c0\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join(".yarnrc.yml"), "nodeLinker: node-modules\n").unwrap();
+
+    let (stdout, stderr, success) = run(dir.path(), &["link", "left-pad"]);
+
+    assert!(!success, "{stdout}");
+    assert!(stderr.contains("link <name>"), "{stderr}");
+    assert!(stderr.contains("uf link <path to the package>"), "{stderr}");
+    assert!(!dir.path().join("node_modules").exists());
     assert_plain(&stderr);
 }

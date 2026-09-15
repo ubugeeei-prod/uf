@@ -77,24 +77,46 @@ pub(crate) fn update(
     packages: &[String],
     level: Option<Level>,
     dry_run: bool,
+    scope: &super::Scope,
 ) -> Result<()> {
     uf_pm::check_operands(packages)?;
     let resolved = load_config(cwd)?;
-    let root = resolved.root.clone();
+    // `--filter` and `-w` narrow the report and the rewrite to the manifests
+    // they choose, and everything is settled at the workspace root, which is
+    // where the manager keeps the one lockfile.
+    let targets = super::deps::targets(&resolved, scope)?;
+    // The registry a scoped report reads is the workspace root's, for the
+    // reason `deps::delegate` gives about its manager.
+    let resolved = if targets.base == resolved.root {
+        resolved
+    } else {
+        load_config(&targets.base)?
+    };
+    let root = targets.base.clone();
     let project = project_label(&root).to_string();
 
     // Read before anything runs. After the manager's update the manifests are
     // unchanged — it does not touch them — but the reading has to happen on
     // this side of the rewrite for the level path, and doing it once keeps the
     // two paths reporting the same numbers.
-    let declared = uf_pm::manifests::declarations(&root)?;
+    let chosen = targets
+        .each
+        .iter()
+        .map(|target| target.dir.join("package.json"))
+        .collect::<BTreeSet<_>>();
+    let declared = uf_pm::manifests::declarations(&root)?
+        .into_iter()
+        .filter(|declaration| {
+            *scope == super::Scope::Project || chosen.contains(&declaration.manifest)
+        })
+        .collect::<Vec<_>>();
     let wanted = requested(&declared, packages);
 
     // The plain form runs the manager first, so its output is on the screen
     // before uf's own report — the report is the new thing, and the new thing
     // goes last.
     if level.is_none() && !dry_run {
-        super::deps::update(cwd, ui, packages)?;
+        super::deps::update(cwd, ui, packages, scope)?;
     }
 
     // The registry uf *reads* from, which since ubugeeei-prod/uf#540 is
@@ -219,6 +241,12 @@ pub(crate) fn update(
     // The manifests say something new, so the lockfile and the tree have to be
     // made to agree with them. A `--latest` that left the install behind would
     // have changed a file and nothing else.
+    // Scoped, the install runs at the workspace root: the manifests it has to
+    // agree with are the members', and the lockfile they share is the root's.
+    let install_scope = match scope {
+        super::Scope::Project => super::Scope::Project,
+        _ => super::Scope::WorkspaceRoot,
+    };
     super::deps::delegate(
         cwd,
         ui,
@@ -228,6 +256,7 @@ pub(crate) fn update(
             operands: &[],
             retry: "uf install".to_owned(),
             announced: true,
+            scope: &install_scope,
         },
     )
 }
