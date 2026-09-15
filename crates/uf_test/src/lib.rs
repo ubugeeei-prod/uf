@@ -77,6 +77,7 @@ mod runner;
 mod runner_plan;
 mod scan;
 mod schedule;
+mod shard;
 mod timings;
 mod watch;
 
@@ -118,6 +119,10 @@ pub use crate::runner_plan::{
 pub use crate::schedule::{
     COLD_NANOS_PER_BYTE, MIN_WORKER_START_MICROS, ScheduleBasis, ScheduleEntry, auto_workers,
     cold_weight_micros, makespan_micros, schedule_files,
+};
+pub use crate::shard::{
+    MAX_SHARDS, MergedShards, SHARD_RECORD_VERSION, Shard, ShardError, ShardMergeError,
+    ShardRecord, merge_shards, partition_fingerprint, shard_files,
 };
 pub use crate::timings::{
     CACHE_DIRECTORY, MAX_TIMING_ENTRIES, MAX_TIMING_MICROS, MAX_TIMINGS_BYTES, TIMINGS_FILE_NAME,
