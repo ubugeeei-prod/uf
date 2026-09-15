@@ -82,6 +82,7 @@ import {
   clientModuleSource,
   resolveRouteTarget,
   routesModuleSource,
+  routingRulesOf,
   scanRoutes,
   serverModuleSource,
 } from "./internal/routes.js";
@@ -109,8 +110,13 @@ import {
 } from "./internal/flight.js";
 import { createChannelMiddleware } from "./internal/diagnostics.js";
 import { devtoolsPreamble } from "./internal/devtools.js";
-import { send, toRequest } from "./internal/http.js";
-import { beginRequest } from "./internal/serve.js";
+import { send, toAddressRequest, toRequest } from "./internal/http.js";
+import {
+  answerRouting,
+  answersInFrontOfFiles,
+  beginRequest,
+  rewriteRouting,
+} from "./internal/serve.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
@@ -184,6 +190,10 @@ export default function uniflowed(options = {}) {
     : null;
 
   const accessibility = ufConfig.accessibility ?? {};
+  // `app.router.redirects`, `rewrites` and `headers`: written into the server
+  // bundle for every host that serves a build, and asked by `uf dev` itself
+  // from the same object. See `@uniflowed/server`'s `internal/routing.js`.
+  const routing = routingRulesOf(app.router);
 
   return [
     flowPlugin({
@@ -194,6 +204,7 @@ export default function uniflowed(options = {}) {
       navigation,
       mount,
       flightState,
+      routing,
       command: options.command,
       accessibility,
     }),
@@ -217,6 +228,7 @@ function flowPlugin({
   navigation,
   mount,
   flightState,
+  routing,
   command,
   accessibility,
 }) {
@@ -518,8 +530,8 @@ function flowPlugin({
       }
       if (id === resolved(VIRTUAL.server)) {
         return flightState == null
-          ? serverModuleSource(entryPath)
-          : flightServerSource(entryPath, VIRTUAL.routes, VIRTUAL.actions);
+          ? serverModuleSource(entryPath, routing)
+          : flightServerSource(entryPath, VIRTUAL.routes, VIRTUAL.actions, routing);
       }
       if (flightState != null) {
         if (id === resolved(FLIGHT_VIRTUAL.entry)) return rscEntrySource(VIRTUAL.routes);
@@ -709,6 +721,32 @@ function flowPlugin({
         service = null;
       });
 
+      // `app.router.headers` and `redirects`, in front of Vite's own middleware
+      // — the hook's body runs before those are installed — so a redirect
+      // answers before `public/` is looked in and a header reaches a file Vite
+      // serves, as both do in front of the static half of every other door.
+      // Vite's module server is left alone: `/@vite/client` and `/@fs/…` are
+      // development plumbing no deployment has, and `/__uf/` is the browser's
+      // channel back. Not mounted at all for a project with neither list.
+      if (answersInFrontOfFiles(routing)) {
+        devServer.middlewares.use((request, response, next) => {
+          const url = request.url ?? "/";
+          if (
+            url.startsWith("/@") ||
+            url.startsWith("/node_modules/") ||
+            url.startsWith("/__uf/")
+          ) {
+            next();
+            return;
+          }
+          answerRouting(routing, toAddressRequest(request), response)
+            .then((answered) => {
+              if (!answered) next();
+            })
+            .catch(next);
+        });
+      }
+
       // A reserved file appearing or disappearing changes the route table,
       // which lives in a virtual module the watcher knows nothing about.
       //
@@ -820,14 +858,23 @@ function flowPlugin({
           // `request.url` and not `originalUrl`, which is the URL Vite's base
           // middleware has already stripped the base from — and the route
           // table's paths have no base in them either.
-          const url = request.url ?? "/";
+          //
+          // `let`, because a rewrite moves it: from here on it is the address
+          // the application answers for, which is what the render, the payload
+          // and the document test below all have to agree on.
+          let url = request.url ?? "/";
           // Declared out here so the catch below can still settle: a request
           // that failed is a request that happened, and a middleware that
           // logged its arrival is owed its callback either way.
           let lifecycle = null;
           try {
             const entry = await importServerEntry(devServer);
-            const asRequest = await toRequest(request, devServer.config);
+            const arrived = await toRequest(request, devServer.config);
+            // `app.router.rewrites`, where `createFetchHandler` applies them for
+            // every other door: after the files Vite already served, before the
+            // guard — so the guard that runs is the destination's.
+            let asRequest = (await rewriteRouting(entry.routing, arrived)) ?? arrived;
+            if (asRequest !== arrived) url = addressOf(asRequest);
 
             // The request begins here and ends when the response has been
             // written, which is what `after()` promises and what `uf preview`,
@@ -835,7 +882,7 @@ function flowPlugin({
             // logs a response's status has to mean the same thing in
             // development as in production. See `internal/serve.js` and
             // ubugeeei-prod/uf#389.
-            lifecycle = await beginRequest(entry, asRequest);
+            lifecycle = await beginRequest(entry, arrived);
             const answered = await lifecycle.run(async () => {
               // Before anything answers: a middleware guards a subtree, so it
               // has to run for a page, for a route handler, and for a path
@@ -843,8 +890,14 @@ function flowPlugin({
               // dispatcher and again inside the renderer would have left
               // `/dashboard/typo` unguarded and run it twice for a path that
               // is both. See ubugeeei-prod/uf#260.
+              //
+              // A `Request` back is a middleware's `rewrite()`, already past
+              // the destination's own middleware.
               const guarded = await entry.runMiddleware(asRequest);
-              if (guarded != null) {
+              if (guarded instanceof Request) {
+                asRequest = guarded;
+                url = addressOf(guarded);
+              } else if (guarded != null) {
                 await send(response, guarded);
                 return true;
               }
@@ -912,7 +965,7 @@ function flowPlugin({
               // and the project's own not-found *page* under `uf preview` and
               // `uf start` — a difference in the body of a 404 for a path that
               // is an asset request in the first place.
-              const notDocument = notADocumentBecause(request);
+              const notDocument = notADocumentBecause(request, url);
               if (notDocument === "accept") {
                 // Everything about this is a navigation except the header, and
                 // the path is one uf renders. Say so, rather than letting the
@@ -1078,7 +1131,21 @@ async function importServerEntry(devServer) {
 }
 
 /**
+ * The path and query a `Request` is for, which is what the dev server's
+ * renderer and payload test are keyed on.
+ *
+ * @param {Request} request
+ */
+function addressOf(request) {
+  const url = new URL(request.url);
+  return url.pathname + url.search;
+}
+
+/**
  * Why `request` is not a document request, or `null` when it is one.
+ *
+ * `url` is the address the application answers for, which a rewrite may have
+ * moved away from the one the request line named.
  *
  * A reason rather than a boolean because one of the four is worth saying out
  * loud. Three of them mean the request belongs to somebody else — Vite's module
@@ -1091,9 +1158,8 @@ async function importServerEntry(devServer) {
  * confused: `/favicon.svg` with `Accept: *\/*` is an asset, not a navigation
  * with the wrong header, and still goes back to Vite's chain untouched.
  */
-function notADocumentBecause(request) {
+function notADocumentBecause(request, url = request.url ?? "/") {
   if (request.method !== "GET" && request.method !== "HEAD") return "method";
-  const url = request.url ?? "/";
   if (url.startsWith("/@") || url.startsWith("/node_modules/")) return "module-server";
   const pathname = url.split("?")[0];
   // A request for a file — `/favicon.svg`, `/assets/x.js` — that no static

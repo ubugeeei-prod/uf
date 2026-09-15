@@ -27,10 +27,38 @@
 // that could only observe would not be able to reject, and one that had to
 // answer could not be a logger.
 //
-// There is no `next()` and no way to rewrite the request. Rewriting needs a
-// spelling — a returned `Request`, or a `next(request)` argument — and picking
-// one badly is harder to undo than not having it, so it is not spelled here
-// yet. What exists answers or continues, and says so.
+// There is no `next()`. A third answer is `rewrite(destination)`: serve another
+// route of this application at the address the visitor asked for.
+//
+//   // app/$middleware.js
+//   import { rewrite } from "@uniflowed/router/middleware";
+//
+//   export default function middleware(request: Request) {
+//     if (cookies().get("beta") != null) return rewrite("/beta" + new URL(request.url).pathname);
+//   }
+//
+// A returned value rather than a returned `Request`, which was the other
+// spelling on the table. A `Request` could change the method and the headers
+// too, and `headers()` reads the request the host began — so a middleware that
+// added a header would have handed the page one set of headers and `headers()`
+// another. A rewrite changes the path, the query when it names one, and
+// nothing else.
+//
+// # A rewrite runs the destination's middleware
+//
+// The chain starts again from the root over the middleware that has not run
+// yet, against the new path. So a rewrite into `/admin` passes the guard on
+// `/admin` exactly as a request for it would, and is never an unguarded way to
+// a guarded page; a middleware that already ran for this request does not run
+// a second time, which is also what makes the loop finite.
+//
+// # A payload request is its document
+//
+// A browser navigating a React Server Components application asks for
+// `/pricing/__uf.flight` rather than `/pricing`. The chain is matched against,
+// and every middleware is handed, the document's URL — so the check a
+// middleware writes against `/pricing` holds for a client navigation too, and
+// a rewrite of the document becomes a rewrite of its payload.
 //
 // # The request it runs inside
 //
@@ -68,6 +96,7 @@
 // `routesModuleSource` keeps the middleware table in an export the client
 // never imports, for the same reason it does that with route handlers.
 
+import { documentPathOf, flightUrl } from "./internal/flight.js";
 import { requireRequest } from "./internal/request.js";
 import type { RouteParams } from "./internal/runtime.js";
 
@@ -79,11 +108,39 @@ export type MiddlewareContext = {|
   readonly searchParams: URLSearchParams,
 |};
 
+/**
+ * What a middleware returns to serve another route at the requested address.
+ *
+ * Built by [`rewrite`] and read by the runner; a class so that the runner can
+ * tell it from a `Response` without trusting the shape of an object.
+ */
+export class Rewrite {
+  +destination: string;
+
+  constructor(destination: string) {
+    this.destination = destination;
+  }
+}
+
+/**
+ * Serve `destination` — a path of this application — in place of the path the
+ * request named.
+ *
+ * Relative to the request, so `"/beta/pricing"` and `"../pricing"` both work.
+ * A destination that names no query keeps the request's; one that names a
+ * query replaces it. Another origin is refused when the middleware returns it:
+ * sending a visitor elsewhere is `Response.redirect`, and proxying to another
+ * server is a route handler that fetches.
+ */
+export function rewrite(destination: string | URL): Rewrite {
+  return new Rewrite(typeof destination === "string" ? destination : destination.href);
+}
+
 /** One middleware function. */
 export type Middleware = (
   request: Request,
   context: MiddlewareContext,
-) => Response | void | Promise<Response | void>;
+) => Response | Rewrite | void | Promise<Response | Rewrite | void>;
 
 /** A middleware module, as the generated table loads it. */
 export type MiddlewareModule = { readonly [name: string]: mixed };
@@ -100,7 +157,10 @@ export type MiddlewareRecord = {|
  * Build the middleware runner for one application.
  *
  * Returns `null` when every middleware on the path declined, which is the
- * caller's signal to carry on to the handler or the page.
+ * caller's signal to carry on to the handler or the page. Returns a `Request`
+ * when one of them rewrote: the same request at the destination, which the
+ * caller carries on with instead — and which has already been past the
+ * destination's middleware.
  *
  * The runner is called once per request, above both the dispatcher and the
  * renderer, rather than from inside each of them. Putting the call inside
@@ -112,7 +172,7 @@ export type MiddlewareRecord = {|
  */
 export function createMiddlewareRunner(options: {|
   readonly middleware: $ReadOnlyArray<MiddlewareRecord>,
-|}): (request: Request) => Promise<Response | null> {
+|}): (request: Request) => Promise<Response | Request | null> {
   // Root first, so an application-wide check runs before the one that guards a
   // section of it. A shorter path is always an ancestor of a longer one that
   // also matched, so segment count is the whole of the ordering.
@@ -120,7 +180,7 @@ export function createMiddlewareRunner(options: {|
     (a, b) => segmentsOf(a.path).length - segmentsOf(b.path).length,
   );
 
-  return async function runMiddleware(request: Request): Promise<Response | null> {
+  return async function runMiddleware(request: Request): Promise<Response | Request | null> {
     // Checked rather than assumed, and checked before the table so that a host
     // is caught on its first request whether or not this project happens to
     // have a middleware. `createApplicationHandler` makes the same argument
@@ -138,13 +198,26 @@ export function createMiddlewareRunner(options: {|
       return null;
     }
 
-    const url = new URL(request.url);
+    const arrived = new URL(request.url);
+    const document = documentPathOf(arrived.pathname);
+    // The URL the chain is matched against and every middleware is handed: the
+    // document's, for a payload request. See "A payload request is its
+    // document" above.
+    let url = document == null ? arrived : withPathname(arrived, document);
+    let seen = document == null ? request : requestAt(request, url);
+    let rewritten = false;
+    const ran: Set<MiddlewareRecord> = new Set();
 
-    for (const record of table) {
+    for (let index = 0; index < table.length; index += 1) {
+      const record = table[index];
+      if (ran.has(record)) {
+        continue;
+      }
       const params = matchPrefix(record.path, url.pathname);
       if (params == null) {
         continue;
       }
+      ran.add(record);
 
       const middleware = pick(await record.load(), record.file);
       // In the host's context, not one of this module's own. Two middleware on
@@ -152,14 +225,69 @@ export function createMiddlewareRunner(options: {|
       // underneath them: `draftMode().isEnabled` is one answer for the whole
       // request, and every `after()` on the request lands in one ordered list
       // that the host drains once, after the response has gone.
-      const result = await middleware(request, { params, searchParams: url.searchParams });
-      if (result != null) {
-        return result;
+      const result = await middleware(seen, { params, searchParams: url.searchParams });
+      if (result == null) {
+        continue;
       }
+      if (result instanceof Rewrite) {
+        url = destinationOf(result.destination, url, record.file);
+        seen = requestAt(seen, url);
+        rewritten = true;
+        // From the root again, over what has not run: the destination's guards
+        // are owed their say, and the ones that already had it are not asked
+        // twice.
+        index = -1;
+        continue;
+      }
+      return result;
     }
 
-    return null;
+    if (!rewritten) {
+      return null;
+    }
+    return document == null
+      ? seen
+      : requestAt(seen, new URL(flightUrl(url.pathname + url.search), url));
   };
+}
+
+/**
+ * Where a rewrite goes, resolved against the URL the middleware was handed.
+ *
+ * Refused by name when it leaves the origin, because the one thing a rewrite
+ * promises is that this application answers.
+ */
+function destinationOf(destination: string, base: URL, file: string): URL {
+  const next = new URL(destination, base);
+  if (next.origin !== base.origin) {
+    throw new Error(
+      `${file} rewrote ${base.pathname} to ${destination}, which is another origin. A rewrite ` +
+        "serves another route of this application: answer with `Response.redirect` to send the " +
+        "visitor elsewhere, or fetch the other server from a route handler.",
+    );
+  }
+  if (!destination.includes("?")) {
+    next.search = base.search;
+  }
+  next.hash = "";
+  return next;
+}
+
+function withPathname(url: URL, pathname: string): URL {
+  const next = new URL(url.href);
+  next.pathname = pathname;
+  return next;
+}
+
+/**
+ * `request` at another URL: same method, headers, signal and body.
+ *
+ * A `Request` is a valid `RequestInit`, so a streamed body is handed on rather
+ * than read.
+ */
+function requestAt(request: Request, url: URL): Request {
+  // $FlowFixMe[incompatible-call] - a `Request` is read as the `RequestInit` it satisfies.
+  return new Request(url.href, request);
 }
 
 /**
@@ -171,6 +299,8 @@ export function createMiddlewareRunner(options: {|
  * ignored is the bug this whole module exists to stop happening.
  */
 function pick(module: MiddlewareModule, file: string): Middleware {
+  // `rewrite` is an export a middleware module may well import, and is never
+  // the middleware itself.
   const exported = typeof module.default === "function" ? module.default : module.middleware;
   if (typeof exported !== "function") {
     throw new Error(

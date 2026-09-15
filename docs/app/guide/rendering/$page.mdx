@@ -132,11 +132,11 @@ deployment.
 
 | Goal | Config shape | What to verify |
 | --- | --- | --- |
-| A docs, blog or marketing site that is only files | `build.staticBuild: true`, or `app.rendering.modes: ["ssg"]` | Every parameterized page exports `generateStaticParams`; there are no route handlers, middleware, or callable actions |
+| A docs, blog or marketing site that is only files | `build.staticBuild: true`, or `app.rendering.modes: ["ssg"]` | Every parameterized page exports `generateStaticParams`; there are no route handlers, middleware, callable actions, or `app.router` redirects, rewrites and headers |
 | A static site whose links behave like ordinary web pages | `modes: ["ssg"]`, `navigation: "document"` | Same static checks, plus client state is not expected to survive a navigation |
 | A server app with cached documents where possible | the default `["ppr", "ssr", "ssg", "isr"]` | The `answered by a server` list is deployed with a Node, Bun, Deno, edge, serverless or container adapter |
 | A server app that must never prerender | `app.rendering.modes: ["ssr"]` | `generateStaticParams` will not run during the build; route data is read at request time |
-| A single-page application behind an SPA rewrite | `app.rendering.modes: ["csr"]` | The app has no route handlers, middleware, callable actions, or reachable server-only modules |
+| A single-page application behind an SPA rewrite | `app.rendering.modes: ["csr"]` | The app has no route handlers, middleware, callable actions, `app.router` rules, or reachable server-only modules |
 
 Use [Routing](/guide/routing) for the files that create routes, middleware and
 handlers, [Server Components](/guide/server-components) for the client/server

@@ -64,12 +64,14 @@
 import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 
-import { reportMalformedRequests, send } from "./node.js";
+import { pinHeaders, reportMalformedRequests, send } from "./node.js";
 
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { flightResponse } from "./internal/flight.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { headersFor, redirectFor, rewriteFor } from "./internal/routing.js";
 import { processLogger } from "./log.js";
 
 /**
@@ -181,8 +183,12 @@ export type StandaloneApp = {|
    * running once it was compiled. See ubugeeei-prod/uf#260, and
    * `@uniflowed/vite`'s `createApplicationHandler`, which says the same thing
    * about `uf preview` and `uf start`.
+   *
+   * A `Request` back is a middleware's `rewrite()`; see `./internal/application.js`.
    */
-  readonly runMiddleware: (request: Request) => Promise<Response | null>,
+  readonly runMiddleware: (request: Request) => Promise<Response | Request | null>,
+  /** `app.router`'s redirects, rewrites and headers; see `./internal/routing.js`. */
+  readonly routing?: RoutingRules,
   /**
    * Begin the request everything above runs inside.
    *
@@ -394,6 +400,21 @@ export function createHandler(
     const pathname = decodePath(url.pathname);
     const cookie = request.headers.cookie;
     const prerendered = prerenderedMayAnswer(typeof cookie === "string" ? cookie : null);
+    // Built before the lookups rather than after them, because the rules below
+    // are asked about it. A body is a stream nobody has read yet, so building
+    // it early costs nothing for a request a file answers.
+    const asRequest = toRequest(request, url);
+
+    // `app.router.headers` and `redirects`, in front of the embedded files as
+    // every other front door puts them. Pinned rather than set, because this
+    // door writes a file and a document with `setHeader` calls of its own, and
+    // the project's rule is the one that has to win. See `./internal/routing.js`.
+    pinHeaders(response, headersFor(app.routing, asRequest));
+    const moved = redirectFor(app.routing, asRequest);
+    if (moved != null) {
+      await sendUnlessHead(response, method, moved);
+      return;
+    }
 
     if (pathname != null && (method === "GET" || method === "HEAD")) {
       const file = files.get(assetKey(pathname));
@@ -432,7 +453,6 @@ export function createHandler(
     // promises and what the other three hosts do. A request that failed is
     // still a request that happened, so the drain is owed either way; see
     // ubugeeei-prod/uf#389.
-    const asRequest = toRequest(request, url);
     const lifecycle = app.beginRequest(asRequest);
     const { run, settle } = lifecycle;
     // Beside the request, the way `./fetch.js` does it for the other three: a
@@ -460,8 +480,15 @@ export function createHandler(
         // `build.staticBuild` makes it an error rather than a warning. What is
         // left here is the fact itself, which is inherent to prerendering: the
         // document is bytes, and bytes do not run a guard.
-        const guarded = await app.runMiddleware(asRequest);
-        if (guarded != null) {
+        //
+        // `app.router.rewrites` before it, after the files, as `./fetch.js`
+        // does for the other doors; and a `Request` back from the chain is a
+        // middleware's `rewrite()`.
+        let current = rewriteFor(app.routing, asRequest) ?? asRequest;
+        const guarded = await app.runMiddleware(current);
+        if (guarded instanceof Request) {
+          current = guarded;
+        } else if (guarded != null) {
           await sendUnlessHead(response, method, guarded);
           return;
         }
@@ -469,7 +496,7 @@ export function createHandler(
         // A server action between the guard and the handlers, exactly where
         // the other three hosts put it. It declines a request that carries no
         // action id, and answers every one that does.
-        const acted = await app.callAction(asRequest);
+        const acted = await app.callAction(current);
         if (acted != null) {
           await sendUnlessHead(response, method, acted);
           return;
@@ -478,7 +505,7 @@ export function createHandler(
         // A browser that is navigating, asking for the next route's payload:
         // after the guard and before the handlers, as every front door does.
         // See `./internal/flight.js`.
-        const flight = await flightResponse(app, asRequest, {
+        const flight = await flightResponse(app, current, {
           onError: (error) => {
             console.error(error);
           },
@@ -488,7 +515,7 @@ export function createHandler(
           return;
         }
 
-        const handled = await app.dispatch(asRequest);
+        const handled = await app.dispatch(current);
         if (handled != null) {
           await sendUnlessHead(response, method, handled);
           return;
@@ -512,7 +539,8 @@ export function createHandler(
           return;
         }
 
-        const rendered = await app.render(url.pathname + url.search, document, {
+        const target = new URL(current.url);
+        const rendered = await app.render(target.pathname + target.search, document, {
           // There is no terminal to render into: this is a binary somebody started
           // with `./app`, possibly under a supervisor. The console is where a
           // supervisor looks, and losing a boundary's exception entirely would be

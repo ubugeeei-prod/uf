@@ -52,6 +52,8 @@ import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
@@ -130,6 +132,11 @@ export type LambdaHandlerOptions = {|
    * Omitted where a CDN answers for them; see the header.
    */
   readonly staticDir?: string,
+  /**
+   * That same module's `routing`: its redirects answer before the package's
+   * files, and its headers go on whatever answers. See `./internal/routing.js`.
+   */
+  readonly routing?: RoutingRules,
 |};
 
 /**
@@ -260,7 +267,7 @@ export async function toResult(response: Response): Promise<LambdaHttpResult> {
 export function createLambdaHandler(
   options: LambdaHandlerOptions,
 ): (event: LambdaHttpEvent) => Promise<LambdaHttpResult> {
-  const { handle, beginRequest, staticDir } = options;
+  const { handle, beginRequest, staticDir, routing } = options;
   const serveStatic = staticDir == null ? null : createStaticHandler({ root: staticDir });
 
   return async function lambdaHandler(event: LambdaHttpEvent): Promise<LambdaHttpResult> {
@@ -273,8 +280,10 @@ export function createLambdaHandler(
     let status = 500;
     try {
       const result = await lifecycle.run(async () => {
-        const asset = serveStatic == null ? null : await serveStatic(request);
-        return await toResult(asset ?? (await handle(request)));
+        const moved = redirectFor(routing, request);
+        const asset = moved != null || serveStatic == null ? null : await serveStatic(request);
+        const answer = moved ?? asset ?? (await handle(request));
+        return await toResult(withHeaders(answer, headersFor(routing, request)));
       });
       status = result.statusCode;
       return result;

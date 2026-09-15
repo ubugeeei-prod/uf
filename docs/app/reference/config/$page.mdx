@@ -102,6 +102,9 @@ of it.
 | `router.entry` | `"app.js"` | The module exporting `routerView()` |
 | `router.root` | `"app"` | The directory scanned for routes |
 | `router.enabled` | `true` | Turning it off makes the project a library, and makes `uf build` [build one](#buildlib) |
+| `router.redirects` | `[]` | `{ source, destination, permanent }`: a redirect answered before anything else, the first match winning — see [below](#routerredirects-routerrewrites-and-routerheaders) |
+| `router.rewrites` | `[]` | `{ source, destination }`: the route at `destination` served at the path that was asked for |
+| `router.headers` | `[]` | `{ source, headers }`: response headers by path, every match applied |
 | `runtime.default` | `"node"` | The runtime this project is written for. `node`, `deno` and `bun`; naming a runtime uf has no host for is an error that says which key was meant ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
 | `runtime.compatibility` | `["node", "bun", "deno"]` | The other runtimes it states it runs on, from the same three. Written into `.uf/install.json` as the hosts that must be available |
 | `runtime.capabilityJsHost.default` | `"node"` | **The host a command starts when no tool key names one.** `uf dev`, `uf build`, `uf preview`, `uf start` and `uf test` resolve through this key, not through `runtime.default`, when [`runtime`](#runtime-and-packagemanager) and the keys nearer the command are absent. `uf build --compile` embeds its runtime from this key whatever they say ([#1036](https://github.com/ubugeeei-prod/uf/issues/1036)) |
@@ -130,6 +133,33 @@ of it.
 | `rendering.cache.store` | `"memory"` | Where entries live: one process, `"filesystem"`, or a module exporting `createCacheProvider` |
 | `rendering.cache.storeDir` | `.uf/cache/route` | Where `"filesystem"` keeps them |
 | `targets` | `["web", "react-native", "server"]` | Application/runtime surfaces the build must satisfy |
+
+### router.redirects, router.rewrites and router.headers
+
+`next.config.js`'s `redirects()`, `rewrites()` and `headers()`, as three lists:
+
+```js
+router: {
+  redirects: [{ source: "/blog/:slug", destination: "/posts/:slug", permanent: true }],
+  rewrites: [{ source: "/me", destination: "/users/me" }],
+  headers: [{ source: "/:path*", headers: { "X-Frame-Options": "DENY" } }],
+}
+```
+
+| Field | In | Meaning |
+| --- | --- | --- |
+| `source` | all three | A path in the route table's grammar: literal segments, `:name` for one segment and a trailing `:name*` for the rest |
+| `destination` | `redirects`, `rewrites` | A path that may use the source's parameters. A redirect may also name an absolute `http(s)` URL; a rewrite may not |
+| `permanent` | `redirects` | Required. `true` answers `308`, `false` answers `307` |
+| `headers` | `headers` | An object of header names to values; a later rule setting the same name wins |
+
+Each entry is an exact object, so a misspelled field is an error when the file
+is loaded. So is a spelling the matcher would read as a literal — a regular
+expression, `:slug+` or `:slug?`, a parameter inside a segment, a query in a
+source — and a rewrite to another origin. Every server front door applies the
+three the same way; a static deployment refuses them by name.
+[Redirects, rewrites and response headers](/guide/routing#redirects-rewrites-and-response-headers)
+has the order they apply in and the table from `next.config.js`.
 
 ### targets
 

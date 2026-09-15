@@ -198,6 +198,53 @@ export type PluginEntry =
       readonly apply?: "build" | "serve" | "always",
     };
 
+// # `app.router`'s three lists
+//
+// Next.js's `redirects`, `rewrites` and `headers`, written as data rather than
+// as async functions, because this file is read without being run. A `source`
+// is a path in the route table's own grammar — a literal segment, `:name` for
+// one segment, and a trailing `:name*` for the rest — and each rule is an exact
+// object, so a misspelled field is an error here and where `uf` reads the file.
+
+/**
+ * One redirect: a request for `source` is answered with a redirect to
+ * `destination`, before anything else answers — a file included.
+ *
+ * `destination` is a path of this application or an absolute `http(s)` URL,
+ * and may use the `:name` and `:name*` segments `source` declared. The
+ * request's query is passed through. `permanent: true` is a `308`, `false` a
+ * `307`; both keep the method.
+ */
+export type RouteRedirect = {
+  readonly source: string,
+  readonly destination: string,
+  readonly permanent: boolean,
+};
+
+/**
+ * One rewrite: a request for `source` is answered by the route at
+ * `destination`, and the address bar keeps `source`.
+ *
+ * `destination` is a path of this application — never another origin, which
+ * is a route handler that fetches — and may use `source`'s segments. Applied
+ * after the build's own files and before middleware, so the middleware that
+ * runs is the destination's.
+ */
+export type RouteRewrite = {
+  readonly source: string,
+  readonly destination: string,
+};
+
+/**
+ * Response headers for every request whose path matches `source`, files
+ * included. Every matching rule applies, in order, and a later one setting the
+ * same name wins — over the response's own header of that name, too.
+ */
+export type RouteHeaders = {
+  readonly source: string,
+  readonly headers: { readonly [name: string]: string },
+};
+
 /**
  * A ceiling `uf build` fails over, and what it is measured on.
  *
@@ -455,6 +502,24 @@ export type UniflowedConfig = {
       // **library** rather than an application, and `uf build` reads it: see
       // `build.lib` below and docs/app/reference/config.
       readonly enabled?: boolean,
+      /**
+       * Redirects answered before anything else, in order; the first whose
+       * `source` matches wins. `next.config.js`'s `redirects()`. See
+       * `RouteRedirect` and docs/app/guide/routing.
+       */
+      readonly redirects?: $ReadOnlyArray<RouteRedirect>,
+      /**
+       * Routes served at another path, in order; the first whose `source`
+       * matches wins. `next.config.js`'s `rewrites()`, without proxying. See
+       * `RouteRewrite` and docs/app/guide/routing.
+       */
+      readonly rewrites?: $ReadOnlyArray<RouteRewrite>,
+      /**
+       * Response headers by path; every matching rule applies.
+       * `next.config.js`'s `headers()`. See `RouteHeaders` and
+       * docs/app/guide/routing.
+       */
+      readonly headers?: $ReadOnlyArray<RouteHeaders>,
     },
     readonly rendering?: {
       // `"csr"` is the one value that cannot share the list: it renders every

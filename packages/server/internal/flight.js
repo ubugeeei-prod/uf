@@ -33,6 +33,22 @@ export function flightDocumentPath(pathname: string): string | null {
 }
 
 /**
+ * The payload URL's pathname for a document path: the inverse of
+ * [`flightDocumentPath`]. `/guide` is `/guide/__uf.flight`, and `/` is
+ * `/__uf.flight`.
+ *
+ * The trailing slashes are counted off rather than matched with a pattern,
+ * because the path came from a request (docs/security.md rule 5).
+ */
+export function flightPath(documentPath: string): string {
+  let end = documentPath.length;
+  while (end > 0 && documentPath.charCodeAt(end - 1) === 47) {
+    end -= 1;
+  }
+  return `${documentPath.slice(0, end)}/${FLIGHT_SEGMENT}`;
+}
+
+/**
  * The answer to a request for a route's payload, or `null` for any other one.
  *
  * `null` too for a server bundle with no `flight` — an application rendered

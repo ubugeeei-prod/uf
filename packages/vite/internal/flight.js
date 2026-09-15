@@ -535,7 +535,12 @@ hydrateFlight({ App${strictMode}${navigation} });
  * because the page modules they import are the rsc graph's: the driver reads a
  * page's `generateStaticParams` from the graph that renders it.
  */
-export function flightServerSource(appEntry, routesId, actionsId) {
+export function flightServerSource(
+  appEntry,
+  routesId,
+  actionsId,
+  routing = { redirects: [], rewrites: [], headers: [] },
+) {
   return `import {
   createActionDispatcher,
   createDispatcher,
@@ -557,6 +562,7 @@ export { shellDocument } from "@uniflowed/router/server";
 export const dispatch = createDispatcher({ handlers });
 export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
+export const routing = ${JSON.stringify(routing)};
 `;
 }
 

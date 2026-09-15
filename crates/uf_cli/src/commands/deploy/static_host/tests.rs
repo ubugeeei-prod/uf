@@ -159,6 +159,45 @@ fn the_refusal_names_every_finding_and_an_alternative() {
     assert!(message.contains("issues/335"), "{message}");
 }
 
+/// Every `app.router` rule is named by its source and the config file, with
+/// the reason for its kind — a static host has no answer for any of the three.
+#[test]
+fn a_rule_in_app_router_is_named_by_its_source() {
+    let mut router = uf_config::RouterConfig::default();
+    router.redirects.push(uf_config::RedirectRule {
+        source: "/moved/:slug".into(),
+        destination: "/posts/:slug".into(),
+        permanent: true,
+    });
+    router.rewrites.push(uf_config::RewriteRule {
+        source: "/articles/:slug".into(),
+        destination: "/posts/:slug".into(),
+    });
+    router.headers.push(uf_config::HeaderRule {
+        source: "/:path*".into(),
+        headers: [("x-served-by".into(), "uf".into())].into(),
+    });
+
+    let found = unservable_rules(&router, "uf.config.js");
+
+    assert_eq!(
+        found
+            .iter()
+            .map(|finding| (finding.subject.as_str(), finding.reason))
+            .collect::<Vec<_>>(),
+        vec![
+            ("/moved/:slug", Reason::Redirect),
+            ("/articles/:slug", Reason::Rewrite),
+            ("/:path*", Reason::ResponseHeaders),
+        ]
+    );
+    let message = refusal(&found);
+    assert!(message.contains("/moved/:slug (uf.config.js)"), "{message}");
+    assert!(message.contains("app.router.rewrites"), "{message}");
+    assert!(message.contains("--adapter static"), "{message}");
+    assert!(unservable_rules(&uf_config::RouterConfig::default(), "uf.config.js").is_empty());
+}
+
 /// A project with a hundred parameterised routes is a project with one
 /// problem, and a message that printed all hundred would be read by nobody.
 #[test]

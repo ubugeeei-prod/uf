@@ -528,14 +528,71 @@ export function createStaticHandler({ root }) {
  * project whose handler path collides with a file in `public/` behaves one way
  * when it is checked and the other way when it is deployed.
  *
+ * `@uniflowed/server/node`'s `createServeHandler`, the one every `--adapter`
+ * process target runs, handed the bundle's `routing` — so `app.router`'s
+ * redirects answer before the files and its headers go on whatever answers,
+ * here exactly as in a deployment. `uf preview` puts the same two in front of
+ * Vite's file middleware too; see [`answerRouting`].
+ *
  * @param {{entry: object, assets: object, distDir: string, cache?: object, root?: string, build?: string | null}} build
  */
 export function createServeHandler({ entry, assets, distDir, cache, root, build }) {
-  const serveStatic = createStaticHandler({ root: distDir });
   const application = createApplicationHandler({ entry, assets, cache, root, build });
+  const ready = deployment().then(({ createServeHandler: create }) =>
+    create({ staticDir: distDir, handle: application, routing: entry.routing }),
+  );
   return async function handle(request) {
-    return (await serveStatic(request)) ?? (await application(request));
+    return (await ready)(request);
   };
+}
+
+/**
+ * Whether `routing` has anything to say in front of a file server.
+ *
+ * Redirects and headers are the two that do; a rewrite is the application's.
+ * Asked before a middleware is mounted at all, so a project with no rules pays
+ * nothing per request under `uf dev` or `uf preview`.
+ *
+ * @param {{redirects?: unknown[], headers?: unknown[]} | undefined} routing
+ */
+export function answersInFrontOfFiles(routing) {
+  return (routing?.redirects?.length ?? 0) > 0 || (routing?.headers?.length ?? 0) > 0;
+}
+
+/**
+ * `app.router`'s headers and redirects, for a door whose files Vite serves.
+ *
+ * `uf dev` and `uf preview` mount this in front of Vite's own middleware:
+ * the headers are pinned on the Node response, so they survive the
+ * `writeHead` Vite's file server writes its own with, and a redirect is
+ * answered before any file is looked for. `true` when it answered.
+ *
+ * @param {object} routing the bundle's `routing`
+ * @param {Request} request the address alone; see `toAddressRequest`
+ * @param {import("node:http").ServerResponse} response
+ */
+export async function answerRouting(routing, request, response) {
+  const { headersFor, pinHeaders, redirectFor, send: write } = await deployment();
+  pinHeaders(response, headersFor(routing, request));
+  const moved = redirectFor(routing, request);
+  if (moved == null) return false;
+  await write(response, moved);
+  return true;
+}
+
+/**
+ * `app.router.rewrites` for this request, for `uf dev`: the rewritten request,
+ * or `null`.
+ *
+ * `@uniflowed/server`'s `rewriteFor`, which `createFetchHandler` asks for every
+ * other front door at the same point — after the files, before the guard.
+ *
+ * @param {object | undefined} routing the bundle's `routing`
+ * @param {Request} request
+ */
+export async function rewriteRouting(routing, request) {
+  const { rewriteFor } = await deployment();
+  return rewriteFor(routing, request);
 }
 
 /**

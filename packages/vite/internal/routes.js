@@ -1714,7 +1714,7 @@ ${mount}({ App, routes, notFound, errors${strictMode}${navigation} });
  * shorter proof of the paragraph above: the copy the router dispatches and
  * renders with is by construction the copy the host is handed.
  */
-export function serverModuleSource(appEntry) {
+export function serverModuleSource(appEntry, routing = routingRulesOf({})) {
   return `import {
   createActionDispatcher,
   createDispatcher,
@@ -1733,5 +1733,36 @@ export { shellDocument } from "@uniflowed/router/server";
 export const dispatch = createDispatcher({ handlers });
 export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
-`;
+${routingExportSource(routing)}`;
+}
+
+/**
+ * `app.router.redirects`, `rewrites` and `headers`, as the bundle carries them.
+ *
+ * Three lists and nothing else, each present, so a host reads `routing` the one
+ * way whatever the project wrote. Validation is not here: `uf_config` refuses a
+ * rule it cannot read when the file is loaded, with a sentence per spelling,
+ * and `@uniflowed/server`'s `internal/routing.js` is what interprets one.
+ *
+ * @param {{redirects?: unknown[], rewrites?: unknown[], headers?: unknown[]} | undefined} router
+ */
+export function routingRulesOf(router) {
+  return {
+    redirects: Array.isArray(router?.redirects) ? router.redirects : [],
+    rewrites: Array.isArray(router?.rewrites) ? router.rewrites : [],
+    headers: Array.isArray(router?.headers) ? router.headers : [],
+  };
+}
+
+/**
+ * The `routing` export of `virtual:uf/server`.
+ *
+ * On the bundle rather than read from `uf.config.js` where a host starts, so a
+ * served build answers with the rules it was built with — `uf start` of last
+ * week's build, and every `--adapter` artefact, carry their own.
+ *
+ * @param {ReturnType<typeof routingRulesOf>} routing
+ */
+export function routingExportSource(routing) {
+  return `export const routing = ${JSON.stringify(routing)};\n`;
 }

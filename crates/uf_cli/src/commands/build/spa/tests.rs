@@ -80,6 +80,7 @@ fn the_refusal_names_the_route_and_quotes_the_setting() {
         &[route("/", "app")],
         &[],
         &graph,
+        Vec::new(),
         "`app.rendering.modes` is `[\"csr\"]`",
     )
     .unwrap_err();
@@ -99,7 +100,53 @@ fn a_project_that_reads_no_request_builds() {
     let graph = builder.build();
 
     assert_eq!(found(&[route("/", "app")], &[], &graph), Vec::new());
-    refuse(ROOT.into(), &[route("/", "app")], &[], &graph, "because").unwrap();
+    refuse(
+        ROOT.into(),
+        &[route("/", "app")],
+        &[],
+        &graph,
+        Vec::new(),
+        "because",
+    )
+    .unwrap();
+}
+
+/// `app.router`'s rules are answers to a request, and a single-page deployment
+/// has nothing that answers one — so each is named by its source and the file
+/// it is written in, in the same list as the handlers.
+#[test]
+fn a_rule_in_app_router_is_named_by_its_source() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_module(module("app/$page.js"));
+    builder.add_entry("app/$page.js", EntryKind::Server);
+    let graph = builder.build();
+
+    let mut router = uf_config::RouterConfig::default();
+    router.redirects.push(uf_config::RedirectRule {
+        source: "/old/:slug".into(),
+        destination: "/new/:slug".into(),
+        permanent: true,
+    });
+    router.headers.push(uf_config::HeaderRule {
+        source: "/:path*".into(),
+        headers: [("x-frame-options".into(), "DENY".into())].into(),
+    });
+
+    let error = refuse(
+        ROOT.into(),
+        &[route("/", "app")],
+        &[],
+        &graph,
+        super::rule_findings(&router, "uf.config.js"),
+        "`app.rendering.modes` is `[\"csr\"]`",
+    )
+    .unwrap_err();
+    let message = error.to_string();
+
+    assert!(message.contains("/old/:slug (uf.config.js)"), "{message}");
+    assert!(message.contains("app.router.redirects"), "{message}");
+    assert!(message.contains("/:path* (uf.config.js)"), "{message}");
+    assert!(message.contains("app.router.headers"), "{message}");
 }
 
 #[test]

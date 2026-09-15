@@ -61,10 +61,44 @@ A middleware module never reaches the browser. It is loaded from the server
 entry and from nothing the client imports, which is the point: it is where the
 check you do not want a reader to be able to read belongs.
 
-What it deliberately cannot do yet is rewrite the request. That needs a
-spelling — a returned `Request`, or a `next(request)` argument — and one picked
-badly is harder to undo than one not yet picked. Answering and continuing are
-what exist, and they are enough for authentication, redirects and logging.
+### Rewriting
+
+A middleware can also serve a different route at the address the visitor asked
+for:
+
+```js
+// @flow
+import { cookies } from "@uniflowed/server";
+import { rewrite } from "@uniflowed/router/middleware";
+
+export default function middleware(request: Request) {
+  if (cookies().get("beta") != null) {
+    return rewrite(`/beta${new URL(request.url).pathname}`);
+  }
+}
+```
+
+**Returning `rewrite(destination)` continues with another path.** Whatever
+answers is the destination's — its page, its route handler or its not-found —
+while the address bar keeps what was asked for, and `useRoute()` describes the
+route that rendered. The method, the headers and the body are the request's.
+
+The chain starts again from the root, for the destination, over every
+middleware that has not run yet. A rewrite into `/admin` therefore meets the
+guard on `/admin` exactly as a request for it would, and no middleware runs
+twice for one request. A destination that names no query keeps the request's;
+one that names a query replaces it. Another origin is refused when the
+middleware returns it: `Response.redirect` sends the visitor elsewhere, and a
+route handler that fetches is a proxy.
+
+A browser navigating between pages asks for a route's payload rather than its
+document, and a middleware is handed the document's URL for that request. The
+check you write against `/pricing` is the check a client navigation to
+`/pricing` gets, and a rewrite of the page is a rewrite of its payload.
+
+A rewrite that depends on nothing about the request belongs in
+[`app.router.rewrites`](/guide/routing#redirects-rewrites-and-response-headers),
+beside redirects and response headers, where it needs no module at all.
 
 ### A prerendered page is not a guarded page
 

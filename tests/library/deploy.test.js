@@ -789,6 +789,126 @@ describe("the front doors", () => {
       }
     }
   });
+
+  it("give one answer for app.router's redirects, rewrites and headers, and a middleware rewrite", async () => {
+    const built = { "index.html": "<!doctype html><p>home</p>" };
+    const distDir = directoryWith(built);
+    const app = {
+      ...appWith({
+        handler: (request: Request) =>
+          new URL(request.url).pathname === "/api/health" ? Response.json({ ok: true }) : null,
+        // What the router's runner hands a host for a middleware's `rewrite()`:
+        // the request at the destination. `packages/router/middleware-rewrite.test.js`
+        // is the runner's own half.
+        guard: (request: Request) => {
+          const { pathname } = new URL(request.url);
+          return pathname.startsWith("/shop/")
+            ? new Request(new URL(pathname.replace("/shop/", "/posts/"), request.url), request)
+            : null;
+        },
+      }),
+      routing: {
+        redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
+        rewrites: [{ source: "/articles/:slug", destination: "/posts/:slug" }],
+        headers: [
+          { source: "/:path*", headers: { "x-served-by": "served-app" } },
+          { source: "/api/:rest*", headers: { "cache-control": "no-store" } },
+        ],
+      },
+    };
+
+    const started = createViteServeHandler({ entry: app, assets, distDir });
+    const handle = createFetchHandler({ app, document: assets });
+    const deployed = createServeHandler({ staticDir: distDir, handle, routing: app.routing });
+    const worker = createWorkerFetch({ handle, beginRequest, routing: app.routing });
+    const invoked = createLambdaHandler({
+      handle,
+      beginRequest,
+      staticDir: distDir,
+      routing: app.routing,
+    });
+    const compiled = createStandaloneHandler({ app, assets: embedded(built), document: assets });
+
+    // The status, the three headers the rules decide, and the body — which is
+    // what a rule changes, and what a door that applied one differently would
+    // disagree about.
+    const described = (status: number, header: (name: string) => ?string, body: string): string =>
+      `${String(status)} location=${header("location") ?? "-"} ` +
+      `x-served-by=${header("x-served-by") ?? "-"} cache-control=${
+        header("cache-control") === "no-store" ? "no-store" : "-"
+      } ${body.replace(/\s+/g, " ")}`;
+
+    const doors = {
+      "uf start": async (url: string) => {
+        const response = await started(request(url));
+        return described(
+          response.status,
+          (name) => response.headers.get(name),
+          await response.text(),
+        );
+      },
+      "adapter node": async (url: string) => {
+        const response = await deployed(request(url));
+        return described(
+          response.status,
+          (name) => response.headers.get(name),
+          await response.text(),
+        );
+      },
+      "adapter edge": async (url: string) => {
+        const response = await worker(
+          request(url),
+          { ASSETS: assetsBinding(distDir) },
+          executionContext(),
+        );
+        return described(
+          response.status,
+          (name) => response.headers.get(name),
+          await response.text(),
+        );
+      },
+      "adapter serverless": async (url: string) => {
+        const result = await invoked(await eventFor(request(url)));
+        return described(result.statusCode, (name) => result.headers[name], result.body);
+      },
+      "uf build --compile": async (url: string) => {
+        const response = nodeResponse();
+        await compiled({ method: "GET", url, headers: { host: "localhost" } }, response);
+        return described(response.statusCode, (name) => response.headers[name], response.body());
+      },
+    };
+
+    const expectations = {
+      // A redirect, before anything else answers, with the headers on it too.
+      "/moved/hello": "308 location=/posts/hello x-served-by=served-app",
+      // A navigating browser's payload request lands on the target's payload.
+      "/moved/hello/__uf.flight": "308 location=/posts/hello/__uf.flight",
+      // A rewrite: the destination renders, at the address that was asked for.
+      "/articles/hello":
+        "200 location=- x-served-by=served-app cache-control=- <!doctype html><p>/posts/hello</p>",
+      // A middleware's rewrite, which the host carries on with.
+      "/shop/hello":
+        "200 location=- x-served-by=served-app cache-control=- <!doctype html><p>/posts/hello</p>",
+      // A file the build wrote still gets the headers.
+      "/": "200 location=- x-served-by=served-app cache-control=- <!doctype html><p>home</p>",
+      // And a later rule's header on a handler's answer.
+      "/api/health": '200 location=- x-served-by=served-app cache-control=no-store {"ok":true}',
+    };
+
+    for (const [url, expected] of Object.entries(expectations)) {
+      const reference = await doors["uf start"](url);
+      expect(`uf start GET ${url}: ${reference}`).toContain(`uf start GET ${url}: ${expected}`);
+      for (const name of [
+        "adapter node",
+        "adapter edge",
+        "adapter serverless",
+        "uf build --compile",
+      ]) {
+        const answered = await doors[name](url);
+        expect(`${name} GET ${url}: ${answered}`).toBe(`${name} GET ${url}: ${reference}`);
+      }
+    }
+  });
 });
 
 /**

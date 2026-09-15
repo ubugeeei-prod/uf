@@ -85,6 +85,7 @@ import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
 import { flightResponse } from "./internal/flight.js";
+import { headersFor, redirectFor, rewriteFor, withHeaders } from "./internal/routing.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
 
@@ -209,7 +210,7 @@ export function createFetchHandler(
 ): (request: Request) => Promise<Response> {
   const { app, cache, capabilities, document } = options;
 
-  return async function handle(request: Request): Promise<Response> {
+  async function answer(arrived: Request): Promise<Response> {
     // Before the guard, not after it. A route handler and a server action both
     // run inside `dispatch`, and `revalidateTag()` in one of them has to reach
     // the store that is answering this request — a mutation that invalidates
@@ -235,8 +236,20 @@ export function createFetchHandler(
       context.capabilities = capabilities;
     }
 
+    // `app.router.rewrites` first, where the application begins: after the
+    // host's static files, which is why a catch-all rewrite never swallows a
+    // chunk, and before the guard, which is why the guard that runs is the one
+    // on the route the rewrite reached. See `./internal/routing.js`.
+    let request = rewriteFor(app.routing, arrived) ?? arrived;
+
+    // A `Request` back is a middleware's `rewrite()`, already past the
+    // destination's own middleware.
     const guarded = await app.runMiddleware(request);
-    if (guarded != null) return guarded;
+    if (guarded instanceof Request) {
+      request = guarded;
+    } else if (guarded != null) {
+      return guarded;
+    }
 
     const acted = await app.callAction(request);
     if (acted != null) return acted;
@@ -303,6 +316,18 @@ export function createFetchHandler(
     // The body is a stream, so the layouts and any `<Suspense>` fallback reach
     // the browser while the page they surround is still resolving.
     return new Response(result.stream(), { status: result.status ?? 200, headers });
+  }
+
+  // `app.router.redirects` before anything else and its headers on whatever
+  // answers — here as well as in front of every host's static half. A host
+  // that serves files first has already answered a redirect by the time this
+  // runs, and setting a header twice is setting it once; a host that hands
+  // every request to `handler.js`'s `fetch` — Deno Deploy, a Worker with no
+  // assets — has only this, and the rules have to hold there too. See
+  // `./internal/routing.js`.
+  return async function handle(arrived: Request): Promise<Response> {
+    const response = redirectFor(app.routing, arrived) ?? (await answer(arrived));
+    return withHeaders(response, headersFor(app.routing, arrived));
   };
 }
 

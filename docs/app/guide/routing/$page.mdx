@@ -872,6 +872,112 @@ answers a request directly is a different job from the route table and the
 layouts a page renders inside, and each section moved there whole, under the
 same heading.
 
+## Redirects, rewrites and response headers
+
+Three lists in `uf.config.js` answer a request before the route table does.
+They are `next.config.js`'s `redirects()`, `rewrites()` and `headers()`,
+written as data rather than as functions, because `uf.config.js` is read
+without being run:
+
+```js
+// uf.config.js
+export default defineConfig({
+  app: {
+    router: {
+      redirects: [
+        { source: "/blog/:slug", destination: "/posts/:slug", permanent: true },
+        { source: "/docs/:path*", destination: "https://docs.example.com/:path*", permanent: false },
+      ],
+      rewrites: [{ source: "/me", destination: "/users/me" }],
+      headers: [
+        { source: "/:path*", headers: { "X-Frame-Options": "DENY" } },
+        { source: "/assets/:file*", headers: { "Cache-Control": "public, max-age=31536000, immutable" } },
+      ],
+    },
+  },
+});
+```
+
+| List | What it does | Where it applies |
+| --- | --- | --- |
+| `redirects` | Answers with a redirect to `destination`: `308` for `permanent: true`, `307` for `false`. The first rule whose source matches wins. | Before anything else, a file the build wrote included |
+| `rewrites` | Serves the route at `destination`, and the address bar keeps the path that was asked for. The first rule whose source matches wins. | After the build's own files, before middleware |
+| `headers` | Sets response headers. Every matching rule applies, and a later one setting the same name wins, over the response's own header too. | On every response, files included |
+
+Both redirect statuses keep the method and the body, which a `301` does not: a
+redirected form `POST` stays a `POST`.
+
+### Sources and destinations
+
+A `source` is written in the route table's own grammar: literal segments,
+`:name` for one segment, and a trailing `:name*` for the rest of the path. A
+destination may use every parameter its source declares, in the same spelling,
+and the request's query string is passed through to it, beside any query the
+destination names.
+
+What `next.config.js` accepts and uf does not read is refused when the config is
+loaded, with a sentence that names the entry: a regular expression
+(`/blog/(.*)`), the `:slug+` and `:slug?` modifiers, a parameter inside a
+segment (`/@:user`), a query in a source, and a `has` or `missing` condition. A
+condition on a cookie, a header or the query is a middleware, which can
+[rewrite](/guide/routing/requests#rewriting) as well as redirect. A misspelled
+field is an error in the same place, and so is a redirect to itself.
+
+A rewrite never leaves the application. Its destination is a path of this
+project, and a URL on another origin is refused: sending a visitor there is a
+redirect, and proxying to another server is a
+[route handler](/guide/routing/requests#route-handlers) that fetches it.
+
+### The order a request meets them in
+
+1. `redirects`, before the build's own files — so a redirect away from a page
+   the build still prerendered still happens.
+2. The files the build wrote.
+3. `rewrites` — after the files, so a catch-all rewrite never answers for a
+   hashed chunk.
+4. [Middleware](/guide/routing/requests#middleware), for the path the rewrite
+   reached — so a rewrite into a guarded directory still meets its guard.
+5. Server actions, route handlers and pages.
+
+`headers` go on whatever answered, at any of those steps.
+
+A browser navigating between pages fetches a route's payload rather than its
+document. Every rule matches that request as the document it is for, so a client
+navigation is redirected and rewritten exactly as a full page load of the same
+address would be.
+
+### Where they run
+
+`uf dev`, `uf preview`, `uf start`, `uf build --compile` and every server
+adapter — `node`, `bun`, `deno`, `container`, `edge` and `serverless` — apply
+all three the same way, and one set of tests asks each of them the same
+questions about one project. The rules are written into the server bundle when
+it is built, so a served build answers with the rules it was built with.
+
+A static host runs none of it. `uf build --adapter static` refuses a project
+that declares any rule, naming each by its source, and so does every plan that
+leaves no server behind: `build.staticBuild`, `rendering.modes: ["ssg"]` and
+`["csr"]`. Netlify, Cloudflare Pages and Vercel each have a redirect file of
+their own and no two agree, so uf does not write one on your behalf; deploy the
+project with a server adapter, or write the host's own file.
+
+### Coming from `next.config.js`
+
+| `next.config.js` | `uf.config.js` |
+| --- | --- |
+| `async redirects() { return [ … ] }` | `app: { router: { redirects: [ … ] } }` |
+| `{ source, destination, permanent }` | the same three fields; `permanent` is required, as it is in Next.js |
+| `statusCode: 301` | `permanent: true`, which is a `308` |
+| `async rewrites() { return [ … ] }` | `app: { router: { rewrites: [ … ] } }`, applied where Next.js applies `afterFiles` |
+| `beforeFiles`, `fallback` | not read: a rewrite runs after the files and before the routes |
+| a rewrite to `https://…` | a route handler that fetches it |
+| `async headers() { return [{ source, headers: [{ key, value }] }] }` | `app: { router: { headers: [{ source, headers: { [key]: value } }] } }` |
+| `has`, `missing` | a `$middleware.js` that checks, then returns `rewrite()` or `Response.redirect` |
+| `/:slug`, `/:path*` | the same |
+| `/(.*)`, `/:slug(\\d{1,})`, `/:slug+`, `/:slug?` | refused by name |
+| `basePath: false`, `locale` | not read |
+| `NextResponse.rewrite(url)` in `middleware.ts` | `rewrite(url)` from `@uniflowed/router/middleware` |
+
 ## When a route is rendered
 
 `uf build` writes a document for a route when it can, and leaves the rest to a

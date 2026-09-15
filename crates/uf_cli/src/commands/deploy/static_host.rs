@@ -37,6 +37,7 @@
 //! One list, once.
 
 use camino::Utf8Path;
+use uf_config::RouterConfig;
 use uf_router::{Route, ServerModule, ServerModuleKind};
 
 use crate::commands::build::Prerendered;
@@ -55,6 +56,12 @@ pub(crate) enum Reason {
     NotPrerendered,
     /// A `"use server"` export the browser can dial.
     ServerAction,
+    /// An entry of `app.router.redirects`.
+    Redirect,
+    /// An entry of `app.router.rewrites`.
+    Rewrite,
+    /// An entry of `app.router.headers`.
+    ResponseHeaders,
 }
 
 impl Reason {
@@ -80,6 +87,18 @@ impl Reason {
             Self::NotPrerendered => "the build wrote no document for it",
             Self::ServerAction => {
                 "a server action is a `POST` the browser makes back to the application"
+            }
+            Self::Redirect => {
+                "`app.router.redirects` sends a redirect when a request arrives, and a static \
+                 host answers with files"
+            }
+            Self::Rewrite => {
+                "`app.router.rewrites` decides which route answers a request, and a static host \
+                 answers with files"
+            }
+            Self::ResponseHeaders => {
+                "`app.router.headers` sets a header on a response, and a static host sends its \
+                 files with the headers it chooses"
             }
         }
     }
@@ -157,6 +176,43 @@ pub(crate) fn unservable(
     }
 
     found
+}
+
+/// Every `app.router` rule this project declares, which a static host honours
+/// none of.
+///
+/// A rule is an answer to a request — a redirect, a choice of route, a header
+/// on a response — and a static host answers with files and nothing else. Each
+/// is named by its source, the path a reader recognises, and by the config file
+/// it is written in. `@uniflowed/server`'s `internal/routing.js` is what honours
+/// them on every target that runs the application.
+///
+/// Not written into a platform's own rewrite file. Netlify, Cloudflare Pages
+/// and Vercel each have one and no two agree, and `--adapter static` naming one
+/// would be uf choosing a host on the reader's behalf — which
+/// [`super::next_command`] refuses to do for the same reason.
+pub(crate) fn unservable_rules(router: &RouterConfig, config_file: &str) -> Vec<Unservable> {
+    let redirects = router
+        .redirects
+        .iter()
+        .map(|rule| (rule.source.as_str(), Reason::Redirect));
+    let rewrites = router
+        .rewrites
+        .iter()
+        .map(|rule| (rule.source.as_str(), Reason::Rewrite));
+    let headers = router
+        .headers
+        .iter()
+        .map(|rule| (rule.source.as_str(), Reason::ResponseHeaders));
+    redirects
+        .chain(rewrites)
+        .chain(headers)
+        .map(|(source, reason)| Unservable {
+            subject: source.to_owned(),
+            file: config_file.to_owned(),
+            reason,
+        })
+        .collect()
 }
 
 /// How many findings a message names before it stops and says how many are

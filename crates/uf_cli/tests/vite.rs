@@ -1900,6 +1900,11 @@ fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body:
         context("did not serve the project's own not-found page", &missing)
     );
 
+    // `app.router`'s rules and a middleware's rewrite, asked the way
+    // `assert_served` asks `uf preview`, `uf start` and the adapters — the home
+    // page stands in for the prerendered document a dev server does not have.
+    assert_routing_rules(server, port, said, "dev", body, &health);
+
     // The browser's own channel back. Both endpoints under `/__uf/` answer,
     // and what arrives is rendered in this terminal — which is the whole of
     // ubugeeei-prod/uf#557 and #583: a number and a diagnostic the browser
@@ -2382,6 +2387,15 @@ await ask("handler-post", "/api/health", { method: "POST", body: JSON.stringify(
 await ask("rendered", "/posts/hello-world");
 await askHeader("redirect", "/old/hello-world", "location");
 await ask("missing", "/definitely-not-a-page/");
+// `app.router`'s three lists and a middleware's `rewrite()`. The redirect and
+// the header are asked of the handler's front door and the static half both,
+// because every host puts them in front of its files.
+await askHeader("rule-redirect", "/moved/hello-world", "location");
+await ask("rule-rewrite", "/articles/hello-world");
+await ask("middleware-rewrite", "/shop/hello-world");
+await askHeader("rewrite-payload", "/shop/hello-world/__uf.flight", "content-type");
+await askHeader("rule-header", "/api/health", "cache-control");
+await askHeader("rule-header-everywhere", "/posts/hello-world", "x-served-by");
 // The two adapters whose entry carries a static half of its own: Cloudflare's
 // asset server through the binding, and the copy inside the Lambda package.
 if (adapter === "edge" || adapter === "serverless") {
@@ -2659,6 +2673,130 @@ fn assert_artefact_answers(answers: &str) {
     assert!(
         missing.starts_with("missing 404") && missing.contains("served-app has no such page"),
         "an unrouted path is the project's own 404, not somebody else's page:\n{missing}"
+    );
+
+    // `app.router`'s rules and a middleware's rewrite, each through the same
+    // question every other front door is asked. See ubugeeei-prod/uf#959.
+    for expected in [
+        // A redirect from the config, with the status that keeps the method.
+        "rule-redirect 308 location=/posts/hello-world",
+        // A payload request for a rewritten address is the destination's payload,
+        // which is what a client navigation to it fetches.
+        "rewrite-payload 200 content-type=text/x-component",
+        // A later rule's header over a handler's answer, and the catch-all's on
+        // a render.
+        "rule-header 200 cache-control=no-store",
+        "rule-header-everywhere 200 x-served-by=served-app",
+    ] {
+        assert!(
+            answers.contains(expected),
+            "missing {expected:?} in:\n{answers}"
+        );
+    }
+    for label in ["rule-rewrite", "middleware-rewrite"] {
+        let line = answers
+            .lines()
+            .find(|line| line.starts_with(&format!("{label} ")))
+            .unwrap_or_else(|| panic!("no {label} line in:\n{answers}"));
+        assert!(
+            line.starts_with(&format!("{label} 200")) && line.contains("post: hello-world"),
+            "a rewrite renders the destination at the address that was asked for:\n{line}"
+        );
+    }
+}
+
+/// Whether a response carries `name: value`, however it spelled the name.
+///
+/// The same reading [`redirects_to`] makes of `Location`, for the headers
+/// `app.router.headers` decides.
+fn has_header(response: &str, name: &str, value: &str) -> bool {
+    response.to_ascii_lowercase().contains(&format!(
+        "\r\n{}: {}\r\n",
+        name.to_ascii_lowercase(),
+        value.to_ascii_lowercase()
+    ))
+}
+
+/// `app.router`'s redirects, rewrites and headers, and a middleware's
+/// `rewrite()`, asked of a server that is listening.
+///
+/// One function for `uf dev`, `uf preview`, `uf start` and the three process
+/// adapters' sockets, because the claim of ubugeeei-prod/uf#959 is that they
+/// answer these the same — and `served-app`'s `uf.config.js` is the one fixture
+/// they are all asked about. `guide` and `health` are answers the caller already
+/// has: a prerendered document and a route handler's.
+fn assert_routing_rules(
+    server: &mut Server,
+    port: u16,
+    said: &Mutex<String>,
+    command: &str,
+    guide: &str,
+    health: &str,
+) {
+    let context = |what: &str, response: &str| {
+        format!("`uf {command}` {what}\n{response}\n{}", server_said(said))
+    };
+
+    let moved = get(server, port, "/moved/hello-world", said);
+    assert!(
+        moved.starts_with("HTTP/1.1 308") && redirects_to(&moved, "/posts/hello-world"),
+        "{}",
+        context(
+            "did not answer `app.router.redirects` with a 308 to the destination",
+            &moved
+        )
+    );
+
+    for (path, what) in [
+        ("/articles/hello-world", "`app.router.rewrites`"),
+        ("/shop/hello-world", "a middleware's `rewrite()`"),
+    ] {
+        let rewritten = get(server, port, path, said);
+        assert!(
+            rewritten.starts_with("HTTP/1.1 200") && rewritten.contains("post: hello-world"),
+            "{}",
+            context(
+                &format!("did not render the destination of {what} at {path}"),
+                &rewritten
+            )
+        );
+        assert!(
+            !rewritten.to_ascii_lowercase().contains("\r\nlocation:"),
+            "{}",
+            context(
+                &format!("answered {what} with a redirect, which moves the address"),
+                &rewritten
+            )
+        );
+    }
+
+    let payload = get(server, port, "/shop/hello-world/__uf.flight", said);
+    assert!(
+        payload.starts_with("HTTP/1.1 200")
+            && has_header(&payload, "content-type", "text/x-component"),
+        "{}",
+        context(
+            "did not answer a navigating browser's payload request for a rewritten address \
+             with the destination's payload",
+            &payload
+        )
+    );
+
+    assert!(
+        has_header(guide, "x-served-by", "served-app"),
+        "{}",
+        context(
+            "served a document without the header `app.router.headers` puts on every path",
+            guide
+        )
+    );
+    assert!(
+        has_header(health, "cache-control", "no-store"),
+        "{}",
+        context(
+            "answered a route handler without the later rule's `cache-control`",
+            health
+        )
     );
 }
 
@@ -3371,6 +3509,16 @@ fn the_static_adapter_refuses_a_project_a_static_host_cannot_serve() {
         "/slow/:id",
         "/old/:slug",
         "generateStaticParams",
+        // A middleware that rewrites, by its subtree and its file.
+        "app/shop/$middleware.js",
+        // And `app.router`'s rules, by source and by the file they are written
+        // in, each with the reason a file cannot be it. ubugeeei-prod/uf#959.
+        "/moved/:slug (uf.config.js)",
+        "`app.router.redirects` sends a redirect",
+        "/articles/:slug (uf.config.js)",
+        "`app.router.rewrites` decides which route answers",
+        "/:path* (uf.config.js)",
+        "`app.router.headers` sets a header",
         // And what to do instead, which is the half a reader who chose this
         // target on purpose actually needs.
         "--adapter node",
@@ -3766,6 +3914,10 @@ fn assert_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &st
         "{}",
         context("answered a redirect with no `Location`", &moved)
     );
+
+    // 4c. `app.router`'s redirects, rewrites and headers, and a middleware's
+    //     rewrite: the same questions `uf dev` and every artefact are asked.
+    assert_routing_rules(server, port, said, command, &guide, &health);
 
     // And a path with no route is a 404 rather than somebody else's page —
     // the failure Vite's own preview server has by default, where an SPA
