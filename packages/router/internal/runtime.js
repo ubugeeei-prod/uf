@@ -77,6 +77,13 @@ import { composeRoute, pageComponent } from "./compose.js";
 import { type FetchedFlight, type FlightRoot, type RouteState, routeState } from "./flight.js";
 import { Head } from "./head.js";
 import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
+import {
+  clearNavigationCache,
+  flightNavigations,
+  keepsNavigations,
+  navigationKey,
+  routeNavigations,
+} from "./navigation-cache.js";
 import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
 import type { RouteParams, SearchParams } from "./routing.js";
 import {
@@ -141,6 +148,10 @@ export { resolveFailure, resolveMatch } from "./resolve.js";
 // the application; see `./base-path.js`.
 export type { RoutingSettings, TrailingSlash } from "./base-path.js";
 export { basePath, installRouting } from "./base-path.js";
+
+// `app.rendering.staleTime`, installed by the same entry; see
+// `./navigation-cache.js`.
+export { installStaleTime } from "./navigation-cache.js";
 
 // ---------------------------------------------------------------------------
 // View transitions
@@ -935,7 +946,12 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     }
     setPending(true);
     try {
-      const fetched = await (takePrefetched(next) ?? fetchFlight(next));
+      // The route this page already has while it is fresh, then a prefetch
+      // still in hand, then the network. See `./navigation-cache.js`.
+      const key = navigationKey(target.pathname, target.search);
+      const fetched = await (flightNavigations.read(key) ??
+        takePrefetched(next) ??
+        keepFlight(key, fetchFlight(next)));
       // Not a payload: a redirect off this origin, or a host that has no payload
       // for this URL. The browser loads it as a document, which is what the
       // anchor would have done.
@@ -1097,6 +1113,30 @@ const prefetchedFlights: Map<
   string,
   {| readonly fetched: Promise<FetchedFlight>, readonly at: number |},
 > = new Map();
+
+/**
+ * `fetched`, kept under `key` for as long as `app.rendering.staleTime` says,
+ * and forgotten again if it turns out not to be a route to show twice: a
+ * request that failed, an answer that was a document rather than a payload, or
+ * a payload React could not read.
+ */
+function keepFlight(key: string, fetched: Promise<FetchedFlight>): Promise<FetchedFlight> {
+  if (!keepsNavigations()) {
+    return fetched;
+  }
+  flightNavigations.store(key, fetched);
+  const forget = () => {
+    flightNavigations.forget(key, fetched);
+  };
+  void fetched.then((answer) => {
+    if (answer.kind === "document") {
+      forget();
+      return;
+    }
+    void answer.root.then(undefined, forget);
+  }, forget);
+  return fetched;
+}
 
 function prefetchFlight(url: string): Promise<FetchedFlight> {
   const existing = prefetchedFlights.get(url);

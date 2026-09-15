@@ -558,6 +558,12 @@ export type UniflowedConfig = {
       // request — the client router is not installed and `Link` renders an
       // ordinary anchor. See docs/app/guide/routing/navigation.
       readonly navigation?: "client" | "document",
+      // How long, in whole seconds, the client router shows a route it already
+      // fetched or prefetched without asking the server again: a click on a
+      // prefetched link, a second visit and the back button all read it. `0`,
+      // the default, keeps nothing. `router.refresh()` and every server action
+      // clear it. See docs/app/guide/routing and docs/app/guide/cache.
+      readonly staleTime?: number,
       readonly cache?: {
         readonly actions?: boolean,
         readonly data?: boolean,

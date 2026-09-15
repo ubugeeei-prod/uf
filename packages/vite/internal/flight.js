@@ -536,9 +536,12 @@ export function flightClientSource(appEntry, options = {}) {
   const routing =
     (basePath === "" ? "" : `, basePath: ${JSON.stringify(basePath)}`) +
     (trailingSlash === "ignore" ? "" : `, trailingSlash: ${JSON.stringify(trailingSlash)}`);
+  // `app.rendering.staleTime`, in seconds, and nothing for the default `0`.
+  const staleTime =
+    options.staleTime > 0 ? `, staleTime: ${JSON.stringify(options.staleTime)}` : "";
   return `import { hydrateFlight } from "@uniflowed/router/rsc/client";
 import App from ${JSON.stringify(appEntry)};
-hydrateFlight({ App${strictMode}${navigation}${routing} });
+hydrateFlight({ App${strictMode}${navigation}${staleTime}${routing} });
 `;
 }
 
