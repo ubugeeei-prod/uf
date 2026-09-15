@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Temporary probe for ubugeeei-prod/uf#1071. Not for merge.
 #
-# Runs the `uf_fmt` `guarantees` test binary many times in parallel on the CI
-# runner, with core dumps on, and prints what the kernel and gdb say about any
+# Runs the whole workspace suite the way the Test job does, reports what it
+# left running, then runs the `uf_fmt` `guarantees` test binary many times in
+# parallel with core dumps on, and prints what the kernel and gdb say about any
 # process that dies.
 set -u
 
@@ -13,17 +14,35 @@ uname -a
 ldd --version | head -1
 nproc
 head -3 /proc/meminfo
-echo "overcommit_memory=$(cat /proc/sys/vm/overcommit_memory) max_map_count=$(cat /proc/sys/vm/max_map_count)"
+echo "overcommit_memory=$(cat /proc/sys/vm/overcommit_memory) max_map_count=$(cat /proc/sys/vm/max_map_count) pid_max=$(cat /proc/sys/kernel/pid_max)"
 echo "thp=$(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null)"
 grep -m1 'model name' /proc/cpuinfo
-grep -o -w 'avx2\|avx512f\|amx_tile\|user_shstk' /proc/cpuinfo | sort | uniq -c
 ulimit -a
-echo "core_pattern=$(cat /proc/sys/kernel/core_pattern)"
+
+section setup
+mkdir -p /tmp/cores /tmp/probe-logs
+chmod 1777 /tmp/cores
+sudo sysctl -w kernel.core_pattern=/tmp/cores/core.%e.%p || echo "could not set core_pattern"
+ulimit -c unlimited
+command -v gdb > /dev/null || sudo apt-get install -y -qq gdb > /dev/null 2>&1 || echo "no gdb"
+sudo dmesg -C 2> /dev/null || true
+
+section suite
+started=$(date +%s)
+cargo test --workspace --profile ci > /tmp/probe-suite.log 2>&1
+echo "suite exit=$? elapsed=$(( $(date +%s) - started ))s"
+grep -a "signal: \|overflowed its stack\|test result: FAILED\|error: test failed" /tmp/probe-suite.log | tail -20
+
+section leftovers
+free -m
+cat /proc/loadavg
+echo "threads=$(ps -eLf | wc -l)"
+ps -eo pid,ppid,rss,etimes,args --sort=-rss | cut -c1-160 | head -25
 
 section build
 cargo test -p uf_fmt --test guarantees --profile ci --no-run --message-format=json 2> /tmp/probe-build.txt \
   | grep -o '"executable":"[^"]*guarantees-[^"]*"' | tail -1 | sed 's/"executable":"//; s/"$//' > /tmp/probe-bin.txt
-tail -3 /tmp/probe-build.txt
+tail -2 /tmp/probe-build.txt
 BIN=$(cat /tmp/probe-bin.txt)
 echo "binary: $BIN"
 if [ ! -x "$BIN" ]; then
@@ -31,23 +50,15 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
-section setup
-mkdir -p /tmp/cores /tmp/probe-logs
-chmod 1777 /tmp/cores
-sudo sysctl -w kernel.core_pattern=/tmp/cores/core.%p || echo "could not set core_pattern"
-ulimit -c unlimited
-command -v gdb > /dev/null || sudo apt-get install -y -qq gdb > /dev/null 2>&1 || echo "no gdb"
-sudo dmesg -C 2> /dev/null || true
-
-workers=16
-iterations=8
+workers=24
+iterations=18
 worker() {
   local w=$1 i code
   for i in $(seq 1 "$iterations"); do
     "$BIN" --test-threads 32 > "/tmp/probe-logs/$w.$i.log" 2>&1
     code=$?
     if [ "$code" -ne 0 ]; then
-      echo "CRASH worker=$w run=$i exit=$code"
+      echo "CRASH worker=$w run=$i exit=$code at $(date +%T)"
       grep -v ' \.\.\. ok$' "/tmp/probe-logs/$w.$i.log" | tail -12
     fi
   done
@@ -60,7 +71,7 @@ wait
 echo "elapsed=$(( $(date +%s) - started ))s"
 
 section dmesg
-sudo dmesg | grep -i 'segfault\|trap\|guarantees\|oom\|killed process' | tail -30
+sudo dmesg | grep -i 'segfault\|trap\|general protection\|oom\|killed process' | tail -30
 
 section cores
 count=0
