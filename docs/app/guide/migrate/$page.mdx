@@ -413,9 +413,11 @@ deployment record does not have yet.
    ([Middleware](/guide/routing/requests#middleware)).
 6. **Restate caching.** Turn on `app.rendering.cache.route`, then call
    `cacheLife({ revalidate: 60 })` and `cacheTag("posts")` inside the render,
-   from `@uniflowed/server/cache`; `export const revalidate` is not read. Name a
-   durable `rendering.cache.store` and a stale document regenerates in place,
-   which is the behaviour ISR names ([Caching](/guide/cache)).
+   from `@uniflowed/server/cache`; `export const revalidate` is not read. A
+   prerendered page that states a lifetime is served from the build and
+   regenerated in the background once it passes, which is the behaviour ISR
+   names, and `rendering.cache.store` decides where the regenerated pages are
+   kept ([Caching](/guide/cache)).
 7. **Rename what reaches the browser.** `NEXT_PUBLIC_API` becomes `VITE_API`, or
    keep the name with `vite: { envPrefix: "NEXT_PUBLIC_" }`. Server code reads
    every variable through `process.env`, as before.
@@ -445,11 +447,14 @@ deployment record does not have yet.
   ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot holds
   no `$not-found.js`, `$route.js` or `$middleware.js`
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
-- **The rest of ISR.** `uf build` does not seed the durable store from its
-  prerender ([#996](https://github.com/ubugeeei-prod/uf/issues/996)), there is no
+- **The rest of ISR.** A cached render that reads `cookies()` is refused when it
+  runs rather than when it builds
+  ([#996](https://github.com/ubugeeei-prod/uf/issues/996)), a process that
+  restarts after an invalidation can serve the build's copy of a page until its
+  lifetime has passed, a `--compile` binary carries no cache, there is no
   function-level cache or `"use cache"`
-  ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `isr` and
-  `ppr` mode names select nothing yet.
+  ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `ppr` mode
+  name selects nothing yet.
 - **Middleware and request APIs.** A middleware cannot rewrite the request, and
   `cookies()` reads without writing.
 - **Images and fonts.** Resized at build time only, with no AVIF or lossy WebP
