@@ -1082,28 +1082,28 @@ report, reads it back, and fails the run when a file its discovery says declares
 tests produced no case at all — the rule uf's own runner enforces for the same
 reason.
 
-**The difference, measured.** Relative numbers, and only relative: they were
-taken on a shared 8-core M3 under a load average of 20–23 from other builds,
-with the runners alternating in the same minutes over 15 rounds, so every time
-below is inflated and only the ratios carry over. Absolute numbers on a quiet
-machine belong to the benchmark in
+**The difference, measured.** These numbers are relative, and only relative.
+They come from 12 rounds on a shared 8-core M3 at a load average of about 3,
+with the runs alternating, so the ratios carry over and the milliseconds may
+not. Absolute numbers on a quiet machine belong to the benchmark in
 [#945](https://github.com/ubugeeei-prod/uf/issues/945). The suite is 50 Flow
-files and 1,000 cases:
+files and 1,000 cases, run with the transform cache warm:
 
 | Run | Wall, median (p25–p75) | CPU |
 | --- | --- | --- |
-| `uf test`, `runner: "uf"`, warm cache | 432 ms (399–442) | 410 ms |
-| `uf test`, `runner: "bun"` | 766 ms (711–817) | 230 ms |
-| the `bun test` command that starts, alone | 757 ms (670–802) | 220 ms |
-| `bun test` on the same suite as plain JavaScript | 286 ms (264–361) | 110 ms |
+| `uf test`, `runner: "uf"` | 79 ms (78–80) | 100 ms |
+| `uf test`, `runner: "bun"` | 61 ms (60–61) | 70 ms |
+| the `bun test` command that starts, alone | 56 ms (55–57) | 60 ms |
+| `bun test` on the same suite as plain JavaScript | 33 ms (33–33) | 30 ms |
 
-What `uf test` adds around `bun test` is within the noise, 766 against 757 ms.
-A Bun runner takes longer than uf's own here for one reason: Bun's preload
-compiles every Flow module through `uf transform` on every run, where uf's
-runner reads them back from `.uf/cache/transform`. That compile is also most of
-the gap to plain `bun test`, and caching it is the next change in
-[#944](https://github.com/ubugeeei-prod/uf/issues/944). It already uses about
-half the CPU of uf's runner.
+Around `bun test`, `uf test` reads the config, discovers the files and reads
+the report back. Here that adds 5 ms. Bun's preload reads compiled Flow from
+`.uf/cache/transform`, the same cache uf's own runner uses
+([#944](https://github.com/ubugeeei-prod/uf/issues/944)). A warm run therefore
+compiles nothing under either runner, and on this suite the Bun runner is the
+faster of the two. The rest of the gap to plain `bun test` is spent inside
+Bun, loading the preload and the compiled modules. It has not been broken down
+further.
 
 Keep the default for what only uf's runner does — module mocking, DOM matchers
 and accessibility audits, coverage against your Flow source, permissions,
