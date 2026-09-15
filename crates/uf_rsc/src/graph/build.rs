@@ -701,10 +701,10 @@ fn collect_boundaries(
             }
         }
         for import in &edges.external {
-            if uf_lib::is_client_module(&import.specifier) {
+            for target in package_boundary_targets(import) {
                 boundaries.push(ClientBoundary {
                     importer: ModuleId(position as u32),
-                    target: ClientBoundaryTarget::Package(import.specifier.clone()),
+                    target: ClientBoundaryTarget::Package(target),
                 });
             }
         }
@@ -712,6 +712,52 @@ fn collect_boundaries(
     boundaries.sort_unstable();
     boundaries.dedup();
     boundaries
+}
+
+/// The package client modules an external import reaches, each named
+/// `package/module`.
+///
+/// A subpath uf knows carries `"use client"` is itself the boundary. The
+/// `@uniflowed/ui` barrel is not a client module; it is the other way in. Each
+/// name imported from it reaches the client module that exports it
+/// ([`uf_lib::client_modules_exporting`]), so a page importing `{ Switch }` from
+/// the barrel has its boundary at `@uniflowed/ui/switch`, exactly as if it had
+/// imported the subpath, and not at the whole package. A name from a Server
+/// Component module reaches nothing, and so does a type, which the scanner
+/// drops.
+///
+/// A form that binds no name the scanner can read — `import * as ui`,
+/// `export * from`, a dynamic `import()` or a `require` — may use any of the
+/// modules, so its boundary is the barrel itself.
+fn package_boundary_targets(import: &ImportSpecifier) -> Vec<CompactString> {
+    if uf_lib::is_client_module(&import.specifier) {
+        return vec![import.specifier.clone()];
+    }
+    if import.specifier != uf_lib::CLIENT_MODULE_PACKAGE {
+        return Vec::new();
+    }
+    let opaque = matches!(import.kind, ImportKind::Dynamic | ImportKind::Require)
+        || (matches!(import.kind, ImportKind::ReExport) && import.bindings.is_empty())
+        || import
+            .bindings
+            .iter()
+            .any(|binding| !matches!(binding.imported, crate::scan::ImportedName::Named(_)));
+    if opaque {
+        return vec![import.specifier.clone()];
+    }
+    let mut targets: Vec<CompactString> = import
+        .bindings
+        .iter()
+        .filter_map(|binding| match &binding.imported {
+            crate::scan::ImportedName::Named(name) => Some(name),
+            _ => None,
+        })
+        .flat_map(|name| uf_lib::client_modules_exporting(name))
+        .map(|module| CompactString::from(format!("{}/{module}", uf_lib::CLIENT_MODULE_PACKAGE)))
+        .collect();
+    targets.sort_unstable();
+    targets.dedup();
+    targets
 }
 
 /// Reverse walk from the boundary importers, again with an explicit worklist.

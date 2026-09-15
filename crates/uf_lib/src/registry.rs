@@ -1189,3 +1189,76 @@ pub fn is_client_module(specifier: &str) -> bool {
         .and_then(|rest| rest.strip_prefix('/'))
         .is_some_and(|subpath| CLIENT_MODULE_SUBPATHS.contains(&subpath))
 }
+
+/// Names the barrel exports that [`client_modules_exporting`]'s rule does not
+/// fit, with the client modules each comes from.
+///
+/// `ContextMenu` and `Menubar` are namespaces whose items include `Menu`'s own
+/// parts, so either reaches `menu` as well as its own module. `toast` and its
+/// three companions are functions named for what they do, and the interactions
+/// layer is hooks.
+const BARREL_EXPORT_MODULES: &[(&str, &[&str])] = &[
+    ("ContextMenu", &["context-menu", "menu"]),
+    ("Menubar", &["menu", "menubar"]),
+    ("dismissAllToasts", &["toast"]),
+    ("dismissToast", &["toast"]),
+    ("getInteractionModality", &["interactions"]),
+    ("mergeProps", &["interactions"]),
+    ("toast", &["toast"]),
+    ("updateToast", &["toast"]),
+    ("useFocusRing", &["interactions"]),
+    ("useFocusVisible", &["interactions"]),
+    ("useHover", &["interactions"]),
+    ("useInteractionModality", &["interactions"]),
+    ("useKeyboard", &["interactions"]),
+    ("useLongPress", &["interactions"]),
+    ("useMove", &["interactions"]),
+    ("usePress", &["interactions"]),
+];
+
+/// The client modules a name imported from the [`CLIENT_MODULE_PACKAGE`] barrel
+/// comes from, or none for a name no client module exports.
+///
+/// The barrel re-exports every module, so a page that imports `{ Switch }` from
+/// `@uniflowed/ui` reaches the `switch` module and nothing else. That is what
+/// lets a boundary name the module rather than the package, and a bundle carry
+/// one component's client code rather than every component's.
+///
+/// A rule rather than a table of every name, because the barrel's names follow
+/// its modules': a family's namespace is its module in PascalCase (`AlertDialog`
+/// is `alert-dialog`), a part begins with it (`AlertDialogBody`), and where two
+/// modules fit, the longer one is where the name comes from (`MenubarTrigger` is
+/// `menubar`, not `menu`). A name from a Server Component module, such as
+/// `AlertRoot`, fits no client module and reaches none. [`BARREL_EXPORT_MODULES`]
+/// holds the names the rule does not fit, and
+/// `the_barrel_names_the_client_modules_each_export_comes_from` in `uf_rsc` holds
+/// the rule to `packages/ui/index.js`.
+#[must_use]
+pub fn client_modules_exporting(name: &str) -> Vec<&'static str> {
+    if let Some((_, modules)) = BARREL_EXPORT_MODULES
+        .iter()
+        .find(|(export, _)| *export == name)
+    {
+        return modules.to_vec();
+    }
+    CLIENT_MODULE_SUBPATHS
+        .iter()
+        .copied()
+        .filter(|module| name.starts_with(pascal_case(module).as_str()))
+        .max_by_key(|module| module.len())
+        .into_iter()
+        .collect()
+}
+
+/// `alert-dialog` as `AlertDialog`.
+fn pascal_case(kebab: &str) -> String {
+    let mut out = String::with_capacity(kebab.len());
+    for word in kebab.split('-') {
+        let mut letters = word.chars();
+        if let Some(first) = letters.next() {
+            out.push(first.to_ascii_uppercase());
+            out.push_str(letters.as_str());
+        }
+    }
+    out
+}
