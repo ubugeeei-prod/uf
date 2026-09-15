@@ -1935,6 +1935,18 @@ fn dev_pre_bundles_the_flight_client_an_installed_router_imports() {
         return;
     }
     let project = Project::new(&minimal_app());
+    // A `package.json` of its own, as every installed project has, and not only
+    // for the likeness. Vite keeps the optimizer's cache in the nearest
+    // `package.json`'s `node_modules/.vite`, and a project without one uses the
+    // repository root's: the one directory every other `uf dev` in this suite
+    // on a project without a manifest removes and rewrites when it starts. A
+    // pre-bundled file whose directory another server renamed away while this
+    // one was still optimizing is answered `504 Outdated Optimize Dep`, which
+    // is how CI failed this test under load (ubugeeei-prod/uf#1135).
+    project.write(
+        "package.json",
+        "{\n  \"name\": \"uf-installed-router\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+    );
     copy_tree(
         &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/router"),
         &project.path().join("node_modules/@uniflowed/router"),
