@@ -206,7 +206,9 @@ function isNode(value) {
 
 function contextFor(id, rule, root, file, sourceCode, lineStarts, diagnostics) {
   const messages = rule.meta?.messages ?? {};
-  const fixable = rule.meta?.fixable != null;
+  // `"code"`, `"whitespace"`, or nothing: which of the two it is decides a
+  // fix's tier on the Rust side, so the word is carried rather than a flag.
+  const fixable = rule.meta?.fixable ?? null;
   return {
     id,
     // `lint.rules` takes a level and nothing else, so there are no options to
@@ -253,6 +255,11 @@ function diagnosticOf(id, descriptor, messages, fixable, source, lineStarts) {
       throw new TypeError("a rule that reports a fix must set `meta.fixable`");
     }
     fix = mergeFixes(descriptor.fix(FIXER), source);
+    if (fix !== null) {
+      // The rule's own word for what its edits do, which is how uf decides
+      // the tier: layout-only edits are `--fix`'s, code is `--fix-unsafe`'s.
+      fix.kind = fixable === "whitespace" ? "whitespace" : "code";
+    }
   }
   return { rule: id, message, start, end, fix };
 }

@@ -42,6 +42,7 @@ use uf_lint::{LintError, LintReport, SourceFile, lint_source};
 use uf_project::{ProjectFile, scan_selected_source_files};
 
 use super::{FORMATTED_AWAY, Safety, apply, fix_for, plan};
+use crate::commands::lint::plugins::{self, ProjectFix, Session};
 use crate::support::selects;
 
 /// How many times one file is linted, fixed and linted again before the fixer
@@ -132,27 +133,61 @@ pub(crate) fn fix_files(
     mode: FixMode,
 ) -> Result<FixSummary> {
     let mut summary = FixSummary::default();
+    // One session for the pass rather than one a file: a project rule's host
+    // is the expensive thing to start, and every round of every file asks it.
+    let mut session = Session::start(&resolved.root, &resolved.config)?;
     for file in files.iter_mut().filter(|file| file.kind.is_flow()) {
-        fix_file(resolved, file, mode, &mut summary)?;
+        fix_file(resolved, file, mode, &mut summary, session.as_mut())?;
     }
     summary.changed.sort_unstable();
     Ok(summary)
 }
 
 /// Lint, fix and re-lint one file until its text stops changing.
+///
+/// A project rule's findings are not in the report this loop reads — the pass
+/// that runs after the fixes reports them — but its fixes are planned here, so
+/// that report is the report of the rewritten file.
 fn fix_file(
     resolved: &ResolvedConfig,
     file: &mut ProjectFile,
     mode: FixMode,
     summary: &mut FixSummary,
+    mut session: Option<&mut Session>,
 ) -> Result<()> {
     fix_file_with(
-        &|source| lint_source(source, &resolved.config),
+        &mut |source| {
+            let report = lint_source(source, &resolved.config)?;
+            let project_fixes = session
+                .as_mut()
+                .map(|session| session.lint(source).fixes)
+                .unwrap_or_default();
+            Ok(Linted {
+                report,
+                project_fixes,
+            })
+        },
         resolved,
         file,
         mode,
         summary,
     )
+}
+
+/// What one round's linter found: uf's report, and the edits the project's own
+/// rules asked for.
+struct Linted {
+    report: LintReport,
+    project_fixes: Vec<ProjectFix>,
+}
+
+impl From<LintReport> for Linted {
+    fn from(report: LintReport) -> Self {
+        Self {
+            report,
+            project_fixes: Vec::new(),
+        }
+    }
 }
 
 /// [`fix_file`], with the linter each round asks handed in.
@@ -163,7 +198,7 @@ fn fix_file(
 /// so without a seam here the handling below is code no test can reach. A
 /// guarantee nothing can check is one nobody can keep.
 fn fix_file_with(
-    lint: &dyn Fn(&SourceFile) -> Result<LintReport, LintError>,
+    lint: &mut dyn FnMut(&SourceFile) -> Result<Linted, LintError>,
     resolved: &ResolvedConfig,
     file: &mut ProjectFile,
     mode: FixMode,
@@ -192,15 +227,33 @@ fn fix_file_with(
         // that arrive here are the parser refusing to run at all, and there is
         // no answer to that but to stop. The original text stays on disk
         // because nothing is written before the loop ends.
-        let report = lint(&source)
+        let Linted {
+            report,
+            project_fixes,
+        } = lint(&source)
             .with_context(|| format!("failed to lint {} while fixing it", file.relative_path))?;
         leftover = Leftover::count(&report.diagnostics, &text, mode);
-
-        let fixes = plan(&text, &report.diagnostics, mode.allows_unsafe());
-        if fixes.is_empty() {
-            break;
+        if !mode.allows_unsafe() {
+            leftover.needs_unsafe += project_fixes
+                .iter()
+                .filter(|fix| fix.safety == Safety::Unsafe)
+                .count();
         }
-        let candidate = apply(&text, &fixes);
+
+        // uf's own fixes first, and the project's once uf has none left. The
+        // two come from different catalogues and cannot be planned for overlap
+        // against each other, and the loop lints again between rounds, so
+        // taking one kind a round costs a round rather than a wrong edit.
+        let fixes = plan(&text, &report.diagnostics, mode.allows_unsafe());
+        let (candidate, count) = if fixes.is_empty() {
+            let planned = plugins::plan_fixes(&project_fixes, mode.allows_unsafe());
+            if planned.is_empty() {
+                break;
+            }
+            (plugins::apply_fixes(&text, &planned), planned.len())
+        } else {
+            (apply(&text, &fixes), fixes.len())
+        };
         if candidate == text {
             break;
         }
@@ -213,7 +266,7 @@ fn fix_file_with(
                 break;
             }
         };
-        applied += fixes.len();
+        applied += count;
         text = settled;
     }
 
@@ -349,18 +402,18 @@ mod tests {
         let resolved = config_at(&root);
         let mut file = a_file_to_fix(&root);
         let rounds = Cell::new(0usize);
-        let lint = |source: &SourceFile| {
+        let mut lint = |source: &SourceFile| -> Result<Linted, LintError> {
             if rounds.replace(rounds.get() + 1) > 0 {
                 // What the parser thread panicking looks like from here.
                 return Err(LintError::Flow(uf_flow::FlowError::Runtime(String::from(
                     "the Flow parser thread panicked",
                 ))));
             }
-            Ok(deprecated_bool(&source.path))
+            Ok(deprecated_bool(&source.path).into())
         };
         let mut summary = FixSummary::default();
 
-        let outcome = fix_file_with(&lint, &resolved, &mut file, FixMode::Safe, &mut summary);
+        let outcome = fix_file_with(&mut lint, &resolved, &mut file, FixMode::Safe, &mut summary);
 
         let error = outcome.expect_err("a linter that could not run passed for a clean file");
         assert!(
@@ -388,15 +441,15 @@ mod tests {
         let resolved = config_at(&root);
         let mut file = a_file_to_fix(&root);
         let rounds = Cell::new(0usize);
-        let lint = |source: &SourceFile| {
+        let mut lint = |source: &SourceFile| -> Result<Linted, LintError> {
             if rounds.replace(rounds.get() + 1) > 0 {
-                return Ok(LintReport::default());
+                return Ok(LintReport::default().into());
             }
-            Ok(deprecated_bool(&source.path))
+            Ok(deprecated_bool(&source.path).into())
         };
         let mut summary = FixSummary::default();
 
-        fix_file_with(&lint, &resolved, &mut file, FixMode::Safe, &mut summary)
+        fix_file_with(&mut lint, &resolved, &mut file, FixMode::Safe, &mut summary)
             .expect("the linter kept working");
 
         assert_eq!(

@@ -83,7 +83,7 @@ describe("lintFile", () => {
         message: "`foo` is reserved",
         start: 6,
         end: 9,
-        fix: { start: 6, end: 9, text: "bazBar" },
+        fix: { start: 6, end: 9, text: "bazBar", kind: "code" },
       },
     ]);
     expect(result.problems).toEqual([]);

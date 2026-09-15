@@ -275,7 +275,10 @@ gets:
 - **Listeners** keyed by ESTree node type, and by the type with `:exit` on the
   way out. The tree is the one uf's own Flow parser produced, so type
   annotations and component syntax are nodes like any other, and every node
-  has a `parent`. There are no selectors beyond a node type.
+  has a `parent`. There are no selectors beyond a node type. An identifier
+  with a type annotation spans the annotation too, as in any Flow ESTree, so a
+  fix that renames one replaces `node.name.length` characters from
+  `node.range[0]` rather than the whole node.
 - **`context.report`** with a `node` or a `loc` (lines from 1, columns from 0),
   and a `message`, or a `messageId` from `meta.messages` filled from `data`.
 - **`context.sourceCode`** — `text`, `ast`, `lines`, `getText(node)`,
@@ -301,9 +304,18 @@ object with the time spent inside each rule, the wall time of the whole pass
 and every problem — a plugin that did not import, a rule no plugin defines, a
 file that ran out of time — and any problem fails the run.
 
-Project rules' fixes are not applied yet, by `--fix` or in an editor, and the
-language server does not run project rules yet
-([#974](https://github.com/ubugeeei-prod/uf/issues/974)).
+A rule's fixes go through the same two tiers as uf's own, and the rule picks
+the tier with the word ESLint already gives it. `meta.fixable: "whitespace"`
+promises edits that only move layout, and `--fix` applies those; `"code"` is
+applied by `--fix-unsafe` alone, because uf cannot read an edit to find out
+whether the program still means what it meant. Either way the result has to
+parse and stay formatted, exactly as with uf's own fixes.
+
+The language server runs project rules too, with one worker for the whole
+editor session. Their findings appear beside uf's, a finding with a fix has it
+in the lightbulb menu, "Fix all" on save applies the `"whitespace"` ones, and
+anything that keeps a rule from answering is written to the editor's log for
+the server.
 
 ### When lint is too expensive
 

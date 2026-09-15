@@ -12,6 +12,11 @@
 //! nothing: [`enabled_project_rules`] is a walk of `lint.rules`, and it is all
 //! such a run pays.
 //!
+//! One [`Session`] is one worker's life, and the three callers hold it for as
+//! long as they have files: `uf lint` for its pass, `--fix` for every round of
+//! every file, and `uf lsp` for the editor session, so the host's start-up is
+//! paid once rather than once a file or once a keystroke.
+//!
 //! # The shape a rule has
 //!
 //! ESLint's, over the subset rules are written against — see
@@ -24,6 +29,15 @@
 //! in a namespace uf does not own: `react/hooks-rule` is a misspelt uf rule,
 //! and handing it to the plugins would turn a typo into a plugin's problem.
 //!
+//! # Fixes, and which tier they are in
+//!
+//! uf's tiers are about meaning: a safe fix leaves the program meaning what it
+//! meant, and uf cannot read a project's fix to find out whether it does. The
+//! rule can say, though, and ESLint already gives it the word for it — a rule
+//! whose `meta.fixable` is `"whitespace"` promises layout-only edits, and those
+//! are [`Safety::Safe`]; `"code"` is [`Safety::Unsafe`], applied by
+//! `--fix-unsafe` and offered in an editor but never by `--fix` or on save.
+//!
 //! # What the cost is bounded by
 //!
 //! JavaScript rules are the part of a lint run uf does not write, so they are
@@ -31,8 +45,8 @@
 //! because a wedged event loop runs no timer of its own: [`LOAD_BUDGET`] for
 //! starting the host and importing the plugins, and [`FILE_BUDGET`] for one
 //! file's rules. A host that passes either is killed and the file is named;
-//! the next file gets a fresh host, at most [`MAX_HOST_STARTS`] in a run, and
-//! the files after that are named rather than attempted.
+//! the next file gets a fresh host, at most [`MAX_HOST_STARTS`] in a session,
+//! and after that the session stops trying and says so.
 //!
 //! Every one of those is a problem, and a problem fails the run. A rule that
 //! was enabled and could not answer is a question the run did not answer, and
@@ -42,9 +56,9 @@
 //!
 //! The worker times every call into a rule — `create` and each listener — and
 //! returns the microseconds per rule with each file. The totals, and the
-//! pass's wall time with the host's start-up and each tree's trip through the
-//! pipe in it, are in the report, so a slow rule is named by the run that paid
-//! for it.
+//! session's wall time with the host's start-up and each tree's trip through
+//! the pipe in it, are in the report, so a slow rule is named by the run that
+//! paid for it.
 
 #[cfg(test)]
 mod tests;
@@ -56,7 +70,7 @@ use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::{Value, json};
 use uf_config::{CapabilityJsHost, RuleLevel, UniflowedConfig};
 use uf_infra::{FxHashMap, FxHashSet, LineIndex};
@@ -68,13 +82,14 @@ use uf_test::{HostCommand, HostKind};
 use crate::commands::builder::uniflowed_package;
 use crate::commands::test::uf_binary;
 use crate::commands::vite::resolve_host;
+use crate::fix::Safety;
 use crate::support::plural;
 use crate::ui::Ui;
 
 /// How long the host may take to start and import the project's plugins.
 ///
 /// Generous, because it covers a cold `uf transform` of every plugin module,
-/// and it is paid once a run rather than once a file.
+/// and it is paid once a session rather than once a file.
 pub(crate) const LOAD_BUDGET: Duration = Duration::from_secs(30);
 
 /// How long one file's rules may run before the host is stopped.
@@ -85,7 +100,7 @@ pub(crate) const LOAD_BUDGET: Duration = Duration::from_secs(30);
 /// own timeout, which names nothing.
 pub(crate) const FILE_BUDGET: Duration = Duration::from_secs(5);
 
-/// How many hosts one run may start, the first included.
+/// How many hosts one session may start, the first included.
 pub(crate) const MAX_HOST_STARTS: usize = 3;
 
 /// The worker module inside `@uniflowed/host`.
@@ -102,10 +117,38 @@ pub(crate) struct ProjectRules {
     pub(crate) timings: Vec<(&'static str, f64)>,
     /// Files the rules answered for.
     pub(crate) files: usize,
-    /// Wall time of the whole pass, the host's start-up included.
+    /// Wall time of the whole session, the host's start-up included.
     pub(crate) micros: u64,
     /// Everything that kept an enabled rule from answering. Each fails the run.
     pub(crate) problems: Vec<String>,
+}
+
+/// One edit a project rule asked for, in bytes of the file it was reported in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ProjectFix {
+    /// The rule that asked for it.
+    pub(crate) rule: &'static str,
+    /// Which of uf's tiers the rule's `meta.fixable` puts it in.
+    pub(crate) safety: Safety,
+    /// Byte offset where the replaced text starts.
+    pub(crate) start: usize,
+    /// Byte offset just past the replaced text.
+    pub(crate) end: usize,
+    /// What goes in its place.
+    pub(crate) text: String,
+    /// The 1-based line of the diagnostic it answers.
+    pub(crate) line: usize,
+    /// The 1-based byte column of the diagnostic it answers.
+    pub(crate) column: usize,
+}
+
+/// What the rules said about one file.
+#[derive(Debug, Default)]
+pub(crate) struct Answer {
+    /// Their findings, at the levels `lint.rules` gives them.
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    /// The edits those findings came with.
+    pub(crate) fixes: Vec<ProjectFix>,
 }
 
 /// The enabled rule ids a project's plugins have to define, with their levels.
@@ -120,7 +163,12 @@ pub(crate) fn enabled_project_rules(config: &UniflowedConfig) -> Vec<(&'static s
     }
     let owned: FxHashSet<&str> = uf_lint::rules()
         .iter()
-        .filter_map(|descriptor| descriptor.id.split_once('/').map(|(namespace, _)| namespace))
+        .filter_map(|descriptor| {
+            descriptor
+                .id
+                .split_once('/')
+                .map(|(namespace, _)| namespace)
+        })
         .collect();
     config
         .lint
@@ -136,7 +184,7 @@ pub(crate) fn enabled_project_rules(config: &UniflowedConfig) -> Vec<(&'static s
         .collect()
 }
 
-/// Run the project's rules over `sources`.
+/// Run the project's rules over `sources`, for `uf lint` and `uf check`.
 ///
 /// Returns an empty, not-`ran` outcome without starting anything when no
 /// project rule is enabled. An error is a project that cannot run its rules at
@@ -147,93 +195,125 @@ pub(crate) fn run(
     config: &UniflowedConfig,
     sources: &[SourceFile],
 ) -> Result<ProjectRules> {
-    let enabled = enabled_project_rules(config);
-    if enabled.is_empty() {
+    let Some(mut session) = Session::start(root, config)? else {
         return Ok(ProjectRules::default());
-    }
-    let started = Instant::now();
-    let modules = plugin_modules(config, root)?;
-    let command = host_command(root, config)?;
-    let levels: FxHashMap<&'static str, RuleLevel> = enabled.iter().copied().collect();
-    let load = json!({
-        "type": "load",
-        "root": root.as_str(),
-        "modules": modules,
-        "rules": enabled.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
-    });
-
-    let mut outcome = ProjectRules {
-        ran: true,
-        ..ProjectRules::default()
     };
-    let mut micros: FxHashMap<&'static str, f64> = FxHashMap::default();
-    let files: Vec<&SourceFile> = sources
-        .iter()
-        .filter(|file| !file.path.ends_with(".json"))
-        .collect();
-    let mut worker: Option<Worker> = None;
-    let mut starts = 0;
+    let mut diagnostics = Vec::new();
+    for file in sources {
+        if session.gave_up() {
+            break;
+        }
+        diagnostics.extend(session.lint(file).diagnostics);
+    }
+    let mut outcome = session.finish();
+    outcome.diagnostics = diagnostics;
+    Ok(outcome)
+}
 
-    for (index, file) in files.iter().enumerate() {
-        if worker.is_none() {
-            if starts == MAX_HOST_STARTS {
-                outcome.problems.push(format!(
-                    "project rules stopped after the rule host was started {MAX_HOST_STARTS} \
-                     times, so {} went unlinted by them",
-                    plural(files.len() - index, "file")
-                ));
-                break;
-            }
-            starts += 1;
-            let mut fresh = Worker::start(&command)?;
-            match fresh.ask(&load, LOAD_BUDGET) {
-                Ok(reply) => {
-                    // The same plugins load the same way every time, so only
-                    // the first start's account of them is worth reading.
-                    if starts == 1 {
-                        outcome.problems.extend(strings(&reply, "problems"));
-                    }
-                    worker = Some(fresh);
-                }
-                Err(Stopped::TimedOut) => {
-                    outcome.problems.push(format!(
-                        "the rule host did not load the project's plugins within {} s",
-                        LOAD_BUDGET.as_secs()
-                    ));
-                    break;
-                }
-                Err(Stopped::Exited) => {
-                    outcome.problems.push(String::from(
-                        "the rule host exited while loading the project's plugins; what it \
-                         printed is above",
-                    ));
-                    break;
-                }
-            }
+/// A worker's life: started on the first file that needs it, restarted after
+/// a file that stops it, and given up on after [`MAX_HOST_STARTS`].
+pub(crate) struct Session {
+    command: HostCommand,
+    load: Value,
+    levels: FxHashMap<&'static str, RuleLevel>,
+    root: Utf8PathBuf,
+    worker: Option<Worker>,
+    starts: usize,
+    gave_up: bool,
+    started: Instant,
+    micros: FxHashMap<&'static str, f64>,
+    outcome: ProjectRules,
+}
+
+impl Session {
+    /// A session for `config`'s project rules, or [`None`] when there are none.
+    ///
+    /// Starts no process: the first [`Session::lint`] does, so a session
+    /// created for a pass that turns out to have no Flow file costs nothing.
+    pub(crate) fn start(root: &Utf8Path, config: &UniflowedConfig) -> Result<Option<Self>> {
+        let enabled = enabled_project_rules(config);
+        if enabled.is_empty() {
+            return Ok(None);
+        }
+        let modules = plugin_modules(config, root)?;
+        let command = host_command(root, config)?;
+        let load = json!({
+            "type": "load",
+            "root": root.as_str(),
+            "modules": modules,
+            "rules": enabled.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+        });
+        Ok(Some(Self {
+            command,
+            load,
+            levels: enabled.iter().copied().collect(),
+            root: root.to_path_buf(),
+            worker: None,
+            starts: 0,
+            gave_up: false,
+            started: Instant::now(),
+            micros: FxHashMap::default(),
+            outcome: ProjectRules {
+                ran: true,
+                ..ProjectRules::default()
+            },
+        }))
+    }
+
+    /// Whether the session has stopped trying: a load that failed, or a host
+    /// that had to be started too many times.
+    pub(crate) fn gave_up(&self) -> bool {
+        self.gave_up
+    }
+
+    /// Everything that has kept a rule from answering so far, in order.
+    pub(crate) fn problems(&self) -> &[String] {
+        &self.outcome.problems
+    }
+
+    /// Run every enabled rule over one file.
+    ///
+    /// Never an error: a file the rules could not answer for is a problem in
+    /// [`Session::problems`] and an empty answer, so one bad file costs its own
+    /// findings and not the pass.
+    pub(crate) fn lint(&mut self, file: &SourceFile) -> Answer {
+        let mut answer = Answer::default();
+        if self.gave_up || file.path.ends_with(".json") {
+            return answer;
         }
         // A file that does not parse is `flow/syntax`'s to report, and there
         // is no tree to hand a rule.
         let Ok(ast) = uf_transform::estree::parse(&file.source) else {
-            continue;
+            return answer;
         };
+        if self.worker.is_none() && !self.restart() {
+            return answer;
+        }
         let request = json!({
             "type": "lint",
             "path": file.path,
-            "filename": root.join(&file.path).as_str(),
+            "filename": self.root.join(&file.path).as_str(),
             "source": file.source,
             "ast": ast,
         });
-        let Some(active) = worker.as_mut() else {
-            break;
+        let Some(worker) = self.worker.as_mut() else {
+            return answer;
         };
-        match active.ask(&request, FILE_BUDGET) {
+        match worker.ask(&request, FILE_BUDGET) {
             Ok(reply) => {
-                outcome.files += 1;
-                collect(&reply, file, &levels, &mut outcome, &mut micros);
+                self.outcome.files += 1;
+                collect(
+                    &reply,
+                    file,
+                    &self.levels,
+                    &mut answer,
+                    &mut self.outcome.problems,
+                    &mut self.micros,
+                );
             }
             Err(stopped) => {
-                worker = None;
-                outcome.problems.push(match stopped {
+                self.worker = None;
+                self.outcome.problems.push(match stopped {
                     Stopped::TimedOut => format!(
                         "project rules did not finish `{}` within {} s, so the rule host was \
                          stopped",
@@ -247,14 +327,111 @@ pub(crate) fn run(
                 });
             }
         }
+        answer
     }
-    drop(worker);
 
-    let mut timings: Vec<(&'static str, f64)> = micros.into_iter().collect();
-    timings.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(b.0)));
-    outcome.timings = timings;
-    outcome.micros = u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX);
-    Ok(outcome)
+    /// Start a worker and load the plugins into it, or give up and say why.
+    fn restart(&mut self) -> bool {
+        if self.starts == MAX_HOST_STARTS {
+            self.gave_up = true;
+            self.outcome.problems.push(format!(
+                "project rules stopped after the rule host was started {MAX_HOST_STARTS} times, \
+                 so the files after that went unlinted by them"
+            ));
+            return false;
+        }
+        self.starts += 1;
+        let mut fresh = match Worker::start(&self.command) {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.gave_up = true;
+                self.outcome.problems.push(format!("{error:#}"));
+                return false;
+            }
+        };
+        match fresh.ask(&self.load, LOAD_BUDGET) {
+            Ok(reply) => {
+                // The same plugins load the same way every time, so only the
+                // first start's account of them is worth reading.
+                if self.starts == 1 {
+                    self.outcome.problems.extend(strings(&reply, "problems"));
+                }
+                self.worker = Some(fresh);
+                true
+            }
+            Err(stopped) => {
+                self.gave_up = true;
+                self.outcome.problems.push(match stopped {
+                    Stopped::TimedOut => format!(
+                        "the rule host did not load the project's plugins within {} s",
+                        LOAD_BUDGET.as_secs()
+                    ),
+                    Stopped::Exited => String::from(
+                        "the rule host exited while loading the project's plugins; what it \
+                         printed is above",
+                    ),
+                });
+                false
+            }
+        }
+    }
+
+    /// Stop the worker and total what the session cost.
+    pub(crate) fn finish(mut self) -> ProjectRules {
+        drop(self.worker.take());
+        let mut timings: Vec<(&'static str, f64)> = self.micros.drain().collect();
+        timings.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(b.0)));
+        self.outcome.timings = timings;
+        self.outcome.micros = u64::try_from(self.started.elapsed().as_micros()).unwrap_or(u64::MAX);
+        self.outcome
+    }
+}
+
+/// The fixes to apply this round: the tier `allow_unsafe` admits, in document
+/// order, with any edit that overlaps an earlier one left for the next round.
+///
+/// Overlaps are dropped rather than refused for the reason `fix::plan` drops
+/// them: the fixer lints the result and plans again, so the dropped edit is
+/// planned against text that exists, or not at all if the first one answered
+/// it.
+pub(crate) fn plan_fixes(fixes: &[ProjectFix], allow_unsafe: bool) -> Vec<&ProjectFix> {
+    let mut chosen: Vec<&ProjectFix> = fixes
+        .iter()
+        .filter(|fix| allow_unsafe || fix.safety == Safety::Safe)
+        .collect();
+    chosen.sort_by_key(|fix| (fix.start, fix.end));
+    let mut planned = Vec::with_capacity(chosen.len());
+    let mut reached = 0;
+    for fix in chosen {
+        if fix.start >= reached {
+            reached = fix.end;
+            planned.push(fix);
+        }
+    }
+    planned
+}
+
+/// `source` with `fixes` applied; they must be in the order [`plan_fixes`]
+/// returns. An edit whose range is not on character boundaries of this text is
+/// skipped, which is what a range computed against other text looks like.
+pub(crate) fn apply_fixes(source: &str, fixes: &[&ProjectFix]) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut at = 0;
+    for fix in fixes {
+        let usable = at <= fix.start
+            && fix.start <= fix.end
+            && fix.end <= source.len()
+            && source.is_char_boundary(fix.start)
+            && source.is_char_boundary(fix.end);
+        if !usable {
+            continue;
+        }
+        out.push_str(&source[at..fix.start]);
+        out.push_str(&fix.text);
+        at = fix.end;
+    }
+    out.push_str(&source[at..]);
+    out
 }
 
 /// Sort the way [`uf_lint::LintReport::diagnostics`] is sorted, so project
@@ -329,17 +506,15 @@ fn plugin_modules(config: &UniflowedConfig, root: &Utf8Path) -> Result<Vec<Strin
     config
         .plugins
         .iter()
-        .filter_map(
-            |entry| match classify_plugin_name(entry.name(), root) {
-                Ok(PluginSource::Builtin) => None,
-                Ok(PluginSource::Package { specifier }) => Some(Ok(specifier.to_string())),
-                Ok(PluginSource::ProjectFile { path }) => Some(Ok(root.join(path).to_string())),
-                Err(error) => Some(Err(anyhow!(
-                    "the `plugins` entry `{}` cannot be loaded for its rules: {error}",
-                    entry.name()
-                ))),
-            },
-        )
+        .filter_map(|entry| match classify_plugin_name(entry.name(), root) {
+            Ok(PluginSource::Builtin) => None,
+            Ok(PluginSource::Package { specifier }) => Some(Ok(specifier.to_string())),
+            Ok(PluginSource::ProjectFile { path }) => Some(Ok(root.join(path).to_string())),
+            Err(error) => Some(Err(anyhow!(
+                "the `plugins` entry `{}` cannot be loaded for its rules: {error}",
+                entry.name()
+            ))),
+        })
         .collect()
 }
 
@@ -364,17 +539,14 @@ fn host_command(root: &Utf8Path, config: &UniflowedConfig) -> Result<HostCommand
              `uf install`"
         )
     })?;
-    Ok(HostCommand::new(
-        kind,
-        host.program,
-        package.join(WORKER),
-        root.to_path_buf(),
+    Ok(
+        HostCommand::new(kind, host.program, package.join(WORKER), root.to_path_buf())
+            .with_flow_loader(
+                Utf8Path::new("@uniflowed/host/register"),
+                &package.join("bun-preload.js"),
+            )
+            .with_uf_binary(uf_binary()?),
     )
-    .with_flow_loader(
-        Utf8Path::new("@uniflowed/host/register"),
-        &package.join("bun-preload.js"),
-    )
-    .with_uf_binary(uf_binary()?))
 }
 
 /// Why a request got no reply.
@@ -484,7 +656,8 @@ impl Drop for Worker {
     }
 }
 
-/// Add one file's reply to the outcome.
+/// Add one file's reply to `answer`, its problems to `problems` and its
+/// timings to `micros`.
 ///
 /// A diagnostic for a rule the project did not enable is dropped rather than
 /// trusted: the worker was only asked for the enabled ones, so anything else is
@@ -493,7 +666,8 @@ fn collect(
     reply: &Value,
     file: &SourceFile,
     levels: &FxHashMap<&'static str, RuleLevel>,
-    outcome: &mut ProjectRules,
+    answer: &mut Answer,
+    problems: &mut Vec<String>,
     micros: &mut FxHashMap<&'static str, f64>,
 ) {
     let index = LineIndex::new(&file.source);
@@ -509,13 +683,9 @@ fn collect(
         let Some((&rule, &level)) = levels.get_key_value(id) else {
             continue;
         };
-        let start = reported
-            .get("start")
-            .and_then(Value::as_u64)
-            .and_then(|start| usize::try_from(start).ok())
-            .unwrap_or(0);
-        let position = index.line_col(byte_offset(&file.source, start));
-        outcome.diagnostics.push(Diagnostic {
+        let start = byte_offset(&file.source, units(reported, "start"));
+        let position = index.line_col(start);
+        answer.diagnostics.push(Diagnostic {
             rule,
             severity: if level.is_error() {
                 Severity::Error
@@ -531,6 +701,23 @@ fn collect(
                 .unwrap_or_default()
                 .to_owned(),
         });
+        if let Some(fix) = reported.get("fix").filter(|fix| fix.is_object())
+            && let Some(text) = fix.get("text").and_then(Value::as_str)
+        {
+            let fix_start = byte_offset(&file.source, units(fix, "start"));
+            answer.fixes.push(ProjectFix {
+                rule,
+                safety: match fix.get("kind").and_then(Value::as_str) {
+                    Some("whitespace") => Safety::Safe,
+                    _ => Safety::Unsafe,
+                },
+                start: fix_start,
+                end: byte_offset(&file.source, units(fix, "end")).max(fix_start),
+                text: text.to_owned(),
+                line: position.line,
+                column: position.column,
+            });
+        }
     }
     for (id, spent) in reply
         .get("micros")
@@ -543,7 +730,16 @@ fn collect(
             *micros.entry(rule).or_default() += spent;
         }
     }
-    outcome.problems.extend(strings(reply, "problems"));
+    problems.extend(strings(reply, "problems"));
+}
+
+/// `value[key]` as a count of UTF-16 units, or `0`.
+fn units(value: &Value, key: &str) -> usize {
+    value
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|units| usize::try_from(units).ok())
+        .unwrap_or(0)
 }
 
 /// The strings in `reply[key]`, or none.
