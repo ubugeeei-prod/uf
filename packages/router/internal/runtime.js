@@ -76,6 +76,7 @@ import { routeBoundaries } from "./boundary-data.js";
 import { composeRoute, pageComponent } from "./compose.js";
 import { type FetchedFlight, type FlightRoot, type RouteState, routeState } from "./flight.js";
 import { Head } from "./head.js";
+import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
 import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
 import type { RouteParams, SearchParams } from "./routing.js";
 import {
@@ -135,6 +136,11 @@ export type {
 } from "./resolve.js";
 
 export { resolveFailure, resolveMatch } from "./resolve.js";
+
+// `app.router.basePath` and `trailingSlash`, installed by the entry that starts
+// the application; see `./base-path.js`.
+export type { RoutingSettings, TrailingSlash } from "./base-path.js";
+export { basePath, installRouting } from "./base-path.js";
 
 // ---------------------------------------------------------------------------
 // View transitions
@@ -618,8 +624,12 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     if (!isBrowser()) {
       return;
     }
-    const target = new URL(to, window.location.href);
-    const next = target.pathname + target.search;
+    const target = new URL(addressOf(to), window.location.href);
+    // The application path the route table is asked about, and the address the
+    // history entry keeps: one URL, with and without `app.router.basePath`.
+    const applicationPath = applicationPathOf(target.pathname);
+    const next = (applicationPath ?? target.pathname) + target.search;
+    const address = target.pathname + target.search;
     // The browser's job in this application. `assign` and `replace` rather
     // than the history API, because the point is a document request: the
     // history entry, the scroll position, the `Referer` and the unload
@@ -638,8 +648,13 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     // screen that intercepts the URL renders a page of its own, so whether the
     // URL's ordinary page is in this bundle — the paragraph below — is not a
     // question this navigation has to ask.
+    // An address outside the base path is not this application's to render.
+    if (applicationPath == null) {
+      window.location.assign(target.href);
+      return;
+    }
     const origin = beneath(shown.current);
-    const intercepting = interceptingRoutes(origin.slots, target.pathname).length > 0;
+    const intercepting = interceptingRoutes(origin.slots, applicationPath).length > 0;
     // The half of the split that is not about bytes. A route whose page is not
     // in this bundle is not a route this router can render, and pretending
     // otherwise is the silent break: the navigation would resolve to nothing
@@ -648,7 +663,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     // link does when there is no JavaScript at all, and what the anchor
     // `Link` renders would have done on its own.
     if (!intercepting) {
-      const matched = matchRoute(routeTable().routes, target.pathname);
+      const matched = matchRoute(routeTable().routes, applicationPath);
       if (matched != null && !hasClientPage(matched.route)) {
         window.location.assign(target.href);
         return;
@@ -664,9 +679,9 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       // entry is written the way it always was.
       const state = historyStateFor(nextResolved);
       if (options?.replace === true) {
-        window.history.replaceState(state, "", next + target.hash);
+        window.history.replaceState(state, "", address + target.hash);
       } else {
-        window.history.pushState(state, "", next + target.hash);
+        window.history.pushState(state, "", address + target.hash);
       }
       const commit = () => {
         show(nextResolved);
@@ -731,7 +746,9 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       });
     };
     const onPopState = () => {
-      const next = window.location.pathname + window.location.search;
+      const next =
+        (applicationPathOf(window.location.pathname) ?? window.location.pathname) +
+        window.location.search;
       // Back or forward into an entry an interception wrote: the page it was
       // intercepted from, with the interception over it again. That page is
       // resolved afresh only when it is not already the one underneath, so
@@ -756,7 +773,10 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       // Back into a route this bundle has no page for. The history entry is
       // already the browser's — it moved before this listener ran — so the
       // document that belongs to it is what has to be fetched.
-      const matched = matchRoute(routeTable().routes, window.location.pathname);
+      const matched = matchRoute(
+        routeTable().routes,
+        applicationPathOf(window.location.pathname) ?? window.location.pathname,
+      );
       if (matched != null && !hasClientPage(matched.route)) {
         window.location.reload();
         return;
@@ -781,11 +801,15 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       if (!isBrowser() || navigation === "document") {
         return;
       }
-      const target = new URL(to, window.location.href);
+      const target = new URL(addressOf(to), window.location.href);
+      const applicationPath = applicationPathOf(target.pathname);
+      if (applicationPath == null) {
+        return;
+      }
       // What the next render will need is decided the way the navigation will
       // decide it: a URL a slot on screen intercepts renders that slot's page,
       // so that is the module worth having, and the page the URL names is not.
-      const intercepting = interceptingRoutes(beneath(shown.current).slots, target.pathname);
+      const intercepting = interceptingRoutes(beneath(shown.current).slots, applicationPath);
       if (intercepting.length > 0) {
         await Promise.all(
           intercepting.flatMap((route) => [
@@ -795,7 +819,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
         );
         return;
       }
-      const matched = matchRoute(routeTable().routes, target.pathname);
+      const matched = matchRoute(routeTable().routes, applicationPath);
       const load = matched?.route.page;
       if (matched == null || load == null) {
         return;
@@ -824,7 +848,11 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       const interception = shown.current.interception;
       const nextResolved =
         interception == null
-          ? await resolveMatch(routeTable(), window.location.pathname + window.location.search)
+          ? await resolveMatch(
+              routeTable(),
+              (applicationPathOf(window.location.pathname) ?? window.location.pathname) +
+                window.location.search,
+            )
           : ((await resolveInterception(
               routeTable(),
               await resolveMatch(
@@ -892,7 +920,9 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     if (!isBrowser()) {
       return;
     }
-    const target = new URL(to, window.location.href);
+    // A payload URL is an address, so it keeps the base path; the server takes
+    // it off.
+    const target = new URL(addressOf(to), window.location.href);
     const next = target.pathname + target.search;
     // The browser's job in this application; `ModuleRouter` has the argument.
     if (navigation === "document") {
@@ -917,7 +947,11 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       const nextRoot = await payload;
       // The URL the payload came from, which is a redirect's target when the
       // route redirected: the history entry is where the visitor ended up.
-      const landed = fetched.url + target.hash;
+      // In the trailing-slash policy's spelling: a payload URL names its
+      // document without the slash, and the history entry should be the
+      // address the server answers without a redirect.
+      const arrived = new URL(fetched.url, window.location.href);
+      const landed = canonicalAddress(arrived.pathname) + arrived.search + target.hash;
       if (options?.replace === true) {
         window.history.replaceState(null, "", landed);
       } else {
@@ -999,7 +1033,7 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       if (!isBrowser() || navigation === "document") {
         return;
       }
-      const target = new URL(to, window.location.href);
+      const target = new URL(addressOf(to), window.location.href);
       if (target.origin !== window.location.origin) {
         return;
       }
@@ -1565,7 +1599,7 @@ export component Link(
     router.push(to, { replace, transition }).catch((error) => {
       // A failed navigation falls back to the browser doing it.
       console.error(error);
-      window.location.assign(to);
+      window.location.assign(addressOf(to));
     });
   };
 
@@ -1576,7 +1610,10 @@ export component Link(
   return (
     <a
       {...rest}
-      href={to}
+      // `to` is an application path; the anchor is the address, with the base
+      // path in front and the trailing-slash policy's spelling, so a link that
+      // works before hydration and for a right click goes where this one does.
+      href={addressOf(to)}
       className={className}
       onClick={drives ? handleClick : onClick}
       onMouseEnter={drives && prefetch === "intent" ? doPrefetch : undefined}

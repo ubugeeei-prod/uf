@@ -53,7 +53,7 @@ import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilit
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import type { RoutingRules } from "./internal/routing.js";
-import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
+import { admit, headersFor, withHeaders } from "./internal/routing.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
@@ -283,19 +283,22 @@ export function createLambdaHandler(
         // `app.router`'s redirects before the package's files, and its headers
         // on whatever answers. See `./internal/routing.js`.
         const headers = headersFor(routing, request);
-        const moved = redirectFor(routing, request);
-        if (moved != null) return await toResult(withHeaders(moved, headers));
+        const admitted = admit(routing, request);
+        if (admitted.kind === "answer") {
+          return await toResult(withHeaders(admitted.response, headers));
+        }
+        const addressed = admitted.request;
         const files = serveStatic;
-        const asset = files == null ? null : await files(request);
+        const asset = files == null ? null : await files(addressed);
         if (asset != null) return await toResult(withHeaders(asset, headers));
         // The package's copy of `dist/`, for a page the build regenerates: its
         // document is not at its own URL, and the application starts the page
         // from the one the build wrote. See `./internal/static.js`.
         if (files != null) {
           lifecycle.context.buildFile = (pathname) =>
-            files(new Request(new URL(pathname, request.url)));
+            files(new Request(new URL(pathname, addressed.url)));
         }
-        return await toResult(withHeaders(await handle(request), headers));
+        return await toResult(withHeaders(await handle(addressed), headers));
       });
       status = result.statusCode;
       return result;

@@ -1653,10 +1653,11 @@ export function clientModuleSource(appEntry, options = {}) {
   const strictMode = options.strictMode === true ? ", strictMode: true" : "";
   const navigation = options.navigation === "document" ? ', navigation: "document"' : "";
   const mount = options.mount === "render" ? "render" : "hydrate";
+  const routing = routingArgumentSource(options.routing);
   return `import { ${mount} } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-${mount}({ App, routes, notFound, errors${strictMode}${navigation} });
+${mount}({ App, routes, notFound, errors${strictMode}${navigation}${routing} });
 `;
 }
 
@@ -1720,10 +1721,12 @@ export function serverModuleSource(appEntry, routing = routingRulesOf({})) {
   createDispatcher,
   createMiddlewareRunner,
   createRenderer,
+  installRouting,
 } from "@uniflowed/router/server";
 import { routes, handlers, middleware, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import { actions } from ${JSON.stringify(VIRTUAL.actions)};
 import App from ${JSON.stringify(appEntry)};
+${routingExportSource(routing)}installRouting(routing);
 export { routes, handlers, middleware, notFound, errors };
 export { beginRequest } from "@uniflowed/router/server";
 const renderer = createRenderer({ App, routes, notFound, errors });
@@ -1733,7 +1736,7 @@ export { shellDocument } from "@uniflowed/router/server";
 export const dispatch = createDispatcher({ handlers });
 export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
-${routingExportSource(routing)}`;
+`;
 }
 
 /**
@@ -1747,11 +1750,30 @@ ${routingExportSource(routing)}`;
  * @param {{redirects?: unknown[], rewrites?: unknown[], headers?: unknown[]} | undefined} router
  */
 export function routingRulesOf(router) {
+  const policy = router?.trailingSlash;
   return {
     redirects: Array.isArray(router?.redirects) ? router.redirects : [],
     rewrites: Array.isArray(router?.rewrites) ? router.rewrites : [],
     headers: Array.isArray(router?.headers) ? router.headers : [],
+    basePath: typeof router?.basePath === "string" ? router.basePath.replace(/\/+$/, "") : "",
+    trailingSlash: policy === "never" || policy === "always" ? policy : "ignore",
   };
+}
+
+/**
+ * `basePath` and `trailingSlash` as arguments to a client entry's call, or
+ * nothing for a project at the root with the default policy — so a default
+ * project's entry is the module it has always been.
+ *
+ * @param {{basePath?: string, trailingSlash?: string} | undefined} routing
+ */
+export function routingArgumentSource(routing) {
+  const basePath = routing?.basePath ?? "";
+  const trailingSlash = routing?.trailingSlash ?? "ignore";
+  let source = "";
+  if (basePath !== "") source += `, basePath: ${JSON.stringify(basePath)}`;
+  if (trailingSlash !== "ignore") source += `, trailingSlash: ${JSON.stringify(trailingSlash)}`;
+  return source;
 }
 
 /**

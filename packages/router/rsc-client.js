@@ -23,6 +23,7 @@ import * as React from "react";
 import { StrictMode, startTransition } from "react";
 import { hydrateRoot } from "react-dom/client";
 
+import { type TrailingSlash, applicationPathOf } from "./internal/base-path.js";
 import { ROOT_ID } from "./internal/document.js";
 import {
   fetchFlight,
@@ -37,6 +38,7 @@ import {
   type Navigation,
   installFlightFetch,
   installNavigation,
+  installRouting,
 } from "./internal/runtime.js";
 
 /**
@@ -68,14 +70,20 @@ export async function hydrateFlight(options: {|
   readonly App: React.ComponentType<AppProps>,
   readonly strictMode?: boolean,
   readonly navigation?: Navigation,
+  readonly basePath?: string,
+  readonly trailingSlash?: TrailingSlash,
 |}): Promise<void> {
   requireServerComponentsReact("@uniflowed/router/rsc/client");
   installNavigation(options.navigation ?? "client");
+  installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
   installFlightFetch(fetchFlight);
   installBrowserModules();
   const flight = readDocumentPayload(document, domObserver(document));
 
-  const url = window.location.pathname + window.location.search;
+  // The route table has no base path in it, and the address bar does.
+  const url =
+    (applicationPathOf(window.location.pathname) ?? window.location.pathname) +
+    window.location.search;
   const { App } = options;
   const container = document.getElementById(ROOT_ID) ?? document;
   prepareDocumentForHydration(document);

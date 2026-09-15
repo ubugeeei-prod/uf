@@ -71,7 +71,7 @@ import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { flightResponse } from "./internal/flight.js";
 import type { RoutingRules } from "./internal/routing.js";
-import { headersFor, redirectFor, rewriteFor } from "./internal/routing.js";
+import { admit, headersFor, rewriteFor } from "./internal/routing.js";
 import { processLogger } from "./log.js";
 
 /**
@@ -410,14 +410,19 @@ export function createHandler(
     // door writes a file and a document with `setHeader` calls of its own, and
     // the project's rule is the one that has to win. See `./internal/routing.js`.
     pinHeaders(response, headersFor(app.routing, asRequest));
-    const moved = redirectFor(app.routing, asRequest);
-    if (moved != null) {
-      await sendUnlessHead(response, method, moved);
+    const admitted = admit(app.routing, asRequest);
+    if (admitted.kind === "answer") {
+      await sendUnlessHead(response, method, admitted.response);
       return;
     }
+    // The application path from here on: the base path is off, and the files
+    // this binary carries are keyed without it.
+    const addressed = admitted.request;
+    const filePath =
+      addressed === asRequest ? pathname : decodePath(new URL(addressed.url).pathname);
 
-    if (pathname != null && (method === "GET" || method === "HEAD")) {
-      const file = files.get(assetKey(pathname));
+    if (filePath != null && (method === "GET" || method === "HEAD")) {
+      const file = files.get(assetKey(filePath));
       if (file != null) {
         sendBytes(response, method, 200, file.type, ASSET_CACHE_CONTROL, file.bytes());
         return;
@@ -430,7 +435,11 @@ export function createHandler(
       // is which of these bytes are a *document*, and here that is the key they
       // were embedded under: `documentKey` below is skipped and `assetKey`
       // above is not.
-      const page = prerendered ? files.get(documentKey(pathname)) : null;
+      // `guide/index.html`, or `guide.html` for a build whose trailing-slash
+      // policy is `"never"`.
+      const page = prerendered
+        ? (files.get(documentKey(filePath)) ?? files.get(pageFileKey(filePath)))
+        : null;
       if (page != null) {
         sendBytes(response, method, 200, page.type, DOCUMENT_CACHE_CONTROL, page.bytes());
         return;
@@ -484,7 +493,7 @@ export function createHandler(
         // `app.router.rewrites` before it, after the files, as `./fetch.js`
         // does for the other doors; and a `Request` back from the chain is a
         // middleware's `rewrite()`.
-        let current = rewriteFor(app.routing, asRequest) ?? asRequest;
+        let current = rewriteFor(app.routing, addressed) ?? addressed;
         const guarded = await app.runMiddleware(current);
         if (guarded instanceof Request) {
           current = guarded;
@@ -621,6 +630,12 @@ function assetKey(pathname: string): string {
 function documentKey(pathname: string): string {
   const key = assetKey(pathname).replace(/\/+$/, "");
   return key === "" ? "index.html" : `${key}/index.html`;
+}
+
+/** `/guide` as `guide.html`, which is how a `"never"` build writes it. */
+function pageFileKey(pathname: string): string {
+  const key = assetKey(pathname).replace(/\/+$/, "");
+  return key === "" ? "index.html" : `${key}.html`;
 }
 
 /**

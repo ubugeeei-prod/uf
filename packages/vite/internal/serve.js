@@ -382,7 +382,7 @@ async function readable(file, message) {
  * the rest moved to `@uniflowed/server`. `uf build --adapter` calls it too,
  * at build time, and bakes the answer into what it emits.
  */
-export function assetsFromManifest(manifest) {
+export function assetsFromManifest(manifest, base = "") {
   // `client` by name first. An application React Server Components render
   // gives the client build one entry per client module as well, and the
   // document's script is the application's entry, not whichever of those the
@@ -418,10 +418,12 @@ export function assetsFromManifest(manifest) {
   };
   collectPreloads(entry);
 
+  // Under `app.router.basePath` when there is one: a prerendered document is
+  // written outside Vite's HTML transform, so nothing else would put it there.
   return {
-    scripts: [`/${entry.file}`],
-    styles: [...styles].map((file) => `/${file}`),
-    preloads: [...preloads].map((file) => `/${file}`),
+    scripts: [`${base}/${entry.file}`],
+    styles: [...styles].map((file) => `${base}/${file}`),
+    preloads: [...preloads].map((file) => `${base}/${file}`),
   };
 }
 
@@ -608,7 +610,12 @@ export function createServeHandler({ entry, assets, distDir, cache, root, build,
  * @param {{redirects?: unknown[], headers?: unknown[]} | undefined} routing
  */
 export function answersInFrontOfFiles(routing) {
-  return (routing?.redirects?.length ?? 0) > 0 || (routing?.headers?.length ?? 0) > 0;
+  return (
+    (routing?.redirects?.length ?? 0) > 0 ||
+    (routing?.headers?.length ?? 0) > 0 ||
+    (routing?.basePath ?? "") !== "" ||
+    (routing?.trailingSlash ?? "ignore") !== "ignore"
+  );
 }
 
 /**
@@ -624,12 +631,42 @@ export function answersInFrontOfFiles(routing) {
  * @param {import("node:http").ServerResponse} response
  */
 export async function answerRouting(routing, request, response) {
-  const { headersFor, pinHeaders, redirectFor, send: write } = await deployment();
+  const { admit, headersFor, pinHeaders, send: write } = await deployment();
   pinHeaders(response, headersFor(routing, request));
-  const moved = redirectFor(routing, request);
-  if (moved == null) return false;
-  await write(response, moved);
+  // A request outside the base path, the other spelling of a path, or a
+  // redirect rule: answered here, before Vite's own base middleware would
+  // answer the first in its words rather than uf's.
+  const admitted = admit(routing, request);
+  if (admitted.kind !== "answer") return false;
+  await write(response, admitted.response);
   return true;
+}
+
+/**
+ * A request [`answerRouting`] let through, spelled so Vite's own middleware
+ * recognises it.
+ *
+ * Vite serves under its `base` with the trailing slash, `/docs/`, and its base
+ * middleware answers every other path with a 404 of its own, the bare `/docs`
+ * included. But `/docs` is the application's root under `app.router.basePath`,
+ * and the only spelling of it unless the trailing-slash policy is `"always"`,
+ * which has already answered `/docs` with a `308` by the time this is asked.
+ * So a request for exactly the base goes on to Vite as `/docs/`, which Vite
+ * takes the base off and hands on as the root. The application is handed the
+ * root either way.
+ *
+ * @param {{basePath?: string} | undefined} routing the bundle's `routing`
+ * @param {import("node:http").IncomingMessage} request
+ */
+export function forViteBase(routing, request) {
+  const base = routing?.basePath ?? "";
+  const url = request.url ?? "/";
+  if (base === "") return;
+  const queryAt = url.indexOf("?");
+  const pathname = queryAt === -1 ? url : url.slice(0, queryAt);
+  if (pathname === base) {
+    request.url = `${base}/${queryAt === -1 ? "" : url.slice(queryAt)}`;
+  }
 }
 
 /**

@@ -60,7 +60,7 @@ import { createOpenApiDocument } from "./internal/openapi.js";
 import { withProjectConfig } from "./merge.js";
 import { FLIGHT_VIRTUAL, RSC_ENVIRONMENT } from "./internal/flight.js";
 import { MODULE_GRAPH_FILE, createModuleGraphCollector } from "./internal/module-graph.js";
-import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
+import { VIRTUAL, resolveRouteTarget, routingRulesOf, scanRoutes } from "./internal/routes.js";
 import {
   BUILD_ID_FILE,
   DOCUMENT_ASSETS_FILE,
@@ -73,6 +73,7 @@ import {
   createPrerenderGate,
   createServeHandler,
   documentAssetsFor,
+  forViteBase,
   loadBuild,
   nodeListener,
   providerSpecifier,
@@ -179,6 +180,15 @@ async function loadConfig() {
   return config;
 }
 
+/**
+ * `app.router.basePath` as the driver uses it: `""` at the root, `"/docs"`
+ * otherwise. Read where the build writes asset URLs and file names, because a
+ * prerendered document is written outside Vite's HTML transform.
+ */
+function basePathOf(config) {
+  return routingRulesOf(config.app?.router).basePath;
+}
+
 /** The Vite inline config a uf config describes. */
 async function viteConfig(config, mode) {
   const { default: uniflowed } = await import("./index.js");
@@ -218,6 +228,9 @@ async function viteConfig(config, mode) {
     configFile: false,
     envDir: false,
     mode,
+    // `app.router.basePath`: where Vite serves the modules in development, and
+    // what it puts in front of every asset URL a build writes.
+    base: basePathOf(config) === "" ? "/" : `${basePathOf(config)}/`,
     clearScreen: false,
     customLogger: eventLogger(argument("--log-level") ?? "info"),
     plugins: [uniflowed({ root, config, target: routeTarget })],
@@ -475,7 +488,11 @@ async function preview() {
         previewServer.middlewares.use((request, response, next) => {
           answerRouting(routing, toAddressRequest(request), response)
             .then((answered) => {
-              if (!answered) next();
+              if (answered) return;
+              // The bare base path is the root, which Vite only knows as
+              // `/docs/`; see `forViteBase`.
+              forViteBase(routing, request);
+              next();
             })
             .catch(next);
         });
@@ -687,7 +704,7 @@ async function build() {
   });
   const manifest = readManifest(outDir);
   if (flight != null) {
-    recordClientChunks(flight, manifest, references, rscDir);
+    recordClientChunks(flight, manifest, references, rscDir, basePathOf(config));
     // What the summary's "pages in the client bundle" reads. None: a browser
     // that hydrates a payload imports no page, whichever route it is on.
     emit("rsc-split", {
@@ -737,8 +754,8 @@ async function build() {
   const server = await import(pathToFileURL(path.join(serverDir, "server.js")).href);
   const assets =
     flight == null
-      ? assetsFromManifest(manifest)
-      : flightAssets(manifest, references, rscDir, outDir);
+      ? assetsFromManifest(manifest, basePathOf(config))
+      : flightAssets(manifest, references, rscDir, outDir, basePathOf(config));
   // Recorded beside the server bundle, because whatever serves this build
   // later cannot recompute them from the client manifest alone; see
   // `documentAssetsFor`.
@@ -830,7 +847,11 @@ async function build() {
     const lifetime = declared.lifetime;
     const regenerates =
       regenerate && result.status === 200 && declared.denied == null && lifetime != null;
-    const file = htmlPathFor(regenerates ? path.join(outDir, REGENERATED_DIRECTORY) : outDir, url);
+    // The trailing-slash policy decides a served page's file name; a page the
+    // build regenerates keeps the one layout the regeneration reads.
+    const file = regenerates
+      ? htmlPathFor(path.join(outDir, REGENERATED_DIRECTORY), url)
+      : htmlPathFor(outDir, url, routingRulesOf(config.app?.router).trailingSlash);
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, result.html);
     // The payload the document was rendered from, beside it: what a browser
@@ -839,7 +860,12 @@ async function build() {
     // regeneration leaves no file at its route's own payload URL answering with
     // the build's copy for ever; the server answers that URL instead.
     if (result.payload != null) {
-      writeFileSync(path.join(path.dirname(file), "__uf.flight"), result.payload);
+      // Beside the route's directory whatever the document is called:
+      // `guide/index.html` and `guide.html` both put it at `guide/__uf.flight`.
+      const payloadDirectory =
+        path.basename(file) === "index.html" ? path.dirname(file) : file.slice(0, -".html".length);
+      mkdirSync(payloadDirectory, { recursive: true });
+      writeFileSync(path.join(payloadDirectory, "__uf.flight"), result.payload);
     }
     if (regenerates) {
       regenerated[url] = {
@@ -2161,7 +2187,7 @@ async function buildRscGraph(vite, inline, state, { outDir, conditions }) {
  * output names its module by path, which only this build's manifest turns
  * into a URL.
  */
-function recordClientChunks(state, manifest, references, rscDir) {
+function recordClientChunks(state, manifest, references, rscDir, base = "") {
   for (const file of references) {
     const key = path.relative(root, file).split(path.sep).join("/");
     const chunk = manifest[key];
@@ -2171,7 +2197,7 @@ function recordClientChunks(state, manifest, references, rscDir) {
           "client component",
       );
     }
-    state.chunkUrls.set(file, `/${chunk.file}`);
+    state.chunkUrls.set(file, `${base}/${chunk.file}`);
   }
   writeFileSync(
     path.join(rscDir, FLIGHT_BUILD_FILE),
@@ -2203,12 +2229,15 @@ function loadFlightBuild(state, rscDir) {
  * The rsc build's emitted files are copied under `dist/` so those URLs resolve,
  * and only its assets: a server bundle's JavaScript is never a deployable file.
  */
-function flightAssets(manifest, references, rscDir, outDir) {
-  const assets = assetsFromManifest(manifest);
+function flightAssets(manifest, references, rscDir, outDir, base = "") {
+  const assets = assetsFromManifest(manifest, base);
   const styles = new Set();
   const rscManifest = path.join(rscDir, ".vite", "manifest.json");
   if (existsSync(rscManifest)) {
-    const rscStyles = assetsFromManifest(JSON.parse(readFileSync(rscManifest, "utf8"))).styles;
+    const rscStyles = assetsFromManifest(
+      JSON.parse(readFileSync(rscManifest, "utf8")),
+      base,
+    ).styles;
     for (const href of rscStyles) styles.add(href);
   }
   const rscAssets = path.join(rscDir, "assets");
@@ -2225,7 +2254,7 @@ function flightAssets(manifest, references, rscDir, outDir) {
     seen.add(key);
     const chunk = manifest[key];
     if (chunk == null) return;
-    for (const css of chunk.css ?? []) styles.add(`/${css}`);
+    for (const css of chunk.css ?? []) styles.add(`${base}/${css}`);
     for (const imported of chunk.imports ?? []) visit(imported);
   };
   for (const file of references) visit(path.relative(root, file).split(path.sep).join("/"));
@@ -2403,10 +2432,19 @@ function fillParams(routePath, params) {
     .join("/");
 }
 
-function htmlPathFor(outDir, url) {
-  const pathname = url.split("?")[0].replace(/^\/+/, "");
-  return pathname === ""
-    ? path.join(outDir, "index.html")
+/**
+ * The file a prerendered page is written to.
+ *
+ * `guide/index.html`, which every static host serves at `/guide/` and most at
+ * `/guide`, unless `app.router.trailingSlash` is `"never"` — then `guide.html`,
+ * which the same hosts serve at `/guide` without a redirect to the slash.
+ * Next.js's static export makes the same choice from the same setting.
+ */
+function htmlPathFor(outDir, url, trailingSlash = "ignore") {
+  const pathname = url.split("?")[0].replace(/^\/+/, "").replace(/\/+$/, "");
+  if (pathname === "") return path.join(outDir, "index.html");
+  return trailingSlash === "never"
+    ? path.join(outDir, `${pathname}.html`)
     : path.join(outDir, pathname, "index.html");
 }
 

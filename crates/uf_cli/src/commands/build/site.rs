@@ -66,7 +66,7 @@ use std::fs;
 
 use anyhow::{Context, Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
-use uf_config::{RobotsConfig, SiteConfig};
+use uf_config::{RobotsConfig, RouterConfig, SiteConfig, TrailingSlash};
 
 use super::Prerendered;
 use super::guards::UnguardedPage;
@@ -83,8 +83,13 @@ const MAX_SITEMAP_URLS: usize = 50_000;
 /// The site's origin, parsed once and known to be usable in a `<loc>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SiteUrl {
-    /// Scheme, authority and any base path, with no trailing slash.
+    /// Scheme, authority and any path the host puts in front, with no trailing
+    /// slash.
     base: String,
+    /// `app.router.basePath`: where on that host the application is served.
+    application: String,
+    /// `app.router.trailingSlash`, which spells every `<loc>`.
+    slash: TrailingSlash,
 }
 
 impl SiteUrl {
@@ -114,7 +119,21 @@ impl SiteUrl {
         }
         Ok(Self {
             base: value.trim_end_matches('/').to_owned(),
+            application: String::new(),
+            slash: TrailingSlash::Ignore,
         })
+    }
+
+    /// The same site, with the application served under `base_path` and its
+    /// paths spelled by `slash` — so a `<loc>` is the address the server
+    /// answers without a redirect.
+    #[must_use]
+    pub(crate) fn within(mut self, base_path: &str, slash: TrailingSlash) -> Self {
+        base_path
+            .trim_end_matches('/')
+            .clone_into(&mut self.application);
+        self.slash = slash;
+        self
     }
 
     /// The absolute URL of a path this build served, ready for a `<loc>`.
@@ -123,14 +142,19 @@ impl SiteUrl {
     /// `generateStaticParams` value needed it, so [`encode_path`] preserves
     /// what is there rather than encoding the `%` again.
     pub(crate) fn join(&self, path: &str) -> String {
-        let encoded = encode_path(path);
+        let encoded = encode_path(&self.slash.spell(path));
         if encoded == "/" {
             // The site root is `https://example.com/`, not
             // `https://example.com`: a `<loc>` is a URL and a URL with an
-            // authority has a path.
-            format!("{}/", self.base)
+            // authority has a path. Under a base path the root is the base,
+            // with the slash only where the policy writes one.
+            if self.application.is_empty() || matches!(self.slash, TrailingSlash::Always) {
+                format!("{}{}/", self.base, self.application)
+            } else {
+                format!("{}{}", self.base, self.application)
+            }
         } else {
-            format!("{}{encoded}", self.base)
+            format!("{}{}{encoded}", self.base, self.application)
         }
     }
 }
@@ -302,6 +326,7 @@ pub(crate) struct Written {
 pub(crate) fn write(
     out_dir: &Utf8Path,
     config: &SiteConfig,
+    router: &RouterConfig,
     pages: &[Prerendered],
     guarded: &[UnguardedPage],
 ) -> Result<Written> {
@@ -311,7 +336,7 @@ pub(crate) fn write(
     let Some(raw) = config.url.as_deref() else {
         return Ok(Written::default());
     };
-    let site = SiteUrl::parse(raw)?;
+    let site = SiteUrl::parse(raw)?.within(&router.base_path, router.trailing_slash);
     let mut written = Written::default();
 
     let sitemap_path = out_dir.join("sitemap.xml");

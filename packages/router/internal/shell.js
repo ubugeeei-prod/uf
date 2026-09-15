@@ -12,6 +12,7 @@
 // not in either entry.
 
 import type { PrerenderResult, RenderAssets, RenderResult } from "../server.js";
+import { addressOf } from "./base-path.js";
 import { ROOT_ID } from "./document.js";
 import type { RedirectError } from "./routing.js";
 import { type DocumentShell, bodyOfText } from "./stream.js";
@@ -26,7 +27,11 @@ export async function redirectResult(document: RenderResult): Promise<PrerenderR
 }
 
 export function redirectDocument(error: RedirectError): RenderResult {
-  const target = escapeAttribute(error.to);
+  // Under `app.router.basePath`, and in the trailing-slash policy's spelling:
+  // `redirect("/sign-in")` names an application path, and a browser follows
+  // an address.
+  const address = addressOf(error.to);
+  const target = escapeAttribute(address);
   // A document rather than an empty body, because a redirect is still an answer
   // a browser may be shown; it goes through the same three methods as a
   // rendered one so that a host has one shape to write, not two.
@@ -35,7 +40,7 @@ export function redirectDocument(error: RedirectError): RenderResult {
   );
   return {
     status: error.permanent ? 308 : 307,
-    headers: { Location: error.to },
+    headers: { Location: address },
     pipe: body.pipe,
     stream: body.stream,
     text: body.text,

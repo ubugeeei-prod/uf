@@ -63,7 +63,7 @@ import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilit
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import type { RoutingRules } from "./internal/routing.js";
-import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
+import { admit, headersFor, withHeaders } from "./internal/routing.js";
 import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js";
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
@@ -77,7 +77,7 @@ export type { RoutingRules } from "./internal/routing.js";
 // ask the rules themselves rather than through `createServeHandler` below; the
 // three questions are exported for them from the module they already load.
 // See `./internal/routing.js`.
-export { headersFor, redirectFor, rewriteFor } from "./internal/routing.js";
+export { admit, headersFor, rewriteFor } from "./internal/routing.js";
 
 // The fourth front door is not in this package: `uf preview` serves files with
 // Vite's own middleware, which runs in front of anything uf mounts behind it,
@@ -420,12 +420,15 @@ export function createServeHandler(options: {|
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
     const headers = headersFor(options.routing, request);
-    const moved = redirectFor(options.routing, request);
-    if (moved != null) return withHeaders(moved, headers);
-    const file = await serveStatic(request);
+    const admitted = admit(options.routing, request);
+    if (admitted.kind === "answer") return withHeaders(admitted.response, headers);
+    // The application path from here on: the files are looked up, and the
+    // application is handed, without the base path.
+    const addressed = admitted.request;
+    const file = await serveStatic(addressed);
     if (file != null) return withHeaders(file, headers);
-    offerBuildFiles(request, serveStatic);
-    return withHeaders(await options.handle(request), headers);
+    offerBuildFiles(addressed, serveStatic);
+    return withHeaders(await options.handle(addressed), headers);
   };
 }
 

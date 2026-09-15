@@ -232,6 +232,14 @@ export type {
 export { createMiddlewareRunner } from "./middleware.js";
 
 /**
+ * `app.router.basePath` and `trailingSlash`, for `virtual:uf/server` to install
+ * before the first render, and `basePath()` for a middleware or a route handler
+ * that builds an address itself. See `./internal/base-path.js`.
+ */
+export type { RoutingSettings, TrailingSlash } from "./internal/base-path.js";
+export { basePath, installRouting } from "./internal/base-path.js";
+
+/**
  * The endpoint a `"use server"` export is dialled at.
  *
  * Here rather than beside `@uniflowed/router/action`, which is the browser's

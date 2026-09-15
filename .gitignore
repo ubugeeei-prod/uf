@@ -24,6 +24,11 @@ coverage/
 /crates/uf_cli/tests/fixtures/isr-app/dist/
 /crates/uf_cli/tests/fixtures/isr-app/router.js
 /crates/uf_cli/tests/fixtures/isr-app/server-actions.js
+# The application `app.router.basePath` and `trailingSlash` are tested
+# against, built in place for the same reason.
+/crates/uf_cli/tests/fixtures/based-app/dist/
+/crates/uf_cli/tests/fixtures/based-app/router.js
+/crates/uf_cli/tests/fixtures/based-app/server-actions.js
 /server-actions.js
 node_modules/
 .uf/

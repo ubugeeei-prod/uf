@@ -90,7 +90,7 @@ import type { ServerCapabilities } from "./internal/capabilities.js";
 import type { RequestContext } from "./internal/context.js";
 import { currentContext } from "./internal/context.js";
 import { flightResponse } from "./internal/flight.js";
-import { headersFor, redirectFor, rewriteFor, withHeaders } from "./internal/routing.js";
+import { admit, headersFor, rewriteFor, wasAdmitted, withHeaders } from "./internal/routing.js";
 
 export type { Application, DocumentAssets, RenderedDocument } from "./internal/application.js";
 
@@ -383,7 +383,14 @@ export function createFetchHandler(
   // assets — has only this, and the rules have to hold there too. See
   // `./internal/routing.js`.
   return async function handle(arrived: Request): Promise<Response> {
-    const response = redirectFor(app.routing, arrived) ?? (await answer(arrived));
+    // Admitted already by a host with a static half in front of this one,
+    // which has taken the base path off and puts the headers on itself.
+    if (wasAdmitted(arrived)) {
+      return await answer(arrived);
+    }
+    const admitted = admit(app.routing, arrived);
+    const response =
+      admitted.kind === "answer" ? admitted.response : await answer(admitted.request);
     return withHeaders(response, headersFor(app.routing, arrived));
   };
 }

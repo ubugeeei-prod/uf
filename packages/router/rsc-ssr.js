@@ -21,6 +21,7 @@
 
 import * as React from "react";
 
+import { addressOf } from "./internal/base-path.js";
 import {
   type ClientModuleLoader,
   installServerModules,
@@ -315,7 +316,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       const onThisOrigin = location.startsWith("/") && !location.startsWith("//");
       return {
         status: rendered.status,
-        headers: { location: onThisOrigin ? flightUrl(location) : location },
+        headers: { location: onThisOrigin ? flightUrl(addressOf(location)) : location },
         stream: null,
       };
     }

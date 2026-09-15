@@ -1,14 +1,33 @@
 // @flow
 //
-// `app.router.redirects`, `rewrites` and `headers`, as every front door reads
-// them. `tests/library/deploy.test.js` asks the front doors themselves; this is
-// the one reading of the rules they all share.
+// `app.router`'s base path, trailing-slash policy, redirects, rewrites and
+// headers, as every front door reads them. `tests/library/deploy.test.js` asks
+// the front doors themselves; this is the one reading of the rules they share.
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import { headersFor, redirectFor, rewriteFor, withHeaders } from "./internal/routing.js";
+import { spellPath as routerSpellPath } from "../router/internal/base-path.js";
+import {
+  admit,
+  headersFor,
+  rewriteFor,
+  spellPath,
+  wasAdmitted,
+  withHeaders,
+} from "./internal/routing.js";
 
 const at = (url: string, init?: mixed) => new Request(`http://uf.test${url}`, init);
+
+/** What `admit` decided, as something an assertion can read in one line. */
+function admitted(rules: mixed, url: string, init?: mixed): string {
+  // $FlowFixMe[incompatible-call] - the fixtures below are `RoutingRules`.
+  const decision = admit(rules, at(url, init));
+  if (decision.kind === "answer") {
+    const { response } = decision;
+    return `${String(response.status)} ${response.headers.get("location") ?? "-"}`;
+  }
+  return `continue ${decision.request.url}`;
+}
 
 const rules = {
   redirects: [
@@ -31,45 +50,124 @@ const rules = {
 
 describe("a redirect", () => {
   it("answers a matching source with the destination's parameters and the request's query", () => {
-    const moved = redirectFor(rules, at("/old-blog/hello?ref=feed"));
-    expect(moved?.status).toBe(308);
-    expect(moved?.headers.get("location")).toBe("/blog/hello?ref=feed");
+    expect(admitted(rules, "/old-blog/hello?ref=feed")).toBe("308 /blog/hello?ref=feed");
   });
 
   it("is temporary unless it says otherwise, and may leave the origin with the rest of the path", () => {
-    const moved = redirectFor(rules, at("/docs/guide/routing"));
-    expect(moved?.status).toBe(307);
-    expect(moved?.headers.get("location")).toBe("https://docs.example.com/guide/routing");
-    // A catch-all that took nothing takes its segment with it.
-    expect(redirectFor(rules, at("/docs"))?.headers.get("location")).toBe(
-      "https://docs.example.com/",
+    expect(admitted(rules, "/docs/guide/routing")).toBe(
+      "307 https://docs.example.com/guide/routing",
     );
+    // A catch-all that took nothing takes its segment with it.
+    expect(admitted(rules, "/docs")).toBe("307 https://docs.example.com/");
   });
 
   it("keeps the destination's own query and adds what the request had that it does not name", () => {
-    const moved = redirectFor(rules, at("/campaign?utm_source=feed&page=2"));
-    expect(moved?.headers.get("location")).toBe("/sale?utm_source=mail&page=2");
+    expect(admitted(rules, "/campaign?utm_source=feed&page=2")).toBe(
+      "307 /sale?utm_source=mail&page=2",
+    );
   });
 
   it("matches whole segments and nothing else", () => {
-    expect(redirectFor(rules, at("/old-blog"))).toBe(null);
-    expect(redirectFor(rules, at("/old-blog/a/b"))).toBe(null);
-    expect(redirectFor(rules, at("/old-blogs/hello"))).toBe(null);
-    expect(redirectFor(rules, at("/"))).toBe(null);
+    expect(admitted(rules, "/old-blog")).toBe("continue http://uf.test/old-blog");
+    expect(admitted(rules, "/old-blog/a/b")).toBe("continue http://uf.test/old-blog/a/b");
+    expect(admitted(rules, "/old-blogs/hello")).toBe("continue http://uf.test/old-blogs/hello");
   });
 
   it("sends a navigating browser to the destination's payload, and another origin as written", () => {
-    expect(redirectFor(rules, at("/old-blog/hello/__uf.flight"))?.headers.get("location")).toBe(
-      "/blog/hello/__uf.flight",
-    );
-    expect(redirectFor(rules, at("/docs/a/__uf.flight"))?.headers.get("location")).toBe(
-      "https://docs.example.com/a",
-    );
+    expect(admitted(rules, "/old-blog/hello/__uf.flight")).toBe("308 /blog/hello/__uf.flight");
+    expect(admitted(rules, "/docs/a/__uf.flight")).toBe("307 https://docs.example.com/a");
   });
 
   it("is nothing for a bundle that carries no rules", () => {
-    expect(redirectFor(undefined, at("/old-blog/hello"))).toBe(null);
-    expect(redirectFor({}, at("/old-blog/hello"))).toBe(null);
+    expect(admitted(undefined, "/old-blog/hello")).toBe("continue http://uf.test/old-blog/hello");
+    expect(admitted({}, "/old-blog/hello")).toBe("continue http://uf.test/old-blog/hello");
+  });
+});
+
+describe("a base path", () => {
+  const based = { basePath: "/docs", redirects: rules.redirects.slice(0, 1) };
+
+  it("is taken off a request inside it, which continues at its application path", () => {
+    expect(admitted(based, "/docs/guide?x=1")).toBe("continue http://uf.test/guide?x=1");
+    expect(admitted(based, "/docs")).toBe("continue http://uf.test/");
+    expect(admitted(based, "/docs/")).toBe("continue http://uf.test/");
+  });
+
+  it("answers a request outside it with a 404, and a base is whole segments", () => {
+    expect(admitted(based, "/")).toBe("404 -");
+    expect(admitted(based, "/guide")).toBe("404 -");
+    expect(admitted(based, "/docsx/guide")).toBe("404 -");
+  });
+
+  it("is put back in front of a redirect's destination on this application", () => {
+    expect(admitted(based, "/docs/old-blog/hello")).toBe("308 /docs/blog/hello");
+    expect(admitted(based, "/docs/old-blog/hello/__uf.flight")).toBe(
+      "308 /docs/blog/hello/__uf.flight",
+    );
+  });
+
+  it("is taken off once, however many doors ask", () => {
+    const first = admit(based, at("/docs/docs/guide"));
+    expect(first.kind === "continue" ? first.request.url : null).toBe("http://uf.test/docs/guide");
+    if (first.kind === "continue") {
+      expect(wasAdmitted(first.request)).toBe(true);
+      const second = admit(based, first.request);
+      expect(second.kind === "continue" ? second.request.url : null).toBe(
+        "http://uf.test/docs/guide",
+      );
+    }
+  });
+
+  it("matches headers against the application path, and gives a request outside it none", () => {
+    const headed = { basePath: "/docs", headers: rules.headers };
+    expect(headersFor(headed, at("/docs/assets/client.js")).length).toBe(3);
+    expect(headersFor(headed, at("/assets/client.js"))).toEqual([]);
+  });
+});
+
+describe("a trailing-slash policy", () => {
+  it("redirects the other spelling to the one it uses, with the query", () => {
+    expect(admitted({ trailingSlash: "never" }, "/guide/?x=1")).toBe("308 /guide?x=1");
+    expect(admitted({ trailingSlash: "always" }, "/guide?x=1")).toBe("308 /guide/?x=1");
+    expect(admitted({ trailingSlash: "never" }, "/guide")).toBe("continue http://uf.test/guide");
+    expect(admitted({ trailingSlash: "always" }, "/guide/")).toBe("continue http://uf.test/guide/");
+  });
+
+  it("spells the root of a base path as the base, unless it is always", () => {
+    expect(admitted({ basePath: "/docs", trailingSlash: "never" }, "/docs/")).toBe("308 /docs");
+    expect(admitted({ basePath: "/docs", trailingSlash: "always" }, "/docs")).toBe("308 /docs/");
+    expect(admitted({ trailingSlash: "never" }, "/")).toBe("continue http://uf.test/");
+  });
+
+  it("leaves a file, a payload and a request that is not a navigation alone", () => {
+    expect(admitted({ trailingSlash: "always" }, "/robots.txt")).toBe(
+      "continue http://uf.test/robots.txt",
+    );
+    expect(admitted({ trailingSlash: "always" }, "/guide/__uf.flight")).toBe(
+      "continue http://uf.test/guide/__uf.flight",
+    );
+    expect(
+      admitted({ trailingSlash: "always" }, "/api/items", { method: "POST", body: "{}" }),
+    ).toBe("continue http://uf.test/api/items");
+  });
+
+  it("spells a redirect's destination so following it is not a second redirect", () => {
+    const always = { trailingSlash: "always", redirects: rules.redirects.slice(0, 1) };
+    expect(admitted(always, "/old-blog/hello/")).toBe("308 /blog/hello/");
+  });
+
+  it("is the spelling the router writes its links with", () => {
+    for (const policy of ["never", "always", "ignore"]) {
+      for (const underBase of [false, true]) {
+        for (const path of ["/", "/guide", "/guide/", "/a/b", "/robots.txt", "/docs/"]) {
+          expect(
+            `${policy} ${String(underBase)} ${path}: ${spellPath(path, policy, underBase)}`,
+          ).toBe(
+            `${policy} ${String(underBase)} ${path}: ${routerSpellPath(path, policy, underBase)}`,
+          );
+        }
+      }
+    }
   });
 });
 

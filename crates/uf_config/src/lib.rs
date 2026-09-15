@@ -27,7 +27,8 @@ pub use app::{
     MdxConfig, MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, Navigation, OrmConfig,
     PwaConfig, ReactCompilerConfig, ReactCompilerImplementation, ReactCompilerMode, ReactConfig,
     RedirectRule, RenderingConfig, RenderingMode, RewriteRule, RouterConfig, RouterConvention,
-    RuntimeTarget, StyleEngine, TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
+    RuntimeTarget, StyleEngine, TemporalConfig, TrailingSlash, TuiConfig, TuiStandardConfig,
+    WebConfig,
 };
 pub use library::{LibraryConfig, LibraryFormat, LibraryPlan};
 pub use lint::{
@@ -2059,6 +2060,14 @@ pub enum ConfigError {
         path: Utf8PathBuf,
         key: &'static str,
         index: usize,
+        reason: String,
+    },
+    /// An `app.router.basePath` every host would compare as characters and
+    /// match nothing with. `router_rules` writes the reason.
+    #[error("{path}: `app.router.basePath` is {written:?}, {reason}")]
+    RouterBasePath {
+        path: Utf8PathBuf,
+        written: String,
         reason: String,
     },
 }

@@ -65,6 +65,8 @@ import { RedirectError, nearestBoundary } from "./internal/routing.js";
 import { withServerRoute } from "./internal/server-route.js";
 
 export type { FlightRoot, RouteState } from "./internal/flight.js";
+// For `virtual:uf/rsc`, so a Server Component's `basePath()` is the project's.
+export { installRouting } from "./internal/base-path.js";
 
 /** What a host may tell the renderer about one render. */
 export type FlightOptions = {|

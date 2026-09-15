@@ -3896,6 +3896,336 @@ fn every_adapter_answers_exactly_what_the_node_adapter_answers() {
     }
 }
 
+/// The application `app.router.basePath` and `trailingSlash` are asked about:
+/// served under `/docs`, with no trailing slash on any page.
+fn based_app_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/based-app")
+}
+
+/// What the `based-app` artefact is asked, through [`ARTEFACT_DOORS`].
+///
+/// Addresses under `/docs`, and one deliberately outside it. An answer that
+/// comes from a file the build wrote is asked only of the two adapters whose
+/// entry carries a static half, and is labelled `prerendered-` so the
+/// comparison between adapters leaves it out: a `node` artefact's static half
+/// is `server.js`'s, which takes a socket rather than a function call.
+const BASED_APP_QUESTIONS: &str = r#"
+await askHeader("root-slash", "/docs/", "location");
+await askHeader("page-slash", "/docs/guide/", "location");
+await ask("rendered", "/docs/posts/hello-world");
+await askHeader("redirect", "/docs/old/hello-world", "location");
+await ask("handler", "/docs/api/health");
+await askHeader("payload", "/docs/posts/hello-world/__uf.flight", "content-type");
+await ask("missing", "/docs/definitely-not-a-page");
+await ask("outside", "/posts/hello-world");
+if (adapter === "edge" || adapter === "serverless") {
+  await ask("prerendered-root", "/docs");
+  await ask("prerendered-page", "/docs/guide");
+}
+"#;
+
+/// The line of `answers` the question labelled `label` produced.
+fn answer_to<'a>(answers: &'a str, label: &str) -> &'a str {
+    answers
+        .lines()
+        .find(|line| line.starts_with(&format!("{label} ")))
+        .unwrap_or_else(|| panic!("no {label} line in:\n{answers}"))
+}
+
+/// Assert on the `based-app` answers, once, for whichever adapter produced them.
+fn assert_based_answers(answers: &str) {
+    for expected in [
+        // The other spelling of the root and of a page: a `308` to the policy's,
+        // with the base kept.
+        "root-slash 308 location=/docs\n",
+        "page-slash 308 location=/docs/guide\n",
+        // A loader's `redirect()` names an application path, and the answer is
+        // the address a browser follows.
+        "redirect 307 location=/docs/posts/hello-world\n",
+        // The handler was handed the application path.
+        "handler 200 {\"status\":\"ok\",\"path\":\"/api/health\"}",
+        // A navigating browser's payload request, under the base.
+        "payload 200 content-type=text/x-component",
+        // Outside the base, the plain 404 every door answers before the
+        // application is asked.
+        "outside 404 404 Not Found",
+    ] {
+        assert!(
+            answers.contains(expected),
+            "missing {expected:?} in:\n{answers}"
+        );
+    }
+    let rendered = answer_to(answers, "rendered");
+    assert!(
+        rendered.starts_with("rendered 200") && rendered.contains("post: hello-world"),
+        "a route with no prerendered file is rendered per request:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("src=\"/docs/"),
+        "a rendered document names the build's module script under the base path:\n{rendered}"
+    );
+    let missing = answer_to(answers, "missing");
+    assert!(
+        missing.starts_with("missing 404") && missing.contains("based-app has no such page"),
+        "an unrouted path under the base is the project's own 404:\n{missing}"
+    );
+}
+
+/// `app.router.basePath` and `trailingSlash`, asked of every front door about
+/// one project.
+///
+/// `based-app` is served under `/docs` with `trailingSlash: "never"`. The build
+/// is read first, because every answer after it only means something if the
+/// build wrote what the two settings ask for: `guide.html` rather than
+/// `guide/index.html`, every asset URL and `Link` under the base, and a sitemap
+/// naming the addresses a server answers without a redirect.
+///
+/// Then the servers, asked by one function: `uf preview` and `uf start` over
+/// that build, and `uf dev` last. Between them, three adapters' artefacts
+/// copied out of the checkout and asked through [`ARTEFACT_DOORS`]: `node` for
+/// the application door the `bun`, `deno` and `container` artefacts share, and
+/// `edge` and `serverless` for the two doors that differ from it. See
+/// ubugeeei-prod/uf#959.
+#[test]
+fn a_base_path_and_a_trailing_slash_policy_answer_the_same_at_every_front_door() {
+    if !fixture_ready() {
+        return;
+    }
+    let root = based_app_root();
+
+    let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "the fixture must build before it can be served\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let dist = root.join("dist");
+    assert!(
+        dist.join("guide.html").is_file() && !dist.join("guide/index.html").exists(),
+        "`trailingSlash: \"never\"` writes a page as `guide.html`, which a static host serves at \
+         `/guide` without a redirect; the build wrote {:?}",
+        relative_files(&dist)
+    );
+    let home = fs::read_to_string(dist.join("index.html")).unwrap();
+    assert!(
+        home.contains("href=\"/docs/guide\""),
+        "a `Link` in a prerendered page writes the address, base included:\n{home}"
+    );
+    let script = document_script(&home).unwrap_or_else(|| panic!("no module script in:\n{home}"));
+    let file = script.strip_prefix("/docs/").unwrap_or_else(|| {
+        panic!("a document names its module script under the base path, not at {script}")
+    });
+    assert!(
+        dist.join(file).is_file(),
+        "the script a document names under the base is a file at the root of `dist/`: {script}"
+    );
+    let sitemap = fs::read_to_string(dist.join("sitemap.xml")).unwrap();
+    for loc in [
+        "<loc>https://based.example/docs</loc>",
+        "<loc>https://based.example/docs/guide</loc>",
+    ] {
+        assert!(sitemap.contains(loc), "missing {loc} in:\n{sitemap}");
+    }
+
+    if loopback_ready() {
+        for command in ["preview", "start"] {
+            serve_based(&root, command);
+        }
+    }
+
+    let mut reference: Option<(&str, Vec<String>)> = None;
+    for adapter in ["node", "edge", "serverless"] {
+        let (_, empty) = deploy_and_copy(&root, adapter);
+        let answers = ask_the_artefact(empty.path(), adapter, BASED_APP_QUESTIONS);
+        assert_based_answers(&answers);
+
+        let shared: Vec<String> = answers
+            .lines()
+            .filter(|line| !line.starts_with("prerendered-"))
+            .map(without_the_render_anchor)
+            .collect();
+        match &reference {
+            None => reference = Some((adapter, shared)),
+            Some((first, expected)) => {
+                similar_asserts::assert_eq!(
+                    &shared,
+                    expected,
+                    "the `{}` adapter and the `{}` adapter answered differently",
+                    adapter,
+                    first
+                );
+            }
+        }
+
+        if adapter == "edge" || adapter == "serverless" {
+            let prerendered_root = answer_to(&answers, "prerendered-root");
+            assert!(
+                prerendered_root.starts_with("prerendered-root 200")
+                    && prerendered_root.contains("based-app home"),
+                "the base path itself is the prerendered root:\n{prerendered_root}"
+            );
+            let page = answer_to(&answers, "prerendered-page");
+            assert!(
+                page.starts_with("prerendered-page 200") && page.contains("based-app guide"),
+                "`/docs/guide` is answered with `guide.html`:\n{page}"
+            );
+        }
+    }
+
+    if loopback_ready() {
+        serve_dev_on_any_port(&root, |server, port, said, _| {
+            assert_based_served(server, port, said, "dev");
+        });
+    }
+}
+
+/// Start `uf preview` or `uf start` on `based-app` and ask it everything,
+/// retrying the port the way [`serve_and_assert`] does and for the same reason.
+fn serve_based(root: &Path, command: &str) {
+    let mut refused = Vec::new();
+
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        let port_text = port.to_string();
+        let args: Vec<&str> = vec![command, "--host", "127.0.0.1", "--port", &port_text];
+
+        let served = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &args, scope, &said);
+            if wait_for_http(port, "/docs", Duration::from_secs(90)).is_some() {
+                assert_based_served(&mut server, port, &said, command);
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            drop(server);
+            false
+        });
+
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "`uf {command}` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// Everything `based-app` has to answer, whichever server is answering.
+fn assert_based_served(server: &mut Server, port: u16, said: &Mutex<String>, command: &str) {
+    let context = |what: &str, response: &str| {
+        format!("`uf {command}` {what}\n{response}\n{}", server_said(said))
+    };
+
+    // The root is the base itself, and the document it serves writes every
+    // address under it: the `Link`, and the module script, which is served.
+    let home = get(server, port, "/docs", said);
+    assert!(
+        home.starts_with("HTTP/1.1 200") && home.contains("based-app home"),
+        "{}",
+        context(
+            "did not serve the application's root at the base path",
+            &home
+        )
+    );
+    assert!(
+        home.contains("href=\"/docs/guide\""),
+        "{}",
+        context("wrote a `Link` without the base path", &home)
+    );
+    let script = document_script(&home)
+        .unwrap_or_else(|| panic!("{}", context("wrote no module script", &home)));
+    assert!(
+        script.starts_with("/docs/"),
+        "{}",
+        context(
+            &format!("named a module script outside the base path, {script}"),
+            &home
+        )
+    );
+    let asset = get(server, port, &script, said);
+    assert!(
+        asset.starts_with("HTTP/1.1 200"),
+        "{}",
+        context(
+            &format!("did not serve the module script its document named, {script}"),
+            &asset
+        )
+    );
+
+    // The other spelling of the root and of a page, each a `308` to the
+    // policy's.
+    for (path, target) in [("/docs/", "/docs"), ("/docs/guide/", "/docs/guide")] {
+        let moved = get(server, port, path, said);
+        assert!(
+            moved.starts_with("HTTP/1.1 308") && has_header(&moved, "location", target),
+            "{}",
+            context(
+                &format!("did not answer {path} with a 308 to {target}"),
+                &moved
+            )
+        );
+    }
+
+    let guide = get(server, port, "/docs/guide", said);
+    assert!(
+        guide.starts_with("HTTP/1.1 200") && guide.contains("based-app guide"),
+        "{}",
+        context("did not serve a page at the policy's spelling", &guide)
+    );
+
+    let post = get(server, port, "/docs/posts/hello-world", said);
+    assert!(
+        post.starts_with("HTTP/1.1 200") && post.contains("post: hello-world"),
+        "{}",
+        context("did not render a route under the base path", &post)
+    );
+
+    let redirect = get(server, port, "/docs/old/hello-world", said);
+    assert!(
+        redirect.starts_with("HTTP/1.1 307")
+            && has_header(&redirect, "location", "/docs/posts/hello-world"),
+        "{}",
+        context(
+            "answered a loader's `redirect()` with a `Location` outside the base path",
+            &redirect
+        )
+    );
+
+    let health = get(server, port, "/docs/api/health", said);
+    assert!(
+        health.starts_with("HTTP/1.1 200") && health.contains("\"path\":\"/api/health\""),
+        "{}",
+        context(
+            "did not hand a route handler the path without the base",
+            &health
+        )
+    );
+
+    let payload = get(server, port, "/docs/posts/hello-world/__uf.flight", said);
+    assert!(
+        payload.starts_with("HTTP/1.1 200")
+            && has_header(&payload, "content-type", "text/x-component"),
+        "{}",
+        context(
+            "did not answer a navigating browser's payload request under the base path",
+            &payload
+        )
+    );
+
+    let outside = get(server, port, "/posts/hello-world", said);
+    assert!(
+        outside.starts_with("HTTP/1.1 404") && !outside.contains("post: hello-world"),
+        "{}",
+        context("answered an address outside the base path", &outside)
+    );
+}
+
 /// A project that declares a schedule, which no fixture in this repository did.
 ///
 /// `served-app` deliberately does not grow one: it is the project every

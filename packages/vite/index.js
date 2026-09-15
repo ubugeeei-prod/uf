@@ -123,6 +123,7 @@ import {
   answerRouting,
   answersInFrontOfFiles,
   beginRequest,
+  forViteBase,
   rewriteRouting,
 } from "./internal/serve.js";
 import { serverComponentsProblem } from "./internal/server-components.js";
@@ -541,6 +542,7 @@ function flowPlugin({
         return flightClientSource(entryPath, {
           strictMode: strictMode && !isProduction,
           navigation,
+          routing,
         });
       }
       if (id === resolved(VIRTUAL.client)) {
@@ -548,6 +550,7 @@ function flowPlugin({
           strictMode: strictMode && !isProduction,
           navigation,
           mount,
+          routing,
         });
       }
       if (id === resolved(VIRTUAL.server)) {
@@ -556,7 +559,7 @@ function flowPlugin({
           : flightServerSource(entryPath, VIRTUAL.routes, VIRTUAL.actions, routing);
       }
       if (flightState != null) {
-        if (id === resolved(FLIGHT_VIRTUAL.entry)) return rscEntrySource(VIRTUAL.routes);
+        if (id === resolved(FLIGHT_VIRTUAL.entry)) return rscEntrySource(VIRTUAL.routes, routing);
         if (id === resolved(FLIGHT_VIRTUAL.compilerRuntime)) return compilerRuntimeSource();
         if (id === resolved(FLIGHT_VIRTUAL.bridge)) {
           if (server != null) return devBridgeSource();
@@ -762,17 +765,27 @@ function flowPlugin({
       if (answersInFrontOfFiles(routing)) {
         devServer.middlewares.use((request, response, next) => {
           const url = request.url ?? "/";
+          // Vite serves its own paths under the base path too, so they are
+          // recognised once it is taken off.
+          const under =
+            routing.basePath !== "" && url.startsWith(`${routing.basePath}/`)
+              ? url.slice(routing.basePath.length)
+              : url;
           if (
-            url.startsWith("/@") ||
-            url.startsWith("/node_modules/") ||
-            url.startsWith("/__uf/")
+            under.startsWith("/@") ||
+            under.startsWith("/node_modules/") ||
+            under.startsWith("/__uf/")
           ) {
             next();
             return;
           }
           answerRouting(routing, toAddressRequest(request), response)
             .then((answered) => {
-              if (!answered) next();
+              if (answered) return;
+              // The bare base path is the root, which Vite only knows as
+              // `/docs/`; see `forViteBase`.
+              forViteBase(routing, request);
+              next();
             })
             .catch(next);
         });
@@ -900,7 +913,10 @@ function flowPlugin({
           let lifecycle = null;
           try {
             const entry = await importServerEntry(devServer);
-            const arrived = await toRequest(request, devServer.config);
+            // At `request.url`, which Vite's base middleware has already taken
+            // `app.router.basePath` off: the application path, as every other
+            // front door hands the application once it has admitted a request.
+            const arrived = await toRequest(request, devServer.config, url);
             // `app.router.rewrites`, where `createFetchHandler` applies them for
             // every other door: after the files Vite already served, before the
             // guard — so the guard that runs is the destination's.
