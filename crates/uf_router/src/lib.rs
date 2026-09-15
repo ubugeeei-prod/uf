@@ -1269,6 +1269,35 @@ fn middleware_chain(
     chain
 }
 
+/// Every `$layout.js` that renders around a route in `directory`, outermost
+/// first.
+///
+/// The walk [`middleware_chain`] makes, for the other reserved file a route
+/// inherits down the tree. Public because `uf build` asks which modules render
+/// a route before Vite runs: a layout that reads the request makes every route
+/// under it a render about one request.
+pub fn layout_chain(
+    app_root: &Utf8Path,
+    directory: &Utf8Path,
+    target: RouteTarget,
+) -> Vec<Utf8PathBuf> {
+    let mut chain = Vec::new();
+    let mut current = Some(directory);
+    while let Some(dir) = current {
+        if let Some(file) =
+            find_module_for_target(dir, RESERVED_LAYOUT_STEM, &MODULE_EXTENSIONS, target)
+        {
+            chain.push(file);
+        }
+        if dir == app_root {
+            break;
+        }
+        current = dir.parent();
+    }
+    chain.reverse();
+    chain
+}
+
 pub fn find_reserved_file_violations(
     root: &Utf8Path,
     config: &UniflowedConfig,

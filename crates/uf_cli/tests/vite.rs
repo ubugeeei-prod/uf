@@ -759,6 +759,109 @@ fn a_server_only_import_a_client_component_reaches_fails_the_build_naming_its_ch
     );
 }
 
+/// A route whose document is written once, and whose render reads the request,
+/// fails the build naming the route, the function and the chain of imports.
+///
+/// Two routes are refused and one is not:
+///
+/// * `/account` has no parameters, so it is prerendered, and its page reaches
+///   `cookies()` two modules down;
+/// * `/posts/:slug` is rendered per request, but it states a lifetime with
+///   `cacheLife` while the route cache is on, and it reaches `headers()`;
+/// * `/dashboard` reads the same cookie but says `force-dynamic`, so its
+///   document is rendered for each request and never written once;
+/// * `/settings/billing` and `/settings/profile` are prerendered under a
+///   layout that reads `headers()` itself, which is one error naming both.
+///
+/// Like the test above, the build stops before Vite runs. ubugeeei-prod/uf#996.
+#[test]
+fn a_route_written_once_that_reads_the_request_fails_the_build_naming_its_chain() {
+    let mut files = minimal_app();
+    files.extend([
+        (
+            "uf.config.js",
+            "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({\n  app: { rendering: { cache: { route: true } } },\n});\n",
+        ),
+        (
+            "app/account/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Greeting } from \"./Greeting.js\";\n\nexport component Page() {\n  return <Greeting />;\n}\n",
+        ),
+        (
+            "app/account/Greeting.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { session } from \"../session.js\";\n\nexport component Greeting() {\n  return <p>{`signed in as ${session()}`}</p>;\n}\n",
+        ),
+        (
+            "app/session.js",
+            "// @flow\nimport { cookies } from \"@uniflowed/server\";\n\nexport function session(): string {\n  return cookies().get(\"session\") ?? \"nobody\";\n}\n",
+        ),
+        (
+            "app/posts/[slug]/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { cacheLife } from \"@uniflowed/server/cache\";\nimport { locale } from \"./locale.js\";\n\nexport component Page() {\n  cacheLife({ revalidate: 60 });\n  return <p>{locale()}</p>;\n}\n",
+        ),
+        (
+            "app/posts/[slug]/locale.js",
+            "// @flow\nimport { headers } from \"@uniflowed/server\";\n\nexport function locale(): string {\n  return headers().get(\"accept-language\") ?? \"en\";\n}\n",
+        ),
+        (
+            "app/dashboard/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { session } from \"../session.js\";\n\nexport const dynamic = \"force-dynamic\";\n\nexport component Page() {\n  return <p>{session()}</p>;\n}\n",
+        ),
+        (
+            "app/settings/$layout.js",
+            "// @flow\nimport { headers } from \"@uniflowed/server\";\nimport * as React from \"@uniflowed/react\";\n\nexport component Layout(children: React.Node) {\n  return <section lang={headers().get(\"accept-language\") ?? \"en\"}>{children}</section>;\n}\n",
+        ),
+        (
+            "app/settings/profile/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <p>profile</p>;\n}\n",
+        ),
+        (
+            "app/settings/billing/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <p>billing</p>;\n}\n",
+        ),
+    ]);
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        // Wide enough that no message is wrapped, whatever the renderer's own
+        // idea of a terminal is.
+        .env("COLUMNS", "2000")
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "a route written once that reads the request must fail the build:\n{said}"
+    );
+    for expected in [
+        "rsc/request-state-in-static-route",
+        "routes `/settings/billing`, `/settings/profile` are prerendered, and their render reads \
+         `headers()`, which `app/settings/$layout.js` imports from `@uniflowed/server` at line 2",
+        "route `/account` is prerendered, and its render reads `cookies()` through \
+         `app/account/$page.js` → `app/account/Greeting.js` → `app/session.js`",
+        "route `/posts/:slug` states a cache lifetime through `cacheLife`, which \
+         `app/posts/[slug]/$page.js` imports at line 3",
+        "reads `headers()` through `app/posts/[slug]/$page.js` → `app/posts/[slug]/locale.js`",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    assert!(
+        !said.contains("`/dashboard`"),
+        "a force-dynamic page is rendered for each request and must not be refused:\n{said}"
+    );
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "the build prerendered a page despite a route that reads the request"
+    );
+}
+
 /// `uf build --analyze` names the chain behind a dependency only one route
 /// pulls in, and attributes it to no other route.
 ///
