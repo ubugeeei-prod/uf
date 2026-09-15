@@ -821,6 +821,14 @@ Everything else is yours to set, **including options uf sets itself**. A
 default is a convenience, not an architecture. The reasoning is in
 [Architecture](/guide/architecture).
 
+One of those is `cacheDir`, where Vite keeps pre-bundled dependencies. uf sets
+it to `node_modules/.vite` inside the project, for `uf dev`, `uf build` and
+every other command that runs Vite. That is where Vite puts it for a project
+with its own `package.json`. Vite's own default is the nearest `package.json`'s
+`node_modules/.vite`, and a uf project needs no `package.json`, so without this
+a project inside another repository would pre-bundle into that repository's
+`node_modules`, shared with every other project there.
+
 ## pm and publish
 
 Two settings that used to be one. `publish.registry` is where `uf publish`
