@@ -1654,10 +1654,13 @@ export function clientModuleSource(appEntry, options = {}) {
   const navigation = options.navigation === "document" ? ', navigation: "document"' : "";
   const mount = options.mount === "render" ? "render" : "hydrate";
   const routing = routingArgumentSource(options.routing);
+  // `app.rendering.staleTime`, in seconds, and nothing for the default `0`.
+  const staleTime =
+    options.staleTime > 0 ? `, staleTime: ${JSON.stringify(options.staleTime)}` : "";
   return `import { ${mount} } from "@uniflowed/router/client";
 import { routes, notFound, errors } from ${JSON.stringify(VIRTUAL.routes)};
 import App from ${JSON.stringify(appEntry)};
-${mount}({ App, routes, notFound, errors${strictMode}${navigation}${routing} });
+${mount}({ App, routes, notFound, errors${strictMode}${navigation}${staleTime}${routing} });
 `;
 }
 

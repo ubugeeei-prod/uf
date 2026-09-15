@@ -132,6 +132,7 @@ of it.
 | `builtins.style` | — | The style engine |
 | `rendering.modes` | `["ppr", "ssr", "ssg", "isr"]` | Which rendering strategies this project will deploy — see below |
 | `rendering.navigation` | `"client"` | What a link does: the client router takes it over, or the browser fetches a document — see below |
+| `rendering.staleTime` | `0` | Seconds the client router shows a page it already fetched without asking again; `0` keeps nothing — see [the guide](/guide/routing#keeping-what-a-navigation-fetched) |
 | `rendering.cache.route`, `.fetch` | `false` | Which of uf's caches are on; `data` and `actions` are refused rather than ignored |
 | `rendering.cache.store` | `"memory"` | Where entries live: one process, `"filesystem"`, or a module exporting `createCacheProvider` |
 | `rendering.cache.storeDir` | `.uf/cache/route` | Where `"filesystem"` keeps them |
