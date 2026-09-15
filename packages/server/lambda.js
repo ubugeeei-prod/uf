@@ -273,8 +273,17 @@ export function createLambdaHandler(
     let status = 500;
     try {
       const result = await lifecycle.run(async () => {
-        const asset = serveStatic == null ? null : await serveStatic(request);
-        return await toResult(asset ?? (await handle(request)));
+        const files = serveStatic;
+        const asset = files == null ? null : await files(request);
+        if (asset != null) return await toResult(asset);
+        // The package's copy of `dist/`, for a page the build regenerates: its
+        // document is not at its own URL, and the application starts the page
+        // from the one the build wrote. See `./internal/static.js`.
+        if (files != null) {
+          lifecycle.context.buildFile = (pathname) =>
+            files(new Request(new URL(pathname, request.url)));
+        }
+        return await toResult(await handle(request));
       });
       status = result.statusCode;
       return result;

@@ -33,6 +33,7 @@ fn rendered(url: &str) -> Prerendered {
         url: url.to_owned(),
         file: format!("dist{url}/index.html"),
         status: 200,
+        regenerates: false,
     }
 }
 
@@ -173,5 +174,27 @@ fn a_long_list_is_cut_off_and_says_how_much_was_cut() {
     assert!(
         !message.contains("/posts20/:slug"),
         "the cut-off has to actually cut: {message}"
+    );
+}
+
+/// A page the build wrote for regeneration has a document and is still refused,
+/// by URL and with its route's module rather than the document's path.
+#[test]
+fn a_regenerated_page_is_named_with_its_route_module() {
+    let routes = [page("/", &[]), page("/clock", &[])];
+    let mut clock = rendered("/clock");
+    clock.file = String::from("dist/__uf/regenerate/clock/index.html");
+    clock.regenerates = true;
+
+    let found = unservable(&root(), &routes, &[], &[rendered("/"), clock], &[]);
+
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].subject, "/clock");
+    assert_eq!(found[0].file, "app/clock/$page.js");
+    assert_eq!(found[0].reason, Reason::Regenerates);
+    let message = refusal(&found);
+    assert!(
+        message.contains("regenerates once its lifetime passes"),
+        "{message}"
     );
 }

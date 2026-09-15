@@ -709,7 +709,7 @@ fn deno_version(text: &str) -> Option<(u64, u64)> {
 /// warning in the run header, and a warning in a passing run is read by
 /// nobody: the run would still report on a compiler nobody chose. A refusal
 /// names the one thing that fixes it.
-fn uf_binary() -> Result<Utf8PathBuf> {
+pub(crate) fn uf_binary() -> Result<Utf8PathBuf> {
     let current_exe = std::env::current_exe()
         .ok()
         .and_then(|binary| Utf8PathBuf::from_path_buf(binary).ok());

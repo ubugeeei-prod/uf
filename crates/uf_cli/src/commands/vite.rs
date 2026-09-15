@@ -164,6 +164,10 @@ pub(crate) enum Event {
         file: String,
         status: u16,
         bytes: u64,
+        /// Whether the build wrote it for regeneration: it stated a lifetime,
+        /// and its document is not at its own URL. `false` from a driver that
+        /// predates regeneration, which wrote no such page.
+        regenerates: bool,
     },
     /// One route did not prerender.
     ///
@@ -330,6 +334,10 @@ impl Event {
                 file: text("file").unwrap_or_default(),
                 status: u16::try_from(number("status").unwrap_or(200)).unwrap_or(200),
                 bytes: number("bytes").unwrap_or(0),
+                regenerates: value
+                    .get("regenerates")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             },
             Some("page-failed") => Self::PageFailed {
                 url: text("url").unwrap_or_default(),

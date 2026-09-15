@@ -1739,7 +1739,7 @@ fn fmt_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
+    let mut stages = vec![
         Stage {
             name: "uf rules",
             provider: format!("{:?}", resolved.config.lint.engine),
@@ -1750,7 +1750,25 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: format!("{:?}", resolved.config.lint.flow.parser),
             detail: format!("built-ins: {:?}", resolved.config.lint.flow.builtins),
         },
-    ]
+    ];
+    // The one stage uf does not write, so the one a slow or failing run most
+    // needs named. Absent when no project rule is on, which is also when the
+    // run starts no worker for it.
+    let project = crate::commands::lint::plugins::enabled_project_rules(&resolved.config);
+    if !project.is_empty() {
+        stages.push(Stage {
+            name: "project rules",
+            provider: format!(
+                "{:?}",
+                resolved.config.app.runtime.capability_js_host.default
+            ),
+            detail: format!(
+                "{} enabled from `plugins`, in @uniflowed/host's lint worker",
+                project.len()
+            ),
+        });
+    }
+    stages
 }
 
 fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
