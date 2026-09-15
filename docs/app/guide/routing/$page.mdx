@@ -535,10 +535,10 @@ Two rules come with that, and both are worth knowing rather than discovering:
 `uf build` never defers: a file being written to disk has no first paint to
 improve, so `prerender` resolves the loader and writes the finished page.
 
-`uf dev` also collects the document rather than streaming it, because Vite's
-HTML transform takes a whole one —
-[#374](https://github.com/ubugeeei-prod/uf/issues/374). `uf start`, `uf preview`
-and the deploy adapters stream.
+`uf dev` streams, and its terminal names each boundary that arrived after the
+shell — [What actually streamed](/guide/dev#what-actually-streamed). So do
+`uf start`, `uf preview` and the deploy adapters, except `serverless`, which
+buffers the response.
 
 What none of this covers is a route handler. `$route.js` answers a request
 itself, and a handler that throws is still a bug for the host's error reporting

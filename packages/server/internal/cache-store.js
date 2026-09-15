@@ -122,6 +122,18 @@ import type { CacheProvider } from "./cache-provider.js";
 import { decodeCacheValue, encodeCacheValue } from "./cache-provider.js";
 import { processWide } from "./process-state.js";
 
+/**
+ * The latest instant an entry can name, in milliseconds: the last one a `Date`
+ * can hold.
+ *
+ * What "never" is spelled as inside an entry. `Infinity` would be the honest
+ * spelling and is not a number JSON can carry: a durable provider writes it as
+ * `null`, and `null` compares as `0`, which turns "never expires" into
+ * "expired since 1970" on the next read. A real instant survives every store
+ * and every comparison unchanged.
+ */
+export const END_OF_TIME: number = 8.64e15;
+
 /** How long an entry stays fresh, and how long it may be served at all. */
 export type CacheLifetime = {|
   /** Seconds after which the entry is stale. */
@@ -150,6 +162,28 @@ export type CacheRequest = {|
   readonly lifetime?: CacheLifetime,
   readonly tags?: $ReadOnlyArray<string>,
   readonly path?: string,
+  /**
+   * An entry to start this key from when neither memory nor the provider holds
+   * one.
+   *
+   * For a prerendered page, the document the build wrote, dated the moment it
+   * was rendered: fresh until its own `revalidate`, then refreshed like any
+   * other entry. Asked at most once per key for the life of the store, because
+   * an entry that was refreshed or invalidated must never come back from the
+   * build; see [`CacheStore.seedFrom`].
+   */
+  readonly seed?: () => Promise<CacheEntry<mixed> | null>,
+  /**
+   * Keep an entry servable past `revalidate` until a refresh replaces it.
+   *
+   * What a fill that states no `expire` gets instead of `expire = revalidate`.
+   * It is incremental static regeneration's contract rather than this store's
+   * default, and the difference is one fact: a prerendered page always has an
+   * answer, because the build wrote one, so a reader after the lifetime gets
+   * the current document and starts one refresh instead of waiting on a
+   * render. A fill that does state `expire` still means it.
+   */
+  readonly staleUntilReplaced?: boolean,
 |};
 
 /** How a value was arrived at, for a caller that wants to report it. */
@@ -192,6 +226,12 @@ export type CacheStats = {|
    * reported through `onError`, which is where a failure belongs.
    */
   readonly persisted: number,
+  /**
+   * Entries this process started from a request's `seed` rather than from a
+   * render: for a regenerated page, the document the build wrote. Zero when no
+   * request carried one.
+   */
+  readonly seeded: number,
 |};
 
 /**
@@ -400,6 +440,17 @@ export class CacheStore {
    * settles without yielding at all.
    */
   readonly writing: Set<Promise<mixed>> = new Set();
+  /**
+   * Background refreshes started and not finished.
+   *
+   * Awaited by [`settled`] beside the durable writes, and for the same reason.
+   * A refresh runs behind a reader who has already been answered, and a
+   * platform that stops work once a response is out — a Worker, unless the
+   * work was handed to `waitUntil`, and a Lambda, which freezes on return —
+   * would stop it halfway: the page it was regenerating would be neither
+   * rendered nor kept, and the next reader would start the same refresh again.
+   */
+  readonly refreshing: Set<Promise<mixed>> = new Set();
   now: () => number;
   maxEntries: number;
   onError: (error: mixed) => void;
@@ -414,6 +465,14 @@ export class CacheStore {
   invalidations: number = 0;
   restored: number = 0;
   persisted: number = 0;
+  seeds: number = 0;
+  /**
+   * Every key this store has asked a `seed` for, whatever the seed answered.
+   *
+   * Bounded by the pages a build regenerates, because only those requests
+   * carry a seed; see [`seedFrom`] for why a key is never asked twice.
+   */
+  readonly seededKeys: Set<string> = new Set();
 
   constructor(options?: CacheStoreOptions) {
     this.now = options?.now ?? Date.now;
@@ -474,11 +533,13 @@ export class CacheStore {
       invalidations: this.invalidations,
       restored: this.restored,
       persisted: this.persisted,
+      seeded: this.seeds,
     };
   }
 
   /**
-   * Every durable write and invalidation this store has started.
+   * Every durable write, invalidation and background refresh this store has
+   * started.
    *
    * A durable write does not block the answer — a reader waiting on a disk for
    * a document it already has in its hand is paying for somebody else's next
@@ -488,13 +549,18 @@ export class CacheStore {
    * every serverless one. `../cache.js` gives it to the request through
    * `after()`, so `settle()` covers it wherever a host settles.
    *
-   * Resolves immediately with no provider, and loops rather than awaiting once
-   * because an invalidation started while this was waiting is work this promise
-   * is also about.
+   * A refresh is here for the same reason. The stale reader has been answered,
+   * and the page the refresh is regenerating is work its host has to be told
+   * to wait for; see [`refreshing`].
+   *
+   * Resolves immediately when nothing is outstanding, and loops rather than
+   * awaiting once: a refresh that finishes starts a durable write, and an
+   * invalidation started while this was waiting is work this promise is also
+   * about.
    */
   async settled(): Promise<void> {
-    while (this.writing.size > 0) {
-      await Promise.all(Array.from(this.writing));
+    while (this.writing.size > 0 || this.refreshing.size > 0) {
+      await Promise.all([...Array.from(this.writing), ...Array.from(this.refreshing)]);
     }
   }
 
@@ -570,6 +636,10 @@ export class CacheStore {
   clear(): void {
     this.entries.clear();
     this.filling.clear();
+    // Seeds too: a store that has been cleared holds nothing newer than the
+    // build, so the build's copy is a correct place to start again. What must
+    // not re-seed is a key that was *invalidated*, and `clear` is not that.
+    this.seededKeys.clear();
     this.durably((provider) => provider.clear());
   }
 
@@ -670,15 +740,19 @@ export class CacheStore {
   }
 
   /**
-   * The durable store, then a fill: what one caller does once it owns the key.
+   * The durable store, then the seed, then a fill: what one caller does once it
+   * owns the key.
    *
-   * Answers the value either way, so that a second caller joining through the
-   * in-flight map gets the same thing whichever half produced it — a joiner
-   * cannot tell a disk read from a render, and should not be able to.
+   * Answers the value whichever of the three produced it, so that a second
+   * caller joining through the in-flight map gets the same thing — a joiner
+   * cannot tell a disk read or the build's copy from a render, and should not
+   * be able to.
    *
-   * With no provider this is [`fill`] with one comparison in front of it, which
-   * is the shape the default store keeps: nothing about a memory-only cache got
-   * slower to make a durable one possible.
+   * The durable store goes before the seed because an entry another process
+   * wrote there is newer than anything the build wrote. With no provider and no
+   * seed this is [`fill`] with two comparisons in front of it, which is the
+   * shape the default store keeps: nothing about a memory-only cache got slower
+   * to make a durable one, or a regenerated page, possible.
    */
   async fillThrough<T>(
     hash: string,
@@ -694,7 +768,64 @@ export class CacheStore {
         return (entry.value: $FlowFixMe);
       }
     }
+    if (request.seed != null) {
+      const seeded = await this.seedFrom(hash, request);
+      if (seeded != null) {
+        attempt.restored = this.now() < seeded.revalidateAt ? "hit" : "stale";
+        return (seeded.value: $FlowFixMe);
+      }
+    }
     return this.fill(hash, request, scope, produce);
+  }
+
+  /**
+   * The entry `request.seed` starts this key from, promoted into memory.
+   *
+   * Asked once per key for the life of the store, and that is the whole of the
+   * design. A seed is the build's copy of a document, and the build's copy is
+   * the one answer that is never newer than whatever the store has held for the
+   * key since: after a refresh replaced it, or after `revalidateTag` expired
+   * it, taking the build's copy again would serve a document the application
+   * has already said is old or wrong. So the key is marked before the seed is
+   * asked, and a key that has been seeded is filled by a render from then on.
+   *
+   * Not persisted. Every process can read the build's copy for itself, so
+   * writing it to a shared store would be a write per process of bytes that
+   * store holds a newer copy of the moment anybody refreshes.
+   *
+   * # What a restart does to that promise
+   *
+   * It keeps it for one process's life and no longer, because the mark is in
+   * memory. A process that starts after a page was invalidated, and before
+   * anything regenerated it, finds nothing durable for the page and seeds it
+   * again — stale at once if the build is older than the page's lifetime, so
+   * that reader starts the refresh. A durable provider that recorded
+   * invalidations would close that window; the ones uf has do not, and the
+   * guide says so.
+   *
+   * `null` for a key already seeded, a seed that answers nothing or fails
+   * (reported through `onError`), and an entry already past `expiresAt`, which
+   * a fill then replaces exactly as it replaces an expired entry in memory.
+   */
+  async seedFrom(hash: string, request: CacheRequest): Promise<CacheEntry<mixed> | null> {
+    const seed = request.seed;
+    if (seed == null || this.seededKeys.has(hash)) {
+      return null;
+    }
+    this.seededKeys.add(hash);
+    let entry: CacheEntry<mixed> | null;
+    try {
+      entry = await seed();
+    } catch (error) {
+      this.onError(error);
+      return null;
+    }
+    if (entry == null || this.now() >= entry.expiresAt) {
+      return null;
+    }
+    this.seeds += 1;
+    this.store(hash, entry);
+    return entry;
   }
 
   /**
@@ -778,7 +909,15 @@ export class CacheStore {
     }
     const storedAt = this.now();
     const revalidate = millis(lifetime.revalidate, "revalidate");
-    const expire = millis(lifetime.expire ?? lifetime.revalidate, "expire");
+    // A stated `expire` means what it says. Without one an entry is unusable
+    // the moment it is stale, unless the request keeps it until something
+    // replaces it — which is what a regenerated page asks for.
+    const expire =
+      lifetime.expire != null
+        ? millis(lifetime.expire, "expire")
+        : request.staleUntilReplaced === true
+          ? END_OF_TIME
+          : revalidate;
     if (expire < revalidate) {
       throw new RangeError(
         `@uniflowed/server: expire (${String(lifetime.expire)}s) is before revalidate ` +
@@ -789,8 +928,10 @@ export class CacheStore {
     const entry: CacheEntry<mixed> = {
       value,
       storedAt,
-      revalidateAt: storedAt + revalidate,
-      expiresAt: storedAt + expire,
+      // Clamped, so an entry that never ends names an instant a `Date` can hold
+      // rather than one past it; see [`END_OF_TIME`].
+      revalidateAt: Math.min(storedAt + revalidate, END_OF_TIME),
+      expiresAt: Math.min(storedAt + expire, END_OF_TIME),
       tags: Array.from(new Set(scope.tags)),
       path: request.path ?? null,
     };
@@ -883,7 +1024,9 @@ export class CacheStore {
       return undefined;
     });
     this.filling.set(hash, running);
+    this.refreshing.add(running);
     void running.then(() => {
+      this.refreshing.delete(running);
       if (this.filling.get(hash) === running) {
         this.filling.delete(hash);
       }

@@ -391,21 +391,23 @@ imports the action already has its type.
   `action="javascript:throw …"` as it does for any client action, and a submit
   before hydration throws in the page rather than posting anywhere. Nothing
   reaches a server that was not meant to; what is missing is the submit working
-  at all. [#252](https://github.com/ubugeeei-prod/uf/issues/252).
+  at all. No open issue tracks it.
 - **Uploads.** A `File` entry is refused by name at the call site. Multipart
   parsing is its own attack surface and is deliberately absent; use a route
   handler.
-- **Inline `"use server"` closures.** A closure whose body opens with the
-  directive is recognised, keyed and written into the manifest, but it has no
-  export name to import — so it gets no reference in the client bundle and no
-  row in the server's table, and nothing can call it. Reaching one needs the
-  payload [#252](https://github.com/ubugeeei-prod/uf/issues/252) is about. Write
-  a module export.
-- **A reference format.** Nothing in a payload can name a function, a module, a
-  class, a prototype, a React element or a reference, and this grammar is not
-  where one grows quietly. That is the same absence
-  [#519](https://github.com/ubugeeei-prod/uf/issues/519) describes from the
-  other side.
+- **Inline `"use server"` closures, and a server function as a prop.** A closure
+  whose body opens with the directive is recognised, keyed and written into the
+  manifest, but it has no export name to import — so it gets no reference in the
+  client bundle and no row in the server's table, and nothing can call it. The
+  Flight payload routes render with could carry a reference to one, but Flight
+  server references are not wired, so a server function cannot be handed to a
+  client component as a prop either. No open issue tracks either; write a module
+  export, and import it from the client component.
+- **A reference format.** Nothing in an action's arguments can name a function,
+  a module, a class, a prototype, a React element or a reference, and this
+  grammar is not where one grows quietly. The Flight payload a route renders
+  with is a different wire, and naming client modules is its job, not this
+  one's.
 - **A type error for two forms in one signature.** The wire refuses a second
   form at run time; the types accept the signature, because saying it needs a
   walk over the parameter tuple that

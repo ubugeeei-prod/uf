@@ -1,17 +1,20 @@
 //! `uf run` and `ufx`: the two commands that hand control to another process.
 
 use std::borrow::Cow;
+use std::collections::btree_map::Entry;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
 use std::process::Command as ProcessCommand;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
+use compact_str::CompactString;
 use uf_config::env_files::ProjectEnv;
 use uf_config::{ResolvedConfig, TaskDefinition, TaskRunnerEngine, load_config};
 use uf_pm::{
     DetectionOptions, Operation, PackageManager, command_for, detect_package_manager_with,
 };
-use uf_task::{Concurrency, Plan, PlanError, RunOptions, ScheduledTask, TaskCache};
+use uf_task::{Concurrency, Plan, PlanError, PlanPackage, RunOptions, ScheduledTask, TaskCache};
 use uf_term::{Cell, Column, Status, Table, Tone, display_width, truncate_to_width};
 
 use crate::cli::CreateCommand;
@@ -22,7 +25,7 @@ use crate::support::{DEVELOPMENT, plural, project_env, project_label};
 use crate::ui::Ui;
 
 /// What `uf run` was asked for beyond the task's name.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct RunArgs {
     /// How many tasks may run at once.
     pub(crate) concurrency: Option<usize>,
@@ -30,6 +33,55 @@ pub(crate) struct RunArgs {
     pub(crate) force: bool,
     /// Say, for every task, why it ran or did not.
     pub(crate) why: bool,
+    /// Run the task in every workspace member that defines it.
+    pub(crate) recursive: bool,
+    /// Run it only in the members these select, which implies
+    /// [`Self::recursive`].
+    pub(crate) filter: Vec<String>,
+}
+
+/// One project a run can reach tasks in, loaded.
+///
+/// The project `uf run` started in, or a member of its workspace — each with
+/// its own `uf.config.js`, its own `.env` files and its own `.uf/cache/task`,
+/// because each is a project in its own right, and `uf run build` inside one
+/// has always read exactly those.
+struct Package {
+    /// What `pkg#task` calls it. Empty for the project `uf run` started in
+    /// when no `pkg#task` can name it: the workspace root, or a project with
+    /// no workspace at all.
+    name: CompactString,
+    /// Where it is, relative to the workspace root.
+    path: String,
+    resolved: ResolvedConfig,
+    /// Indices of the packages its `package.json` depends on.
+    dependencies: Vec<usize>,
+}
+
+impl Package {
+    fn new(
+        resolved: ResolvedConfig,
+        name: CompactString,
+        path: String,
+        dependencies: Vec<usize>,
+    ) -> Self {
+        Self {
+            name,
+            path,
+            resolved,
+            dependencies,
+        }
+    }
+
+    /// The project `uf run` started in, on its own.
+    fn alone(resolved: ResolvedConfig) -> Self {
+        Self::new(
+            resolved,
+            CompactString::default(),
+            String::new(),
+            Vec::new(),
+        )
+    }
 }
 
 pub(crate) fn run_task(
@@ -41,58 +93,291 @@ pub(crate) fn run_task(
     options: RunArgs,
 ) -> Result<()> {
     let resolved = load_project_config(cwd, requested_mode, DEVELOPMENT)?;
-    // A task is project code with a shell in front of it, so it reads the
-    // project's `.env` files like everything else uf runs. `development` is the
-    // default because a task is something a person runs at a terminal; a task
-    // that runs `uf build` gets `production` from that command, because the
-    // values uf injected here are marked as uf's and lose to a file. See
-    // `uf_config::env_files`.
-    let env = runtime_environment(
-        &resolved,
-        ui,
-        project_env(&resolved, requested_mode, DEVELOPMENT)?,
-    )?;
 
-    let plan = match Plan::build(&resolved.config, script) {
-        Ok(plan) => plan,
-        Err(PlanError::Unknown { name, through }) => {
-            bail!(unknown_task(&resolved, &name, &through))
+    // One project, unless the run asks for more or the plan reaches past it.
+    // Finding a workspace walks the tree and loads every member's config, and
+    // `uf run build` in a project whose `dependsOn` names no other package has
+    // no reason to pay for either — or to be refused over a member's broken
+    // config it was never going to read.
+    let (packages, plan) = if options.recursive || !options.filter.is_empty() {
+        let (packages, first_member) = workspace(resolved, requested_mode)?;
+        let requests = requests_across(&packages, first_member, script, &options.filter)?;
+        let plan = plan(&packages, &requests)?;
+        (packages, plan)
+    } else {
+        match Plan::build(&resolved.config, script) {
+            Ok(plan) => (vec![Package::alone(resolved)], plan),
+            Err(PlanError::UnknownPackage { .. }) => {
+                let started_in = resolved.root.clone();
+                let (packages, _) = workspace(resolved, requested_mode)?;
+                let current = packages
+                    .iter()
+                    .position(|package| package.resolved.root == started_in)
+                    .unwrap_or(0);
+                let plan = plan(&packages, &[(current, script)])?;
+                (packages, plan)
+            }
+            Err(error) => {
+                let packages = [Package::alone(resolved)];
+                return Err(plan_error(&packages, error));
+            }
         }
-        Err(PlanError::Cycle(cycle)) => bail!(dependency_cycle(&cycle)),
+    };
+    execute(ui, requested_mode, &packages, &plan, script, args, &options)
+}
+
+/// The workspace around `resolved`, loaded: every package a run can reach, and
+/// the index of the first member among them.
+///
+/// The workspace root comes first, under no name, when it is the project `uf
+/// run` started in — `uf run build` there means the root's own `build`, and
+/// `-r` means the members'. A project that is itself a member is loaded once,
+/// as that member, so a sibling's `pkg#task` and its own tasks are one node.
+fn workspace(resolved: ResolvedConfig, mode: Option<&str>) -> Result<(Vec<Package>, usize)> {
+    let Some((root, members)) = uf_project::enclosing_workspace(&resolved.root, &resolved.config)
+    else {
+        return Ok((vec![Package::alone(resolved)], 1));
+    };
+    let dependencies = uf_project::workspace_dependencies(&root, &members);
+
+    let mut packages = Vec::with_capacity(members.len() + 1);
+    let mut started_in = Some(resolved);
+    if let Some(resolved) = started_in.take_if(|resolved| resolved.root == root) {
+        packages.push(Package::alone(resolved));
+    }
+    let first_member = packages.len();
+    for (member, depends_on) in members.iter().zip(dependencies) {
+        let member_root = root.join(&member.path);
+        let resolved = match started_in.take_if(|resolved| resolved.root == member_root) {
+            Some(resolved) => resolved,
+            None => load_project_config(&member_root, mode, DEVELOPMENT)?,
+        };
+        let depends_on = depends_on.into_iter().map(|at| at + first_member).collect();
+        packages.push(Package::new(
+            resolved,
+            member.name.clone(),
+            member.path.to_string(),
+            depends_on,
+        ));
+    }
+    Ok((packages, first_member))
+}
+
+/// Where `uf run <task> -r` runs the task: in every member, or in the members
+/// `--filter` selects, that define it.
+///
+/// The workspace root is not one of them, which is pnpm's answer and the one
+/// that keeps `-r` meaning one thing: the root's own `build` is `uf run build`.
+fn requests_across<'s>(
+    packages: &[Package],
+    first_member: usize,
+    script: &'s str,
+    filter: &[String],
+) -> Result<Vec<(usize, &'s str)>> {
+    let members = &packages[first_member.min(packages.len())..];
+    if members.is_empty() {
+        bail!(
+            "`-r` and `--filter` run a task across a workspace, and this project has no members\n\n  \
+             a member is a directory with its own uf.config.js, or a package \
+             package.json#workspaces lists"
+        );
+    }
+
+    let selected: Vec<usize> = if filter.is_empty() {
+        (first_member..packages.len()).collect()
+    } else {
+        let workspaces: Vec<uf_project::Workspace> = members
+            .iter()
+            .map(|member| uf_project::Workspace {
+                name: member.name.clone(),
+                path: member.path.clone().into(),
+            })
+            .collect();
+        let dependencies: Vec<Vec<usize>> = members
+            .iter()
+            .map(|member| {
+                member
+                    .dependencies
+                    .iter()
+                    .map(|at| at - first_member)
+                    .collect()
+            })
+            .collect();
+        uf_project::select_workspaces(&workspaces, &dependencies, filter)
+            .map_err(|error| anyhow!("{error}\n\n  members: {}", member_names(members)))?
+            .into_iter()
+            .map(|at| at + first_member)
+            .collect()
     };
 
-    // Every value is digested as it goes in, so nothing a task's note keeps
-    // can be read back as one: see `uf_task::Environment`, and #1006 for what
-    // keeping them looked like.
-    let mut environment = uf_task::Environment::new(env.mode());
-    for (name, value) in env.values() {
-        environment.file(name, value);
+    let requests: Vec<(usize, &str)> = selected
+        .into_iter()
+        .filter(|&at| packages[at].resolved.config.tasks.contains_key(script))
+        .map(|at| (at, script))
+        .collect();
+    if requests.is_empty() {
+        let which = if filter.is_empty() {
+            "workspace member"
+        } else {
+            "member --filter selects"
+        };
+        bail!(
+            "no {which} defines a task {script:?}\n\n  members: {}",
+            member_names(members)
+        );
     }
+    Ok(requests)
+}
+
+fn member_names(members: &[Package]) -> String {
+    members
+        .iter()
+        .map(|member| member.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The plan for `requests` over `packages`, or the error a reader can act on.
+fn plan(packages: &[Package], requests: &[(usize, &str)]) -> Result<Plan> {
+    let reachable: Vec<PlanPackage<'_>> = packages
+        .iter()
+        .map(|package| PlanPackage {
+            name: package.name.as_str(),
+            path: package.path.as_str(),
+            tasks: &package.resolved.config.tasks,
+            dependencies: &package.dependencies,
+        })
+        .collect();
+    Plan::build_workspace(&reachable, requests).map_err(|error| plan_error(packages, error))
+}
+
+fn plan_error(packages: &[Package], error: PlanError) -> anyhow::Error {
+    match error {
+        PlanError::Unknown { name, through } => {
+            let asker = through.last().map(CompactString::as_str);
+            let (owner, task) = owner_of(packages, &name, asker);
+            anyhow!(unknown_task(
+                &packages[owner].resolved,
+                &name,
+                task,
+                &through
+            ))
+        }
+        PlanError::UnknownPackage { reference, through } => {
+            anyhow!(unknown_package(packages, &reference, &through))
+        }
+        PlanError::Cycle(cycle) => anyhow!(dependency_cycle(&cycle)),
+    }
+}
+
+/// The package a task's label belongs to, and the task's name inside it.
+///
+/// `ui#build` is `ui`'s `build`. A bare name belongs to whoever asked for it —
+/// the last label in the chain — or, when nobody did, to the first package,
+/// which is the project `uf run` started in whenever that has no name.
+fn owner_of<'l>(packages: &[Package], label: &'l str, asker: Option<&str>) -> (usize, &'l str) {
+    let named = |label: &str| {
+        let (owner, _) = label.split_once('#')?;
+        packages
+            .iter()
+            .position(|package| !package.name.is_empty() && package.name == owner)
+    };
+    if let (Some(owner), Some((_, task))) = (named(label), label.split_once('#')) {
+        return (owner, task);
+    }
+    (asker.and_then(named).unwrap_or(0), label)
+}
+
+/// The error for a `pkg#task` whose package the workspace does not have.
+fn unknown_package(packages: &[Package], reference: &str, through: &[CompactString]) -> String {
+    let owner = reference
+        .split_once('#')
+        .map_or(reference, |(owner, _)| owner);
+    let asker = through.last().map_or("a task", CompactString::as_str);
+    let names: Vec<&str> = packages
+        .iter()
+        .map(|package| package.name.as_str())
+        .filter(|name| !name.is_empty())
+        .collect();
+
+    let mut message = format!(
+        "{asker:?} depends on {reference:?}, and there is no workspace member named {owner:?}"
+    );
+    if names.is_empty() {
+        message.push_str(
+            "\n\n  this project is not part of a workspace: a member is a directory with its own \
+             uf.config.js, or a package package.json#workspaces lists",
+        );
+        return message;
+    }
+    let suggestions = closest(owner, names.iter().copied());
+    if !suggestions.is_empty() {
+        message.push_str("\n\n  did you mean: ");
+        message.push_str(&suggestions.join(", "));
+    }
+    message.push_str("\n\n  members: ");
+    message.push_str(&names.join(", "));
+    message
+}
+
+/// Run a plan that has been built, and report it.
+fn execute(
+    ui: &mut Ui,
+    mode: Option<&str>,
+    packages: &[Package],
+    plan: &Plan,
+    script: &str,
+    args: &[String],
+    options: &RunArgs,
+) -> Result<()> {
+    // Each package's environment, loaded when its first task is scheduled. A
+    // task is project code with a shell in front of it, so it reads its
+    // project's `.env` files like everything else uf runs, with the runtime
+    // that project's `uf.config.js` declares in front of `PATH`. `development`
+    // is the default because a task is something a person runs at a terminal;
+    // a task that runs `uf build` gets `production` from that command, because
+    // the values uf injected here are marked as uf's and lose to a file. See
+    // `uf_config::env_files`.
+    //
+    // After planning, and only for the packages the plan runs a task in:
+    // resolving a declared runtime can mean installing one, and neither a
+    // mistyped task name nor a member no task reaches is a reason to — nor is
+    // that member's `.env.development` failing to parse.
+    let mut envs: BTreeMap<usize, ProjectEnv> = BTreeMap::new();
     let mut tasks = Vec::with_capacity(plan.len());
     for (at, node) in plan.nodes().iter().enumerate() {
+        let package = &packages[node.package];
         let name = node.name.as_str();
-        let Some(definition) = resolved.config.tasks.get(name) else {
-            bail!(unknown_task(&resolved, name, &[]));
+        let Some(definition) = package.resolved.config.tasks.get(name) else {
+            bail!(unknown_task(&package.resolved, &node.label, name, &[]));
         };
         let details = definition.details();
         if details.is_some_and(|task| task.cache == Some(true) && task.inputs.is_empty()) {
             bail!(
-                "task {name:?} sets `cache: true` and declares no `inputs`\n\n  \
+                "task {:?} sets `cache: true` and declares no `inputs`\n\n  \
                  uf keys a cached result on the files a task says it reads, so a task \
                  that names none\n  cannot be cached — and a request to cache it that \
                  uf quietly ignored would be worse\n  than this message. Add `inputs`, \
-                 or drop the `cache` field."
+                 or drop the `cache` field.",
+                node.label
             );
         }
-        // Only the requested task takes the caller's arguments, and it takes
+        // Only a requested task takes the caller's arguments, and it takes
         // them in the command text so that two runs with different arguments
         // are two cache keys rather than one.
         let mut command = definition.command().to_string();
-        if at == plan.requested() && !args.is_empty() {
+        if plan.requested().contains(&at) && !args.is_empty() {
             command.push(' ');
             command.push_str(&args.join(" "));
         }
-        let mut given = environment.clone();
+        let env = match envs.entry(node.package) {
+            Entry::Occupied(slot) => slot.into_mut(),
+            Entry::Vacant(slot) => {
+                let env = project_env(&package.resolved, mode, DEVELOPMENT)?;
+                slot.insert(runtime_environment(&package.resolved, ui, env)?)
+            }
+        };
+        let mut given = environment_of(env);
         if let Some(details) = details {
             for (key, value) in &details.env {
                 given.task(key, value);
@@ -103,7 +388,11 @@ pub(crate) fn run_task(
         }
         tasks.push(ScheduledTask {
             name: node.name.clone(),
+            label: node.label.clone(),
+            package: node.package,
+            root: package.resolved.root.clone(),
             dependencies: node.dependencies.clone(),
+            keyed_on: node.across.clone(),
             command,
             inputs: details.map(|task| task.inputs.clone()).unwrap_or_default(),
             outputs: details.map(|task| task.outputs.clone()).unwrap_or_default(),
@@ -113,9 +402,13 @@ pub(crate) fn run_task(
     }
 
     let spawner = TaskSpawner {
-        resolved: &resolved,
-        env: &env,
-        requested: script,
+        packages,
+        envs: &envs,
+        requested: plan
+            .requested()
+            .iter()
+            .map(|&at| (plan.nodes()[at].package, plan.nodes()[at].name.clone()))
+            .collect(),
         args,
     };
     let reporter = Reporter {
@@ -129,19 +422,25 @@ pub(crate) fn run_task(
         width: plan
             .nodes()
             .iter()
-            .map(|node| node.name.chars().count())
+            .map(|node| node.label.chars().count())
             .max()
             .unwrap_or(0),
     };
+    if options.why {
+        print_workspace_plan(plan);
+    }
     let started = std::time::Instant::now();
-    let cache = TaskCache::open(&resolved.root);
-    // Before the run adds to it. See `uf_infra::cache` for the bound and #218
-    // for why every cache under `.uf/cache` now has one.
-    cache.sweep();
+    // Before the run adds to them, once for each project the run writes into.
+    // See `uf_infra::cache` for the bound and #218 for why every cache under
+    // `.uf/cache` now has one.
+    let mut swept = BTreeSet::new();
+    for task in &tasks {
+        if swept.insert(&task.root) {
+            TaskCache::open(&task.root).sweep();
+        }
+    }
     let report = uf_task::run(
         &tasks,
-        &resolved.root,
-        &cache,
         RunOptions {
             concurrency: match options.concurrency {
                 Some(count) => Concurrency::Fixed(count),
@@ -197,6 +496,98 @@ pub(crate) fn run_task(
     bail!(message)
 }
 
+/// With `--why`, a plan that spans packages is printed before it runs.
+///
+/// What each task waits for is the half of "why" the lines after it cannot
+/// show: they say why a task ran, and not why it ran *then* — which, across a
+/// workspace, is the order of the packages' dependencies, and is the thing to
+/// check when a package was built against a stale sibling.
+fn print_workspace_plan(plan: &Plan) {
+    let packages = plan
+        .nodes()
+        .iter()
+        .map(|node| node.package)
+        .collect::<BTreeSet<_>>()
+        .len();
+    if packages < 2 {
+        return;
+    }
+    let width = plan
+        .nodes()
+        .iter()
+        .map(|node| node.label.chars().count())
+        .max()
+        .unwrap_or(0);
+    let mut out = format!(
+        "  {} across {}\n",
+        plural(plan.len(), "task"),
+        plural(packages, "package")
+    );
+    for node in plan.nodes() {
+        if node.dependencies.is_empty() {
+            out.push_str(&format!("  {}\n", node.label));
+            continue;
+        }
+        let after = node
+            .dependencies
+            .iter()
+            .map(|&at| plan.nodes()[at].label.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push_str(&format!("  {:width$}  after {after}\n", node.label));
+    }
+    let _ = write!(std::io::stderr(), "{out}");
+}
+
+/// The workspace a run here can span, as one line for `uf explain run`: each
+/// member, how many tasks it defines, and which members it runs after.
+///
+/// [`None`] when there is no workspace, so a project without one is explained
+/// exactly as it was.
+pub(crate) fn workspace_summary(resolved: &ResolvedConfig) -> Option<String> {
+    let (root, members) = uf_project::enclosing_workspace(&resolved.root, &resolved.config)?;
+    let dependencies = uf_project::workspace_dependencies(&root, &members);
+    let parts = members
+        .iter()
+        .zip(&dependencies)
+        .map(|(member, depends_on)| {
+            let defined =
+                load_config(root.join(&member.path)).map_or(0, |member| member.config.tasks.len());
+            let mut part = format!("{} ({})", member.name, plural(defined, "task"));
+            if !depends_on.is_empty() {
+                let after = depends_on
+                    .iter()
+                    .map(|&at| members[at].name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                part.push_str(" after ");
+                part.push_str(&after);
+            }
+            part
+        })
+        .collect::<Vec<_>>();
+    Some(format!(
+        "{} — {}; `uf run <task> -r` runs a task in each member that defines it, in that \
+         order, `--filter` selects members, and `pkg#task` in `dependsOn` names one",
+        plural(members.len(), "member"),
+        parts.join("; ")
+    ))
+}
+
+/// The environment every task of one package starts with: its mode and its
+/// `.env` values.
+///
+/// Per package, because each member reads its own `.env` files. Every value is
+/// digested as it goes in, so nothing a task's note keeps can be read back as
+/// one: see `uf_task::Environment`, and #1006 for what keeping them looked like.
+fn environment_of(env: &ProjectEnv) -> uf_task::Environment {
+    let mut environment = uf_task::Environment::new(env.mode());
+    for (name, value) in env.values() {
+        environment.file(name, value);
+    }
+    environment
+}
+
 /// The error for `dependsOn` that closes a loop.
 fn dependency_cycle(cycle: &[compact_str::CompactString]) -> String {
     let path = cycle
@@ -222,21 +613,39 @@ fn dependency_cycle(cycle: &[compact_str::CompactString]) -> String {
 /// [`uf_task::parse`] reads the command instead, and a command that is a
 /// program and its arguments — every one in this repository — uf starts
 /// itself. See [`TaskSpawner::started`] and [`TaskSpawner::shell`].
+///
+/// And, since a run can span a workspace, a fourth: *whose* task it is. Each
+/// task runs in its own package's root, with that package's `.env` values —
+/// what `uf run build` inside the package would have given it.
 struct TaskSpawner<'a> {
-    resolved: &'a ResolvedConfig,
-    env: &'a ProjectEnv,
-    requested: &'a str,
+    packages: &'a [Package],
+    /// The environment of each package the plan runs a task in.
+    envs: &'a BTreeMap<usize, ProjectEnv>,
+    /// The tasks that were asked for, by package and name: the only ones that
+    /// take the caller's arguments.
+    requested: Vec<(usize, CompactString)>,
     args: &'a [String],
 }
 
 impl uf_task::Spawn for TaskSpawner<'_> {
-    fn command(&self, name: &str, command: &str) -> std::io::Result<ProcessCommand> {
-        let task = self
+    fn command(&self, scheduled: &ScheduledTask) -> std::io::Result<ProcessCommand> {
+        let package = self.packages.get(scheduled.package).ok_or_else(|| {
+            std::io::Error::other(format!("task {:?} belongs to no package", scheduled.label))
+        })?;
+        let env = self.envs.get(&scheduled.package).ok_or_else(|| {
+            std::io::Error::other(format!(
+                "task {:?} was given no environment",
+                scheduled.label
+            ))
+        })?;
+        let task = package
             .resolved
             .config
             .tasks
-            .get(name)
-            .ok_or_else(|| std::io::Error::other(format!("task {name:?} is not defined")))?;
+            .get(scheduled.name.as_str())
+            .ok_or_else(|| {
+                std::io::Error::other(format!("task {:?} is not defined", scheduled.label))
+            })?;
 
         // A task that names a command is run by uf, because `uf.config.js` is
         // where its meaning is written down and Vite Task has no way to read
@@ -245,19 +654,20 @@ impl uf_task::Spawn for TaskSpawner<'_> {
         // had `vp` and on one that did not. A task with no command of its own
         // is Vite+'s, and is handed over.
         if task.command().trim().is_empty()
-            && self.resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
+            && package.resolved.config.task_runner.engine == TaskRunnerEngine::ViteTask
         {
-            return Ok(self.vite_task(name));
+            return Ok(self.vite_task(package, env, scheduled));
         }
 
         let details = task.details();
         // The directory the task runs in, which is also what a program written
         // as a relative path is relative to.
         let directory = match details.and_then(|details| details.cwd.as_ref()) {
-            Some(cwd) => self.resolved.root.join(cwd.as_str()),
-            None => self.resolved.root.clone(),
+            Some(cwd) => package.resolved.root.join(cwd.as_str()),
+            None => package.resolved.root.clone(),
         };
 
+        let command = scheduled.command.as_str();
         let parsed = uf_task::parse(command);
         let (mut process, inline) = match &parsed {
             uf_task::Command::Direct(direct) => {
@@ -310,7 +720,7 @@ impl uf_task::Spawn for TaskSpawner<'_> {
         // from a file, so a marker naming it let `.env.production` win over the
         // task inside a nested `uf build` — the exact override the task was
         // written to make.
-        self.env.apply_over(&mut process, &overrides);
+        env.apply_over(&mut process, &overrides);
         process.current_dir(&directory);
         Ok(process)
     }
@@ -430,17 +840,26 @@ impl TaskSpawner<'_> {
         Ok(process)
     }
 
-    fn vite_task(&self, name: &str) -> ProcessCommand {
+    fn vite_task(
+        &self,
+        package: &Package,
+        env: &ProjectEnv,
+        scheduled: &ScheduledTask,
+    ) -> ProcessCommand {
         let runner = std::env::var_os("UF_VITE_TASK_BIN").unwrap_or_else(|| "vp".into());
         let mut process = ProcessCommand::new(runner);
-        self.env.apply(&mut process);
-        process.arg("run").arg(name);
-        // Only the task that was asked for takes the caller's arguments; a
+        env.apply(&mut process);
+        process.arg("run").arg(scheduled.name.as_str());
+        // Only a task that was asked for takes the caller's arguments; a
         // dependency was not the thing they typed them after.
-        if name == self.requested && !self.args.is_empty() {
+        let asked = self
+            .requested
+            .iter()
+            .any(|(at, name)| *at == scheduled.package && *name == scheduled.name);
+        if asked && !self.args.is_empty() {
             process.arg("--").args(self.args);
         }
-        process.current_dir(self.resolved.root.as_std_path());
+        process.current_dir(package.resolved.root.as_std_path());
         process
     }
 }
@@ -639,8 +1058,13 @@ pub(crate) fn list_tasks(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
 /// read — every task the project defines, because someone who has just arrived
 /// in a repository does not know what is on offer and should not have to open
 /// the config to find out.
+///
+/// `label` is what the message calls the task — `ui#biuld` across a workspace —
+/// and `script` is its name inside `resolved`, which is what the suggestions
+/// are measured against.
 fn unknown_task(
     resolved: &ResolvedConfig,
+    label: &str,
     script: &str,
     through: &[compact_str::CompactString],
 ) -> String {
@@ -655,9 +1079,9 @@ fn unknown_task(
         // A name nobody typed is a name somebody's `dependsOn` asked for, and
         // the reader's first question is which task that was.
         Some(asker) => {
-            format!("task {script:?} is not defined in uf.config.js, and {asker:?} depends on it")
+            format!("task {label:?} is not defined in uf.config.js, and {asker:?} depends on it")
         }
-        None => format!("task {script:?} is not defined in uf.config.js"),
+        None => format!("task {label:?} is not defined in uf.config.js"),
     };
     if names.is_empty() {
         message.push_str("\n\n  this project defines no tasks");

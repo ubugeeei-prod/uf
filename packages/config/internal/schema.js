@@ -161,8 +161,10 @@ export type PackageManagerSpec = string;
  * because it is the binary that is running. `"bun"` is `bun test`, on the Bun
  * it names — so it also decides the test runtime when `test.runtime` is
  * absent, and a `test.runtime` naming anything else is an error. The version
- * follows the same grammar as a runtime's. `uf test` refuses a Bun runner until
- * ubugeeei-prod/uf#942 lands, rather than running its own suite in its place.
+ * follows the same grammar as a runtime's. Under a Bun runner `uf test` hands
+ * the files its discovery found to `bun test`, with uf's Flow preload, and
+ * `@uniflowed/test` resolves to `bun:test`; what Bun has no equivalent for
+ * raises `UnsupportedError` by name. See guide/testing, "Choosing a runner".
  *
  * The type of `test.runner`.
  */
@@ -916,6 +918,17 @@ export type UniflowedConfig = {
     },
   },
   readonly tasks?: { readonly [string]: TaskDefinition },
+  /**
+   * Tasks `uf prepare` runs before a commit, keyed by a glob over the staged
+   * files.
+   *
+   * A glob with no `/` matches a file's name wherever it is; one with a `/`
+   * matches its path from the project root. Each task named runs once, with
+   * every staged file its glob matches appended to its command, over what is
+   * staged rather than what is on disk. A fix to a fully staged file is staged
+   * with it; a fix to a half-staged one is not kept, and stops the commit.
+   */
+  readonly staged?: { readonly [string]: string | $ReadOnlyArray<string> },
   /**
    * Vite's own configuration, merged over the one uf generates.
    *

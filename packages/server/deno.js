@@ -11,7 +11,7 @@
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
-import { locateStatic, staticRoot } from "./internal/static.js";
+import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js";
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
 import type { Logger } from "./internal/log.js";
@@ -52,7 +52,10 @@ export function createServeHandler(options: {|
 |}): (request: Request) => Promise<Response> {
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
-    return (await serveStatic(request)) ?? (await options.handle(request));
+    const file = await serveStatic(request);
+    if (file != null) return file;
+    offerBuildFiles(request, serveStatic);
+    return await options.handle(request);
   };
 }
 

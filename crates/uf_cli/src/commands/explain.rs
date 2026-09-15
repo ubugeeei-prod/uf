@@ -409,7 +409,7 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         uf_config::TaskRunnerEngine::ViteTask => "vite task".to_string(),
         other => format!("{other:?}"),
     };
-    vec![
+    let mut stages = vec![
         env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "task lookup",
@@ -438,7 +438,18 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                 }
             ),
         },
-    ]
+    ];
+    // The cross-package graph, when there is one: a run that spans a workspace
+    // is orchestration like any other, and the order its members run in is
+    // the part a reader cannot see from any one `uf.config.js`.
+    if let Some(detail) = crate::commands::task::workspace_summary(resolved) {
+        stages.push(Stage {
+            name: "workspace",
+            provider: "uf".to_string(),
+            detail,
+        });
+    }
+    stages
 }
 
 /// `uf exec`, which is four different commands wearing one name.
@@ -690,11 +701,56 @@ fn runtime_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn prepare_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let staged = &resolved.config.staged;
+    let tasks = if staged.is_empty() {
+        String::from("none; `staged` in uf.config.js maps globs over the staged files to tasks")
+    } else {
+        staged
+            .iter()
+            .map(|(glob, tasks)| {
+                let names = tasks
+                    .names()
+                    .iter()
+                    .map(compact_str::CompactString::as_str)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{glob} → {names}")
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    };
+    // Whether a commit runs any of this is the question a reader of this
+    // command most needs answered, and it is not in uf.config.js: git keeps it.
+    let hook = match uf_prepare::hook_state(&resolved.root) {
+        uf_prepare::HookState::Installed => {
+            "installed: git runs .githooks/pre-commit, and so `uf prepare`, before each commit"
+        }
+        uf_prepare::HookState::NotConfigured => {
+            ".githooks/pre-commit is here and this clone does not run it; \
+             `uf prepare --install-hooks` points git at it"
+        }
+        uf_prepare::HookState::Absent => {
+            "not installed; `uf prepare --install-hooks` writes .githooks/pre-commit"
+        }
+        uf_prepare::HookState::NotARepository => "no git repository to hook into",
+    };
     vec![
         Stage {
             name: "staged files",
             provider: "uf_prepare".to_string(),
-            detail: "lint-staged compatible: the files a commit is about".to_string(),
+            detail: "the files a commit is about, read as they are staged rather than as they \
+                     are on disk"
+                .to_string(),
+        },
+        Stage {
+            name: "staged tasks",
+            provider: "uf run".to_string(),
+            detail: tasks,
+        },
+        Stage {
+            name: "git hook",
+            provider: "git".to_string(),
+            detail: hook.to_string(),
         },
         Stage {
             name: "checks",
@@ -1166,6 +1222,17 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: builder_provider(resolved),
             detail: bundle_detail(RenderingPlan::resolve(&resolved.config)),
         },
+        // On every plan rather than only when asked for, because this is where
+        // a reader who wants to know why a module is in a bundle looks first,
+        // and the answer is a flag they have not passed yet.
+        Stage {
+            name: "analysis",
+            provider: "uf".to_string(),
+            detail: "`uf build --analyze` writes .uf/build/meta/uf-bundle-analysis.html: each \
+                     route's client and server modules, their sizes, and the import chain \
+                     behind every one"
+                .to_string(),
+        },
         prerender_stage(resolved),
         adapter_stage(resolved),
     ]
@@ -1489,8 +1556,18 @@ fn doc_stages() -> Vec<Stage> {
 }
 
 fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
+    let runner = resolved.config.test_runner_tool();
+    if let uf_config::TestRunnerSpec::Bun(_) = &runner.spec {
+        return bun_test_stages(resolved, &runner.spec, runner.source);
+    }
     let mut stages = vec![
         env_stage(resolved, TEST),
+        Stage {
+            name: "runner",
+            provider: "uf_test (in this binary)".to_string(),
+            detail: "the default `test.runner`; `bun` hands the suite to `bun test` instead"
+                .to_string(),
+        },
         Stage {
             name: "discovery",
             provider: "uf_test (in this binary)".to_string(),
@@ -1511,6 +1588,53 @@ fn test_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         detail: "runs the bodies and streams one line per case".to_string(),
     });
     stages
+}
+
+/// `uf test` when `test.runner` names Bun: which Bun runs the suite, and the
+/// command it is started with.
+///
+/// Named rather than resolved, like every stage here: `uf explain` prints a
+/// plan, and must not fail because this machine has no Bun or the project's
+/// packages are not installed yet. That is why the preload is written as the
+/// package path a run resolves, and the files as the shape they take.
+fn bun_test_stages(
+    resolved: &ResolvedConfig,
+    spec: &uf_config::TestRunnerSpec,
+    source: uf_config::ToolSource,
+) -> Vec<Stage> {
+    let from = source
+        .key()
+        .map_or_else(String::new, |key| format!(", from `{key}`"));
+    vec![
+        env_stage(resolved, TEST),
+        Stage {
+            name: "discovery",
+            provider: "uf_test (in this binary)".to_string(),
+            detail: "reads which files declare tests; those files, and only those, are what \
+                     `bun test` is given"
+                .to_string(),
+        },
+        runtime_stage(resolved, runtimes::Role::Test),
+        Stage {
+            name: "runner",
+            provider: format!("bun test ({spec}{from})"),
+            detail: format!(
+                "the Bun above runs `bun --conditions={condition} test --preload \
+                 <node_modules>/@uniflowed/host/bun-preload.js --reporter=junit \
+                 --reporter-outfile=.uf/bun-test/junit.xml ./<file>…`, and under that condition \
+                 `@uniflowed/test` is `bun:test`",
+                condition = crate::commands::test::bun::CONDITION,
+            ),
+        },
+        transform_stage(),
+        Stage {
+            name: "report",
+            provider: "uf (in this binary)".to_string(),
+            detail: "reads the JUnit report back, and fails the run on a file `bun test` ran no \
+                     case from"
+                .to_string(),
+        },
+    ]
 }
 
 /// Which host enforces the project's permission set, and how much of it.
@@ -1637,7 +1761,7 @@ fn fmt_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
+    let mut stages = vec![
         Stage {
             name: "uf rules",
             provider: format!("{:?}", resolved.config.lint.engine),
@@ -1648,7 +1772,25 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: format!("{:?}", resolved.config.lint.flow.parser),
             detail: format!("built-ins: {:?}", resolved.config.lint.flow.builtins),
         },
-    ]
+    ];
+    // The one stage uf does not write, so the one a slow or failing run most
+    // needs named. Absent when no project rule is on, which is also when the
+    // run starts no worker for it.
+    let project = crate::commands::lint::plugins::enabled_project_rules(&resolved.config);
+    if !project.is_empty() {
+        stages.push(Stage {
+            name: "project rules",
+            provider: format!(
+                "{:?}",
+                resolved.config.app.runtime.capability_js_host.default
+            ),
+            detail: format!(
+                "{} enabled from `plugins`, in @uniflowed/host's lint worker",
+                project.len()
+            ),
+        });
+    }
+    stages
 }
 
 fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
@@ -1795,5 +1937,86 @@ mod tests {
             "the plan does not mention the checksum"
         );
         assert!(stages_for("upgrade", &resolved).is_none());
+    }
+
+    /// `uf explain run` names the workspace a run can span and the order its
+    /// members run in — and says nothing of one a project does not have.
+    #[test]
+    fn run_names_the_workspace_graph() {
+        let (_guard, resolved) = defaults();
+        assert!(
+            run_stages(&resolved)
+                .iter()
+                .all(|stage| stage.name != "workspace")
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        let write = |path: &str, contents: &str| {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, contents).unwrap();
+        };
+        write(
+            "package.json",
+            r#"{ "private": true, "workspaces": ["packages/*"] }"#,
+        );
+        write("packages/ui/package.json", r#"{ "name": "ui" }"#);
+        write(
+            "packages/ui/uf.config.js",
+            r#"export default { tasks: { build: "true" } };"#,
+        );
+        write(
+            "packages/app/package.json",
+            r#"{ "name": "app", "dependencies": { "ui": "workspace:*" } }"#,
+        );
+        let resolved = load_config(root).unwrap();
+
+        let workspace = run_stages(&resolved)
+            .into_iter()
+            .find(|stage| stage.name == "workspace")
+            .expect("a workspace stage");
+        assert!(
+            workspace.detail.contains("app (0 tasks) after ui"),
+            "{}",
+            workspace.detail
+        );
+        assert!(
+            workspace.detail.contains("ui (1 task)"),
+            "{}",
+            workspace.detail
+        );
+    }
+
+    /// `uf explain prepare` names what `staged` runs over which files, and
+    /// whether git will run any of it — the one fact about a pre-commit
+    /// command that is not in `uf.config.js`.
+    #[test]
+    fn prepare_names_the_staged_tasks_and_the_hook() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        std::fs::write(
+            root.join("uf.config.js"),
+            r#"export default { tasks: { fix: "true" }, staged: { "*.css": ["fix"] } };"#,
+        )
+        .unwrap();
+        let resolved = load_config(root).unwrap();
+
+        let stages = stages_for("prepare", &resolved).expect("prepare is explainable");
+        let tasks = stages
+            .iter()
+            .find(|stage| stage.name == "staged tasks")
+            .expect("a staged tasks stage");
+        assert_eq!(tasks.detail, "*.css → fix");
+        let hook = stages
+            .iter()
+            .find(|stage| stage.name == "git hook")
+            .expect("a git hook stage");
+        assert!(
+            hook.detail.contains("uf prepare --install-hooks")
+                || hook.detail.contains("no git repository"),
+            "{}",
+            hook.detail
+        );
     }
 }

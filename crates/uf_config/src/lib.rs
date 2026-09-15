@@ -125,6 +125,14 @@ pub struct UniflowedConfig {
     pub runtime: Option<Written<RuntimeSpec>>,
     pub server: ServerConfig,
     pub site: SiteConfig,
+    /// Tasks `uf prepare` runs before a commit, keyed by a glob over the
+    /// staged files.
+    ///
+    /// A glob with no `/` matches a file's name wherever it is; one with a `/`
+    /// matches its path from the project root. Each task named runs once, with
+    /// every staged file its glob matches appended to its command, over what
+    /// is staged rather than what is on disk. See `uf_prepare`.
+    pub staged: BTreeMap<CompactString, StagedTasks>,
     pub std: StdConfig,
     pub story: StoryConfig,
     pub task_runner: TaskRunnerConfig,
@@ -1655,6 +1663,26 @@ pub enum TaskRunnerEngine {
     ViteTask,
 }
 
+/// The tasks one entry of `staged` names: one, written as a string, or several
+/// in the order they run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StagedTasks {
+    One(CompactString),
+    Many(Vec<CompactString>),
+}
+
+impl StagedTasks {
+    /// The task names, in order.
+    #[must_use]
+    pub fn names(&self) -> &[CompactString] {
+        match self {
+            Self::One(name) => std::slice::from_ref(name),
+            Self::Many(names) => names,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TaskDefinition {
@@ -1909,16 +1937,16 @@ pub enum ConfigError {
     /// A `rendering.modes` that leaves the build with nothing it can do.
     ///
     /// The list is an allowlist, so naming a strategy uf has not written is
-    /// not itself an error — `["ssg", "isr"]` permits one thing that never
+    /// not itself an error — `["ssg", "ppr"]` permits one thing that never
     /// happens and one that does. A list that permits *only* strategies uf
     /// has not written is different: there is no build behind it, and the two
     /// honest readings of it — "prerender anyway" and "produce nothing" — are
     /// both the silent semantic change the guide forbids.
     #[error(
         "{path}: app.rendering.modes is [{modes}], and uf implements none of them. \
-         `ssg` prerenders a route and `ssr` renders it per request; \
-         `ppr` and `isr` are planned and are never selected. \
-         Allow at least one of `ssg` and `ssr`."
+         `ssg` prerenders a route, `isr` prerenders it and regenerates it once its \
+         lifetime passes, and `ssr` renders it per request; `ppr` is planned and is never \
+         selected. Allow at least one of `ssg`, `isr` and `ssr`."
     )]
     NoImplementedRenderingMode { path: Utf8PathBuf, modes: String },
     /// `build.staticBuild` beside a `rendering.modes` that forbids `ssg`.
