@@ -32,15 +32,29 @@ macro_rules! embed {
 /// fails the suite rather than shipping a registry that disagrees with the
 /// repository it came from.
 pub(crate) const EMBEDDED: &[Embedded] = embed![
+    "accordion",
+    "alert",
     "alert-dialog",
+    "avatar",
+    "breadcrumb",
     "button",
+    "checkbox",
+    "collapsible",
     "dialog",
     "drawer",
     "hover-card",
+    "pagination",
     "popover",
+    "progress",
+    "radio-group",
     "select",
+    "separator",
     "sheet",
+    "skeleton",
+    "switch",
     "tabs",
+    "toggle",
+    "toggle-group",
     "tooltip",
 ];
 
