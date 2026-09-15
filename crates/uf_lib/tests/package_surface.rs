@@ -30,6 +30,10 @@
 //! transform is reached — so it is plain JavaScript by necessity, and its
 //! entry points (`register.js`, `bun-preload.js`, `driver.js`) run at import
 //! time by design. Everything else about it is held to the same bar.
+//!
+//! One module inside a Flow package is exempt the same way: `@uniflowed/test`'s
+//! `bun/index.js`, which only a `bun test` that `uf test` started ever loads.
+//! See [`PLAIN_JAVASCRIPT_MODULES`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -96,6 +100,20 @@ const EXPORTED_INTERNALS: &[&str] = &[
 /// `@uniflowed/vite` is executed by Vite before any transform is reachable.
 const PLAIN_JAVASCRIPT_PACKAGES: &[&str] = &["host", "vite"];
 
+/// Individual modules that are plain JavaScript by necessity, inside a package
+/// that is otherwise Flow. Named files, for the reason [`ENTRY_POINT_MODULES`]
+/// gives.
+///
+/// * `test/bun/index.js` — `@uniflowed/test` as `bun test` sees it. It imports
+///   `bun:test`, which has no Flow library definition, and nothing but a
+///   `bun test` that `uf test` started ever resolves it: the package's
+///   `exports` send the `uniflowed-bun-test` condition here, and neither Node
+///   nor Flow sets that condition. Like the plain JavaScript packages, it does
+///   work when it loads (see [`runs_at_import`]): it extends Bun's `expect`
+///   with a refusal for each of uf's matchers Bun has no counterpart for, and
+///   that has to be in place before the first test file calls `expect`.
+const PLAIN_JAVASCRIPT_MODULES: &[&str] = &["test/bun/index.js"];
+
 /// Individual modules that are entry points, and so run when they are loaded
 /// because that is what running them means. Everything else in their package is
 /// held to the ordinary bar — including the Flow pragma: an entry point is
@@ -128,10 +146,11 @@ const ENTRY_POINT_MODULES: &[&str] = &[
 /// `packages/test/worker.js` — Flow, and a process entry point — ended up
 /// exempt from the `// @flow` pragma it in fact carries.
 fn is_plain_javascript(module: &Utf8Path) -> bool {
-    module
-        .iter()
-        .next()
-        .is_some_and(|package| PLAIN_JAVASCRIPT_PACKAGES.contains(&package))
+    PLAIN_JAVASCRIPT_MODULES.contains(&module.as_str())
+        || module
+            .iter()
+            .next()
+            .is_some_and(|package| PLAIN_JAVASCRIPT_PACKAGES.contains(&package))
 }
 
 /// Whether `module` is allowed to run something when it is imported.
@@ -628,6 +647,8 @@ fn exports_targets(exports: &Value) -> Vec<(String, String)> {
     // `./server-components.js` under `react-server` and `./index.js` otherwise,
     // and a map keyed by subpath kept whichever condition it met last — so the
     // other target was a shipped module every check here was blind to.
+    // `@uniflowed/test`'s `.` is the same shape: `./bun/index.js` under
+    // `uniflowed-bun-test`, `./index.js` under every other condition.
     fn walk(subpath: &str, node: &Value, out: &mut Vec<(String, String)>) {
         match node {
             Value::String(target) => {

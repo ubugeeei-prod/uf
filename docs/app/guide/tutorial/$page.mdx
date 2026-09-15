@@ -268,8 +268,10 @@ export component Page(data: { readonly article: Article }) {
 
 `generateStaticParams` is what makes a parameterised route prerenderable: the
 build asks it which parameter sets exist and writes one HTML file for each.
-Without it, a dynamic route is skipped by `uf build` — no page, and no warning
-saying so — which is the one thing on this page that cost a rebuild to discover.
+Without it, a dynamic route gets no file: `uf build` lists it under `answered by
+a server`, and a static host would answer it with a 404. On `0.0.0-alpha.5` the
+build skipped it without saying so, which was the one thing on this page that
+cost a rebuild to discover.
 
 `notFound()` is written `throw notFound()` here. It does throw on its own, and
 [the routing page](/guide/routing) describes it that way; the `throw` is for the
@@ -684,10 +686,12 @@ uf test · reading-list
 
 </figure>
 
-Those two Node warnings are noise from installing the DOM, not from your test:
-[issue #308](https://github.com/ubugeeei-prod/uf/issues/308). They are left in
-the transcript because a clean one would have to be invented, and a page whose
-whole claim is that these are real cannot start there.
+Those two Node warnings came from installing the DOM, not from your test, and
+`uf test` no longer prints them:
+[#308](https://github.com/ubugeeei-prod/uf/issues/308) is closed, and
+`packages/react-testing/dom-storage.test.js` asserts a component test prints no
+`--localstorage-file` warning. They are left in this transcript because it was
+taken on `0.0.0-alpha.5`, and a clean one would have to be invented.
 
 ## Check and format
 
@@ -830,9 +834,10 @@ during the build, and 63.6 kB of the 80 kB gzipped is React itself.
 Thirty-eight lines are cut from that transcript, all of them the same warning:
 `! [plugin uf:flow] a function: This value cannot be modified` and two variants
 of it, from React Compiler passes over code inside `@uniflowed/form` and
-`@uniflowed/state`. They name no file, no line and no function, there is nothing
-an application author can do about them, and they are
-[issue #307](https://github.com/ubugeeei-prod/uf/issues/307). They are the only
+`@uniflowed/state`. On `0.0.0-alpha.5` they named no file, no line and no
+function, so there was nothing an application author could do with them; a
+React Compiler finding names its file and its function now
+([#307](https://github.com/ubugeeei-prod/uf/issues/307)). They are the only
 lines removed from any output on this page.
 
 `dist/` is static files, and any static host serves them — which is why the
@@ -847,13 +852,16 @@ This project sets no `site.url`, so the build wrote no `sitemap.xml` and no
 `robots.txt` — that is the `metadata 167ns` line above, which is the phase
 deciding it has nothing to do. [`uf.config.js`](/reference/config#site) has the
 one field that changes it.
-There is no deployment guide on this site yet. What exists is described in the
-[CLI reference](/reference/cli#serving-a-build): `uf build --adapter node`
-writes a directory you can copy to a host with a JavaScript runtime, and
-`uf build --compile` writes a single executable. The other six deploy targets
-are [issue #391](https://github.com/ubugeeei-prod/uf/issues/391) and the
-runtime coverage is
-[issue #246](https://github.com/ubugeeei-prod/uf/issues/246).
+
+There is no guide to deploying yet
+([#955](https://github.com/ubugeeei-prod/uf/issues/955)). What exists is in
+[Targets](/guide/targets) and the
+[command reference](/reference/cli#serving-a-build): `uf build --adapter`
+writes a directory for one of seven targets — `node`, `bun`, `deno`,
+`container`, `edge` for Cloudflare Workers, `serverless` for AWS Lambda, and
+`static` — and `uf build --compile` writes a single executable. No server
+target's output has been deployed to its real platform by uf's own pipeline
+yet ([#956](https://github.com/ubugeeei-prod/uf/issues/956)).
 
 `uf dev` runs the same application with hot reload. It is the one command on
 this page with no transcript: the sandbox this was written in cannot bind a
@@ -861,14 +869,18 @@ port, and output nobody produced does not belong here.
 
 ## What did not work
 
-Four things, found while writing this page, left visible rather than written
-around.
+Four things were found while writing this page, and left visible rather than
+written around. Three have been fixed since: the stylesheet `stylex.create`
+compiles now reaches `dist/`
+([#306](https://github.com/ubugeeei-prod/uf/issues/306)), a React Compiler
+finding names its file and its function
+([#307](https://github.com/ubugeeei-prod/uf/issues/307)), and a component test
+no longer prints Node's `--localstorage-file` warning
+([#308](https://github.com/ubugeeei-prod/uf/issues/308)). One still does not
+work:
 
 | What | Where it bites | Tracked |
 | --- | --- | --- |
-| `stylex.create` compiles to class names and no stylesheet reaches `dist/` | Styling this application with uf's own default | [#306](https://github.com/ubugeeei-prod/uf/issues/306) |
-| React Compiler diagnostics say `a function:` and name no file | 38 warnings in the build above, none actionable | [#307](https://github.com/ubugeeei-prod/uf/issues/307) |
-| A component test prints Node's `--localstorage-file` warning | The `uf test` transcript above | [#308](https://github.com/ubugeeei-prod/uf/issues/308) |
 | A call that cannot return does not end the branch | `throw notFound()`, where `notFound(): empty` would do | Flow's own; no analysis for it |
 
 ## Where to go next

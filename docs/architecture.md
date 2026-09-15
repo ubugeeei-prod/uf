@@ -472,7 +472,11 @@ them and checked against the SHA-256 of every file they read, so a warm check
 translates nothing ([#946](https://github.com/ubugeeei-prod/uf/issues/946)).
 A package's own Flow outranks its declarations: one that publishes `@flow`
 sources, or a `.flow` file beside a module — which is read in place of that
-module, as Flow reads it — is never translated.
+module, as Flow reads it — is never translated. `uf check --explain-any
+<package>` lists each hole and each error Flow reports inside a package's
+translation by the declaration it is in. A translation keeps every line where it
+was, so a line of a translated module is the same line of its declaration file,
+and `uf_dts::declaration_at` names the declaration from that.
 
 *Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
 by climbing `node_modules` from the file that wrote it, so code inside
