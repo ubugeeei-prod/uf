@@ -639,7 +639,7 @@ uf's rule table, and a test asserts the table matches the descriptors.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `runtime` | the runner's, then [`runtime`](#runtime-and-packagemanager) | What `uf test` runs tests on: `"bun@1.4"` |
-| `runner` | `"uf"` | The runner. `"uf"` is the one built into uf. `"bun@1.4"` is read, implies Bun 1.4 as the test runtime, and is refused by `uf test` until [#942](https://github.com/ubugeeei-prod/uf/issues/942); beside a `runtime` naming anything else it is an error naming both keys |
+| `runner` | `"uf"` | The runner. `"uf"` is the one built into uf. `"bun@1.4"` runs the suite with `bun test` and implies Bun 1.4 as the test runtime ([Choosing a runner](/guide/testing#choosing-a-runner)); beside a `runtime` naming anything else it is an error naming both keys |
 | `module` | `"@uniflowed/test"` | The module test files import |
 | `runner.jsHosts` | `["node", "deno", "bun"]` | Hosts that may run workers |
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |

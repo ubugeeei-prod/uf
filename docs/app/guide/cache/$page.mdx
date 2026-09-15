@@ -128,8 +128,8 @@ had would mean no application with authentication could cache anything.
 This is a runtime refusal. `crates/uf_rsc` already answers "is this call
 reachable from here" for server-only imports, and turning the same question on a
 cached scope would make it a build error naming the call chain instead. That is
-not done; [#277](https://github.com/ubugeeei-prod/uf/issues/277) has the
-argument.
+not done: [#996](https://github.com/ubugeeei-prod/uf/issues/996) tracks it, and
+[#277](https://github.com/ubugeeei-prod/uf/issues/277) has the argument.
 
 ## The fetch cache
 
