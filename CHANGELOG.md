@@ -4,7 +4,7 @@
 
 _2026-09-15_
 
-Ten changes. `uf@0.0.0-alpha.36` never reached npm. Its publish job installed
+Eleven changes. `uf@0.0.0-alpha.36` never reached npm. Its publish job installed
 Deno 1.x, and every Deno test there failed before a package was sent. This
 release installs Deno 2 in that job, and CI now refuses workflows that install
 different Deno versions (#1133). That makes this the first release to publish
@@ -25,7 +25,9 @@ and it swaps the binary in a way that killing the process cannot break (#1128).
 the same way by every server (#1129). aarch64 Linux binaries are now linked
 with GNU ld instead of wild, so they carry the Cortex-A53 erratum 843419
 workaround wild skipped (#1125). A CI test run that crashes now keeps its core
-dump (#1124).
+dump (#1124). When Deno 2.9.6 aborts inside V8 as it starts, a Deno host test
+gets one more run instead of failing the job, and CI reports every retry
+(#1136).
 
 ### Breaking
 
@@ -39,6 +41,7 @@ dump (#1124).
 
 ### Fixed
 
+- **test**: run a Deno host test a second time when V8 aborts inside Deno (#1136)
 - **vite**: pre-bundle React's Flight client so uf dev hydrates an installed router (#1134)
 - **release**: install Deno 2 in the publish job, and hold every suite job to one Deno (#1133)
 - **fmt**: read comments in the guarantee helpers on the parser's stack (#1123)

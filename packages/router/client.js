@@ -109,6 +109,7 @@ import {
   installNavigation,
   installRoutes,
   installRouting,
+  installStaleTime,
   matchRoute,
   resolveFailure,
   resolveMatch,
@@ -135,6 +136,7 @@ export async function hydrate(options: {|
   readonly navigation?: Navigation,
   readonly basePath?: string,
   readonly trailingSlash?: TrailingSlash,
+  readonly staleTime?: number,
 |}): Promise<void> {
   const table: RouteTable = {
     routes: options.routes,
@@ -148,6 +150,7 @@ export async function hydrate(options: {|
   // means: the default is the behaviour, not the absence of one.
   installNavigation(options.navigation ?? "client");
   installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
+  installStaleTime(options.staleTime ?? 0);
   // The route table has no base path in it, and the address bar does.
   const applicationPath = applicationPathOf(window.location.pathname) ?? window.location.pathname;
 
@@ -270,6 +273,7 @@ export async function render(options: {|
   readonly navigation?: Navigation,
   readonly basePath?: string,
   readonly trailingSlash?: TrailingSlash,
+  readonly staleTime?: number,
 |}): Promise<void> {
   const table: RouteTable = {
     routes: options.routes,
@@ -279,6 +283,7 @@ export async function render(options: {|
   installRoutes(table);
   installNavigation(options.navigation ?? "client");
   installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
+  installStaleTime(options.staleTime ?? 0);
 
   const url =
     (applicationPathOf(window.location.pathname) ?? window.location.pathname) +

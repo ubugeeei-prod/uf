@@ -737,6 +737,13 @@ pub struct RenderingConfig {
     /// A second question from [`modes`](Self::modes), and deliberately not a
     /// fifth value in that list; see [`Navigation`].
     pub navigation: Navigation,
+    /// `app.rendering.staleTime`: how long, in whole seconds, the client router
+    /// shows a route it already fetched without asking the server again.
+    ///
+    /// `0`, the default, keeps nothing, so a navigation shows what the server
+    /// answered for it just now. `@uniflowed/vite` writes it into the client
+    /// entry; nothing on the server reads it.
+    pub stale_time: u32,
     pub cache: CacheConfig,
 }
 
@@ -750,6 +757,7 @@ impl Default for RenderingConfig {
                 RenderingMode::Isr,
             ],
             navigation: Navigation::default(),
+            stale_time: 0,
             cache: CacheConfig::default(),
         }
     }
