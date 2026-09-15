@@ -150,11 +150,12 @@ returns, including the one trap in it: `errors` is the sum of the lint findings 
 These are the limits of the server as it is, and the ones that are defects have
 issues:
 
-- **`paths` is not confined to the project.** An entry that climbs out of it is
-  followed, and `uf_fmt_write` with `../outside` rewrites what it finds there
-  ([#993](https://github.com/ubugeeei-prod/uf/issues/993)). There is no
-  confirmation step, allow-list or read-only mode in the server, so a client that
-  asks before a tool writes is the only guard.
+- **`paths` stays inside the project — over MCP.** An entry that is an absolute
+  path, climbs out with `..`, or leads out through a symbolic link is refused,
+  naming the entry, before anything is read. On the command line
+  `uf fmt ../elsewhere` still does what it says, because the person running it
+  typed it. Inside the project there is no confirmation step, allow-list or
+  read-only mode, so a client that asks before a tool writes is the only guard.
 - **Changing none of your files is not writing nothing.** `uf_check` writes its
   inference cache under `.uf/cache/check/`, and `uf_test` writes
   `.uf/test-timings.json`, beside whatever the tests themselves write.

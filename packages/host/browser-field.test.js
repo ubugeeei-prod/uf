@@ -43,24 +43,41 @@ function nodeNamedImports(source: string): Map<string, Array<string>> {
   return found;
 }
 
+/**
+ * The modules of this package a browser bundle reaches, and so every file whose
+ * `node:` imports the `browser` field has to answer.
+ *
+ * `module-mocks.js` is reached from `@uniflowed/test`, and it imports
+ * `transform.js`. A bundler resolves both before it shakes either out, and a
+ * named import the substitute does not export is a build error there rather
+ * than a warning: the edge build of a project with an in-source test failed on
+ * exactly that when `transform.js` began importing `spawnSync`.
+ */
+const REACHED_IN_A_BROWSER = ["module-mocks.js", "transform.js"];
+
 describe("browser substitutions", () => {
-  it("cover every Node builtin module-mocks imports", async () => {
+  it("cover every Node builtin a browser bundle reaches in this package", async () => {
     const manifest = readJson(path.join(here, "package.json"));
     const browser = manifest.browser;
     if (browser == null || typeof browser !== "object" || Array.isArray(browser)) {
       throw new Error("package.json#browser must be an object");
     }
 
-    const source = fs.readFileSync(path.join(here, "module-mocks.js"), "utf8");
-    const named = nodeNamedImports(source);
-    for (const specifier of nodeImports(source)) {
-      const target = (browser: $FlowFixMe)[specifier];
-      expect(typeof target).toBe("string");
-      const file = path.join(here, target);
-      expect(fs.existsSync(file)).toBe(true);
-      const exports = await import(pathToFileURL(file).href);
-      for (const name of named.get(specifier) ?? []) {
-        expect(name in exports).toBe(true);
+    for (const reached of REACHED_IN_A_BROWSER) {
+      const source = fs.readFileSync(path.join(here, reached), "utf8");
+      const named = nodeNamedImports(source);
+      for (const specifier of nodeImports(source)) {
+        const target = (browser: $FlowFixMe)[specifier];
+        expect(typeof target).toBe("string");
+        const file = path.join(here, target);
+        expect(fs.existsSync(file)).toBe(true);
+        const exports = await import(pathToFileURL(file).href);
+        const missing = (named.get(specifier) ?? []).filter((name) => !(name in exports));
+        // As a sentence, so a failure names the import of the module the
+        // substitute lacks rather than reporting that `false` was not `true`.
+        expect(`${reached} imports from ${specifier}: ${missing.join(", ")}`).toBe(
+          `${reached} imports from ${specifier}: `,
+        );
       }
     }
   });

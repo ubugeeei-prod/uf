@@ -472,7 +472,11 @@ them and checked against the SHA-256 of every file they read, so a warm check
 translates nothing ([#946](https://github.com/ubugeeei-prod/uf/issues/946)).
 A package's own Flow outranks its declarations: one that publishes `@flow`
 sources, or a `.flow` file beside a module — which is read in place of that
-module, as Flow reads it — is never translated.
+module, as Flow reads it — is never translated. `uf check --explain-any
+<package>` lists each hole and each error Flow reports inside a package's
+translation by the declaration it is in. A translation keeps every line where it
+was, so a line of a translated module is the same line of its declaration file,
+and `uf_dts::declaration_at` names the declaration from that.
 
 *Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
 by climbing `node_modules` from the file that wrote it, so code inside
@@ -978,10 +982,10 @@ JavaScript execution is delegated to a Capability JS Host.
 
 The zero-config host set is Node.js, Deno, and Bun — as *targets*. What each of
 them does today is a different question and is answered in one place,
-[`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
-test that starts the binary; Deno has no module hook to install one in, so uf
-compiles the project ahead of time and hands it an import map, which runs a
-suite and leaves a named gap; and Edge starts the generated Cloudflare Worker
+[`docs/hosts.md`](./hosts.md): Node.js, Bun and Deno each have a Flow loader
+and a test that starts the binary — Deno's installed through the synchronous
+`registerHooks` it implemented in 2.8, where it used to be an ahead-of-time pass
+and an import map; and Edge starts the generated Cloudflare Worker
 under Wrangler local while still lacking a source-level host or Flow loader.
 Reading the host set as a support matrix is how "uf runs on Deno" came to be
 written down; the matrix is the matrix.

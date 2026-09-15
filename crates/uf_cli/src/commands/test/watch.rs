@@ -63,22 +63,16 @@ pub(super) fn watch(
     // Resolved once, with the environment the session started with: a watch
     // that reloaded `.env` mid-session would change what the suite means
     // between two runs of the same file.
-    let host = super::test_host(root, &config, env, &files, args.browser, runtime)?
+    let host = super::test_host(root, &config, env, args.browser, runtime)?
         .with_axe(config.accessibility.axe.as_json());
-    // Deno's Flow loader is an ahead-of-time pass, and this function resolves
-    // the host once on purpose (above). The two cannot both be true: an edit
-    // after the pass has run is an edit to a module the compiled tree does not
-    // have, so every run after the first would report on the code as it was
-    // when the session started — a watch loop that answers about yesterday is
-    // worse than one that will not start.
-    if host.kind == uf_test::HostKind::Deno {
-        anyhow::bail!(
-            "`uf test --watch` cannot run on Deno: it has no module hook, so uf compiles the \
-             project ahead of time and a watch session would keep re-running the modules the \
-             first pass wrote. Run `uf test` per change, or run the watch on Node.js or Bun. \
-             Tracked by https://github.com/ubugeeei-prod/uf/issues/246."
-        );
-    }
+    // Every host, Deno included. Deno used to be refused here, because its Flow
+    // loader was an ahead-of-time pass and a watch session would have kept
+    // re-running the tree the first pass wrote. Its loader is a hook now
+    // (`@uniflowed/host/deno-preload`), and the worker re-imports a file with a
+    // fresh `?uf-run=` query on every run, which the hook is asked about like
+    // any other import — so an edit reaches the next run on Deno exactly as it
+    // does on Node. `crates/uf_cli/tests/deno_host.rs` edits a file under a
+    // running watch to hold that. See ubugeeei-prod/uf#246.
     let mut graph = build_graph(&files);
     let filter = args.filter();
 

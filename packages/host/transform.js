@@ -13,7 +13,7 @@
 // preload, the config loader — goes through here, which is what makes them
 // all produce the same module from the same source.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -113,7 +113,7 @@ export const FLOW_MODULE_PATTERN = new RegExp(
  * started by hand finds `uf` on PATH, which is what the installer arranges.
  */
 export function ufBinary() {
-  return process.env.UF_BINARY ?? "uf";
+  return environmentVariable("UF_BINARY") ?? "uf";
 }
 
 /**
@@ -129,7 +129,67 @@ export function ufBinary() {
  * installed before `uf` has told the process anything.
  */
 export function inSourceTests() {
-  return process.env.UF_IN_SOURCE_TESTS === "1";
+  return environmentVariable("UF_IN_SOURCE_TESTS") === "1";
+}
+
+/**
+ * One environment variable, or `undefined` when it is unset *or* this process
+ * may not read it.
+ *
+ * Deno denies by default, and a worker `uf test` starts there is granted the
+ * variables uf set on it and nothing else. Reading any other throws
+ * `NotCapable` rather than answering `undefined` — measured on Deno 2.9 — and
+ * every variable this package reads on the way to a module is one it only
+ * consults: a loader that took the process down over one would be failing a
+ * suite over nothing. On Node and Bun this is `process.env[name]` and no more.
+ */
+export function environmentVariable(name) {
+  try {
+    return process.env[name];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The names a `uf transform` child inherits when the whole environment may not
+ * be read.
+ *
+ * `PATH`, because `uf transform` may start a host of its own to evaluate
+ * `uf.config.js`; `HOME` and `TMPDIR`, which the platform's own libraries read;
+ * and uf's three, which are what the transform is about.
+ */
+const SANDBOXED_TRANSFORM_ENVIRONMENT = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "UF_BINARY",
+  "UF_PROJECT_ROOT",
+  "UF_IN_SOURCE_TESTS",
+];
+
+/**
+ * The environment a `uf transform` child starts with: this process's.
+ *
+ * All of it where the host lets it be enumerated, which is every host that does
+ * not sandbox the environment. Deno does, and spreading `process.env` there is
+ * a request for every variable at once, refused as `NotCapable` — measured on
+ * Deno 2.9, from the transform thread's first compile. So a refusal falls back
+ * to the names above, each read on its own and skipped when that one is
+ * withheld too. The child is `uf`, not the project's code, and a transform
+ * needs nothing a test's sandbox keeps from it.
+ */
+function inheritedEnvironment() {
+  try {
+    return { ...process.env };
+  } catch {
+    const env = {};
+    for (const name of SANDBOXED_TRANSFORM_ENVIRONMENT) {
+      const value = environmentVariable(name);
+      if (value != null) env[name] = value;
+    }
+    return env;
+  }
 }
 
 /**
@@ -169,14 +229,46 @@ export function ufBinaryIdentity(command = ufBinary()) {
   if (binary == null) return null;
   try {
     const stats = statSync(binary);
-    if (!stats.isFile()) return null;
-    accessSync(binary, constants.X_OK);
-    return `${binary}\0${stats.size}\0${stats.mtimeMs}`;
+    if (!stats.isFile() || !isExecutable(binary, stats)) return null;
+    // Whole milliseconds, because hosts disagree below that: Node reports the
+    // filesystem's nanosecond timestamp as a fraction and Deno reports whole
+    // milliseconds. Node's and Deno's loaders share one cache
+    // (`./internal/flow-cache.js`), and two spellings of one binary's
+    // identity would be two keys for every module either host compiled. A
+    // rebuild that lands in the same millisecond at the same size is not a
+    // rebuild anybody runs.
+    return `${binary}\0${stats.size}\0${Math.trunc(stats.mtimeMs)}`;
   } catch {
     // Named a binary that is not there, or is not one. The caller gets `null`
     // and stops trusting the cache, which is right: nothing can be compiled
     // either.
     return null;
+  }
+}
+
+/**
+ * Whether `file`, whose `stats` the caller already holds, may be executed.
+ *
+ * `access(2)` with `X_OK`, which asks the kernel on behalf of this process —
+ * the question `spawn` is about to ask. Deno will not answer it inside its
+ * permission model without `--allow-sys=uid`, because the answer depends on
+ * who is asking, and a worker `uf test` starts on Deno is granted no `sys` at
+ * all. Measured on Deno 2.9: the call throws `NotCapable`, and treating that as
+ * "not executable" left every Deno run with no identity, so its loader never
+ * read or wrote the cache.
+ *
+ * So a refusal *by the sandbox* is answered from the mode bits `stat` already
+ * returned — executable by somebody. That is a looser test than `access`, and
+ * loose in the direction that fails loudly: a binary that has an execute bit
+ * and still may not be run by this user is one `spawn` cannot start, which is an
+ * error, not a stale answer. Anything else `access` throws is still "no".
+ */
+function isExecutable(file, stats) {
+  try {
+    accessSync(file, constants.X_OK);
+    return true;
+  } catch (error) {
+    return error?.name === "NotCapable" && (stats.mode & 0o111) !== 0;
   }
 }
 
@@ -203,13 +295,12 @@ function resolveExecutable(command) {
   // either way, so a path that is a directory or is not executable is no more
   // trusted than a bare name that resolves to one.
   if (path.basename(command) !== command) return command;
-  for (const directory of (process.env.PATH ?? "").split(path.delimiter)) {
+  for (const directory of (environmentVariable("PATH") ?? "").split(path.delimiter)) {
     if (directory === "") continue;
     const candidate = path.join(directory, command);
     try {
-      if (!statSync(candidate).isFile()) continue;
-      accessSync(candidate, constants.X_OK);
-      return candidate;
+      const stats = statSync(candidate);
+      if (stats.isFile() && isExecutable(candidate, stats)) return candidate;
     } catch {
       // Not in this directory. Keep looking, exactly as the shell would.
     }
@@ -295,7 +386,7 @@ export class TransformService {
     // binary earlier and wrote under that would file build B's output under
     // build A's name, which is the original defect with a smaller window.
     this.#identity = ufBinaryIdentity(command);
-    const env = { ...process.env };
+    const env = inheritedEnvironment();
     if (options.configBootstrap === true) {
       env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
     } else {
@@ -473,13 +564,13 @@ export function sharedService(root, options = {}) {
   const entry = options.configBootstrap === true ? "bootstrap" : "project";
   if (entry === "bootstrap") {
     sharedForConfigBootstrap ??= new TransformService({
-      root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd(),
+      root: root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd(),
       configBootstrap: true,
     });
     return sharedForConfigBootstrap;
   }
   shared ??= new TransformService({
-    root: root ?? process.env.UF_PROJECT_ROOT ?? process.cwd(),
+    root: root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd(),
   });
   return shared;
 }
@@ -494,4 +585,120 @@ export function transformFlow(code, filename, options = {}) {
   return sharedService(options.root, {
     configBootstrap: options.configBootstrap === true,
   }).transform(filename, code, options);
+}
+
+/**
+ * The most bytes one synchronous reply may be.
+ *
+ * `spawnSync` buffers the child's whole output and needs a ceiling to do it
+ * with; its default is one megabyte, which a large module with its source map
+ * appended can pass. Sixty-four is far above anything uf's own transform
+ * ceilings let through, and still a ceiling.
+ */
+const MAX_SYNC_REPLY_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Why Deno would refuse to start `command`, in Deno's own words, or `null`.
+ *
+ * `node:child_process`'s `spawnSync` on Deno answers a refused spawn with no
+ * error and no output, so the reason is asked for again through `Deno.Command`,
+ * which throws it. Measured on Deno 2.9.6, there are two: a program
+ * `--allow-run` does not name, and a dynamic-loader variable such as
+ * `LD_LIBRARY_PATH` in the environment, which Deno will not pass to a child
+ * unless `--allow-run` is unscoped. `null` off Deno, and when Deno would start
+ * the program after all.
+ */
+function denoRefusal(command) {
+  const deno = globalThis.Deno;
+  if (deno == null) return null;
+  try {
+    new deno.Command(command, {
+      args: ["--version"],
+      stdin: "null",
+      stdout: "null",
+      stderr: "null",
+    }).outputSync();
+    return null;
+  } catch (error) {
+    return typeof error?.message === "string" ? error.message : null;
+  }
+}
+
+/**
+ * Transform one Flow module in a short-lived `uf transform`, and wait for it.
+ *
+ * Resolves nothing and returns what `transformFlow` resolves to —
+ * `{ code, map, css, diagnostics }`, or `null` for a module that is not uf's —
+ * and throws what it rejects with. One request written to the child's stdin,
+ * stdin closed, one reply read back: the same binary and the same protocol as
+ * the service, so the module cannot differ between the two ways in.
+ *
+ * For Deno's in-thread hooks (`./internal/sync-hooks.js`), which on Node sleep
+ * on a transform thread instead. On Deno that thread is not safe to rely on:
+ * measured on Deno 2.9.6 in this repository's CI, Linux x86_64, one of two runs
+ * of the same commit panicked with `Fatal error in :0: unreachable code` in
+ * every test that compiled a module through the thread, and in none that read
+ * the cache. A child process per cold module costs about ten milliseconds and
+ * involves no thread and no `Atomics.wait` at all.
+ *
+ * @param {string} code the Flow source
+ * @param {string} filename absolute path, used for the map and for errors
+ * @param {object} [options] as for `transformFlow`, plus `command`
+ */
+export function transformFlowSync(code, filename, options = {}) {
+  const command = options.command ?? ufBinary();
+  const root = options.root ?? environmentVariable("UF_PROJECT_ROOT") ?? process.cwd();
+  // Which binary to run is this process's business and not the compiler's.
+  const requestOptions = { ...options };
+  delete requestOptions.command;
+  const env = inheritedEnvironment();
+  if (options.configBootstrap === true) {
+    env.UF_TRANSFORM_BOOTSTRAP_CONFIG = "1";
+  } else {
+    delete env.UF_TRANSFORM_BOOTSTRAP_CONFIG;
+  }
+  const result = spawnSync(command, ["--cwd", root, "transform"], {
+    input: `${JSON.stringify({ id: filename, code, options: requestOptions })}\n`,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "inherit"],
+    env,
+    maxBuffer: MAX_SYNC_REPLY_BYTES,
+  });
+  if (result.error != null) {
+    throw new Error(`could not run \`${command} transform\`: ${result.error.message}`);
+  }
+  // A spawn a sandbox refuses is not an error on every host. Measured on Deno
+  // 2.9: a program its permission set does not name comes back with no
+  // `error`, no status and no output at all, and reading a reply out of that is
+  // a `TypeError` about `undefined` naming neither the binary nor the grant.
+  if (typeof result.stdout !== "string") {
+    throw new Error(
+      `could not run \`${command} transform\` for ${filename}: ${
+        denoRefusal(command) ??
+        "no process started, which is how a sandbox answers a program it was not told about " +
+          `— on Deno, \`--allow-run\` has to name ${command}`
+      }`,
+    );
+  }
+  const newline = result.stdout.indexOf("\n");
+  const line = newline === -1 ? result.stdout : result.stdout.slice(0, newline);
+  if (line.trim() === "") {
+    throw new Error(`uf transform exited (${result.status}) without answering for ${filename}`);
+  }
+  let reply;
+  try {
+    reply = JSON.parse(line);
+  } catch {
+    throw new Error(`uf transform sent a malformed reply: ${line}`);
+  }
+  if (reply.error != null) {
+    throw new TransformError(filename, reply.error, reply.line, reply.column);
+  }
+  if (reply.code == null) return null;
+  return {
+    code: reply.code,
+    map: reply.map ?? null,
+    css: reply.css ?? null,
+    diagnostics: reply.diagnostics ?? [],
+  };
 }

@@ -1671,6 +1671,14 @@ fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
                 .to_string(),
         },
         Stage {
+            name: "dependencies",
+            provider: "uf".to_string(),
+            detail: "a package's own Flow when it ships some; otherwise a Flow translation of \
+                     its TypeScript declarations, each hole typed any — \
+                     `uf check --explain-any <package>` lists them"
+                .to_string(),
+        },
+        Stage {
             name: "type checking",
             provider: "flow (upstream)".to_string(),
             detail: "uf does not type-check; Flow is the type system".to_string(),

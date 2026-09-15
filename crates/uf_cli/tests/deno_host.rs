@@ -1,50 +1,45 @@
 //! Deno, started for real, so the row that grades it is a measurement.
 //!
-//! `uf_runtime::HOSTS` grades Deno [`SupportLevel::Experimental`] and says what
-//! it is still missing. Every word of that is a claim, and ubugeeei-prod/uf#246
-//! is about what happens when claims of this kind go unchecked: `HostKind::Deno`
-//! existed, `runtime.capabilityJsHost.hosts` listed it beside Node and Bun, and
-//! nothing anywhere had ever started the binary. Nobody could have said which of
-//! the obstacles below were real.
+//! `uf_runtime::HOSTS` grades Deno [`SupportLevel::Implemented`] and names its
+//! loader: `@uniflowed/host/deno-preload`, which installs uf's transform through
+//! `node:module`'s `registerHooks` — a hook Deno implemented in 2.8. Every word
+//! of that is a claim, and ubugeeei-prod/uf#246 is about what happens when
+//! claims of this kind go unchecked: `HostKind::Deno` existed, listed beside
+//! Node and Bun, while nothing anywhere had ever started the binary.
 //!
-//! So this file starts Deno, in two halves that have to be read together.
+//! So this file starts Deno, in three halves that have to be read together.
 //!
-//! **Where the road stopped**, which is what the host is when it is handed the
-//! project as it is written:
+//! **Where the road stops without the loader**, which is what the host is when
+//! it is handed the project as it is written: Deno runs the `node:` built-ins
+//! the transform client imports, and it can neither import `@uniflowed/test` nor
+//! parse a Flow annotation.
 //!
-//! * Deno runs `node:` built-ins, so the transform service's own imports were
-//!   never the obstacle;
-//! * `import "@uniflowed/test"` does not load — on an older line because no
-//!   bare specifier resolves from `node_modules`, on a current one because it
-//!   resolves and the package it finds is Flow;
-//! * it has no global `process`, which is why `packages/test/worker.js` imports
-//!   `node:process` and installs it; and
-//! * it rejects Flow syntax outright, which is what "no loader" looks like from
-//!   a terminal.
+//! **What the hook buys**, asked of the preload directly and then through
+//! `uf test`. A module is compiled as Deno asks for it — which includes the
+//! three kinds of module the ahead-of-time pass uf's Deno loader was before 2.8
+//! could not reach: a path computed at run time, a re-import under a fresh
+//! query (which is what `uf test --watch` does after an edit), and a module a
+//! mock stands in for. And the compiled modules are the Node loader's: one
+//! cache, one key, one framing.
 //!
-//! **And where it goes now**, which is what
-//! `crates/uf_cli/src/commands/deno_loader.rs` buys: `uf test` compiles the
-//! project ahead of time and hands Deno an import map, and a Flow suite runs.
-//! The map is asked the two questions above one at a time as well as end to
-//! end, so a failure says which half broke.
-//!
-//! One thing has worked here from the start, and is the reason Deno is in this
-//! toolchain at all: **it enforces the permission set uf translates**, all five
-//! categories of it, where Node enforces two and Bun none. Those tests run Deno
-//! with exactly the arguments `uf_runtime::permissions::host_arguments`
-//! produces and assert on what the program observed, not on the command line —
-//! including, now, that a project which declared *no* permissions is still not
-//! run with `-A`.
+//! **What Deno enforces**: the permission set uf translates, all five
+//! categories of it, where Node enforces two and Bun none — including for a
+//! project that declared no set at all, which is still not run with `-A`.
 //!
 //! A test here failing means the table is wrong. Fix the table.
 
 mod support;
 
-use std::process::Command;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{Receiver, channel};
+use std::time::{Duration, Instant};
 
-use support::{Project, deno_ready, uf};
+use support::{Project, deno_ready, host_ready, repo_root, uf, uf_path};
 use uf_runtime::permissions::{ToolchainAccess, host_arguments};
-use uf_runtime::{HostSupport, Permissions, RuntimeHost, SupportLevel};
+use uf_runtime::{HostSupport, Permission, Permissions, RuntimeHost, SupportLevel};
 
 /// What one Deno run said.
 struct Run {
@@ -53,13 +48,29 @@ struct Run {
     stderr: String,
 }
 
-/// Run `entry` under `deno run`, with `flags` before it.
-fn deno(project: &Project, flags: &[String], entry: &str) -> Run {
-    let output = Command::new("deno")
+/// Run `entry` under `deno run`, with `flags` before it and `env` set.
+///
+/// Without the dynamic-loader variables this process inherited, which is what
+/// `uf test` does for its own Deno workers: `cargo test` sets `LD_LIBRARY_PATH`
+/// on Linux, and Deno will not start `uf transform` under a scoped
+/// `--allow-run` while one is set. A test that means to pass one names it in
+/// `env`, which is applied after.
+fn deno(project: &Project, flags: &[String], entry: &str, env: &[(&str, String)]) -> Run {
+    let mut command = Command::new("deno");
+    for (name, _) in std::env::vars_os() {
+        if name
+            .to_str()
+            .is_some_and(|name| name.starts_with("LD_") || name.starts_with("DYLD_"))
+        {
+            command.env_remove(name);
+        }
+    }
+    let output = command
         .arg("run")
         .args(flags)
         .arg(project.path().join(entry))
         .current_dir(project.path())
+        .envs(env.iter().map(|(name, value)| (*name, value.as_str())))
         .output()
         .expect("deno is on PATH");
     Run {
@@ -69,49 +80,127 @@ fn deno(project: &Project, flags: &[String], entry: &str) -> Run {
     }
 }
 
-/// The major version of the Deno on PATH, or `None` if it cannot be read.
-fn deno_major() -> Option<u32> {
+/// The `major.minor` of the Deno on PATH, or `None` if it cannot be read.
+fn deno_version() -> Option<(u32, u32)> {
     let output = Command::new("deno").arg("--version").output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
-    text.split_whitespace()
-        .nth(1)?
-        .split('.')
-        .next()?
-        .parse()
-        .ok()
+    let mut numbers = text.split_whitespace().nth(1)?.split(['.', '-', '+']);
+    Some((numbers.next()?.parse().ok()?, numbers.next()?.parse().ok()?))
 }
 
-/// Whether this Deno is the line the one measurement below was taken against.
+/// Whether the Deno on PATH has the hook the loader is built on.
 ///
-/// A global `process` is a fact about a *version*: a later Deno may have added
-/// one, and ubugeeei-prod/uf#246 records its absence against Deno 1.31.
-/// Asserting that on a version nobody has run this against would be exactly the
-/// unchecked claim `uf_runtime::HOSTS` exists to end — so it says which line it
-/// measured and steps aside on any other, loudly. Everything else here holds on
-/// every Deno and is not gated: the bare-specifier test asserts the disjunction
-/// rather than one version's half of it, which is what a version-independent
-/// measurement of the same obstacle looks like.
-fn deno_is_the_measured_line() -> bool {
-    match deno_major() {
-        Some(1) => true,
+/// Asked after [`deno_ready`] by every test that loads Flow. A Deno older than
+/// 2.8 cannot run a uf project — `uf test` refuses it by version, which
+/// `uf_test_refuses_a_deno_older_than_the_hook` checks without needing one —
+/// so these tests have nothing to measure there. They fail rather than skip
+/// unless skipping is allowed, for the reason `deno_ready` gives: a host claim
+/// whose check quietly did not run is a claim nobody checked.
+fn deno_with_hooks() -> bool {
+    match deno_version() {
+        Some(version) if version >= (2, 8) => true,
         other => {
-            eprintln!(
-                "skipping: this measurement was taken against Deno 1.x and this is {other:?}. \
-                 A newer Deno may have closed it, which would be good news and a change to \
-                 `uf_runtime::HOSTS` — the Flow loader is untouched either way."
+            assert!(
+                std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+                "this test needs Deno 2.8 or newer, which has `registerHooks`, and the Deno on \
+                 PATH is {other:?}"
             );
+            eprintln!("skipping: the Deno on PATH is {other:?}, which predates `registerHooks`");
             false
         }
     }
 }
 
+/// The preload, in this checkout.
+fn preload() -> String {
+    repo_root()
+        .join("packages/host/deno-preload.js")
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The flags a Deno worker is started with: the preload, then the permission
+/// set `uf_runtime::permissions` translates from the toolchain's own access.
+///
+/// `run_uf` is whether that access includes starting `uf transform`. A run
+/// refused it can load only what the transform cache already holds, which is
+/// how a test below proves a warm run compiles nothing.
+fn loader_flags(project: &Project, run_uf: bool) -> Vec<String> {
+    let root = project.path().to_string_lossy().into_owned();
+    let mut toolchain = ToolchainAccess {
+        read: vec![
+            root.clone(),
+            repo_root().to_string_lossy().into_owned(),
+            uf_path().to_owned(),
+        ],
+        write: vec![format!("{root}/.uf")],
+        env: [
+            "UF_BINARY",
+            "UF_PROJECT_ROOT",
+            "UF_IN_SOURCE_TESTS",
+            "PATH",
+            "NODE_V8_COVERAGE",
+        ]
+        .map(String::from)
+        .to_vec(),
+        ..ToolchainAccess::default()
+    };
+    if run_uf {
+        toolchain.run.push(uf_path().to_owned());
+    }
+    let mut flags = vec![String::from("--preload"), preload()];
+    flags.extend(
+        host_arguments(RuntimeHost::Deno, &Permissions::default(), &toolchain)
+            .expect("Deno enforces every permission uf can declare"),
+    );
+    flags
+}
+
+/// The two variables every uf-started host is given.
+fn loader_env(project: &Project) -> Vec<(&'static str, String)> {
+    vec![
+        ("UF_BINARY", uf_path().to_owned()),
+        (
+            "UF_PROJECT_ROOT",
+            project.path().to_string_lossy().into_owned(),
+        ),
+    ]
+}
+
+const DOUBLE: &str =
+    "// @flow\nexport function double(value: number): number {\n  return value * 2;\n}\n";
+
+const COMPUTED: &str = "// @flow\nexport const seven: number = 7;\n";
+
+/// A Flow module that reaches every kind of import the hook has to answer.
+const EVERY_IMPORT: &str = r#"// @flow
+import { expect } from "@uniflowed/test";
+import { double } from "./double.js";
+
+const value: number = double(21);
+expect(value).toBe(42);
+console.log(`static=${value} package=${typeof expect}`);
+
+// A path no reading of this file could have listed in advance.
+const name = ["./", "computed", ".js"].join("");
+const computed = await import(new URL(name, import.meta.url).href);
+console.log(`computed=${computed.seven}`);
+
+// The worker's own cache-busting re-import, which is what a watch run does.
+const again = await import(new URL("./double.js?uf-run=2", import.meta.url).href);
+console.log(`query=${again.double(4)}`);
+"#;
+
+/// A Flow module whose only imports are relative ones.
+const RELATIVE_ONLY: &str = "// @flow\nimport { double } from \"./double.js\";\n\nconst value: number = double(21);\nconsole.log(`double=${value}`);\n";
+
 /// The obstacle that is not one.
 ///
 /// `packages/host/transform.js` — the module every host reaches the Flow
 /// transform through — imports `node:child_process`, `node:fs`, `node:path` and
-/// `node:readline`. If Deno could not load those, a Deno host would need a
-/// second transform client rather than a loader, and the row in
-/// `uf_runtime::HOSTS` would have to say so. It can, so the row does not.
+/// `node:readline`, and Deno's loader calls its `spawnSync`. If Deno could not
+/// load those, a Deno host would need a second transform client rather than a
+/// loader. It can, so it does not.
 #[test]
 fn deno_loads_the_node_builtins_the_transform_client_imports() {
     if !deno_ready() {
@@ -119,15 +208,15 @@ fn deno_loads_the_node_builtins_the_transform_client_imports() {
     }
     let project = Project::new(&[(
         "builtins.js",
-        "import { spawn } from \"node:child_process\";\n\
+        "import { spawn, spawnSync } from \"node:child_process\";\n\
          import { statSync } from \"node:fs\";\n\
          import path from \"node:path\";\n\
          import { createInterface } from \"node:readline\";\n\n\
-         console.log(`builtins=${[spawn, statSync, path.join, createInterface].every((value) => \
+         console.log(`builtins=${[spawn, spawnSync, statSync, path.join, createInterface].every((value) => \
          typeof value === \"function\")}`);\n",
     )]);
 
-    let run = deno(&project, &[String::from("-A")], "builtins.js");
+    let run = deno(&project, &[String::from("-A")], "builtins.js", &[]);
 
     assert!(
         run.stdout.contains("builtins=true"),
@@ -137,106 +226,36 @@ fn deno_loads_the_node_builtins_the_transform_client_imports() {
     );
 }
 
-/// The first obstacle, whichever of its two forms this Deno has.
+/// Without the loader, a uf package does not load on Deno.
 ///
-/// Without the import map, that is — which is what makes this pair with
-/// `the_generated_import_map_answers_both_halves_of_the_problem` below rather
-/// than contradict it. This is Deno handed the project as it is written.
-///
-/// `import "@uniflowed/test"` cannot work on Deno, and *why* depends on the
-/// version — which is the whole reason this is a measurement rather than a
-/// sentence. Deno 1.31, the line ubugeeei-prod/uf#246 records, resolves no bare
-/// specifier from `node_modules` at all and stops at
-/// `Relative import path …`. A current Deno 1.x resolves it, reaches
-/// `packages/test/index.js`, and stops at `export type { … }` — because every
-/// `@uniflowed/*` package ships Flow and there is no loader.
-///
-/// Both are "a uf project does not load here", and the second is the more
-/// useful finding: the resolution half of the problem has already gone, and
-/// what is left is the Flow loader alone. Asserting only the first would have
-/// made this test a statement about one Deno wearing the name of Deno, which is
-/// the class of claim `uf_runtime::HOSTS` exists to end — so it asserts the
-/// disjunction, and names which half it saw when it fails.
+/// Deno resolves `@uniflowed/test` from `node_modules` and reaches
+/// `packages/test/index.js`, which is Flow. Deno 1.31, the line
+/// ubugeeei-prod/uf#246 was filed against, stopped a step earlier and resolved
+/// no bare specifier at all; the disjunction is asserted so the test measures
+/// the obstacle rather than one version's spelling of it.
 #[test]
-fn a_uf_package_cannot_be_imported_on_deno() {
+fn a_uf_package_cannot_be_imported_on_deno_without_the_loader() {
     if !deno_ready() {
         return;
     }
     let project = Project::new(&[("bare.js", "import \"@uniflowed/test\";\n")]);
-    // The project sits under the repository, which has a populated
-    // `node_modules` above it — the same arrangement in which Node resolves
-    // this specifier without being told anything.
-    let run = deno(&project, &[String::from("-A")], "bare.js");
+    let run = deno(&project, &[String::from("-A")], "bare.js", &[]);
 
     assert!(!run.success, "stdout:\n{}", run.stdout);
     let unresolved = run.stderr.contains("Relative import path");
-    // Deno reports a Flow annotation, a type export or a `component` as a parse
-    // error against the file it found.
-    let unparsed = run.stderr.contains("could not be parsed");
+    let unparsed = run.stderr.contains("could not be parsed") || run.stderr.contains("SyntaxError");
     assert!(
         unresolved || unparsed,
-        "a uf package must not load on Deno, and this failed for some third \
+        "a uf package must not load on Deno without the loader, and this failed for some third \
          reason\nstderr:\n{}",
         run.stderr
     );
-    eprintln!(
-        "deno stops at {}",
-        if unresolved {
-            "resolution: no bare specifier from node_modules"
-        } else {
-            "parsing: the package is Flow and there is no loader"
-        }
-    );
 }
 
-/// The second obstacle: no global `process`.
-///
-/// `packages/test/worker.js` is a protocol over stdio — `process.stdin`,
-/// `process.exit`, `process.on` — so this was never incidental use that could
-/// be tidied away, and three more modules it reaches read the global too. Deno
-/// exposes the same object as `node:process`, which is what made this a fixable
-/// obstacle rather than a wall: the worker imports it and installs it on the
-/// global, once, in the one file that is a process entry point.
-///
-/// This test is what keeps that fix honest. If a later Deno grew the global,
-/// the line in the worker would become dead code claiming to be load-bearing,
-/// and the row in `uf_runtime::HOSTS` would be describing a version nobody
-/// runs.
+/// What "no Flow loader" looks like from a terminal: a syntax error against
+/// the line the developer wrote.
 #[test]
-fn deno_has_no_global_process_but_has_the_module() {
-    if !deno_ready() || !deno_is_the_measured_line() {
-        return;
-    }
-    let project = Project::new(&[(
-        "process.js",
-        "import node from \"node:process\";\n\n\
-         console.log(`global=${typeof globalThis.process} module=${typeof node.exit}`);\n",
-    )]);
-
-    let run = deno(&project, &[String::from("-A")], "process.js");
-
-    assert!(
-        run.stdout.contains("global=undefined"),
-        "a Deno that grew a global `process` would make one line of the Deno row in \
-         `uf_runtime::HOSTS` obsolete\nstdout:\n{}\nstderr:\n{}",
-        run.stdout,
-        run.stderr
-    );
-    assert!(
-        run.stdout.contains("module=function"),
-        "stdout:\n{}\nstderr:\n{}",
-        run.stdout,
-        run.stderr
-    );
-}
-
-/// The third, which is what "no Flow loader" looks like from a terminal.
-///
-/// Not a subtlety: an annotation is a syntax error, reported against the line
-/// the developer wrote. `uf test` refuses to start a Deno worker precisely so
-/// that a person meets a sentence about a missing loader instead of this.
-#[test]
-fn deno_rejects_flow_syntax_because_nothing_transforms_it() {
+fn deno_rejects_flow_syntax_without_the_loader() {
     if !deno_ready() {
         return;
     }
@@ -245,7 +264,7 @@ fn deno_rejects_flow_syntax_because_nothing_transforms_it() {
         "// @flow\nconst answer: number = 42;\nconsole.log(answer);\n",
     )]);
 
-    let run = deno(&project, &[String::from("-A")], "annotated.js");
+    let run = deno(&project, &[String::from("-A")], "annotated.js", &[]);
 
     assert!(!run.success, "stdout:\n{}", run.stdout);
     assert!(
@@ -255,48 +274,215 @@ fn deno_rejects_flow_syntax_because_nothing_transforms_it() {
     );
 }
 
-/// And this is the whole of ubugeeei-prod/uf#246: a Flow suite, on Deno,
-/// passing.
+/// A dynamic-loader variable in Deno's environment is named in the error.
 ///
-/// The three tests above establish that none of it works when Deno is handed
-/// the source as it is. This one hands Deno what `uf` produces instead — the
-/// ahead-of-time transform under `.uf/deno` and the import map beside it — and
-/// asserts the run finishes green. Everything between the two is
-/// `crates/uf_cli/src/commands/deno_loader.rs`.
+/// Deno will not let a process whose `--allow-run` names programs start one
+/// while `LD_LIBRARY_PATH` or another `LD_*` or `DYLD_*` variable is set, and
+/// `node:child_process` answers that refusal with no process and no reason.
+/// `uf test` leaves such variables out of its workers; a Deno somebody starts
+/// with the preload themselves has to have them unset, and this is what tells
+/// them which one. A fresh project, so its cache is empty and the loader has to
+/// start `uf transform`.
+#[test]
+fn a_loader_variable_deno_refuses_is_named() {
+    if !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = Project::new(&[("entry.js", RELATIVE_ONLY), ("double.js", DOUBLE)]);
+    let mut env = loader_env(&project);
+    env.push((
+        "LD_LIBRARY_PATH",
+        String::from("/nonexistent/uf-deno-host-test"),
+    ));
+
+    let run = deno(&project, &loader_flags(&project, true), "entry.js", &env);
+
+    assert!(
+        !run.success,
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout, run.stderr
+    );
+    assert!(
+        run.stderr.contains("LD_LIBRARY_PATH"),
+        "the error has to name the variable in the way\nstderr:\n{}",
+        run.stderr
+    );
+}
+
+/// And with it, every kind of import compiles — under the permission set uf
+/// translates, not under `-A`.
 ///
-/// It is deliberately a `uf test` invocation rather than a hand-built `deno
-/// run`: the artefact, the permission translation, the worker protocol and the
-/// report all have to agree, and a test that assembled the command line itself
-/// would be checking a `format!` again.
+/// A static relative import and a bare specifier into a package that is itself
+/// Flow are what any loader has to do. The other two are what the ahead-of-time
+/// pass this replaced could not: a path computed at run time, which no scan
+/// could have listed, and a re-import with a query on it, which is how the test
+/// worker gets a fresh module on the next run of a watch session.
+#[test]
+fn the_preload_compiles_every_module_deno_asks_for() {
+    if !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = Project::new(&[
+        ("entry.js", EVERY_IMPORT),
+        ("double.js", DOUBLE),
+        ("computed.js", COMPUTED),
+    ]);
+
+    let run = deno(
+        &project,
+        &loader_flags(&project, true),
+        "entry.js",
+        &loader_env(&project),
+    );
+
+    assert!(
+        run.success,
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout, run.stderr
+    );
+    for expected in ["static=42 package=function", "computed=7", "query=8"] {
+        assert!(
+            run.stdout.contains(expected),
+            "{expected}\nstdout:\n{}\nstderr:\n{}",
+            run.stdout,
+            run.stderr
+        );
+    }
+    // Written under the one writable path the set grants, which is the cache
+    // the next run reads.
+    let cached = std::fs::read_dir(project.path().join(".uf/cache/transform"))
+        .map(|entries| entries.count())
+        .unwrap_or(0);
+    assert!(cached > 0, "the hook compiled modules and cached none");
+}
+
+/// A warm run starts no `uf transform` at all.
+///
+/// The second run is refused the right to start one — no `--allow-run` — so
+/// if the hook reached for the compiler instead of the cache, Deno would answer
+/// `NotCapable` and the run would fail. It passing is the cache being read
+/// first, which is the property that makes a per-module compiler process cheap
+/// enough to be the design.
+#[test]
+fn a_module_already_compiled_is_read_rather_than_compiled_again() {
+    if !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = Project::new(&[("entry.js", RELATIVE_ONLY), ("double.js", DOUBLE)]);
+
+    let cold = deno(
+        &project,
+        &loader_flags(&project, true),
+        "entry.js",
+        &loader_env(&project),
+    );
+    assert!(cold.success, "stderr:\n{}", cold.stderr);
+
+    let warm = deno(
+        &project,
+        &loader_flags(&project, false),
+        "entry.js",
+        &loader_env(&project),
+    );
+    assert!(
+        warm.success && warm.stdout.contains("double=42"),
+        "a warm run reached for `uf transform`\nstdout:\n{}\nstderr:\n{}",
+        warm.stdout,
+        warm.stderr
+    );
+}
+
+/// Node and Deno share one transform cache, and agree on what is in it.
+///
+/// `packages/host/internal/flow-cache.js` is one key and one framing for
+/// both loaders. So a module the *Node* loader compiled is one Deno reads
+/// without compiling — which it has to, because this Deno run may not start
+/// the compiler. Two copies of the key that had drifted would fail here as a
+/// `NotCapable`, rather than in somebody's project as a cache that two hosts
+/// keep overwriting.
+#[test]
+fn a_module_the_node_loader_compiled_is_one_deno_reads() {
+    if !host_ready() || !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = Project::new(&[("entry.js", RELATIVE_ONLY), ("double.js", DOUBLE)]);
+
+    let node = Command::new("node")
+        .args(["--import", "@uniflowed/host/register"])
+        .arg(project.path().join("entry.js"))
+        .current_dir(project.path())
+        .env("UF_BINARY", uf_path())
+        .env("UF_PROJECT_ROOT", project.path())
+        .env_remove("UF_IN_SOURCE_TESTS")
+        .output()
+        .expect("node runs");
+    assert!(
+        node.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&node.stderr)
+    );
+
+    let run = deno(
+        &project,
+        &loader_flags(&project, false),
+        "entry.js",
+        &loader_env(&project),
+    );
+    assert!(
+        run.success && run.stdout.contains("double=42"),
+        "Deno did not find what Node compiled\nstdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+}
+
+/// And this is the whole of ubugeeei-prod/uf#246's Deno half: a Flow suite,
+/// on Deno, passing — through `uf test`, so the preload, the permission
+/// translation, the worker protocol and the report all have to agree.
 #[test]
 fn uf_test_runs_a_flow_suite_on_deno() {
     // `autoDetect: false` below leaves Deno as the only candidate, so a machine
     // without it would meet "no JavaScript host found" instead — a true message
     // about a different thing.
-    if !deno_ready() {
+    if !deno_ready() || !deno_with_hooks() {
         return;
     }
     let project = deno_project(&[(
         "probe.test.js",
         // Flow in every position the transform has to handle for this to mean
         // anything: an annotation, a type import from a package that is itself
-        // Flow, and a relative import of another compiled module.
-        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\
-         import { double } from \"./double.js\";\n\n\
-         it(\"runs on deno\", () => {\n\
-         \x20 const value: number = double(21);\n\
-         \x20 expect(value).toBe(42);\n\
-         });\n",
+        // Flow, a relative import of another compiled module, and one reached
+        // by a path the file computes.
+        r#"// @flow
+import { expect, it } from "@uniflowed/test";
+import { double } from "./double.js";
+
+it("runs on deno", () => {
+  const value: number = double(21);
+  expect(value).toBe(42);
+});
+
+it("compiles a module reached by a computed path", async () => {
+  const name = ["./", "computed", ".js"].join("");
+  const computed = await import(new URL(name, import.meta.url).href);
+  expect(computed.seven).toBe(7);
+});
+"#,
     )]);
-    project.write(
-        "double.js",
-        "// @flow\nexport function double(value: number): number {\n  return value * 2;\n}\n",
-    );
+    project.write("double.js", DOUBLE);
+    project.write("computed.js", COMPUTED);
 
     let output = uf()
         .arg("--cwd")
         .arg(project.path())
         .args(["test", "probe.test.js"])
+        // What `cargo test` sets on Linux for the process it tests, set here so
+        // the condition is the same on every machine. Deno refuses to start a
+        // child under a scoped `--allow-run` while it is in the environment,
+        // so a worker that inherited it could compile nothing; `uf test` has to
+        // leave it out. A directory that does not exist, so it changes nothing
+        // else about the processes that do see it.
+        .env("LD_LIBRARY_PATH", "/nonexistent/uf-deno-host-test")
         .output()
         .expect("uf runs");
 
@@ -304,17 +490,18 @@ fn uf_test_runs_a_flow_suite_on_deno() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
-        "a Flow suite must run on Deno\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        "a Flow suite must run on Deno, with a loader variable in uf's environment\n\
+         stdout:\n{stdout}\nstderr:\n{stderr}"
     );
     assert!(
-        stderr.contains("1 passed") || stdout.contains("1 passed"),
+        stderr.contains("2 passed") || stdout.contains("2 passed"),
         "stdout:\n{stdout}\nstderr:\n{stderr}"
     );
 }
 
 #[test]
-fn uf_test_json_reports_deno_as_an_experimental_aot_host() {
-    if !deno_ready() {
+fn uf_test_json_reports_deno_as_an_implemented_host() {
+    if !deno_ready() || !deno_with_hooks() {
         return;
     }
     let project = deno_project(&[(
@@ -342,27 +529,26 @@ fn uf_test_json_reports_deno_as_an_experimental_aot_host() {
     assert_eq!(host["kind"], serde_json::json!("deno"));
     assert_eq!(host["runtimeHost"], serde_json::json!("deno"));
     assert_eq!(host["loadsFlow"], serde_json::json!(true));
-    assert_eq!(
-        host["denoImportMap"],
-        serde_json::json!(".uf/deno/import-map.json")
-    );
-    assert_eq!(host["support"]["level"], serde_json::json!("experimental"));
+    // The ahead-of-time pass's artefact is gone with the pass.
+    assert!(host.get("denoImportMap").is_none(), "{host}");
+    assert_eq!(host["support"]["level"], serde_json::json!("implemented"));
     assert_eq!(
         host["support"]["flowLoader"],
-        serde_json::json!("uf's ahead-of-time transform and import map")
+        serde_json::json!("@uniflowed/host/deno-preload")
     );
-    assert_eq!(host["support"]["trackingIssue"], serde_json::json!(246));
     assert!(
         host["support"]["missing"]
             .as_str()
-            .is_some_and(|missing| missing.contains("module hook")),
+            .is_some_and(|missing| missing.contains("coverage")),
         "{host}"
     );
+    // No worker was handed an import map, and no `.uf/deno` tree was written.
+    assert!(!project.path().join(".uf/deno").exists());
 }
 
 #[test]
 fn uf_test_json_reports_reasoned_deno_skips() {
-    if !deno_ready() {
+    if !deno_ready() || !deno_with_hooks() {
         return;
     }
     let project = deno_project(&[(
@@ -370,9 +556,9 @@ fn uf_test_json_reports_reasoned_deno_skips() {
         "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\n\
          it(\"runs the host portable half\", () => {\n  expect(21 * 2).toBe(42);\n});\n\n\
          it.skipBecause(\n\
-         \x20 \"names the Node module hook seam\",\n\
-         \x20 \"Deno uses uf's ahead-of-time loader and import map, so this file cannot test \
-         Node's synchronous module hook. See ubugeeei-prod/uf#246.\",\n\
+         \x20 \"reads Node's coverage switch\",\n\
+         \x20 \"Deno counts coverage in a format of its own, so this file cannot read \
+         NODE_V8_COVERAGE there.\",\n\
          );\n",
     )]);
 
@@ -401,147 +587,197 @@ fn uf_test_json_reports_reasoned_deno_skips() {
         .expect("the payload carries case records");
     let skipped = tests
         .iter()
-        .find(|record| record["name"] == "names the Node module hook seam")
+        .find(|record| record["name"] == "reads Node's coverage switch")
         .expect("the skipped case is reported");
     assert_eq!(skipped["status"], serde_json::json!("skipped"));
     assert!(
         skipped["skipReason"]
             .as_str()
-            .is_some_and(|reason| reason.contains("ahead-of-time loader")),
+            .is_some_and(|reason| reason.contains("format of its own")),
         "{skipped}"
     );
 }
 
-/// The artefact itself, run by hand, so a failure says *which* half broke.
+/// Every line a child writes, from both streams, as one channel.
+fn lines_of(child: &mut std::process::Child) -> Receiver<String> {
+    let (sender, lines) = channel();
+    let streams: [Box<dyn Read + Send>; 2] = [
+        Box::new(child.stdout.take().expect("stdout is piped")),
+        Box::new(child.stderr.take().expect("stderr is piped")),
+    ];
+    for stream in streams {
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stream).lines() {
+                let Ok(line) = line else {
+                    break;
+                };
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    lines
+}
+
+/// Read lines into `transcript` until one contains `needle`, within `budget`.
+fn wait_for(
+    lines: &Receiver<String>,
+    needle: &str,
+    budget: Duration,
+    transcript: &mut String,
+) -> bool {
+    let deadline = Instant::now() + budget;
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        let Ok(line) = lines.recv_timeout(left) else {
+            return false;
+        };
+        transcript.push_str(&line);
+        transcript.push('\n');
+        if line.contains(needle) {
+            return true;
+        }
+    }
+    false
+}
+
+/// A watch session on Deno reports an edit on the next run.
 ///
-/// The test above is end to end and its failure mode is "the suite did not
-/// pass", which could be the transform, the map, the permission set or the
-/// worker. This one takes the tree that run left behind and asks Deno the two
-/// questions ubugeeei-prod/uf#246 is made of — can it parse Flow now, and can
-/// it resolve `@uniflowed/test` now — one at a time, against the same artefact.
+/// This host used to refuse `--watch` outright: its loader was an ahead-of-time
+/// pass, and every run after the first would have reported on the tree that
+/// pass wrote. With a hook, the worker's fresh `?uf-run=` import is a module
+/// the hook is asked about like any other, so an edit to a dependency reaches
+/// the next run — which this asserts by breaking the dependency under a running
+/// session and waiting for the failure it causes.
 #[test]
-fn the_generated_import_map_answers_both_halves_of_the_problem() {
-    if !deno_ready() {
+fn uf_test_watch_on_deno_reports_an_edit_on_the_next_run() {
+    if !deno_ready() || !deno_with_hooks() {
         return;
     }
     let project = deno_project(&[(
         "probe.test.js",
-        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\n\
-         it(\"passes\", () => {\n  expect(1).toBe(1);\n});\n",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\nimport { double } from \"./double.js\";\n\n\
+         it(\"doubles\", () => {\n  expect(double(21)).toBe(42);\n});\n",
     )]);
+    project.write("double.js", DOUBLE);
+
+    // A plain `Command` rather than `uf()`, which runs to completion: this one
+    // is spawned, read while it runs, and killed.
+    let mut child = Command::new(uf_path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args([
+            "test",
+            "--watch",
+            "--watch-interval",
+            "100",
+            "probe.test.js",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("uf starts");
+    let lines = lines_of(&mut child);
+    let mut transcript = String::new();
+
+    let first = wait_for(
+        &lines,
+        "1 passed",
+        Duration::from_secs(120),
+        &mut transcript,
+    );
+    let second = first && {
+        // Past the resolution of any filesystem's modification time, so the
+        // watcher cannot read the edit as the file it already recorded.
+        std::thread::sleep(Duration::from_millis(1_100));
+        project.write(
+            "double.js",
+            "// @flow\nexport function double(value: number): number {\n  return value * 3;\n}\n",
+        );
+        wait_for(
+            &lines,
+            "1 failed",
+            Duration::from_secs(120),
+            &mut transcript,
+        )
+    };
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(first, "the first run never passed:\n{transcript}");
+    assert!(second, "the edit never reached a run:\n{transcript}");
+    assert!(
+        transcript.contains("expected 63 to be 42"),
+        "the re-run did not load the edited module:\n{transcript}"
+    );
+}
+
+/// Module mocking works on Deno, through the same `registerHooks`.
+///
+/// `@uniflowed/host/module-mocks.js` needs synchronous, in-thread hooks, and
+/// used to raise `UnsupportedError` everywhere but Node. Deno 2.8 has the hook
+/// its Flow loader is built on, and the interception is installed through the
+/// same call — so `uft.mock` replaces a module and `uft.unmock` restores it.
+#[test]
+fn module_mocking_on_deno_replaces_a_module_before_it_is_imported() {
+    if !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = deno_project(&[(
+        "mock.test.js",
+        r#"// @flow
+import { expect, it, uft } from "@uniflowed/test";
+
+it("replaces a module before it is imported", async () => {
+  await uft.mock("./client.js", () => ({ BASE: "https://stub.test", send: () => "stubbed" }));
+  const client = await import("./client.js");
+  expect(client.send("/hello")).toBe("stubbed");
+  expect(client.BASE).toBe("https://stub.test");
+});
+
+it("stops at unmock", async () => {
+  await uft.mock("./client.js", () => ({ BASE: "x", send: () => "stubbed" }));
+  await uft.unmock("./client.js");
+  const client = await import("./client.js");
+  expect(client.send("/hello")).toBe("real https://api.test/hello");
+});
+"#,
+    )]);
+    project.write(
+        "client.js",
+        "// @flow\nexport const BASE: string = \"https://api.test\";\n\n\
+         export function send(path: string): string {\n  return `real ${BASE}${path}`;\n}\n",
+    );
+
     let output = uf()
         .arg("--cwd")
         .arg(project.path())
-        .args(["test", "probe.test.js"])
+        .args(["test", "--json", "mock.test.js"])
         .output()
         .expect("uf runs");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         output.status.success(),
-        "stderr:\n{}",
-        String::from_utf8_lossy(&output.stderr)
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
     );
-
-    let map = project.path().join(".uf/deno/import-map.json");
-    assert!(map.is_file(), "no import map at {}", map.display());
-
-    // A module written in Flow, and a bare specifier into a package that is
-    // itself written in Flow. Both were failures above; both go through the
-    // map now.
-    //
-    // The compiled copy is run directly rather than the source: whether Deno
-    // puts its *own* command-line argument through the import map is Deno's
-    // business, and this test is about the map's contents. The entry that
-    // redirects a source path — the project prefix — is exercised by the run
-    // above, where the worker imports each test file by the path uf gave it.
-    project.write(
-        "through-the-map.js",
-        "// @flow\nimport { expect } from \"@uniflowed/test\";\n\
-         const value: number = 1;\n\
-         console.log(`resolved=${typeof expect} flow=${value}`);\n",
-    );
-    let compiled = uf()
-        .arg("--cwd")
-        .arg(project.path())
-        .args(["test", "probe.test.js"])
-        .output()
-        .expect("uf runs");
-    assert!(
-        compiled.status.success(),
-        "stderr:\n{}",
-        String::from_utf8_lossy(&compiled.stderr)
-    );
-
-    let run = deno(
-        &project,
-        // One `--allow-read`, comma separated, because that is the spelling
-        // `uf_runtime::permissions` produces and the one Deno cannot misread
-        // as two flags.
-        &[
-            format!("--import-map={}", map.display()),
-            format!(
-                "--allow-read={},{}",
-                project.path().display(),
-                support::repo_root().display()
-            ),
-        ],
-        ".uf/deno/through-the-map.js",
-    );
-
-    assert!(
-        run.stdout.contains("resolved=function"),
-        "the map did not resolve `@uniflowed/test`\nstdout:\n{}\nstderr:\n{}",
-        run.stdout,
-        run.stderr
-    );
-    assert!(
-        run.stdout.contains("flow=1"),
-        "the annotation was not compiled away\nstdout:\n{}\nstderr:\n{}",
-        run.stdout,
-        run.stderr
-    );
+    let document: serde_json::Value =
+        serde_json::from_str(&stdout).expect("`uf test --json` is one document");
+    assert_eq!(document["passed"], serde_json::json!(2), "{stdout}");
 }
 
-/// The limitation that keeps this host *experimental*, said out loud.
+/// Coverage is refused on Deno before a worker starts.
 ///
-/// An ahead-of-time pass and a watch loop cannot both be true: the pass runs
-/// once, before the host starts, so every run after the first would report on
-/// the modules the first pass wrote. Refusing is the honest half of that, and
-/// it is asserted rather than trusted because a silent stale watch is the worst
-/// shape this could take — a loop that answers, quickly, about code the
-/// developer has already changed.
+/// The refusal has to come before anything is compiled, or an unsupported mode
+/// could fail on the project's Flow and tell the user about their syntax
+/// instead of the mode they asked for. This test gives Deno a file that would
+/// not compile and asserts nothing was.
 #[test]
-fn uf_test_watch_on_deno_refuses_rather_than_running_a_stale_tree() {
-    if !deno_ready() {
-        return;
-    }
-    let project = deno_project(&[(
-        "probe.test.js",
-        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\n\
-         it(\"passes\", () => {\n  expect(1).toBe(1);\n});\n",
-    )]);
-
-    let output = uf()
-        .arg("--cwd")
-        .arg(project.path())
-        .args(["test", "--watch", "probe.test.js"])
-        .output()
-        .expect("uf runs");
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!output.status.success(), "stderr:\n{stderr}");
-    assert!(stderr.contains("ahead of time"), "stderr:\n{stderr}");
-    assert!(stderr.contains("issues/246"), "stderr:\n{stderr}");
-}
-
-/// Coverage is a Node loader feature, not a Deno AOT feature.
-///
-/// The refusal has to happen before the ahead-of-time pass, or an unsupported
-/// mode can fail while compiling the project and tell the user about their
-/// Flow syntax instead of the mode they asked for. This test gives Deno a file
-/// the pass would reject and asserts the pass never ran.
-#[test]
-fn uf_test_coverage_on_deno_refuses_before_the_aot_pass() {
-    if !deno_ready() {
+fn uf_test_coverage_on_deno_refuses_before_a_worker_starts() {
+    if !deno_ready() || !deno_with_hooks() {
         return;
     }
     let project = deno_project(&[(
@@ -567,8 +803,61 @@ fn uf_test_coverage_on_deno_refuses_before_the_aot_pass() {
         "stderr:\n{stderr}"
     );
     assert!(
-        !project.path().join(".uf/deno").exists(),
-        "`uf test --coverage` on Deno must refuse before building the AOT tree"
+        !project.path().join(".uf/cache/transform").exists(),
+        "`uf test --coverage` on Deno must refuse before anything is compiled"
+    );
+}
+
+/// A Deno older than the hook is refused by version, before a worker starts.
+///
+/// Measured with a stand-in rather than an old Deno: the refusal reads what
+/// `deno --version` prints, and a script that prints a 2.7 is that input
+/// exactly. What is asserted is the sentence a person meets — which release was
+/// found, which one is needed, why, and what to do — and that no worker ran
+/// to meet a syntax error first.
+#[cfg(unix)]
+#[test]
+fn uf_test_refuses_a_deno_older_than_the_hook() {
+    use std::os::unix::fs::PermissionsExt;
+
+    if !host_ready() {
+        return;
+    }
+    let project = deno_project(&[(
+        "probe.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\n\
+         it(\"passes\", () => {\n  expect(1).toBe(1);\n});\n",
+    )]);
+    let bin = project.path().join("old-deno");
+    std::fs::create_dir_all(&bin).unwrap();
+    let fake = bin.join("deno");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\necho 'deno 2.7.4 (stable, release, x86_64-unknown-linux-gnu)'\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path = std::env::join_paths(std::iter::once(bin.clone()).chain(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    )))
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["test", "probe.test.js"])
+        .env("PATH", path)
+        .output()
+        .expect("uf runs");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "stderr:\n{stderr}");
+    for expected in ["2.7", "2.8", "registerHooks", "deno upgrade"] {
+        assert!(stderr.contains(expected), "{expected}\nstderr:\n{stderr}");
+    }
+    assert!(
+        !project.path().join(".uf/cache/transform").exists(),
+        "a refused Deno must not have compiled anything"
     );
 }
 
@@ -582,7 +871,7 @@ fn uf_test_coverage_on_deno_refuses_before_the_aot_pass() {
 /// program what it can reach: the project, yes; `/etc`, no.
 #[test]
 fn a_deno_run_that_declared_no_permissions_is_still_not_all_access() {
-    if !deno_ready() {
+    if !deno_ready() || !deno_with_hooks() {
         return;
     }
     let project = deno_project(&[(
@@ -595,7 +884,7 @@ fn a_deno_run_that_declared_no_permissions_is_still_not_all_access() {
          \x20 } catch (error) {\n\
          \x20   outside = error.name;\n\
          \x20 }\n\
-         \x20 expect(outside).toBe(\"PermissionDenied\");\n\
+         \x20 expect(outside).toBe(\"NotCapable\");\n\
          });\n",
     )]);
 
@@ -615,6 +904,157 @@ fn a_deno_run_that_declared_no_permissions_is_still_not_all_access() {
     );
 }
 
+/// Copy a fixture into a project, leaving out what a build or an install
+/// leaves behind in it.
+fn copy_fixture(from: &Path, to: &Path) {
+    for entry in std::fs::read_dir(from).expect("the fixture is readable") {
+        let entry = entry.expect("the fixture is readable");
+        let name = entry.file_name();
+        if matches!(name.to_str(), Some("dist" | ".uf" | "node_modules")) {
+            continue;
+        }
+        let target = to.join(&name);
+        if entry.file_type().expect("the fixture is readable").is_dir() {
+            std::fs::create_dir_all(&target).unwrap();
+            copy_fixture(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).unwrap();
+        }
+    }
+}
+
+/// A port nothing is listening on, for a server this test starts.
+fn free_port() -> u16 {
+    TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map(|address| address.port())
+        .expect("a loopback port can be bound")
+}
+
+/// One `GET` as a document request: the status and the whole response.
+fn get(port: u16, path: &str) -> Option<(u16, String)> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(20)))
+        .ok()?;
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/html\r\nConnection: close\r\n\r\n"
+    )
+    .ok()?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response).ok()?;
+    let status = response.split_whitespace().nth(1)?.parse().ok()?;
+    Some((status, response))
+}
+
+/// The served-app fixture, pinned to Deno.
+const SERVED_APP_ON_DENO: &str = r#"// @flow
+import { defineConfig } from "@uniflowed/config";
+
+export default defineConfig({
+  app: {
+    router: { entry: "app.js", root: "app" },
+    runtime: { capabilityJsHost: { default: "deno", autoDetect: false } },
+  },
+  build: {
+    entries: ["app.js"],
+    outDir: "dist",
+  },
+});
+"#;
+
+/// `uf build` and `uf start` on Deno: the driver's half of the host.
+///
+/// `@uniflowed/vite`'s driver installs the Deno hooks itself, after its static
+/// imports — which is what keeps Rolldown's native binding loadable, because
+/// Deno cannot `require()` an addon while a `load` hook is registered. This is
+/// the served-app fixture the adapters are tested against, built on Deno and
+/// served on Deno: a page the build prerendered, and a dynamic route and a
+/// route handler the application answers.
+#[test]
+fn uf_build_and_uf_start_run_on_deno() {
+    if !deno_ready() || !deno_with_hooks() {
+        return;
+    }
+    let project = Project::new(&[]);
+    copy_fixture(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/served-app"),
+        project.path(),
+    );
+    project.write("uf.config.js", SERVED_APP_ON_DENO);
+
+    let build = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .expect("uf runs");
+    let stdout = String::from_utf8_lossy(&build.stdout);
+    let stderr = String::from_utf8_lossy(&build.stderr);
+    assert!(
+        build.status.success(),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+    let guide =
+        std::fs::read_to_string(project.path().join("dist/guide/index.html")).unwrap_or_default();
+    assert!(
+        guide.contains("served-app guide"),
+        "the build prerendered no /guide\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let port = free_port();
+    let mut server = Command::new(uf_path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["start", "--port", &port.to_string()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("uf starts");
+    let lines = lines_of(&mut server);
+
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut home = None;
+    while Instant::now() < deadline {
+        if let Some((200, body)) = get(port, "/") {
+            home = Some(body);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let post = get(port, "/posts/deno");
+    let health = get(port, "/api/health");
+    let _ = server.kill();
+    let _ = server.wait();
+    let mut transcript = String::new();
+    while let Ok(line) = lines.recv_timeout(Duration::from_millis(500)) {
+        transcript.push_str(&line);
+        transcript.push('\n');
+    }
+
+    let Some(home) = home else {
+        panic!("`uf start` on Deno never answered /:\n{transcript}");
+    };
+    assert!(home.contains("served-app home"), "{home}");
+    assert!(
+        post.as_ref()
+            .is_some_and(|(status, body)| *status == 200 && body.contains("post: deno")),
+        "{post:?}\n{transcript}"
+    );
+    assert!(
+        health
+            .as_ref()
+            .is_some_and(|(status, body)| *status == 200 && body.contains("\"status\":\"ok\"")),
+        "{health:?}\n{transcript}"
+    );
+    assert!(
+        transcript.contains("deno"),
+        "the server did not say which host it is on:\n{transcript}"
+    );
+}
+
 /// A project pinned to Deno, with everything else the fixtures share.
 fn deno_project(files: &[(&str, &str)]) -> Project {
     let project = Project::new(files);
@@ -628,7 +1068,7 @@ fn deno_project(files: &[(&str, &str)]) -> Project {
     project
 }
 
-/// The one thing Deno does today that no other host does.
+/// The one thing Deno does that no other host does.
 ///
 /// Run with the arguments `uf_runtime::permissions` produces — not with
 /// arguments this test wrote, which would test nothing but itself — and the
@@ -672,16 +1112,19 @@ fn deno_enforces_the_whole_permission_set_uf_translates() {
     let flags = host_arguments(RuntimeHost::Deno, &Permissions::default(), &toolchain)
         .expect("Deno enforces every permission uf can declare");
 
-    let run = deno(&project, &flags, "probe.js");
+    let run = deno(&project, &flags, "probe.js", &[]);
 
+    // `NotCapable`, which is what Deno 2 calls a denial by its own permission
+    // model; Deno 1 called it `PermissionDenied`, a name Deno 2 keeps for the
+    // operating system refusing. uf starts no Deno older than 2.8.
     assert!(
-        run.stdout.contains("read=PermissionDenied"),
+        run.stdout.contains("read=NotCapable"),
         "a read outside the project was allowed\nstdout:\n{}\nstderr:\n{}",
         run.stdout,
         run.stderr
     );
     assert!(
-        run.stdout.contains("env=PermissionDenied"),
+        run.stdout.contains("env=NotCapable"),
         "the environment was readable, which no other host can prevent and this one \
          can\nstdout:\n{}\nstderr:\n{}",
         run.stdout,
@@ -697,28 +1140,28 @@ fn deno_enforces_the_whole_permission_set_uf_translates() {
     );
 }
 
-/// The table says Deno is experimental; the file that says so is this one.
+/// The table says Deno is implemented; the file that says so is this one.
 ///
 /// A row naming a test that does not exist would be the same unchecked claim in
-/// a new place, so the name is asserted rather than trusted. *Experimental* and
-/// not *implemented* is the assertion worth reading: a uf project runs here, and
-/// the way it is made to run has a gap — a module the ahead-of-time pass could
-/// not enumerate is still Flow to Deno — which a person can meet.
+/// a new place, so the name is asserted rather than trusted — along with the
+/// loader it names, which is the preload these tests start, and the gap it
+/// still owns, which a grade of *implemented* does not get to drop.
 #[test]
 fn the_host_table_points_at_this_file() {
     let support = HostSupport::for_host(RuntimeHost::Deno);
-    assert_eq!(support.level, SupportLevel::Experimental);
+    assert_eq!(support.level, SupportLevel::Implemented);
     assert!(support.loads_flow());
+    assert_eq!(support.flow_loader, Some("@uniflowed/host/deno-preload"));
     assert!(
         support
             .missing
-            .is_some_and(|missing| missing.contains("hook")),
-        "an experimental row has to name the limitation: {:?}",
+            .is_some_and(|missing| missing.contains("coverage")),
+        "{:?}",
         support.missing
     );
     assert_eq!(
         support.verified_by,
         Some("crates/uf_cli/tests/deno_host.rs")
     );
-    assert_eq!(support.enforces, uf_runtime::Permission::ALL);
+    assert_eq!(support.enforces, Permission::ALL);
 }
