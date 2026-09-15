@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The field, the button that opens the calendar, and the panel the calendar
-// shows in; the calendar itself is `calendar.js`'s. `@uniflowed/ui/date-picker`
+// shows in; the calendar itself is `calendar.js`'s. `@uniflowed/ui`'s `DatePicker`
 // owns the rest: a real text field a reader can type a date into, read by
 // `parse`, written by `format` and marked `aria-invalid` while it does not hold
 // a date, a popover that opens from the button, and the field and the calendar
@@ -34,7 +34,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/date-picker";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

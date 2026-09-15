@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The circle, its three sizes, the picture's fit and the initials' type.
-// `@uniflowed/ui/avatar` owns the three states: loading, loaded and failed,
+// `@uniflowed/ui`'s `Avatar` owns the three states: loading, loaded and failed,
 // with the initials held back for a moment so a cached picture does not flash
 // somebody's initials first, and an `alt` that is empty unless it is given.
 //
@@ -29,7 +29,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/avatar";
+import * as Primitive from "@uniflowed/ui";
 
 /** How big the circle is. */
 export type AvatarSize = "sm" | "md" | "lg";

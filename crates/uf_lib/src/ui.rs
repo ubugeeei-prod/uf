@@ -74,14 +74,14 @@
 
 use crate::descriptor::{FormContract, UiComponent, UiRuntime};
 
-/// The subpaths of `@uniflowed/ui` that export hooks rather than a component.
+/// The modules of `@uniflowed/ui` that export hooks rather than a component.
 ///
-/// Every component has a subpath of its own, and
-/// `the_ui_table_names_exactly_what_the_package_ships` holds `package.json` to
+/// Every component has a module of its own, and
+/// `the_ui_table_names_exactly_what_the_package_ships` holds `packages/ui` to
 /// the table below in both directions. A module of hooks is the one other thing
 /// the package publishes: its exports are not parts, and `uf inspect` has no
 /// component to report for it. Naming it here — rather than loosening that test
-/// to accept any subpath — keeps the exemption a list somebody adds to on
+/// to accept any module — keeps the exemption a list somebody adds to on
 /// purpose, and `the_ui_hook_modules_export_hooks_and_no_component` holds each
 /// name to a module that exports hooks and nothing capitalised, so a component
 /// cannot ship through the gap.

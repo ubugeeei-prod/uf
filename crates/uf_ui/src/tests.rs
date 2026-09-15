@@ -197,7 +197,7 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
 
 /// The component modules `packages/ui` ships, by file name.
 ///
-/// Every module but the hook modules. `@uniflowed/ui/interactions` exports
+/// Every module but the hook modules. `interactions.js` exports
 /// `usePress` and the rest of the interactions layer rather than a component, so
 /// it has no styled half, and counting it would fail
 /// `every_module_the_headless_package_ships_has_a_component` over a module that
@@ -345,7 +345,7 @@ import type { StyleArgument } from "@uniflowed/stylex";
 import {
   DialogRoot,
   DialogTrigger,
-} from "@uniflowed/ui/dialog";
+} from "@uniflowed/ui";
 import "./side-effect.js";
 export { Button } from "./button.js";
 
@@ -356,7 +356,7 @@ const text = <p>taken from "the manual"</p>;
         [
             "@uniflowed/react",
             "@uniflowed/stylex",
-            "@uniflowed/ui/dialog",
+            "@uniflowed/ui",
             "./side-effect.js",
             "./button.js",
         ]
@@ -422,12 +422,12 @@ fn a_source_that_cannot_be_read_says_why() {
 fn a_package_is_named_by_its_package_name() {
     let registry = Registry::from_sources([(
         "thing",
-        "// @flow\n// Thing: a thing.\nimport a from \"@uniflowed/ui/dialog\";\nimport b from \"left-pad\";\nimport c from \"@scope/pkg/deep/file.js\";\nimport d from \"@uniflowed/ui\";\n",
+        "// @flow\n// Thing: a thing.\nimport a from \"@uniflowed/stylex/tokens.stylex.js\";\nimport b from \"left-pad\";\nimport c from \"@scope/pkg/deep/file.js\";\nimport d from \"@uniflowed/stylex\";\n",
     )])
     .expect("reads");
     assert_eq!(
         registry.components()[0].dependencies,
-        ["@scope/pkg", "@uniflowed/ui", "left-pad"]
+        ["@scope/pkg", "@uniflowed/stylex", "left-pad"]
     );
 }
 
@@ -532,7 +532,7 @@ fn tiny_registry(knob: &'static str) -> Registry {
         ),
         (
             "plain",
-            "// @flow\n// Plain: needs nothing.\nimport * as UI from \"@uniflowed/ui/tabs\";\n",
+            "// @flow\n// Plain: needs nothing.\nimport * as UI from \"@uniflowed/ui\";\n",
         ),
     ])
     .expect("the tiny registry reads")

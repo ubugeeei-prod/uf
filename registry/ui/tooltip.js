@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The look: a small dark label beside its trigger. The behaviour is imported
-// from `@uniflowed/ui/tooltip`, and it is what WCAG 1.4.13 asks of content that
+// from `@uniflowed/ui`'s `Tooltip`, and it is what WCAG 1.4.13 asks of content that
 // appears on hover: it waits for a pointer and not for focus, it stays while
 // the pointer travels onto it, `Escape` dismisses it from wherever focus is,
 // and it describes its trigger with `aria-describedby` only while it is there.
@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/tooltip";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

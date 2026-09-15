@@ -10,7 +10,7 @@
 // # What this file owns, and what it does not
 //
 // The look: the row, the underline under the selected tab, the dimmed disabled
-// tab, the focus rings. The behaviour is imported from `@uniflowed/ui/tabs`:
+// tab, the focus rings. The behaviour is imported from `@uniflowed/ui`'s `Tabs`:
 // one tab stop for the whole row, arrow keys that move and wrap, `Home` and
 // `End`, automatic or manual activation, and a panel that points back at the
 // tab that shows it. A fix to any of that reaches this project by upgrading
@@ -47,8 +47,8 @@ import { createContext, useContext } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { ActivationMode } from "@uniflowed/ui/tabs";
-import * as Primitive from "@uniflowed/ui/tabs";
+import type { ActivationMode } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /** Which way the row runs, and so which arrow keys move along it. */
 export type TabsOrientation = "horizontal" | "vertical";

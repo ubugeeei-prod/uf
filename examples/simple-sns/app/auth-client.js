@@ -4,7 +4,7 @@
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { useActionState, useState } from "@uniflowed/react";
-import { FieldControl } from "@uniflowed/ui/field";
+import { FieldControl } from "@uniflowed/ui";
 import { callAction } from "./action-result.client.js";
 import { FormField, FormStatus, SubmitButton } from "./form-ui.client.js";
 import { IDLE, failed, succeeded, fieldError, type FormState } from "./social-model.js";

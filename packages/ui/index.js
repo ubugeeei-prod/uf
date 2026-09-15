@@ -50,14 +50,14 @@
 // means something while the library is imported and means nothing once the
 // source has been pasted into an application, because then it is the
 // application's own component and Flow has nothing left to hold it to.
-// `sideEffects: false` and one subpath per primitive already give a bundler
+// `sideEffects: false` and one module per primitive already give a bundler
 // everything a copy would. And the accessibility work stays in one place with
 // one suite over it, rather than in every consumer's repository at the version
 // they took it at.
 //
 // **What `uf ui add` copies instead.** The styled layer. `uf ui add dialog`
 // writes `app/components/ui/dialog.js`, which imports its parts from
-// `@uniflowed/ui/dialog` and owns the scrim, the spacing and the tone of the
+// `@uniflowed/ui` and owns the scrim, the spacing and the tone of the
 // trigger — what a person means when they say "our dialog". None of the four
 // arguments above is reopened by it, because none of them is about the look:
 // the focus trap still arrives by upgrade, and the copied `TabsList` still takes
@@ -304,10 +304,10 @@
 //   and a screen reader's click is a press; its header says what each rule
 //   prevents and where it differs from React Aria's.
 //
-// Every name below is exported from one of those, so a consumer may import
-// `@uniflowed/ui` or `@uniflowed/ui/dialog` and get the same thing. The split
-// is by primitive because that is the unit a reader looks for, the unit a
-// bundler drops, and the unit the WAI-ARIA practices are written in.
+// Every name below is exported from one of those, and this file is the only way
+// to import any of them: `package.json` exports it alone. The split is by
+// primitive because that is the unit a reader looks for, the unit a bundler
+// drops, and the unit the WAI-ARIA practices are written in.
 //
 // `internal/` holds ten modules and nothing else, each a rule the primitives
 // must apply identically and a consumer must not be able to apply differently:
@@ -525,6 +525,7 @@ import { ToggleGroupItem, ToggleGroupRoot } from "./toggle-group.js";
 import { TooltipBody, TooltipProvider, TooltipRoot, TooltipTrigger } from "./tooltip.js";
 
 export type { AccordionType } from "./accordion.js";
+export type { AvatarStatus } from "./avatar.js";
 // A date, however a caller had one to hand: a `PlainDate` from
 // `@uniflowed/temporal`, or the ISO 8601 string a form field or a URL carries.
 export type { DateValue } from "./calendar.js";
@@ -535,7 +536,11 @@ export type { DialogRole } from "./dialog.js";
 // Which edge of the viewport a sheet or a drawer is attached to. `Sidebar` has
 // its own two-member union, because a sidebar is never on the top or bottom.
 export type { Edge } from "./sheet.js";
+export type { FieldSource } from "./field.js";
 export type { InputOtpKind } from "./input-otp.js";
+export type { MenuSelect } from "./menu.js";
+// Which way a carousel, a scroll area or a separator runs.
+export type { Orientation } from "./separator.js";
 export type { SidebarSide } from "./sidebar.js";
 // Where an anchored overlay opens, for a caller who holds one in a variable or
 // a prop of their own. Unions rather than strings, so `side="botom"` is a type
@@ -547,6 +552,203 @@ export type { Align, LogicalSide, Side } from "./popover.js";
 export type { Sort } from "./table.js";
 export type { Notification, ToastChanges, ToastOptions, Urgency } from "./toast.js";
 export type { ToggleGroupType } from "./toggle-group.js";
+
+/**
+ * Every part, under the name its module gives it.
+ *
+ * This file is the only entry point the package has — `package.json` exports
+ * `.` and nothing else — so a name a module exports and this list leaves out is
+ * a name nobody can import. The namespaces below are the same parts spelled for
+ * composing a page (`Dialog.Root`); these are for the wrapper, the preset and
+ * the test that want one part (`import { DialogRoot } from "@uniflowed/ui"`).
+ * `sideEffects: false` lets a bundler keep the module a name comes from and drop
+ * the rest, and `uf_rsc` names that module, not the package, as the client
+ * boundary of a Server Component that imports the name.
+ */
+export {
+  AccordionContent,
+  AccordionHeader,
+  AccordionItem,
+  AccordionRoot,
+  AccordionTrigger,
+  AlertDescription,
+  AlertDialogAction,
+  AlertDialogBody,
+  AlertDialogCancel,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogOverlay,
+  AlertDialogRoot,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  AlertRoot,
+  AlertTitle,
+  AvatarFallback,
+  AvatarImage,
+  AvatarRoot,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbRoot,
+  BreadcrumbSeparator,
+  CalendarDay,
+  CalendarMonth,
+  CalendarNext,
+  CalendarPrevious,
+  CalendarRoot,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPause,
+  CarouselPrevious,
+  CarouselRoot,
+  CollapsibleContent,
+  CollapsibleRoot,
+  CollapsibleTrigger,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxGroupLabel,
+  ComboboxInput,
+  ComboboxLabel,
+  ComboboxList,
+  ComboboxOption,
+  ComboboxRoot,
+  ComboboxStatus,
+  ContextMenuRoot,
+  ContextMenuTrigger,
+  DatePickerCalendar,
+  DatePickerInput,
+  DatePickerRoot,
+  DatePickerTrigger,
+  DialogBody,
+  DialogClose,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogOverlay,
+  DialogRoot,
+  DialogTitle,
+  DialogTrigger,
+  DrawerBody,
+  DrawerClose,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHandle,
+  DrawerHeader,
+  DrawerOverlay,
+  DrawerRoot,
+  DrawerTitle,
+  DrawerTrigger,
+  FieldControl,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldRoot,
+  FieldStatus,
+  HoverCardBody,
+  HoverCardRoot,
+  HoverCardTrigger,
+  InputOtpGroup,
+  InputOtpRoot,
+  InputOtpSeparator,
+  InputOtpSlot,
+  MenuBody,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuItem,
+  MenuLabel,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuRoot,
+  MenuSeparator,
+  MenuSub,
+  MenuSubTrigger,
+  MenuTrigger,
+  MenubarMenu,
+  MenubarRoot,
+  MenubarTrigger,
+  NavigationMenuBody,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuRoot,
+  NavigationMenuTrigger,
+  PaginationContent,
+  PaginationItem,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationRoot,
+  PopoverBody,
+  PopoverRoot,
+  PopoverTrigger,
+  RadioGroupIndicator,
+  RadioGroupItem,
+  RadioGroupRoot,
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+  ScrollAreaRoot,
+  ScrollAreaScrollbar,
+  ScrollAreaViewport,
+  SelectGroup,
+  SelectGroupLabel,
+  SelectLabel,
+  SelectList,
+  SelectOption,
+  SelectRoot,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+  SheetBody,
+  SheetClose,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetRoot,
+  SheetTitle,
+  SheetTrigger,
+  SidebarBody,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarItem,
+  SidebarRoot,
+  SidebarTrigger,
+  SkeletonBox,
+  SkeletonRoot,
+  SliderRange,
+  SliderRoot,
+  SliderThumb,
+  SliderTrack,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRoot,
+  TableRow,
+  TableRowHeader,
+  TableRowSelect,
+  TableSelectAll,
+  TabsList,
+  TabsPanel,
+  TabsRoot,
+  TabsTab,
+  ToastAction,
+  ToastClose,
+  ToastDescription,
+  ToastRegion,
+  ToastRoot,
+  ToastTitle,
+  ToggleGroupItem,
+  ToggleGroupRoot,
+  TooltipBody,
+  TooltipProvider,
+  TooltipRoot,
+  TooltipTrigger,
+};
 
 /**
  * The five that are one component rather than a namespace of parts.
