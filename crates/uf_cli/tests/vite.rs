@@ -759,6 +759,105 @@ fn a_server_only_import_a_client_component_reaches_fails_the_build_naming_its_ch
     );
 }
 
+/// `uf build --analyze` names the chain behind a dependency only one route
+/// pulls in, and attributes it to no other route.
+///
+/// The dependency is a package in the fixture's own `node_modules`, so no
+/// layout, no other route and nothing of uf's can have put it in a bundle: if
+/// it is listed anywhere but under `/chart`, the attribution is wrong. It
+/// reaches the browser through a client component a server page renders, which
+/// is the chain that has to cross from one build's graph into another's.
+/// ubugeeei-prod/uf#965.
+#[test]
+fn build_analyze_names_the_chain_behind_a_dependency_only_one_route_pulls_in() {
+    if !fixture_ready() {
+        return;
+    }
+    let mut files = minimal_app();
+    files.push((
+        "app/chart/$page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Plot } from \"./Plot.js\";\n\nexport component Page() {\n  return (\n    <main>\n      <Plot />\n    </main>\n  );\n}\n",
+    ));
+    files.push((
+        "app/chart/Plot.js",
+        "// @flow\n\"use client\";\n\nimport * as React from \"@uniflowed/react\";\nimport { caption } from \"tiny-plot\";\n\nexport component Plot() {\n  return <figure>{caption()}</figure>;\n}\n",
+    ));
+    files.push((
+        "node_modules/tiny-plot/package.json",
+        "{ \"name\": \"tiny-plot\", \"version\": \"1.0.0\", \"type\": \"module\", \"main\": \"index.js\" }\n",
+    ));
+    files.push((
+        "node_modules/tiny-plot/index.js",
+        "export function caption() {\n  return \"drawn by tiny-plot\";\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--analyze"])
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "the build failed:\n{said}");
+    let meta = project.path().join(".uf/build/meta");
+    let text = fs::read_to_string(meta.join("uf-bundle-analysis.json"))
+        .unwrap_or_else(|error| panic!("no analysis ({error}):\n{said}"));
+    let analysis: serde_json::Value = serde_json::from_str(&text).expect("the analysis is JSON");
+    let dependency = "node_modules/tiny-plot/index.js";
+    let route = |path: &str| {
+        analysis["routes"]
+            .as_array()
+            .expect("routes")
+            .iter()
+            .find(|route| route["path"] == path)
+            .unwrap_or_else(|| panic!("no {path} in {text}"))
+    };
+    let listed = |list: &serde_json::Value| {
+        list["modules"]
+            .as_array()
+            .expect("modules")
+            .iter()
+            .find(|module| module["id"] == dependency)
+            .cloned()
+    };
+
+    let chart = route("/chart");
+    let found = listed(&chart["client"])
+        .unwrap_or_else(|| panic!("{dependency} is not in /chart's client modules:\n{text}"));
+    assert_eq!(
+        found["chain"],
+        serde_json::json!(["app/chart/$page.js", "app/chart/Plot.js", dependency]),
+        "{found}"
+    );
+    assert_eq!(found["routes"], 1, "{found}");
+    assert!(
+        found["size"]["gzip"].as_u64().is_some_and(|gzip| gzip > 0),
+        "{found}"
+    );
+    let home = route("/");
+    for side in ["client", "server"] {
+        assert!(
+            listed(&home[side]).is_none(),
+            "{dependency} is attributed to / on the {side}:\n{text}"
+        );
+        assert!(
+            listed(&analysis["shared"][side]).is_none(),
+            "{dependency} is listed as shared on the {side}:\n{text}"
+        );
+    }
+    let view = fs::read_to_string(meta.join("uf-bundle-analysis.html")).expect("the HTML view");
+    assert!(
+        view.contains(dependency),
+        "the view does not carry the analysis"
+    );
+}
+
 /// A page that throws fails its own route, and nothing else.
 ///
 /// Three assertions because they are one behaviour: the build fails, it says

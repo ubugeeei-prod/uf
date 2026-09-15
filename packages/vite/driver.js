@@ -59,6 +59,7 @@ import { send, toRequest } from "./internal/http.js";
 import { createOpenApiDocument } from "./internal/openapi.js";
 import { withProjectConfig } from "./merge.js";
 import { FLIGHT_VIRTUAL, RSC_ENVIRONMENT } from "./internal/flight.js";
+import { MODULE_GRAPH_FILE, createModuleGraphCollector } from "./internal/module-graph.js";
 import { VIRTUAL, resolveRouteTarget, scanRoutes } from "./internal/routes.js";
 import {
   BUILD_ID_FILE,
@@ -626,6 +627,18 @@ async function build() {
   //    First, because it is what finds the client modules the next pass has
   //    to build; `./internal/flight.js` has the order and the reason for it.
   const flight = flightStateOf(inline);
+  // `uf build --analyze`: the graph every bundle below is built from, for uf
+  // to attribute to routes; see `./internal/module-graph.js`. A client module
+  // is an entry the browser loads because a server component names it, not on
+  // every page, so it is not one of the client bundle's shared entries.
+  const graph = flag("--analyze")
+    ? createModuleGraphCollector(root, {
+        isReference: (file) => flight?.clientModules.has(file) ?? false,
+      })
+    : null;
+  if (graph != null) {
+    inline.plugins = [...(inline.plugins ?? []), graph.plugin];
+  }
   const rscDir = path.join(root, ".uf", "build", "rsc");
   if (flight != null) {
     emit("phase", { name: "rsc" });
@@ -689,6 +702,9 @@ async function build() {
   // `packages/server/internal/cache-key.js`, which argues the whole of it, and
   // `internal/serve.js`'s `buildIdentity`, which is what reads this.
   writeFileSync(path.join(serverDir, BUILD_ID_FILE), `${mintBuildId()}\n`);
+
+  // Every bundle is built by here, and the prerender below builds none.
+  graph?.write(path.join(root, ".uf", "build", "meta", MODULE_GRAPH_FILE));
 
   // 3. Which routes this build renders when, and every route it renders now.
   //

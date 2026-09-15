@@ -259,6 +259,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         ),
         Commands::Build {
             size_report,
+            analyze,
             mode,
             compile,
             target,
@@ -266,7 +267,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         } => commands::build::build(
             &cwd,
             ui,
-            size_report,
+            commands::build::BuildReports {
+                size: size_report,
+                analyze,
+            },
             mode.as_deref(),
             compile,
             target.as_deref(),

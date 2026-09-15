@@ -132,6 +132,14 @@ pub(crate) enum Commands {
         /// Print the emitted bundle's size, by chunk.
         #[arg(long)]
         size_report: bool,
+        /// Write a per-route analysis of the bundles: each module a route ships
+        /// to the browser and runs on the server, its raw, gzip and brotli
+        /// size, and the chain of imports that put it there.
+        ///
+        /// Written to `.uf/build/meta/uf-bundle-analysis.json`, with
+        /// `uf-bundle-analysis.html` beside it, a page that opens from disk.
+        #[arg(long)]
+        analyze: bool,
         /// Run in this mode, which chooses `.env.<mode>` and is what
         /// `import.meta.env.MODE` reads.
         #[arg(long, value_name = "MODE")]
@@ -1208,6 +1216,7 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
+                analyze: false,
                 mode: None,
                 compile: false,
                 target: None,
@@ -1246,6 +1255,7 @@ mod tests {
         assert!(
             !Commands::Build {
                 size_report: false,
+                analyze: false,
                 mode: None,
                 compile: false,
                 target: None,
