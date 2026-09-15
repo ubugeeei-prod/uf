@@ -76,7 +76,8 @@ that function is handed.
 uf has both halves of a design system, and they are different kinds of thing.
 `@uniflowed/ui` is a package: the parts on this page, imported, upgraded, never
 copied. `uf ui add` writes the other half into your repository — one styled
-component per file in `app/components/ui/`, built on these parts:
+component per file in `app/components/ui/`, or the directory
+[`ui.directory`](/reference/config#ui) names, built on these parts:
 
 ```sh
 uf ui add button dialog tabs select

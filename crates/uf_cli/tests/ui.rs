@@ -108,6 +108,48 @@ fn adding_again_writes_nothing() {
     );
 }
 
+/// Replace the project's `uf.config.js` with one naming only `ui.directory`.
+fn name_directory(dir: &Path, directory: &str) {
+    fs::write(
+        dir.join("uf.config.js"),
+        format!(
+            "// @flow\nimport {{ defineConfig }} from \"@uniflowed/config\";\n\n\
+             export default defineConfig({{ ui: {{ directory: \"{directory}\" }} }});\n"
+        ),
+    )
+    .expect("uf.config.js is written");
+}
+
+#[test]
+fn components_go_where_ui_directory_says_and_are_found_there_again() {
+    let dir = app();
+    name_directory(dir.path(), "src/ui");
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "dialog"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(dir.path().join("src/ui/dialog.js").is_file(), "{stdout}");
+    assert!(dir.path().join("src/ui/button.js").is_file(), "{stdout}");
+    assert!(!component(dir.path(), "dialog").exists(), "{stdout}");
+    assert!(stdout.contains("src/ui/dialog.js"), "{stdout}");
+
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "dialog"]);
+    assert_eq!(code, 0, "{stdout}{stderr}");
+    assert!(stdout.contains("nothing to write"), "{stdout}");
+}
+
+#[test]
+fn a_ui_directory_that_leaves_the_project_is_refused_before_anything_is_written() {
+    let dir = app();
+    name_directory(dir.path(), "../shared-ui");
+    let (code, stdout, stderr) = run(dir.path(), &["ui", "add", "button"]);
+    assert_ne!(code, 0, "{stdout}{stderr}");
+    assert!(
+        format!("{stdout}{stderr}").contains("`ui.directory`"),
+        "{stdout}{stderr}"
+    );
+    assert!(!dir.path().join("../shared-ui").exists());
+    assert!(!component(dir.path(), "button").exists());
+}
+
 /// The refusal the issue asks for: the file is named, the way to overwrite is
 /// said, and nothing — not even the component that had no conflict — is written.
 #[test]
