@@ -8,13 +8,16 @@ use uf_config::UniflowedConfig;
 mod template;
 pub mod workspace;
 
-use template::{app_react_files, lib_files};
+use template::{app_react_files, lib_files, monorepo_files};
 pub use workspace::{Workspace, discover_workspaces, resolve_workspace};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreateKind {
     AppReact,
     Lib,
+    /// An application and a library in one repository, as workspace packages
+    /// under one configuration.
+    Monorepo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,6 +184,7 @@ pub fn create_project(
     let files = match options.kind {
         CreateKind::AppReact => app_react_files(&options.name),
         CreateKind::Lib => lib_files(&options.name),
+        CreateKind::Monorepo => monorepo_files(&options.name),
     };
 
     let mut written = Vec::with_capacity(files.len());
