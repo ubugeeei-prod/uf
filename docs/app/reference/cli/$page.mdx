@@ -1128,7 +1128,10 @@ Outside a git working tree there is no staged set, so every file is checked and
 the run says why. With git and an empty index there is nothing to check, and the
 checks are skipped.
 
-## Editors
+## Editors and agents
+
+[Editors](/guide/editors) is the guide to `uf lsp`, and [Agents](/guide/agents)
+to `uf mcp`.
 
 ### uf lsp
 
@@ -1169,6 +1172,23 @@ older than a day is offered as it is and refreshed behind the request.
 Not served: go-to-definition, rename, references, document symbols, the type at
 a position, organize imports, and completion in any other file.
 `tests/library/lsp.test.js` drives the binary and asserts both lists.
+
+### uf mcp
+
+The Model Context Protocol server a coding agent starts. It speaks JSON-RPC over
+stdin and stdout, one message per line; it is not a daemon and has no port. The
+project is decided once, when it starts: the working directory, or the one
+`--cwd` names, walked up to the nearest `uf.config.js`, `package.json` or `.git`.
+
+| Tool | Runs | What it does to the checkout |
+| --- | --- | --- |
+| `uf_check`, `uf_lint`, `uf_info`, `uf_routes`, `uf_explain` | `uf check --json`, `uf lint --json`, `uf info`, `uf routes list`, `uf explain <command> --json` | changes none of your files |
+| `uf_test` | `uf test --json` | runs the project's own code |
+| `uf_fmt_write`, `uf_lint_fix` | `uf fmt`, `uf lint --fix --json` | writes to files in the checkout; the fixes are the safe tier only |
+
+There is no tool for `uf build`, `uf dev` or `uf install`, and the server offers
+no resources and no prompts. [Agents](/guide/agents) has registering it with a
+client and what each call returns.
 
 ## Messages
 
