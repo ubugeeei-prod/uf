@@ -1965,6 +1965,176 @@ fn dev_resolves_uniflowed_react_to_the_react_peer() {
     });
 }
 
+/// A project that imports `@uniflowed/ui` through its barrel and nothing else.
+///
+/// `/` renders one component, `Switch`. `/dialog` renders `Dialog.Root` on the
+/// server around a client component that renders `Dialog.Trigger`, each page
+/// reaching the `Dialog` namespace through an import of its own.
+fn ui_barrel_app() -> Vec<(&'static str, &'static str)> {
+    let mut files = minimal_app();
+    files[2] = (
+        "app/$page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Switch } from \"@uniflowed/ui\";\n\nexport component Page() {\n  return (\n    <main>\n      <Switch aria-label=\"barrel-switch\" />\n    </main>\n  );\n}\n",
+    );
+    files.push((
+        "app/dialog/$page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Dialog } from \"@uniflowed/ui\";\n\nimport { Opener } from \"../_components/opener.js\";\n\nexport component Page() {\n  return (\n    <main>\n      <Dialog.Root>\n        <Opener />\n        <Dialog.Body>\n          <Dialog.Title>barrel-dialog-title</Dialog.Title>\n        </Dialog.Body>\n      </Dialog.Root>\n    </main>\n  );\n}\n",
+    ));
+    files.push((
+        "app/_components/opener.js",
+        "// @flow\n\"use client\";\n\nimport * as React from \"@uniflowed/react\";\nimport { Dialog } from \"@uniflowed/ui\";\n\nexport component Opener() {\n  return <Dialog.Trigger>barrel-dialog-open</Dialog.Trigger>;\n}\n",
+    ));
+    files
+}
+
+/// A page that imports one component from the `@uniflowed/ui` barrel gives the
+/// client build that component's module and no other (ubugeeei-prod/uf#1118).
+///
+/// The rsc pass makes every `"use client"` module it loads an entry of the
+/// client build, and the barrel imports every module the package has: before
+/// `uf:barrel-imports` rewrote the import to `switch.js`, one switch was
+/// thirty-seven client entries. `uf-flight.json` is the driver's own record of
+/// the entries it gave the client build, so it is what this reads.
+///
+/// `/dialog` holds the other half, that a namespace import makes no second copy
+/// of the module it reaches. The page and its client component each import
+/// `Dialog`, and `Dialog.Trigger` throws when its context holds no root. A
+/// second `dialog.js` on the server would fail the prerender, and one in the
+/// browser would be a second chunk carrying that message.
+#[test]
+fn a_page_importing_one_component_from_the_ui_barrel_ships_that_module_alone() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&ui_barrel_app());
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let written = fs::read_to_string(project.path().join(".uf/build/rsc/uf-flight.json"))
+        .expect("the driver records the entries it gave the client build");
+    let flight: serde_json::Value = serde_json::from_str(&written).unwrap();
+    let mut ui_modules: Vec<&str> = flight["chunkUrls"]
+        .as_array()
+        .expect("`chunkUrls` is a list of [file, url] pairs")
+        .iter()
+        .filter_map(|pair| pair[0].as_str())
+        .filter_map(|file| file.split("/packages/ui/").nth(1))
+        .collect();
+    ui_modules.sort_unstable();
+    assert_eq!(
+        ui_modules,
+        ["dialog.js", "switch.js"],
+        "the client build was given other `@uniflowed/ui` modules than the two the pages \
+         import:\n{written}"
+    );
+
+    let dialog = fs::read_to_string(project.path().join("dist/dialog/index.html"))
+        .expect("`/dialog` is prerendered");
+    assert!(
+        dialog.contains("aria-haspopup=\"dialog\"") && dialog.contains("barrel-dialog-open"),
+        "the trigger did not render inside its root on the server:\n{dialog}"
+    );
+    let scripts = client_scripts(&project.path().join("dist"));
+    let copies = scripts
+        .iter()
+        .filter(|(_, source)| source.contains("must be rendered inside a Dialog.Root"))
+        .count();
+    assert_eq!(
+        copies,
+        1,
+        "`dialog.js` is in {copies} client chunks rather than one:\n{}",
+        script_names(&scripts)
+    );
+}
+
+/// `uf dev` serves a barrel import from the module that defines the name, in
+/// the rsc graph, the ssr graph and the browser's (ubugeeei-prod/uf#1118).
+///
+/// The document for `/` names `switch.js` as its client module, not the barrel.
+/// `/dialog` renders the trigger inside its root through the development module
+/// runner, where a second `dialog.js` would throw. And the client component the
+/// browser loads imports a view of the `Dialog` namespace whose one import is
+/// `dialog.js`, the file every other way in reaches.
+#[test]
+fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let project = Project::new(&ui_barrel_app());
+
+    serve_dev_on_any_port(project.path(), |server, port, said, body| {
+        let context = |what: &str, response: &str| {
+            format!("`uf dev` {what}\n{response}\n{}", server_said(said))
+        };
+        assert!(
+            body.starts_with("HTTP/1.1 200") && body.contains("role=\"switch\""),
+            "{}",
+            context("did not render the switch", body)
+        );
+        assert!(
+            body.contains("/packages/ui/switch.js") && !body.contains("/packages/ui/index.js"),
+            "{}",
+            context(
+                "did not name `switch.js` alone as the page's client module",
+                body
+            )
+        );
+
+        let dialog = get(server, port, "/dialog", said);
+        assert!(
+            dialog.starts_with("HTTP/1.1 200")
+                && dialog.contains("aria-haspopup=\"dialog\"")
+                && dialog.contains("barrel-dialog-open"),
+            "{}",
+            context("did not render the trigger inside its root", &dialog)
+        );
+
+        let opener = get(server, port, "/app/_components/opener.js", said);
+        assert!(
+            !opener.contains("\"@uniflowed/ui\""),
+            "{}",
+            context(
+                "served a client module that still imports the barrel",
+                &opener
+            )
+        );
+        let Some(view) = opener
+            .split('"')
+            .find(|specifier| specifier.ends_with("/packages/ui/index.js?uf-namespace=Dialog"))
+        else {
+            panic!(
+                "{}",
+                context(
+                    "served a client module that does not import the `Dialog` view",
+                    &opener
+                )
+            );
+        };
+        let served = get(server, port, view, said);
+        assert!(
+            served.starts_with("HTTP/1.1 200")
+                && served.contains("/packages/ui/dialog.js\"")
+                && served.contains("export const Dialog = {"),
+            "{}",
+            context(
+                "did not serve the `Dialog` view as an import of `dialog.js`",
+                &served
+            )
+        );
+    });
+}
+
 /// Everything `uf dev` has to answer for `served-app`, once it is listening.
 fn assert_dev_served(server: &mut Server, port: u16, said: &Mutex<String>, body: &str) {
     let context =
