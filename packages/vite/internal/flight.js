@@ -285,6 +285,70 @@ export function clientReferencePlugin(state) {
   };
 }
 
+/**
+ * The plugin that gives a file of a `@uniflowed/*` package one URL in the
+ * browser under `uf dev`: its path, with no `?v=`.
+ *
+ * A client reference names the URL `devUrlOf` gives its file, and the browser
+ * imports that URL when a payload names it. Vite gave the same file a second
+ * URL when a client module imported it: a file in `node_modules` of a package
+ * the dependency optimizer excludes — every `@uniflowed/*` package, because
+ * they ship Flow — carries `?v=` and the optimizer's hash. A browser keys a
+ * module by its URL, so those were two modules. `Dialog.Root` rendered by a
+ * server component and `Dialog.Trigger` rendered by a client component held
+ * two `DialogContext`s, and hydration threw "Dialog.Trigger must be rendered
+ * inside a Dialog.Root". Only in a project that installed its packages, since a
+ * linked package is not in `node_modules` and gets no query: every project but
+ * this repository.
+ *
+ * The query only lets the browser cache the file without asking, so dropping it
+ * costs a revalidation. `pre`, so it can ask Vite's resolver first and drop
+ * what that added; only in the browser's graph, because the rsc graph records a
+ * client module by its path already and the ssr graph has no optimizer.
+ */
+export function clientModuleUrlPlugin() {
+  return {
+    name: "uf:rsc-client-urls",
+    apply: "serve",
+    enforce: "pre",
+    applyToEnvironment(environment) {
+      return environment.name === "client";
+    },
+    async resolveId(id, importer, options) {
+      if (!reachesUniflowedPackage(id, importer)) return null;
+      const resolved = await this.resolve(id, importer, { ...options, skipSelf: true });
+      if (resolved == null) return null;
+      const unversioned = withoutVersion(resolved.id);
+      return unversioned === resolved.id ? resolved : { ...resolved, id: unversioned };
+    },
+  };
+}
+
+/** Where every `@uniflowed/*` package is, installed, whatever manages `node_modules`. */
+const UNIFLOWED_FILES = "/node_modules/@uniflowed/";
+
+/**
+ * Whether an import can resolve to a file of an installed `@uniflowed/*`
+ * package: a bare import of one, a path or URL into one, or a relative import
+ * from inside one. Everything else is left to Vite without a second resolution.
+ */
+function reachesUniflowedPackage(id, importer) {
+  if (id.startsWith("\0")) return false;
+  if (id.startsWith("@uniflowed/") || id.includes(UNIFLOWED_FILES)) return true;
+  return /^\.\.?\//.test(id) && typeof importer === "string" && importer.includes(UNIFLOWED_FILES);
+}
+
+/** `id` without the optimizer's `v=`, for a file of an installed `@uniflowed/*` package. */
+function withoutVersion(id) {
+  const at = id.indexOf("?");
+  if (at === -1 || !id.slice(0, at).includes(UNIFLOWED_FILES)) return id;
+  const kept = id
+    .slice(at + 1)
+    .split("&")
+    .filter((parameter) => !/^v=[\w.-]*$/.test(parameter));
+  return kept.length === 0 ? id.slice(0, at) : `${id.slice(0, at)}?${kept.join("&")}`;
+}
+
 /** The module kinds a reference can stand in for. */
 const SCRIPT = /\.(?:[cm]?js|jsx|mdx)$/;
 

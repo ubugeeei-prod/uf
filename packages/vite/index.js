@@ -101,6 +101,7 @@ import {
   builtBridgeSource,
   builtReferencesSource,
   clientManifestSource,
+  clientModuleUrlPlugin,
   clientReferencePlugin,
   compilerRuntimeSource,
   createFlightState,
@@ -216,7 +217,7 @@ export default function uniflowed(options = {}) {
       command: options.command,
       accessibility,
     }),
-    ...(flightState == null ? [] : [clientReferencePlugin(flightState)]),
+    ...(flightState == null ? [] : [clientReferencePlugin(flightState), clientModuleUrlPlugin()]),
     // After the references, so a client module the rsc graph has already
     // replaced is not read for imports it no longer has; see the file.
     barrelImportsPlugin(),

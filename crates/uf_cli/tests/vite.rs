@@ -2065,13 +2065,21 @@ fn a_page_importing_one_component_from_the_ui_barrel_ships_that_module_alone() {
 /// `/dialog` renders the trigger inside its root through the development module
 /// runner, where a second `dialog.js` would throw. And the client component the
 /// browser loads imports a view of the `Dialog` namespace whose one import is
-/// `dialog.js`, the file every other way in reaches.
+/// `dialog.js` at the URL the payload names for it. A browser keys a module by
+/// its URL, and Vite puts `?v=` on a file in `node_modules`, so `@uniflowed/ui`
+/// is installed into the project rather than linked: the layout every project
+/// outside this repository has, and the one where the trigger's `dialog.js` was
+/// `dialog.js?v=…` and threw in the browser.
 #[test]
 fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
     if !fixture_ready() || !loopback_ready() {
         return;
     }
     let project = Project::new(&ui_barrel_app());
+    copy_tree(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/ui"),
+        &project.path().join("node_modules/@uniflowed/ui"),
+    );
 
     serve_dev_on_any_port(project.path(), |server, port, said, body| {
         let context = |what: &str, response: &str| {
@@ -2083,7 +2091,8 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
             context("did not render the switch", body)
         );
         assert!(
-            body.contains("/packages/ui/switch.js") && !body.contains("/packages/ui/index.js"),
+            body.contains("/node_modules/@uniflowed/ui/switch.js")
+                && !body.contains("/node_modules/@uniflowed/ui/index.js"),
             "{}",
             context(
                 "did not name `switch.js` alone as the page's client module",
@@ -2091,6 +2100,9 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
             )
         );
 
+        // The URL a payload names for `Dialog.Root`, which the browser imports
+        // `dialog.js` by.
+        const DIALOG: &str = "/node_modules/@uniflowed/ui/dialog.js";
         let dialog = get(server, port, "/dialog", said);
         assert!(
             dialog.starts_with("HTTP/1.1 200")
@@ -2098,6 +2110,11 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
                 && dialog.contains("barrel-dialog-open"),
             "{}",
             context("did not render the trigger inside its root", &dialog)
+        );
+        assert!(
+            dialog.contains(DIALOG),
+            "{}",
+            context("did not name `dialog.js` as a client module", &dialog)
         );
 
         let opener = get(server, port, "/app/_components/opener.js", said);
@@ -2109,10 +2126,9 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
                 &opener
             )
         );
-        let Some(view) = opener
-            .split('"')
-            .find(|specifier| specifier.ends_with("/packages/ui/index.js?uf-namespace=Dialog"))
-        else {
+        let Some(view) = opener.split('"').find(|specifier| {
+            specifier.starts_with("/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog")
+        }) else {
             panic!(
                 "{}",
                 context(
@@ -2123,12 +2139,17 @@ fn dev_serves_a_ui_barrel_import_from_the_module_that_defines_it() {
         };
         let served = get(server, port, view, said);
         assert!(
-            served.starts_with("HTTP/1.1 200")
-                && served.contains("/packages/ui/dialog.js\"")
-                && served.contains("export const Dialog = {"),
+            served.starts_with("HTTP/1.1 200") && served.contains("export const Dialog = {"),
+            "{}",
+            context("did not serve the `Dialog` view", &served)
+        );
+        // Exactly that URL, closing quote and all: `dialog.js?v=…` is a second
+        // module to a browser, whose `Dialog.Trigger` finds no `Dialog.Root`.
+        assert!(
+            served.contains(&format!("from \"{DIALOG}\"")),
             "{}",
             context(
-                "did not serve the `Dialog` view as an import of `dialog.js`",
+                "imported `dialog.js` in the view at another URL than the payload names",
                 &served
             )
         );
