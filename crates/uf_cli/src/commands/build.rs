@@ -106,6 +106,13 @@ pub(crate) struct Prerendered {
     /// is served and is not a page, which is a distinction [`site`] needs and
     /// nothing else did until it existed.
     pub(crate) status: u16,
+    /// Whether the build wrote it for regeneration.
+    ///
+    /// Such a page's document is under `dist/__uf/regenerate/` rather than at
+    /// its own URL, because a server answers the page and regenerates it once
+    /// its lifetime passes. A static host has no server, which is why
+    /// `deploy::static_host` refuses it by name.
+    pub(crate) regenerates: bool,
 }
 
 /// What Vite reported building.
@@ -352,7 +359,12 @@ pub(crate) fn build(
             &builder,
             &root,
             "build",
-            &build_arguments(&resolved.config.build.out_dir, plan, app_target),
+            &build_arguments(
+                &resolved.config.build.out_dir,
+                plan,
+                app_target,
+                regenerates_pages(&resolved.config, plan),
+            ),
             &env,
             &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
         )?;
@@ -361,8 +373,17 @@ pub(crate) fn build(
             match event {
                 Event::Phase { name } => progress.tick(&format!("vite: {name}")),
                 Event::Page {
-                    url, file, status, ..
-                } => report.pages.push(Prerendered { url, file, status }),
+                    url,
+                    file,
+                    status,
+                    regenerates,
+                    ..
+                } => report.pages.push(Prerendered {
+                    url,
+                    file,
+                    status,
+                    regenerates,
+                }),
                 // Reported as it happens and not fatal here: the driver keeps
                 // going and ends the build itself, so the reader sees every
                 // route that failed rather than the first one.
@@ -1153,7 +1174,12 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
 /// `app.react.strictMode`. Passing it here as well would make the client entry
 /// a function of two sources that agree until one of them is a flag somebody
 /// forgot to forward.
-fn build_arguments(out_dir: &str, plan: RenderingPlan, target: RouteTarget) -> Vec<String> {
+fn build_arguments(
+    out_dir: &str,
+    plan: RenderingPlan,
+    target: RouteTarget,
+    regenerate: bool,
+) -> Vec<String> {
     let mut args = vec![
         String::from("--out-dir"),
         out_dir.to_string(),
@@ -1167,7 +1193,28 @@ fn build_arguments(out_dir: &str, plan: RenderingPlan, target: RouteTarget) -> V
     if !plan.emits_a_server() {
         args.push(String::from("--static-build"));
     }
+    if regenerate {
+        args.push(String::from("--regenerate"));
+    }
     args
+}
+
+/// Whether a prerendered page that states a lifetime is written for
+/// regeneration rather than as a document that never changes.
+///
+/// Three things have to hold, and each is a declaration the builder cannot see
+/// on its own: `app.rendering.modes` allows `isr`, `rendering.cache.route` is
+/// on — a regenerated page *is* the route cache, started from the build — and
+/// the plan leaves a server behind to do the regenerating. Decided here, beside
+/// the rest of the rendering decision, so the builder is told one word.
+fn regenerates_pages(config: &uf_config::UniflowedConfig, plan: RenderingPlan) -> bool {
+    config
+        .app
+        .rendering
+        .modes
+        .contains(&uf_config::RenderingMode::Isr)
+        && config.app.rendering.cache.route
+        && plan.emits_a_server()
 }
 
 /// Print the RSC analysis's diagnostics, grouped by module.

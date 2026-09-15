@@ -11,7 +11,7 @@
 //! `dist/`, uploaded it, and discovered which half of itself had disappeared
 //! from production. That is item 4 of ubugeeei-prod/uf#335.
 //!
-//! # Four things need a server, and each is found somewhere different
+//! # Five things need a server, and each is found somewhere different
 //!
 //! | what | where it is found | why a file is not it |
 //! | --- | --- | --- |
@@ -19,6 +19,7 @@
 //! | a middleware | the same walk | it runs *before* the route resolves, once per request |
 //! | a route the prerender wrote no document for | the route table against the pages Vite reported | there is nothing to upload for it |
 //! | a server action | the RSC registry | it is a `POST` the browser makes back to the application |
+//! | a page the build wrote for regeneration | the pages Vite reported | its document is where a server starts it from, and the page is replaced once its lifetime passes |
 //!
 //! Two of those four are invisible to the route table, which is why
 //! [`uf_router::discover_server_modules`] exists: a `$route.js` has no page
@@ -55,6 +56,8 @@ pub(crate) enum Reason {
     NotPrerendered,
     /// A `"use server"` export the browser can dial.
     ServerAction,
+    /// A page the build wrote for regeneration.
+    Regenerates,
 }
 
 impl Reason {
@@ -80,6 +83,10 @@ impl Reason {
             Self::NotPrerendered => "the build wrote no document for it",
             Self::ServerAction => {
                 "a server action is a `POST` the browser makes back to the application"
+            }
+            Self::Regenerates => {
+                "it regenerates once its lifetime passes, so the build wrote its document for a \
+                 server to answer from rather than at its URL, and a static host has no server"
             }
         }
     }
@@ -145,6 +152,22 @@ pub(crate) fn unservable(
             } else {
                 Reason::NoStaticParams
             },
+        });
+    }
+
+    // A page the build wrote for regeneration has a document, so the route loop
+    // above counted it, and it is still not one a static host can serve: the
+    // document is where a server starts the page from rather than the page's
+    // URL, and the page's whole claim is that something replaces it once its
+    // lifetime passes. Named with its route's module where the URL matches one.
+    for page in pages.iter().filter(|page| page.regenerates) {
+        found.push(Unservable {
+            subject: page.url.clone(),
+            file: routes
+                .iter()
+                .find(|route| route.matches_url(&page.url))
+                .map_or_else(|| page.file.clone(), |route| relative_to(root, &route.page)),
+            reason: Reason::Regenerates,
         });
     }
 
