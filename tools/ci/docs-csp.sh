@@ -35,7 +35,10 @@
 #     bootstrap and its `application/ld+json`, and React's two streaming
 #     runtime blocks. React's change when React changes, and the failure they
 #     would otherwise produce is a Suspense boundary that never reveals itself
-#     in a browser nobody is watching. Here it is a line to paste.
+#     in a browser nobody is watching. Here it is a line to paste. The Flight
+#     payload chunks every page also carries,
+#     `<script type="application/json" data-uf-flight>`, are data blocks the
+#     browser never runs, and are not hashed; see `isFlightChunk`.
 #   * every `src` and `href` a page loads — a script, a stylesheet, an icon, an
 #     image, a preload — must be same-origin, because `default-src 'self'` is
 #     the whole policy for them. An `<a href>` is not a load and is not
@@ -184,12 +187,60 @@ function inlineScripts(html) {
     const attributes = html.slice(open + "<script".length, openEnd);
     const close = html.indexOf("</script>", openEnd);
     if (close === -1) return found;
-    if (!/\ssrc\s*=/.test(attributes)) {
+    if (!/\ssrc\s*=/.test(attributes) && !isFlightChunk(attributes)) {
       found.push({ attributes: attributes.trim(), body: html.slice(openEnd + 1, close) });
     }
     at = close + "</script>".length;
   }
 }
+
+/**
+ * Whether a `<script>` is one of the Flight payload chunks a page carries.
+ *
+ * React Server Components write the payload a page was rendered from into it as
+ * `<script type="application/json" data-uf-flight>` elements, and a script
+ * element with that type is a data block: the browser never executes it, and
+ * `script-src` does not govern it. Hashing them would put hashes into the
+ * policy that change with every build's payload and guard nothing, so they are
+ * not collected.
+ *
+ * Only uf's own chunks, and not every data block. The page's
+ * `application/ld+json` is one too, and its hash is in the worker's policy
+ * today; leaving it collected keeps that entry naming something rather than
+ * turning it into a hash for a script this check stopped looking at.
+ */
+function isFlightChunk(attributes) {
+  return /\sdata-uf-flight(?=[\s=/]|$)/.test(` ${attributes}`) && isDataBlock(attributes);
+}
+
+/** Whether a `<script>` with these attributes is a data block, not a script. */
+function isDataBlock(attributes) {
+  const match = /\stype\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(` ${attributes}`);
+  if (match == null) return false;
+  const type = (match[1] ?? match[2] ?? match[3] ?? "").trim().toLowerCase();
+  if (type === "" || type === "module") return false;
+  return !JAVASCRIPT_TYPES.has(type);
+}
+
+/** The JavaScript MIME type essences HTML runs a classic script for. */
+const JAVASCRIPT_TYPES = new Set([
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
 
 /** Every URL the page *loads*, which is not every URL it names. */
 // The origin the site is served from.

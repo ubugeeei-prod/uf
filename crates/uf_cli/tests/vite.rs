@@ -470,6 +470,13 @@ fn a_native_target_manifest_names_the_native_contract() {
         serde_json::json!("app/$page.native.js"),
         "the build did not consume the native route target:\n{manifest:#}"
     );
+    // The table Metro bundles, one module per platform beside the web
+    // router's `router.js`. See ubugeeei-prod/uf#981.
+    let ios = fs::read_to_string(project.path().join("router.ios.js")).unwrap();
+    assert!(ios.contains("\"./app/$page.native.js\""), "{ios}");
+    assert!(ios.contains("export const routeTable"), "{ios}");
+    assert!(project.path().join("router.android.js").is_file());
+    assert!(project.path().join("router.native.js").is_file());
 }
 
 /// A middleware must run before the path it guards answers.
@@ -686,6 +693,69 @@ fn a_contract_violation_fails_the_build_before_vite_runs() {
     assert!(
         !project.path().join("dist/index.html").exists(),
         "the build prerendered a page despite a contract violation"
+    );
+}
+
+/// A server-only import that a client component reaches fails the build, and
+/// the failure names the chain of imports that put it in the client graph.
+///
+/// The module that imports `@uniflowed/server` is rarely the one to change: it
+/// is a server module, correct where it was written, that some client
+/// component's import pulled into the browser's graph two modules up. Naming
+/// only the importer sends the reader to the wrong file. Like the test above,
+/// the build stops before Vite runs, so this needs neither Node nor the
+/// workspace. See ubugeeei-prod/uf#252.
+#[test]
+fn a_server_only_import_a_client_component_reaches_fails_the_build_naming_its_chain() {
+    let mut files = minimal_app();
+    files[2] = (
+        "app/$page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      <Counter />\n    </main>\n  );\n}\n",
+    );
+    files.push((
+        "app/Counter.js",
+        "// @flow\n\"use client\";\n\nimport * as React from \"@uniflowed/react\";\nimport { label } from \"./format.js\";\n\nexport component Counter() {\n  return <button type=\"button\">{label()}</button>;\n}\n",
+    ));
+    files.push((
+        "app/format.js",
+        "// @flow\nimport { session } from \"./session.js\";\n\nexport function label(): string {\n  return `signed in as ${session()}`;\n}\n",
+    ));
+    files.push((
+        "app/session.js",
+        "// @flow\nimport { cookies } from \"@uniflowed/server\";\n\nexport function session(): string {\n  return cookies().get(\"session\") ?? \"nobody\";\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        // Wide enough that the chain is one line of the report, whatever the
+        // renderer's own idea of a terminal is.
+        .env("COLUMNS", "400")
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "a client component reaching server-only code must fail the build:\n{said}"
+    );
+    for expected in [
+        "rsc/server-only-import-in-client",
+        "app/session.js",
+        "imports server-only `@uniflowed/server`",
+        "`app/Counter.js` → `app/format.js` → `app/session.js`",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "the build prerendered a page despite a server-only import in the client graph"
     );
 }
 
@@ -2637,8 +2707,12 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
                     "the `bun` artefact must actually use {expected}"
                 );
             }
+            // The call, `createServer(`, and not the letters: an application
+            // React Server Components render bundles React's Flight client, which
+            // exports `createServerReference`, and so does uf's action reference
+            // module. Neither is a server, and both are in every artefact.
             assert!(
-                !bundled.contains("createServer"),
+                !bundled.contains("createServer("),
                 "a `bun` artefact carrying `node:http`'s server is the `node` one renamed"
             );
         }
@@ -2664,8 +2738,9 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
                     "the `deno` artefact must actually use {expected}"
                 );
             }
+            // `createServer(`, the call, for the reason the `bun` arm gives.
             assert!(
-                !bundled.contains("createServer") && !bundled.contains("Bun.serve"),
+                !bundled.contains("createServer(") && !bundled.contains("Bun.serve"),
                 "a `deno` artefact carrying another runtime's server is that adapter renamed"
             );
         }
@@ -3844,7 +3919,67 @@ fn streamed(port: u16, slow_id: &str) -> Result<(), (String, String)> {
             slow.evidence(),
         ));
     }
-    Ok(())
+    flight_order(&slow, slow_id, page)
+}
+
+/// Whether a suspending page's Flight payload arrived in the order a browser
+/// needs to read it as it arrives.
+///
+/// The document carries the payload its tree was rendered from, in chunks
+/// written as React's Flight renderer produces rows (ubugeeei-prod/uf#519), and
+/// three facts about *when* make that a stream rather than an attachment:
+///
+///   1. the first chunk — the shell's tree — is on the wire before the page is,
+///      so hydration can begin while the page is still waiting;
+///   2. the end marker comes after the page's own content, so the payload did
+///      not end before the row that resolves the boundary was written;
+///   3. `</html>` comes after the end marker, because a chunk written after it
+///      is one the HTML parser moves, and the reader would be told the payload
+///      ended before it did.
+///
+/// Byte order for the last two and arrival time for the first, for the reason
+/// [`streamed`] gives: a buffered document would still have them in order.
+fn flight_order(
+    slow: &TimedResponse,
+    slow_id: &str,
+    page: Duration,
+) -> Result<(), (String, String)> {
+    const CHUNK: &str = "data-uf-flight>";
+    let Some(first_chunk) = slow.first_at(CHUNK) else {
+        return Err((
+            "the document carries no Flight payload".to_owned(),
+            slow.evidence(),
+        ));
+    };
+    if first_chunk + STREAMING_MARGIN > page {
+        return Err((
+            format!(
+                "the payload's first chunk arrived {}ms in and the page {}ms in, so the payload \
+                 was held back rather than streamed with the document",
+                first_chunk.as_millis(),
+                page.as_millis()
+            ),
+            slow.evidence(),
+        ));
+    }
+    let text = &slow.text;
+    // The page's content *as a payload row*: a JSON string inside a chunk's own
+    // JSON string, so its quotes arrive escaped, which the HTML's text never is.
+    // The HTML renderer's completion of the same boundary is rendered from that
+    // row, so it may land after the end marker, and is not what this is about.
+    let content = text.find(&format!(r#"\"slow: {slow_id}\""#));
+    let end = text.find(&format!("{CHUNK}null</script>"));
+    let close = text.rfind("</html>");
+    match (content, end, close) {
+        (Some(content), Some(end), Some(close)) if content < end && end < close => Ok(()),
+        _ => Err((
+            format!(
+                "the payload's end marker is not between the page's content and `</html>`: \
+                 content at {content:?}, end marker at {end:?}, `</html>` at {close:?}"
+            ),
+            slow.evidence(),
+        )),
+    }
 }
 
 /// How long `app/slow/[id]/$page.js` waits before it renders.
@@ -5657,9 +5792,12 @@ fn the_client_bundle_loses_a_route_that_needs_no_javascript() {
 
     // 4. The summary is the bundler's own count of what it emitted, not a
     //    second implementation of the decision above.
+    //    None, under React Server Components: the browser hydrates the payload
+    //    the document carries and imports no page on any route, and the
+    //    counter reaches it as a client module of its own (ubugeeei-prod/uf#252).
     assert_eq!(
         summary_value(&stdout, "pages in the client bundle"),
-        "1 of 2",
+        "0 of 2",
         "the summary must say what the bundler emitted:\n{stdout}"
     );
 
@@ -6582,6 +6720,69 @@ fn a_second_builder_is_resolved_named_and_driven() {
     assert!(
         index.contains("data-paper-builder=\"/\""),
         "the second builder did not write the document:\n{index}"
+    );
+}
+
+/// `build.runtime` at a version drives the builder on the release in the store,
+/// and `uf explain build` names that release and the key before anything runs.
+///
+/// `paper-builder` runs on whatever it is started with and says nothing about
+/// it, so the mark the store's `node` leaves is the whole of the evidence — the
+/// one thing a build on the machine's Node could not produce.
+/// ubugeeei-prod/uf#940.
+#[test]
+fn a_build_runtime_at_a_version_drives_the_builder_on_the_release_in_the_store() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    copy_tree(
+        &paper_builder_root(),
+        &project.path().join("tools/paper-builder"),
+    );
+    project.write(
+        "uf.config.js",
+        &config_with(
+            "  build: { builder: \"./tools/paper-builder\", runtime: \"node@99.0.0\" },\n",
+        ),
+    );
+    let (tools, marks) = support::store_with_marked_node("99.0.0");
+
+    let explained = support::uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(plan.contains("node 99.0.0"), "{plan}");
+    assert!(
+        plan.contains("`build.runtime` names exactly 99.0.0"),
+        "{plan}"
+    );
+    assert!(plan.contains("in the store"), "{plan}");
+    assert!(
+        fs::read_to_string(&marks).unwrap_or_default().is_empty(),
+        "explaining a build ran something"
+    );
+
+    let output = support::uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{said}");
+    let marked = fs::read_to_string(&marks).unwrap_or_default();
+    assert!(
+        marked.contains("paper-builder/driver.js"),
+        "the builder was not started from the store's node:\n{marked}\n{said}"
     );
 }
 

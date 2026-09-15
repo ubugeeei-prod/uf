@@ -12,7 +12,7 @@
 //!
 //! | Rank | [`DetectionSource`] | Evidence |
 //! | ---- | ------------------- | -------- |
-//! | 1 | [`DetectionSource::ConfigOverride`] | `pm.packageManager` in `uf.config.js` |
+//! | 1 | [`DetectionSource::ConfigOverride`] | `packageManager`, or the older `pm.packageManager`, in `uf.config.js` |
 //! | 2 | [`DetectionSource::PackageManagerField`] | `"packageManager"` in `<root>/package.json` |
 //! | 3 | [`DetectionSource::Lockfile`] | a lockfile in `<root>` itself |
 //! | 4 | [`DetectionSource::WorkspaceRoot`] | evidence in the nearest ancestor workspace root |
@@ -117,11 +117,24 @@ impl<'a> DetectionOptions<'a> {
         Self::default()
     }
 
-    /// Build options from `uf.config.js`, honouring `pm.packageManager`.
+    /// Build options from `uf.config.js`, honouring `packageManager` and then
+    /// `pm.packageManager`, its deprecated spelling.
+    ///
+    /// The two cannot disagree — `uf_config` refuses a config where they do —
+    /// so the order only decides which one is read. `pm.packageManager` is read
+    /// as its own value rather than through `packageManager`'s type, because it
+    /// can say `yarn-classic` and `uf`, which the newer key spells differently
+    /// or not at all.
     #[must_use]
     pub fn from_config(config: &UniflowedConfig) -> DetectionOptions<'static> {
+        let declared = config
+            .package_manager
+            .as_ref()
+            .and_then(uf_config::Written::spec)
+            .map(PackageManager::from_spec);
         DetectionOptions {
-            config_override: PackageManager::from_preference(config.pm.package_manager),
+            config_override: declared
+                .or_else(|| PackageManager::from_preference(config.pm.package_manager)),
             ..DetectionOptions::default()
         }
     }

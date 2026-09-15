@@ -362,9 +362,12 @@ fn why_this_manager_reads_as_a_sentence() {
         chosen_by(&DetectionSource::ConfigOverride, true),
         "pm.packageManager names uf, whose resolver cannot fetch yet"
     );
+    // Named by the key a project is told to write: `pm.packageManager` still
+    // chooses, and says in its own deprecation that it is `packageManager`
+    // now. ubugeeei-prod/uf#940.
     assert_eq!(
         chosen_by(&DetectionSource::ConfigOverride, false),
-        "pm.packageManager in uf.config.js"
+        "packageManager in uf.config.js"
     );
     assert_eq!(
         chosen_by(

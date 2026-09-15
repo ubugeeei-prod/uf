@@ -38,10 +38,11 @@ the middle grade exists for: a uf project runs there, and the way it is made to
 run has a gap a person can meet. See [Deno](#deno) for what the gap is.
 
 Edge is experimental in the same deliberately narrow sense. `uf build --adapter
-edge` writes a Cloudflare Worker and CI starts that generated deployment under
-Wrangler's local runtime. What does **not** exist yet is a source-level host:
-there is no Flow loader hook, no `uf test --runtime edge`, and no remote worker
-coverage.
+edge` writes a Cloudflare Worker and CI serves that generated deployment under
+Wrangler's local workerd. What does **not** exist is a source-level host: `uf
+test` does not run a test file inside a Worker, a decision recorded under
+[Edge and worker runtimes](#edge-and-worker-runtimes), and nothing is checked
+against a remote deployment.
 
 ## The browser, which is a different question
 
@@ -77,16 +78,18 @@ refuses the run by name when there is none. See
 
 ## What a project may name, and which key decides
 
-Three keys in `uf.config.js` mention a runtime, and only one of them chooses
-the process that starts:
+Several keys in `uf.config.js` mention a runtime. The tool keys choose the
+process that starts, and `capabilityJsHost` chooses it when none of them names
+one:
 
 | key | what it decides | what it accepts |
 | --- | --- | --- |
-| `app.runtime.capabilityJsHost.default` | **the host `uf dev`, `uf test` and `uf build` actually start**, tried first and then the rest of `hosts` while `autoDetect` is on | `node`, `deno`, `bun` |
+| `runtime`, `build.runtime`, `test.runtime` | **the runtime a command starts**, at the release `uf.lock` locks and from the store: `build.runtime` for `uf dev`, `uf build` and `uf preview`, `test.runtime` for `uf test`, and `runtime` for `uf start`, `uf run`, `uf exec` and every command whose own key is absent — see [Environments](app/guide/env/$page.mdx) | `node`, `deno`, `bun`, as `name[@version]` |
+| `app.runtime.capabilityJsHost.default` | the host `uf dev`, `uf test` and `uf build` start when no tool key names one, tried first and then the rest of `hosts` while `autoDetect` is on | `node`, `deno`, `bun` |
 | `app.runtime.default`, `app.runtime.compatibility` | what this project *says* it is written for; it reaches `.uf/install.json` and `uf inspect --json` as the hosts that must be available | the rows above that have a Flow loader — today `node`, `deno`, `bun` |
 | `app.runtime.deploy.adapter` | which artefact `uf build` writes | the deploy adapters, which are a longer list and a different question |
 
-The second row used to accept all seven names in the table, `edge`,
+The `app.runtime.default` row used to accept all seven names in the table, `edge`,
 `serverless`, `container` and `uf` included, and the default `compatibility`
 claimed three of them. Nothing enforced the claim and nothing could: those four
 rows have no Flow loader, so a uf project cannot import its own first file
@@ -131,9 +134,12 @@ naming the hosts that can enforce it. That refusal is deliberate: a set that
 four hosts enforce and one silently ignores is worse than no set at all,
 because somebody would rely on it.
 
-Coverage does not work here. The preload transforms with `sourceMap: false` and
-Bun implements no `NODE_V8_COVERAGE`, so `uf test --coverage` says so rather
-than reporting a run of zeroes.
+The preload keeps what it compiles in `.uf/cache/transform/`, under the same
+key and in the same bytes as Node's loaders, source map included — so a warm
+run on Bun compiles nothing, and either host warms the cache for the other.
+
+Coverage does not work here. Bun implements no `NODE_V8_COVERAGE`, so
+`uf test --coverage` says so rather than reporting a run of zeroes.
 
 ## Deno
 
@@ -262,22 +268,71 @@ Worth stating in the column's own terms rather than leaving as an em dash.
 handler's answers and compares them with `uf start`'s. That is still a Node
 test, not a Worker test.
 
-`tools/ci/edge-worker-smoke.sh` is the Worker test. It builds the same
-`served-app` fixture with `--adapter edge`, starts the generated deployment with
-`wrangler dev --local`, then requests the home page, a prerendered page, a
-dynamic route, both `GET` and `POST` route handlers, and the app's not-found
-boundary. This is the first proof that the emitted Worker, config and asset
-binding are accepted by a Worker runtime and can answer real HTTP requests.
+`tools/ci/edge-worker-smoke.sh` is the Worker test. It serves three Workers,
+each under `wrangler dev --local`:
 
-That is enough for **experimental**, not complete support. The smoke uses
-Wrangler's local runtime, not a remote Cloudflare deployment; it checks the
-built output, not a `uf test --runtime edge` host; and a Worker has no loader
-hook or child process to teach it Flow after it starts. Edge still depends on
-the ahead-of-time transform, and a Flow module the build cannot enumerate is
-still outside the claim.
+| Worker | What is asked of it |
+| --- | --- |
+| the `served-app` fixture, built with `--adapter edge` | the home page, a prerendered page, a dynamic route, `GET` and `POST` on a route handler, the not-found boundary, and a hashed client script from the assets binding. After those requests, the Worker's own log must hold the access line for `/api/health`, with a request id uf generated, filed at `info` |
+| the `rsc-split-app` fixture, built the same way | a server action, called with the id the build minted and a cookie the action reads, and the same call from another origin, refused with 403 |
+| a probe generated from `packages/vite/internal/worker-builtins.js` | every Node built-in that table says a Worker provides only as a stub must still throw at the table's compatibility date |
 
-Tracked by ubugeeei-prod/uf#246, which is also where the shape a real edge host
-would take is written down.
+The log check is there because of a real bug. uf's default sink writes every
+level to `console.error`, because stdout is a protocol in the process that runs
+`uf start`. A Worker's log store files a line by the method that wrote it, so
+under `wrangler dev` every request's access line came out as an `ERROR`: a
+Worker answering 200s read as one failing on every request. The generated
+`worker.js` now installs a logger that writes each level through its own
+method, unless the application installed one first. It does so only where
+`navigator.userAgent` is `Cloudflare-Workers`. uf's adapter parity test imports
+the same file under Node and reads its answers from stdout, which is where
+`console.info` writes on Node, so everywhere else the default stays.
+
+### The limits a Worker imposes, by name
+
+A Worker has no filesystem and no processes, and at the compatibility date uf
+writes it provides some Node built-ins only as stubs. Those are measured, not
+assumed. Each built-in was imported into a Worker and one function of it
+called:
+
+- **Stubs, every function throws:** `child_process`, `cluster`, `fs`, `http`,
+  `http2`, `https`, `repl` and `wasi`. The error is `[unenv] <function> is not
+  implemented yet!`.
+- **Partial, not listed:** `net` connects and refuses `createServer`, and
+  `dgram`, `inspector` and `worker_threads` construct objects without throwing.
+  A build cannot name a module that half works.
+
+What uf does with that:
+
+- **At the build**, `uf build --adapter edge` warns about each stub the server
+  bundle reaches, and names the importing file: project code first, a
+  dependency by its package name. It is a warning and not a refusal, because a
+  deployment with a `wrangler.json` of its own at a newer date may have the
+  module, and uf cannot see that deployment.
+- **At request time**, a call that reaches a stub answers the same fixed 500 as
+  any other failure. The log line names the function as a Node API this Worker
+  does not provide.
+- **In CI**, the smoke measures the table again. `uf_cli`'s tests pin the
+  table's date to the one `wrangler.json` is written with, so a bumped date
+  cannot keep an old measurement.
+
+The durable route cache's filesystem store is refused by name at the build, as
+it always was.
+
+### Why `uf test` does not run on workerd
+
+Decided against for now, with the reasons written down. Test files are Flow and
+have to load at run time, and workerd has no module hook: the nearest thing is
+its module fallback service, which Miniflare exposes as
+`unsafeModuleFallbackService` behind workerd's experimental flag. The test
+worker also speaks its protocol over stdin and stdout, which a Worker does not
+have. And what differs on this target is the built output — `worker.js`, its
+`wrangler.json`, the assets binding — which is exactly what the smoke runs. A
+workerd host would be a Node driver running Miniflare, answering module
+requests through `uf transform`, with the worker protocol carried over a
+binding rather than a pipe. That is ubugeeei-prod/uf#1029.
+
+Tracked by ubugeeei-prod/uf#246.
 
 ## Serverless and containers
 

@@ -460,6 +460,20 @@ a package that declares no `@flow` anywhere is not read either: it exports `any`
 whether it is in the batch or not, so reading it would buy a parse of every byte
 it ships and nothing else.
 
+Unless it has types written in TypeScript. A package with no Flow and with
+declarations — its own, or an `@types` package's — is typed from the
+declaration file TypeScript would read for the specifier: `uf_dts` translates it
+and every declaration file it reaches into Flow, and the checker is handed those
+translations under a manifest whose `flow` condition names them, with none of
+the package's JavaScript. What the translation cannot carry over is a hole typed
+`any`, named by its declaration, and the footer counts each package's holes
+once. Translations are kept under `.uf/cache/dts`, keyed by the `uf` that made
+them and checked against the SHA-256 of every file they read, so a warm check
+translates nothing ([#946](https://github.com/ubugeeei-prod/uf/issues/946)).
+A package's own Flow outranks its declarations: one that publishes `@flow`
+sources, or a `.flow` file beside a module — which is read in place of that
+module, as Flow reads it — is never translated.
+
 *Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
 by climbing `node_modules` from the file that wrote it, so code inside
 `node_modules/foo` that imports `bar` gets `node_modules/foo/node_modules/bar`
@@ -805,28 +819,41 @@ answers the browser's copy of that file with one `createServerReference` per
 callable export — an id and a `fetch`, and none of the module's body, its
 imports, or anything only they reached. The graph colours such a module server
 for the same reason, so the analysis and the bundle agree rather than each
-describing the other. What is *not* split is a Server Component above a
-boundary: uf's client hydrates by re-rendering the matched tree from the same
-modules the server used, so dropping one needs a Flight-shaped payload uf does
-not have. See ubugeeei-prod/uf#252.
+describing the other.
 
-What that payload costs is worth writing down, because it is not a module and
-the shape of the answer decides where it can go. React's own Flight renderer —
-`react-server-dom-*/server` — refuses to load unless the `react-server` export
-condition is on, because it needs the *other* build of React, the one with no
-`useState` in it; and `react-dom/server`, which turns the payload into HTML,
-needs the ordinary one. Two builds of React in one module registry is not a
-thing Node or a bundler will do, so a Flight renderer is a second module graph
-rather than a second import: `node --conditions react-server` for a whole
-process, a worker thread started with those `execArgv`, or a bundler
-environment resolved with that condition — which is the shape `@uniflowed/vite`
-would have to grow, since the first two are Node-only and uf's edge, serverless
-and workerd adapters all serve the same `handler.js`. That is the size of
-ubugeeei-prod/uf#519, and it is why the *element* half of the answer is not a
-smaller version of itself: half of it in the tree is the worst state for the
-thing whose whole risk is deserialisation.
+A Server Component is split out too, at the module, and that needed a second
+module graph rather than a second import. React's own Flight renderer —
+`react-server-dom-parcel/server` — refuses to load unless the `react-server`
+export condition is on, because it needs the *other* build of React, the one
+with no `useState` in it; and `react-dom/server`, which turns the payload into
+HTML, needs the ordinary one. Two builds of React in one module registry is not
+a thing Node or a bundler will do, so `@uniflowed/vite` declares a third Vite
+environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
 
-The framing is separable from that, and it has landed.
+- **`rsc`**, resolved under `react-server` with every dependency bundled in,
+  holds the route table, every page, layout and loader, and
+  `@uniflowed/router/rsc`'s `createFlightRenderer`. A `"use client"` module is
+  replaced there by one `createClientReference` per export, so its code never
+  runs in that graph and a server component's code never reaches the browser.
+- **`ssr`** holds `@uniflowed/router/server`'s `createDocumentRenderer`, which
+  reads the payload with React's own Flight client and renders that tree into
+  HTML while writing the same bytes into the document, and the server copy of
+  every client module. It reaches `rsc` through one bridge module: the rsc
+  environment's module runner under `uf dev`, the rsc build's output in a build.
+- **`client`** hydrates the payload the document carries (`hydrateFlight`) and
+  holds no page, layout or loader — only the client modules, each an entry of
+  its own, loaded when a payload names its chunk.
+
+`uf build` runs the three in that order, because each needs what the one before
+it found: the rsc build finds the client modules, the client build writes their
+chunks, and the ssr build resolves every reference to a chunk URL. It is one
+environment rather than a process started with `--conditions react-server`
+because uf's edge, serverless and workerd adapters all serve the same
+`handler.js`; an adapter with export conditions of its own rebuilds the rsc
+graph under them. See ubugeeei-prod/uf#519 and ubugeeei-prod/uf#252.
+
+The row framing below predates that, and is what an application rendered from
+its modules (`app.rsc: false`) still uses.
 `packages/router/internal/payload.js` is the wire format: a payload is a
 sequence of numbered rows rather than one value, row 0 is the model with each
 unresolved value replaced by a `"$P<n>"` reference, and each later row is a
@@ -1126,14 +1153,14 @@ and a worker whose imports are pre-bundled, neither of which is done.
 the Rust lint/typecheck/format/test work, and the transform every module goes
 through. Users never write `vite.config.*`.
 
-Vite is the **default builder**, and `builder.module` in `uf.config.js` selects
-another. The contract between `uf` and a builder is written out under [The
-builder contract](#the-builder-contract) below; the rest of this section
-describes `@uniflowed/vite`, which is one implementation of it.
+Vite is the **default builder**, and `build.builder` in `uf.config.js` (formerly
+`builder.module`) selects another. The contract between `uf` and a builder is
+written out under [The builder contract](#the-builder-contract) below; the rest
+of this section describes `@uniflowed/vite`, which is one implementation of it.
 
-`uf dev` and `uf build` start the builder's driver on the project's
-Capability JS Host — Node.js, Bun or Deno, whichever `uf.config.js` names and
-the machine has — and keep the terminal: the driver writes one JSON event per
+`uf dev` and `uf build` start the builder's driver on the build runtime —
+`build.runtime`, then `runtime`, at the release `uf.lock` locks, or the
+project's Capability JS Host when neither names one — and keep the terminal: the driver writes one JSON event per
 line and `uf` renders them. The driver loads `uf.config.js` (through `uf
 transform`, since the config is Flow), builds Vite's inline config from it,
 and registers uf's plugins:
@@ -1299,11 +1326,11 @@ approximately right is worse than none, because TypeScript trusts it silently.
 ### The builder contract
 
 A builder is a directory with a `package.json` and a driver module. uf spawns
-the driver on the Capability JS Host, holds its stdin open, and reads one JSON
+the driver on the build runtime, holds its stdin open, and reads one JSON
 event per line from its stdout; the driver exits when that stdin closes, so it
-cannot outlive the command that started it. `builder.module` in `uf.config.js`
-selects one, and `uf explain build` names the one that will run and its
-version.
+cannot outlive the command that started it. `build.builder` in `uf.config.js`
+selects one, and `uf explain build` names the one that will run, its version
+and the runtime it runs on.
 
 **What the package declares**, under `uf.builder` in its manifest: `driver`,
 the module to spawn (default `./driver.js`), and `preload.bun`, a module handed
@@ -1378,17 +1405,17 @@ build. `tests/library/lsp.test.js` drives the real `uf lsp` binary over framed
 messages and asserts every capability those READMEs claim, including that the
 ones they disclaim are absent.
 
-The constraint every client has to satisfy is the working directory. `uf lsp`
-calls `load_config(".")` once, at start-up, so the process's own directory is
-the only channel a project's `fmt` options and lint levels travel through, and
-starting a server anywhere else silently gives it uf's defaults. The VS Code
-extension starts one server per workspace folder that has a `uf.config.js`, with
-that folder as `cwd`, and restarts it when the file changes — the server has no
-way to be told about a change. `uf lsp --cwd` is not an alternative: `--cwd` is
-a global option, so the command line accepts it and `Commands::Lsp` then ignores
-it, reading `.` instead of the directory it resolved. That is a bug in the
-server rather than in the clients; until it is fixed, `cwd` is the only thing
-that works, and every README under `editors/` says so.
+The constraint every client has to satisfy is naming the project. `uf lsp`
+reads its configuration once, at start-up — from the directory `--cwd` names, or
+else from the process's own working directory — so that is the only channel a
+project's `fmt` options and lint levels travel through, and a server pointed
+anywhere else silently gives it uf's defaults. The VS Code extension starts one
+server per workspace folder that has a `uf.config.js`, with that folder as
+`cwd`, and restarts it when the file changes — the server has no way to be told
+about a change. vim-lsp cannot set a server's working directory, so `uf.vim`
+passes `uf lsp --cwd <root>` instead. `--cwd` was once accepted by the command
+line and dropped by `Commands::Lsp`; `lsp_reads_the_config_of_the_directory_cwd_names`
+in `crates/uf_cli/tests/cli.rs` is what keeps it read.
 
 `uf mcp` is the same idea for an agent rather than an editor, and shares no code
 with `uf lsp` beyond the observation that both are JSON-RPC. The transports are

@@ -213,6 +213,12 @@ pub enum EnvError {
         /// What was written.
         version: String,
     },
+    /// The publisher has no build of this release for this platform.
+    #[error("{pin} has no published build for {}, so uf cannot install it here", .pin.platform)]
+    NoPublishedBuild {
+        /// The pin.
+        pin: Pin,
+    },
     /// A pin has to be installed before it can be linked.
     #[error("{pin} is not installed; run `uf env install`")]
     NotInstalled {

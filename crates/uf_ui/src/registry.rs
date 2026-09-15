@@ -31,7 +31,18 @@ macro_rules! embed {
 /// component added there and not here — or removed there and still named here —
 /// fails the suite rather than shipping a registry that disagrees with the
 /// repository it came from.
-pub(crate) const EMBEDDED: &[Embedded] = embed!["button", "dialog", "select", "tabs"];
+pub(crate) const EMBEDDED: &[Embedded] = embed![
+    "alert-dialog",
+    "button",
+    "dialog",
+    "drawer",
+    "hover-card",
+    "popover",
+    "select",
+    "sheet",
+    "tabs",
+    "tooltip",
+];
 
 /// A component, as its source declares it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -295,21 +306,28 @@ pub(crate) fn imports(source: &str) -> Vec<&str> {
     found
 }
 
-/// The description a source's header opens with: `// Title: description`.
+/// The description a source's header opens with: the paragraph that starts
+/// `// Title: description`.
 ///
 /// Read from the first comment line after the directive and the `@flow` pragma,
-/// and nowhere else, so a colon further down the header is never mistaken for
-/// one.
-pub(crate) fn description(source: &str) -> Option<&str> {
-    for line in source.lines() {
-        let line = line.trim_end();
-        if line.is_empty() || line == "\"use client\";" || line == "// @flow" || line == "//" {
-            continue;
+/// and from the comment lines that continue it, up to the first line that is
+/// only `//`. So a description wraps at the width the rest of the header does,
+/// and a colon further down the header is never mistaken for a title.
+pub(crate) fn description(source: &str) -> Option<String> {
+    let mut lines = source.lines().map(str::trim_end);
+    let opening = lines.by_ref().find(|line| {
+        !(line.is_empty() || *line == "\"use client\";" || *line == "// @flow" || *line == "//")
+    })?;
+    let (title, first) = opening.strip_prefix("// ")?.split_once(": ")?;
+    let mut description = first.trim().to_owned();
+    for line in lines {
+        match line.strip_prefix("// ") {
+            Some(more) if !more.trim().is_empty() => {
+                description.push(' ');
+                description.push_str(more.trim());
+            }
+            _ => break,
         }
-        let text = line.strip_prefix("// ")?;
-        let (title, description) = text.split_once(": ")?;
-        let description = description.trim();
-        return (!title.is_empty() && !description.is_empty()).then_some(description);
     }
-    None
+    (!title.is_empty() && !description.is_empty()).then_some(description)
 }

@@ -365,6 +365,17 @@ function pad(value: number, width: number): string {
   return String(Math.abs(value)).padStart(width, "0");
 }
 
+/**
+ * `.25` for 250 milliseconds, `.005` for 5, and nothing for none.
+ *
+ * Temporal's `auto` precision, which every `toString` here has to match: the
+ * fewest digits that say the value, rather than the three a millisecond field
+ * has room for.
+ */
+function fractionText(millisecond: number): string {
+  return millisecond === 0 ? "" : `.${pad(millisecond, 3).replace(/0+$/, "")}`;
+}
+
 /** `+09:00`, or `-03:30`, from an offset in milliseconds. */
 function offsetText(offsetMillis: number): string {
   const sign = offsetMillis < 0 ? "-" : "+";
@@ -448,6 +459,25 @@ class LiteDuration {
     }
     if (typeof value === "string") {
       return parseDuration(value);
+    }
+    if (
+      value.years === undefined &&
+      value.months === undefined &&
+      value.weeks === undefined &&
+      value.days === undefined &&
+      value.hours === undefined &&
+      value.minutes === undefined &&
+      value.seconds === undefined &&
+      value.milliseconds === undefined
+    ) {
+      // Refused rather than read as zero, because Temporal refuses it. `{}` is
+      // what a duration built from optional fields looks like when every one of
+      // them was left out, and answering `PT0S` made that a zero on this host
+      // and a `TypeError` on one with Temporal (#1052). A zero that is meant is
+      // written `{ seconds: 0 }`.
+      throw new TypeError(
+        "@uniflowed/core/temporal: a duration needs at least one field, as in { minutes: 30 }",
+      );
     }
     return new LiteDuration({
       years: value.years ?? 0,
@@ -675,17 +705,21 @@ class LiteInstant {
   }
 
   /**
-   * `2026-09-04T06:00:00Z`, and `2026-09-04T06:00:00.250Z` when there is a
+   * `2026-09-04T06:00:00Z`, and `2026-09-04T06:00:00.25Z` when there is a
    * fraction.
    *
-   * `Date.prototype.toISOString` would be one line and would always print
-   * `.000`, which native Temporal does not — and a text difference between the
-   * two implementations is the one bug this module cannot have, because it
-   * would only appear on a browser that had shipped Temporal.
+   * `Date.prototype.toISOString` would be one line and would always print three
+   * fraction digits — `.000`, and `.250` for a quarter of a second — where
+   * native Temporal prints the fewest that say the value. A text difference
+   * between the two implementations is the one bug this module cannot have,
+   * because it only appears on a host that has shipped Temporal, and this one
+   * printed `.250Z` until Node 26 was that host (#1052).
    */
   toString(): string {
     const iso = new Date(this.epochMilliseconds).toISOString();
-    return iso.endsWith(".000Z") ? `${iso.slice(0, -5)}Z` : iso;
+    // `.sssZ` is the last five characters, and `toISOString` keeps the
+    // milliseconds in [0, 1000) on both sides of the epoch.
+    return `${iso.slice(0, -5)}${fractionText(Number(iso.slice(-4, -1)))}Z`;
   }
 
   toJSON(): string {
@@ -809,7 +843,7 @@ class LiteZonedDateTime {
   toString(): string {
     const date = `${yearText(this.year)}-${pad(this.month, 2)}-${pad(this.day, 2)}`;
     const time = `${pad(this.hour, 2)}:${pad(this.minute, 2)}:${pad(this.second, 2)}`;
-    const fraction = this.millisecond === 0 ? "" : `.${pad(this.millisecond, 3)}`;
+    const fraction = fractionText(this.millisecond);
     return `${date}T${time}${fraction}${this.offset}[${this.timeZoneId}]`;
   }
 
@@ -822,15 +856,28 @@ class LiteZonedDateTime {
    *
    * The zone is supplied rather than left out, which is the whole difference
    * between this and `Date.prototype.toLocaleString`: a `ZonedDateTime` knows
-   * which zone it is in, so a caller who omits `timeZone` gets that one instead
-   * of whichever zone the machine happens to be set to.
+   * which zone it is in, so a caller gets that one instead of whichever zone the
+   * machine happens to be set to.
+   *
+   * A `timeZone` in `options` is refused rather than honoured, because Temporal
+   * refuses it: a value that carries its zone has no second one to choose
+   * between. Honouring it made output on this host and a `TypeError` on one
+   * with Temporal (#1052). Formatting somewhere else is a conversion first —
+   * `toInstant().toZonedDateTimeISO(timeZone)` — and then this.
    */
   toLocaleString(locales?: string, options?: DateTimeFormatOptions): string {
+    if (options?.timeZone !== undefined) {
+      throw new TypeError(
+        `@uniflowed/core/temporal: this ZonedDateTime is in ${this.timeZoneId}, so ` +
+          `toLocaleString takes no timeZone. Convert it first, with ` +
+          `toInstant().toZonedDateTimeISO(timeZone).`,
+      );
+    }
     const Formatter = Intl.DateTimeFormat;
     if (Formatter == null) {
       return this.toString();
     }
-    const settings = { ...options, timeZone: options?.timeZone ?? this.timeZoneId };
+    const settings = { ...options, timeZone: this.timeZoneId };
     return new Formatter(locales, settings).format(this.epochMilliseconds);
   }
 }
@@ -1005,7 +1052,7 @@ class LitePlainTime {
 
   toString(): string {
     const base = `${pad(this.hour, 2)}:${pad(this.minute, 2)}:${pad(this.second, 2)}`;
-    return this.millisecond === 0 ? base : `${base}.${pad(this.millisecond, 3)}`;
+    return `${base}${fractionText(this.millisecond)}`;
   }
 
   toJSON(): string {
@@ -1053,6 +1100,23 @@ export type TemporalTypes = {
 export type TemporalApi = { ...TemporalTypes, readonly Now: TemporalNow, ... };
 
 /**
+ * A host's own Temporal: the surface above, and the three constructors Lite
+ * leaves out.
+ *
+ * The three are `mixed` because this module promises nothing about them. They
+ * are the host's, handed on by `Temporal` below so that they stay reachable
+ * there, and code that reaches for one has stepped outside the subset on
+ * purpose.
+ */
+type HostTemporal = {
+  ...TemporalApi,
+  readonly PlainDateTime?: mixed,
+  readonly PlainYearMonth?: mixed,
+  readonly PlainMonthDay?: mixed,
+  ...
+};
+
+/**
  * `globalThis`, as far as this module is concerned.
  *
  * Declared rather than cast, because a cast to `any` to read one optional
@@ -1061,7 +1125,7 @@ export type TemporalApi = { ...TemporalTypes, readonly Now: TemporalNow, ... };
  * yet, and this says exactly what is being assumed about the host and nothing
  * more.
  */
-declare var globalThis: { Temporal?: TemporalApi, ... };
+declare var globalThis: { Temporal?: HostTemporal, ... };
 
 /**
  * The host's Temporal, when it has one.
@@ -1072,7 +1136,7 @@ declare var globalThis: { Temporal?: TemporalApi, ... };
  * installed is worse than no polyfill at all — this module would defer to it and
  * then call something it does not have.
  */
-const host: TemporalApi | null = (() => {
+const host: HostTemporal | null = (() => {
   const found = globalThis.Temporal;
   if (found == null) {
     return null;
@@ -1145,14 +1209,41 @@ const lite: TemporalTypes = {
 /**
  * `Temporal`, on every host.
  *
- * Spread from the host's where there is one, so that everything this module has
- * not documented — `PlainDateTime`, `round`, the calendar surface — stays
- * reachable on a host that has it rather than being hidden by uf. `Now` is
- * replaced in both cases, for the reason at the top of this file.
+ * Every constructor is named rather than spread from the host, and that is the
+ * fix for #1008 rather than a matter of taste. A spread copies own *enumerable*
+ * properties, and the constructors on a built-in namespace are not enumerable —
+ * `{ ...Math }` is `{}` for the same reason — so on Node 26, which ships a
+ * native Temporal, the export spread from it was `{ Now }` and
+ * `Temporal.Instant` was `undefined`. The Lite object is a literal, which is why
+ * no host without Temporal could see it, CI's Node 24 included.
+ *
+ * The three constructors Lite leaves out are named too, so that what this
+ * module has not documented — `PlainDateTime` and the two beside it — stays
+ * reachable on a host that has it rather than being hidden by uf. They are
+ * added only when the host is the one in use, so a Lite `Temporal` is still the
+ * five and `Now`, key for key. `named` is spread to do that, which is safe for
+ * the reason the host was not: it is a literal written two lines above. `Now`
+ * is replaced in both cases, for the reason at the top of this file.
  */
 export const Temporal: TemporalApi = (() => {
   const types: TemporalTypes = host ?? lite;
-  return { ...types, Now: nowFor(types) };
+  const named = {
+    Instant: types.Instant,
+    ZonedDateTime: types.ZonedDateTime,
+    PlainDate: types.PlainDate,
+    PlainTime: types.PlainTime,
+    Duration: types.Duration,
+    Now: nowFor(types),
+  };
+  if (host == null) {
+    return named;
+  }
+  return {
+    ...named,
+    PlainDateTime: host.PlainDateTime,
+    PlainYearMonth: host.PlainYearMonth,
+    PlainMonthDay: host.PlainMonthDay,
+  };
 })();
 
 export { LiteDuration, LiteInstant, LitePlainDate, LitePlainTime, LiteZonedDateTime };

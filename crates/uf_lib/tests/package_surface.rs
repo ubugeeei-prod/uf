@@ -637,22 +637,19 @@ fn manifest(relative: &Utf8Path) -> Value {
     serde_json::from_str(&source).unwrap_or_else(|error| panic!("parse {relative}: {error}"))
 }
 
-/// Flatten an `exports` map into `(subpath, target)` pairs, following
-/// conditional objects down to every string leaf.
-///
-/// Every leaf, not one per subpath. A subpath with several conditions has a
-/// target under each, and a map keyed by subpath kept whichever came last:
-/// `@uniflowed/test`'s `.` sends the `uniflowed-bun-test` condition to
-/// `./bun/index.js` and every other to `./index.js`, so only `./index.js` was
-/// ever checked. `bun/index.js` then failed
-/// [`every_shipped_module_is_reachable_through_exports`] although it is
-/// reachable, and a condition naming a file that does not exist would have
-/// passed [`every_exports_subpath_resolves_to_a_shipped_file`].
-fn exports_targets(exports: &Value) -> BTreeSet<(String, String)> {
-    fn walk(subpath: &str, node: &Value, out: &mut BTreeSet<(String, String)>) {
+/// Flatten an `exports` map into `subpath -> target`, following conditional
+/// objects down to their string leaves.
+fn exports_targets(exports: &Value) -> Vec<(String, String)> {
+    // One pair per condition, not one target per subpath. `"."` can be
+    // `./server-components.js` under `react-server` and `./index.js` otherwise,
+    // and a map keyed by subpath kept whichever condition it met last — so the
+    // other target was a shipped module every check here was blind to.
+    // `@uniflowed/test`'s `.` is the same shape: `./bun/index.js` under
+    // `uniflowed-bun-test`, `./index.js` under every other condition.
+    fn walk(subpath: &str, node: &Value, out: &mut Vec<(String, String)>) {
         match node {
             Value::String(target) => {
-                out.insert((subpath.to_string(), target.clone()));
+                out.push((subpath.to_string(), target.clone()));
             }
             Value::Object(conditions) => {
                 for (key, value) in conditions {
@@ -672,7 +669,7 @@ fn exports_targets(exports: &Value) -> BTreeSet<(String, String)> {
         }
     }
 
-    let mut out = BTreeSet::new();
+    let mut out = Vec::new();
     walk(".", exports, &mut out);
     out
 }
@@ -1271,9 +1268,15 @@ fn a_client_entry_never_imports_a_node_builtin() {
     /// nothing from here. `react-native-testing/internal/test-renderer.js`
     /// keeps the optional React Test Renderer `createRequire` call behind a
     /// browser-mapped helper so the package entry stays browser-clean.
+    /// `router/internal/server-route.js` is the route store a Server Component's
+    /// hooks read, and only two modules import it: `router/server-components.js`,
+    /// which the package exports under the `react-server` condition alone — a
+    /// browser never resolves it — and `router/rsc.js`, whose Flight renderer
+    /// refuses to load anywhere but a `react-server` graph.
     const SERVER_MODULES: &[&str] = &[
         "router/server.js",
         "router/handler.js",
+        "router/internal/server-route.js",
         "react-testing/internal/render.js",
         "react-native-testing/internal/test-renderer.js",
         "story/collect.js",

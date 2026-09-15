@@ -104,6 +104,7 @@ pub(crate) fn report_module_diagnostics(
                     module: module.path.clone(),
                     specifier: import.specifier.clone(),
                     line: import.line,
+                    chain: Vec::new(),
                 });
             }
         }
@@ -129,8 +130,92 @@ pub(crate) fn report_client_graph_leaks(
                     module: module.path.clone(),
                     specifier: CompactString::from(imported.path.as_str()),
                     line: 0,
+                    chain: Vec::new(),
                 });
             }
         }
+    }
+}
+
+/// Name, for each server-only import the client graph reaches, the shortest
+/// chain of imports from a client boundary down to the module that imports it.
+///
+/// The module and the specifier say what leaked; the chain says why it is in
+/// the browser's graph at all, which is the part a reader has to find before
+/// they can fix it — the import to cut is somewhere on this path, and usually
+/// not in the module that did the importing. See ubugeeei-prod/uf#252.
+///
+/// One breadth-first search from every boundary at once — each `"use client"`
+/// module, and each module a client entry names — so a chain starts at the
+/// nearest boundary rather than at whichever was looked at first. Sources are
+/// taken in id order, which is path order, so the same project reports the same
+/// chain on every run.
+pub(crate) fn attach_client_chains(
+    modules: &[RscModule],
+    entries: &[(camino::Utf8PathBuf, super::EntryKind)],
+    index: &uf_infra::FxHashMap<camino::Utf8PathBuf, ModuleId>,
+    diagnostics: &mut [RscDiagnostic],
+) {
+    let leaks = diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            RscDiagnostic::ServerOnlyImportInClientModule { .. }
+        )
+    });
+    if !leaks {
+        return;
+    }
+
+    // `u32::MAX` is "no predecessor", which is what a boundary has; no graph
+    // can hold that many modules, because the ids are `u32`.
+    const NONE: u32 = u32::MAX;
+    let mut predecessor = vec![NONE; modules.len()];
+    let mut seen = vec![false; modules.len()];
+    let mut work = std::collections::VecDeque::new();
+
+    let boundaries = modules
+        .iter()
+        .enumerate()
+        .filter(|(_, module)| module.environment == ModuleEnvironment::Client)
+        .map(|(position, _)| ModuleId(position as u32));
+    let client_entries = entries
+        .iter()
+        .filter(|(_, kind)| *kind == super::EntryKind::Client)
+        .filter_map(|(path, _)| index.get(path).copied());
+    for source in boundaries.chain(client_entries) {
+        if !seen[source.index()] {
+            seen[source.index()] = true;
+            work.push_back(source);
+        }
+    }
+    while let Some(current) = work.pop_front() {
+        for target in modules[current.index()].imports.iter().copied() {
+            if seen[target.index()] {
+                continue;
+            }
+            seen[target.index()] = true;
+            predecessor[target.index()] = current.0;
+            work.push_back(target);
+        }
+    }
+
+    for diagnostic in diagnostics.iter_mut() {
+        let RscDiagnostic::ServerOnlyImportInClientModule { module, chain, .. } = diagnostic else {
+            continue;
+        };
+        let Some(&id) = index.get(module) else {
+            continue;
+        };
+        if !seen[id.index()] {
+            continue;
+        }
+        let mut walked = vec![modules[id.index()].path.clone()];
+        let mut current = id;
+        while predecessor[current.index()] != NONE {
+            current = ModuleId(predecessor[current.index()]);
+            walked.push(modules[current.index()].path.clone());
+        }
+        walked.reverse();
+        *chain = walked;
     }
 }

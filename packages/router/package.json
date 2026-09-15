@@ -11,10 +11,14 @@
     "directory": "packages/router"
   },
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "react-server": "./server-components.js",
+      "default": "./index.js"
+    },
     "./action": "./action.js",
     "./client": "./client.js",
     "./native": "./native.js",
+    "./rsc": "./rsc.js",
     "./server": "./server.js",
     "./routing": "./routing.js",
     "./package.json": "./package.json",
@@ -30,12 +34,20 @@
     "middleware.js",
     "native.js",
     "routing.js",
+    "rsc.js",
+    "server-components.js",
     "server.js",
     "!*.test.js"
   ],
   "peerDependencies": {
-    "react": ">=19",
-    "react-dom": ">=19"
+    "react": ">=19.3.0",
+    "react-dom": ">=19.3.0",
+    "react-server-dom-parcel": ">=19.3.0"
+  },
+  "peerDependenciesMeta": {
+    "react-dom": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@uniflowed/hooks": "0.0.0-alpha.34",

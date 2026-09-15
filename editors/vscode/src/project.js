@@ -10,9 +10,10 @@
 // server per such folder — no server at all in a folder without one.
 //
 // This matters more than a file-name check usually does, because of where the
-// server reads its configuration from. `uf lsp` calls `load_config(".")` once
-// at start-up: its options come from its *working directory*, and there is no
-// request that can tell it otherwise. So the folder that has the config is
+// server reads its configuration from. `uf lsp` reads it once, at start-up,
+// and with no `--cwd` — this extension passes none — from its *working
+// directory*; there is no request that can tell it otherwise. So the folder
+// that has the config is
 // also the folder the server has to be started in, and starting one anywhere
 // else would give a project the default formatter width and the default lint
 // levels while looking exactly like it was working.

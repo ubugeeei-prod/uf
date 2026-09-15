@@ -218,6 +218,7 @@ _2026-09-12_
 
 ### Performance
 
+- **check**: report batch allocation split (#852)
 - cache repeated transform service replies (#846)
 
 ### Internal
@@ -337,6 +338,12 @@ _2026-09-12_
 
 ### Added
 
+- **server**: generate openapi from route handlers (#800)
+- **deploy**: add deno adapter (#799)
+- **std**: ship tar archive (#795)
+- **std**: ship zip container (#794)
+- **std**: ship text protocol headers (#793)
+- **std**: ship buffered scanners (#791)
 - **std**: ship byte io adapters (#790)
 - **std**: ship cancellable timers (#789)
 - **std**: ship non-cryptographic hashes (#788)
@@ -353,6 +360,9 @@ _2026-09-12_
 
 ### Fixed
 
+- **rsc**: classify project hook wrappers (#798)
+- **rsc**: keep package client boundaries (#797)
+- **check**: keep package resolver on pinned Flow APIs (#796)
 - **config**: evaluate task config modules (#784)
 - **check**: resolve Flow export conditions (#783)
 - **check**: prefer libdef declarations over package manifests (#778)
@@ -386,6 +396,7 @@ _2026-09-10_
 
 ### Other
 
+- release: uf@0.0.0-alpha.20 (#766)
 - env: read exact tool pins from package engines (#765)
 - upstream: silence remaining Flow deref warning (#764)
 - check: resolve package imports aliases (#763)

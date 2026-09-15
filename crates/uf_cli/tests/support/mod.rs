@@ -33,6 +33,66 @@ pub fn binary(name: &str) -> Command {
     command
 }
 
+/// A store holding one release of Node, whose `bin/node` leaves a mark and
+/// hands over to the machine's own.
+///
+/// Built rather than downloaded, and named for the platform uf runs on, so a
+/// command that runs "the release in the store" can be told from one that ran
+/// whatever was on `PATH` without a network: only the first leaves a mark —
+/// every argument it was started with, one line per start. Returns the
+/// directory [`uf_with_tools`] points uf at, and the file the marks go to.
+pub fn store_with_marked_node(version: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let tools = tempfile::tempdir().unwrap();
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        other => other,
+    };
+    let arch = match std::env::consts::ARCH {
+        "aarch64" => "arm64",
+        "x86_64" => "x64",
+        other => other,
+    };
+    let found = std::process::Command::new("sh")
+        .args(["-c", "command -v node"])
+        .output()
+        .unwrap();
+    let real = String::from_utf8(found.stdout).unwrap().trim().to_owned();
+    let bin = tools
+        .path()
+        .join(format!("store/node-{version}-{os}-{arch}/bin"));
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::create_dir_all(tools.path().join("nothing")).unwrap();
+    let marks = tools.path().join("node.log");
+    std::fs::write(
+        bin.join("node"),
+        format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\nexec '{real}' \"$@\"\n",
+            marks.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(bin.join("node"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    (tools, marks)
+}
+
+/// `uf` with its store, links, roots and index cache under `tools`, and both
+/// publishers pointed at a directory that serves nothing — so a run that tried
+/// to download would fail rather than reach the network.
+pub fn uf_with_tools(tools: &std::path::Path) -> Command {
+    let mut command = uf();
+    let nothing = format!("file://{}", tools.join("nothing").display());
+    command
+        .env("UF_STORE", tools.join("store"))
+        .env("UF_ENVS", tools.join("envs"))
+        .env("UF_ROOTS", tools.join("roots"))
+        .env("UF_INDEX_CACHE", tools.join("cache"))
+        .env("UF_TOOL_BASE", &nothing)
+        .env("UF_TOOL_INDEX_BASE", &nothing);
+    command
+}
+
 /// Assert that rendered text carries no ANSI escape sequences.
 pub fn assert_plain(text: &str) {
     assert!(

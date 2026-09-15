@@ -54,7 +54,7 @@ asserts each of them.
 | Quick fixes | `:lua vim.lsp.buf.code_action()` on a diagnostic. Offered only where uf's answer is mechanical — `flow/deprecated-type` has one; a rule that would have to guess at intent deliberately does not. |
 | Fix all | `:lua vim.lsp.buf.code_action({ context = { only = { "source.fixAll" } }, apply = true })` |
 | Hover | `K`. The rule behind a diagnostic, what an import specifier names, what a rule id in a suppression comment means, or what a key of `uf.config.js` is for. |
-| Completion | In `uf.config.js`: `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. The keys valid at the cursor, with their documentation and type, and after `"` the values of a key whose type is a fixed set. |
+| Completion | In `uf.config.js`: `<C-x><C-o>` in insert mode, because Neovim sets `omnifunc` for a buffer whose server can complete, or `vim.lsp.completion.enable(true, client_id, bufnr, { autotrigger = true })` to have it as you type. The keys valid at the cursor, with their documentation and type, after `"` the values of a key whose type is a fixed set, and in a tool spec the names and, after `@`, the versions. |
 
 ## What you do not get
 
@@ -67,13 +67,14 @@ reason is in `crates/uf_cli/src/commands/dev/hover.rs`.
 
 ## Working directory
 
-`uf lsp` reads `uf.config.js` from the directory it was started in, once. That
-read is the only channel it has for your `fmt` options and lint levels — there
-is no request that can tell it otherwise, and `uf lsp --cwd` does not work (the
-flag is accepted and ignored).
+`uf lsp` reads `uf.config.js` once, at start-up: from the directory `--cwd`
+names, or else from the directory it was started in. That read is the only
+channel it has for your `fmt` options and lint levels — there is no request
+that can tell it otherwise.
 
 `lua/uf.lua` handles this by passing `cmd_cwd = root`. If you write your own
-configuration, do the same, or start Neovim from the project root. The symptom
+configuration, do the same, pass `cmd = { "uf", "lsp", "--cwd", root }`, or
+start Neovim from the project root. The symptom
 of getting it wrong is quiet: formatting to uf's defaults rather than to yours.
 
 ## Editing `uf.config.js`

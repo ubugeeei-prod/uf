@@ -190,9 +190,16 @@ pub(crate) fn inspect(cwd: &Utf8Path, ui: &mut Ui, as_json: bool) -> Result<()> 
         // prefix resolves to is `uf.lock`'s answer, not this file's.
         renderer.heading(out, 2, "tools");
         let tools = resolved.config.tool_declarations();
+        // Beside a prefix, the release `uf.lock` locks it to: `bun@1.4` is what
+        // the project wrote and `1.4.2` is what runs. Read, never resolved.
         let summaries: Vec<String> = tools
             .iter()
-            .map(uf_config::ToolDeclaration::summary)
+            .map(
+                |tool| match crate::commands::runtimes::locked(&resolved, tool.role) {
+                    Some(version) => format!("{} · locked at {version}", tool.summary()),
+                    None => tool.summary(),
+                },
+            )
             .collect();
         let rows: Vec<_> = tools
             .iter()
@@ -353,7 +360,21 @@ fn inspect_payload(resolved: &ResolvedConfig) -> Result<serde_json::Value> {
         // sentence for every tool key this project still writes in a spelling
         // that has been replaced. Declared rather than resolved, like the
         // `config` beside it: what a prefix resolves to is `uf.lock`'s answer.
-        "tools": resolved.config.tool_declarations(),
+        "tools": resolved
+            .config
+            .tool_declarations()
+            .into_iter()
+            .map(|tool| {
+                // `locked` is the release a prefix resolved to, or `null` for a
+                // prefix nothing has locked and for a spec that is no prefix.
+                let locked = crate::commands::runtimes::locked(resolved, tool.role);
+                let mut row = serde_json::to_value(&tool).unwrap_or_default();
+                if let Some(object) = row.as_object_mut() {
+                    object.insert(String::from("locked"), json!(locked));
+                }
+                row
+            })
+            .collect::<Vec<_>>(),
         "toolDeprecations": resolved.config.tool_deprecations(),
         "plugins": pipeline.report(),
         "routes": routes,

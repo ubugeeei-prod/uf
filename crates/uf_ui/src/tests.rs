@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use camino::{Utf8Path, Utf8PathBuf};
-use uf_lib::{UiReadiness, ui_components};
+use uf_lib::{UI_HOOK_MODULES, UiReadiness, ui_components};
 
 use crate::diff::unified;
 use crate::project::{
@@ -163,7 +163,6 @@ fn every_module_the_headless_package_ships_has_a_component() {
     const NOT_YET: &[&str] = &[
         "accordion",
         "alert",
-        "alert-dialog",
         "avatar",
         "breadcrumb",
         "calendar",
@@ -173,21 +172,17 @@ fn every_module_the_headless_package_ships_has_a_component() {
         "combobox",
         "context-menu",
         "date-picker",
-        "drawer",
         "field",
-        "hover-card",
         "input-otp",
         "menu",
         "menubar",
         "navigation-menu",
         "pagination",
-        "popover",
         "progress",
         "radio-group",
         "resizable",
         "scroll-area",
         "separator",
-        "sheet",
         "sidebar",
         "skeleton",
         "slider",
@@ -196,7 +191,6 @@ fn every_module_the_headless_package_ships_has_a_component() {
         "toast",
         "toggle",
         "toggle-group",
-        "tooltip",
     ];
 
     let modules = headless_modules();
@@ -245,10 +239,22 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
     }
 }
 
-/// The modules `packages/ui` ships, by file name.
+/// The component modules `packages/ui` ships, by file name.
+///
+/// Every module but the hook modules. `@uniflowed/ui/interactions` exports
+/// `usePress` and the rest of the interactions layer rather than a component, so
+/// it has no styled half to wait for, and counting it would put it on `NOT_YET`
+/// — a list that is only allowed to shrink, which it never could.
+///
+/// The exemption is `uf_lib`'s list rather than one written here. That crate
+/// holds every name on it to a module that exports hooks and nothing
+/// capitalised, which is what stops a component hiding behind it, and a second
+/// list here would be a second place to forget. A name on it with no module
+/// behind it fails here too, so a module renamed on one side cannot quietly
+/// turn the exemption into nothing.
 fn headless_modules() -> BTreeSet<String> {
     let directory = repository_root().join("packages/ui");
-    let modules: BTreeSet<String> = fs::read_dir(&directory)
+    let mut modules: BTreeSet<String> = fs::read_dir(&directory)
         .unwrap_or_else(|error| panic!("{} cannot be listed: {error}", directory.display()))
         .map(|entry| {
             entry
@@ -260,6 +266,12 @@ fn headless_modules() -> BTreeSet<String> {
         .filter(|file| file != "index.js" && !file.ends_with(".test.js"))
         .filter_map(|file| file.strip_suffix(".js").map(ToOwned::to_owned))
         .collect();
+    for hooks in UI_HOOK_MODULES {
+        assert!(
+            modules.remove(*hooks),
+            "`UI_HOOK_MODULES` names `{hooks}`, and `packages/ui` has no such module"
+        );
+    }
     assert!(
         modules.len() > 20,
         "`packages/ui` listed almost nothing, so this is not checking anything: {modules:?}"
@@ -395,16 +407,25 @@ const text = <p>taken from "the manual"</p>;
 }
 
 #[test]
-fn a_description_is_the_first_header_line_after_its_title() {
+fn a_description_is_the_first_header_paragraph_after_its_title() {
     assert_eq!(
         description(
             "\"use client\";\n// @flow\n//\n// Dialog: a modal dialog.\n//\n// Later: not this.\n"
-        ),
+        )
+        .as_deref(),
         Some("a modal dialog.")
     );
     assert_eq!(
-        description("// @flow\n// Button: a button.\n"),
+        description("// @flow\n// Button: a button.\n").as_deref(),
         Some("a button.")
+    );
+    // Wrapped at the header's width, and ended by the paragraph break.
+    assert_eq!(
+        description(
+            "// @flow\n//\n// Sheet: a panel on one edge,\n// for filters.\n//\n// More.\n"
+        )
+        .as_deref(),
+        Some("a panel on one edge, for filters.")
     );
     assert_eq!(description("// @flow\n\nimport x from \"y\";\n"), None);
     assert_eq!(description("// @flow\n// No title here.\n"), None);
