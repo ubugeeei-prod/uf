@@ -611,6 +611,16 @@ pub(crate) enum Commands {
         /// Re-run the affected tests whenever a source file changes.
         #[arg(long)]
         watch: bool,
+        /// Run only the test files a change since REF reaches.
+        ///
+        /// A change is anything that differs from the commit where HEAD's
+        /// history left REF — committed since, staged or not — and any
+        /// untracked file git does not ignore. A test file is reached when it
+        /// imports a changed file, directly or through other modules. A change
+        /// to `uf.config.js`, a `package.json`, a lockfile or a `.env` file
+        /// runs the whole suite.
+        #[arg(long, value_name = "REF")]
+        changed: Option<String>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,

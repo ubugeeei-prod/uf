@@ -45,6 +45,7 @@ use crate::support::{
 };
 use crate::ui::Ui;
 
+mod changed;
 mod coverage;
 mod payload;
 mod render;
@@ -65,6 +66,8 @@ pub(crate) struct TestArgs {
     pub(crate) mode: Option<String>,
     /// Re-run affected tests when a file changes.
     pub(crate) watch: bool,
+    /// Run only the test files a change since this ref reaches.
+    pub(crate) changed: Option<String>,
     /// Emit machine-readable JSON on stdout.
     pub(crate) json: bool,
     /// Keep only tests whose fully qualified name contains this pattern.
@@ -156,6 +159,24 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
              edit affected, so its coverage would not be the project's"
         );
     }
+    // `--changed` is one selection, made from git before the run; watch mode
+    // makes its own after every edit. Asked for both, neither can keep the
+    // promise the other makes.
+    if args.watch && args.changed.is_some() {
+        bail!(
+            "--watch and --changed cannot be combined: watch mode already re-runs what each edit \
+             affects"
+        );
+    }
+    // Watch mode's reason, in the same words: a report over the files a change
+    // reached is not the project's coverage, and a threshold held against it
+    // would fail a pull request over files it never touched.
+    if args.changed.is_some() && args.coverage {
+        bail!(
+            "--changed and --coverage cannot be combined: a run over the files a change reaches \
+             would report coverage that is not the project's"
+        );
+    }
 
     let resolved = load_config(cwd)?;
     refuse_a_runner_uf_test_cannot_run_yet(&resolved.config)?;
@@ -166,10 +187,13 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // behind — still has to be runnable by name.
     //
     // A one-shot, non-coverage run over an existing path can stay inside that
-    // path. Watch mode still needs the whole import graph so edits to a shared
-    // dependency re-run the selected tests, and coverage still needs every
-    // JavaScript file so "not covered" means something.
-    let needs_project_scan = args.watch || args.coverage || resolved.config.test.coverage.enabled;
+    // path. Watch mode and `--changed` still need the whole import graph, so a
+    // change to a shared dependency reaches the selected tests, and coverage
+    // still needs every JavaScript file so "not covered" means something.
+    let needs_project_scan = args.watch
+        || args.changed.is_some()
+        || args.coverage
+        || resolved.config.test.coverage.enabled;
     let (scan, selected_path_scan) = if needs_project_scan {
         (
             scan_selected_source_files(&root, &resolved.config, &args.paths)?,
@@ -214,7 +238,22 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         bail!("no file matched {}", quoted_list(&args.paths));
     }
 
+    // Asked before `--list`, so the discovery view shows what this run would
+    // do. The graph is built over every file the scan found; the selection
+    // only ever narrows which test files run.
+    let changed = args
+        .changed
+        .as_deref()
+        .map(|reference| changed::select(&root, reference, &files))
+        .transpose()?;
+
     if args.list {
+        if let Some(selection) = &changed {
+            // `false`: `--list` collects nothing, so there is no coverage to
+            // say is missing.
+            let tests = changed::narrow(ui, selection, test_bearing(files), false);
+            return render_list(ui, &root, &tests, &args.filter());
+        }
         return render_list(ui, &root, &files, &args.filter());
     }
     let application_target = test_application_target(&resolved.config);
@@ -253,7 +292,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // machine" would be a true sentence that sent a reader somewhere useless.
     // The `can_collect_coverage` check below still stands for Bun and Deno,
     // where the question is about the host that was already chosen.
-    if args.browser && (args.coverage || resolved.config.test.coverage.enabled) {
+    // A `--changed` run collects no coverage, even when `uf.config.js` turns it
+    // on, for the reason `--changed --coverage` is refused above.
+    let coverage_on = changed.is_none() && (args.coverage || resolved.config.test.coverage.enabled);
+    if args.browser && coverage_on {
         bail!(
             "`uf test --browser --coverage` cannot measure anything: V8 is counting in the \
              renderer exactly as it counts in Node, but `NODE_V8_COVERAGE` is Node's own switch \
@@ -266,7 +308,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let resolved_host = runtime.host;
     let host_kind = test_host_kind(resolved_host.kind, args.browser);
     let settings = &resolved.config.test.coverage;
-    if (args.coverage || settings.enabled) && !host_kind_can_collect_coverage(host_kind) {
+    if coverage_on && !host_kind_can_collect_coverage(host_kind) {
         bail!(
             "`uf test --coverage` needs Node.js: coverage is V8's own count, written out \
              through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
@@ -312,7 +354,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         .map(|file| file.relative_path.clone())
         .collect();
 
-    let raw = if args.coverage || settings.enabled {
+    let raw = if coverage_on {
         let raw = coverage::RawCoverage::create(&root)?;
         host = host.with_coverage_dir(raw.directory().to_path_buf());
         Some(raw)
@@ -321,6 +363,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     };
 
     let files = test_bearing(files);
+    let files = match &changed {
+        Some(selection) => changed::narrow(ui, selection, files, settings.enabled),
+        None => files,
+    };
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
     let report = timer.measure("run", || {

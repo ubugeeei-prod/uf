@@ -116,13 +116,23 @@ impl ImportGraph {
     ///
     /// Sorted and deduplicated, so the answer does not depend on hash order.
     /// Cycles are safe: a module is visited once.
+    ///
+    /// A changed path the graph does not hold still reaches the modules whose
+    /// imports resolve to it. That is a deleted file — watch mode removes it
+    /// from the graph before asking, and `uf test --changed` never scanned it
+    /// — and the modules that still import it are exactly the ones the
+    /// deletion breaks. A graph that forgot the edge with the module re-ran
+    /// nothing and reported green. Resolving against a path that is gone can
+    /// also claim an import a surviving file answers (`./util` after `util.js`
+    /// is deleted beside a `util/index.js`); the importer then runs when it did
+    /// not have to, which is the side to be wrong on.
     pub fn affected<'a>(&self, changed: impl IntoIterator<Item = &'a str>) -> Vec<CompactString> {
-        let dependents = self.dependents();
+        let changed: Vec<CompactString> = changed.into_iter().map(CompactString::from).collect();
+        let dependents = self.dependents(&changed);
         let mut seen: FxHashSet<CompactString> = FxHashSet::default();
         let mut queue: Vec<CompactString> = Vec::new();
 
         for path in changed {
-            let path = CompactString::from(path);
             if seen.insert(path.clone()) {
                 queue.push(path);
             }
@@ -158,8 +168,20 @@ impl ImportGraph {
     }
 
     /// The reverse edges: module -> the modules that import it.
-    fn dependents(&self) -> FxHashMap<CompactString, Vec<CompactString>> {
-        let modules: FxHashSet<&str> = self.targets.keys().map(CompactString::as_str).collect();
+    ///
+    /// Imports resolve against every module the graph holds and every path in
+    /// `changed`, so an import of a module that is gone still has an edge to
+    /// follow; see [`Self::affected`].
+    fn dependents(
+        &self,
+        changed: &[CompactString],
+    ) -> FxHashMap<CompactString, Vec<CompactString>> {
+        let modules: FxHashSet<&str> = self
+            .targets
+            .keys()
+            .chain(changed)
+            .map(CompactString::as_str)
+            .collect();
         let mut dependents: FxHashMap<CompactString, Vec<CompactString>> = FxHashMap::default();
         for (importer, targets) in &self.targets {
             for target in targets {

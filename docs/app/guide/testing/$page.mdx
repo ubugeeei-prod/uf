@@ -631,6 +631,35 @@ my edit break the nearby tests?", not for whole-project proof, so it cannot be
 combined with `--json` or `--coverage`: both promise a single report about one
 complete suite.
 
+`--changed REF` asks the same question of a branch, once, which is what a pull
+request's CI wants from a suite too large to run on every push:
+
+```console
+$ uf test --changed origin/main
+changed  3 files since origin/main (merge base 1f0c2a9e4b7d) · 2 of 140 test files reach them
+```
+
+A change is every file that differs from the commit where this branch's history
+left `REF` — committed since, staged, or not yet staged — and every untracked
+file git does not ignore. Starting from that commit rather than from `REF`
+itself means work that landed on `REF` after the branch was cut is not counted
+as this branch's. A test file runs when it imports a changed file, directly or
+through any number of modules: the graph `--watch` uses. A deleted file reaches
+the tests that still import it, because those are the tests it breaks, and a
+changed snapshot reaches the test that took it.
+
+Some files change results without any test importing them: `uf.config.js`, a
+`package.json` or lockfile, and the `.env` files. A change to one of those runs
+the whole suite, and the opening line names the file. The graph follows
+relative imports, so a module a test reaches through a package name (a
+workspace package included) and a file a test reads from disk are outside what
+`--changed` can see; keep a full run on the branch you merge into. In CI, fetch
+enough history for `REF` and `HEAD` to meet (`fetch-depth: 0` for
+`actions/checkout`), or git has no commit to measure from and the run is
+refused. `--changed` cannot be combined with `--watch`, which already follows
+changes, or with `--coverage`, for the reason watch mode cannot; a project that
+turns coverage on in `uf.config.js` collects none on a `--changed` run.
+
 ### Timings and scheduling
 
 After a run, uf records completed file durations in
@@ -741,6 +770,7 @@ object only when coverage was actually collected.
 | `PATH...` | Only files whose path contains one of these |
 | `--watch` | Re-run what the change affected |
 | `--watch-interval MS` | Poll for watched changes at this interval |
+| `--changed REF` | Only the test files a change since REF reaches |
 | `--bail[=N]` | Stop after N failures; N defaults to 1 |
 | `--retry N` | Re-run a failing test up to N more times |
 | `-j N`, `--threads N` | Run at most N files at once; defaults to one per core |
