@@ -39,6 +39,7 @@ import {
   installFlightFetch,
   installNavigation,
   installRouting,
+  installStaleTime,
 } from "./internal/runtime.js";
 
 /**
@@ -72,10 +73,12 @@ export async function hydrateFlight(options: {|
   readonly navigation?: Navigation,
   readonly basePath?: string,
   readonly trailingSlash?: TrailingSlash,
+  readonly staleTime?: number,
 |}): Promise<void> {
   requireServerComponentsReact("@uniflowed/router/rsc/client");
   installNavigation(options.navigation ?? "client");
   installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
+  installStaleTime(options.staleTime ?? 0);
   installFlightFetch(fetchFlight);
   installBrowserModules();
   const flight = readDocumentPayload(document, domObserver(document));

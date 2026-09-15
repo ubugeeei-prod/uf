@@ -111,6 +111,7 @@ import {
   decodeActionResult,
   encodeActionArguments,
 } from "./internal/action-wire.js";
+import { clearNavigationCache } from "./internal/navigation-cache.js";
 
 export type { ActionArgument, ActionValue } from "./internal/action-wire.js";
 export {
@@ -264,6 +265,11 @@ export function createServerReference(id: string, name: string): ServerActionFun
       headers,
       body,
     });
+    // A route a navigation kept may no longer show what this action wrote, and
+    // which routes is the server's to know, so every kept route is asked for
+    // again. Whatever the status: an action that failed part-way may have
+    // written before it failed. See `./internal/navigation-cache.js`.
+    clearNavigationCache();
     if (!response.ok) {
       throw new ServerActionError(name, response.status);
     }

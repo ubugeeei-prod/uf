@@ -821,6 +821,44 @@ A `Link` to a URL that a slot on screen intercepts is the other exception: it
 renders the intercepting page into that slot and leaves the page it was clicked
 on where it was — see [Intercepting routes](#intercepting-routes).
 
+### Keeping what a navigation fetched
+
+By default a navigation asks the server every time. A prefetched link hands its
+answer to one click, and a second visit to the same page, or the back button,
+waits on the network again. `app.rendering.staleTime` keeps what a navigation
+fetched, for that many seconds:
+
+```js
+// uf.config.js
+export default defineConfig({
+  app: {
+    rendering: {
+      staleTime: 30,
+    },
+  },
+});
+```
+
+While an entry is fresh, following a link to its page, going back or forward to
+it, and hovering a link to it all read the kept answer and make no request.
+Once it is stale, the next navigation asks again and keeps the new answer.
+
+| | What is kept |
+| --- | --- |
+| Routes rendered as Server Components (the default) | The route's payload, with the `$loading.js` fallbacks in its tree, so a page that was still streaming shows the same loading shell |
+| `app.rsc: false` | The resolved route: the loader's data, and the page, layouts and loading boundaries it loaded. A prefetch runs the loader too |
+
+Entries are kept by the path and query the route table is asked about, without
+`app.router.basePath`, and at most 32 routes are kept at a time. A route that
+answered with its error or not-found page is not kept. `router.refresh()` and
+every server action clear everything kept, because a write can change any page
+and which ones is the server's to know. A `Link` with `prefetch="off"` fills
+nothing on hover, and a click on it still reads what an earlier navigation kept.
+
+`0`, the default, keeps nothing, which is uf's cache policy everywhere: nothing
+is shown that the server did not just answer until a project says how old an
+answer it can show.
+
 ### View transitions
 
 Every client navigation goes through `document.startViewTransition` where the

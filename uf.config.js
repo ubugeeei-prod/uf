@@ -270,13 +270,12 @@ export default defineConfig({
     // naming a rule that exists.
     //
     // The numbers were wrong here twice, which is its own lesson: this said
-    // 315 errors and named `flow/react-intrinsic-overlap` (89) and
-    // `react/hooks-rules` (86) as the largest groups when both reported
-    // nothing — the first is one of sixteen rules that need type inference uf
-    // does not implement yet, so it is skipped rather than passing — and then
-    // 153 errors including eight in `packages/test`'s fake timers, which #237
-    // had already fixed by teaching the compiler that a `useX` name is a hook
-    // only where the module says React. ubugeeei-prod/uf#225 has the count
+    // 315 errors and named `flow/react-intrinsic-overlap` (89) and uf's
+    // former hand-written hooks rule (86) as the largest groups when both
+    // reported nothing — the first is one of sixteen rules that need type
+    // inference uf does not implement yet, so it is skipped rather than
+    // passing — and then 153 errors including eight in `packages/test`'s fake
+    // timers, which #237 had already fixed. ubugeeei-prod/uf#225 has the count
     // this replaces.
     "check:lib": {
       command: "./target/release/uf lint",

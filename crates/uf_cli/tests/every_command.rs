@@ -50,7 +50,10 @@ const COULD_NOT_RUN: i32 = 2;
 /// convenient to run here. `every_command_the_help_lists_is_checked_here`
 /// fails when a command is added to the parser and not to this table.
 const COVERAGE: &[(&str, &str)] = &[
-    ("add", "dependencies.rs: runs the package manager"),
+    (
+        "add",
+        "dependencies.rs: runs npm; managers.rs: runs every other package manager",
+    ),
     ("build", "vite.rs and cli.rs: needs @uniflowed/vite"),
     ("check", "here, and typecheck.rs for the diagnostics"),
     ("completion", "here, and cli.rs for the script's shape"),
@@ -101,7 +104,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ("update", "dependencies.rs: runs the package manager"),
     (
         "dedupe",
-        "dependencies.rs: runs the package manager, or says it cannot",
+        "dependencies.rs and managers.rs: runs each package manager's, or says it has none",
     ),
     (
         "pm",
@@ -113,7 +116,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ),
     (
         "link",
-        "dependencies.rs: links a directory, or says the manager cannot",
+        "dependencies.rs and managers.rs: links on each package manager, or says it cannot",
     ),
     (
         "catalog",

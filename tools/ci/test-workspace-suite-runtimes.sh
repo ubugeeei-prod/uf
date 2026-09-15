@@ -12,12 +12,13 @@ mkdir -p "$work/.github/workflows" "$work/crates/uf_cli/tests" "$work/tools/ci"
 trap 'rm -rf "$work"' EXIT
 cp "$check" "$work/tools/ci/"
 
-# The three test files the check keys off. Their contents do not matter; the
+# The four test files the check keys off. Their contents do not matter; the
 # check asks whether they exist, because a runtime is required exactly when
 # something starts it.
 : > "$work/crates/uf_cli/tests/bun_host.rs"
 : > "$work/crates/uf_cli/tests/deno_host.rs"
 : > "$work/crates/uf_cli/tests/permissions.rs"
+: > "$work/crates/uf_cli/tests/managers.rs"
 
 failures=0
 
@@ -60,6 +61,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 0 "all three present"
@@ -74,11 +76,29 @@ jobs:
     steps:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 1 "deno missing"
 names "without deno"
 names "crates/uf_cli/tests/deno_host.rs"
+
+echo "a job without the package managers is named, with the file that runs them"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: cargo test --workspace
+YAML
+expect 1 "pnpm and the Yarns missing"
+names "without package-managers"
+names "crates/uf_cli/tests/managers.rs"
 
 echo "the suite reached through uf run rust:test counts"
 plant <<'YAML'
@@ -121,6 +141,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 0 "a task whose name merely begins with ci is not the suite"
@@ -142,6 +163,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 0 "a comment is not a command"
@@ -157,6 +179,7 @@ jobs:
     steps:
       - uses: oven-sh/setup-bun@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 0 "nothing starts deno, so nothing needs it"
@@ -188,6 +211,7 @@ jobs:
         with:
           deno-version: v2.x
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
   publish:
     runs-on: ubuntu-latest
@@ -197,6 +221,7 @@ jobs:
         with:
           deno-version: v1.x
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace --profile ci
 YAML
 expect 1 "v1.x beside v2.x is how uf@0.0.0-alpha.36 failed to publish"
@@ -216,6 +241,7 @@ jobs:
         with:
           deno-version: v2.x
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
   publish:
     runs-on: ubuntu-latest
@@ -225,6 +251,7 @@ jobs:
         with:
           deno-version: v2.x
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace --profile ci
 YAML
 expect 0 "the same Deno in every suite job"
@@ -242,6 +269,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 1 "the conformance run fails without its fixtures"
@@ -260,6 +288,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 0 "the fixtures are synced before the suite"

@@ -130,6 +130,14 @@ jobs:
         with:
           bun-version: latest
       - run: bun --version
+      # pnpm 10, pnpm 12, Yarn 1 and Yarn 4, for `crates/uf_cli/tests/managers.rs`,
+      # which runs `uf add`, `uf remove`, `uf dedupe` and `uf link` against each
+      # of them — and npm and the Bun above — the way `dependencies.rs` runs npm.
+      # Those tests fail rather than skip without them, for the reason the Bun
+      # and Deno ones do: a row of the package-manager table nobody ran is a row
+      # nobody knows is right. The releases are pinned in the script, and
+      # `tools/ci/workspace-suite-runtimes.sh` holds every suite job to it.
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/uf-package-managers"
       # Deno runs uf projects through `@uniflowed/host/deno-preload`, which is
       # built on `node:module`'s `registerHooks` — a hook Deno implemented in
       # 2.8 — and `crates/uf_cli/tests/deno_host.rs` is what keeps
@@ -639,6 +647,9 @@ jobs:
         with:
           bun-version: latest
       - run: bun --version
+      # And pnpm and both Yarns, for `crates/uf_cli/tests/managers.rs`, for the
+      # reason the `Test` job installs them: the same suite runs here.
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/uf-package-managers"
       # And Deno, for `crates/uf_cli/tests/deno_host.rs`, for the reason the
       # `Test` job installs it. This job runs the same suite, so a runtime
       # missing here is a suite that fails here — which is the policy working:

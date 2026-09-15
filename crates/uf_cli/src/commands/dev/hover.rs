@@ -178,6 +178,7 @@ fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
         RuleCategory::Markup => "HTML nesting rule",
         RuleCategory::Uniflowed => "uf house rule",
         RuleCategory::React => "React rule",
+        RuleCategory::ReactCompiler => "the official React Compiler's diagnostic",
         RuleCategory::ReactNative => "React Native rule",
         RuleCategory::Server => "server/client boundary rule",
         RuleCategory::Router => "router rule",
