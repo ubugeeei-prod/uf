@@ -65,6 +65,57 @@ pub struct RouterConfig {
     pub rewrites: Vec<RewriteRule>,
     /// `app.router.headers`: response headers by path, every match applied.
     pub headers: Vec<HeaderRule>,
+    /// `app.router.basePath`: the path the application is served under, `""`
+    /// for the root. Validated in `router_rules`.
+    pub base_path: CompactString,
+    /// `app.router.trailingSlash`: which spelling of a path is the page.
+    pub trailing_slash: TrailingSlash,
+}
+
+/// Which spelling of a path is the page.
+///
+/// `Ignore` is the default because it is what every uf application did before
+/// the setting existed: both spellings answered, and a prerendered page was
+/// `about/index.html`. The other two are Next.js's `trailingSlash: false` and
+/// `true`, redirect included.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TrailingSlash {
+    /// `/about/` is answered with a `308` to `/about`, and the page is
+    /// `about.html`.
+    Never,
+    /// `/about` is answered with a `308` to `/about/`, and the page is
+    /// `about/index.html`.
+    Always,
+    /// Both spellings are answered, and the page is `about/index.html`.
+    #[default]
+    Ignore,
+}
+
+impl TrailingSlash {
+    /// The spelling `uf.config.js` uses.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::Always => "always",
+            Self::Ignore => "ignore",
+        }
+    }
+
+    /// `path` — an application path such as `/guide` — in this policy's
+    /// spelling. The root is `/` whatever the policy says.
+    #[must_use]
+    pub fn spell(self, path: &str) -> String {
+        let trimmed = path.trim_end_matches('/');
+        if trimmed.is_empty() {
+            return String::from("/");
+        }
+        match self {
+            Self::Always => format!("{trimmed}/"),
+            Self::Never | Self::Ignore => trimmed.to_owned(),
+        }
+    }
 }
 
 impl Default for RouterConfig {
@@ -78,6 +129,8 @@ impl Default for RouterConfig {
             redirects: Vec::new(),
             rewrites: Vec::new(),
             headers: Vec::new(),
+            base_path: CompactString::const_new(""),
+            trailing_slash: TrailingSlash::Ignore,
         }
     }
 }

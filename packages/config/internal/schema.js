@@ -246,6 +246,17 @@ export type RouteHeaders = {
 };
 
 /**
+ * Which spelling of a path is the page.
+ *
+ * `"never"` answers `/about/` with a `308` to `/about` and writes the page as
+ * `about.html`; `"always"` answers `/about` with a `308` to `/about/` and
+ * writes `about/index.html`; `"ignore"`, the default, answers both and writes
+ * `about/index.html`. `next.config.js`'s `trailingSlash: false`, `true` and
+ * `skipTrailingSlashRedirect: true`.
+ */
+export type RouterTrailingSlash = "never" | "always" | "ignore";
+
+/**
  * A ceiling `uf build` fails over, and what it is measured on.
  *
  * `max` accepts a byte count or a size a person would write — `"180kb"` —
@@ -520,6 +531,19 @@ export type UniflowedConfig = {
        * docs/app/guide/routing.
        */
       readonly headers?: $ReadOnlyArray<RouteHeaders>,
+      /**
+       * The path the whole application is served under — `"/docs"` — with no
+       * trailing slash. Every link, redirect, asset URL, payload URL and
+       * sitemap entry carries it, and a request outside it is a `404`. The
+       * sources of the three lists above are written without it.
+       * `next.config.js`'s `basePath`.
+       */
+      readonly basePath?: string,
+      /**
+       * Which spelling of a path is the page; see `RouterTrailingSlash`.
+       * `"ignore"` when absent.
+       */
+      readonly trailingSlash?: RouterTrailingSlash,
     },
     readonly rendering?: {
       // `"csr"` is the one value that cannot share the list: it renders every
