@@ -289,6 +289,14 @@ hashed assets under `dist/`.
 `--size-report` prints what each chunk cost, so a dependency that doubled the
 bundle is visible in the same command that built it.
 
+`--analyze` answers the question that comes next, which is why. For every route
+it lists each module the route ships to the browser and runs on the server,
+what each weighs, and the chain of imports that put it there, such as
+`app/chart/$page.js → app/chart/Plot.js → node_modules/chart.js`. It writes
+`.uf/build/meta/uf-bundle-analysis.html`, a page you open from disk, and the
+same analysis as JSON beside it. The [command reference](/reference/cli) has
+the schema.
+
 `--compile` adds one file to that output and it is the interesting one: an
 executable that *is* the site. Everything above goes inside it — the documents,
 the assets, the route handlers, the renderer — so deploying becomes copying one

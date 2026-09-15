@@ -1222,6 +1222,17 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: builder_provider(resolved),
             detail: bundle_detail(RenderingPlan::resolve(&resolved.config)),
         },
+        // On every plan rather than only when asked for, because this is where
+        // a reader who wants to know why a module is in a bundle looks first,
+        // and the answer is a flag they have not passed yet.
+        Stage {
+            name: "analysis",
+            provider: "uf".to_string(),
+            detail: "`uf build --analyze` writes .uf/build/meta/uf-bundle-analysis.html: each \
+                     route's client and server modules, their sizes, and the import chain \
+                     behind every one"
+                .to_string(),
+        },
         prerender_stage(resolved),
         adapter_stage(resolved),
     ]
