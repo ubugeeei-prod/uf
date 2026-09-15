@@ -35,6 +35,17 @@ export function spawn(_command, _args, _options) {
   unavailable("process spawning");
 }
 
+/**
+ * @see spawn
+ *
+ * Imported by the host transform for Deno's synchronous compile, so a bundle
+ * that reaches `../transform.js` needs the name even though a page never calls
+ * it.
+ */
+export function spawnSync(_command, _args, _options) {
+  unavailable("process spawning");
+}
+
 /** A readline interface, which only the host transform service uses. */
 export function createInterface(_options) {
   unavailable("readline");
@@ -113,6 +124,7 @@ export default {
   registerHooks,
   sep,
   spawn,
+  spawnSync,
   statSync,
   tmpdir,
   writeFileSync,

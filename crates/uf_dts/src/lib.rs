@@ -48,6 +48,7 @@
 
 mod emit;
 mod hole;
+mod locate;
 mod package;
 mod printer;
 mod resolve;
@@ -55,6 +56,7 @@ mod summary;
 mod unit;
 
 pub use crate::hole::{Construct, Hole};
+pub use crate::locate::declaration_at;
 pub use crate::package::{DECLARATION_CONDITIONS, Manifest, types_package};
 pub use crate::resolve::{declarations_for, flow_path, is_declaration};
 pub use crate::unit::{Module, Translation, translate};

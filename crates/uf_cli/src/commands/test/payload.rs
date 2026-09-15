@@ -7,7 +7,6 @@
 //! obeys the same rule: percentages are formatted to two places rather than
 //! carried as full-precision floats.
 
-use camino::Utf8Path;
 use serde_json::{Value, json};
 use uf_test::{
     Coverage, FileReport, FileStatus, HostCommand, OutputChunk, SkipReason, TestRecord,
@@ -18,7 +17,6 @@ use super::runtime_host;
 
 /// Build the document.
 pub(super) fn test_payload(
-    root: &Utf8Path,
     host: &HostCommand,
     report: &TestRunReport,
     coverage: Option<&Coverage>,
@@ -26,7 +24,7 @@ pub(super) fn test_payload(
     let summary = &report.summary;
     let mut document = json!({
         "command": "uf test",
-        "host": host_payload(root, host),
+        "host": host_payload(host),
         "files": summary.files,
         "passed": summary.passed,
         "failed": summary.failed,
@@ -62,9 +60,9 @@ pub(super) fn test_payload(
     document
 }
 
-fn host_payload(root: &Utf8Path, host: &HostCommand) -> Value {
+fn host_payload(host: &HostCommand) -> Value {
     let support = uf_runtime::HostSupport::for_host(runtime_host(host.kind));
-    let mut value = json!({
+    json!({
         "kind": host.kind,
         "runtimeHost": support.host,
         "support": {
@@ -81,20 +79,7 @@ fn host_payload(root: &Utf8Path, host: &HostCommand) -> Value {
         },
         "loadsFlow": host.loads_flow(),
         "collectsCoverage": host.collects_coverage(),
-    });
-    if let Some(import_map) = &host.deno_import_map
-        && let Some(object) = value.as_object_mut()
-    {
-        object.insert(
-            String::from("denoImportMap"),
-            json!(relative_path(root, import_map)),
-        );
-    }
-    value
-}
-
-fn relative_path(root: &Utf8Path, path: &Utf8Path) -> String {
-    path.strip_prefix(root).unwrap_or(path).to_string()
+    })
 }
 
 fn file_payload(file: &FileReport) -> Value {

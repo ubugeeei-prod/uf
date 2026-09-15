@@ -42,6 +42,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import { builtinModules, register } from "node:module";
+import { installFlowHooks } from "@uniflowed/host/internal/sync-hooks.js";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -105,11 +106,23 @@ process.env.UF_PROJECT_ROOT = root;
 // hooks for that; Bun is started with `--preload` on the same package's
 // preload instead, and has no `register`.
 //
+// Deno has no `register` either, and it gets its hooks *here* rather than from
+// a preload, for a reason that is about order. While a Deno `load` hook is
+// registered, `require()` of a native addon fails — and Vite requires one,
+// Rolldown's binding. The static imports above have already loaded Vite by
+// this line, binding included, so hooks installed now see only what is
+// imported after them: the config, and the `@uniflowed/*` modules this driver
+// reaches dynamically. They are the in-thread hooks a new enough Node takes
+// through `@uniflowed/host/register` too; see
+// `@uniflowed/host/internal/sync-hooks.js`.
+//
 // The hooks live in `@uniflowed/host` rather than here: they are how Flow runs
 // on a Capability JS Host, and nothing in them is Vite's. `uf test` reaches for
 // the same package, which is what stopped a test run from depending on a
 // bundler it never loads.
-if (typeof Bun === "undefined" && typeof Deno === "undefined") {
+if (typeof Deno !== "undefined") {
+  installFlowHooks(root);
+} else if (typeof Bun === "undefined") {
   register("@uniflowed/host/internal/node-hooks.js", import.meta.url, { data: { root } });
 }
 

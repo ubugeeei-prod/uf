@@ -276,8 +276,16 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             json,
             fix,
             fix_unsafe,
+            explain_any,
             paths,
-        } => commands::check::check(&cwd, ui, json, fix_mode(fix, fix_unsafe), &paths),
+        } => commands::check::check(
+            &cwd,
+            ui,
+            json,
+            fix_mode(fix, fix_unsafe),
+            &paths,
+            explain_any.as_deref(),
+        ),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
             Ok(())
