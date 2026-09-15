@@ -30,7 +30,7 @@ use uf_flow::ast::expression::ExpressionInner;
 use uf_flow::ast::jsx;
 use uf_flow::{Loc, ast};
 
-use super::value::{Value, aria_hidden, expression_value, value};
+use super::value::{Scope, Value, spread_may_set};
 use super::{Tree, attribute, has_spread, heading_level, host_name, string_attribute};
 use crate::{Severity, severity};
 
@@ -171,50 +171,52 @@ enum Content {
 /// An element that is hidden, or that names itself with `aria-label`,
 /// `aria-labelledby` or `title`, or that is filled through
 /// `dangerouslySetInnerHTML` or a `children` prop, is not empty.
-fn announces_nothing(element: &jsx::Element<Loc, Loc>) -> bool {
+fn announces_nothing(scope: Scope, element: &jsx::Element<Loc, Loc>) -> bool {
     let opening = &element.opening_element;
-    if has_spread(opening) || aria_hidden(opening) != Some(false) {
+    if has_spread(opening) || scope.aria_hidden(opening) != Some(false) {
         return false;
     }
-    if own_name(opening) != Content::Nothing
+    if own_name(scope, opening) != Content::Nothing
         || attribute(opening, "dangerouslySetInnerHTML").is_some()
         || attribute(opening, "children").is_some()
     {
         return false;
     }
-    children_content(&element.children.1) == Content::Nothing
+    children_content(scope, &element.children.1) == Content::Nothing
 }
 
 /// The name an element gives itself through an attribute.
-fn own_name(opening: &jsx::Opening<Loc, Loc>) -> Content {
+fn own_name(scope: Scope, opening: &jsx::Opening<Loc, Loc>) -> Content {
     ["aria-label", "aria-labelledby", "title"]
         .into_iter()
-        .map(|name| match attribute(opening, name).map(value) {
-            Some(Value::Text(text)) => text_content(text),
-            Some(Value::Number(_)) => Content::Something,
-            Some(Value::Unknown) => Content::Unknown,
-            Some(Value::Bool(_) | Value::Nullish) | None => Content::Nothing,
-        })
+        .map(
+            |name| match attribute(opening, name).map(|named| scope.value(named)) {
+                Some(Value::Text(text)) => text_content(text),
+                Some(Value::Number(_)) => Content::Something,
+                Some(Value::Unknown) => Content::Unknown,
+                Some(Value::Bool(_) | Value::Nullish) | None => Content::Nothing,
+            },
+        )
         .max()
         .unwrap_or(Content::Nothing)
 }
 
-fn children_content(children: &[jsx::Child<Loc, Loc>]) -> Content {
+fn children_content(scope: Scope, children: &[jsx::Child<Loc, Loc>]) -> Content {
     children
         .iter()
-        .map(child_content)
+        .map(|child| child_content(scope, child))
         .max()
         .unwrap_or(Content::Nothing)
 }
 
-fn child_content(child: &jsx::Child<Loc, Loc>) -> Content {
+fn child_content(scope: Scope, child: &jsx::Child<Loc, Loc>) -> Content {
     match child {
         jsx::Child::Text { inner, .. } => text_content(&inner.value),
-        jsx::Child::Element { inner, .. } => element_content(inner),
-        jsx::Child::Fragment { inner, .. } => children_content(&inner.frag_children.1),
+        jsx::Child::Element { inner, .. } => element_content(scope, inner),
+        jsx::Child::Fragment { inner, .. } => children_content(scope, &inner.frag_children.1),
         jsx::Child::ExpressionContainer { inner, .. } => match &inner.expression {
             jsx::expression_container::Expression::Expression(expression) => {
-                expression_content(expression)
+                expression_content(scope, expression)
             }
             jsx::expression_container::Expression::EmptyExpression => Content::Nothing,
         },
@@ -234,11 +236,13 @@ fn text_content(text: &str) -> Content {
 ///
 /// `{null}`, `{undefined}` and a boolean render nothing, which is React's
 /// rule; a number renders its digits.
-fn expression_content(expression: &ast::expression::Expression<Loc, Loc>) -> Content {
+fn expression_content(scope: Scope, expression: &ast::expression::Expression<Loc, Loc>) -> Content {
     match &**expression {
-        ExpressionInner::JSXElement { inner, .. } => element_content(inner),
-        ExpressionInner::JSXFragment { inner, .. } => children_content(&inner.frag_children.1),
-        _ => match expression_value(expression) {
+        ExpressionInner::JSXElement { inner, .. } => element_content(scope, inner),
+        ExpressionInner::JSXFragment { inner, .. } => {
+            children_content(scope, &inner.frag_children.1)
+        }
+        _ => match scope.expression_value(expression) {
             Value::Text(text) => text_content(text),
             Value::Number(_) => Content::Something,
             Value::Bool(_) | Value::Nullish => Content::Nothing,
@@ -248,9 +252,9 @@ fn expression_content(expression: &ast::expression::Expression<Loc, Loc>) -> Con
 }
 
 /// What one child element contributes.
-fn element_content(element: &jsx::Element<Loc, Loc>) -> Content {
+fn element_content(scope: Scope, element: &jsx::Element<Loc, Loc>) -> Content {
     let opening = &element.opening_element;
-    match aria_hidden(opening) {
+    match scope.aria_hidden(opening) {
         Some(true) => return Content::Nothing,
         None => return Content::Unknown,
         Some(false) => {}
@@ -264,7 +268,7 @@ fn element_content(element: &jsx::Element<Loc, Loc>) -> Content {
     {
         return Content::Unknown;
     }
-    let named = own_name(opening);
+    let named = own_name(scope, opening);
     if named != Content::Nothing {
         return named;
     }
@@ -272,7 +276,7 @@ fn element_content(element: &jsx::Element<Loc, Loc>) -> Content {
         // An image is named by its `alt`. A missing one is `a11y/alt-text`'s
         // finding, and what a browser falls back to without it varies, so it
         // is not claimed as nothing here.
-        "img" | "area" => match attribute(opening, "alt").map(value) {
+        "img" | "area" => match attribute(opening, "alt").map(|alt| scope.value(alt)) {
             Some(Value::Text(alt)) => text_content(alt),
             Some(Value::Number(_)) => Content::Something,
             Some(Value::Bool(_) | Value::Nullish) => Content::Nothing,
@@ -282,7 +286,7 @@ fn element_content(element: &jsx::Element<Loc, Loc>) -> Content {
         // A control inside a name contributes its value, which the source
         // does not hold.
         "input" | "select" | "textarea" => Content::Unknown,
-        _ => children_content(&element.children.1),
+        _ => children_content(scope, &element.children.1),
     }
 }
 
@@ -304,7 +308,7 @@ fn holds_elements(children: &[jsx::Child<Loc, Loc>]) -> bool {
 /// WAI-ARIA requires a link to have an accessible name, and one without is
 /// read as "link" and nothing more, so a list of them cannot be told apart.
 fn anchor_has_content(tree: &mut Tree<'_>, element: &jsx::Element<Loc, Loc>) {
-    if !announces_nothing(element) {
+    if !announces_nothing(tree.scope, element) {
         return;
     }
     let message = if holds_elements(&element.children.1) {
@@ -331,7 +335,7 @@ fn anchor_has_content(tree: &mut Tree<'_>, element: &jsx::Element<Loc, Loc>) {
 /// People using a screen reader move through a page by its headings, and an
 /// empty one is a stop where nothing is said.
 fn heading_has_content(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<Loc, Loc>) {
-    if !announces_nothing(element) {
+    if !announces_nothing(tree.scope, element) {
         return;
     }
     tree.report(
@@ -360,21 +364,22 @@ fn heading_has_content(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<L
 /// component, an expression, a spread, or `aria-labelledby`, whose words are
 /// somewhere else in the document.
 fn anchor_ambiguous_text(tree: &mut Tree<'_>, element: &jsx::Element<Loc, Loc>) {
+    let scope = tree.scope;
     let opening = &element.opening_element;
     if has_spread(opening)
-        || aria_hidden(opening) != Some(false)
+        || scope.aria_hidden(opening) != Some(false)
         || attribute(opening, "aria-labelledby").is_some()
     {
         return;
     }
     let mut text = String::new();
-    match attribute(opening, "aria-label").map(value) {
+    match attribute(opening, "aria-label").map(|label| scope.value(label)) {
         Some(Value::Text(label)) if !label.trim().is_empty() => text.push_str(label),
         Some(Value::Unknown | Value::Number(_)) => return,
         // An empty label is ignored by the name computation, which falls
         // through to the content.
         _ => {
-            if !collect_text(&element.children.1, &mut text) {
+            if !collect_text(scope, &element.children.1, &mut text) {
                 return;
             }
         }
@@ -407,18 +412,18 @@ const AMBIGUOUS_TEXT: [&str; 7] = [
 
 /// Append the text `children` render, or return `false` when some of it is
 /// out of sight.
-fn collect_text(children: &[jsx::Child<Loc, Loc>], out: &mut String) -> bool {
+fn collect_text(scope: Scope, children: &[jsx::Child<Loc, Loc>], out: &mut String) -> bool {
     for child in children {
         let known = match child {
             jsx::Child::Text { inner, .. } => {
                 out.push_str(&inner.value);
                 true
             }
-            jsx::Child::Element { inner, .. } => element_text(inner, out),
-            jsx::Child::Fragment { inner, .. } => collect_text(&inner.frag_children.1, out),
+            jsx::Child::Element { inner, .. } => element_text(scope, inner, out),
+            jsx::Child::Fragment { inner, .. } => collect_text(scope, &inner.frag_children.1, out),
             jsx::Child::ExpressionContainer { inner, .. } => match &inner.expression {
                 jsx::expression_container::Expression::Expression(expression) => {
-                    expression_text(expression, out)
+                    expression_text(scope, expression, out)
                 }
                 jsx::expression_container::Expression::EmptyExpression => true,
             },
@@ -431,11 +436,17 @@ fn collect_text(children: &[jsx::Child<Loc, Loc>], out: &mut String) -> bool {
     true
 }
 
-fn expression_text(expression: &ast::expression::Expression<Loc, Loc>, out: &mut String) -> bool {
+fn expression_text(
+    scope: Scope,
+    expression: &ast::expression::Expression<Loc, Loc>,
+    out: &mut String,
+) -> bool {
     match &**expression {
-        ExpressionInner::JSXElement { inner, .. } => element_text(inner, out),
-        ExpressionInner::JSXFragment { inner, .. } => collect_text(&inner.frag_children.1, out),
-        _ => match expression_value(expression) {
+        ExpressionInner::JSXElement { inner, .. } => element_text(scope, inner, out),
+        ExpressionInner::JSXFragment { inner, .. } => {
+            collect_text(scope, &inner.frag_children.1, out)
+        }
+        _ => match scope.expression_value(expression) {
             Value::Text(text) => {
                 out.push_str(text);
                 true
@@ -450,9 +461,9 @@ fn expression_text(expression: &ast::expression::Expression<Loc, Loc>, out: &mut
     }
 }
 
-fn element_text(element: &jsx::Element<Loc, Loc>, out: &mut String) -> bool {
+fn element_text(scope: Scope, element: &jsx::Element<Loc, Loc>, out: &mut String) -> bool {
     let opening = &element.opening_element;
-    match aria_hidden(opening) {
+    match scope.aria_hidden(opening) {
         Some(true) => return true,
         None => return false,
         Some(false) => {}
@@ -463,7 +474,7 @@ fn element_text(element: &jsx::Element<Loc, Loc>, out: &mut String) -> bool {
     if has_spread(opening) {
         return false;
     }
-    match attribute(opening, "aria-label").map(value) {
+    match attribute(opening, "aria-label").map(|label| scope.value(label)) {
         Some(Value::Text(label)) if !label.trim().is_empty() => {
             out.push_str(label);
             return true;
@@ -472,7 +483,7 @@ fn element_text(element: &jsx::Element<Loc, Loc>, out: &mut String) -> bool {
         _ => {}
     }
     if name == "img" {
-        return match attribute(opening, "alt").map(value) {
+        return match attribute(opening, "alt").map(|alt| scope.value(alt)) {
             Some(Value::Text(alt)) => {
                 out.push_str(alt);
                 true
@@ -481,7 +492,7 @@ fn element_text(element: &jsx::Element<Loc, Loc>, out: &mut String) -> bool {
             _ => true,
         };
     }
-    collect_text(&element.children.1, out)
+    collect_text(scope, &element.children.1, out)
 }
 
 /// Link text as it is compared: lowercase, without the punctuation a reader
@@ -523,7 +534,7 @@ fn anchor_is_valid(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
         tree.report(&opening.loc, ANCHOR_IS_VALID, no_href_message(clicked));
         return;
     };
-    let dead = match value(href) {
+    let dead = match tree.scope.value(href) {
         // React renders no attribute for `null`, `undefined` or a boolean.
         Value::Nullish | Value::Bool(_) => {
             tree.report(&opening.loc, ANCHOR_IS_VALID, no_href_message(clicked));
@@ -620,7 +631,7 @@ fn html_has_lang(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
     }
     let loc = match attribute(opening, "lang") {
         None => &opening.loc,
-        Some(lang) => match value(lang) {
+        Some(lang) => match tree.scope.value(lang) {
             Value::Text(text) if !text.trim().is_empty() => return,
             Value::Unknown => return,
             _ => &lang.loc,
@@ -646,7 +657,7 @@ fn html_has_lang(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
 /// `title` is passed through, and this rule cannot see one arrive. Also silent
 /// on a frame hidden with `aria-hidden`, which nothing announces.
 fn iframe_has_title(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
-    if has_spread(opening) || aria_hidden(opening) != Some(false) {
+    if has_spread(opening) || tree.scope.aria_hidden(opening) != Some(false) {
         return;
     }
     let Some(title) = attribute(opening, "title") else {
@@ -661,7 +672,7 @@ fn iframe_has_title(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
         );
         return;
     };
-    match value(title) {
+    match tree.scope.value(title) {
         Value::Text(text) if !text.trim().is_empty() => {}
         Value::Unknown => {}
         _ => tree.report(
@@ -693,28 +704,15 @@ fn iframe_has_title(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
 /// **Deliberately silent** on an image hidden with `aria-hidden`, which is not
 /// announced, and when a `{...spread}` after `alt` may replace it.
 fn img_redundant_alt(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
-    if aria_hidden(opening) != Some(false) {
+    if tree.scope.aria_hidden(opening) != Some(false) {
         return;
     }
-    let attributes = &*opening.attributes;
-    let Some(at) = attributes.iter().position(|attribute| {
-        matches!(
-            attribute,
-            jsx::OpeningAttribute::Attribute(attribute)
-                if matches!(&attribute.name, jsx::attribute::Name::Identifier(name) if &*name.name == "alt")
-        )
-    }) else {
+    let Some(alt) = attribute(opening, "alt") else {
         return;
     };
-    if attributes[at + 1..]
-        .iter()
-        .any(|attribute| matches!(attribute, jsx::OpeningAttribute::SpreadAttribute(_)))
-    {
+    if spread_may_set(opening, "alt") {
         return;
     }
-    let jsx::OpeningAttribute::Attribute(alt) = &attributes[at] else {
-        return;
-    };
     let word = match &alt.value {
         Some(jsx::attribute::Value::StringLiteral((_, literal))) => {
             redundant_word(&literal.value, true)
@@ -803,17 +801,18 @@ fn redundant_word(alt: &str, at_start: bool) -> Option<&'static str> {
 /// which has no sound to caption; and whenever a child is out of sight — a
 /// component or an expression — because a `<track>` may be in it.
 fn media_has_caption(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<Loc, Loc>) {
+    let scope = tree.scope;
     let opening = &element.opening_element;
     if has_spread(opening) {
         return;
     }
     // Only a literal `false`, or nothing, leaves the media audible.
     if let Some(muted) = attribute(opening, "muted")
-        && !matches!(value(muted), Value::Bool(false) | Value::Nullish)
+        && !matches!(scope.value(muted), Value::Bool(false) | Value::Nullish)
     {
         return;
     }
-    if captions(&element.children.1) != Captions::Missing {
+    if captions(scope, &element.children.1) != Captions::Missing {
         return;
     }
     tree.report(
@@ -835,22 +834,22 @@ enum Captions {
     Found,
 }
 
-fn captions(children: &[jsx::Child<Loc, Loc>]) -> Captions {
+fn captions(scope: Scope, children: &[jsx::Child<Loc, Loc>]) -> Captions {
     children
         .iter()
         .map(|child| match child {
             jsx::Child::Text { .. } => Captions::Missing,
-            jsx::Child::Element { inner, .. } => track_captions(inner),
-            jsx::Child::Fragment { inner, .. } => captions(&inner.frag_children.1),
+            jsx::Child::Element { inner, .. } => track_captions(scope, inner),
+            jsx::Child::Fragment { inner, .. } => captions(scope, &inner.frag_children.1),
             jsx::Child::ExpressionContainer { inner, .. } => match &inner.expression {
                 jsx::expression_container::Expression::EmptyExpression => Captions::Missing,
                 jsx::expression_container::Expression::Expression(expression) => {
                     match &**expression {
-                        ExpressionInner::JSXElement { inner, .. } => track_captions(inner),
+                        ExpressionInner::JSXElement { inner, .. } => track_captions(scope, inner),
                         ExpressionInner::JSXFragment { inner, .. } => {
-                            captions(&inner.frag_children.1)
+                            captions(scope, &inner.frag_children.1)
                         }
-                        _ => match expression_value(expression) {
+                        _ => match scope.expression_value(expression) {
                             Value::Unknown => Captions::Unknown,
                             _ => Captions::Missing,
                         },
@@ -863,16 +862,20 @@ fn captions(children: &[jsx::Child<Loc, Loc>]) -> Captions {
         .unwrap_or(Captions::Missing)
 }
 
-fn track_captions(element: &jsx::Element<Loc, Loc>) -> Captions {
+/// Whether one child is a captions track.
+///
+/// A spread that may decide `kind` — one written after it, or any at all when
+/// `kind` is not written — makes the answer unknown, whatever `kind` says.
+fn track_captions(scope: Scope, element: &jsx::Element<Loc, Loc>) -> Captions {
     let opening = &element.opening_element;
     match host_name(&opening.name) {
         None => Captions::Unknown,
-        Some("track") => match attribute(opening, "kind").map(value) {
+        Some("track") if spread_may_set(opening, "kind") => Captions::Unknown,
+        Some("track") => match attribute(opening, "kind").map(|kind| scope.value(kind)) {
             Some(Value::Text(kind)) if kind.trim().eq_ignore_ascii_case("captions") => {
                 Captions::Found
             }
             Some(Value::Unknown) => Captions::Unknown,
-            None if has_spread(opening) => Captions::Unknown,
             _ => Captions::Missing,
         },
         Some(_) => Captions::Missing,

@@ -339,6 +339,8 @@ fn media_has_caption_reports_media_with_no_captions() {
             r#"<audio src="/talk.mp3" />"#,
             r#"<video src="/talk.mp4"></video>"#,
             r#"<video src="/talk.mp4"><track kind="subtitles" src="/es.vtt" /></video>"#,
+            // A spread written before `kind` cannot replace it.
+            r#"<video src="/talk.mp4"><track {...props} kind="subtitles" /></video>"#,
             r#"<video src="/talk.mp4" muted={false} />"#,
             r#"<video><source src="/talk.mp4" type="video/mp4" /></video>"#,
         ],
@@ -372,8 +374,96 @@ fn media_has_caption_leaves_what_it_cannot_see_alone() {
             r#"<video src="/talk.mp4">{tracks}</video>"#,
             r#"<video src="/talk.mp4"><Captions src="/en.vtt" /></video>"#,
             r#"<video src="/talk.mp4"><track kind={kind} src="/en.vtt" /></video>"#,
+            // A spread written after `kind` may replace it with "captions".
+            r#"<video src="/talk.mp4"><track kind="subtitles" {...props} /></video>"#,
             r#"<Video src="/talk.mp4" />"#,
         ],
+    );
+}
+
+// --- `undefined`, when the module gives the name to something ---------------
+
+/// `a11y/anchor-is-valid` over `source` finds exactly the `href="#"` on `line`,
+/// which is also the proof that the module parsed and the rule ran.
+#[track_caller]
+fn only_the_dead_href_on(line: usize, source: &str) {
+    let diagnostics = lint_js("a11y/anchor-is-valid", source);
+    assert_eq!(diagnostics.len(), 1, "{source}\n{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, line, "{source}\n{diagnostics:?}");
+}
+
+#[test]
+fn a_shadowed_undefined_is_not_read_as_nothing() {
+    // `href={undefined}` renders no `href` only while `undefined` is the
+    // global. Each module here gives the name to something else — a
+    // parameter, an import, a `const` declared after the link that reads it —
+    // so the link goes wherever that binding says.
+    only_the_dead_href_on(
+        5,
+        r##"// @flow
+component Nav(undefined: string) renders React.Node {
+  return (
+    <nav>
+      <a href="#">Top</a>
+      <a href={undefined}>Docs</a>
+    </nav>
+  );
+}
+"##,
+    );
+    only_the_dead_href_on(
+        7,
+        r##"// @flow
+import undefined from './docs-url';
+
+component Nav() renders React.Node {
+  return (
+    <nav>
+      <a href="#">Top</a>
+      <a href={undefined}>Docs</a>
+    </nav>
+  );
+}
+"##,
+    );
+    only_the_dead_href_on(
+        5,
+        r##"// @flow
+component Nav() renders React.Node {
+  return (
+    <nav>
+      <a href="#">Top</a>
+      <a href={undefined}>Docs</a>
+    </nav>
+  );
+}
+
+const undefined = '/docs';
+"##,
+    );
+}
+
+#[test]
+fn an_undefined_that_is_not_a_binding_still_reads_as_nothing() {
+    // The word in a comment, as a default value and on the right of an
+    // assignment declares nothing, so `undefined` is still the global.
+    let diagnostics = lint_js(
+        "a11y/anchor-is-valid",
+        r#"// @flow
+// `undefined` is the global in this module.
+component Nav(fallback?: string) renders React.Node {
+  let target = undefined;
+  target = fallback ?? undefined;
+  return <a href={undefined}>Docs</a>;
+}
+"#,
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 6, "{diagnostics:?}");
+    assert!(
+        diagnostics[0].message.contains("has no `href`"),
+        "{diagnostics:?}"
     );
 }
 

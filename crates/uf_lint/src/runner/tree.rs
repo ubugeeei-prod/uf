@@ -122,6 +122,10 @@ const HOT_OPTIONAL_CHAINING: &str = "vite/hot-needs-optional-chaining";
 pub(super) struct TreeWork {
     levels: Levels,
     wants_hot: bool,
+    /// Whether the walk has to look for a binding called `undefined`: a rule
+    /// that reads attribute values is on, and the source spells the word.
+    /// See [`value::Scope::of`].
+    looks_for_undefined: bool,
 }
 
 /// Whether these rules want this module read at all.
@@ -144,7 +148,12 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
     if !wants_jsx && !wants_hot {
         return None;
     }
-    Some(TreeWork { levels, wants_hot })
+    let looks_for_undefined = levels.content.any() && scan.file.source.contains("undefined");
+    Some(TreeWork {
+        levels,
+        wants_hot,
+        looks_for_undefined,
+    })
 }
 
 fn has_code_jsx_marker(scan: &FileScan<'_>) -> bool {
@@ -188,6 +197,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
         hot: work.wants_hot,
         alt_text: levels.alt_text.is_some(),
         content: levels.content,
+        scope: value::Scope::of(parsed, work.looks_for_undefined),
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
         label_control: levels.label_control.is_some(),
@@ -328,6 +338,8 @@ struct Tree<'a> {
     alt_text: bool,
     /// Levels for the rules in [`content`], copied so each check can ask.
     content: content::Levels,
+    /// How attribute values are read in this module.
+    scope: value::Scope,
     aria_props: bool,
     heading_order: bool,
     label_control: bool,
