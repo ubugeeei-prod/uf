@@ -30,11 +30,11 @@ export component Example() {
       <p {...props(styles.text)}>Your name, your email and your password.</p>
       <Separator />
       <nav {...props(styles.row)} aria-label="Account">
-        <a {...props(styles.link)} href="/profile">
+        <a {...props(styles.link)} href="?section=profile">
           Profile
         </a>
         <Separator decorative orientation="vertical" />
-        <a {...props(styles.link)} href="/billing">
+        <a {...props(styles.link)} href="?section=billing">
           Billing
         </a>
       </nav>

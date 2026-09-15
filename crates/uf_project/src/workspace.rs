@@ -155,24 +155,92 @@ fn package_workspaces(root: &Utf8Path, config: &UniflowedConfig) -> Vec<Workspac
 }
 
 fn package_workspace_patterns(root: &Utf8Path) -> Option<Vec<String>> {
-    let source = fs::read_to_string(root.join("package.json")).ok()?;
-    let manifest = serde_json::from_str::<Value>(&source).ok()?;
-    let workspaces = manifest.get("workspaces")?;
-
-    let mut patterns = Vec::new();
-    match workspaces {
-        Value::Array(entries) => patterns.extend(workspace_pattern_strings(entries)),
-        // Yarn 1 accepts `{ "packages": [...], "nohoist": [...] }`. Only the
-        // `packages` list names members; `nohoist` is an install layout rule.
-        Value::Object(object) => {
-            if let Some(entries) = object.get("packages").and_then(Value::as_array) {
-                patterns.extend(workspace_pattern_strings(entries));
-            }
+    // pnpm reads its members from `pnpm-workspace.yaml` and ignores
+    // `package.json#workspaces` entirely, and nothing but pnpm reads the YAML
+    // file. So where it lists members it is the list: a stale `workspaces`
+    // field beside it names directories pnpm never installs into, and a
+    // `--filter` that picked one would run pnpm somewhere pnpm does not look.
+    if let Ok(source) = fs::read_to_string(root.join("pnpm-workspace.yaml")) {
+        let listed = pnpm_workspace_packages(&source);
+        if !listed.is_empty() {
+            return Some(listed);
         }
-        _ => {}
+    }
+    let mut patterns = Vec::new();
+    if let Some(workspaces) = fs::read_to_string(root.join("package.json"))
+        .ok()
+        .and_then(|source| serde_json::from_str::<Value>(&source).ok())
+        .and_then(|manifest| manifest.get("workspaces").cloned())
+    {
+        match workspaces {
+            Value::Array(entries) => patterns.extend(workspace_pattern_strings(&entries)),
+            // Yarn 1 accepts `{ "packages": [...], "nohoist": [...] }`. Only the
+            // `packages` list names members; `nohoist` is an install layout rule.
+            Value::Object(object) => {
+                if let Some(entries) = object.get("packages").and_then(Value::as_array) {
+                    patterns.extend(workspace_pattern_strings(entries));
+                }
+            }
+            _ => {}
+        }
     }
 
     (!patterns.is_empty()).then_some(patterns)
+}
+
+/// The `packages:` list of a `pnpm-workspace.yaml`.
+///
+/// Not a YAML parser, and deliberately: the list is the one key read, it is a
+/// sequence of globs in every file pnpm's own documentation shows, and the rest
+/// of the file — `catalog:`, `onlyBuiltDependencies:` and whatever pnpm adds
+/// next — is pnpm's to interpret. Block entries (`  - 'packages/*'`) and a flow
+/// sequence (`packages: [apps/*, 'packages/*']`) are both read; quotes and a
+/// trailing `# comment` are stripped, and the list ends at the next line that
+/// is not indented.
+fn pnpm_workspace_packages(source: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut inside = false;
+    for line in source.lines() {
+        let content = line.split(" #").next().unwrap_or_default().trim_end();
+        if content.trim().is_empty() || content.trim_start().starts_with('#') {
+            continue;
+        }
+        if !line.starts_with([' ', '\t', '-']) {
+            inside = false;
+            let Some(rest) = content.strip_prefix("packages:") else {
+                continue;
+            };
+            let rest = rest.trim();
+            if let Some(flow) = rest
+                .strip_prefix('[')
+                .and_then(|rest| rest.strip_suffix(']'))
+            {
+                found.extend(flow.split(',').filter_map(unquoted));
+            } else {
+                inside = rest.is_empty();
+            }
+            continue;
+        }
+        if inside && let Some(entry) = content.trim_start().strip_prefix('-') {
+            found.extend(unquoted(entry));
+        }
+    }
+    found
+}
+
+/// A YAML scalar without its quotes, or nothing when it is empty.
+fn unquoted(scalar: &str) -> Option<String> {
+    let scalar = scalar.trim();
+    let scalar = scalar
+        .strip_prefix('\'')
+        .and_then(|rest| rest.strip_suffix('\''))
+        .or_else(|| {
+            scalar
+                .strip_prefix('"')
+                .and_then(|rest| rest.strip_suffix('"'))
+        })
+        .unwrap_or(scalar);
+    (!scalar.is_empty()).then(|| scalar.to_owned())
 }
 
 fn workspace_pattern_strings(entries: &[Value]) -> impl Iterator<Item = String> + '_ {

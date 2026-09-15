@@ -759,6 +759,109 @@ fn a_server_only_import_a_client_component_reaches_fails_the_build_naming_its_ch
     );
 }
 
+/// A route whose document is written once, and whose render reads the request,
+/// fails the build naming the route, the function and the chain of imports.
+///
+/// Two routes are refused and one is not:
+///
+/// * `/account` has no parameters, so it is prerendered, and its page reaches
+///   `cookies()` two modules down;
+/// * `/posts/:slug` is rendered per request, but it states a lifetime with
+///   `cacheLife` while the route cache is on, and it reaches `headers()`;
+/// * `/dashboard` reads the same cookie but says `force-dynamic`, so its
+///   document is rendered for each request and never written once;
+/// * `/settings/billing` and `/settings/profile` are prerendered under a
+///   layout that reads `headers()` itself, which is one error naming both.
+///
+/// Like the test above, the build stops before Vite runs. ubugeeei-prod/uf#996.
+#[test]
+fn a_route_written_once_that_reads_the_request_fails_the_build_naming_its_chain() {
+    let mut files = minimal_app();
+    files.extend([
+        (
+            "uf.config.js",
+            "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({\n  app: { rendering: { cache: { route: true } } },\n});\n",
+        ),
+        (
+            "app/account/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Greeting } from \"./Greeting.js\";\n\nexport component Page() {\n  return <Greeting />;\n}\n",
+        ),
+        (
+            "app/account/Greeting.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { session } from \"../session.js\";\n\nexport component Greeting() {\n  return <p>{`signed in as ${session()}`}</p>;\n}\n",
+        ),
+        (
+            "app/session.js",
+            "// @flow\nimport { cookies } from \"@uniflowed/server\";\n\nexport function session(): string {\n  return cookies().get(\"session\") ?? \"nobody\";\n}\n",
+        ),
+        (
+            "app/posts/[slug]/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { cacheLife } from \"@uniflowed/server/cache\";\nimport { locale } from \"./locale.js\";\n\nexport component Page() {\n  cacheLife({ revalidate: 60 });\n  return <p>{locale()}</p>;\n}\n",
+        ),
+        (
+            "app/posts/[slug]/locale.js",
+            "// @flow\nimport { headers } from \"@uniflowed/server\";\n\nexport function locale(): string {\n  return headers().get(\"accept-language\") ?? \"en\";\n}\n",
+        ),
+        (
+            "app/dashboard/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { session } from \"../session.js\";\n\nexport const dynamic = \"force-dynamic\";\n\nexport component Page() {\n  return <p>{session()}</p>;\n}\n",
+        ),
+        (
+            "app/settings/$layout.js",
+            "// @flow\nimport { headers } from \"@uniflowed/server\";\nimport * as React from \"@uniflowed/react\";\n\nexport component Layout(children: React.Node) {\n  return <section lang={headers().get(\"accept-language\") ?? \"en\"}>{children}</section>;\n}\n",
+        ),
+        (
+            "app/settings/profile/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <p>profile</p>;\n}\n",
+        ),
+        (
+            "app/settings/billing/$page.js",
+            "// @flow\nimport * as React from \"@uniflowed/react\";\n\nexport component Page() {\n  return <p>billing</p>;\n}\n",
+        ),
+    ]);
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        // Wide enough that no message is wrapped, whatever the renderer's own
+        // idea of a terminal is.
+        .env("COLUMNS", "2000")
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "a route written once that reads the request must fail the build:\n{said}"
+    );
+    for expected in [
+        "rsc/request-state-in-static-route",
+        "routes `/settings/billing`, `/settings/profile` are prerendered, and their render reads \
+         `headers()`, which `app/settings/$layout.js` imports from `@uniflowed/server` at line 2",
+        "route `/account` is prerendered, and its render reads `cookies()` through \
+         `app/account/$page.js` → `app/account/Greeting.js` → `app/session.js`",
+        "route `/posts/:slug` states a cache lifetime through `cacheLife`, which \
+         `app/posts/[slug]/$page.js` imports at line 3",
+        "reads `headers()` through `app/posts/[slug]/$page.js` → `app/posts/[slug]/locale.js`",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    assert!(
+        !said.contains("`/dashboard`"),
+        "a force-dynamic page is rendered for each request and must not be refused:\n{said}"
+    );
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "the build prerendered a page despite a route that reads the request"
+    );
+}
+
 /// `uf build --analyze` names the chain behind a dependency only one route
 /// pulls in, and attributes it to no other route.
 ///
@@ -2280,6 +2383,13 @@ enum FirstAnswer {
     /// A regenerated document, which a restarted server can only have read
     /// back from the durable store.
     Regenerated,
+    /// None. The server is asked to invalidate the page's tag before anything
+    /// has asked for the page, and is then stopped.
+    Invalidates,
+    /// A render. The page was invalidated before this server started and
+    /// nothing has regenerated it since, so the build's document, which is
+    /// older than the invalidation, is known wrong.
+    Rendered,
 }
 
 /// A prerendered page that states a lifetime changes after it, with no rebuild.
@@ -2290,6 +2400,11 @@ enum FirstAnswer {
 /// passed a later answer carries a later one. Then `uf start` once more without
 /// emptying the cache, which is a restart — and a restart answers with a
 /// regenerated document read back from disk, never with the build's.
+///
+/// Then an invalidation a restart has to remember. `uf start` from an emptied
+/// cache invalidates the page's tag and is stopped before anything asked for
+/// the page, so the only copy of the page left is the build's. The restarted
+/// server must render the page rather than serve that copy.
 ///
 /// `tools/ci/edge-worker-smoke.sh` asks the same questions of the edge adapter
 /// under workerd, where what a regeneration writes is kept in Workers KV.
@@ -2329,6 +2444,8 @@ fn a_regenerated_page_changes_after_its_lifetime_without_a_rebuild() {
         ("preview", FirstAnswer::TheBuilds, true),
         ("start", FirstAnswer::TheBuilds, true),
         ("start", FirstAnswer::Regenerated, false),
+        ("start", FirstAnswer::Invalidates, true),
+        ("start", FirstAnswer::Rendered, false),
     ] {
         if emptied {
             match fs::remove_dir_all(root.join(".uf/cache/route")) {
@@ -2387,14 +2504,35 @@ fn assert_regenerates(
     first: FirstAnswer,
     command: &str,
 ) {
+    if let FirstAnswer::Invalidates = first {
+        let answer = http_request("127.0.0.1", port, "POST", "/api/revalidate", Some("{}"));
+        assert!(
+            answer
+                .lines()
+                .next()
+                .is_some_and(|line| line.contains(" 200"))
+                && answer.contains("\"expired\""),
+            "`uf {command}` did not run the fixture's invalidation:\n{answer}\n{}",
+            server.evidence(said)
+        );
+        return;
+    }
     let answer = get(server, port, "/clock", said);
     let lowered = answer.to_ascii_lowercase();
+    let instant = rendered_instant(&answer)
+        .unwrap_or_else(|| panic!("`uf {command}` answered /clock with no instant:\n{answer}"));
+    if let FirstAnswer::Rendered = first {
+        assert!(
+            lowered.contains("x-uf-cache: miss") && instant > built,
+            "a `uf {command}` started after /clock was invalidated must render it rather than \
+             answer with the build's document, which is older than the invalidation:\n{answer}"
+        );
+        return;
+    }
     assert!(
         lowered.contains("x-uf-cache: hit") || lowered.contains("x-uf-cache: stale"),
         "`uf {command}` answered a regenerating page without the cache:\n{answer}"
     );
-    let instant = rendered_instant(&answer)
-        .unwrap_or_else(|| panic!("`uf {command}` answered /clock with no instant:\n{answer}"));
     match first {
         FirstAnswer::TheBuilds => assert_eq!(
             instant, built,
@@ -2409,6 +2547,7 @@ fn assert_regenerates(
             );
             return;
         }
+        FirstAnswer::Invalidates | FirstAnswer::Rendered => unreachable!("answered above"),
     }
 
     let deadline = Instant::now() + Duration::from_secs(30);

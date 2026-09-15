@@ -6,6 +6,7 @@
 //! binary the worker transforms through, so those tests live in `uf_cli`,
 //! where both exist — see `crates/uf_cli/tests/testing.rs`.
 
+mod bench;
 mod coverage;
 mod discovery;
 mod filtering;
@@ -14,5 +15,6 @@ mod junit;
 mod schedule;
 mod security;
 mod selection;
+mod shard;
 mod timings;
 mod watch;

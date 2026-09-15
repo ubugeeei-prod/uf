@@ -3,6 +3,7 @@ use super::*;
 mod build;
 mod diagnostic;
 mod reachability;
+mod render;
 mod resolve;
 
 fn client(path: impl Into<Utf8PathBuf>) -> RscModuleInput {

@@ -140,6 +140,9 @@ pub struct UniflowedConfig {
     pub task_runner: TaskRunnerConfig,
     pub tasks: BTreeMap<CompactString, TaskDefinition>,
     pub test: TestConfig,
+    /// Where `uf ui add` writes the components a project owns, and where
+    /// `uf ui list` and `uf ui diff` look for them.
+    pub ui: UiConfig,
     /// The project's own Vite configuration, passed through untouched.
     ///
     /// uf does not read this and does not need to. Re-declaring an upstream
@@ -1315,6 +1318,20 @@ impl Default for BrowserAutomationConfig {
             playwright_compatible: true,
         }
     }
+}
+
+/// Where `uf ui add` writes the components a project owns.
+///
+/// A section rather than a flag on the command, because `uf ui list` and
+/// `uf ui diff` read the same directory: a component written somewhere the next
+/// command does not look reads as missing there.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct UiConfig {
+    /// The directory, relative to the project root, or empty for
+    /// `app/components/ui`. The CLI refuses a path that leaves the project.
+    pub directory: CompactString,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

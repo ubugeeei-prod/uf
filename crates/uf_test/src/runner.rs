@@ -399,7 +399,10 @@ impl TestRunner {
             // After the retries, not before: a status set here is not a reason
             // to throw away a working worker, and nothing above can produce
             // this shape without also producing records.
-            let declared = selected.plan.runnable_count();
+            // Benchmarks count. The worker reports every one, run or skipped,
+            // so a benchmark that never reached `@uniflowed/test` is as missing
+            // as a test would be.
+            let declared = selected.plan.runnable_count() + selected.plan.bench_count();
             if declared > 0
                 && outcome.records.is_empty()
                 && matches!(outcome.status, FileStatus::Completed)
@@ -658,19 +661,7 @@ fn assemble(
         bailed: matches!(bail, Bail::After(limit) if failures >= limit.get()),
         ..TestSummary::default()
     };
-    for file in &files {
-        if file.status.is_fatal() {
-            summary.failed_files += 1;
-        }
-        for record in &file.records {
-            match &record.status {
-                TestStatus::Passed => summary.passed += 1,
-                TestStatus::Failed { .. } => summary.failed += 1,
-                TestStatus::Skipped { .. } => summary.skipped += 1,
-                TestStatus::Todo => summary.todo += 1,
-            }
-        }
-    }
+    summary.count_files(&files);
 
     TestRunReport {
         plan,

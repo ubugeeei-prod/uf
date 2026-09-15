@@ -14,7 +14,14 @@
 
 export type { Expect, Expectation, Matchers } from "./internal/expect.js";
 export type { InSourceTests } from "./in-source.js";
-export type { Body as TestBody, Case, Modifier, Suite, TestOptions } from "./internal/registry.js";
+export type {
+  BenchOptions,
+  Body as TestBody,
+  Case,
+  Modifier,
+  Suite,
+  TestOptions,
+} from "./internal/registry.js";
 export type { ModuleFactory, ModuleNamespace } from "./internal/modules.js";
 export type { Uft } from "./internal/namespace.js";
 export type { Outcome, Result, RunOptions } from "./internal/run.js";
@@ -27,6 +34,7 @@ export {
   afterEach,
   beforeAll,
   beforeEach,
+  bench,
   describe,
   it,
   test,

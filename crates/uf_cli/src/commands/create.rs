@@ -1,6 +1,8 @@
 //! `uf init` and `uf new`: a tree of what was generated, and what to run
 //! next.
 
+mod remote;
+
 use anyhow::{Result, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_project::{CreateKind, CreateOptions, create_project};
@@ -10,6 +12,8 @@ use crate::brand;
 use crate::cli::{AppTemplate, CreateCommand};
 use crate::support::{plural, project_label, relative_to};
 use crate::ui::Ui;
+
+use remote::RemoteTemplate;
 
 /// Which template, and where, out of the one or two positionals given.
 ///
@@ -44,25 +48,70 @@ fn app_arguments(
     }
 }
 
+/// What `uf init` and `uf new` were asked for.
+///
+/// One value rather than six arguments, because the two commands differ in
+/// `path` alone and pass the rest through unchanged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Scaffold {
+    /// `None` for `init`, the new directory for `new`.
+    pub(crate) path: Option<Utf8PathBuf>,
+    /// A built-in template's name, or a remote template's source.
+    pub(crate) template: Option<String>,
+    /// The digest a remote tarball must have.
+    pub(crate) integrity: Option<String>,
+    /// `--lib`.
+    pub(crate) lib: bool,
+    /// `--name`.
+    pub(crate) name: Option<String>,
+    /// `--force`.
+    pub(crate) force: bool,
+}
+
 /// `uf init` and `uf new`: one function, because they differ in one argument.
 ///
 /// `path` is `None` for `init` and the new directory for `new`. Everything
 /// after that — the template, the name, the tree that is printed — is the same
 /// scaffold, which is the point of the split: the two commands say *where*,
 /// and nothing else about them differs.
-pub(crate) fn scaffold(
-    cwd: &Utf8Path,
-    ui: &mut Ui,
-    path: Option<Utf8PathBuf>,
-    template: Option<String>,
-    lib: bool,
-    name: Option<String>,
-    force: bool,
-) -> Result<()> {
+pub(crate) fn scaffold(cwd: &Utf8Path, ui: &mut Ui, request: Scaffold) -> Result<()> {
+    let Scaffold {
+        path,
+        template,
+        integrity,
+        lib,
+        name,
+        force,
+    } = request;
     // The banner names the command the reader typed. A run of `uf new` headed
     // `uf create` sends them to the help for a command they did not use.
     let spelling = if path.is_some() { "uf new" } else { "uf init" };
     let templates = AppTemplate::ALL.join(", ");
+
+    // A remote source first, because it is recognisable as one before it is
+    // checked, and an unpinned one has to be refused for being unpinned rather
+    // than for not being a template's name.
+    let remote = match template.as_deref() {
+        Some(written) => RemoteTemplate::parse(written, integrity.as_deref())?,
+        None => None,
+    };
+    if let Some(remote) = remote {
+        if lib {
+            bail!(
+                "`--lib` takes no template: a library is one shape, and `uf new --lib` writes it"
+            );
+        }
+        if name.is_some() {
+            bail!(
+                "`--name` names the package a built-in template writes. A remote template is \
+                 copied as its author wrote it, manifest included; rename the package there \
+                 after it is written"
+            );
+        }
+        let target = resolve_target(cwd, path)?;
+        return render_remote(cwd, ui, spelling, &remote, target, force);
+    }
+
     // Named rather than inferred. `uf create` guessed — a lone argument was a
     // template when it named one and a directory when it did not — and the
     // guess is what #322 is. Here the directory is a positional of its own, so
@@ -77,10 +126,11 @@ pub(crate) fn scaffold(
         (false, None) => CreateKind::AppReact,
         (false, Some(named)) => match AppTemplate::parse(named) {
             Some(AppTemplate::React) => CreateKind::AppReact,
+            Some(AppTemplate::Monorepo) => CreateKind::Monorepo,
             None => bail!(
-                "`{named}` is not a template.\n  templates: {templates}\n  to \
-                 scaffold into a directory called `{named}`, write \
-                 `uf new {named}`"
+                "`{named}` is not a template.\n  templates: {templates}, or a remote \
+                 template pinned to a commit or a digest\n  to scaffold into a directory \
+                 called `{named}`, write `uf new {named}`"
             ),
         },
     };
@@ -89,6 +139,7 @@ pub(crate) fn scaffold(
     let fallback = match kind {
         CreateKind::AppReact => "uniflowed-app",
         CreateKind::Lib => "uniflowed-lib",
+        CreateKind::Monorepo => "uniflowed-monorepo",
     };
     let name = name.unwrap_or_else(|| project_name(&target, fallback));
     render_created(cwd, ui, spelling, kind, target, name, force)
@@ -103,10 +154,13 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
             force,
         } => {
             let (template, path) = app_arguments(template_or_path, path)?;
-            let AppTemplate::React = template;
+            let (kind, fallback) = match template {
+                AppTemplate::React => (CreateKind::AppReact, "uniflowed-app"),
+                AppTemplate::Monorepo => (CreateKind::Monorepo, "uniflowed-monorepo"),
+            };
             let target = resolve_target(cwd, path)?;
-            let name = name.unwrap_or_else(|| project_name(&target, "uniflowed-app"));
-            (CreateKind::AppReact, target, name, force)
+            let name = name.unwrap_or_else(|| project_name(&target, fallback));
+            (kind, target, name, force)
         }
         CreateCommand::Lib { path, name, force } => {
             let target = resolve_target(cwd, path)?;
@@ -118,7 +172,8 @@ pub(crate) fn create(cwd: &Utf8Path, ui: &mut Ui, command: CreateCommand) -> Res
     render_created(cwd, ui, "uf create", kind, target, name, force)
 }
 
-/// The scaffold, and the tree and next steps printed from what it wrote.
+/// A built-in template's scaffold, and the tree and next steps printed from
+/// what it wrote.
 fn render_created(
     cwd: &Utf8Path,
     ui: &mut Ui,
@@ -130,40 +185,136 @@ fn render_created(
 ) -> Result<()> {
     let label = name.clone();
     let report = create_project(&target, &CreateOptions { name, kind, force })?;
-    let files = report
+    render(
+        cwd,
+        ui,
+        &Created {
+            spelling,
+            label,
+            root: report.root,
+            files: report.files,
+            next: Some(match kind {
+                CreateKind::AppReact => "uf dev",
+                CreateKind::Lib => "uf test",
+                // The root is a repository rather than an application, so the
+                // dev server is the application package's. By path, because a
+                // workspace package is otherwise named by its manifest, and
+                // that name is the project's scope.
+                CreateKind::Monorepo => "uf dev#apps/web",
+            }),
+            notes: Vec::new(),
+        },
+    )
+}
+
+/// A remote template, fetched, checked and copied, and the same tree.
+///
+/// Nothing is written into the target until the whole template has arrived
+/// and passed its check, so a download that is refused leaves no half of a
+/// project behind — and the staging directory it arrived in is removed either
+/// way.
+fn render_remote(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    spelling: &str,
+    template: &RemoteTemplate,
+    target: Utf8PathBuf,
+    force: bool,
+) -> Result<()> {
+    let staging = remote::Staging::new()?;
+    let mut progress = ui.progress();
+    progress.draw("fetching the template");
+    let fetched = remote::fetch(template, staging.path());
+    progress.finish();
+    drop(progress);
+    let files = remote::copy_into(&fetched?, &target, force)?;
+
+    let source = template.label();
+    let mut notes = vec![(Status::Info, format!("copied from {source}"))];
+    let scripts = remote::declared_install_scripts(&target);
+    if !scripts.is_empty() {
+        notes.push((
+            Status::Warn,
+            format!(
+                "package.json declares {}, and `uf install` refuses to run it until \
+                 `pm.allowLifecycleScripts` in uf.config.js allows it — read it before you do",
+                scripts.join(", ")
+            ),
+        ));
+    }
+    render(
+        cwd,
+        ui,
+        &Created {
+            spelling,
+            label: project_name(&target, "template"),
+            root: target,
+            files,
+            next: None,
+            notes,
+        },
+    )
+}
+
+/// What a scaffold wrote, for [`render`].
+struct Created<'a> {
+    /// The command the reader typed.
+    spelling: &'a str,
+    /// What the banner names.
+    label: String,
+    /// The directory it wrote into.
+    root: Utf8PathBuf,
+    /// Every file it wrote.
+    files: Vec<Utf8PathBuf>,
+    /// The step after `uf install`, when uf knows the template well enough to
+    /// name one.
+    next: Option<&'static str>,
+    /// Lines under the tree, before the verdict.
+    notes: Vec<(Status, String)>,
+}
+
+/// The tree of what was written, the next steps, and the verdict.
+fn render(cwd: &Utf8Path, ui: &mut Ui, created: &Created<'_>) -> Result<()> {
+    let files = created
         .files
         .iter()
-        .map(|file| relative_to(&report.root, file))
+        .map(|file| relative_to(&created.root, file))
         .collect::<Vec<_>>();
     let paths = files.iter().map(String::as_str).collect::<Vec<_>>();
-    let root = project_label(&report.root).to_string();
-    let created = format!("created {} in {}", plural(files.len(), "file"), report.root);
+    let root = project_label(&created.root).to_string();
+    let summary = format!(
+        "created {} in {}",
+        plural(files.len(), "file"),
+        created.root
+    );
 
     let change_directory =
-        (report.root != cwd).then(|| format!("cd {}", project_label(&report.root)));
+        (created.root != cwd).then(|| format!("cd {}", project_label(&created.root)));
     let mut steps = Vec::new();
     if let Some(step) = &change_directory {
         steps.push(step.as_str());
     }
     steps.push("uf install");
-    steps.push(match kind {
-        CreateKind::AppReact => "uf dev",
-        CreateKind::Lib => "uf test",
-    });
+    if let Some(next) = created.next {
+        steps.push(next);
+    }
 
     ui.render(|renderer, out| {
         // First contact with the toolchain, which is the one moment a mark
         // earns its five rows.
-        brand::render_mark(renderer, out, spelling);
+        brand::render_mark(renderer, out, created.spelling);
         renderer.blank(out);
-        renderer.banner(out, spelling, Some(&label));
+        renderer.banner(out, created.spelling, Some(&created.label));
         renderer.blank(out);
         renderer.tree(out, 2, &Tree::from_paths(&root, paths.iter().copied()));
         renderer.blank(out);
         renderer.heading(out, 2, "next steps");
         renderer.ordered_list(out, 4, &steps);
         renderer.blank(out);
-        renderer.status(out, Status::Success, &created);
+        for (status, note) in &created.notes {
+            renderer.status(out, *status, note);
+        }
+        renderer.status(out, Status::Success, &summary);
     });
     Ok(())
 }

@@ -900,6 +900,17 @@ export default defineConfig({
       command: "tools/ci/test-workspace-suite-runtimes.sh",
       inputs: ["tools/ci/workspace-suite-runtimes.sh", "tools/ci/test-workspace-suite-runtimes.sh"],
     },
+    // And that no tracked file still holds a merge-conflict marker. A conflict
+    // resolved by hand can leave one line of itself behind: #1093 merged a
+    // closing `>>>>>>> origin/main` into the testing guide, the docs build
+    // rendered it as a paragraph, and every check was green. The check reads
+    // every tracked file, so it declares no inputs and is never replayed from
+    // the cache.
+    "ci:conflict-markers": "tools/ci/no-conflict-markers.sh",
+    "ci:conflict-markers:test": {
+      command: "tools/ci/test-no-conflict-markers.sh",
+      inputs: ["tools/ci/no-conflict-markers.sh", "tools/ci/test-no-conflict-markers.sh"],
+    },
 
     manifests: {
       command:
@@ -961,6 +972,8 @@ export default defineConfig({
         "ci:gate:test",
         "ci:runtimes",
         "ci:runtimes:test",
+        "ci:conflict-markers",
+        "ci:conflict-markers:test",
         // `docs:verify` rather than the five checks under it, because that is
         // what the `Docs build` job runs and this list is the whole of
         // `uf run` in `.github/workflows/`. It reaches `docs:links`,

@@ -53,10 +53,12 @@ pub use directive::{
     ModuleEnvironment, module_environment, scan_directives,
 };
 pub use graph::{
-    ClientBoundary, ClientBoundaryProximity, ClientBoundaryTarget, ClientBundleReason, EntryKind,
-    ModuleId, ModuleReachability, RscDiagnostic, RscGraph, RscGraphBuilder, RscModule,
-    RscModuleInput, RscSeverity, SERVER_ONLY_PACKAGES, SERVER_ONLY_SUFFIX, SpecifierResolution,
-    is_inside_project, is_server_only_specifier, normalize_module_path, resolve_specifier,
+    CACHE_LIFETIME_API, CACHE_LIFETIME_PACKAGE, ClientBoundary, ClientBoundaryProximity,
+    ClientBoundaryTarget, ClientBundleReason, EntryKind, ImportSite, ModuleId, ModuleReachability,
+    REQUEST_STATE_APIS, REQUEST_STATE_PACKAGE, RenderReach, RscDiagnostic, RscGraph,
+    RscGraphBuilder, RscModule, RscModuleInput, RscSeverity, SERVER_ONLY_PACKAGES,
+    SERVER_ONLY_SUFFIX, SpecifierResolution, StaticRouteReason, is_inside_project,
+    is_server_only_specifier, normalize_module_path, resolve_specifier,
 };
 pub use manifest::{
     RSC_MANIFEST_BUILD_DIR, RSC_MANIFEST_ENV, RSC_MANIFEST_FILE_NAME, RSC_MANIFEST_VERSION,
@@ -70,8 +72,8 @@ pub use project::{
 pub use scan::{
     CLIENT_ONLY_APIS, CLIENT_ONLY_GLOBALS, ClientApiUse, ExportKind, HookCall, ImportBinding,
     ImportKind, ImportSpecifier, ImportedName, MAX_SOURCE_BYTES, ModuleExport, Token, TokenKind,
-    matching_close, matching_open, scan_client_api_uses, scan_exports, scan_hook_calls,
-    scan_imports, starts_statement, tokenize,
+    matching_close, matching_open, scan_client_api_uses, scan_exported_string, scan_exports,
+    scan_hook_calls, scan_imports, starts_statement, tokenize,
 };
 pub use types::{
     SERVER_ACTION_TYPES_FILE_NAME, SERVER_ACTION_TYPES_HEADER, ServerActionType,

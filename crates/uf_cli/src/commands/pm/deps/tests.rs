@@ -19,6 +19,7 @@ fn plain() -> Renderer {
 
 fn added(field: &'static str, name: &str, range: &str) -> ManifestChange {
     ManifestChange {
+        member: None,
         field,
         name: name.to_owned(),
         range: range.to_owned(),
@@ -52,7 +53,7 @@ fn report(heading: &'static str, manifest: Vec<ManifestChange>, tree: LockfileDe
         continued: false,
         manager: "npm".to_owned(),
         chosen_by: "package-lock.json".to_owned(),
-        command: "npm install --ignore-scripts date-fns".to_owned(),
+        commands: vec!["npm install --ignore-scripts date-fns".to_owned()],
         lockfile: "package-lock.json · 17 packages · 12.40 kB".to_owned(),
         manifest,
         tree,
@@ -165,6 +166,82 @@ fn each_command_reports_in_its_own_words() {
         );
         assert!(out.contains(expected), "{heading}:\n{out}");
     }
+}
+
+/// `uf dedupe` and `uf link` never promised a manifest change, so a tree that
+/// moved is the whole sentence rather than a denial of one.
+#[test]
+fn a_command_that_is_not_about_the_manifest_reports_the_tree_alone() {
+    for heading in ["uf dedupe", "uf link"] {
+        let mut out = String::new();
+        render_summary(
+            &plain(),
+            &mut out,
+            &report(heading, Vec::new(), changed_tree()),
+        );
+        assert!(out.contains("+ 1 change in the tree"), "{heading}:\n{out}");
+        assert!(
+            !out.contains("the manifest already said so"),
+            "{heading}:\n{out}"
+        );
+    }
+}
+
+/// A command that chose workspace members ran once per member, says so a row
+/// at a time, and says which member each manifest change is in.
+#[test]
+fn changes_in_chosen_members_name_the_member() {
+    let mut in_api = added("dependencies", "zod", "^4.1.8");
+    in_api.member = Some("api".to_owned());
+    let mut in_web = added("dependencies", "zod", "^4.1.8");
+    in_web.member = Some("web".to_owned());
+    let mut summary = report("uf add", vec![in_api, in_web], unchanged_tree());
+    summary.commands = vec![
+        "npm install --ignore-scripts zod  (api)".to_owned(),
+        "npm install --ignore-scripts zod  (web)".to_owned(),
+    ];
+
+    let mut out = String::new();
+    render_summary(&plain(), &mut out, &summary);
+
+    assert_eq!(out.matches("command").count(), 2, "{out}");
+    assert!(out.contains("workspace"), "{out}");
+    let rows = out
+        .lines()
+        .filter(|line| line.contains("zod") && line.contains("^4.1.8"))
+        .collect::<Vec<_>>();
+    assert_eq!(rows.len(), 2, "{out}");
+    assert!(rows[0].contains("api") && rows[1].contains("web"), "{out}");
+    assert!(out.contains("2 packages recorded in dependencies"), "{out}");
+}
+
+/// A run over the project alone has no member to name, and no column spent on
+/// one.
+#[test]
+fn an_unscoped_change_has_no_workspace_column() {
+    let mut out = String::new();
+    render_summary(
+        &plain(),
+        &mut out,
+        &report(
+            "uf add",
+            vec![added("dependencies", "date-fns", "^4.1.0")],
+            unchanged_tree(),
+        ),
+    );
+
+    assert!(!out.contains("workspace"), "{out}");
+}
+
+/// `--filter` and `-w` are one choice, which clap has already kept apart.
+#[test]
+fn the_two_workspace_flags_are_one_scope() {
+    assert_eq!(Scope::from_flags(Vec::new(), false), Scope::Project);
+    assert_eq!(Scope::from_flags(Vec::new(), true), Scope::WorkspaceRoot);
+    assert_eq!(
+        Scope::from_flags(vec!["ui".to_owned()], false),
+        Scope::Members(vec!["ui".to_owned()])
+    );
 }
 
 /// A lockfile uf does not parse gets no tree section rather than an empty one,
@@ -301,12 +378,14 @@ fn a_manifest_diff_reports_arrivals_departures_and_new_ranges() {
         [
             added("dependencies", "date-fns", "^4"),
             ManifestChange {
+                member: None,
                 field: "dependencies",
                 name: "lodash".to_owned(),
                 range: "^4".to_owned(),
                 kind: ManifestChangeKind::Removed,
             },
             ManifestChange {
+                member: None,
                 field: "dependencies",
                 name: "react".to_owned(),
                 range: "^19".to_owned(),

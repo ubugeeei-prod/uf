@@ -453,11 +453,7 @@ deployment record does not have yet.
   ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038)), and a slot holds
   no `$not-found.js`, `$route.js` or `$middleware.js`
   ([#267](https://github.com/ubugeeei-prod/uf/issues/267)).
-- **The rest of ISR.** A cached render that reads `cookies()` is refused when it
-  runs rather than when it builds
-  ([#996](https://github.com/ubugeeei-prod/uf/issues/996)), a process that
-  restarts after an invalidation can serve the build's copy of a page until its
-  lifetime has passed, a `--compile` binary carries no cache, there is no
+- **The rest of ISR.** A `--compile` binary carries no cache, there is no
   function-level cache or `"use cache"`
   ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `ppr` mode
   name selects nothing yet.

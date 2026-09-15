@@ -81,6 +81,13 @@ pub enum Checksum {
         /// Where the manifest is.
         url: String,
     },
+    /// A digest the caller already has, because a person wrote it down.
+    ///
+    /// `uf new`'s `--integrity` for a template tarball: the pin is the digest
+    /// itself, so there is nothing to fetch to learn it, and a download that
+    /// hashes to anything else is refused before it is unpacked, exactly as a
+    /// runtime whose publisher's digest does not match.
+    Known(Digest),
 }
 
 /// A digest and the algorithm that produced it.

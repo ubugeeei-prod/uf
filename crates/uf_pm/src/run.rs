@@ -51,9 +51,10 @@ use std::time::{Duration, Instant};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::command::{Invocation, Operation, command_for};
+use crate::command::{Invocation, LinkTarget, Operation, command_for};
 use crate::detect::{
-    Detection, DetectionSource, PackageManager, detect_package_manager, is_pnpm_workspace_root,
+    Detection, DetectionSource, PackageManager, YarnEdition, declares_workspaces,
+    detect_package_manager, is_pnpm_workspace_root,
 };
 use crate::progress::{InstallWatch, ManagerEvent, Reader};
 
@@ -255,6 +256,7 @@ pub fn run_operation_with_detection(
     if let Some(path) = prefixed_path(path) {
         command.env("PATH", path);
     }
+    command.envs(invocation.env.iter().copied());
     let status = command
         .args(invocation.args.iter().map(AsRef::as_ref))
         .current_dir(root)
@@ -287,7 +289,8 @@ pub fn run_operation_with_detection(
 /// One sentence per operation, naming the managers that do have it — the
 /// reader's next question is always "then what", and "your package manager
 /// cannot" is only half an answer.
-fn unsupported_hint(operation: Operation<'_>) -> String {
+fn unsupported_hint(manager: PackageManager, operation: Operation<'_>) -> String {
+    let classic = manager == PackageManager::Yarn(YarnEdition::Classic);
     match operation {
         Operation::Search => {
             "npm and pnpm can search the registry; `uf exec --yes npm search` runs npm's \
@@ -297,9 +300,115 @@ fn unsupported_hint(operation: Operation<'_>) -> String {
             "pnpm and yarn 2+ can patch a dependency; on the others the ecosystem's answer is \
              `patch-package`, which uf does not install for you"
         }
+        Operation::Dedupe if classic => {
+            "yarn 1 dedupes the tree on every install, so `uf install` is the dedupe"
+        }
+        Operation::Dedupe => {
+            "npm, pnpm and yarn 2+ have one; `uf update` re-resolves every range to the newest \
+             version it allows, which is what collapses the duplicates bun leaves"
+        }
+        Operation::Link {
+            target: LinkTarget::Directory,
+        } if classic => {
+            "yarn 1 links by name: run `uf link` in that directory to register it, then \
+             `uf link <its name>` here — or `uf add link:<dir>` to record the link in the manifest"
+        }
+        Operation::Link {
+            target: LinkTarget::Directory,
+        } => {
+            "bun links by name: run `uf link` in that directory to register it, then \
+             `uf link <its name>` here"
+        }
+        Operation::Link { .. } => {
+            "yarn 2+ links by path and keeps no registry of linkable packages: run \
+             `uf link <path to the package>` in the project that uses it"
+        }
+        Operation::InstallFrozenProd => {
+            "yarn 2+ installs production dependencies with `yarn workspaces focus`, which never \
+             writes the lockfile and so cannot refuse a stale one; run `uf install \
+             --frozen-lockfile` to check the lockfile, then `uf install --prod`"
+        }
         _ => "no package manager uf knows spells this one differently",
     }
     .to_owned()
+}
+
+/// Whether `manager` can run `operation` for chosen members of a workspace.
+///
+/// `uf add --filter`, `uf remove --filter` and `uf update --filter` run the
+/// manager once in each member's directory, which every manager reads as "this
+/// member" — except in one place. Yarn 2+'s `yarn up` moves a package in every
+/// workspace that declares it, wherever it is run from, so a `--filter` would
+/// be a scope the command silently ignored.
+///
+/// # Errors
+///
+/// [`ManagerRunError::Unsupported`], naming what to run instead.
+pub fn check_member_operation(
+    manager: PackageManager,
+    operation: Operation<'_>,
+) -> Result<(), ManagerRunError> {
+    if manager == PackageManager::Yarn(YarnEdition::Berry) && operation == Operation::Update {
+        return Err(ManagerRunError::Unsupported {
+            manager: manager.to_string(),
+            operation: "update --filter",
+            hint: "`yarn up` moves a package in every workspace that declares it, wherever it \
+                   runs; run `uf update` without --filter, or `uf add <package>@<range> \
+                   --filter <member>` to move one member"
+                .to_owned(),
+        });
+    }
+    Ok(())
+}
+
+/// The sentence a manager's own failure usually needs, where uf knows one.
+///
+/// Yarn 2 and 3 have `yarn workspaces focus` only once the workspace-tools
+/// plugin is imported; Yarn 4 includes it. A project's Yarn release and its
+/// plugins are not something the table can see, and refusing every Yarn 2+
+/// project would refuse the ones that have the plugin, so uf runs the command
+/// and, when it fails, says what is most likely missing.
+#[must_use]
+pub fn failure_hint(manager: PackageManager, operation: Operation<'_>) -> Option<&'static str> {
+    match (manager, operation) {
+        (PackageManager::Yarn(YarnEdition::Berry), Operation::InstallProd) => Some(
+            "on Yarn 2 and 3, `yarn workspaces focus` needs the workspace-tools plugin: run \
+             `yarn plugin import workspace-tools`, then `uf install --prod` again — Yarn 4 \
+             includes it",
+        ),
+        _ => None,
+    }
+}
+
+/// Tell `manager` not to run dependency scripts during `operation`.
+///
+/// `--ignore-scripts` is the spelling almost everywhere, and the two places it
+/// is not are both refusals rather than warnings, which is why they are here:
+///
+/// * **Yarn 2+** has no such flag on any command — `yarn install
+///   --ignore-scripts` is "Unsupported option name" and exit 1. Its setting is
+///   `enableScripts`, and Yarn reads every setting from `YARN_*` as well as
+///   from `.yarnrc.yml`, so the variable is the whole-command answer.
+/// * **`pnpm link`** does not declare `--ignore-scripts`, and pnpm refuses an
+///   option a command does not declare. `--config.<key>` is pnpm's own way to
+///   set any setting on any command.
+fn refuse_scripts(invocation: &mut Invocation, manager: PackageManager, operation: Operation<'_>) {
+    match (manager, operation) {
+        (PackageManager::Yarn(YarnEdition::Berry), _) => {
+            invocation.env.push(("YARN_ENABLE_SCRIPTS", "false"));
+        }
+        // `pnpm remove --ignore-scripts` is the same "Unknown option", and
+        // `pnpm patch-commit` does not declare the flag either.
+        (
+            PackageManager::Pnpm,
+            Operation::Link { .. } | Operation::Remove | Operation::PatchCommit,
+        ) => invocation
+            .args
+            .push(std::borrow::Cow::Borrowed("--config.ignore-scripts=true")),
+        _ => invocation
+            .args
+            .push(std::borrow::Cow::Borrowed("--ignore-scripts")),
+    }
 }
 
 /// The flag that says "yes, the workspace root is what I meant".
@@ -331,14 +440,27 @@ fn unsupported_hint(operation: Operation<'_>) -> String {
 /// It also makes uf's own report true: `delegate` diffs `root/package.json`
 /// either way, so the run that pnpm refused was the only one where the
 /// manifest uf reads and the manifest the manager writes could disagree.
+///
+/// Yarn 1 has the same check under a different name, and on `remove` as well
+/// as `add` — both answer "Running this command will add the dependency to the
+/// workspace root rather than the workspace itself" and ask for `-W`. Its
+/// `upgrade` does not. So Yarn 1 is told `--ignore-workspace-root-check` on
+/// exactly those two, and only where its own marker for a root is: a
+/// `package.json` that declares `workspaces`.
 fn workspace_root_argument(
     root: &Utf8Path,
     manager: PackageManager,
     operation: Operation<'_>,
 ) -> Option<&'static str> {
-    let refused_at_the_root =
-        manager == PackageManager::Pnpm && matches!(operation, Operation::Add { .. });
-    (refused_at_the_root && is_pnpm_workspace_root(root)).then_some("--workspace-root")
+    match (manager, operation) {
+        (PackageManager::Pnpm, Operation::Add { .. }) => {
+            is_pnpm_workspace_root(root).then_some("--workspace-root")
+        }
+        (PackageManager::Yarn(YarnEdition::Classic), Operation::Add { .. } | Operation::Remove) => {
+            declares_workspaces(root).then_some("--ignore-workspace-root-check")
+        }
+        _ => None,
+    }
 }
 
 /// The exact command `run_operation` would spawn in `root`.
@@ -366,7 +488,7 @@ pub fn invocation_for(
         command_for(manager, operation).ok_or_else(|| ManagerRunError::Unsupported {
             manager: manager.to_string(),
             operation: operation.name(),
-            hint: unsupported_hint(operation),
+            hint: unsupported_hint(manager, operation),
         })?;
 
     // Which project, before how to install it: a reader checking the `command`
@@ -378,20 +500,27 @@ pub fn invocation_for(
     // A dependency's `postinstall` is the supply-chain hole uf's own resolver
     // was going to close by never running one. Delegating to a manager that
     // runs them by default would have quietly reopened it, so the project's
-    // `pm.allowLifecycleScripts` is passed through to the manager. Every
-    // manager in the table spells the flag the same way.
+    // `pm.allowLifecycleScripts` is passed through to the manager, in the
+    // spelling that manager accepts for this command — see `refuse_scripts`.
     //
     // Before the operands rather than after: a flag that follows a package
     // name is still a flag to all four managers, but a reader checking the
     // `command` row against what they typed should see uf's own additions
     // together and their own specifiers last.
     if !allow_scripts && operation.installs_packages() {
-        invocation
-            .args
-            .push(std::borrow::Cow::Borrowed("--ignore-scripts"));
+        refuse_scripts(&mut invocation, manager, operation);
     }
     check_operands(operands)?;
-    for operand in operands {
+    // `uf info <package> <field>`: the field is a second positional to every
+    // manager but Yarn 2+, whose `yarn npm info` takes it as `--fields`. The
+    // operand still comes last, so what was typed is still the end of the line.
+    let fields_flag = manager == PackageManager::Yarn(YarnEdition::Berry)
+        && operation == Operation::Info
+        && operands.len() > 1;
+    for (index, operand) in operands.iter().enumerate() {
+        if fields_flag && index == 1 {
+            invocation.args.push(std::borrow::Cow::Borrowed("--fields"));
+        }
         invocation
             .args
             .push(std::borrow::Cow::Owned(operand.clone()));
@@ -502,6 +631,7 @@ pub fn run_watched_with_detection(
     if let Some(path) = prefixed_path(path) {
         command.env("PATH", path);
     }
+    command.envs(invocation.env.iter().copied());
     let mut child = command
         .args(invocation.args.iter().map(AsRef::as_ref))
         .current_dir(root)

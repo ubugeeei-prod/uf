@@ -80,7 +80,15 @@ parameters that still depends on the request. A dashboard at `/account`, a page
 that reads a cookie, or a page whose loader redirects based on headers cannot
 use `generateStaticParams` to opt out of the prerender, because there are no
 params to generate. `force-dynamic` leaves it to the server under the default
-plan and is refused by a static-only plan. The only other value uf accepts is
+plan and is refused by a static-only plan.
+
+A page that needs `force-dynamic` and does not say so is refused rather than
+prerendered. When a prerendered route's render reaches `cookies()`, `headers()`
+or `draftMode()`, `uf build` fails, naming the route, the function, and the
+chain of imports that reaches it. A route cache that states a lifetime keeps
+[the same rule](/guide/cache#what-is-never-cached).
+
+The only other value uf accepts is
 `"auto"`; Next.js's `"force-static"` and `"error"` are constraints uf does not
 check yet, so they are refused rather than silently treated as `"auto"`.
 
@@ -219,7 +227,9 @@ renders it in place:
   refusal. The browser navigates the way a link without JavaScript would.
 
 `app.rsc: false` turns this off, and a navigation imports the next route's
-modules instead.
+modules instead. That mode runs on React 19.2.3 or newer without
+`react-server-dom-parcel`; the payload needs React 19.3 (see
+[Server Components](/guide/server-components)).
 
 ## `navigation: "document"`
 

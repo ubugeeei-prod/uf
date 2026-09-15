@@ -177,7 +177,7 @@ pub(crate) fn manifest_package_manager(
     }
 }
 
-fn manifest_has_workspaces(
+pub(crate) fn manifest_has_workspaces(
     path: &Utf8Path,
     manifest: &Value,
     issues: &mut DetectionIssues,

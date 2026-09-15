@@ -52,6 +52,22 @@ impl fmt::Display for ClientOnlyHookOrigin {
     }
 }
 
+/// Why a route's document is written once, which is what makes reading the
+/// request in its render wrong.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StaticRouteReason {
+    /// The build prerenders it: its document is written at build time.
+    Prerendered,
+    /// Its render states a cache lifetime and the route cache is on, so its
+    /// document is written into the cache and served to every request.
+    Cached {
+        /// The module that imports `cacheLife`.
+        module: Utf8PathBuf,
+        /// 1-based line of that import.
+        line: u32,
+    },
+}
+
 /// How a server-only import reached the client graph, as a message ends.
 ///
 /// Nothing for a chain of one: that module is a client boundary itself, and the
@@ -63,11 +79,63 @@ fn chain_suffix(chain: &[Utf8PathBuf]) -> String {
     if chain.len() < 2 {
         return String::new();
     }
+    format!(", reached from a client boundary through {}", arrows(chain))
+}
+
+/// A chain of modules as the report prints it: each in backticks, `→` between.
+fn arrows(chain: &[Utf8PathBuf]) -> String {
     let steps: Vec<String> = chain.iter().map(|module| format!("`{module}`")).collect();
-    format!(
-        ", reached from a client boundary through {}",
-        steps.join(" → ")
-    )
+    steps.join(" → ")
+}
+
+/// The message for [`RscDiagnostic::RequestStateInStaticRoute`].
+///
+/// Three things, in the order a reader needs them: which routes, and why their
+/// documents are written once; what the render reads, and the chain of imports
+/// that reaches it, since the import to cut is on that path; and what to do.
+fn request_state_message(
+    routes: &[CompactString],
+    reason: &StaticRouteReason,
+    api: &str,
+    module: &Utf8Path,
+    line: u32,
+    chain: &[Utf8PathBuf],
+) -> String {
+    let named: Vec<String> = routes.iter().map(|route| format!("`{route}`")).collect();
+    let (subject, their) = match named.as_slice() {
+        [one] => (format!("route {one}"), "its"),
+        _ => (format!("routes {}", named.join(", ")), "their"),
+    };
+    let plural = routes.len() != 1;
+    let reached = if chain.len() < 2 {
+        format!(", which `{module}` imports from `@uniflowed/server` at line {line}")
+    } else {
+        format!(
+            " through {}, where `{module}` imports it from `@uniflowed/server` at line {line}",
+            arrows(chain)
+        )
+    };
+    match reason {
+        StaticRouteReason::Prerendered => format!(
+            "{subject} {} prerendered, and {their} render reads `{api}()`{reached}. A prerendered \
+             document is written once, at build time, for no request. Export `const dynamic = \
+             \"force-dynamic\"` from {} to render it for each request, or move the read out of \
+             the render",
+            if plural { "are" } else { "is" },
+            if plural { "each page" } else { "the page" },
+        ),
+        StaticRouteReason::Cached {
+            module: stated,
+            line: stated_line,
+        } => format!(
+            "{subject} {} a cache lifetime through `cacheLife`, which `{stated}` imports at line \
+             {stated_line}, and {their} render reads `{api}()`{reached}. A render that reads the \
+             request is never stored, so that lifetime is never kept. Move the read out of the \
+             render, or state no lifetime for {}",
+            if plural { "state" } else { "states" },
+            if plural { "these routes" } else { "this route" },
+        ),
+    }
 }
 
 /// A violation of the React Server Components contract.
@@ -194,6 +262,33 @@ pub enum RscDiagnostic {
         /// 1-based column.
         column: u32,
     },
+    /// A route whose document is written once reaches a read of the request.
+    ///
+    /// Not found while building the graph, because the graph does not know
+    /// which routes are prerendered or cached: `uf build` asks
+    /// [`crate::RscGraph::request_state_read`] of each route it writes once,
+    /// and reports what that finds as this. The run-time refusal —
+    /// `x-uf-cache: BYPASS` for a cached render that read the request — stays
+    /// behind it for what an import cannot show. See ubugeeei-prod/uf#996.
+    #[error(
+        "{}",
+        request_state_message(.routes, .reason, .api, .module, *.line, .chain)
+    )]
+    RequestStateInStaticRoute {
+        /// The routes, by URL pattern, whose render reaches the read, sorted.
+        routes: Vec<CompactString>,
+        /// Why their documents are written once.
+        reason: StaticRouteReason,
+        /// The request API imported: `cookies`, `headers` or `draftMode`.
+        api: CompactString,
+        /// The module that imports it, relative to the project root.
+        module: Utf8PathBuf,
+        /// 1-based line of the import.
+        line: u32,
+        /// From the module that renders the routes down to `module`, both
+        /// included.
+        chain: Vec<Utf8PathBuf>,
+    },
     /// A rejected directive, lifted from the directive pass.
     #[error("in `{module}`: {issue}")]
     Directive {
@@ -216,6 +311,7 @@ impl RscDiagnostic {
             Self::ModulePathOutsideProject { .. } => "rsc/module-outside-project-root",
             Self::UnclassifiedHookInServerModule { .. } => "rsc/unclassified-hook-in-server",
             Self::ClientOnlyHookInServerModule { .. } => "rsc/client-only-hook-in-server",
+            Self::RequestStateInStaticRoute { .. } => "rsc/request-state-in-static-route",
             Self::Directive { issue, .. } => issue.rule(),
         }
     }
@@ -245,6 +341,7 @@ impl RscDiagnostic {
             | Self::ImportEscapesProjectRoot { module, .. }
             | Self::UnclassifiedHookInServerModule { module, .. }
             | Self::ClientOnlyHookInServerModule { module, .. }
+            | Self::RequestStateInStaticRoute { module, .. }
             | Self::ModulePathOutsideProject { module }
             | Self::Directive { module, .. } => module,
         }
@@ -258,6 +355,7 @@ impl RscDiagnostic {
             | Self::ServerActionNotAsync { line, .. }
             | Self::ServerActionNotFunction { line, .. }
             | Self::ImportEscapesProjectRoot { line, .. }
+            | Self::RequestStateInStaticRoute { line, .. }
             | Self::UnclassifiedHookInServerModule { line, .. } => *line,
             Self::ClientOnlyHookInServerModule { line, .. } => *line,
             Self::ModulePathOutsideProject { .. } => 0,

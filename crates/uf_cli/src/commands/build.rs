@@ -60,6 +60,7 @@ use crate::ui::Ui;
 
 mod guards;
 mod library;
+mod request_state;
 mod site;
 mod spa;
 
@@ -249,16 +250,34 @@ pub(crate) fn build(
     // The count in the summary below is what this used to be — `rsc
     // diagnostics 5`, exit 0, and the messages in a JSON file nobody reads.
     // See ubugeeei-prod/uf#281.
-    if !rsc.graph.diagnostics().is_empty() {
+    //
+    // The graph's own findings, and one it cannot make alone: a route whose
+    // document is written once — prerendered, or kept in the route cache —
+    // and whose render reads the request. That takes the route table and the
+    // rendering plan beside the graph; see [`request_state`].
+    let mut diagnostics = rsc.graph.diagnostics().to_vec();
+    diagnostics.extend(request_state::request_state_in_static_routes(
+        &resolved.root,
+        &resolved.config,
+        plan,
+        app_target,
+        &routes,
+        &rsc.graph,
+    ));
+    diagnostics.sort_by(|left, right| {
+        left.module()
+            .cmp(right.module())
+            .then(left.line().cmp(&right.line()))
+            .then(left.rule().cmp(right.rule()))
+    });
+    if !diagnostics.is_empty() {
         progress.finish();
-        render_rsc_diagnostics(ui, &root, rsc.graph.diagnostics());
-        if rsc.graph.has_errors() {
-            let errors = rsc
-                .graph
-                .diagnostics()
-                .iter()
-                .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
-                .count();
+        render_rsc_diagnostics(ui, &root, &diagnostics);
+        let errors = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.severity() == RscSeverity::Error)
+            .count();
+        if errors > 0 {
             bail!(
                 "{}",
                 plural(errors, "React Server Components contract violation")

@@ -20,7 +20,8 @@ export component Example() {
   return (
     <div {...props(styles.row)}>
       <Avatar>
-        <AvatarImage src="/people/ada.png" />
+        {/* No picture yet: an empty source is nothing coming, so the initials show at once. */}
+        <AvatarImage src="" />
         <AvatarFallback>AL</AvatarFallback>
       </Avatar>
       <span>Ada Lovelace</span>

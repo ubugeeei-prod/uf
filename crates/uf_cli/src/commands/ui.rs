@@ -17,9 +17,9 @@
 //! leaves the files unwritten, which is the state the project was in.
 
 use anyhow::{Context, Result, anyhow, bail};
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
 use serde_json::json;
-use uf_config::load_config;
+use uf_config::{UiConfig, load_config};
 use uf_pm::DependencyKind;
 use uf_term::{Cell, Column, Renderer, Status, Table, Tone};
 use uf_ui::project::{self, AddAction, AddError, AddPlan, Conflict, CopyState, ProjectCopy};
@@ -46,7 +46,8 @@ struct Place {
 impl Place {
     fn find(cwd: &Utf8Path) -> Result<Self> {
         let resolved = load_config(cwd)?;
-        let directory = resolved.root.join(DEFAULT_DIRECTORY);
+        let named = configured_directory(&resolved.config.ui)?;
+        let directory = resolved.root.join(named);
         Ok(Self {
             root: resolved.root,
             directory,
@@ -56,6 +57,34 @@ impl Place {
     fn relative(&self, path: &Utf8Path) -> String {
         relative_to(&self.root, path)
     }
+}
+
+/// The directory components live in, relative to the project root:
+/// `ui.directory`, or [`DEFAULT_DIRECTORY`] when the project names none.
+///
+/// A path that leaves the project is refused. `uf.config.js` is a file a cloned
+/// repository brings with it, and it does not get to point `uf ui add` at files
+/// outside the checkout.
+fn configured_directory(config: &UiConfig) -> Result<&Utf8Path> {
+    let named = if config.directory.is_empty() {
+        DEFAULT_DIRECTORY
+    } else {
+        config.directory.as_str()
+    };
+    let path = Utf8Path::new(named);
+    let leaves = path.components().any(|part| {
+        matches!(
+            part,
+            Utf8Component::ParentDir | Utf8Component::RootDir | Utf8Component::Prefix(_)
+        )
+    });
+    if leaves {
+        bail!(
+            "`ui.directory` in uf.config.js is `{named}`, which leaves the project; name a \
+             directory inside it, such as `{DEFAULT_DIRECTORY}`"
+        );
+    }
+    Ok(path)
 }
 
 /// The registry this uf was built with.
@@ -87,15 +116,20 @@ fn add(cwd: &Utf8Path, ui: &mut Ui, names: &[String], overwrite: bool) -> Result
             .iter()
             .map(|package| project::package_spec(package))
             .collect();
-        crate::commands::pm::add(&place.root, ui, &specs, DependencyKind::Prod).with_context(
-            || {
-                format!(
-                    "`uf ui add` wrote no component, because the packages they import could not \
+        crate::commands::pm::add(
+            &place.root,
+            ui,
+            &specs,
+            DependencyKind::Prod,
+            &crate::commands::pm::Scope::Project,
+        )
+        .with_context(|| {
+            format!(
+                "`uf ui add` wrote no component, because the packages they import could not \
                      be added: {}",
-                    specs.join(" ")
-                )
-            },
-        )?;
+                specs.join(" ")
+            )
+        })?;
     }
 
     project::apply(&plan)

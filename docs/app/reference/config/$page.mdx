@@ -54,6 +54,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
 | `staged` | The tasks `uf prepare` runs over the staged files before a commit |
+| `ui` | Where `uf ui add` writes the components a project owns. See [below](#ui) |
 | `pm`, `publish`, `package`, `release` | Which registry uf reads from and publishes to, and how a release is built |
 | `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
 
@@ -694,6 +695,19 @@ A threshold that is not reached fails the run. They are checked whenever
 coverage was collected, so `enabled: false` plus `--coverage` still gates — the
 number CI fails on is the number a laptop fails on. A metric nobody names is not
 checked, which is not the same as requiring zero.
+
+## ui
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `directory` | `"app/components/ui"` | Where [`uf ui add`](/reference/cli) writes the components a project owns, and where `uf ui list` and `uf ui diff` look for them |
+
+The path is relative to the project root. Every component goes in the one
+directory, because each imports the components it builds on as siblings:
+`./button.js`. A path that leaves the project, such as `../shared/ui`, is
+refused before anything is written. A `uf.config.js` arrives with a cloned
+repository, and it does not get to point `uf ui add` at files outside the
+checkout.
 
 ## builder
 

@@ -100,6 +100,29 @@ impl From<AddTarget> for DependencyKind {
     }
 }
 
+/// Which of a workspace's projects `uf add`, `uf remove` and `uf update` change.
+///
+/// pnpm's two flags, because they are the ones people type, with
+/// `uf run --filter`'s grammar behind the first. uf resolves the selectors and
+/// runs the manager once in each member's directory, which is the one way
+/// every manager spells "this member".
+#[derive(Debug, Clone, Default, clap::Args)]
+pub(crate) struct WorkspaceArgs {
+    /// Change the workspace members this selects instead of this project: a
+    /// name, a glob (`@acme/*`), a path (`./packages/ui`), `name...` for a
+    /// member and what it depends on, `...name` for what depends on it.
+    /// Repeatable.
+    ///
+    /// The manager runs in each member's directory, so a path specifier is
+    /// read from there.
+    #[arg(long, value_name = "SELECTOR")]
+    pub(crate) filter: Vec<String>,
+    /// Change the root of the workspace this project is in, from anywhere
+    /// inside it.
+    #[arg(short = 'w', long, conflicts_with = "filter")]
+    pub(crate) workspace_root: bool,
+}
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum Commands {
     /// Add dependencies with the project's own package manager.
@@ -119,6 +142,8 @@ pub(crate) enum Commands {
         /// Record them in `peerDependencies`.
         #[arg(long)]
         peer: bool,
+        #[command(flatten)]
+        workspace: WorkspaceArgs,
         /// The packages: `react`, `react@^19`, `./packages/ui`.
         #[arg(value_name = "SPEC", required = true)]
         specs: Vec<String>,
@@ -240,9 +265,18 @@ pub(crate) enum Commands {
     /// two different things and neither spelling said which. See
     /// ubugeeei-prod/uf#322 for what that cost, and #488 for the rename.
     Init {
-        /// The template to scaffold. `react` is the only one today.
+        /// The template to scaffold: `react`, the default; `monorepo` for an
+        /// application and a library as workspace packages of one repository;
+        /// or a remote template pinned to its exact bytes —
+        /// `github:owner/repo#<commit>`, `git+https://…#<commit>`, or an
+        /// `https://….tar.gz` with `--integrity`.
         #[arg(value_name = "TEMPLATE")]
         template: Option<String>,
+        /// The digest a remote tarball template must have:
+        /// `sha512-<base64>` or `sha256:<hex>`. A tarball whose download hashes
+        /// to anything else is refused before it is unpacked.
+        #[arg(long, value_name = "DIGEST", requires = "template")]
+        integrity: Option<String>,
         /// Scaffold a library rather than an application.
         #[arg(long)]
         lib: bool,
@@ -259,9 +293,18 @@ pub(crate) enum Commands {
         /// segment is the package's name unless `--name` says otherwise.
         #[arg(value_name = "PATH")]
         path: Utf8PathBuf,
-        /// The template to scaffold. `react` is the only one today.
+        /// The template to scaffold: `react`, the default; `monorepo` for an
+        /// application and a library as workspace packages of one repository;
+        /// or a remote template pinned to its exact bytes —
+        /// `github:owner/repo#<commit>`, `git+https://…#<commit>`, or an
+        /// `https://….tar.gz` with `--integrity`.
         #[arg(value_name = "TEMPLATE")]
         template: Option<String>,
+        /// The digest a remote tarball template must have:
+        /// `sha512-<base64>` or `sha256:<hex>`. A tarball whose download hashes
+        /// to anything else is refused before it is unpacked.
+        #[arg(long, value_name = "DIGEST", requires = "template")]
+        integrity: Option<String>,
         /// Scaffold a library rather than an application.
         #[arg(long)]
         lib: bool,
@@ -390,8 +433,21 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: I18nCommand,
     },
-    /// Print the toolchain's version, host, and resolved paths.
-    Info,
+    /// Print the toolchain's version, host, and resolved paths — or, given a
+    /// package, what the registry says about it.
+    ///
+    /// `uf info react` asks the project's own package manager: `npm view`,
+    /// `pnpm view`, `yarn info`, `yarn npm info`, `bun info`. A second word
+    /// narrows the answer to one field, as in `uf info react version`.
+    Info {
+        /// A package to look up, with a version or tag if you like: `react`,
+        /// `react@18`.
+        #[arg(value_name = "PACKAGE")]
+        package: Option<String>,
+        /// One field of its metadata: `version`, `dist-tags`, `dependencies`.
+        #[arg(value_name = "FIELD", requires = "package")]
+        field: Option<String>,
+    },
     /// Print the resolved configuration, after defaults and plugins.
     Inspect {
         /// Emit machine-readable JSON on stdout.
@@ -409,6 +465,15 @@ pub(crate) enum Commands {
         /// being quietly resolved away.
         #[arg(long)]
         frozen_lockfile: bool,
+        /// Leave `devDependencies` out: what a server or a production image
+        /// installs.
+        ///
+        /// `npm install --omit=dev`, `pnpm install --prod`, `yarn install
+        /// --production`, `yarn workspaces focus --all --production`, `bun
+        /// install --omit=dev`. With `--frozen-lockfile` it is the CI form of
+        /// the same, which Yarn 2+ has no command for and uf says so.
+        #[arg(long, alias = "production")]
+        prod: bool,
     },
     /// Serve uf's module transform over stdin/stdout, for the Vite plugin.
     ///
@@ -556,6 +621,8 @@ pub(crate) enum Commands {
     /// subcommand" over a word two of the five managers call it by.
     #[command(alias = "uninstall")]
     Remove {
+        #[command(flatten)]
+        workspace: WorkspaceArgs,
         /// The packages, by name.
         #[arg(value_name = "NAME", required = true)]
         names: Vec<String>,
@@ -658,6 +725,49 @@ pub(crate) enum Commands {
         /// runs the whole suite.
         #[arg(long, value_name = "REF")]
         changed: Option<String>,
+        /// Run one part of a suite split across machines, like `2/3`.
+        ///
+        /// Every shard cuts the same partition from the test files and the
+        /// durations `.uf/test-timings.json` recorded, so each machine can run
+        /// its part alone, and together they run every test file once. Each
+        /// shard writes a record to `.uf/test-shards` for `--merge-shards`.
+        #[arg(long, value_name = "INDEX/COUNT", conflicts_with = "merge_shards")]
+        shard: Option<uf_test::Shard>,
+        /// Report the shard records in DIR as one run over the whole suite.
+        ///
+        /// Runs nothing. Writes what one run would have written: the summary or
+        /// `--json`, `--reporter junit`, and the coverage reports when the
+        /// shards measured. It records the suite's durations for the next split
+        /// and fails when the suite failed. DIR defaults to `.uf/test-shards`.
+        #[arg(
+            long,
+            value_name = "DIR",
+            num_args = 0..=1,
+            default_missing_value = ".uf/test-shards"
+        )]
+        merge_shards: Option<String>,
+        /// Run the benchmarks `bench()` declares, in place of the tests.
+        ///
+        /// One file at a time unless `-j` says otherwise, so a benchmark is not
+        /// timed beside another. Each one's median is compared with the
+        /// baseline a previous `--save-baseline` wrote, and a regression past
+        /// `--bench-threshold` fails the run.
+        #[arg(long)]
+        bench: bool,
+        /// Read the baseline from FILE instead of `.uf/bench-baseline.json`.
+        #[arg(long, value_name = "FILE", requires = "bench")]
+        baseline: Option<String>,
+        /// Save this run's medians as the baseline, rather than failing on them.
+        #[arg(long, requires = "bench")]
+        save_baseline: bool,
+        /// How far past its baseline a median may go, in per cent; 20 unless given.
+        #[arg(
+            long,
+            value_name = "PERCENT",
+            requires = "bench",
+            value_parser = clap::value_parser!(u32).range(1..=1000)
+        )]
+        bench_threshold: Option<u32>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
@@ -747,7 +857,17 @@ pub(crate) enum Commands {
         /// Report what would change and change nothing — no update, no install.
         #[arg(long)]
         dry_run: bool,
+        #[command(flatten)]
+        workspace: WorkspaceArgs,
     },
+    /// Collapse duplicate versions in the dependency tree, with the project's
+    /// own package manager.
+    ///
+    /// Where the declared ranges allow two copies of a package to be one, the
+    /// tree keeps one: `npm dedupe`, `pnpm dedupe`, `yarn dedupe`. Yarn 1
+    /// already does it on every install and bun has no command for it, and uf
+    /// says which rather than running something else.
+    Dedupe,
     /// The package manager underneath: what it is allowed to do, and what it
     /// has been told.
     ///
@@ -775,6 +895,22 @@ pub(crate) enum Commands {
         /// Write the patch from a directory `uf patch` opened, and install.
         #[arg(long)]
         commit: bool,
+    },
+    /// Link a package you are developing into this project, or make this one
+    /// linkable.
+    ///
+    /// `uf link ../ui` links that directory into this project. `uf link` in a
+    /// package makes it linkable from other projects on this machine, and
+    /// `uf link ui` in one of them links it there. A target is a path when it
+    /// is written as one — `.`, `..`, or starting with `./`, `../` or `/` — and
+    /// a package name otherwise.
+    ///
+    /// Yarn 1 and bun link by name only, and Yarn 2+ by path only. uf refuses
+    /// the form a manager does not have, and says which to use instead.
+    Link {
+        /// A directory to link, or the name of a package `uf link` registered.
+        #[arg(value_name = "NAME|DIR")]
+        target: Option<String>,
     },
     /// Show the versions a workspace shares, and change one everywhere.
     ///
@@ -1063,11 +1199,13 @@ pub(crate) enum Shell {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum AppTemplate {
     React,
+    /// An application and a library as workspace packages of one repository.
+    Monorepo,
 }
 
 impl AppTemplate {
     /// Every template, for a message that has to list them.
-    pub(crate) const ALL: [&'static str; 1] = ["react"];
+    pub(crate) const ALL: [&'static str; 2] = ["react", "monorepo"];
 
     /// The template `value` names, or `None` when it names something else.
     ///
@@ -1077,6 +1215,7 @@ impl AppTemplate {
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "react" => Some(Self::React),
+            "monorepo" => Some(Self::Monorepo),
             _ => None,
         }
     }

@@ -16,6 +16,8 @@
 //! | --------- | -- | --- | ---- | ------------ | ---------- | --- |
 //! | `Install` | `uf install` | `npm install` | `pnpm install` | `yarn install` | `yarn install` | `bun install` |
 //! | `InstallFrozen` | `uf install --frozen-lockfile` | `npm ci` | `pnpm install --frozen-lockfile` | `yarn install --frozen-lockfile` | `yarn install --immutable` | `bun install --frozen-lockfile` |
+//! | `InstallProd` | `uf install --prod` | `npm install --omit=dev` | `pnpm install --prod` | `yarn install --production` | `yarn workspaces focus --all --production` | `bun install --omit=dev` |
+//! | `InstallFrozenProd` | `uf install --frozen-lockfile --prod` | `npm ci --omit=dev` | `pnpm install --frozen-lockfile --prod` | `yarn install --frozen-lockfile --production` | — | `bun install --frozen-lockfile --production` |
 //! | `Add { kind: Prod }` | `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
 //! | `Add { kind: Dev }` | `uf add --dev` | `npm install --save-dev` | `pnpm add --save-dev` | `yarn add --dev` | `yarn add --dev` | `bun add --dev` |
 //! | `Add { kind: Optional }` | `uf add --optional` | `npm install --save-optional` | `pnpm add --save-optional` | `yarn add --optional` | `yarn add --optional` | `bun add --optional` |
@@ -26,6 +28,14 @@
 //! | `DlxExec` | `uf exec` | `npx --yes` | `pnpm dlx` | `npx --yes` | `yarn dlx` | `bunx` |
 //! | `Update` | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
 //! | `Why` | `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
+//! | `Dedupe` | `uf dedupe` | `npm dedupe` | `pnpm dedupe` | — | `yarn dedupe` | — |
+//! | `Link { target: Register }` | `uf link` | `npm link` | `pnpm link` | `yarn link` | — | `bun link` |
+//! | `Link { target: Package }` | `uf link <name>` | `npm link <name>` | `pnpm link <name>` | `yarn link <name>` | — | `bun link <name>` |
+//! | `Link { target: Directory }` | `uf link <dir>` | `npm link <dir>` | `pnpm link <dir>` | — | `yarn link <dir>` | — |
+//! | `Info` | `uf info` | `npm view` | `pnpm view` | `yarn info` | `yarn npm info` | `bun info` |
+//!
+//! A dash is a manager with no such command, which [`command_for`] answers with
+//! [`None`] rather than with somebody else's command.
 //!
 //! Callers append their own operands (package names for `Add`/`Remove`/`Why`, the
 //! binary and its arguments for `Exec`/`DlxExec`); only `Run` carries its operand
@@ -41,6 +51,16 @@ use crate::detect::{PackageManager, YarnEdition};
 
 /// Inline argument list; no mapped invocation needs a heap allocation.
 pub type InvocationArgs = SmallVec<[Cow<'static, str>; 8]>;
+
+/// Environment variables uf sets on the manager's process, beyond what it
+/// inherits.
+///
+/// Empty for almost every invocation. The exception is a setting a manager has
+/// no command-line spelling for: Yarn 2+ answers `--ignore-scripts` with
+/// "Unsupported option name" on every command, and reads the same decision from
+/// `YARN_ENABLE_SCRIPTS`. Both halves are `&'static str` for the reason
+/// [`Invocation::program`] is — nothing here is read from a manifest.
+pub type InvocationEnv = SmallVec<[(&'static str, &'static str); 1]>;
 
 /// Every program `uf` will spawn on behalf of a detected package manager.
 ///
@@ -86,6 +106,62 @@ impl DependencyKind {
     }
 }
 
+/// What `uf link` was pointed at.
+///
+/// Three different requests that npm, pnpm and bun happen to spell with one
+/// word, and that Yarn's two editions split between them: Yarn 1 links by name
+/// and cannot take a path, Yarn 2+ links by path and keeps no registry to name
+/// anything in. Keeping the three apart is what lets the table refuse the one a
+/// manager does not have instead of handing it a word it will misread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LinkTarget {
+    /// Nothing named: make the package in this directory linkable from other
+    /// projects on this machine.
+    Register,
+    /// A name: link a package that some other directory registered.
+    Package,
+    /// A path: link that directory into this project.
+    Directory,
+}
+
+impl LinkTarget {
+    /// Every target, for exhaustive testing.
+    pub const ALL: [Self; 3] = [Self::Register, Self::Package, Self::Directory];
+
+    /// Which of the three `operand` is.
+    ///
+    /// A path is written as one — `.`, `..`, or starting with `./`, `../` or
+    /// `/` — and everything else is a package name, a scoped `@acme/ui`
+    /// included. That is the line npm draws between `npm link ../ui` and
+    /// `npm link ui`, drawn once here, so a name that happens to match a
+    /// directory beside the project still means the package.
+    #[must_use]
+    pub fn of(operand: Option<&str>) -> Self {
+        match operand {
+            None => Self::Register,
+            Some(operand) if is_written_as_a_path(operand) => Self::Directory,
+            Some(_) => Self::Package,
+        }
+    }
+}
+
+fn is_written_as_a_path(operand: &str) -> bool {
+    // A backslash is in no npm package name, so `.\ui` and `..\ui` are paths on
+    // every platform; an absolute path is whatever this platform calls one —
+    // `C:\work\ui` and `\\server\share\ui` on Windows.
+    if operand.starts_with(".\\")
+        || operand.starts_with("..\\")
+        || std::path::Path::new(operand).is_absolute()
+    {
+        return true;
+    }
+    operand == "."
+        || operand == ".."
+        || ["./", "../", "/"]
+            .iter()
+            .any(|prefix| operand.starts_with(prefix))
+}
+
 /// Package manager operation requested by `uf`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation<'a> {
@@ -93,6 +169,17 @@ pub enum Operation<'a> {
     Install,
     /// Install exactly what the lockfile pins and fail when it is stale (CI).
     InstallFrozen,
+    /// Install every dependency except the development ones.
+    ///
+    /// What a server or a production image runs: `devDependencies` stay out of
+    /// `node_modules`, and the lockfile still describes all of them.
+    InstallProd,
+    /// [`Self::InstallProd`], refusing a stale lockfile the way
+    /// [`Self::InstallFrozen`] does.
+    ///
+    /// Yarn 2+ has no such install. Its production install is `yarn workspaces
+    /// focus`, which never writes the lockfile and so has nothing to refuse.
+    InstallFrozenProd,
     /// Add dependencies; the caller appends the package specifiers.
     Add {
         /// The manifest field the packages are recorded in.
@@ -130,13 +217,29 @@ pub enum Operation<'a> {
     Patch,
     /// Write the patch from the directory [`Self::Patch`] opened, and install.
     PatchCommit,
+    /// Collapse the versions the declared ranges allow to be one, and install.
+    ///
+    /// npm, pnpm and Yarn 2+. Yarn 1 answers that `yarn install` already
+    /// dedupes, and bun has no command for it.
+    Dedupe,
+    /// Link a package that is being developed somewhere else into a project,
+    /// or make one linkable; the caller appends the name or the path.
+    Link {
+        /// What was named, which is what the managers disagree about.
+        target: LinkTarget,
+    },
+    /// Print a package's metadata from the registry; the caller appends the
+    /// package and, optionally, one field of it.
+    Info,
 }
 
 impl Operation<'_> {
     /// Every operation, with a representative payload, for exhaustive testing.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 24] = [
         Self::Install,
         Self::InstallFrozen,
+        Self::InstallProd,
+        Self::InstallFrozenProd,
         Self::Add {
             kind: DependencyKind::Prod,
         },
@@ -160,6 +263,17 @@ impl Operation<'_> {
         Self::Search,
         Self::Patch,
         Self::PatchCommit,
+        Self::Dedupe,
+        Self::Link {
+            target: LinkTarget::Register,
+        },
+        Self::Link {
+            target: LinkTarget::Package,
+        },
+        Self::Link {
+            target: LinkTarget::Directory,
+        },
+        Self::Info,
     ];
 
     /// Whether this operation can cause a dependency's install scripts to run.
@@ -173,13 +287,21 @@ impl Operation<'_> {
         match self {
             Self::Install
             | Self::InstallFrozen
+            | Self::InstallProd
+            | Self::InstallFrozenProd
             | Self::Add { .. }
             | Self::Remove
             | Self::Update
             // `patch-commit` writes the patch, records it in the manifest, and
             // reinstalls the package it patched — which is an install, and one
             // whose scripts run against code the project has just edited.
-            | Self::PatchCommit => true,
+            | Self::PatchCommit
+            // A dedupe is an install of a smaller tree.
+            | Self::Dedupe
+            // Every manager links by installing: npm reifies the project
+            // around the link, and registering a package installs it into the
+            // global directory, dependencies and their scripts included.
+            | Self::Link { .. } => true,
             Self::Run { .. }
             | Self::Exec
             | Self::DlxExec
@@ -189,16 +311,23 @@ impl Operation<'_> {
             | Self::Search
             // `pnpm patch` extracts a copy into a temporary directory and
             // prints the path. Nothing enters `node_modules` until the commit.
-            | Self::Patch => false,
+            | Self::Patch
+            | Self::Info => false,
         }
     }
 
     /// The operation's name, for a message about a manager that has no command
     /// for it.
+    ///
+    /// As the reader would have typed it, flags and all, where the flag is the
+    /// difference: "yarn has no `install --frozen-lockfile --prod`" is a
+    /// sentence someone can act on, and "yarn has no `install`" is false.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
             Self::Install | Self::InstallFrozen => "install",
+            Self::InstallProd => "install --prod",
+            Self::InstallFrozenProd => "install --frozen-lockfile --prod",
             Self::Add { .. } => "add",
             Self::Remove => "remove",
             Self::Run { .. } => "run",
@@ -210,6 +339,17 @@ impl Operation<'_> {
             Self::Search => "search",
             Self::Patch => "patch",
             Self::PatchCommit => "patch-commit",
+            Self::Dedupe => "dedupe",
+            Self::Link {
+                target: LinkTarget::Register,
+            } => "link",
+            Self::Link {
+                target: LinkTarget::Package,
+            } => "link <name>",
+            Self::Link {
+                target: LinkTarget::Directory,
+            } => "link <dir>",
+            Self::Info => "info",
         }
     }
 }
@@ -222,13 +362,22 @@ pub struct Invocation {
     pub program: &'static str,
     /// Arguments passed to `program`, in order.
     pub args: InvocationArgs,
+    /// Variables set on the process, in order. See [`InvocationEnv`].
+    #[serde(skip_serializing_if = "SmallVec::is_empty")]
+    pub env: InvocationEnv,
 }
 
 impl fmt::Display for Invocation {
     /// Render the invocation for diagnostics.
     ///
-    /// Not shell-quoted, and never safe to hand to a shell.
+    /// Not shell-quoted, and never safe to hand to a shell. A variable is
+    /// written in front of the program the way a reader would set it by hand,
+    /// because a `command` row that left it out would describe a command that
+    /// fails.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (name, value) in &self.env {
+            write!(formatter, "{name}={value} ")?;
+        }
         formatter.write_str(self.program)?;
         for arg in &self.args {
             write!(formatter, " {arg}")?;
@@ -257,6 +406,7 @@ pub fn command_for(manager: PackageManager, operation: Operation<'_>) -> Option<
     Some(Invocation {
         program: spec.program,
         args,
+        env: InvocationEnv::new(),
     })
 }
 
@@ -298,6 +448,8 @@ const fn uf_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("uf", &["install"]),
         Operation::InstallFrozen => spec("uf", &["install", "--frozen-lockfile"]),
+        Operation::InstallProd => spec("uf", &["install", "--prod"]),
+        Operation::InstallFrozenProd => spec("uf", &["install", "--frozen-lockfile", "--prod"]),
         Operation::Add {
             kind: DependencyKind::Prod,
         } => spec("uf", &["add"]),
@@ -320,6 +472,9 @@ const fn uf_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => spec("uf", &["search"]),
         Operation::Patch => spec("uf", &["patch"]),
         Operation::PatchCommit => spec("uf", &["patch", "--commit"]),
+        Operation::Dedupe => spec("uf", &["dedupe"]),
+        Operation::Link { .. } => spec("uf", &["link"]),
+        Operation::Info => spec("uf", &["info"]),
     }
 }
 
@@ -331,6 +486,10 @@ const fn npm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         } => spec("npm", &["install"]),
         // `npm ci` is the only npm install that refuses a stale lockfile.
         Operation::InstallFrozen => spec("npm", &["ci"]),
+        // `--omit=dev` rather than `--production`, which npm 9 deprecated and
+        // warns about on every run.
+        Operation::InstallProd => spec("npm", &["install", "--omit=dev"]),
+        Operation::InstallFrozenProd => spec("npm", &["ci", "--omit=dev"]),
         Operation::Add {
             kind: DependencyKind::Dev,
         } => spec("npm", &["install", "--save-dev"]),
@@ -354,6 +513,12 @@ const fn npm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // ecosystem's answer and it is not npm's, so uf refuses rather than
         // reaching for a package the project has not installed.
         Operation::Patch | Operation::PatchCommit => unsupported(),
+        Operation::Dedupe => spec("npm", &["dedupe"]),
+        // One word for all three: nothing registers the package, a name links
+        // a registered one, and a path links the directory.
+        Operation::Link { .. } => spec("npm", &["link"]),
+        // `npm info` is an alias; `view` is the command's name.
+        Operation::Info => spec("npm", &["view"]),
     }
 }
 
@@ -361,6 +526,8 @@ const fn pnpm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("pnpm", &["install"]),
         Operation::InstallFrozen => spec("pnpm", &["install", "--frozen-lockfile"]),
+        Operation::InstallProd => spec("pnpm", &["install", "--prod"]),
+        Operation::InstallFrozenProd => spec("pnpm", &["install", "--frozen-lockfile", "--prod"]),
         Operation::Add {
             kind: DependencyKind::Prod,
         } => spec("pnpm", &["add"]),
@@ -387,6 +554,13 @@ const fn pnpm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => spec("pnpm", &["search"]),
         Operation::Patch => spec("pnpm", &["patch"]),
         Operation::PatchCommit => spec("pnpm", &["patch-commit"]),
+        Operation::Dedupe => spec("pnpm", &["dedupe"]),
+        // pnpm 10 spells the three the way npm does: `pnpm link` registers the
+        // package globally, `pnpm link <name>` links a registered one, and
+        // `pnpm link <dir>` writes `link:<dir>` into the manifest.
+        Operation::Link { .. } => spec("pnpm", &["link"]),
+        // pnpm hands `view` to the npm that Node.js ships beside it.
+        Operation::Info => spec("pnpm", &["view"]),
     }
 }
 
@@ -396,6 +570,10 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("yarn", &["install"]),
         Operation::InstallFrozen => spec("yarn", &["install", "--frozen-lockfile"]),
+        Operation::InstallProd => spec("yarn", &["install", "--production"]),
+        Operation::InstallFrozenProd => {
+            spec("yarn", &["install", "--frozen-lockfile", "--production"])
+        }
         Operation::Add { kind } => yarn_add(kind),
         Operation::Remove => spec("yarn", &["remove"]),
         Operation::Run { .. } | Operation::Exec => spec("yarn", &["run"]),
@@ -408,6 +586,17 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => unsupported(),
         // `yarn patch` is Berry's; Yarn 1 never had one.
         Operation::Patch | Operation::PatchCommit => unsupported(),
+        // `yarn dedupe` exists only to say "The dedupe command isn't necessary.
+        // `yarn install` will already dedupe." — and to exit 1 saying it.
+        Operation::Dedupe => unsupported(),
+        Operation::Link {
+            target: LinkTarget::Register | LinkTarget::Package,
+        } => spec("yarn", &["link"]),
+        // `yarn link` takes a registered name, never a path.
+        Operation::Link {
+            target: LinkTarget::Directory,
+        } => unsupported(),
+        Operation::Info => spec("yarn", &["info"]),
     }
 }
 
@@ -427,6 +616,11 @@ const fn yarn_berry_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("yarn", &["install"]),
         Operation::InstallFrozen => spec("yarn", &["install", "--immutable"]),
+        // Built into Yarn 4, and the only install Berry has that leaves
+        // `devDependencies` out. It installs without persisting the project,
+        // which is also why there is no frozen form of it below.
+        Operation::InstallProd => spec("yarn", &["workspaces", "focus", "--all", "--production"]),
+        Operation::InstallFrozenProd => unsupported(),
         Operation::Add { kind } => yarn_add(kind),
         Operation::Remove => spec("yarn", &["remove"]),
         Operation::Run { .. } => spec("yarn", &["run"]),
@@ -442,6 +636,16 @@ const fn yarn_berry_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => unsupported(),
         Operation::Patch => spec("yarn", &["patch"]),
         Operation::PatchCommit => spec("yarn", &["patch-commit"]),
+        Operation::Dedupe => spec("yarn", &["dedupe"]),
+        // Berry links by path, into `resolutions`, and keeps no registry of
+        // linkable packages for a name to be looked up in.
+        Operation::Link {
+            target: LinkTarget::Directory,
+        } => spec("yarn", &["link"]),
+        Operation::Link {
+            target: LinkTarget::Register | LinkTarget::Package,
+        } => unsupported(),
+        Operation::Info => spec("yarn", &["npm", "info"]),
     }
 }
 
@@ -449,6 +653,13 @@ const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("bun", &["install"]),
         Operation::InstallFrozen => spec("bun", &["install", "--frozen-lockfile"]),
+        // Not `--production`, which freezes the lockfile as well — "lockfile
+        // had changes, but lockfile is frozen" is the frozen form's failure, and
+        // this one may still bring a stale lockfile up to date.
+        Operation::InstallProd => spec("bun", &["install", "--omit=dev"]),
+        Operation::InstallFrozenProd => {
+            spec("bun", &["install", "--frozen-lockfile", "--production"])
+        }
         Operation::Add {
             kind: DependencyKind::Prod,
         } => spec("bun", &["add"]),
@@ -475,6 +686,17 @@ const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // from pnpm's and yarn's — uf will not present three incompatible
         // things under one name.
         Operation::Patch | Operation::PatchCommit => unsupported(),
+        // Nor a dedupe, in any version.
+        Operation::Dedupe => unsupported(),
+        Operation::Link {
+            target: LinkTarget::Register | LinkTarget::Package,
+        } => spec("bun", &["link"]),
+        // "error: unrecognised dependency format: ../lib" — `bun link` takes a
+        // registered name.
+        Operation::Link {
+            target: LinkTarget::Directory,
+        } => unsupported(),
+        Operation::Info => spec("bun", &["info"]),
     }
 }
 

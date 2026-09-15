@@ -555,6 +555,12 @@ jobs:
       - run: ./target/release/uf run ci:semver:test
       - run: ./target/release/uf run ci:runtimes
       - run: ./target/release/uf run ci:runtimes:test
+      # And that no tracked file still holds a merge-conflict marker. A conflict
+      # resolved by hand can leave one line of itself behind, and nothing else
+      # notices: #1093 merged a closing marker into the testing guide, and the
+      # docs build rendered it as a paragraph with every check green.
+      - run: ./target/release/uf run ci:conflict-markers
+      - run: ./target/release/uf run ci:conflict-markers:test
 
   upstream-integrations:
     name: Upstream Integrations

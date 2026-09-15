@@ -36,11 +36,16 @@ use crate::scan::{
 
 mod build;
 mod diagnostic;
+mod render;
 mod report;
 mod resolve;
 
 pub use build::RscGraphBuilder;
-pub use diagnostic::{RscDiagnostic, RscSeverity};
+pub use diagnostic::{RscDiagnostic, RscSeverity, StaticRouteReason};
+pub use render::{
+    CACHE_LIFETIME_API, CACHE_LIFETIME_PACKAGE, ImportSite, REQUEST_STATE_APIS,
+    REQUEST_STATE_PACKAGE, RenderReach,
+};
 pub use resolve::{
     SpecifierResolution, is_inside_project, is_server_only_specifier, normalize_module_path,
     resolve_specifier,
@@ -333,6 +338,14 @@ pub struct RscModule {
     pub exports: ExportList,
     /// Function-level `"use server"` closures.
     pub function_actions: FunctionDirectiveList,
+    /// `cookies`, `headers` or `draftMode` imported from `@uniflowed/server`,
+    /// in source order: what makes a render that evaluates this module a
+    /// render about one request. See [`RscGraph::request_state_read`].
+    pub request_state_imports: Vec<ImportSite>,
+    /// The first `cacheLife` imported from `@uniflowed/server/cache`: what
+    /// makes a render that evaluates this module state a cache lifetime. See
+    /// [`RscGraph::cache_lifetime_statement`].
+    pub cache_lifetime_import: Option<ImportSite>,
 }
 
 impl RscModule {

@@ -76,7 +76,8 @@ that function is handed.
 uf has both halves of a design system, and they are different kinds of thing.
 `@uniflowed/ui` is a package: the parts on this page, imported, upgraded, never
 copied. `uf ui add` writes the other half into your repository — one styled
-component per file in `app/components/ui/`, built on these parts:
+component per file in `app/components/ui/`, or the directory
+[`ui.directory`](/reference/config#ui) names, built on these parts:
 
 ```sh
 uf ui add button dialog tabs select
@@ -110,7 +111,8 @@ A copy remembers where it came from. Its last line names the uf that wrote it
 and a digest of what was written, so `uf ui add` never replaces a file somebody
 edited without `--overwrite`, and `uf ui diff` says whether a difference is your
 edit, the registry's change, or both. [Commands](/reference/cli) has the whole
-of all three commands.
+of all three commands, and [Components](/reference/ui#registry-components)
+renders every component the registry has, live and beside its source.
 
 Every owned component is styled with the tokens `@uniflowed/stylex` compiles,
 so [dark mode](/guide/styling#dark-mode) is one spread on the document, and a
@@ -703,7 +705,7 @@ which items are there, because mount order stops being document order the moment
 a list is filtered or reordered — and a registry that disagrees with the page
 sends the arrow keys somewhere the reader is not.
 
-## What to read next
+## Where to go next
 
 [Styling and content](/guide/styling) is next: CSS, StyleX and tokens, for
 styling these primitives without coupling the package to a theme.

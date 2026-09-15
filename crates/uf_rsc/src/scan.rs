@@ -282,6 +282,56 @@ pub fn scan_exports(source: &str) -> ExportList {
     exports_from_tokens(source, &tokens, &index)
 }
 
+/// The string an `export const <name> = "..."` gives `name`, when that is how
+/// the module writes it.
+///
+/// For a declaration `uf build` reads without evaluating the module. A page's
+/// `export const dynamic = "force-dynamic"` is the one it reads today: it takes
+/// the page out of the prerender, so a read of the request in that page's
+/// render is not one a prerendered document would hold. A Flow annotation
+/// between the name and the `=` is skipped. A value written as anything but a
+/// string literal answers `None`, which a caller has to read as "not
+/// declared".
+pub fn scan_exported_string(source: &str, name: &str) -> Option<CompactString> {
+    let tokens = tokenize(source);
+    for (position, token) in tokens.iter().enumerate() {
+        if token.kind != TokenKind::Ident
+            || token.text(source) != "export"
+            || !starts_statement(&tokens, position)
+        {
+            continue;
+        }
+        let Some([keyword, binding]) = tokens.get(position + 1..position + 3) else {
+            continue;
+        };
+        if keyword.kind != TokenKind::Ident
+            || !matches!(keyword.text(source), "const" | "let" | "var")
+            || binding.kind != TokenKind::Ident
+            || binding.text(source) != name
+        {
+            continue;
+        }
+        let mut at = position + 3;
+        while let Some(next) = tokens.get(at) {
+            if next.is_punct(b'=') || next.is_punct(b';') || next.is_punct(b',') {
+                break;
+            }
+            at += 1;
+        }
+        if !tokens.get(at).is_some_and(|next| next.is_punct(b'=')) {
+            continue;
+        }
+        let Some(value) = tokens.get(at + 1) else {
+            continue;
+        };
+        let text = value.text(source);
+        if value.kind == TokenKind::String && text.len() >= 2 {
+            return Some(CompactString::from(&text[1..text.len() - 1]));
+        }
+    }
+    None
+}
+
 /// Collect client-only API uses inside a module.
 pub fn scan_client_api_uses(source: &str) -> ClientApiUseList {
     let tokens = tokenize(source);

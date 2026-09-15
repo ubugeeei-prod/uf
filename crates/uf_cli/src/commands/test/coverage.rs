@@ -160,6 +160,23 @@ pub(super) fn collect(
     requested: &[CoverageReporterArg],
     project_paths: &[String],
 ) -> Result<(Coverage, CoverageSection)> {
+    let coverage = measure(root, config, raw, project_paths)?;
+    let section = report(config, &coverage, directory, requested)?;
+    Ok((coverage, section))
+}
+
+/// What the workers measured, inside the project's coverage scope, with the
+/// project files none of them loaded named.
+///
+/// The half of [`collect`] a shard does on its own. A shard records what it
+/// measured, and the reports and the thresholds wait for
+/// `uf test --merge-shards`, which has every shard's counts.
+pub(super) fn measure(
+    root: &Utf8Path,
+    config: &CoverageConfig,
+    raw: &RawCoverage,
+    project_paths: &[String],
+) -> Result<Coverage> {
     let scope = scope(config);
     let measured = uf_test::read_directory(raw.directory(), root)?.within(&scope);
     let never_loaded: Vec<&str> = project_paths
@@ -167,8 +184,19 @@ pub(super) fn collect(
         .map(String::as_str)
         .filter(|path| scope.admits(path) && measured.file(path).is_none())
         .collect();
-    let coverage = measured.with_never_loaded(never_loaded);
+    Ok(measured.with_never_loaded(never_loaded))
+}
 
+/// Write the reports `coverage` is asked for, and hold it to the project's
+/// thresholds.
+///
+/// The half of [`collect`] a merge of shards does, with every shard's counts.
+pub(super) fn report(
+    config: &CoverageConfig,
+    coverage: &Coverage,
+    directory: &Utf8Path,
+    requested: &[CoverageReporterArg],
+) -> Result<CoverageSection> {
     let chosen = reporters(config, requested);
     let mut written = Vec::new();
     if chosen
@@ -181,8 +209,8 @@ pub(super) fn collect(
     for reporter in &chosen {
         let (name, body) = match reporter {
             CoverageReporterConfig::Text => continue,
-            CoverageReporterConfig::Lcov => (LCOV_FILE, lcov(&coverage)),
-            CoverageReporterConfig::Cobertura => (COBERTURA_FILE, cobertura(&coverage)),
+            CoverageReporterConfig::Lcov => (LCOV_FILE, lcov(coverage)),
+            CoverageReporterConfig::Cobertura => (COBERTURA_FILE, cobertura(coverage)),
         };
         let path = directory.join(name);
         std::fs::write(&path, body).with_context(|| format!("could not write {path}"))?;
@@ -194,7 +222,7 @@ pub(super) fn collect(
         thresholds(&config.per_file_thresholds),
     );
     let section = CoverageSection {
-        rows: text_rows(&coverage),
+        rows: text_rows(coverage),
         totals: coverage.totals(),
         written,
         never_loaded: coverage.never_loaded().to_vec(),
@@ -202,7 +230,7 @@ pub(super) fn collect(
         violations,
         show_table: chosen.contains(&CoverageReporterConfig::Text),
     };
-    Ok((coverage, section))
+    Ok(section)
 }
 
 /// Where the reports go: the command line when it said, the config otherwise.

@@ -44,11 +44,13 @@ use crate::support::{
 };
 use crate::ui::Ui;
 
+mod bench;
 pub(crate) mod bun;
 mod changed;
 mod coverage;
 mod payload;
 mod render;
+mod shards;
 mod watch;
 
 use payload::test_payload;
@@ -68,6 +70,18 @@ pub(crate) struct TestArgs {
     pub(crate) watch: bool,
     /// Run only the test files a change since this ref reaches.
     pub(crate) changed: Option<String>,
+    /// Run only this part of a suite split across machines.
+    pub(crate) shard: Option<uf_test::Shard>,
+    /// Report the shard records in this directory as one run, running nothing.
+    pub(crate) merge_shards: Option<String>,
+    /// Run the benchmarks in place of the tests.
+    pub(crate) bench: bool,
+    /// The baseline benchmarks are compared with, instead of the default one.
+    pub(crate) baseline: Option<String>,
+    /// Save this run's benchmark medians as the baseline.
+    pub(crate) save_baseline: bool,
+    /// How far past its baseline a median may go, in per cent.
+    pub(crate) bench_threshold: Option<u32>,
     /// Emit machine-readable JSON on stdout.
     pub(crate) json: bool,
     /// Keep only tests whose fully qualified name contains this pattern.
@@ -104,6 +118,10 @@ impl TestArgs {
         RunOptions {
             concurrency: match self.threads.and_then(NonZeroUsize::new) {
                 Some(threads) => Concurrency::Fixed(threads),
+                // A benchmark timed while other workers run other files is
+                // timed against them; one file at a time is what makes two runs'
+                // numbers comparable. `-j` still says otherwise.
+                None if self.bench => Concurrency::Fixed(NonZeroUsize::MIN),
                 None => Concurrency::Auto,
             },
             bail: self.bail.map(Bail::after).unwrap_or_default(),
@@ -176,6 +194,36 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             "--changed and --coverage cannot be combined: a run over the files a change reaches \
              would report coverage that is not the project's"
         );
+    }
+    // A shard is one part of a run CI splits across machines, and watch mode is
+    // a loop on this one: there is no part of a loop to hand out.
+    if args.watch && args.shard.is_some() {
+        bail!(
+            "--watch and --shard cannot be combined: watch mode re-runs what each edit affects \
+             on this machine, and a shard is one part of a run split across several"
+        );
+    }
+    // A benchmark's numbers are only worth comparing when nothing else is
+    // changing them: a watch loop re-times whatever an edit touched, a shard
+    // times part of the suite beside other machines, coverage instruments the
+    // code being timed, and a page is not the host the baseline was timed on.
+    if args.bench {
+        let clashing = [
+            (args.watch, "--watch"),
+            (args.shard.is_some(), "--shard"),
+            (args.coverage, "--coverage"),
+            (args.browser, "--browser"),
+        ];
+        if let Some((_, flag)) = clashing.iter().find(|(present, _)| *present) {
+            bail!(
+                "{flag} and --bench cannot be combined: a benchmark is timed one file at a time, \
+                 on the project's host, with nothing else changing what it measures"
+            );
+        }
+    }
+    // Before anything is scanned or started: a merge runs nothing.
+    if let Some(directory) = args.merge_shards.as_deref() {
+        return shards::merge(cwd, ui, directory, &args);
     }
 
     let resolved = load_config(cwd)?;
@@ -292,13 +340,20 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     }
 
     if args.list {
+        if changed.is_none() && args.shard.is_none() {
+            return render_list(ui, &root, &files, &args.filter(), args.bench);
+        }
+        let mut tests = test_bearing(files);
         if let Some(selection) = &changed {
             // `false`: `--list` collects nothing, so there is no coverage to
             // say is missing.
-            let tests = changed::narrow(ui, selection, test_bearing(files), false);
-            return render_list(ui, &root, &tests, &args.filter());
+            tests = changed::narrow(ui, selection, tests, false);
         }
-        return render_list(ui, &root, &files, &args.filter());
+        if let Some(shard) = args.shard {
+            let (timings, _) = read_timings(&root);
+            tests = shards::cut(ui, &tests, &args, &timings, shard).files;
+        }
+        return render_list(ui, &root, &tests, &args.filter(), args.bench);
     }
     let application_target = test_application_target(&resolved.config);
     refuse_unsupported_test_target(application_target)?;
@@ -338,7 +393,11 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // where the question is about the host that was already chosen.
     // A `--changed` run collects no coverage, even when `uf.config.js` turns it
     // on, for the reason `--changed --coverage` is refused above.
-    let coverage_on = changed.is_none() && (args.coverage || resolved.config.test.coverage.enabled);
+    // Nor a run of the benchmarks, whose timings coverage would inflate; a
+    // `--bench --coverage` is refused above.
+    let coverage_on = !args.bench
+        && changed.is_none()
+        && (args.coverage || resolved.config.test.coverage.enabled);
     if args.browser && coverage_on {
         bail!(
             "`uf test --browser --coverage` cannot measure anything: V8 is counting in the \
@@ -363,6 +422,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     }
     let mut host = test_host(&root, &resolved.config, &env, args.browser, resolved_host)?
         .with_snapshot_updates(args.update_snapshots)
+        .with_benchmarks(args.bench)
         .with_axe(resolved.config.accessibility.axe.as_json());
 
     // Every JavaScript file the project has, before discovery narrows it to the
@@ -393,12 +453,21 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     };
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
+    // Cut from the timings the run schedules with, so the part this shard runs
+    // is the part every other shard left for it.
+    let cut = args
+        .shard
+        .map(|shard| shards::cut(ui, &files, &args, &timings, shard));
+    let run_files = cut.as_ref().map_or(&files[..], |cut| &cut.files[..]);
     let report = timer.measure("run", || {
-        run_once(ui, &root, &host, &files, &args, timings.clone())
+        run_once(ui, &root, &host, run_files, &args, timings.clone())
     })?;
 
-    let collected = match &raw {
-        Some(raw) => Some(timer.measure("coverage", || {
+    // A shard measures and records. The reports and the thresholds are
+    // statements about the whole suite, so they are `--merge-shards`' to make.
+    let mut measured = None;
+    let collected = match (&raw, &cut) {
+        (Some(raw), None) => Some(timer.measure("coverage", || {
             coverage::collect(
                 &root,
                 settings,
@@ -408,7 +477,13 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
                 &project_paths,
             )
         })?),
-        None => None,
+        (Some(raw), Some(_)) => {
+            measured = Some(timer.measure("coverage", || {
+                coverage::measure(&root, settings, raw, &project_paths)
+            })?);
+            None
+        }
+        (None, _) => None,
     };
     let duration = timer.total();
 
@@ -416,27 +491,58 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         write_results_report(&root, &args, &report)?;
     }
 
-    let recorded = record_timings(&root, timings, &report, &files);
+    // A shard leaves the timings as it found them: every shard in this
+    // checkout has to cut its part from the same durations, and the merge
+    // records the whole suite's.
+    let (recorded, shard_record) = match &cut {
+        Some(cut) => (
+            None,
+            Some(shards::write_record(
+                &root,
+                cut,
+                &report,
+                measured.as_ref(),
+            )?),
+        ),
+        // What a file costs in a run of the benchmarks is its iterations, and
+        // the next run of the tests would be scheduled by them.
+        None if args.bench => (None, None),
+        None => (record_timings(&root, timings, &report, &files), None),
+    };
+    let benchmarks = args
+        .bench
+        .then(|| bench::compare(&root, &args, &report))
+        .transpose()?;
     if args.json {
-        ui.json(&test_payload(
-            &host,
+        let mut document = test_payload(
+            Some(&host),
             &report,
             collected.as_ref().map(|(coverage, _)| coverage),
-        ))?;
+        );
+        if let Some(comparison) = &benchmarks {
+            document["benchmarks"] = comparison.payload();
+        }
+        ui.json(&document)?;
     } else {
         render_report(
             ui,
             &root,
-            &files,
+            run_files,
             &report,
             timer.phases(),
             duration,
             &args,
-            &host,
+            Some(&host),
             timing_note.as_deref(),
             recorded.as_deref(),
             collected.as_ref().map(|(_, section)| section),
         );
+        if let Some(shown) = &shard_record {
+            shards::announce(ui, shown);
+        }
+        if let Some(comparison) = &benchmarks {
+            bench::render(ui, comparison);
+        }
     }
 
     finish(
@@ -444,7 +550,8 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         collected
             .as_ref()
             .map_or(&[][..], |(_, section)| &section.violations),
-    )
+    )?;
+    benchmarks.map_or(Ok(()), |comparison| comparison.verdict())
 }
 
 /// Write the run's results in the shape a CI system already parses.
@@ -939,13 +1046,14 @@ pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
 ///
 /// The project's own `.env` names are added beside these per run; they are not
 /// constant and are not uf's.
-pub(crate) const WORKER_ENVIRONMENT: [&str; 7] = [
+pub(crate) const WORKER_ENVIRONMENT: [&str; 8] = [
     "NODE_V8_COVERAGE",
     "PATH",
     "UF_AXE",
     "UF_BINARY",
     "UF_IN_SOURCE_TESTS",
     "UF_PROJECT_ROOT",
+    "UF_TEST_BENCH",
     "UF_UPDATE_SNAPSHOTS",
 ];
 
@@ -1025,7 +1133,7 @@ pub(crate) fn test_bearing(files: Vec<ProjectFile>) -> Vec<ProjectFile> {
             // Requiring a *readable* case meant `it(name, …)` in a loop made a
             // file vanish, and the run said "0 passed" and exited 0.
             let plan = uf_test::discover_tests(&file.relative_path, &file.source);
-            plan.runnable_count() > 0 || !plan.unsupported.is_empty()
+            plan.runnable_count() > 0 || plan.bench_count() > 0 || !plan.unsupported.is_empty()
         })
         .collect()
 }

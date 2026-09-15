@@ -73,6 +73,8 @@ pub(crate) const KNOWN: &[&str] = &[
     "remove",
     "uninstall",
     "update",
+    "dedupe",
+    "link",
     "patch",
     "pm",
     "catalog",
@@ -257,6 +259,20 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
             Operation::Update,
             "moves the lockfile to the newest versions the manifest ranges already allow",
         ),
+        "dedupe" => dependency_stages(
+            resolved,
+            Operation::Dedupe,
+            "collapses the versions the declared ranges allow to be one, in the lockfile and \
+             node_modules",
+        ),
+        "link" => dependency_stages(
+            resolved,
+            Operation::Link {
+                target: uf_pm::LinkTarget::Directory,
+            },
+            "links a directory into node_modules; with nothing named, makes this package \
+             linkable from other projects on this machine",
+        ),
         // The listing is uf's own — it reads the workspace's manifests and
         // nothing else — and `uf catalog set` rewrites them and then delegates
         // an install, which is the part with a provider worth naming.
@@ -331,7 +347,8 @@ fn ui_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "files",
             provider: "uf".to_string(),
             detail: format!(
-                "writes {}/<name>.js and the components it imports, and refuses to replace a file \
+                "writes <name>.js, and the components it imports, into `ui.directory` \
+                 ({} unless uf.config.js names another), and refuses to replace a file \
                  somebody edited",
                 uf_ui::DEFAULT_DIRECTORY
             ),

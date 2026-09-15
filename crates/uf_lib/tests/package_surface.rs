@@ -1323,6 +1323,110 @@ fn the_routers_client_entry_does_not_import_its_server_entry() {
     }
 }
 
+/// Only the router's Server Components entries reach React's Flight package.
+///
+/// `@uniflowed/router` installs beside React 19.2.3, the React that Expo SDK 57
+/// and React Native 0.87 ship, and lists `react-server-dom-parcel` as an
+/// optional peer: that package needs React 19.3, and only an application whose
+/// routes render as Server Components installs it (ubugeeei-prod/uf#992). A
+/// bundler resolves every import in the graph it is given, whether or not
+/// anything calls it. So a native bundle, or a web app rendered from its
+/// modules, builds without the package only if no entry it imports reaches it.
+///
+/// Every `exports` target is walked through its relative imports, type imports
+/// included, since the scanner does not tell those apart. The entries that load
+/// Flight must reach the package, which keeps this from passing by reaching
+/// nothing. Every other entry must not, and a failure names the chain that got
+/// there. And each module that imports the package itself refuses an older
+/// React first, through `requireServerComponentsReact`, instead of failing
+/// inside a render.
+#[test]
+fn only_the_routers_server_components_entries_reach_react_flight() {
+    /// The specifier prefix of React's Flight packages.
+    const FLIGHT: &str = "react-server-dom-";
+    /// The entries that render React Server Components, and may.
+    const FLIGHT_ENTRIES: &[&str] = &["router/rsc.js", "router/rsc-client.js", "router/rsc-ssr.js"];
+
+    let exports = manifest(Utf8Path::new("router/package.json"))["exports"].clone();
+    let entries = exports_targets(&exports)
+        .into_iter()
+        .filter(|(_, target)| target.ends_with(".js"))
+        .map(|(_, target)| format!("router/{}", target.trim_start_matches("./")))
+        .collect::<BTreeSet<_>>();
+
+    let mut problems = Vec::new();
+    for flight_entry in FLIGHT_ENTRIES {
+        if !entries.contains(*flight_entry) {
+            problems.push(format!("{flight_entry} is no longer an `exports` target"));
+        }
+    }
+    for entry in &entries {
+        let chain = chain_to_specifier(Utf8Path::new(entry), FLIGHT);
+        match (FLIGHT_ENTRIES.contains(&entry.as_str()), chain) {
+            (true, None) => problems.push(format!(
+                "{entry} renders Server Components but reaches no `{FLIGHT}*` import, \
+                 so this scan no longer sees the package"
+            )),
+            (false, Some(chain)) => problems.push(format!(
+                "{entry} reaches React's Flight package, which a project on React 19.2 \
+                 does not install: {}",
+                chain.join(" -> ")
+            )),
+            _ => {}
+        }
+    }
+    for module in shipped_modules() {
+        if !module.as_str().starts_with("router/") {
+            continue;
+        }
+        let source = read(&module);
+        let imports_flight = module_specifiers(&source)
+            .iter()
+            .any(|specifier| specifier.starts_with(FLIGHT));
+        if imports_flight && !code_only(&source).contains("requireServerComponentsReact(") {
+            problems.push(format!(
+                "{module} imports React's Flight package and never calls \
+                 requireServerComponentsReact"
+            ));
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "{} problems with where the router reaches React's Flight package:\n{}",
+        problems.len(),
+        problems.join("\n")
+    );
+}
+
+/// The chain of relative imports from `entry` to the first module found that
+/// imports a specifier starting with `prefix`, ending with that specifier, or
+/// `None` when no module `entry` reaches imports one.
+fn chain_to_specifier(entry: &Utf8Path, prefix: &str) -> Option<Vec<String>> {
+    let mut seen = BTreeSet::new();
+    let mut pending = vec![(entry.to_path_buf(), vec![entry.to_string()])];
+    while let Some((module, chain)) = pending.pop() {
+        if !seen.insert(module.clone()) {
+            continue;
+        }
+        for specifier in module_specifiers(&read(&module)) {
+            if specifier.starts_with(prefix) {
+                let mut found = chain.clone();
+                found.push(specifier);
+                return Some(found);
+            }
+            if specifier.starts_with('.')
+                && let Some(next) = resolve_relative(&module, &specifier)
+            {
+                let mut longer = chain.clone();
+                longer.push(next.to_string());
+                pending.push((next, longer));
+            }
+        }
+    }
+    None
+}
+
 #[test]
 fn covariant_opaque_types_are_defined_with_a_covariant_carrier() {
     let mut covariant = Vec::new();

@@ -74,8 +74,7 @@ import {
 import { BoundaryReporter } from "./boundaries.js";
 import { routeBoundaries } from "./boundary-data.js";
 import { composeRoute, pageComponent } from "./compose.js";
-import { type FetchedFlight, fetchFlight } from "./flight-browser.js";
-import { type FlightRoot, type RouteState, routeState } from "./flight.js";
+import { type FetchedFlight, type FlightRoot, type RouteState, routeState } from "./flight.js";
 import { Head } from "./head.js";
 import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
 import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
@@ -401,6 +400,40 @@ export function installNavigation(navigation: Navigation): void {
 /** How this application navigates. */
 export function navigationMode(): Navigation {
   return installedNavigation;
+}
+
+/**
+ * How a page that React Server Components rendered fetches the next route's
+ * payload. `hydrateFlight` in `../rsc-client.js` installs it.
+ *
+ * Handed in rather than imported, because this module is in every
+ * application's bundle: one rendered from its modules, a single-page one, and
+ * the server's. The fetch reads its answer with React's Flight client,
+ * `react-server-dom-parcel`, which only an application that renders Server
+ * Components installs, and which needs React 19.3 while the rest of the router
+ * runs on 19.2.3 (ubugeeei-prod/uf#992). A bundler resolves every import it is
+ * shown, whether or not anything calls it, so an import here would put that
+ * package in every one of those bundles, or fail the build where it is absent.
+ */
+let installedFlightFetch: ((url: string) => Promise<FetchedFlight>) | null = null;
+
+/** Hand the router the payload fetch. Called once, by `hydrateFlight`, before the first render. */
+export function installFlightFetch(fetcher: (url: string) => Promise<FetchedFlight>): void {
+  installedFlightFetch = fetcher;
+}
+
+/** The next route's payload, through the fetch `hydrateFlight` installed. */
+function fetchFlight(url: string): Promise<FetchedFlight> {
+  if (installedFlightFetch == null) {
+    return Promise.reject(
+      new Error(
+        "@uniflowed/router: a page rendered from a Flight payload navigated before anything " +
+          "installed the payload fetch. `hydrateFlight` from `@uniflowed/router/rsc/client` " +
+          "installs it before it hydrates, so an entry that hydrates a payload has to call that.",
+      ),
+    );
+  }
+  return installedFlightFetch(url);
 }
 
 /** Register the generated route table. Called once by the client and server entries. */

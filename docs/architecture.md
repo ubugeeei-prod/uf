@@ -783,8 +783,9 @@ prerendered page that states a lifetime is written under
 `.uf/build/server/regenerate.json`. The fetch handler seeds the page's entry
 from that document, through a reader the front door puts on the request; keeps
 it servable past its lifetime until a background refresh replaces it; and never
-seeds a key twice, so an invalidated page renders rather than going back to the
-build's copy.
+seeds a key twice, or from a build older than an invalidation the store has
+recorded, so an invalidated page renders rather than going back to the build's
+copy, after a restart and in every other process too.
 
 Nothing is cached without a stated lifetime: a route says `cacheLife` and
 `cacheTag` from inside its own render, a request says `cache` at the call, and a
@@ -792,8 +793,12 @@ page or a call that says nothing behaves exactly as it did. A rendered document
 is refused outright if the render read `cookies()`, `headers()` or `draftMode()`
 — counted across the whole document rather than up to the shell, because a
 component inside a `<Suspense>` boundary renders long after the shell resolved.
-That is a runtime refusal; `uf_rsc` already answers the reachability question
-that would make it a build error, and does not answer it for cached scopes yet.
+That refusal is the run-time backstop. `uf build` refuses first: a route whose
+document is written once, because it is prerendered or states a lifetime with
+the route cache on, fails the build under `rsc/request-state-in-static-route`
+when its render reaches an import of one of those three. The error names the
+route, the function and the chain of imports from its page or layout, which
+`uf_rsc`'s `RscGraph::request_state_read` finds.
 
 One page whose loader takes 50 ms, served twice (`uf run bench:route-cache`,
 Node 24, twenty pairs, medians):
@@ -844,14 +849,28 @@ environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
   `@uniflowed/router/rsc`'s `createFlightRenderer`. A `"use client"` module is
   replaced there by one `createClientReference` per export, so its code never
   runs in that graph and a server component's code never reaches the browser.
-- **`ssr`** holds `@uniflowed/router/server`'s `createDocumentRenderer`, which
+- **`ssr`** holds `@uniflowed/router/rsc/ssr`'s `createDocumentRenderer`, which
   reads the payload with React's own Flight client and renders that tree into
   HTML while writing the same bytes into the document, and the server copy of
   every client module. It reaches `rsc` through one bridge module: the rsc
   environment's module runner under `uf dev`, the rsc build's output in a build.
-- **`client`** hydrates the payload the document carries (`hydrateFlight`) and
-  holds no page, layout or loader — only the client modules, each an entry of
-  its own, loaded when a payload names its chunk.
+- **`client`** hydrates the payload the document carries
+  (`@uniflowed/router/rsc/client`'s `hydrateFlight`) and holds no page, layout
+  or loader — only the client modules, each an entry of its own, loaded when a
+  payload names its chunk.
+
+Those three entries are the only modules of the router that reach
+`react-server-dom-parcel`, and each refuses a React older than 19.3 before it
+does anything. The router's peers admit React 19.2.3 and list `react-dom` and
+`react-server-dom-parcel` as optional, because Expo SDK 57 and React Native 0.87
+ship React 19.2.3 and a native app renders no Server Component (#992). So
+`@uniflowed/router/client` and `@uniflowed/router/server`, where an application
+rendered from its modules starts, never import React's Flight client, and
+`internal/runtime.js` is handed the payload fetch by `hydrateFlight` rather than
+importing it: a bundler resolves every import it is shown, and a build without
+the package must not meet one. `@uniflowed/vite` checks for both packages while
+it reads its configuration, and `crates/uf_lib/tests/package_surface.rs` holds
+the router's import graph to the split.
 
 `uf build` runs the three in that order, because each needs what the one before
 it found: the rsc build finds the client modules, the client build writes their

@@ -17,14 +17,15 @@ use super::runtime_host;
 
 /// Build the document.
 pub(super) fn test_payload(
-    host: &HostCommand,
+    host: Option<&HostCommand>,
     report: &TestRunReport,
     coverage: Option<&Coverage>,
 ) -> Value {
     let summary = &report.summary;
     let mut document = json!({
         "command": "uf test",
-        "host": host_payload(host),
+        // `null` for `uf test --merge-shards`, which started no host.
+        "host": host.map_or(Value::Null, host_payload),
         "files": summary.files,
         "passed": summary.passed,
         "failed": summary.failed,
@@ -146,6 +147,11 @@ fn record_payload(record: &TestRecord) -> Value {
     {
         object.insert(String::from("skipReason"), json!(message));
     }
+    if let Some(stats) = &record.bench
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(String::from("bench"), json!(stats));
+    }
     value
 }
 
@@ -167,6 +173,14 @@ fn skip_message(status: &TestStatus) -> Option<&str> {
             reason: SkipReason::Filtered,
             ..
         } => Some("filtered"),
+        TestStatus::Skipped {
+            reason: SkipReason::Bench,
+            ..
+        } => Some("bench"),
+        TestStatus::Skipped {
+            reason: SkipReason::NotBench,
+            ..
+        } => Some("not-bench"),
         TestStatus::Passed | TestStatus::Failed { .. } | TestStatus::Todo => None,
     }
 }
@@ -187,6 +201,14 @@ fn test_status_name(status: &TestStatus) -> &'static str {
             reason: SkipReason::Filtered,
             ..
         } => "filtered",
+        TestStatus::Skipped {
+            reason: SkipReason::Bench,
+            ..
+        } => "bench",
+        TestStatus::Skipped {
+            reason: SkipReason::NotBench,
+            ..
+        } => "not-bench",
         TestStatus::Todo => "todo",
     }
 }

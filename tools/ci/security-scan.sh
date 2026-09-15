@@ -178,8 +178,10 @@ if [ -z "$scaffolds" ]; then
   # name, which would make the output differ between runs for no reason.
   "$uf_bin" new "$work/app" --name uf-security-scan-app >/dev/null
   "$uf_bin" new "$work/lib" --lib --name uf-security-scan-lib >/dev/null
+  "$uf_bin" new "$work/monorepo" monorepo --name uf-security-scan-monorepo >/dev/null
   scaffolds="$work/app
-$work/lib"
+$work/lib
+$work/monorepo"
 fi
 
 UF_SCAN_MODEL="$model" \
