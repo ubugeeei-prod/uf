@@ -30,27 +30,32 @@
 //! prints itself; and the server's output, which belongs to the person at the
 //! terminal, key commands and all.
 //!
-//! It does not write route types either, and that is a decision rather than an
-//! omission. `write_router_manifest_for_target` writes to `app.router.manifest`,
-//! which is the web router's `router.js`, so a project with both targets would
-//! have its web route types replaced by the native ones every time this loop
-//! started. The native route table, and the types that go with it, are a
-//! module of their own — ubugeeei-prod/uf#981.
+//! And it writes the one thing Metro cannot get any other way: the route table.
+//! The web router's table is `virtual:uf/routes`, which exists only inside Vite,
+//! and Metro has no virtual modules. So before the server starts the table for
+//! each platform is written beside `router.js` as `router.ios.js`,
+//! `router.android.js` and `router.native.js` (`uf_router::native`), Metro's
+//! own platform resolution gives each bundle its platform's file when a module
+//! imports `./router`, and [`watch_routes`] keeps them current while the server
+//! runs. The web router's `router.js` is not written: in a project with both
+//! targets that would replace its web route types. See ubugeeei-prod/uf#981.
 
 use std::net::{IpAddr, UdpSocket};
 use std::process::{Command, ExitStatus};
+use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
-use uf_config::ResolvedConfig;
+use uf_config::{ResolvedConfig, UniflowedConfig};
 use uf_router::RouteTarget;
+use uf_router::native::{RouteTable, discover_native_route_tables, write_native_route_tables};
 use uf_term::{KeyValue, Status, Tone};
 
 use super::DevArgs;
 use crate::commands::task::{adopt_exit_status, installed_binary};
 use crate::commands::vite::find_program;
-use crate::support::{DEVELOPMENT, env_file_list, project_env, project_label, relative_to};
+use crate::support::{DEVELOPMENT, env_file_list, plural, project_env, project_label, relative_to};
 use crate::ui::Ui;
 
 /// Loads the project's Metro config with the project's own `metro-config`.
@@ -265,6 +270,21 @@ pub(crate) fn dev(
     })?;
     let metro = check_metro(&server, root)?;
 
+    let tables = discover_native_route_tables(root, &resolved.config)?;
+    let modules = write_native_route_tables(root, &resolved.config, &tables)?;
+    let routes = (!modules.files.is_empty()).then(|| {
+        format!(
+            "{} → {}",
+            plural(modules.routes, "route"),
+            modules
+                .files
+                .iter()
+                .map(|file| relative_to(root, file))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    });
+
     let env = project_env(resolved, args.mode.as_deref(), DEVELOPMENT)?;
     let mode = env.mode().to_owned();
     let env_files = env_file_list(root, &env);
@@ -299,6 +319,9 @@ pub(crate) fn dev(
         if let Some(file) = &metro_config {
             rows.push(KeyValue::toned("metro", file, Tone::Path));
         }
+        if let Some(routes) = &routes {
+            rows.push(KeyValue::toned("routes", routes, Tone::Path));
+        }
         if let Some(files) = &env_files {
             rows.push(KeyValue::toned("env files", files, Tone::Path));
         }
@@ -308,6 +331,10 @@ pub(crate) fn dev(
         renderer.status(out, Status::Info, &hint);
         renderer.blank(out);
     });
+
+    if !tables.is_empty() {
+        watch_routes(root.clone(), resolved.config.clone(), tables);
+    }
 
     let mut command = Command::new(server.binary().as_std_path());
     env.apply(&mut command);
@@ -344,6 +371,66 @@ fn interrupted(status: ExitStatus) -> bool {
         }
     }
     status.code() == Some(130)
+}
+
+/// How often a running native dev server's route tables are looked at again.
+///
+/// Polling rather than a platform file watcher, for the reason `uf test
+/// --watch` polls (`uf_test::watch`): a watcher is a dependency with failure
+/// modes of its own on every operating system, and a router root is small.
+/// Half a second is less than the time it takes to save a file and look at a
+/// phone.
+const ROUTE_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Keep the route tables current while the server runs.
+///
+/// A thread, because the server owns the terminal and this process only waits
+/// for it to exit, and so it reports on stderr rather than through [`Ui`],
+/// which the waiting thread holds. A table is written only when the scan found
+/// something different from the last one written, so the formatter does not
+/// run twice a second over an unchanged tree and Metro sees a file change only
+/// when a route did. A failure — a directory spelled the way the router refuses
+/// — is reported once rather than every half second, and the last good tables
+/// stay in place until the tree is fixed.
+fn watch_routes(root: Utf8PathBuf, config: UniflowedConfig, mut current: Vec<RouteTable>) {
+    std::thread::spawn(move || {
+        let mut reported: Option<String> = None;
+        loop {
+            std::thread::sleep(ROUTE_POLL_INTERVAL);
+            let outcome = discover_native_route_tables(&root, &config).and_then(|tables| {
+                if tables == current {
+                    return Ok(None);
+                }
+                let written = write_native_route_tables(&root, &config, &tables)?;
+                current = tables;
+                Ok(Some(written))
+            });
+            match outcome {
+                Ok(written) => {
+                    reported = None;
+                    if let Some(written) = written.filter(|written| !written.changed.is_empty()) {
+                        let names = written
+                            .changed
+                            .iter()
+                            .map(|file| relative_to(&root, file))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        eprintln!("uf: the routes changed; rewrote {names}");
+                    }
+                }
+                Err(error) => {
+                    let message = error.to_string();
+                    if reported.as_deref() != Some(message.as_str()) {
+                        eprintln!(
+                            "uf: the route table was not rewritten, and the last one stays in \
+                             place: {message}"
+                        );
+                        reported = Some(message);
+                    }
+                }
+            }
+        }
+    });
 }
 
 /// The address a phone on the same network reaches this machine at, when

@@ -424,3 +424,109 @@ fn explain_refuses_a_target_for_a_command_it_does_not_describe_per_target() {
         "{stderr}"
     );
 }
+
+#[test]
+fn the_route_table_for_each_platform_is_written_before_the_server_starts() {
+    if !node_ready() {
+        return;
+    }
+    let project = native_project(REACT_NATIVE_CONFIG);
+    let root = project.path();
+    with_react_native_cli(root);
+    write(root, "metro.config.js", COMPOSED_METRO_CONFIG);
+    write(root, "app/$page.native.js", "// @flow\n");
+    write(root, "app/users/[id]/$page.js", "// @flow\n");
+    write(root, "app/users/[id]/$page.ios.js", "// @flow\n");
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(root)
+        .args(["dev", "--target", "native"])
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let ios = fs::read_to_string(root.join("router.ios.js")).unwrap();
+    let android = fs::read_to_string(root.join("router.android.js")).unwrap();
+    assert!(ios.contains("\"./app/users/[id]/$page.ios.js\""), "{ios}");
+    assert!(
+        android.contains("\"./app/users/[id]/$page.js\""),
+        "{android}"
+    );
+    assert!(!android.contains("$page.ios.js"), "{android}");
+    assert!(root.join("router.native.js").is_file());
+    assert!(
+        !root.join("router.js").exists(),
+        "a native target leaves the web router's types alone"
+    );
+    assert!(
+        stdout.contains("2 routes → router.ios.js, router.android.js, router.native.js"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn a_route_file_added_while_the_server_runs_is_in_the_table_without_a_restart() {
+    if !node_ready() {
+        return;
+    }
+    let project = native_project(REACT_NATIVE_CONFIG);
+    let root = project.path();
+    with_react_native_cli(root);
+    // A server that stays up until the test says so, the way Metro stays up
+    // until Ctrl-C.
+    executable(
+        root,
+        "node_modules/.bin/react-native",
+        "#!/bin/sh\nroot=\"$(dirname \"$0\")/../..\"\n: > \"$root/started.txt\"\ni=0\nwhile [ ! -f \"$root/stop\" ] && [ \"$i\" -lt 600 ]; do sleep 0.05; i=$((i + 1)); done\n",
+    );
+    write(root, "metro.config.js", COMPOSED_METRO_CONFIG);
+    write(root, "app/$page.native.js", "// @flow\n");
+
+    let child = std::process::Command::new(uf_path())
+        .arg("--cwd")
+        .arg(root)
+        .args(["dev", "--target", "native"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let wait_for = |what: &str, done: &dyn Fn() -> bool| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while !done() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    };
+    wait_for("the server to start", &|| {
+        root.join("started.txt").is_file()
+    });
+    assert!(
+        !fs::read_to_string(root.join("router.ios.js"))
+            .unwrap()
+            .contains("\"/about\"")
+    );
+
+    write(root, "app/about/$page.native.js", "// @flow\n");
+    wait_for("the route table to be rewritten", &|| {
+        fs::read_to_string(root.join("router.ios.js"))
+            .is_ok_and(|module| module.contains("\"/about\""))
+    });
+
+    write(root, "stop", "");
+    let output = child.wait_with_output().unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("the routes changed; rewrote router.ios.js"),
+        "{stderr}"
+    );
+}

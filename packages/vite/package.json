@@ -38,12 +38,14 @@
     "@uniflowed/router": "0.0.0-alpha.34",
     "@uniflowed/server": "0.0.0-alpha.34",
     "@uniflowed/validator": "0.0.0-alpha.34",
+    "estree-util-value-to-estree": "^3.5.0",
     "rehype-slug": "^6.0.0",
     "remark-frontmatter": "^5.0.0",
     "remark-gfm": "^4.0.1",
-    "remark-mdx-frontmatter": "^5.2.0",
     "shiki": "^3.23.0",
-    "vite": "^8.2.2"
+    "unist-util-mdx-define": "^1.1.2",
+    "vite": "^8.2.2",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "react": ">=19",

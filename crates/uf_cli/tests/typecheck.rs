@@ -107,6 +107,143 @@ fn a_type_error_fails_the_run_and_carries_a_flow_error_code() {
     );
 }
 
+/// A dependency that ships TypeScript declarations and no Flow is typed from
+/// them, and a second check reads the translation back instead of making it
+/// again. ubugeeei-prod/uf#946: before this, everything such a package exported
+/// was `any`, and the misuse on line 4 checked.
+#[test]
+fn a_package_that_ships_typescript_declarations_and_no_flow_is_typed_from_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("node_modules/tiny-schema");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{
+          "name": "tiny-schema",
+          "version": "1.0.0",
+          "type": "module",
+          "exports": { ".": { "types": "./index.d.ts", "import": "./index.js" } }
+        }"#,
+    )
+    .unwrap();
+    fs::write(
+        package.join("index.js"),
+        "export const string = () => ({ parse: (input) => String(input) });\n",
+    )
+    .unwrap();
+    fs::write(
+        package.join("index.d.ts"),
+        "export interface Schema<T> {\n  parse(input: unknown): T;\n}\n\
+         export declare function string(): Schema<string>;\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { string } from \"tiny-schema\";\n\
+         export const name: string = string().parse(\"ada\");\n\
+         export const count: number = string().parse(\"ada\");\n",
+    )
+    .unwrap();
+
+    let cold = check_json(dir.path());
+
+    let diagnostics = cold["typeCheck"]["diagnostics"].as_array().unwrap();
+    let lines: Vec<u64> = diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic["primary"]["path"] == "src/app.js")
+        .filter_map(|diagnostic| diagnostic["primary"]["start"]["line"].as_u64())
+        .collect();
+    assert!(
+        !lines.is_empty() && lines.iter().all(|line| *line == 4),
+        "{diagnostics:#?}"
+    );
+    assert_eq!(cold["typeCheck"]["untypedModules"], serde_json::json!([]));
+    let translated = &cold["typeCheck"]["translatedPackages"];
+    assert_eq!(
+        translated.as_array().map(Vec::len),
+        Some(1),
+        "{translated:#}"
+    );
+    assert_eq!(translated[0]["name"], "tiny-schema");
+    assert_eq!(translated[0]["version"], "1.0.0");
+    assert_eq!(translated[0]["holes"], 0);
+    assert_eq!(translated[0]["fromCache"], false);
+
+    let warm = check_json(dir.path());
+    assert_eq!(
+        warm["typeCheck"]["translatedPackages"][0]["fromCache"],
+        true
+    );
+    assert_eq!(
+        warm["typeCheck"]["diagnostics"],
+        cold["typeCheck"]["diagnostics"]
+    );
+}
+
+/// A package with no declarations of its own is typed from its `@types`
+/// package, and the footer names it once, with where its types came from and
+/// how much of it is `any`.
+#[test]
+fn a_types_package_describes_a_package_that_ships_none_and_the_footer_names_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let modules = dir.path().join("node_modules");
+    let src = dir.path().join("src");
+    fs::create_dir_all(modules.join("left-pad")).unwrap();
+    fs::create_dir_all(modules.join("@types/left-pad")).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        modules.join("left-pad/package.json"),
+        r#"{ "name": "left-pad", "version": "1.3.0", "main": "./index.js" }"#,
+    )
+    .unwrap();
+    fs::write(
+        modules.join("left-pad/index.js"),
+        "exports.leftPad = (text, length) => text.padStart(length);\n",
+    )
+    .unwrap();
+    fs::write(
+        modules.join("@types/left-pad/package.json"),
+        r#"{ "name": "@types/left-pad", "version": "1.2.0", "types": "index.d.ts" }"#,
+    )
+    .unwrap();
+    fs::write(
+        modules.join("@types/left-pad/index.d.ts"),
+        "export declare function leftPad(text: string, length: number): string;\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { leftPad } from \"left-pad\";\n\
+         export const once: string = leftPad(\"a\", 2);\n\
+         export const twice: string = leftPad(\"a\", 2);\n\
+         export const padded: number = leftPad(\"a\", 2);\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["check", "--color", "never"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+
+    assert!(!output.status.success(), "the misuse is an error: {stdout}");
+    assert!(
+        stdout.contains("typed them from their TypeScript declarations"),
+        "{stdout}"
+    );
+    assert_eq!(
+        stdout
+            .matches("left-pad, from @types/left-pad@1.2.0: no holes")
+            .count(),
+        1,
+        "{stdout}"
+    );
+}
+
 #[test]
 fn a_type_error_is_rendered_as_a_code_frame() {
     let dir = tempfile::tempdir().unwrap();
@@ -369,6 +506,125 @@ fn host_conditional_package_exports_are_reported_apart_from_missing_packages() {
         "{untyped:?}"
     );
     assert_eq!(host_conditional, [serde_json::json!("hosted")].as_slice());
+}
+
+/// The shape zod publishes: an `exports` map whose `import` and `require`
+/// conditions name their own declaration files, a `.d.mts` entry re-exporting
+/// a namespace from `./external.mjs` — which TypeScript reads as
+/// `external.d.mts` — and a consumer that imports the namespace by name. Only
+/// the `import` side is translated, because that is the graph uf checks.
+#[test]
+fn a_namespace_re_exported_through_condition_specific_declarations_is_typed() {
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("node_modules/schema-kit");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    for (file, source) in [
+        (
+            "package.json",
+            r#"{
+              "name": "schema-kit",
+              "version": "3.1.0",
+              "exports": {
+                ".": {
+                  "require": { "types": "./index.d.cts", "default": "./index.cjs" },
+                  "import": { "types": "./index.d.mts", "default": "./index.mjs" }
+                }
+              }
+            }"#,
+        ),
+        ("index.d.cts", "export declare const z: number;\n"),
+        (
+            "index.d.mts",
+            "import * as z from \"./external.mjs\";\nexport { z };\nexport default z;\n",
+        ),
+        (
+            "external.d.mts",
+            "export interface KitString {\n  parse(input: unknown): string;\n  optional(): KitString;\n}\n\
+             export declare function string(): KitString;\n",
+        ),
+        ("index.mjs", "export const z = {};\n"),
+        ("index.cjs", "exports.z = {};\n"),
+    ] {
+        fs::write(package.join(file), source).unwrap();
+    }
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { z } from \"schema-kit\";\n\
+         export const name: string = z.string().optional().parse(\"ada\");\n\
+         export const count: number = z.string().parse(\"ada\");\n",
+    )
+    .unwrap();
+
+    let value = check_json(dir.path());
+
+    let lines: Vec<u64> = value["typeCheck"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|diagnostic| diagnostic["primary"]["path"] == "src/app.js")
+        .filter_map(|diagnostic| diagnostic["primary"]["start"]["line"].as_u64())
+        .collect();
+    assert!(
+        !lines.is_empty() && lines.iter().all(|line| *line == 4),
+        "{value:#}"
+    );
+    let translated = &value["typeCheck"]["translatedPackages"][0];
+    assert_eq!(translated["modules"], 2, "{translated:#}");
+    assert_eq!(translated["findings"], 0, "{translated:#}");
+}
+
+/// A package that publishes Flow beside its JavaScript is typed by that Flow,
+/// even when it also publishes TypeScript declarations that say something
+/// else: its authors wrote both, and the Flow is the one written for Flow.
+#[test]
+fn a_package_s_own_flow_outranks_its_typescript_declarations() {
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("node_modules/both-kinds");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    for (file, source) in [
+        (
+            "package.json",
+            r#"{ "name": "both-kinds", "main": "./index.js", "types": "./index.d.ts" }"#,
+        ),
+        ("index.js", "exports.answer = () => 42;\n"),
+        (
+            "index.js.flow",
+            "// @flow\ndeclare export function answer(): number;\n",
+        ),
+        ("index.d.ts", "export declare function answer(): string;\n"),
+    ] {
+        fs::write(package.join(file), source).unwrap();
+    }
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { answer } from \"both-kinds\";\n\
+         export const right: number = answer();\n\
+         export const wrong: string = answer();\n",
+    )
+    .unwrap();
+
+    let value = check_json(dir.path());
+
+    let lines: Vec<u64> = value["typeCheck"]["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|diagnostic| diagnostic["primary"]["path"] == "src/app.js")
+        .filter_map(|diagnostic| diagnostic["primary"]["start"]["line"].as_u64())
+        .collect();
+    assert!(
+        !lines.is_empty() && lines.iter().all(|line| *line == 4),
+        "{value:#}"
+    );
+    assert_eq!(
+        value["typeCheck"]["translatedPackages"],
+        serde_json::json!([])
+    );
+    assert_eq!(value["typeCheck"]["untypedModules"], serde_json::json!([]));
 }
 
 /// A hand-written library definition is full of `any`, and that is what one is

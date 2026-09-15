@@ -29,6 +29,7 @@
     "./field": "./field.js",
     "./hover-card": "./hover-card.js",
     "./input-otp": "./input-otp.js",
+    "./interactions": "./interactions.js",
     "./menu": "./menu.js",
     "./menubar": "./menubar.js",
     "./navigation-menu": "./navigation-menu.js",

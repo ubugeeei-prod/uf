@@ -159,7 +159,8 @@ error: no file matched `./lib/summary.js`
 | --- | --- |
 | a file in the project, with or without its extension, or a directory with an `index` file | that file, typed |
 | a module a library definition declares — `react`, `node:fs` and the rest Flow ships | the declaration, whatever `node_modules` holds |
-| a package installed in `node_modules` that ships Flow — a file with `@flow` in its first 8 KiB | that package's files, through its `exports` map |
+| a package installed in `node_modules` that ships Flow — a file with `@flow` in its first 8 KiB, or a `.flow` file beside a module | that package's files, through its `exports` map, each `.flow` file read in place of the module it sits beside |
+| a package installed in `node_modules` that ships TypeScript declarations and no Flow — its own, or an `@types` package's | a Flow translation of the declarations TypeScript reads for it, with what the translation cannot say typed `any` and counted in the report |
 | a package in the same workspace | the file its manifest publishes |
 | an image, a stylesheet or `?raw`, and `import.meta.glob` or `import.meta.hot` | uf's declarations for Vite's client API |
 | anything else | `any`, and named in the report |
@@ -169,6 +170,15 @@ others: uf does not choose between `node`, `browser`, `bun` and `deno`, so a
 package that publishes only host-specific entries is typed `any`, and the JSON
 report lists it apart from a package that is missing. A package with no `exports`
 map is read through `module`, then `main`. A `.json` import is typed `any`.
+
+A package's TypeScript declarations are found the way TypeScript finds them: the
+`types` condition beside `import` and `default`, the `types` and `typings` fields
+and `typesVersions` when there is no `exports` map, and `@types/<name>` —
+`@types/scope__name` for a scoped package — when the package ships none. The
+report names each package typed that way once, with how many of its places are
+`any` and how many errors Flow reports inside the translation, and
+`typeCheck.translatedPackages` in `--json` carries the same. A second check reads
+the translation back from `.uf/cache/dts` rather than making it again.
 
 The names in `these imports are typed as any` are where the check cannot see.
 Before `uf install`, that list is every `@uniflowed/*` package the scaffold
