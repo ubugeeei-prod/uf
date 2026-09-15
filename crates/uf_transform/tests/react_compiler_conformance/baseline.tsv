@@ -57,7 +57,7 @@ array-from-arg1-captures-arg0.js	pass	pass
 array-from-captures-arg0.js	pass	pass	
 array-from-maybemutates-arg0.js	pass	pass	
 array-join.js	pass	pass	
-array-map-captures-receiver-noAlias.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+array-map-captures-receiver-noAlias.js	pass	pass	
 array-map-frozen-array-noAlias.js	pass	pass	
 array-map-frozen-array.js	pass	pass	
 array-map-mutable-array-mutating-lambda-noAlias.js	pass	pass	
@@ -65,13 +65,13 @@ array-map-mutable-array-mutating-lambda.js	pass	pass
 array-map-mutable-array-non-mutating-lambda-mutated-result.js	pass	pass	
 array-map-noAlias-escaping-function.js	pass	pass	
 array-pattern-params.js	pass	pass	
-array-pattern-spread-creates-array.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+array-pattern-spread-creates-array.js	pass	pass	
 array-properties.js	pass	pass	
 array-property-call.js	pass	pass	
 array-push-effect.js	pass	pass	
 array-spread-later-mutated.js	pass	pass	
 array-spread-mutable-iterator.js	pass	pass	
-arrow-expr-directive.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+arrow-expr-directive.js	pass	pass	
 arrow-function-one-line-directive.js	pass	pass	
 arrow-function-with-implicit-return.js	pass	pass	
 assignment-expression-computed.js	pass	pass	
@@ -119,47 +119,47 @@ capturing-func-alias-computed-mutate-iife.js	pass	pass
 capturing-func-alias-computed-mutate.js	pass	pass	
 capturing-func-alias-mutate-iife.js	pass	pass	
 capturing-func-alias-mutate.js	pass	pass	
-capturing-func-alias-receiver-computed-mutate-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-func-alias-receiver-computed-mutate.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-func-alias-receiver-mutate-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-func-alias-receiver-mutate.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+capturing-func-alias-receiver-computed-mutate-iife.js	pass	pass	
+capturing-func-alias-receiver-computed-mutate.js	pass	pass	
+capturing-func-alias-receiver-mutate-iife.js	pass	pass	
+capturing-func-alias-receiver-mutate.js	pass	pass	
 capturing-func-mutate-2.js	pass	pass	
 capturing-func-mutate-3.js	pass	pass	
 capturing-func-mutate-nested.js	pass	pass	
 capturing-func-mutate.js	pass	pass	
 capturing-func-no-mutate.js	pass	pass	
-capturing-func-simple-alias-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-func-simple-alias.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+capturing-func-simple-alias-iife.js	pass	pass	
+capturing-func-simple-alias.js	pass	pass	
 capturing-function-1.js	pass	pass	
-capturing-function-alias-computed-load-2-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load-2.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load-3-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load-3.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load-4-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load-4.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-alias-computed-load.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-capturing-function-capture-ref-before-rename.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+capturing-function-alias-computed-load-2-iife.js	pass	pass	
+capturing-function-alias-computed-load-2.js	pass	pass	
+capturing-function-alias-computed-load-3-iife.js	pass	pass	
+capturing-function-alias-computed-load-3.js	pass	pass	
+capturing-function-alias-computed-load-4-iife.js	pass	pass	
+capturing-function-alias-computed-load-4.js	pass	pass	
+capturing-function-alias-computed-load-iife.js	pass	pass	
+capturing-function-alias-computed-load.js	pass	pass	
+capturing-function-capture-ref-before-rename.js	pass	pass	
 capturing-function-conditional-capture-mutate.js	pass	pass	
 capturing-function-decl.js	pass	pass	
 capturing-function-member-expr-arguments.js	pass	pass	
 capturing-function-member-expr-call.js	pass	pass	
-capturing-function-renamed-ref.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+capturing-function-renamed-ref.js	pass	pass	
 capturing-function-runs-inference.js	pass	pass	
-capturing-function-shadow-captured.js	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+capturing-function-shadow-captured.js	pass	pass	
 capturing-function-skip-computed-path.js	pass	pass	
 capturing-function-within-block.js	pass	pass	
 capturing-member-expr.js	pass	pass	
 capturing-nested-member-call.js	pass	pass	
 capturing-nested-member-expr-in-nested-func.js	pass	pass	
 capturing-nested-member-expr.js	pass	pass	
-capturing-reference-changes-type.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+capturing-reference-changes-type.js	pass	pass	
 capturing-variable-in-nested-block.js	pass	pass	
 capturing-variable-in-nested-function.js	pass	pass	
-chained-assignment-context-variable.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+chained-assignment-context-variable.js	pass	pass	
 chained-assignment-expressions.js	pass	pass	
 class-component-with-render-helper.js	pass	pass	
-codegen-inline-iife-reassign.ts	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+codegen-inline-iife-reassign.ts	pass	pass	
 codegen-inline-iife-storeprop.ts	pass	pass	
 codegen-inline-iife.ts	pass	pass	
 codegen-instrument-forget-test.js	pass	pass	
@@ -204,13 +204,13 @@ constant-propagation-unary.js	pass	pass
 constant-propagation-while.js	pass	pass	
 constant-propagation.js	pass	pass	
 constructor.js	pass	pass	
-context-variable-as-jsx-element-tag.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-context-variable-reactive-explicit-control-flow.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-context-variable-reactive-implicit-control-flow.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-context-variable-reassigned-objectmethod.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-context-variable-reassigned-outside-of-lambda.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-context-variable-reassigned-reactive-capture.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-context-variable-reassigned-two-lambdas.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+context-variable-as-jsx-element-tag.js	pass	pass	
+context-variable-reactive-explicit-control-flow.js	pass	pass	
+context-variable-reactive-implicit-control-flow.js	pass	pass	
+context-variable-reassigned-objectmethod.js	pass	pass	
+context-variable-reassigned-outside-of-lambda.js	pass	pass	
+context-variable-reassigned-reactive-capture.js	pass	pass	
+context-variable-reassigned-two-lambdas.js	pass	pass	
 controlled-input.js	pass	pass	
 createElement-freeze.js	pass	pass	
 custom-opt-out-directive.tsx	pass	pass	
@@ -220,8 +220,8 @@ dce-unused-postfix-update.js	pass	pass
 dce-unused-prefix-update.js	pass	pass	
 debugger-memoized.js	pass	pass	
 debugger.js	pass	pass	
-declare-reassign-variable-in-closure.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-deeply-nested-function-expressions-with-params.js	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+declare-reassign-variable-in-closure.js	pass	pass	
+deeply-nested-function-expressions-with-params.js	pass	pass	
 deeply-nested-jsx-recursion-limit.js	pass	pass	
 default-param-array-with-unary.js	pass	pass	
 default-param-calls-global-function.js	pass	pass	
@@ -231,15 +231,15 @@ delete-computed-property.js	pass	pass
 delete-property.js	pass	pass	
 dependencies-outputs.js	pass	pass	
 dependencies.js	pass	pass	
-destructure-array-assignment-to-context-var.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-destructure-array-declaration-to-context-var.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+destructure-array-assignment-to-context-var.js	pass	pass	
+destructure-array-declaration-to-context-var.js	pass	pass	
 destructure-capture-global.js	pass	pass	
 destructure-default-array-with-unary.js	pass	pass	
 destructure-direct-reassignment.js	pass	pass	
 destructure-in-branch-ssa.ts	pass	pass	
 destructure-mixed-property-key-types.js	pass	pass	
-destructure-object-assignment-to-context-var.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-destructure-object-declaration-to-context-var.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+destructure-object-assignment-to-context-var.js	pass	pass	
+destructure-object-declaration-to-context-var.js	pass	pass	
 destructure-param-string-literal-key-invalid-identifier.js	pass	pass	
 destructure-param-string-literal-key.js	pass	pass	
 destructure-string-literal-invalid-identifier-property-key.js	pass	pass	
@@ -276,7 +276,7 @@ dont-merge-overlapping-scopes-store-const-used-later.js	pass	pass
 dont-merge-overlapping-scopes-with-intermediate-reassignment.js	pass	pass	
 drop-manual-memoization-react-module.js	pass	pass	
 drop-methodcall-usecallback.js	pass	pass	
-drop-methodcall-usememo.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+drop-methodcall-usememo.js	pass	pass	
 early-return-nested-early-return-within-reactive-scope.js	pass	pass	
 early-return-no-declarations-reassignments-dependencies.js	pass	pass	
 early-return-within-reactive-scope.js	pass	pass	
@@ -297,7 +297,7 @@ effect-derived-computations/effect-used-in-dep-array-still-errors.js	logs-mismat
 effect-derived-computations/effect-with-cleanup-function-depending-on-derived-computation-value.js	pass	pass	
 effect-derived-computations/effect-with-global-function-call-no-error.js	pass	pass	
 effect-derived-computations/from-props-setstate-in-effect-no-error.js	pass	pass	
-effect-derived-computations/function-expression-mutation-edge-case.js	expected-code-got-error	scope	scope.rs leaves declaring identifiers out of ref_node_id_to_binding (proven); with that fixed it also needs babel.rs loc.filename and loc index (proven by experiment)
+effect-derived-computations/function-expression-mutation-edge-case.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 effect-derived-computations/invalid-derived-computation-in-effect.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 effect-derived-computations/invalid-derived-state-from-computed-props.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 effect-derived-computations/invalid-derived-state-from-destructured-props.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
@@ -497,7 +497,7 @@ error.todo-pattern3_type_to_poly.js	expected-error-got-code	syntax	the snapshot 
 error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 error.todo-reassign-const.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 error.todo-repro-missed-memoization-from-capture-in-invoked-function-inferred-as-mutation.js	pass	pass	
-error.todo-repro-missed-memoization-from-inferred-mutation-in-logger.js	error-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+error.todo-repro-missed-memoization-from-inferred-mutation-in-logger.js	pass	pass	
 error.todo-repro-named-function-with-shadowed-local-same-name.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 error.todo-round2_float_precision.js	expected-error-got-code	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
@@ -552,8 +552,8 @@ exhaustive-deps/error.invalid-missing-nonreactive-dep.js	error-mismatch	conversi
 exhaustive-deps/error.sketchy-code-exhaustive-deps.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 exhaustive-deps/exhaustive-deps-allow-constant-folded-values.js	pass	pass	
 exhaustive-deps/exhaustive-deps-allow-nonreactive-stable-types-as-extra-deps.js	pass	pass	
-exhaustive-deps/exhaustive-deps-effect-events.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-exhaustive-deps/exhaustive-deps.js	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+exhaustive-deps/exhaustive-deps-effect-events.js	pass	pass	
+exhaustive-deps/exhaustive-deps.js	pass	pass	
 existing-variables-with-c-name.js	pass	pass	
 expression-with-assignment-dynamic.js	pass	pass	
 expression-with-assignment.js	pass	pass	
@@ -638,14 +638,14 @@ for-of-simple.js	pass	pass
 for-return.js	pass	pass	
 for-with-assignment-as-update.js	pass	pass	
 frozen-after-alias.js	pass	pass	
-function-decl-shadowed-by-inner-const.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+function-decl-shadowed-by-inner-const.js	pass	pass	
 function-declaration-reassign.js	pass	pass	
 function-declaration-redeclare.js	pass	pass	
 function-declaration-simple.js	pass	pass	
-function-expr-directive.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+function-expr-directive.js	pass	pass	
 function-expression-captures-value-later-frozen-jsx.js	pass	pass	
 function-expression-maybe-mutates-hook-return-value.js	pass	pass	
-function-expression-prototype-call-mutating.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+function-expression-prototype-call-mutating.js	pass	pass	
 function-expression-prototype-call.js	pass	pass	
 function-expression-with-store-to-parameter.js	pass	pass	
 function-param-assignment-pattern.js	pass	pass	
@@ -698,33 +698,33 @@ globals-String.js	pass	pass
 globals-dont-resolve-local-useState.js	pass	pass	
 hir_id_numbering.js	pass	pass	
 hir_loc_diff.js	pass	pass	
-hoist-destruct.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+hoist-destruct.js	pass	pass	
 hoisted-const-in-value-block.js	pass	pass	
-hoisted-context-variable-in-outlined-fn.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisted-declaration-with-scope.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+hoisted-context-variable-in-outlined-fn.js	pass	pass	
+hoisted-declaration-with-scope.tsx	pass	pass	
 hoisted-function-declaration.js	pass	pass	
-hoisting-computed-member-expression.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+hoisting-computed-member-expression.js	pass	pass	
 hoisting-functionexpr-conditional-dep.tsx	pass	pass	
-hoisting-invalid-tdz-let.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-let-declaration-without-initialization.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-member-expression.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-nested-block-statements.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-nested-const-declaration-2.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-nested-const-declaration.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-nested-let-declaration-2.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-nested-let-declaration.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-object-method.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-reassigned-let-declaration.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-reassigned-twice-let-declaration.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-recursive-call-within-lambda.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-recursive-call.ts	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-repro-variable-used-in-assignment.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-setstate-captured-indirectly-jsx.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-simple-const-declaration.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-simple-function-expression.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-hoisting-simple-let-declaration.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+hoisting-invalid-tdz-let.js	pass	pass	
+hoisting-let-declaration-without-initialization.js	pass	pass	
+hoisting-member-expression.js	pass	pass	
+hoisting-nested-block-statements.js	pass	pass	
+hoisting-nested-const-declaration-2.js	pass	pass	
+hoisting-nested-const-declaration.js	pass	pass	
+hoisting-nested-let-declaration-2.js	pass	pass	
+hoisting-nested-let-declaration.js	pass	pass	
+hoisting-object-method.js	pass	pass	
+hoisting-reassigned-let-declaration.js	pass	pass	
+hoisting-reassigned-twice-let-declaration.js	pass	pass	
+hoisting-recursive-call-within-lambda.js	pass	pass	
+hoisting-recursive-call.ts	pass	pass	
+hoisting-repro-variable-used-in-assignment.js	pass	pass	
+hoisting-setstate-captured-indirectly-jsx.js	pass	pass	
+hoisting-simple-const-declaration.js	pass	pass	
+hoisting-simple-function-expression.js	pass	pass	
+hoisting-simple-let-declaration.js	pass	pass	
 hoisting-skip-type-alias-declarations.js	pass	pass	
-hoisting-within-lambda.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+hoisting-within-lambda.js	pass	pass	
 holey-array-expr.js	pass	pass	
 holey-array-pattern-dce-2.js	pass	pass	
 holey-array-pattern-dce.js	pass	pass	
@@ -749,8 +749,8 @@ iife-return-modified-later.js	pass	pass
 immutable-hooks.js	pass	pass	
 import-as-local.tsx	pass	pass	
 inadvertent-mutability-readonly-class.js	pass	pass	
-inadvertent-mutability-readonly-lambda.js	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-incompatible-destructuring-kinds.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+inadvertent-mutability-readonly-lambda.js	pass	pass	
+incompatible-destructuring-kinds.js	pass	pass	
 independent-across-if.js	pass	pass	
 independent.js	pass	pass	
 independently-memoize-object-property.js	pass	pass	
@@ -834,7 +834,7 @@ jsx-member-expression-tag-grouping.js	pass	pass
 jsx-member-expression.js	pass	pass	
 jsx-memberexpr-tag-in-lambda.js	pass	pass	
 jsx-namespaced-name.js	pass	pass	
-jsx-outlining-child-stored-in-id.js	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+jsx-outlining-child-stored-in-id.js	pass	pass	
 jsx-outlining-dup-key-diff-value.js	pass	pass	
 jsx-outlining-dupe-attr-after-rename.js	pass	pass	
 jsx-outlining-dupe-key-dupe-component.js	pass	pass	
@@ -858,11 +858,11 @@ labeled-break-within-label-switch.ts	pass	pass
 lambda-array-access-member-expr-captured.ts	pass	pass	
 lambda-array-access-member-expr-param.ts	pass	pass	
 lambda-capture-returned-alias.js	pass	pass	
-lambda-mutate-shadowed-object.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-lambda-mutated-non-reactive-to-reactive.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-lambda-mutated-ref-non-reactive.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-lambda-reassign-primitive.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-lambda-reassign-shadowed-primitive.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+lambda-mutate-shadowed-object.js	pass	pass	
+lambda-mutated-non-reactive-to-reactive.js	pass	pass	
+lambda-mutated-ref-non-reactive.js	pass	pass	
+lambda-reassign-primitive.js	pass	pass	
+lambda-reassign-shadowed-primitive.js	pass	pass	
 lambda-return-expression.ts	pass	pass	
 log-pruned-memoization.js	pass	pass	
 logical-expression-object.js	pass	pass	
@@ -876,7 +876,7 @@ match-expr-jsx-spread.flow.js	pass	pass
 match-expr-multi-gen-bindings.flow.js	pass	pass	
 match-expr-outlined-jsx.flow.js	pass	pass	
 match-expression-with-tuple-and-early-return.js	code-mismatch	conversion	uf's match lowering throws a string concatenation where the pinned hermes-parser throws a call (proven by the output)
-match-stmt-self-ref-const.flow.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+match-stmt-self-ref-const.flow.js	pass	pass	
 maybe-mutate-object-in-callback.js	pass	pass	
 mege-consecutive-scopes-dont-merge-with-different-deps.js	pass	pass	
 member-inc.js	pass	pass	
@@ -901,12 +901,12 @@ method-call.js	pass	pass
 mixedreadonly-mutating-map.js	pass	pass	
 module-scoped-bindings.js	pass	pass	
 multi-directive.js	pass	pass	
-multiple-calls-to-hoisted-callback-from-other-callback.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+multiple-calls-to-hoisted-callback-from-other-callback.js	pass	pass	
 multiple-components-first-is-invalid.js	pass	pass	
 mutable-lifetime-loops.js	pass	pass	
 mutable-lifetime-with-aliasing.js	pass	pass	
 mutable-liverange-loop.js	pass	pass	
-mutate-captured-arg-separately.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+mutate-captured-arg-separately.js	pass	pass	
 mutate-outer-scope-within-value-block.ts	pass	pass	
 mutation-during-jsx-construction.js	pass	pass	
 mutation-within-capture-and-mutablerange.tsx	pass	pass	
@@ -918,8 +918,8 @@ nested-function-discovery-annotation-mode.js	pass	pass
 nested-function-discovery-for-init.js	pass	pass	
 nested-function-discovery-if-test-expr.js	pass	pass	
 nested-function-discovery-while-test-expr.js	pass	pass	
-nested-function-shadowed-identifiers.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-nested-function-with-param-as-captured-dep.ts	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+nested-function-shadowed-identifiers.js	pass	pass	
+nested-function-with-param-as-captured-dep.ts	pass	pass	
 nested-optional-chains.ts	code-mismatch	conversion	an optional chain inside an optional call's arguments reaches the compiler without its ?. and the crate's memo dependency drops it, which a printer cannot do (argued: babel.rs chain conversion)
 nested-optional-member-expr.js	pass	pass	
 nested-scopes-begin-same-instr-valueblock.ts	pass	pass	
@@ -927,20 +927,20 @@ nested-scopes-hook-call.js	pass	pass
 new-does-not-mutate-class.ts	pass	pass	
 new-mutability/aliased-nested-scope-truncated-dep.tsx	pass	pass	
 new-mutability/array-filter.js	pass	pass	
-new-mutability/array-map-captures-receiver-noAlias.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/array-map-captures-receiver-noAlias.js	pass	pass	
 new-mutability/array-map-named-callback-cross-context.js	pass	pass	
 new-mutability/array-push.js	pass	pass	
 new-mutability/basic-mutation-via-function-expression.js	pass	pass	
 new-mutability/basic-mutation.js	pass	pass	
 new-mutability/capture-backedge-phi-with-later-mutation.js	pass	pass	
 new-mutability/capture-in-function-expression-indirect.js	pass	pass	
-new-mutability/capturing-function-alias-computed-load-2-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-new-mutability/capturing-function-alias-computed-load-3-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-new-mutability/capturing-function-alias-computed-load-4-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-new-mutability/capturing-function-alias-computed-load-iife.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/capturing-function-alias-computed-load-2-iife.js	pass	pass	
+new-mutability/capturing-function-alias-computed-load-3-iife.js	pass	pass	
+new-mutability/capturing-function-alias-computed-load-4-iife.js	pass	pass	
+new-mutability/capturing-function-alias-computed-load-iife.js	pass	pass	
 new-mutability/error.invalid-impure-functions-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 new-mutability/error.invalid-reassign-local-variable-in-jsx-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.invalid-referencing-frozen-hoisted-storecontext-const.js	error-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/error.invalid-referencing-frozen-hoisted-storecontext-const.js	pass	pass	
 new-mutability/error.invalid-useCallback-captures-reassigned-context.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 new-mutability/error.mutate-frozen-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 new-mutability/error.mutate-hook-argument.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
@@ -959,7 +959,7 @@ new-mutability/nullable-objects-assume-invoked-direct-call.js	pass	pass
 new-mutability/object-expression-computed-key-object-mutated-later.js	pass	pass	
 new-mutability/object-expression-computed-member.js	pass	pass	
 new-mutability/potential-mutation-in-function-expression.js	pass	pass	
-new-mutability/reactive-ref.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/reactive-ref.js	pass	pass	
 new-mutability/repro-compiler-infinite-loop.js	pass	pass	
 new-mutability/repro-destructure-from-prop-with-default-value.js	pass	pass	
 new-mutability/repro-function-expression-effects-stack-overflow.js	pass	pass	
@@ -970,18 +970,18 @@ new-mutability/repro-mutate-new-set-of-frozen-items-in-callback.js	pass	pass
 new-mutability/set-add-mutate.js	pass	pass	
 new-mutability/ssa-renaming-ternary-destruction.js	pass	pass	
 new-mutability/todo-control-flow-sensitive-mutation.tsx	pass	pass	
-new-mutability/todo-transitivity-createfrom-capture-lambda.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/todo-transitivity-createfrom-capture-lambda.tsx	pass	pass	
 new-mutability/transitive-mutation-before-capturing-value-created-earlier.js	pass	pass	
 new-mutability/transitivity-add-captured-array-to-itself.tsx	pass	pass	
-new-mutability/transitivity-capture-createfrom-lambda.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/transitivity-capture-createfrom-lambda.tsx	pass	pass	
 new-mutability/transitivity-capture-createfrom.tsx	pass	pass	
 new-mutability/transitivity-createfrom-capture.tsx	pass	pass	
 new-mutability/transitivity-phi-assign-or-capture.tsx	pass	pass	
 new-mutability/typed-identity-function-frozen-input.js	pass	pass	
 new-mutability/typed-identity-function-mutable-input.js	pass	pass	
-new-mutability/useCallback-reordering-deplist-controlflow.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-new-mutability/useCallback-reordering-depslist-assignment.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-new-mutability/useMemo-reordering-depslist-assignment.ts	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+new-mutability/useCallback-reordering-deplist-controlflow.tsx	pass	pass	
+new-mutability/useCallback-reordering-depslist-assignment.tsx	pass	pass	
+new-mutability/useMemo-reordering-depslist-assignment.ts	pass	pass	
 new-spread.js	pass	pass	
 no-cache-slots-no-import.js	pass	pass	
 no-flow-bailout-unrelated.js	pass	pass	
@@ -1039,7 +1039,7 @@ object-values.js	pass	pass
 optional-call-chain-in-logical-expr.ts	pass	pass	
 optional-call-chain-in-ternary.ts	pass	pass	
 optional-call-chained.js	pass	pass	
-optional-call-logical.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+optional-call-logical.js	pass	pass	
 optional-call-simple.js	pass	pass	
 optional-call-with-independently-memoizable-arg.js	pass	pass	
 optional-call-with-optional-property-load.js	pass	pass	
@@ -1061,7 +1061,7 @@ optional-receiver-optional-method.js	pass	pass
 original-reactive-scopes-fork/capture-ref-for-later-mutation.tsx	pass	pass	
 outlined-destructured-params.js	pass	pass	
 outlined-function-in-iife.js	pass	pass	
-outlined-function-param-shadowing.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+outlined-function-param-shadowing.js	pass	pass	
 outlined-helper.js	pass	pass	
 outlining-in-func-expr.js	pass	pass	
 outlining-in-react-memo.js	pass	pass	
@@ -1116,10 +1116,10 @@ preserve-memo-validation/repro-maybe-invalid-useCallback-read-maybeRef.ts	pass	p
 preserve-memo-validation/repro-maybe-invalid-useMemo-read-maybeRef.ts	pass	pass	
 preserve-memo-validation/todo-ensure-constant-prop-decls-get-removed.ts	pass	pass	
 preserve-memo-validation/useCallback-alias-property-load-dep.ts	pass	pass	
-preserve-memo-validation/useCallback-captures-reassigned-context-property.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-preserve-memo-validation/useCallback-captures-reassigned-context.ts	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+preserve-memo-validation/useCallback-captures-reassigned-context-property.tsx	pass	pass	
+preserve-memo-validation/useCallback-captures-reassigned-context.ts	pass	pass	
 preserve-memo-validation/useCallback-dep-scope-pruned.ts	pass	pass	
-preserve-memo-validation/useCallback-extended-contextvar-scope.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+preserve-memo-validation/useCallback-extended-contextvar-scope.tsx	pass	pass	
 preserve-memo-validation/useCallback-in-other-reactive-block.ts	pass	pass	
 preserve-memo-validation/useCallback-infer-fewer-deps.ts	pass	pass	
 preserve-memo-validation/useCallback-infer-more-specific.ts	pass	pass	
@@ -1127,8 +1127,8 @@ preserve-memo-validation/useCallback-infer-read-dep.ts	pass	pass
 preserve-memo-validation/useCallback-infer-scope-global.ts	pass	pass	
 preserve-memo-validation/useCallback-nonescaping-invoked-callback-escaping-return.js	pass	pass	
 preserve-memo-validation/useCallback-nonescaping.js	pass	pass	
-preserve-memo-validation/useCallback-reordering-deplist-controlflow.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-preserve-memo-validation/useCallback-reordering-depslist-assignment.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+preserve-memo-validation/useCallback-reordering-deplist-controlflow.tsx	pass	pass	
+preserve-memo-validation/useCallback-reordering-depslist-assignment.tsx	pass	pass	
 preserve-memo-validation/useCallback-with-no-depslist.ts	pass	pass	
 preserve-memo-validation/useMemo-alias-property-load-dep.ts	pass	pass	
 preserve-memo-validation/useMemo-conditional-access-alloc.ts	pass	pass	
@@ -1143,8 +1143,8 @@ preserve-memo-validation/useMemo-infer-nonallocating.ts	pass	pass
 preserve-memo-validation/useMemo-infer-scope-global.ts	pass	pass	
 preserve-memo-validation/useMemo-inner-decl.ts	pass	pass	
 preserve-memo-validation/useMemo-invoke-prop.ts	pass	pass	
-preserve-memo-validation/useMemo-reordering-depslist-assignment.ts	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-preserve-memo-validation/useMemo-reordering-depslist-controlflow.tsx	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+preserve-memo-validation/useMemo-reordering-depslist-assignment.ts	pass	pass	
+preserve-memo-validation/useMemo-reordering-depslist-controlflow.tsx	pass	pass	
 preserve-memo-validation/useMemo-with-no-depslist.ts	pass	pass	
 preserve-use-memo-transition-no-ispending.js	pass	pass	
 preserve-use-memo-unused-state.js	pass	pass	
@@ -1193,7 +1193,7 @@ propagate-scope-deps-hir-fork/reduce-reactive-deps/merge-uncond-optional-chain-a
 propagate-scope-deps-hir-fork/reduce-reactive-deps/promote-uncond.js	pass	pass	
 propagate-scope-deps-hir-fork/reduce-reactive-deps/todo-infer-function-uncond-optionals-hoisted.tsx	pass	pass	
 propagate-scope-deps-hir-fork/repro-invariant.tsx	pass	pass	
-propagate-scope-deps-hir-fork/repro-scope-missing-mutable-range.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+propagate-scope-deps-hir-fork/repro-scope-missing-mutable-range.js	pass	pass	
 propagate-scope-deps-hir-fork/ssa-cascading-eliminated-phis.js	pass	pass	
 propagate-scope-deps-hir-fork/ssa-leave-case.js	pass	pass	
 propagate-scope-deps-hir-fork/ssa-renaming-ternary-destruction-with-mutation.js	pass	pass	
@@ -1243,7 +1243,7 @@ reactive-control-dependency-from-interleaved-reactivity-if.js	pass	pass
 reactive-control-dependency-from-interleaved-reactivity-switch.js	pass	pass	
 reactive-control-dependency-from-interleaved-reactivity-while.js	pass	pass	
 reactive-control-dependency-if.js	pass	pass	
-reactive-control-dependency-on-context-variable.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+reactive-control-dependency-on-context-variable.js	pass	pass	
 reactive-control-dependency-phi-setState-type.js	pass	pass	
 reactive-control-dependency-reactive-after-fixpoint.js	pass	pass	
 reactive-control-dependency-switch-case-test.js	pass	pass	
@@ -1274,14 +1274,14 @@ reanimated-shared-value-writes.jsx	pass	pass
 reassign-global-hook-arg.js	pass	pass	
 reassign-global-return.js	pass	pass	
 reassign-in-while-loop-condition.js	pass	pass	
-reassign-object-in-context.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-reassign-primitive-in-context.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-reassign-variable-in-usememo.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+reassign-object-in-context.js	pass	pass	
+reassign-primitive-in-context.js	pass	pass	
+reassign-variable-in-usememo.js	pass	pass	
 reassigned-phi-in-returned-function-expression.js	pass	pass	
 reassignment-conditional.js	pass	pass	
 reassignment-separate-scopes.js	pass	pass	
 reassignment.js	pass	pass	
-recursive-function-expression.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+recursive-function-expression.js	pass	pass	
 recursive-function.js	pass	pass	
 reduce-reactive-cond-deps-break-in-scope.ts	pass	pass	
 reduce-reactive-cond-deps-cfg-nested-testifelse.ts	pass	pass	
@@ -1295,7 +1295,7 @@ reduce-reactive-deps/cfg-switch-missing-case.js	pass	pass
 reduce-reactive-deps/cfg-switch-missing-default.js	pass	pass	
 reduce-reactive-deps/cond-scope.js	pass	pass	
 reduce-reactive-deps/conditional-member-expr.js	pass	pass	
-reduce-reactive-deps/context-var-granular-dep.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+reduce-reactive-deps/context-var-granular-dep.js	pass	pass	
 reduce-reactive-deps/edge-case-merge-uncond-optional-chain-and-cond.ts	pass	pass	
 reduce-reactive-deps/hoist-deps-diff-ssa-instance.tsx	pass	pass	
 reduce-reactive-deps/hoist-deps-diff-ssa-instance1.tsx	pass	pass	
@@ -1359,11 +1359,11 @@ repro-allocating-ternary-test-instruction-scope.ts	pass	pass
 repro-backedge-reference-effect.js	pass	pass	
 repro-bailout-nopanic-shouldnt-outline.js	pass	pass	
 repro-capturing-func-maybealias-captured-mutate.ts	pass	pass	
-repro-context-var-reassign-no-scope.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+repro-context-var-reassign-no-scope.js	pass	pass	
 repro-dce-circular-reference.js	pass	pass	
 repro-declaration-for-all-identifiers.js	pass	pass	
 repro-dispatch-spread-event-marks-event-frozen.js	pass	pass	
-repro-dont-memoize-array-with-capturing-map-after-hook.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+repro-dont-memoize-array-with-capturing-map-after-hook.js	pass	pass	
 repro-dont-memoize-array-with-mutable-map-after-hook.js	pass	pass	
 repro-duplicate-import-specifier.ts	pass	pass	
 repro-duplicate-instruction-from-merge-consecutive-scopes.js	pass	pass	
@@ -1372,8 +1372,8 @@ repro-false-positive-ref-validation-in-use-effect.js	pass	pass
 repro-for-in-in-try.js	pass	pass	
 repro-for-loop-in-try.js	pass	pass	
 repro-for-of-in-try.js	pass	pass	
-repro-hoisting-variable-collision.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-repro-hoisting.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+repro-hoisting-variable-collision.js	pass	pass	
+repro-hoisting.js	pass	pass	
 repro-independently-memoized-property-load-for-method-call.js	pass	pass	
 repro-instruction-part-of-already-closed-scope.js	pass	pass	
 repro-invalid-destructuring-reassignment-undefined-variable.js	pass	pass	
@@ -1389,9 +1389,9 @@ repro-missing-dependency-if-within-while.js	pass	pass
 repro-missing-memoization-lack-of-phi-types.js	pass	pass	
 repro-missing-phi-after-dce-merge-scopes.js	pass	pass	
 repro-mutable-range-extending-into-ternary.js	pass	pass	
-repro-mutate-ref-in-function-passed-to-hook.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-repro-mutate-result-of-function-call-with-frozen-argument-in-function-expression.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-repro-mutate-result-of-method-call-on-frozen-value-in-function-expression.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+repro-mutate-ref-in-function-passed-to-hook.js	pass	pass	
+repro-mutate-result-of-function-call-with-frozen-argument-in-function-expression.js	pass	pass	
+repro-mutate-result-of-method-call-on-frozen-value-in-function-expression.js	pass	pass	
 repro-mutate-result-of-method-call-on-frozen-value-is-allowed.js	pass	pass	
 repro-nested-try-catch-in-usememo.js	pass	pass	
 repro-no-declarations-in-reactive-scope-with-early-return.js	pass	pass	
@@ -1411,12 +1411,12 @@ repro-ref-mutable-range.tsx	pass	pass
 repro-renaming-conflicting-decls.js	pass	pass	
 repro-retain-source-when-bailout.js	pass	pass	
 repro-returned-inner-fn-mutates-context.js	pass	pass	
-repro-returned-inner-fn-reassigns-context.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
-repro-scope-missing-mutable-range.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+repro-returned-inner-fn-reassigns-context.js	pass	pass	
+repro-scope-missing-mutable-range.js	pass	pass	
 repro-separate-memoization-due-to-callback-capturing.js	pass	pass	
 repro-separate-scopes-for-divs.js	pass	pass	
 repro-slow-validate-preserve-memo.ts	code-mismatch	conversion	an optional call nested in another optional chain reaches the compiler without its ?. (argued: babel.rs chain conversion)
-repro-stale-closure-forward-reference.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+repro-stale-closure-forward-reference.js	pass	pass	
 repro-undefined-expression-of-jsxexpressioncontainer.js	pass	pass	
 repro-unmerged-fbt-call-merge-overlapping-reactive-scopes.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
 repro-unreachable-code-early-return-in-useMemo.js	pass	pass	
@@ -1432,7 +1432,7 @@ return-ref-callback.js	pass	pass
 return-undefined.js	pass	pass	
 reverse-postorder.js	pass	pass	
 rewrite-phis-in-lambda-capture-context.js	pass	pass	
-round2_loc_diff.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+round2_loc_diff.js	pass	pass	
 round3_effect_read_vs_capture.js	pass	pass	
 round3_effect_read_vs_capture_v2.js	pass	pass	
 round3_outlined_naming.js	pass	pass	
@@ -1535,7 +1535,7 @@ same-variable-as-dep-and-redeclare-maybe-frozen.js	pass	pass
 same-variable-as-dep-and-redeclare.js	pass	pass	
 scope-boundary-at-if-branch.js	pass	pass	
 script-source-type.js	code-mismatch	syntax	@script: the runner parses a script, and uf reads every file as a module
-self-referencing-const-arrow-function.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+self-referencing-const-arrow-function.js	pass	pass	
 sequence-expression.js	pass	pass	
 sequential-destructuring-assignment-to-scope-declarations.js	pass	pass	
 sequential-destructuring-both-mixed-local-and-scope-declaration.js	pass	pass	
@@ -1591,7 +1591,7 @@ ssa-renaming-via-destructuring.js	pass	pass
 ssa-renaming-with-mutation.js	pass	pass	
 ssa-renaming.js	pass	pass	
 ssa-return.js	pass	pass	
-ssa-shadowing.js	code-mismatch	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+ssa-shadowing.js	pass	pass	
 ssa-sibling-phis.js	pass	pass	
 ssa-simple-phi.js	pass	pass	
 ssa-simple.js	pass	pass	
@@ -1640,7 +1640,7 @@ todo-optional-call-chain-in-optional.ts	pass	pass
 todo-pattern1b_type_to_primitive.js	pass	pass	
 todo-round2_unicode_string.js	pass	pass	
 todo-round3_outlined_naming.js	pass	pass	
-todo-round3_promote_used_temps.js	expected-code-got-error	scope	scope.rs leaves declaring identifiers out of ref_node_id_to_binding (proven); with that fixed the output still differs inside a sequence expression, not attributed yet
+todo-round3_promote_used_temps.js	pass	pass	
 todo.error.object-pattern-computed-key.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 todo.memoize-loops-that-produce-memoizeable-values.js	pass	pass	
 todo.unnecessary-lambda-memoization.js	pass	pass	
@@ -1704,7 +1704,7 @@ type-test-field-load-binary-op.js	pass	pass
 type-test-field-store.js	pass	pass	
 type-test-polymorphic.js	pass	pass	
 type-test-primitive.js	pass	pass	
-type-test-return-type-inference.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+type-test-return-type-inference.js	pass	pass	
 typescript-this-param-in-uncompiled-function.ts	pass	pass	
 uid-collision-across-functions.js	pass	pass	
 unary-expr.js	pass	pass	
@@ -1733,7 +1733,7 @@ update-expression-on-function-parameter-4.js	pass	pass
 update-expression.ts	pass	pass	
 update-global-in-callback.tsx	pass	pass	
 use-callback-simple.js	pass	pass	
-use-effect-cleanup-reassigns.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+use-effect-cleanup-reassigns.js	pass	pass	
 use-memo-noemit.js	pass	pass	
 use-memo-simple.js	pass	pass	
 use-no-forget-module-level.js	pass	pass	
@@ -1744,7 +1744,7 @@ use-no-memo-module-level.js	pass	pass
 use-no-memo-module-scope-usememo-function-scope.js	pass	pass	
 use-no-memo-simple.js	pass	pass	
 use-operator-call-expression.js	pass	pass	
-use-operator-conditional.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+use-operator-conditional.js	pass	pass	
 use-operator-method-call.js	pass	pass	
 useActionState-dispatch-considered-as-non-reactive.js	pass	pass	
 useCallback-call-second-function-which-captures-maybe-mutable-value-dont-preserve-memoization.js	pass	pass	
@@ -1772,7 +1772,7 @@ useMemo-arrow-implicit-return.js	pass	pass
 useMemo-empty-return.js	pass	pass	
 useMemo-explicit-null-return.js	pass	pass	
 useMemo-if-else-multiple-return.js	pass	pass	
-useMemo-independently-memoizeable.js	expected-code-got-error	scope	scope.rs leaves the declaring identifier out of ref_node_id_to_binding, which upstream scope.ts records; recording it passes this fixture (proven by experiment)
+useMemo-independently-memoizeable.js	pass	pass	
 useMemo-inlining-block-return.js	pass	pass	
 useMemo-inverted-if.js	pass	pass	
 useMemo-labeled-statement-unconditional-return.js	pass	pass	
@@ -1794,8 +1794,8 @@ using-declaration-bailout-sibling-compiles.js	unparsed	syntax	a using declaratio
 valid-set-state-in-useEffect-from-ref.js	pass	pass	
 valid-setState-in-effect-from-ref-arithmetic.js	pass	pass	
 valid-setState-in-effect-from-ref-array-index.js	pass	pass	
-valid-setState-in-effect-from-ref-function-call.js	expected-code-got-error	scope	scope.rs leaves declaring identifiers out of ref_node_id_to_binding (proven); with that fixed it also needs the compiler's binding renames applied, which uf drops (proven by experiment)
-valid-setState-in-useEffect-controlled-by-ref-value.js	expected-code-got-error	scope	scope.rs leaves declaring identifiers out of ref_node_id_to_binding (proven); with that fixed it also needs the compiler's binding renames applied, which uf drops (proven by experiment)
+valid-setState-in-effect-from-ref-function-call.js	code-mismatch	scope	the compiler's binding renames are not applied: the Babel shim renames them with scope.rename(), and uf drops CompileResult renames; applying them passes this fixture (proven by experiment)
+valid-setState-in-useEffect-controlled-by-ref-value.js	code-mismatch	scope	the compiler's binding renames are not applied: the Babel shim renames them with scope.rename(), and uf drops CompileResult renames; applying them passes this fixture (proven by experiment)
 valid-setState-in-useEffect-listener-transitive.js	pass	pass	
 valid-setState-in-useEffect-listener.js	pass	pass	
 valid-setState-in-useEffect-via-useEffectEvent-listener.js	pass	pass	

@@ -9,11 +9,13 @@
 //! * **Code** is parsed by the official Flow parser — the same reading for the
 //!   snapshot and for uf's output — rendered as ESTree, and has its types
 //!   erased by the `StripFlowTypes` port. The trees are then compared with the
-//!   things a printer is free to choose removed: positions, comments, the raw
-//!   spelling of a literal (`'a'` against `"a"`), whether `{a}` was written
-//!   `{a: a}`, and how JSX children are split into text and `{" "}`
-//!   containers — each side's children are reduced to what JSX evaluates them
-//!   to, following Babel's `cleanJSXElementLiteralChild`.
+//!   things a printer or Prettier is free to choose removed: positions,
+//!   comments, the raw spelling of a literal (`'a'` against `"a"`), whether
+//!   `{a}` was written `{a: a}`, whether a key is quoted, a trailing comma, an
+//!   empty statement, whether `a, (b, c)` keeps its parentheses, a string
+//!   attribute written `a={"b"}`, and how JSX children are split into text and
+//!   `{" "}` containers — each side's children are reduced to what JSX
+//!   evaluates them to, following Babel's `cleanJSXElementLiteralChild`.
 //!
 //!   Types are erased because uf erases them *before* the compiler runs, and
 //!   the snapshots keep them. Where that changes what the compiler does, the
@@ -105,6 +107,27 @@ fn canonical(value: Value) -> Value {
                 Some("SwitchCase") => {
                     if let Some(Value::Array(body)) = out.get_mut("consequent") {
                         body.retain(|statement| statement["type"] != "EmptyStatement");
+                    }
+                }
+                // `a, (b, c)` and `a, b, c` evaluate the same operands in the
+                // same order to the same value. Babel's generator and Prettier
+                // write the flat form where uf's printer keeps the nesting.
+                // Children are already canonical, so one level of splicing
+                // flattens any depth.
+                Some("SequenceExpression") => {
+                    if let Some(Value::Array(expressions)) = out.remove("expressions") {
+                        let mut flat = Vec::with_capacity(expressions.len());
+                        for expression in expressions {
+                            if expression["type"] == "SequenceExpression"
+                                && let Some(inner) =
+                                    expression.get("expressions").and_then(Value::as_array)
+                            {
+                                flat.extend(inner.iter().cloned());
+                                continue;
+                            }
+                            flat.push(expression);
+                        }
+                        out.insert("expressions".to_owned(), Value::Array(flat));
                     }
                 }
                 Some("JSXAttribute") => {
