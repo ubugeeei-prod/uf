@@ -2,8 +2,8 @@
 //! `component` and `hook` declarations over the React idioms they replace, and
 //! the default-export ban.
 //!
-//! The rules that ask whether a component *could have been compiled* live in
-//! [`super::react_compiler`], which delegates to `uf_react_compiler`.
+//! The rules of React — hooks, purity, what render may change — are the
+//! official React Compiler's diagnostics, filed in [`super::react_compiler`].
 
 use uf_config::UniflowedConfig;
 

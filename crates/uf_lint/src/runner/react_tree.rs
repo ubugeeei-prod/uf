@@ -88,6 +88,10 @@ pub(super) struct ReactWork {
     memo: Option<crate::Severity>,
     wants_effects: bool,
     wants_memo: bool,
+    /// The `react-compiler/*` rules, when any of them is on. Whether this
+    /// module is compiled for them is not decided here: that is
+    /// [`uf_transform::may_contain_react_code`]'s answer, which needs the tree.
+    compiler: Option<super::react_compiler::CompilerWork>,
 }
 
 /// Whether these rules want this module read at all.
@@ -102,7 +106,10 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         .enabled
         .then(|| severity(config, REDUNDANT_MEMO))
         .flatten();
-    if derived.is_none() && memo.is_none() {
+    // Not tied to `reactCompiler.enabled`: these report the rules of React,
+    // which hold whether or not the build memoizes.
+    let compiler = super::react_compiler::wanted(config);
+    if derived.is_none() && memo.is_none() && compiler.is_none() {
         return None;
     }
     if !super::flow_syntax::is_flow_syntax_target(&scan.file.path) {
@@ -118,7 +125,7 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
     let calls = requested_hook_calls(scan, derived.is_some(), has_compiled_boundary);
     let wants_effects = derived.is_some() && calls.effect && calls.state_setter;
     let wants_memo = memo.is_some() && has_compiled_boundary && (calls.memo || calls.callback);
-    if !wants_effects && !wants_memo {
+    if !wants_effects && !wants_memo && compiler.is_none() {
         return None;
     }
     Some(ReactWork {
@@ -126,6 +133,7 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Re
         memo,
         wants_effects,
         wants_memo,
+        compiler,
     })
 }
 
@@ -439,8 +447,27 @@ pub(super) fn analyse_parsed(
         ..TransformOptions::new(scan.file.path.clone())
     };
 
+    // The compiler's rules take every module `eslint-plugin-react-hooks` would
+    // compile, and only those — the plugin's own test, not one of uf's. A
+    // module the compiler has already answered with exactly this text is
+    // answered from that, without building the tree again.
+    let remembered = work
+        .compiler
+        .as_ref()
+        .and_then(|_| uf_transform::lint::cached(&scan.file.path, source));
+    let compile = work.compiler.is_some()
+        && remembered.is_none()
+        && uf_transform::may_contain_react_code(&parsed.program);
+
+    let mut found = Vec::new();
+    if let (Some(compiler), Some(remembered)) = (&work.compiler, remembered) {
+        found.extend(compiler_findings(compiler, remembered));
+    }
     if work.wants_effects && !work.wants_memo {
-        return derived_state_effects_native(parsed);
+        found.extend(derived_state_effects_native(parsed));
+    }
+    if !work.wants_memo && !compile {
+        return found;
     }
 
     // Lowered, not raw: `component` and `match` are Flow's own syntax, and
@@ -452,18 +479,23 @@ pub(super) fn analyse_parsed(
     // `uf lint` used to hand the text back to `estree::parse` here and have
     // the module parsed a second time. See ubugeeei-prod/uf#668.
     let Ok((program, _)) = uf_transform::lowered_from_parsed(&parsed.program, source) else {
-        return Vec::new();
+        return found;
     };
-    let mut found = Vec::new();
-    if work.wants_effects {
+    if work.wants_effects && work.wants_memo {
         found.extend(derived_state_effects(&program));
     }
-    // An error here is a bug in uf rather than in the module — the tree did
-    // not fit the compiler's own schema — and it says nothing about the
-    // effects the other rule already found, so it costs that rule nothing.
+    // An error from here on is a bug in uf rather than in the module — the
+    // tree did not fit the compiler's own schema — and `uf build`, which reads
+    // the same tree, fails on it loudly. It says nothing about what the other
+    // rules already found, so it costs them nothing.
+    let Ok(file) = uf_transform::babel_from_lowered(program, source) else {
+        return found;
+    };
+    // One scope analysis for both questions put to the compiler.
+    let scope = uf_transform::scope::analyze(&file);
     if work.wants_memo
-        && let Ok(file) = uf_transform::babel_from_lowered(program, source)
-        && let Ok(redundant) = uf_transform::redundant_memoization(&file, source, &options)
+        && let Ok(redundant) =
+            uf_transform::redundant_memoization_in_scope(&file, &scope, source, &options)
     {
         found.extend(redundant.into_iter().map(|memo| TreeFinding {
             kind: FindingKind::RedundantMemo,
@@ -476,7 +508,35 @@ pub(super) fn analyse_parsed(
             ),
         }));
     }
+    if compile
+        && let Some(compiler) = &work.compiler
+        && let Ok(diagnostics) = uf_transform::lint::lint(&file, scope, source, &scan.file.path)
+    {
+        found.extend(compiler_findings(compiler, diagnostics));
+    }
     found
+}
+
+/// Each React Compiler diagnostic, filed under its `react-compiler/*` rule.
+///
+/// A diagnostic whose category `uf lint` files under no rule, or whose rule
+/// this project has switched off, is dropped here rather than carried to
+/// [`report`].
+fn compiler_findings(
+    compiler: &super::react_compiler::CompilerWork,
+    diagnostics: impl IntoIterator<Item = uf_transform::LintDiagnostic>,
+) -> impl Iterator<Item = TreeFinding> {
+    diagnostics.into_iter().filter_map(move |diagnostic| {
+        let rule = super::react_compiler::rule_for(diagnostic.category)?;
+        compiler.level(rule)?;
+        Some(TreeFinding {
+            kind: FindingKind::Compiler(rule),
+            line: diagnostic.line,
+            column: diagnostic.column,
+            column_unit: ColumnUnit::Utf16,
+            message: diagnostic.message,
+        })
+    })
 }
 
 /// Turn what the analysis found into diagnostics.
@@ -491,10 +551,15 @@ pub(super) fn report(
         let rule = match finding.kind {
             FindingKind::DerivedState => DERIVED_STATE,
             FindingKind::RedundantMemo => REDUNDANT_MEMO,
+            FindingKind::Compiler(rule) => rule,
         };
         let level = match finding.kind {
             FindingKind::DerivedState => work.derived,
             FindingKind::RedundantMemo => work.memo,
+            FindingKind::Compiler(rule) => work
+                .compiler
+                .as_ref()
+                .and_then(|compiler| compiler.level(rule)),
         };
         let Some(index) = usize::try_from(finding.line)
             .ok()
@@ -539,6 +604,8 @@ pub(super) fn report(
 enum FindingKind {
     DerivedState,
     RedundantMemo,
+    /// A React Compiler diagnostic, filed under this `react-compiler/*` rule.
+    Compiler(&'static str),
 }
 
 /// One finding, positioned the way the tree positions things.
@@ -628,9 +695,9 @@ fn byte_column_of_code_point(line: &str, column: u32) -> usize {
 ///
 /// * **A property read.** `setItems(data.items)` and `setWidth(box.offsetWidth)`
 ///   are the same three tokens, and the first belongs in render while the
-///   second must not go there — a layout read during render is a bug uf's own
-///   `react/no-render-side-effects` exists to catch. The source text does not
-///   say which is which, so the rule stops here rather than guessing.
+///   second must not go there — a layout read during render is a bug. The
+///   source text does not say which is which, so the rule stops here rather
+///   than guessing.
 /// * **A call.** `setSorted(items.slice().sort())` may be pure and may not be;
 ///   nothing in the tree says.
 /// * **A reset to a constant.** `setSelection(null)` on `[items]` is the

@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 71] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 72] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -257,11 +257,17 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 71] = [
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),
+    // The official React Compiler's diagnostics, at the levels
+    // `eslint-plugin-react-hooks` gives the same categories. `hooks` is `error`
+    // although the plugin leaves its compiler rule off, because the plugin
+    // answers the question with its separate `rules-of-hooks` rule at `error`
+    // and uf has no second rule for it.
+    ("react-compiler/globals", RuleLevel::Error),
+    ("react-compiler/hooks", RuleLevel::Error),
+    ("react-compiler/purity", RuleLevel::Error),
     // Style preferences during the migration to Flow component/hook syntax.
     ("react/component-syntax", RuleLevel::Warn),
     ("react/hook-syntax", RuleLevel::Warn),
-    // Breaking the rules of hooks corrupts React's hook state.
-    ("react/hooks-rules", RuleLevel::Error),
     // Framework routes are wired by name; `warn` while the scaffold migrates.
     ("react/no-default-export-component", RuleLevel::Warn),
     // An effect whose whole body writes state computed from its own
@@ -281,8 +287,6 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 71] = [
     // false, because then the hand-written one is the only memoization there
     // is.
     ("react/no-redundant-memo", RuleLevel::Warn),
-    // Non-idempotent render breaks streaming SSR and hydration.
-    ("react/no-render-side-effects", RuleLevel::Error),
     // Platform branches are a preference, not a correctness problem.
     ("react-native/platform-split", RuleLevel::Warn),
     // Leaking a secret into a client bundle is unrecoverable.

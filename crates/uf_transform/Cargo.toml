@@ -23,6 +23,7 @@ oxc_span.workspace = true
 oxc_transformer.workspace = true
 react_compiler.workspace = true
 react_compiler_ast.workspace = true
+react_compiler_diagnostics.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true

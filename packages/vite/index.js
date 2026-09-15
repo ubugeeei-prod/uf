@@ -183,6 +183,16 @@ export default function uniflowed(options = {}) {
   // at. Anything but `"document"` is the client router, which is what every
   // project that has not heard of the key has.
   const navigation = app.rendering?.navigation === "document" ? "document" : "client";
+  // How long, in seconds, the client router shows a route it already fetched
+  // without asking the server again, written into the client entry beside
+  // `navigation` and honoured by every command for the same reason. Anything
+  // but a positive number is `0`, which keeps nothing.
+  const staleTime =
+    typeof app.rendering?.staleTime === "number" &&
+    Number.isFinite(app.rendering.staleTime) &&
+    app.rendering.staleTime > 0
+      ? app.rendering.staleTime
+      : 0;
   // Whether this application starts by attaching to markup or by rendering
   // into an empty root. `["csr"]` is the only list that means the second, and
   // `uf` refuses that value beside any other while the config is read — so the
@@ -213,6 +223,7 @@ export default function uniflowed(options = {}) {
       routeTarget,
       strictMode,
       navigation,
+      staleTime,
       mount,
       flightState,
       routing,
@@ -240,6 +251,7 @@ function flowPlugin({
   routeTarget,
   strictMode,
   navigation,
+  staleTime,
   mount,
   flightState,
   routing,
@@ -546,6 +558,7 @@ function flowPlugin({
         return flightClientSource(entryPath, {
           strictMode: strictMode && !isProduction,
           navigation,
+          staleTime,
           routing,
         });
       }
@@ -553,6 +566,7 @@ function flowPlugin({
         return clientModuleSource(entryPath, {
           strictMode: strictMode && !isProduction,
           navigation,
+          staleTime,
           mount,
           routing,
         });

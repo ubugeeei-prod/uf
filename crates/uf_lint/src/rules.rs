@@ -33,6 +33,8 @@ pub enum RuleCategory {
     Uniflowed,
     /// React and Flow component/hook syntax rules.
     React,
+    /// The official React Compiler's diagnostics, one rule per category.
+    ReactCompiler,
     /// React Native specific rules.
     ReactNative,
     /// Server component, server action, and client/server boundary rules.
@@ -89,8 +91,18 @@ pub struct RuleDescriptor {
 ///
 /// `flow/type-aware/no-explicit-any` was uf's hand-rolled `any` check before the
 /// Flow built-in set landed; Flow's own name for it is `unclear-type`.
+///
+/// `react/hooks-rules` and `react/no-render-side-effects` were uf's own checks,
+/// before `uf lint` reported the official React Compiler's diagnostics. Each
+/// points at the compiler category that asks the nearest question — the Rules
+/// of Hooks, and impure calls during render — so a config level or a
+/// suppression written against the old name keeps meaning something. The
+/// compiler's answers are not the old checks' answers; the formatting and
+/// linting guide says where they differ.
 static DEPRECATED_ALIASES: phf::Map<&'static str, &'static str> = phf::phf_map! {
     "flow/type-aware/no-explicit-any" => "flow/unclear-type",
+    "react/hooks-rules" => "react-compiler/hooks",
+    "react/no-render-side-effects" => "react-compiler/purity",
 };
 
 /// Every rule, sorted by id so [`rule`] can binary search.
