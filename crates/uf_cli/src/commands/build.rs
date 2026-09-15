@@ -106,6 +106,13 @@ pub(crate) struct Prerendered {
     /// is served and is not a page, which is a distinction [`site`] needs and
     /// nothing else did until it existed.
     pub(crate) status: u16,
+    /// Whether the build wrote it for regeneration.
+    ///
+    /// Such a page's document is under `dist/__uf/regenerate/` rather than at
+    /// its own URL, because a server answers the page and regenerates it once
+    /// its lifetime passes. A static host has no server, which is why
+    /// `deploy::static_host` refuses it by name.
+    pub(crate) regenerates: bool,
 }
 
 /// What Vite reported building.
@@ -131,15 +138,32 @@ struct ViteBuild {
     split: Option<(u64, u64)>,
 }
 
+/// What `uf build` writes about the bundles, beyond the bundles themselves.
+///
+/// One value rather than a flag apiece: both are reports on the same output,
+/// asked for together as often as apart, and the build takes enough arguments
+/// that two more booleans side by side are two to pass in the wrong order.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct BuildReports {
+    /// `--size-report`: print what each chunk costs.
+    pub(crate) size: bool,
+    /// `--analyze`: write the per-route analysis and its page.
+    pub(crate) analyze: bool,
+}
+
 pub(crate) fn build(
     cwd: &Utf8Path,
     ui: &mut Ui,
-    size_report: bool,
+    reports: BuildReports,
     requested_mode: Option<&str>,
     standalone: bool,
     requested_target: Option<&str>,
     requested_adapter: Option<DeployAdapter>,
 ) -> Result<()> {
+    let BuildReports {
+        size: size_report,
+        analyze,
+    } = reports;
     let mut timer = PhaseTimer::start();
     let mut progress = ui.progress();
 
@@ -163,6 +187,12 @@ pub(crate) fn build(
             requested_adapter.or(resolved.config.app.runtime.deploy.adapter),
             requested_target,
         )?;
+        if analyze {
+            anyhow::bail!(
+                "`uf build --analyze` attributes modules to routes, and this project builds a \
+                 library, which has none; `--size-report` measures what it emits"
+            );
+        }
         return library::build(ui, timer, &resolved, &plan, requested_mode, size_report);
     }
 
@@ -352,6 +382,23 @@ pub(crate) fn build(
         )?;
     }
 
+    // What an earlier `--analyze` left must not be read as this build's. The
+    // graph is the builder's to write again, and an analysis beside a build it
+    // does not describe is worse than none.
+    let analysis_dir = resolved.root.join(BUILD_META_DIR);
+    for stale in [
+        uf_bundle::MODULE_GRAPH_FILE,
+        uf_bundle::ANALYSIS_FILE,
+        uf_bundle::ANALYSIS_VIEW_FILE,
+    ] {
+        let path = analysis_dir.join(stale);
+        if let Err(error) = fs::remove_file(&path)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(error).with_context(|| format!("failed to remove {path}"));
+        }
+    }
+
     progress.tick("building with vite");
     let vite = timer.measure("vite", || -> Result<ViteBuild> {
         let mut driver = Driver::spawn(
@@ -359,7 +406,13 @@ pub(crate) fn build(
             &builder,
             &root,
             "build",
-            &build_arguments(&resolved.config.build.out_dir, plan, app_target),
+            &build_arguments(
+                &resolved.config.build.out_dir,
+                plan,
+                app_target,
+                regenerates_pages(&resolved.config, plan),
+                analyze,
+            ),
             &env,
             &[(RSC_MANIFEST_ENV, rsc_input.as_str())],
         )?;
@@ -368,8 +421,17 @@ pub(crate) fn build(
             match event {
                 Event::Phase { name } => progress.tick(&format!("vite: {name}")),
                 Event::Page {
-                    url, file, status, ..
-                } => report.pages.push(Prerendered { url, file, status }),
+                    url,
+                    file,
+                    status,
+                    regenerates,
+                    ..
+                } => report.pages.push(Prerendered {
+                    url,
+                    file,
+                    status,
+                    regenerates,
+                }),
                 // Reported as it happens and not fatal here: the driver keeps
                 // going and ends the build itself, so the reader sees every
                 // route that failed rather than the first one.
@@ -502,6 +564,18 @@ pub(crate) fn build(
         let path = write_report(&meta_dir, &report)?;
         Ok((report, path))
     })?;
+    // `--analyze`: the graph the builder just wrote, attributed to routes.
+    // After the size report, which it complements rather than repeats: that
+    // says what each shipped file weighs, and this says why each module is in
+    // one.
+    let analysis = if analyze {
+        progress.tick("analyzing the bundles by route");
+        Some(timer.measure("analysis", || {
+            analyze_bundles(&resolved.root, &meta_dir, &routes)
+        })?)
+    } else {
+        None
+    };
     // After the size report and not before it: the binary is written into the
     // output directory, and an executable counted among the shipped assets
     // would put every budget in `uf.config.js` permanently over.
@@ -632,6 +706,10 @@ pub(crate) fn build(
     ];
     if openapi_document.is_file() {
         outputs.push(relative_to(&resolved.root, &openapi_document));
+    }
+    if let Some((analysis_json, analysis_view)) = &analysis {
+        outputs.push(relative_to(&resolved.root, analysis_json));
+        outputs.push(relative_to(&resolved.root, analysis_view));
     }
     for module in &router_modules {
         outputs.push(relative_to(&resolved.root, module));
@@ -1162,7 +1240,13 @@ fn target_contract(target: RouteTarget) -> serde_json::Value {
 /// `app.react.strictMode`. Passing it here as well would make the client entry
 /// a function of two sources that agree until one of them is a flag somebody
 /// forgot to forward.
-fn build_arguments(out_dir: &str, plan: RenderingPlan, target: RouteTarget) -> Vec<String> {
+fn build_arguments(
+    out_dir: &str,
+    plan: RenderingPlan,
+    target: RouteTarget,
+    regenerate: bool,
+    analyze: bool,
+) -> Vec<String> {
     let mut args = vec![
         String::from("--out-dir"),
         out_dir.to_string(),
@@ -1176,7 +1260,31 @@ fn build_arguments(out_dir: &str, plan: RenderingPlan, target: RouteTarget) -> V
     if !plan.emits_a_server() {
         args.push(String::from("--static-build"));
     }
+    if regenerate {
+        args.push(String::from("--regenerate"));
+    }
+    if analyze {
+        args.push(String::from("--analyze"));
+    }
     args
+}
+
+/// Whether a prerendered page that states a lifetime is written for
+/// regeneration rather than as a document that never changes.
+///
+/// Three things have to hold, and each is a declaration the builder cannot see
+/// on its own: `app.rendering.modes` allows `isr`, `rendering.cache.route` is
+/// on — a regenerated page *is* the route cache, started from the build — and
+/// the plan leaves a server behind to do the regenerating. Decided here, beside
+/// the rest of the rendering decision, so the builder is told one word.
+fn regenerates_pages(config: &uf_config::UniflowedConfig, plan: RenderingPlan) -> bool {
+    config
+        .app
+        .rendering
+        .modes
+        .contains(&uf_config::RenderingMode::Isr)
+        && config.app.rendering.cache.route
+        && plan.emits_a_server()
 }
 
 /// Print the RSC analysis's diagnostics, grouped by module.
@@ -1356,6 +1464,38 @@ fn entry_assets(out_dir: &Utf8Path) -> Vec<CompactString> {
         }
     }
     assets
+}
+
+/// Read the module graph the builder wrote for `--analyze`, attribute it to
+/// `routes`, and write the analysis and its view beside it.
+///
+/// A builder that wrote no graph is refused by name rather than analyzed as
+/// empty: an analysis that lists nothing reads as an application that ships
+/// nothing, when what happened is that the builder did not say.
+fn analyze_bundles(
+    root: &Utf8Path,
+    meta_dir: &Utf8Path,
+    routes: &[Route],
+) -> Result<(Utf8PathBuf, Utf8PathBuf)> {
+    let graph_path = meta_dir.join(uf_bundle::MODULE_GRAPH_FILE);
+    if !graph_path.is_file() {
+        anyhow::bail!(
+            "`uf build --analyze` reads the module graph a builder writes to {}, and this \
+             build's builder wrote none; `@uniflowed/vite` writes it",
+            relative_to(root, &graph_path)
+        );
+    }
+    let graph = uf_bundle::read_module_graph(&graph_path)?;
+    let files = routes
+        .iter()
+        .map(|route| uf_bundle::RouteFiles {
+            path: route.path.clone(),
+            page: relative_to(root, &route.page),
+            directory: relative_to(root, &route.directory),
+        })
+        .collect::<Vec<_>>();
+    let analysis = uf_bundle::analyze(&graph, &files)?;
+    Ok(uf_bundle::write_analysis(meta_dir, &analysis)?)
 }
 
 /// Fail the build when a shipped asset breaks `build.budgets`.

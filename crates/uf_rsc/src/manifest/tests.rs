@@ -136,6 +136,30 @@ fn known_package_client_modules_are_written_as_manifest_targets() {
     );
 }
 
+/// Through the barrel, the manifest names the module a page's import reaches:
+/// the same target the subpath import above writes, so the client code a route
+/// needs is one component's rather than the package's.
+#[test]
+fn a_name_imported_from_the_ui_barrel_is_written_as_its_module() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/$page.js",
+        "import { Switch } from \"@uniflowed/ui\";\nexport default function Page() {}\n",
+    );
+    builder.add_entry("app/$page.js", EntryKind::Server);
+    let graph = builder.build();
+    let registry =
+        ServerActionRegistry::from_graph(&graph, &BuildId::new("fixture-build-id").unwrap());
+    let manifest = RscManifest::new(&graph, &registry);
+    let switch = RscManifestClientReference::Package {
+        specifier: CompactString::const_new("@uniflowed/ui/switch"),
+    };
+    assert_eq!(manifest.client_boundaries.len(), 1);
+    assert_eq!(manifest.client_boundaries[0].importer, "app/$page.js");
+    assert_eq!(manifest.client_boundaries[0].target, switch);
+    assert_eq!(manifest.client_bundle_roots, [switch]);
+}
+
 #[test]
 fn writing_the_manifest_creates_the_output_directory() {
     let (graph, registry) = fixture();

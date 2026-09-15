@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>uf bundle analysis</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ground: #fbfbf9;
+    --ink: #1c1c1e;
+    --muted: #686870;
+    --rule: #e4e4df;
+    --pick: #e8eefc;
+    --accent: #2b62d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #151517;
+      --ink: #ececef;
+      --muted: #9b9ba3;
+      --rule: #2d2d31;
+      --pick: #1f2a44;
+      --accent: #86adff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--rule); }
+  h1 { margin: 0; font-size: 16px; }
+  h2 { margin: 0 0 4px; font-size: 15px; word-break: break-all; }
+  .muted { color: var(--muted); }
+  .layout { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); }
+  nav { border-right: 1px solid var(--rule); overflow: auto; max-height: calc(100vh - 72px); }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    nav { border-right: 0; border-bottom: 1px solid var(--rule); max-height: 40vh; }
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  nav button {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    padding: 8px 20px;
+    text-align: left;
+  }
+  nav button[aria-current="true"] { background: var(--pick); }
+  nav .size { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  main { padding: 16px 20px; min-width: 0; }
+  .tabs { display: flex; gap: 6px; margin: 12px 0; }
+  .tabs button { padding: 4px 12px; border: 1px solid var(--rule); border-radius: 6px; }
+  .tabs button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
+  .table { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; word-break: break-all; }
+  th { font-weight: 600; color: var(--muted); }
+  tr.module { cursor: pointer; }
+  tr.module:hover { background: var(--pick); }
+  td.chain { text-align: left; white-space: normal; word-break: break-all; color: var(--muted); }
+  code { font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>uf bundle analysis</h1>
+  <div class="muted" id="summary"></div>
+</header>
+<div class="layout">
+  <nav id="views" aria-label="Routes"></nav>
+  <main>
+    <h2 id="title"></h2>
+    <div class="muted" id="cost"></div>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-side="client">client</button>
+      <button type="button" role="tab" data-side="server">server</button>
+    </div>
+    <div class="table">
+      <table>
+        <thead>
+          <tr><th>module</th><th>build</th><th>raw</th><th>gzip</th><th>brotli</th><th>routes</th></tr>
+        </thead>
+        <tbody id="modules"></tbody>
+      </table>
+    </div>
+    <p class="muted" id="empty" hidden>Nothing on this side.</p>
+    <p class="muted">Select a module to see the chain of imports that put it there.</p>
+  </main>
+</div>
+<script type="application/json" id="analysis">__UF_BUNDLE_ANALYSIS__</script>
+<script>
+  "use strict";
+  // Everything on the page is built with `textContent`: module ids come from a
+  // project's files and dependencies, and none of them is markup.
+  const data = JSON.parse(document.getElementById("analysis").textContent);
+  const size = (bytes) =>
+    bytes < 1024
+      ? `${bytes} B`
+      : bytes < 1048576
+        ? `${(bytes / 1024).toFixed(1)} kB`
+        : `${(bytes / 1048576).toFixed(2)} MB`;
+  const element = (tag, attributes = {}, text = "") => {
+    const node = document.createElement(tag);
+    for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+    node.textContent = text;
+    return node;
+  };
+  const views = [
+    ...data.routes.map((route) => ({
+      title: route.path,
+      client: route.client,
+      server: route.server,
+      total: route.total,
+    })),
+    { title: "shared by every route", client: data.shared.client, server: data.shared.server, total: null },
+  ];
+  let current = views[0];
+  let side = "client";
+
+  document.getElementById("summary").textContent = [
+    ...data.builds.map(
+      (build) => `${build.name}: ${build.modules} modules, ${size(build.size.gzip)} gzip`,
+    ),
+    `each module's rendered code compressed alone, gzip ${data.gzipLevel}, brotli ${data.brotliQuality}`,
+  ].join(" · ");
+
+  function renderViews() {
+    const nav = document.getElementById("views");
+    nav.replaceChildren();
+    for (const view of views) {
+      const button = element("button", { type: "button", "aria-current": String(view === current) });
+      const gzip = view.total ? view.total.client.gzip : view.client.size.gzip;
+      button.append(element("span", {}, view.title), element("span", { class: "size" }, `${size(gzip)} client`));
+      button.addEventListener("click", () => {
+        current = view;
+        render();
+      });
+      nav.append(button);
+    }
+  }
+
+  function renderModules() {
+    const list = current[side];
+    document.getElementById("title").textContent = current.title;
+    document.getElementById("cost").textContent = current.total
+      ? `client ${size(current.total.client.gzip)} and server ${size(current.total.server.gzip)} gzip with shared modules; this route adds ${size(list.size.gzip)} on the ${side}`
+      : `${size(list.size.gzip)} gzip that every route loads on the ${side}`;
+    for (const tab of document.querySelectorAll(".tabs button")) {
+      tab.setAttribute("aria-selected", String(tab.dataset.side === side));
+    }
+    const body = document.getElementById("modules");
+    body.replaceChildren();
+    document.getElementById("empty").hidden = list.modules.length > 0;
+    for (const module of list.modules) {
+      const row = element("tr", { class: "module" });
+      const name = element("td");
+      name.append(element("code", {}, module.id));
+      row.append(
+        name,
+        element("td", {}, module.build),
+        element("td", {}, size(module.size.raw)),
+        element("td", {}, size(module.size.gzip)),
+        element("td", {}, size(module.size.brotli)),
+        element("td", {}, String(module.routes)),
+      );
+      const chain = element("tr");
+      chain.hidden = true;
+      const through = module.dynamic ? " (through an import())" : "";
+      chain.append(element("td", { class: "chain", colspan: "6" }, `${module.chain.join(" → ")}${through}`));
+      row.addEventListener("click", () => {
+        chain.hidden = !chain.hidden;
+      });
+      body.append(row, chain);
+    }
+  }
+
+  function render() {
+    renderViews();
+    renderModules();
+  }
+
+  for (const tab of document.querySelectorAll(".tabs button")) {
+    tab.addEventListener("click", () => {
+      side = tab.dataset.side;
+      renderModules();
+    });
+  }
+  render();
+</script>
+</body>
+</html>

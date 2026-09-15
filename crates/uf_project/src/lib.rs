@@ -9,7 +9,10 @@ mod template;
 pub mod workspace;
 
 use template::{app_react_files, lib_files};
-pub use workspace::{Workspace, discover_workspaces, resolve_workspace};
+pub use workspace::{
+    SelectError, Workspace, discover_workspaces, enclosing_workspace, resolve_workspace,
+    select_workspaces, workspace_dependencies,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CreateKind {

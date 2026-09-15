@@ -169,6 +169,33 @@ export type RequestContext = {
    * is the failure this is here to prevent.
    */
   capabilities: ServerCapabilities | null,
+  /**
+   * A file the build wrote, answered the way the host serving this request
+   * answers it, or `null` where it has nothing under `pathname`.
+   *
+   * Set by the front door, because the front door is the only thing that
+   * knows where the build's files are: a directory beside `server.js`, a
+   * Worker's `ASSETS` binding, the package a Lambda was deployed with.
+   * `pathname` is a URL path, and the answer is exactly what that host's
+   * static half gives for it.
+   *
+   * For incremental static regeneration: `../fetch.js` starts a regenerated
+   * page from the document the build wrote and reads it through this, rather
+   * than through a filesystem the host may not have. `null` means no front
+   * door offered one, and such a page is rendered on its first request
+   * instead.
+   */
+  buildFile: ((pathname: string) => Promise<Response | null>) | null,
+  /**
+   * The platform's bindings for this request, which on a Worker is `env`, or
+   * `null`.
+   *
+   * On the request because a Worker is handed them per request and nowhere
+   * else, and a durable cache provider is constructed once, at module load: a
+   * KV namespace is something it can only reach from inside the request using
+   * it. See `../cache-kv.js`.
+   */
+  bindings: { readonly [string]: mixed } | null,
 };
 
 /**
@@ -283,6 +310,8 @@ export function contextFor(request: Request): RequestContext {
     requestStateReads: 0,
     cache: null,
     capabilities: null,
+    buildFile: null,
+    bindings: null,
   };
 }
 

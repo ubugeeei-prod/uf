@@ -280,10 +280,22 @@ export function createLambdaHandler(
     let status = 500;
     try {
       const result = await lifecycle.run(async () => {
+        // `app.router`'s redirects before the package's files, and its headers
+        // on whatever answers. See `./internal/routing.js`.
+        const headers = headersFor(routing, request);
         const moved = redirectFor(routing, request);
-        const asset = moved != null || serveStatic == null ? null : await serveStatic(request);
-        const answer = moved ?? asset ?? (await handle(request));
-        return await toResult(withHeaders(answer, headersFor(routing, request)));
+        if (moved != null) return await toResult(withHeaders(moved, headers));
+        const files = serveStatic;
+        const asset = files == null ? null : await files(request);
+        if (asset != null) return await toResult(withHeaders(asset, headers));
+        // The package's copy of `dist/`, for a page the build regenerates: its
+        // document is not at its own URL, and the application starts the page
+        // from the one the build wrote. See `./internal/static.js`.
+        if (files != null) {
+          lifecycle.context.buildFile = (pathname) =>
+            files(new Request(new URL(pathname, request.url)));
+        }
+        return await toResult(withHeaders(await handle(request), headers));
       });
       status = result.statusCode;
       return result;
