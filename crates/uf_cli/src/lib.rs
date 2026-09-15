@@ -259,6 +259,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         ),
         Commands::Build {
             size_report,
+            analyze,
             mode,
             compile,
             target,
@@ -266,7 +267,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         } => commands::build::build(
             &cwd,
             ui,
-            size_report,
+            commands::build::BuildReports {
+                size: size_report,
+                analyze,
+            },
             mode.as_deref(),
             compile,
             target.as_deref(),
@@ -382,6 +386,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             concurrency,
             force,
             why,
+            recursive,
+            filter,
             script,
             args,
         } => match script {
@@ -395,14 +401,24 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                     concurrency,
                     force,
                     why,
+                    recursive,
+                    filter,
                 },
             ),
+            // Listing is one project's tasks, and a selector over members
+            // that would then be ignored is a flag that silently does
+            // nothing.
+            None if recursive || !filter.is_empty() => Err(anyhow!(
+                "`-r` and `--filter` choose where a task runs, and no task was named\n\n  \
+                 name one — `uf run build -r` — or run `uf run` to see what this project defines"
+            )),
             None => commands::task::list_tasks(&cwd, ui),
         },
         Commands::Test {
             list,
             mode,
             watch,
+            changed,
             json,
             filter,
             bail,
@@ -424,6 +440,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 list,
                 mode,
                 watch,
+                changed,
                 json,
                 filter,
                 bail,

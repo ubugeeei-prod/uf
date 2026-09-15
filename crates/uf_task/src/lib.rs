@@ -29,11 +29,15 @@
 //!   `sh` or no `sh`. A command that uses shell syntax says which construct
 //!   made it one, so the caller can name it.
 //!
-//! What it is not is a build system. It does not restore artefacts, it does
-//! not know what a task read that the task did not declare, and it has no
-//! opinion about workspaces — `--filter` and the rest of ubugeeei-prod/uf#272
-//! are still open. The line it holds is that everything it *does* claim is
-//! something it checked.
+//! * **Across a workspace, without knowing what one is.** A task belongs to a
+//!   project root, a plan may span several ([`Plan::build_workspace`]), and a
+//!   task keys on the results it reaches in another package. Which packages
+//!   there are, and which a run selects, is `uf run`'s business rather than
+//!   this crate's (ubugeeei-prod/uf#967).
+//!
+//! What it is not is a build system. It does not restore artefacts, and it
+//! does not know what a task read that the task did not declare. The line it
+//! holds is that everything it *does* claim is something it checked.
 
 mod cache;
 mod command;
@@ -46,7 +50,7 @@ mod runner;
 pub use crate::cache::{Change, TaskCache};
 pub use crate::command::{Command, Direct, ShellSyntax, parse};
 pub use crate::environment::Environment;
-pub use crate::graph::{Plan, PlanError, PlanNode};
+pub use crate::graph::{Plan, PlanError, PlanNode, PlanPackage};
 pub use crate::inputs::InputError;
 pub use crate::runner::{
     Concurrency, DEFAULT_CONCURRENCY, Decision, Observe, RunOptions, RunReason, RunReport,

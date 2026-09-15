@@ -409,7 +409,7 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
         uf_config::TaskRunnerEngine::ViteTask => "vite task".to_string(),
         other => format!("{other:?}"),
     };
-    vec![
+    let mut stages = vec![
         env_stage(resolved, DEVELOPMENT),
         Stage {
             name: "task lookup",
@@ -438,7 +438,18 @@ fn run_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                 }
             ),
         },
-    ]
+    ];
+    // The cross-package graph, when there is one: a run that spans a workspace
+    // is orchestration like any other, and the order its members run in is
+    // the part a reader cannot see from any one `uf.config.js`.
+    if let Some(detail) = crate::commands::task::workspace_summary(resolved) {
+        stages.push(Stage {
+            name: "workspace",
+            provider: "uf".to_string(),
+            detail,
+        });
+    }
+    stages
 }
 
 /// `uf exec`, which is four different commands wearing one name.
@@ -1211,6 +1222,17 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: builder_provider(resolved),
             detail: bundle_detail(RenderingPlan::resolve(&resolved.config)),
         },
+        // On every plan rather than only when asked for, because this is where
+        // a reader who wants to know why a module is in a bundle looks first,
+        // and the answer is a flag they have not passed yet.
+        Stage {
+            name: "analysis",
+            provider: "uf".to_string(),
+            detail: "`uf build --analyze` writes .uf/build/meta/uf-bundle-analysis.html: each \
+                     route's client and server modules, their sizes, and the import chain \
+                     behind every one"
+                .to_string(),
+        },
         prerender_stage(resolved),
         adapter_stage(resolved),
     ]
@@ -1739,7 +1761,7 @@ fn fmt_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
 }
 
 fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
-    vec![
+    let mut stages = vec![
         Stage {
             name: "uf rules",
             provider: format!("{:?}", resolved.config.lint.engine),
@@ -1750,7 +1772,25 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             provider: format!("{:?}", resolved.config.lint.flow.parser),
             detail: format!("built-ins: {:?}", resolved.config.lint.flow.builtins),
         },
-    ]
+    ];
+    // The one stage uf does not write, so the one a slow or failing run most
+    // needs named. Absent when no project rule is on, which is also when the
+    // run starts no worker for it.
+    let project = crate::commands::lint::plugins::enabled_project_rules(&resolved.config);
+    if !project.is_empty() {
+        stages.push(Stage {
+            name: "project rules",
+            provider: format!(
+                "{:?}",
+                resolved.config.app.runtime.capability_js_host.default
+            ),
+            detail: format!(
+                "{} enabled from `plugins`, in @uniflowed/host's lint worker",
+                project.len()
+            ),
+        });
+    }
+    stages
 }
 
 fn check_stages(_resolved: &ResolvedConfig) -> Vec<Stage> {
@@ -1897,6 +1937,55 @@ mod tests {
             "the plan does not mention the checksum"
         );
         assert!(stages_for("upgrade", &resolved).is_none());
+    }
+
+    /// `uf explain run` names the workspace a run can span and the order its
+    /// members run in — and says nothing of one a project does not have.
+    #[test]
+    fn run_names_the_workspace_graph() {
+        let (_guard, resolved) = defaults();
+        assert!(
+            run_stages(&resolved)
+                .iter()
+                .all(|stage| stage.name != "workspace")
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = Utf8Path::from_path(dir.path()).unwrap();
+        let write = |path: &str, contents: &str| {
+            let file = root.join(path);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, contents).unwrap();
+        };
+        write(
+            "package.json",
+            r#"{ "private": true, "workspaces": ["packages/*"] }"#,
+        );
+        write("packages/ui/package.json", r#"{ "name": "ui" }"#);
+        write(
+            "packages/ui/uf.config.js",
+            r#"export default { tasks: { build: "true" } };"#,
+        );
+        write(
+            "packages/app/package.json",
+            r#"{ "name": "app", "dependencies": { "ui": "workspace:*" } }"#,
+        );
+        let resolved = load_config(root).unwrap();
+
+        let workspace = run_stages(&resolved)
+            .into_iter()
+            .find(|stage| stage.name == "workspace")
+            .expect("a workspace stage");
+        assert!(
+            workspace.detail.contains("app (0 tasks) after ui"),
+            "{}",
+            workspace.detail
+        );
+        assert!(
+            workspace.detail.contains("ui (1 task)"),
+            "{}",
+            workspace.detail
+        );
     }
 
     /// `uf explain prepare` names what `staged` runs over which files, and

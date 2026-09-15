@@ -37,6 +37,7 @@ fn page(url: &str, file: &str) -> Prerendered {
         url: url.to_owned(),
         file: file.to_owned(),
         status: 200,
+        regenerates: false,
     }
 }
 

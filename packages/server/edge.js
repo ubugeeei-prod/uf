@@ -226,6 +226,26 @@ function directoryRedirectRequest(request: Request, response: Response): Request
   });
 }
 
+/**
+ * A file the build wrote, from the assets binding, or `null` where it has none.
+ *
+ * The binding's own answer with the one translation this module makes of it: a
+ * `404` is `null`, and its body is cancelled rather than left for the runtime
+ * to hold open until the request is torn down.
+ */
+async function assetFile(
+  assets: AssetsBinding,
+  request: Request,
+  pathname: string,
+): Promise<Response | null> {
+  const response = await assets.fetch(new Request(new URL(pathname, request.url)));
+  if (response.status === 404) {
+    await response.body?.cancel("uf: the build wrote nothing at this path");
+    return null;
+  }
+  return response;
+}
+
 /** Everything the worker half needs to answer a request. */
 export type WorkerHandlerOptions = {|
   /** The application, from the generated `handler.js`. */
@@ -295,6 +315,15 @@ export function createWorkerFetch(
             // stream the runtime keeps open until the request is torn down.
             await asset.body?.cancel("uf: the application answers this instead");
           }
+        }
+        // What the application may need from the platform, put on the request
+        // because the platform hands it over nowhere else: the bindings, which
+        // is how a KV-backed cache reaches its namespace, and the build's files,
+        // which is how a regenerated page starts from the document the build
+        // wrote. See `./internal/context.js`.
+        lifecycle.context.bindings = env == null ? null : (env: $FlowFixMe);
+        if (assets != null) {
+          lifecycle.context.buildFile = (pathname) => assetFile(assets, request, pathname);
         }
         return await handle(request);
       });

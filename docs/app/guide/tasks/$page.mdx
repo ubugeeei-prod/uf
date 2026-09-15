@@ -51,7 +51,7 @@ export default defineConfig({
 | Field | What it does |
 | --- | --- |
 | `command` | What runs. Required in practice: a task without one is handed to Vite Task, below |
-| `dependsOn` | Tasks that have to succeed first |
+| `dependsOn` | Tasks that have to succeed first — `member#task` for one in another workspace member |
 | `inputs` | Globs naming the files the task reads. A task with none is never cached |
 | `outputs` | Globs naming what it writes, checked before a cached result is replayed |
 | `env` | Variables uf sets for the task |
@@ -201,8 +201,10 @@ Four things the key does not know, and what each one costs:
   shell are not in it. A task whose answer depends on one of them should not
   declare `inputs`, the argument this repository's own `uf.config.js` makes for
   every `cargo` task.
-- **Its dependencies' results.** A task is replayed on its own key; a dependency
-  that ran again does not make its dependents run again.
+- **Its dependencies' results, inside one project.** A task is replayed on its
+  own key; a dependency in the same project that ran again does not make its
+  dependents run again — name the files that dependency writes in `inputs`. A
+  dependency in another workspace member is the exception, below.
 - **Every directory.** `**` does not descend into `.git`, `.uf`, `.uniflowed`,
   `dist`, `node_modules` or `target` unless the pattern names that directory
   literally, and does not follow symbolic links. So `outputs: ["packages/*/dist/**"]`
@@ -259,11 +261,83 @@ because only what that task reaches is planned.
 
 ## Workspaces
 
-`uf run#site build` runs the `build` task of the workspace member named `site` —
-a directory with its own `uf.config.js`, or a package `package.json#workspaces`
-lists — from that member's own config. What is not there yet is running one task
-across several members (`--filter`) and a task in one member depending on a task
-in another ([#967](https://github.com/ubugeeei-prod/uf/issues/967)).
+A workspace member is a directory with its own `uf.config.js`, or a package the
+root `package.json#workspaces` lists, and it declares its tasks in its own
+`uf.config.js`. `uf run#site build` runs the `build` task of the member named
+`site`, exactly as `uf run build` inside `site` would.
+
+`uf run build -r` runs `build` in every member that defines one. Each member runs
+after the members its `package.json` depends on — `dependencies`,
+`devDependencies`, `peerDependencies` or `optionalDependencies`, matched by name
+whatever the version says — so the workspace builds in the order it has to, and
+members with nothing between them run at once, under the same `-j` limit:
+
+<figure className="terminal">
+
+```
+$ uf run build -r
+✓ utils#build  ran       0.02s
+✓ ui#build     ran       0.02s
+✓ app#build    ran       0.02s
+  3 tasks, 0 replayed, 3 run, in 0.06s
+```
+
+</figure>
+
+The workspace root's own tasks are not part of `-r`: `uf run build` at the root
+runs the root's `build`.
+
+`--filter` runs the task in some members instead of all of them, and implies
+`-r`. Write it more than once to select more:
+
+| `--filter` | Selects |
+| --- | --- |
+| `ui` | the member named `ui`, or at the path `ui` |
+| `@acme/*`, `packages/*` | the members whose name or path the glob matches |
+| `./packages/ui` | the member at that path; a glob after `./` matches paths only |
+| `app...` | `app` and everything it depends on |
+| `app^...` | only what `app` depends on |
+| `...ui` | `ui` and everything that depends on it |
+| `...^ui` | only what depends on `ui` |
+
+A selector that selects no member is refused, rather than running nothing and
+exiting 0.
+
+A task in one member can depend on a task in another: `dependsOn: ["ui#build"]`
+names `build` in the member `ui`, by its name or its path. That works at the
+workspace root and inside a member — `uf run#app build` finds `ui` through the
+workspace above `app`. A task whose own name contains a `#` is still that task
+when the config defines it.
+
+**Each member keeps its own cache**, in its own `.uf/cache/task` and keyed on its
+own `inputs`, so `uf run build` inside a member and `uf run build -r` at the root
+replay the same records. A task that depends on a task in *another* member is
+keyed on that task's result as well: change a file `ui` reads, and `ui#build`
+and then `app#build` run again while `utils#build` is replayed. A task that
+depends on another member's task that is not cached always runs, because nothing
+can say whether what it depends on changed.
+
+With `--why`, a run that spans more than one member prints its graph before it
+starts, and a task that ran because another member changed says which:
+
+<figure className="terminal">
+
+```
+$ uf run build -r --why
+  3 tasks across 3 packages
+  utils#build
+  ui#build     after utils#build
+  app#build    after ui#build
+✓ utils#build  replayed  saved 0.02s  — every declared input is unchanged
+✓ ui#build     ran       0.02s  — src/index.js changed
+✓ app#build    ran       0.02s  — ui#build changed
+  3 tasks, 1 replayed, 2 run, in 0.04s
+```
+
+</figure>
+
+`uf explain run` names the members, how many tasks each one defines, and the
+order they run in.
 
 ## A task with no command
 

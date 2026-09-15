@@ -27,8 +27,11 @@ use uf_config::{CONFIG_FILES, UniflowedConfig};
 
 use crate::is_ignored;
 
+mod graph;
 #[cfg(test)]
 mod tests;
+
+pub use graph::{SelectError, enclosing_workspace, select_workspaces, workspace_dependencies};
 
 /// How deep below the root a member is looked for.
 ///

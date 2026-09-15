@@ -994,6 +994,160 @@ fn watch_and_json_cannot_be_combined() {
     assert!(stderr.contains("cannot be combined"), "{stderr}");
 }
 
+/// `a.test.js` reaches `deep.js` through `shared.js`; `b.test.js` imports
+/// `other.js` and nothing else.
+const REACHABLE: [(&str, &str); 6] = [
+    (".gitignore", ".uf/\nnode_modules/\n"),
+    ("src/deep.js", "// @flow\nexport const deep = 1;\n"),
+    (
+        "src/shared.js",
+        "// @flow\nimport { deep } from \"./deep.js\";\nexport const shared = deep;\n",
+    ),
+    (
+        "src/a.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\nimport { shared } from \"./shared.js\";\n\nit(\"reaches deep\", () => {\n  expect(shared).toBe(1);\n});\n",
+    ),
+    (
+        "src/b.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\nimport { other } from \"./other.js\";\n\nit(\"reaches other\", () => {\n  expect(other).toBe(1);\n});\n",
+    ),
+    ("src/other.js", "// @flow\nexport const other = 1;\n"),
+];
+
+/// Run git in `dir`, failing the test with git's own words when it refuses.
+fn git(dir: &Path, args: &[&str]) {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        // A commit needs an author, and a CI machine has no global identity.
+        .args([
+            "-c",
+            "user.name=uf",
+            "-c",
+            "user.email=uf@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .expect("git started");
+    assert!(
+        output.status.success(),
+        "git {}: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// `REACHABLE`, committed as a repository of its own.
+fn committed_project() -> Project {
+    let project = Project::new(&REACHABLE);
+    git(project.path(), &["init", "--quiet"]);
+    git(project.path(), &["add", "--all"]);
+    git(
+        project.path(),
+        &["commit", "--quiet", "--message", "fixture"],
+    );
+    project
+}
+
+#[test]
+fn changed_lists_only_the_tests_a_change_since_the_ref_reaches() {
+    let project = committed_project();
+    let dir = project.path();
+
+    // Nothing has changed, so nothing runs, and the opening line says so.
+    let (success, stdout, stderr) = run(dir, &["--list", "--changed", "HEAD"]);
+    assert!(success, "{stdout}{stderr}");
+    assert!(stdout.contains("0 of 2 test files reach them"), "{stdout}");
+    assert!(!stdout.contains("reaches deep"), "{stdout}");
+    assert!(!stdout.contains("reaches other"), "{stdout}");
+
+    // Two modules away from the only test that depends on it.
+    project.write("src/deep.js", "// @flow\nexport const deep = 2;\n");
+    let (success, stdout, stderr) = run(dir, &["--list", "--changed", "HEAD"]);
+    assert!(success, "{stdout}{stderr}");
+    assert!(stdout.contains("1 of 2 test files reach them"), "{stdout}");
+    assert!(stdout.contains("reaches deep"), "{stdout}");
+    assert!(!stdout.contains("reaches other"), "{stdout}");
+
+    // A deleted module reaches the test that still imports it: that test is
+    // what the deletion breaks.
+    std::fs::remove_file(dir.join("src/other.js")).expect("delete src/other.js");
+    let (success, stdout, stderr) = run(dir, &["--list", "--changed", "HEAD"]);
+    assert!(success, "{stdout}{stderr}");
+    assert!(stdout.contains("reaches other"), "{stdout}");
+}
+
+#[test]
+fn changed_runs_everything_after_a_manifest_change_and_refuses_a_ref_git_cannot_find() {
+    let project = committed_project();
+    let dir = project.path();
+
+    project.write(
+        "package.json",
+        "{ \"name\": \"changed-fixture\", \"private\": true, \"type\": \"module\" }\n",
+    );
+    let (success, stdout, stderr) = run(dir, &["--list", "--changed", "HEAD"]);
+    assert!(success, "{stdout}{stderr}");
+    assert!(stdout.contains("package.json since HEAD"), "{stdout}");
+    assert!(stdout.contains("reaches deep"), "{stdout}");
+    assert!(stdout.contains("reaches other"), "{stdout}");
+
+    let (success, _, stderr) = run(dir, &["--list", "--changed", "no-such-ref"]);
+    assert!(!success);
+    assert!(stderr.contains("no-such-ref"), "{stderr}");
+}
+
+#[test]
+fn changed_cannot_be_combined_with_watch_or_coverage() {
+    let project = Project::new(&MIXED);
+
+    for flag in ["--watch", "--coverage"] {
+        let (success, _, stderr) = run(project.path(), &[flag, "--changed", "main"]);
+
+        assert!(!success, "{flag}");
+        assert!(stderr.contains("cannot be combined"), "{flag}: {stderr}");
+    }
+}
+
+/// `--changed` is uf's selection, so a Bun runner is handed the files it
+/// reached and nothing else, rather than the whole suite.
+#[test]
+fn changed_narrows_what_a_bun_runner_is_handed() {
+    if !host_ready() || !support::bun_ready() {
+        return;
+    }
+    let project = Project::new(&REACHABLE);
+    project.write(
+        "uf.config.js",
+        "// @flow\nimport { defineConfig } from \"@uniflowed/config\";\n\nexport default defineConfig({ test: { runner: \"bun\" } });\n",
+    );
+    let dir = project.path();
+    git(dir, &["init", "--quiet"]);
+    git(dir, &["add", "--all"]);
+    git(dir, &["commit", "--quiet", "--message", "fixture"]);
+    project.write(
+        "src/deep.js",
+        "// @flow\nexport const deep = 1;\n// an edit that changes nothing it exports\n",
+    );
+
+    let (success, stdout, stderr) = run(dir, &["--changed", "HEAD"]);
+
+    assert!(success, "{stdout}\n{stderr}");
+    assert!(stdout.contains("1 of 2 test files reach them"), "{stdout}");
+    assert!(
+        stdout.contains("1 passed, 0 failed, 0 skipped"),
+        "{stdout}\n{stderr}"
+    );
+    let report =
+        std::fs::read_to_string(dir.join(".uf/bun-test/junit.xml")).unwrap_or_else(|error| {
+            panic!("the Bun run wrote its report: {error}\n{stdout}\n{stderr}")
+        });
+    assert!(report.contains("reaches deep"), "{report}");
+    assert!(!report.contains("reaches other"), "{report}");
+}
+
 #[test]
 fn a_project_with_no_tests_is_a_green_run() {
     if !host_ready() {

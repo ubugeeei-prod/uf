@@ -340,6 +340,55 @@ Both are described below, beside the two ways to serve a build in place.
 Everything above is the build of an **application**. A project whose
 [`app.router.enabled`](/reference/config#app) is false takes a different one.
 
+### uf build --analyze
+
+Writes a per-route analysis of the bundles to
+`.uf/build/meta/uf-bundle-analysis.json`, and beside it
+`uf-bundle-analysis.html`: the same analysis as a page that opens from disk,
+with no server. For every route it lists each module the route ships to the
+browser and runs on the server, what each weighs, and the chain of imports from
+the route's own files to the module. That chain answers "why is this in my
+client bundle". `uf explain build` points at the page.
+
+A route's own files are its `$page.js` and every other `$` file of its
+directory and the directories above it: layouts, loading and error boundaries,
+templates, middleware. What every page loads whatever the route — the router,
+React, what `app.js` imports — is listed once, under `shared`, rather than
+under every route. A client component a server component renders belongs to
+the route that renders it, and its chain starts at that route's page and
+crosses into the browser at the component.
+
+The sizes are each module's code as the bundler rendered it into its chunk,
+before the chunk is minified, compressed alone. They rank modules. What a
+shipped file weighs is `uf-bundle-report.json`'s answer, and the two are not
+meant to add up.
+
+| Field | Meaning |
+| --- | --- |
+| `version` | `1` |
+| `gzipLevel`, `brotliQuality` | The settings every compressed size was measured at |
+| `builds[]` | One per bundle: `name` (`client`, `ssr`, `rsc`), `side` (`client` or `server`), `modules` (how many it has code for) and `size` |
+| `shared.client`, `shared.server` | What every route loads: `size`, and `modules[]` |
+| `routes[].path` | The route, as `uf routes` prints it |
+| `routes[].files` | The route's own files that are in a bundle, page first |
+| `routes[].client`, `routes[].server` | What the route loads beyond `shared`: `size`, and `modules[]` |
+| `routes[].total` | `client` and `server`: what the route costs, `shared` included |
+| `modules[].id` | The module, relative to the project; a virtual module keeps its id |
+| `modules[].build` | The bundle that has its code |
+| `modules[].chunk` | The file its code is in |
+| `modules[].size` | `raw`, `gzip` and `brotli`, in bytes |
+| `modules[].chain` | Module ids from one of the route's files — under `shared`, from a bundle's entry — to this module |
+| `modules[].dynamic` | Whether the chain goes through an `import()` |
+| `modules[].routes` | How many routes list it; under `shared`, every route |
+
+Every `modules[]` is sorted largest gzip first.
+
+The analysis is made from `uf-module-graph.json`, which the builder writes in
+the same directory when it is asked to: every module of each bundle, what it
+imports, and which chunk its code went into. `@uniflowed/vite` writes it. With a
+builder that does not, `--analyze` fails and names the file, instead of
+reporting an application that ships nothing.
+
 ### uf build, for a library
 
 A project with the file-system router off is a library, and `uf build`
@@ -514,7 +563,7 @@ process, and that all six answer *identically* — byte for byte, the same as
 `uf start`, including a loader's `redirect()`, whose whole answer is a
 `Location` header. None of that is a deployment. The first person to run
 `wrangler deploy` or upload the zip is finding something out, and
-[#391](https://github.com/ubugeeei-prod/uf/issues/391) is where to say what.
+[#956](https://github.com/ubugeeei-prod/uf/issues/956) is where to say what.
 
 `static` is the exception, and only because there is nothing to deploy *to*: a
 directory of files is what every static host serves, and uf's own
@@ -845,6 +894,20 @@ cache that guessed would fail by reporting a check as passed without looking.
 finds. `--why` prints, for every task, the reason it ran or was replayed —
 `packages/core/index.js changed`, `declares no inputs, so it always runs`,
 `dist/app.js is missing`.
+
+**Across a workspace.** `-r` / `--recursive` runs the task in every workspace
+member that defines it, each after the members its `package.json` depends on;
+the workspace root's own task is not one of them. `--filter SELECTOR` runs it
+only in the members the selector picks, implies `-r`, and may be repeated: a
+name, a glob over names and paths, a path (`./packages/ui`), `name...` for a
+member and everything it depends on, `name^...` for only those, `...name` for a
+member and everything that depends on it, and `...^name` for only those. A
+selector that picks no member is an error. `member#task` in `dependsOn` names a
+task in another member, by the member's name or path, from the workspace root or
+from inside a member. Each member's results are kept in its own
+`.uf/cache/task`, a task that depends on a task in another member is keyed on
+that task's result as well, and `--why` prints the graph first when a run spans
+more than one member.
 
 ### uf exec PACKAGE [ARGS...]
 

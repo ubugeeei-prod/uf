@@ -20,6 +20,7 @@ fn page(url: &str, status: u16) -> Prerendered {
         url: url.to_owned(),
         file: format!("dist{url}/index.html"),
         status,
+        regenerates: false,
     }
 }
 
