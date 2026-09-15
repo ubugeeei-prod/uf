@@ -31,7 +31,7 @@ describe("NavigationMenu", () => {
       "false",
     );
     expect(screen.queryByRole("link", { name: "Installation" })).toBeNull();
-    expect(screen.getByRole("link", { name: "Blog" })).toHaveAttribute("href", "#blog");
+    expect(screen.getByRole("link", { name: "Blog" })).toHaveAttribute("href", "?section=blog");
   });
 
   it("opens a panel named by its trigger, one at a time", async () => {
