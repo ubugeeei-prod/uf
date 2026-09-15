@@ -188,4 +188,60 @@ describe("where a streamed document puts its payload", () => {
     expect(tail(html)).toMatch(ENDING);
     expect(decode(payloadOf(html))).toBe('0:["a","whole","payload"]\n');
   });
+
+  // React hands its HTML on in fixed-size pieces, so a long page is split in the
+  // middle of tags, attribute values and character references. A payload
+  // element written after one of those pieces lands inside the markup: the
+  // browser reads it as part of an attribute or a run of text, never as an
+  // element, and React's client closes the payload with its rows missing.
+  it("writes the payload only between elements, wherever React's pieces split", async () => {
+    for (const shape of ["streamed", "prerendered"]) {
+      const payload = handPayload();
+      payload.write('0:["rows","the","page","needs"]\n');
+      const options = { shell, onError: () => {}, payload: payload.stream };
+      let html = "";
+      if (shape === "streamed") {
+        const text = (await renderDocument(<LongPage />, options)).text();
+        payload.end();
+        html = await text;
+      } else {
+        payload.end();
+        html = await prerenderDocument(<LongPage />, options);
+      }
+
+      // Long enough to be many of React's pieces, or this checks nothing.
+      expect(html.length).toBeGreaterThan(16000);
+      const inside = beforeEachElement(html).filter((before) => !before.endsWith(">"));
+      expect({ shape, inside }).toEqual({ shape, inside: [] });
+      expect(decode(payloadOf(html))).toBe('0:["rows","the","page","needs"]\n');
+      expect(tail(html)).toMatch(ENDING);
+    }
+  });
 });
+
+/** Two hundred and forty links, each long enough to be split by React's buffer. */
+component LongPage() {
+  return (
+    <ul>
+      {Array.from({ length: 240 }, (_, index) => (
+        <li key={index}>
+          <a href={`/a/page/whose/path/is/long/enough/to/cross/a/piece/${index}`}>
+            Page {index} &amp; the rest
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The markup just before each payload element, a few characters of it. */
+function beforeEachElement(html: string): Array<string> {
+  const found = [];
+  const pattern = /<script type="application\/json" data-uf-flight>/g;
+  let match = pattern.exec(html);
+  while (match != null) {
+    found.push(html.slice(Math.max(0, match.index - 32), match.index));
+    match = pattern.exec(html);
+  }
+  return found;
+}
