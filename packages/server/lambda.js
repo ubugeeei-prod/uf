@@ -52,6 +52,8 @@ import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
@@ -130,6 +132,11 @@ export type LambdaHandlerOptions = {|
    * Omitted where a CDN answers for them; see the header.
    */
   readonly staticDir?: string,
+  /**
+   * That same module's `routing`: its redirects answer before the package's
+   * files, and its headers go on whatever answers. See `./internal/routing.js`.
+   */
+  readonly routing?: RoutingRules,
 |};
 
 /**
@@ -260,7 +267,7 @@ export async function toResult(response: Response): Promise<LambdaHttpResult> {
 export function createLambdaHandler(
   options: LambdaHandlerOptions,
 ): (event: LambdaHttpEvent) => Promise<LambdaHttpResult> {
-  const { handle, beginRequest, staticDir } = options;
+  const { handle, beginRequest, staticDir, routing } = options;
   const serveStatic = staticDir == null ? null : createStaticHandler({ root: staticDir });
 
   return async function lambdaHandler(event: LambdaHttpEvent): Promise<LambdaHttpResult> {
@@ -273,9 +280,14 @@ export function createLambdaHandler(
     let status = 500;
     try {
       const result = await lifecycle.run(async () => {
+        // `app.router`'s redirects before the package's files, and its headers
+        // on whatever answers. See `./internal/routing.js`.
+        const headers = headersFor(routing, request);
+        const moved = redirectFor(routing, request);
+        if (moved != null) return await toResult(withHeaders(moved, headers));
         const files = serveStatic;
         const asset = files == null ? null : await files(request);
-        if (asset != null) return await toResult(asset);
+        if (asset != null) return await toResult(withHeaders(asset, headers));
         // The package's copy of `dist/`, for a page the build regenerates: its
         // document is not at its own URL, and the application starts the page
         // from the one the build wrote. See `./internal/static.js`.
@@ -283,7 +295,7 @@ export function createLambdaHandler(
           lifecycle.context.buildFile = (pathname) =>
             files(new Request(new URL(pathname, request.url)));
         }
-        return await toResult(await handle(request));
+        return await toResult(withHeaders(await handle(request), headers));
       });
       status = result.statusCode;
       return result;

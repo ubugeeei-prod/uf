@@ -3,7 +3,21 @@ import { defineConfig } from "@uniflowed/config";
 
 export default defineConfig({
   app: {
-    router: { entry: "app.js", root: "app" },
+    router: {
+      entry: "app.js",
+      root: "app",
+      // `app.router`'s three lists, which every front door is asked about by
+      // the same questions: `uf dev`, `uf preview`, `uf start` and each
+      // adapter. `/moved` and `/articles` have no route of their own, so a
+      // redirect or a render there can only be the rule's; `app/shop` is the
+      // middleware rewrite beside them.
+      redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
+      rewrites: [{ source: "/articles/:slug", destination: "/posts/:slug" }],
+      headers: [
+        { source: "/:path*", headers: { "x-served-by": "served-app" } },
+        { source: "/api/:rest*", headers: { "cache-control": "no-store" } },
+      ],
+    },
   },
   build: {
     entries: ["app.js"],

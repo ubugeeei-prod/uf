@@ -384,12 +384,19 @@ pub(crate) fn build(
     // every one of them is rendered in a browser — and that is still true
     // inside a Worker or an executable, because neither of them writes the
     // per-route documents the shell exists instead of.
+    // The config file `app.router`'s rules are named by when a target refuses
+    // them, relative to the project like every other file a refusal names.
+    let config_file = resolved.config_path.as_deref().map_or_else(
+        || String::from("uf.config.js"),
+        |file| relative_to(&resolved.root, file),
+    );
     if plan.prerender() == Prerender::Shell {
         spa::refuse(
             &resolved.root,
             &routes,
             &server_modules,
             &rsc.graph,
+            spa::rule_findings(&resolved.config.app.router, &config_file),
             &plan.because(),
         )?;
     }
@@ -639,6 +646,8 @@ pub(crate) fn build(
                 server_modules: &server_modules,
                 pages: &vite.pages,
                 actions: &actions,
+                router: &resolved.config.app.router,
+                config_file: &config_file,
             };
             Some(timer.measure("adapter", || deploy::deploy_static(&root, &out_dir, site))?)
         }

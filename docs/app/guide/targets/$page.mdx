@@ -36,9 +36,11 @@ same from all four:
 | [`uf build --compile`](/reference/cli#uf-build---compile) | one executable file with the runtime inside it | nothing |
 
 Which of them a project may use is decided by its routes. A route handler, a
-middleware or a server action the browser can call needs a server, and a static
-host has none: [Choosing a deployment shape](/guide/rendering#choosing-a-deployment-shape)
-is the table, and `uf build --adapter static` refuses a project that has any of
+middleware, a server action the browser can call, and a redirect, rewrite or
+response header in [`app.router`](/guide/routing#redirects-rewrites-and-response-headers)
+each need a server, and a static host has none:
+[Choosing a deployment shape](/guide/rendering#choosing-a-deployment-shape) is
+the table, and `uf build --adapter static` refuses a project that has any of
 them, by name.
 
 What is established is written down beside the commands. The command reference

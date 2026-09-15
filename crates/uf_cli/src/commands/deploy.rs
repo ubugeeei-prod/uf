@@ -356,6 +356,11 @@ pub(crate) struct SiteFacts<'a> {
     pub(crate) pages: &'a [Prerendered],
     /// The callable server actions, as `(export, declaring module)`.
     pub(crate) actions: &'a [(String, Utf8PathBuf)],
+    /// `app.router`, whose redirects, rewrites and headers a static host cannot
+    /// honour.
+    pub(crate) router: &'a uf_config::RouterConfig,
+    /// The config file those are written in, relative to the project root.
+    pub(crate) config_file: &'a str,
 }
 
 /// `uf build --adapter static`: refuse, or copy the site.
@@ -381,13 +386,14 @@ pub(crate) fn deploy_static(
     out_dir: &Utf8Path,
     site: SiteFacts<'_>,
 ) -> Result<Deployed> {
-    let findings = static_host::unservable(
+    let mut findings = static_host::unservable(
         root,
         site.routes,
         site.server_modules,
         site.pages,
         site.actions,
     );
+    findings.extend(static_host::unservable_rules(site.router, site.config_file));
     if !findings.is_empty() {
         bail!("{}", static_host::refusal(&findings));
     }

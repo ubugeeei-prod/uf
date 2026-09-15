@@ -15,18 +15,19 @@ mod library;
 mod lint;
 pub mod plugins;
 mod rendering;
+mod router_rules;
 mod runtime;
 pub mod schema;
 pub mod tools;
 
 pub use app::{
     AppConfig, BuiltinConfig, CacheConfig, CacheModeConfig, ComponentBoundary, DataEngine,
-    EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, HighlightConfig, HighlightThemes,
-    LinkPrefetchMode, LoaderConfig, MarkdownConfig, MarkdownEngineConfig, MdxConfig,
-    MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, Navigation, OrmConfig, PwaConfig,
-    ReactCompilerConfig, ReactCompilerImplementation, ReactCompilerMode, ReactConfig,
-    RenderingConfig, RenderingMode, RouterConfig, RouterConvention, RuntimeTarget, StyleEngine,
-    TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
+    EffectEngine, FetchConfig, FrameworkPreset, GraphQlConfig, HeaderRule, HighlightConfig,
+    HighlightThemes, LinkPrefetchMode, LoaderConfig, MarkdownConfig, MarkdownEngineConfig,
+    MdxConfig, MdxPipelinePluginConfig, MotionConfig, MotionEngineConfig, Navigation, OrmConfig,
+    PwaConfig, ReactCompilerConfig, ReactCompilerImplementation, ReactCompilerMode, ReactConfig,
+    RedirectRule, RenderingConfig, RenderingMode, RewriteRule, RouterConfig, RouterConvention,
+    RuntimeTarget, StyleEngine, TemporalConfig, TuiConfig, TuiStandardConfig, WebConfig,
 };
 pub use library::{LibraryConfig, LibraryFormat, LibraryPlan};
 pub use lint::{
@@ -2046,6 +2047,20 @@ pub enum ConfigError {
          and `cjs`, for a consumer that calls `require`."
     )]
     LibraryFormatNotImplemented { path: Utf8PathBuf, formats: String },
+    /// An `app.router.redirects`, `rewrites` or `headers` entry uf cannot read.
+    ///
+    /// One variant with a sentence rather than one per spelling, because the
+    /// spellings are many and each sentence names the fix; `router_rules`
+    /// writes them. The index is the entry's position in its list, so the
+    /// reader goes straight to the object rather than searching for a source
+    /// that may appear twice.
+    #[error("{path}: `app.router.{key}[{index}]` {reason}")]
+    RouterRule {
+        path: Utf8PathBuf,
+        key: &'static str,
+        index: usize,
+        reason: String,
+    },
 }
 
 pub fn load_config(start: impl AsRef<Utf8Path>) -> Result<ResolvedConfig, ConfigError> {
@@ -2180,6 +2195,9 @@ pub fn validate_config(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), 
     // test runtime its runner contradicts, and no deprecated tool key saying
     // something other than the key that replaced it. See ubugeeei-prod/uf#940.
     tools::check(path, config)?;
+    // And `app.router`'s redirects, rewrites and headers, in the grammar every
+    // host matches them with. See ubugeeei-prod/uf#959.
+    router_rules::check(path, config)?;
     Ok(())
 }
 

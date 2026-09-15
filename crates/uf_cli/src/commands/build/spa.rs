@@ -50,6 +50,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use anyhow::{Result, bail};
 use camino::Utf8Path;
+use uf_config::RouterConfig;
 use uf_router::{Route, ServerModule, ServerModuleKind};
 use uf_rsc::{ModuleId, RscGraph, SERVER_ONLY_SUFFIX, is_server_only_specifier};
 
@@ -177,6 +178,43 @@ pub(crate) fn unanswerable(
     found
 }
 
+/// `app.router`'s redirects, rewrites and headers, which nothing in a
+/// single-page deployment answers.
+///
+/// Reported by source and by the config file they are written in, beside the
+/// handlers and middleware above and for the same reason: each is an answer to
+/// a request, and this deployment has no request to answer.
+pub(crate) fn rule_findings(router: &RouterConfig, config_file: &str) -> Vec<Unanswerable> {
+    let found = |source: &str, because: &str| Unanswerable {
+        route: Some(source.to_owned()),
+        file: config_file.to_owned(),
+        because: because.to_owned(),
+    };
+    let mut findings = Vec::new();
+    for rule in &router.redirects {
+        findings.push(found(
+            &rule.source,
+            "`app.router.redirects` sends a redirect when a request arrives, and nothing in this \
+             deployment answers one",
+        ));
+    }
+    for rule in &router.rewrites {
+        findings.push(found(
+            &rule.source,
+            "`app.router.rewrites` decides which route answers a request, and nothing in this \
+             deployment answers one",
+        ));
+    }
+    for rule in &router.headers {
+        findings.push(found(
+            &rule.source,
+            "`app.router.headers` sets a header on a response, and nothing in this deployment \
+             writes one",
+        ));
+    }
+    findings
+}
+
 /// Refuse the build, or let it through.
 ///
 /// Before the bundle rather than after it, for the reason the RSC diagnostics
@@ -187,9 +225,13 @@ pub(crate) fn refuse(
     routes: &[Route],
     server_modules: &[ServerModule],
     graph: &RscGraph,
+    rules: Vec<Unanswerable>,
     because: &str,
 ) -> Result<()> {
-    let findings = unanswerable(root, routes, server_modules, graph);
+    let mut findings = unanswerable(root, routes, server_modules, graph);
+    findings.extend(rules);
+    findings.sort();
+    findings.dedup();
     if findings.is_empty() {
         return Ok(());
     }

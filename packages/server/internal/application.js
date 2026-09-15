@@ -15,8 +15,10 @@
 // until a deployment answers differently from the preview it was checked with.
 
 import type { RequestLifecycle } from "./context.js";
+import type { RoutingRules } from "./routing.js";
 
 export type { RequestLifecycle } from "./context.js";
+export type { RoutingRules } from "./routing.js";
 
 /**
  * Where a document is written, when the host has a Node stream.
@@ -103,8 +105,23 @@ export type Application = {|
    * Called rather than tested for: a server bundle without it is a `TypeError`
    * on the first request, not an application whose auth check quietly stopped
    * running once it was built. See ubugeeei-prod/uf#260.
+   *
+   * Three answers: a `Response` answers, `null` carries on, and a `Request` is
+   * a middleware's `rewrite()` — the same request at another path, which the
+   * host carries on with instead and which has already been past that path's
+   * own middleware. See `packages/router/middleware.js`.
    */
-  readonly runMiddleware: (request: Request) => Promise<Response | null>,
+  readonly runMiddleware: (request: Request) => Promise<Response | Request | null>,
+  /**
+   * `app.router.redirects`, `rewrites` and `headers` from `uf.config.js`, as the
+   * build read them.
+   *
+   * On the bundle rather than read from the config where a host starts, so a
+   * served build answers with the rules it was built with. Optional, because a
+   * bundle from before the rules existed has none and means none. `./routing.js`
+   * is what every host asks about them.
+   */
+  readonly routing?: RoutingRules,
   /**
    * Begin the request everything above runs inside.
    *

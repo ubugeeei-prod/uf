@@ -62,6 +62,8 @@ import { Temporal } from "@uniflowed/core/temporal";
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
 import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js";
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
@@ -69,6 +71,13 @@ import type { Logger } from "./internal/log.js";
 import { elapsedMs, logRequest, processLogger } from "./log.js";
 
 export type { RequestLifecycle } from "./internal/context.js";
+export type { RoutingRules } from "./internal/routing.js";
+
+// `uf dev` and `uf preview` answer through Vite's own middleware stack, so they
+// ask the rules themselves rather than through `createServeHandler` below; the
+// three questions are exported for them from the module they already load.
+// See `./internal/routing.js`.
+export { headersFor, redirectFor, rewriteFor } from "./internal/routing.js";
 
 // The fourth front door is not in this package: `uf preview` serves files with
 // Vite's own middleware, which runs in front of anything uf mounts behind it,
@@ -397,18 +406,95 @@ function pathOf(target: string): string {
  *
  * `staticDir` is the directory `uf build` wrote — `dist/` in a checkout, and
  * the `static/` copied beside `server.js` in an adapter's output.
+ *
+ * `routing` is the bundle's `routing`: a redirect in it answers before the
+ * files do, and its headers go on whatever answers — a file included. See
+ * `./internal/routing.js` for why both sit in front of the static half and a
+ * rewrite does not.
  */
 export function createServeHandler(options: {|
   readonly staticDir: string,
   readonly handle: (request: Request) => Promise<Response>,
+  readonly routing?: RoutingRules,
 |}): (request: Request) => Promise<Response> {
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
+    const headers = headersFor(options.routing, request);
+    const moved = redirectFor(options.routing, request);
+    if (moved != null) return withHeaders(moved, headers);
     const file = await serveStatic(request);
-    if (file != null) return file;
+    if (file != null) return withHeaders(file, headers);
     offerBuildFiles(request, serveStatic);
-    return await options.handle(request);
+    return withHeaders(await options.handle(request), headers);
   };
+}
+
+/**
+ * Hold `pairs` on a Node response, whatever writes it afterwards.
+ *
+ * For the front doors that do not answer with a `Response` of their own: `uf
+ * dev` and `uf preview`, where Vite's file middleware writes the file with a
+ * `writeHead` of its own headers, and a compiled binary, which writes a file
+ * and a document straight to the socket. Setting the headers first is not
+ * enough in any of them, because a later `setHeader` or `writeHead` of the
+ * same name would win — and the project's `app.router.headers` rule is the
+ * one that has to, as it does everywhere [`withHeaders`] is the answer.
+ */
+export function pinHeaders(outgoing: NodeResponse, pairs: $ReadOnlyArray<[string, string]>): void {
+  if (pairs.length === 0) {
+    return;
+  }
+  const pinned: Map<string, string> = new Map();
+  for (const [name, value] of pairs) {
+    pinned.set(name.toLowerCase(), value);
+  }
+  for (const [name, value] of pinned) {
+    outgoing.setHeader(name, value);
+  }
+  // Replaced on this one response object, which lives exactly as long as the
+  // request it answers.
+  const target: $FlowFixMe = outgoing;
+  const setHeader = target.setHeader;
+  target.setHeader = (name: string, value: mixed) =>
+    pinned.has(String(name).toLowerCase()) ? outgoing : setHeader.call(outgoing, name, value);
+  const writeHead = target.writeHead;
+  if (typeof writeHead === "function") {
+    target.writeHead = (status: number, ...rest: Array<mixed>) =>
+      writeHead.call(outgoing, status, ...rest.map((argument) => unpinned(argument, pinned)));
+  }
+}
+
+/**
+ * A `writeHead` argument without the pinned names in it.
+ *
+ * Node takes the headers as an object, as `[name, value]` pairs or as a flat
+ * list, beside an optional status message; each is kept in its own shape.
+ */
+function unpinned(argument: mixed, pinned: Map<string, string>): mixed {
+  if (Array.isArray(argument)) {
+    if (argument.every((entry) => Array.isArray(entry))) {
+      return argument.filter(
+        (entry) => !pinned.has(String(Array.isArray(entry) ? entry[0] : "").toLowerCase()),
+      );
+    }
+    const kept = [];
+    for (let at = 0; at + 1 < argument.length; at += 2) {
+      if (!pinned.has(String(argument[at]).toLowerCase())) {
+        kept.push(argument[at], argument[at + 1]);
+      }
+    }
+    return kept;
+  }
+  if (argument != null && typeof argument === "object") {
+    const kept: { [string]: mixed } = {};
+    for (const name of Object.keys(argument)) {
+      if (!pinned.has(name.toLowerCase())) {
+        kept[name] = argument[name];
+      }
+    }
+    return kept;
+  }
+  return argument;
 }
 
 /**
@@ -462,6 +548,8 @@ export async function serve(options: {|
    * See ubugeeei-prod/uf#531.
    */
   readonly schedules?: $ReadOnlyArray<Schedule>,
+  /** The bundle's `routing`, which the generated `handler.js` re-exports. */
+  readonly routing?: RoutingRules,
 |}): Promise<{|
   readonly host: string,
   readonly port: number,
@@ -469,7 +557,11 @@ export async function serve(options: {|
 |}> {
   const log = options.log ?? processLogger();
   const listener = nodeListener(
-    createServeHandler({ staticDir: options.staticDir, handle: options.handle }),
+    createServeHandler({
+      staticDir: options.staticDir,
+      handle: options.handle,
+      routing: options.routing,
+    }),
     { beginRequest: options.beginRequest, log },
   );
   const server = createServer((request, response) => {

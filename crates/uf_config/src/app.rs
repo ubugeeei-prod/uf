@@ -59,6 +59,12 @@ pub struct RouterConfig {
     pub manifest: CompactString,
     pub root: CompactString,
     pub convention: RouterConvention,
+    /// `app.router.redirects`: answered before anything else, first match wins.
+    pub redirects: Vec<RedirectRule>,
+    /// `app.router.rewrites`: another route served at the requested path.
+    pub rewrites: Vec<RewriteRule>,
+    /// `app.router.headers`: response headers by path, every match applied.
+    pub headers: Vec<HeaderRule>,
 }
 
 impl Default for RouterConfig {
@@ -69,8 +75,54 @@ impl Default for RouterConfig {
             manifest: CompactString::const_new("router.js"),
             root: CompactString::const_new("app"),
             convention: RouterConvention::FileSystem,
+            redirects: Vec::new(),
+            rewrites: Vec::new(),
+            headers: Vec::new(),
         }
     }
+}
+
+impl RouterConfig {
+    /// Whether any rule needs something answering requests to be honoured.
+    ///
+    /// Every one of the three does: a redirect, a rewrite and a response header
+    /// are all answers to a request, and a static host has only files.
+    #[must_use]
+    pub fn has_request_rules(&self) -> bool {
+        !self.redirects.is_empty() || !self.rewrites.is_empty() || !self.headers.is_empty()
+    }
+}
+
+/// One entry of `app.router.redirects`.
+///
+/// `deny_unknown_fields`, so `sorce` is an error at the file rather than a rule
+/// that silently matches nothing; `permanent` has no default, because a
+/// redirect that is quietly temporary is how a site loses a move's ranking.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RedirectRule {
+    pub source: CompactString,
+    pub destination: CompactString,
+    pub permanent: bool,
+}
+
+/// One entry of `app.router.rewrites`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct RewriteRule {
+    pub source: CompactString,
+    pub destination: CompactString,
+}
+
+/// One entry of `app.router.headers`.
+///
+/// The headers are an ordered map because a project's own names are the keys,
+/// and two builds of one file have to write the same bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct HeaderRule {
+    pub source: CompactString,
+    pub headers: std::collections::BTreeMap<CompactString, CompactString>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

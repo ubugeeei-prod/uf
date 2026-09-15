@@ -11,6 +11,8 @@
 import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilities.js";
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
 import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js";
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
@@ -45,17 +47,24 @@ export function createStaticHandler(options: {|
   };
 }
 
-/** The static half first, then the application. */
+/**
+ * The static half first, then the application — behind `routing`'s redirects
+ * and under its headers, as in `./node.js`.
+ */
 export function createServeHandler(options: {|
   readonly staticDir: string,
   readonly handle: (request: Request) => Promise<Response>,
+  readonly routing?: RoutingRules,
 |}): (request: Request) => Promise<Response> {
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
+    const headers = headersFor(options.routing, request);
+    const moved = redirectFor(options.routing, request);
+    if (moved != null) return withHeaders(moved, headers);
     const file = await serveStatic(request);
-    if (file != null) return file;
+    if (file != null) return withHeaders(file, headers);
     offerBuildFiles(request, serveStatic);
-    return await options.handle(request);
+    return withHeaders(await options.handle(request), headers);
   };
 }
 
@@ -106,13 +115,18 @@ export async function serve(options: {|
   readonly port?: number,
   readonly log?: Logger,
   readonly schedules?: $ReadOnlyArray<Schedule>,
+  readonly routing?: RoutingRules,
 |}): Promise<{|
   readonly host: string,
   readonly port: number,
   readonly close: () => Promise<void>,
 |}> {
   const log = options.log ?? processLogger();
-  const handle = createServeHandler({ staticDir: options.staticDir, handle: options.handle });
+  const handle = createServeHandler({
+    staticDir: options.staticDir,
+    handle: options.handle,
+    routing: options.routing,
+  });
 
   const host = options.host ?? argument("--host") ?? Deno.env.get("HOST") ?? "0.0.0.0";
   const port = options.port ?? Number(argument("--port") ?? Deno.env.get("PORT") ?? 3000);

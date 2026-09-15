@@ -55,7 +55,7 @@ import {
 } from "./internal/worker-builtins.js";
 import { emit, errorEvent, eventLogger } from "./internal/events.js";
 import { loadUfConfig, projectConfig } from "./internal/config.js";
-import { send, toRequest } from "./internal/http.js";
+import { send, toAddressRequest, toRequest } from "./internal/http.js";
 import { createOpenApiDocument } from "./internal/openapi.js";
 import { withProjectConfig } from "./merge.js";
 import { FLIGHT_VIRTUAL, RSC_ENVIRONMENT } from "./internal/flight.js";
@@ -66,6 +66,8 @@ import {
   DOCUMENT_ASSETS_FILE,
   REGENERATED_DIRECTORY,
   REGENERATION_FILE,
+  answerRouting,
+  answersInFrontOfFiles,
   assetsFromManifest,
   buildIdentity,
   createPrerenderGate,
@@ -462,6 +464,22 @@ async function preview() {
   const draftFirst = {
     name: "uf:draft-before-files",
     configurePreviewServer(previewServer) {
+      // `app.router.headers` and `redirects`, first of all: a redirect answers
+      // before a file is looked for, and a header is pinned on the response so
+      // it survives the `writeHead` Vite's file middleware writes its own
+      // with. `uf start` and every adapter put the same two in front of their
+      // static half; the application's own answers get them from
+      // `createServeHandler` behind. See `internal/serve.js`'s `answerRouting`.
+      const routing = build?.entry?.routing;
+      if (answersInFrontOfFiles(routing)) {
+        previewServer.middlewares.use((request, response, next) => {
+          answerRouting(routing, toAddressRequest(request), response)
+            .then((answered) => {
+              if (!answered) next();
+            })
+            .catch(next);
+        });
+      }
       // A prerendered payload is a file whose extension Vite's static middleware
       // knows no type for, and the router hands bytes to React only when they
       // are answered as a payload — so a navigation on a preview would silently
@@ -1668,8 +1686,11 @@ const capabilities = ${capabilities.name}();
 
 export const fetch = createFetchHandler({ ${options} });
 export const beginRequest = app.beginRequest;
+// \`app.router\`'s redirects and headers, for the entry beside this file to put
+// in front of its static half. Rewrites are \`fetch\`'s own.
+export const routing = app.routing;
 
-export default { fetch, beginRequest };
+export default { fetch, beginRequest, routing };
 `;
 }
 
@@ -1777,7 +1798,7 @@ ${cron.imports}
 // \`@uniflowed/server/node\` above, because the request has to be established in
 // the storage the *application* reads, which is the copy bundled into
 // \`handler.js\`. See ubugeeei-prod/uf#389.
-import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
+import { beginRequest, fetch, routing } from ${JSON.stringify(handlerSpecifier)};
 
 // Resolved from this file and not from the working directory: a process
 // manager, a container entrypoint and a person in a shell each start a server
@@ -1790,7 +1811,7 @@ ${cron.declarations}
 // (ubugeeei-prod/uf#204) and this entry is a module, so it would work; \`.catch\`
 // is the better spelling regardless — a server that cannot take its port should
 // say so and exit non-zero, rather than die as an unhandled rejection.
-serve({ handle: fetch, staticDir, beginRequest${cron.option} }).catch((error) => {
+serve({ handle: fetch, staticDir, beginRequest, routing${cron.option} }).catch((error) => {
   process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
   process.exit(1);
 });
@@ -1817,7 +1838,7 @@ ${cron.imports}
 // \`@uniflowed/server/bun\` above, because the request has to be established in
 // the storage the *application* reads, which is the copy bundled into
 // \`handler.js\`. See ubugeeei-prod/uf#389.
-import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
+import { beginRequest, fetch, routing } from ${JSON.stringify(handlerSpecifier)};
 
 // Resolved from this file and not from the working directory: a process
 // manager, a container entrypoint and a person in a shell each start a server
@@ -1826,7 +1847,7 @@ import { beginRequest, fetch } from ${JSON.stringify(handlerSpecifier)};
 // trap in it.
 const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
 ${cron.declarations}
-serve({ handle: fetch, staticDir, beginRequest${cron.option} }).catch((error) => {
+serve({ handle: fetch, staticDir, beginRequest, routing${cron.option} }).catch((error) => {
   process.stderr.write(\`uf: \${error?.message ?? String(error)}\\n\`);
   process.exit(1);
 });
@@ -1864,7 +1885,7 @@ globalThis.Buffer ??= {
 };
 globalThis.setImmediate ??= (callback, ...args) => setTimeout(callback, 0, ...args);
 globalThis.clearImmediate ??= (handle) => clearTimeout(handle);
-const { beginRequest, fetch } = await import(${JSON.stringify(handlerSpecifier)});
+const { beginRequest, fetch, routing } = await import(${JSON.stringify(handlerSpecifier)});
 
 // Resolved from this file and not from the working directory: a process
 // manager and a person in a shell each start a server from wherever they
@@ -1872,7 +1893,7 @@ const { beginRequest, fetch } = await import(${JSON.stringify(handlerSpecifier)}
 // started from inside itself would be a deployment with a trap in it.
 const staticDir = decodeURIComponent(new URL("./static", import.meta.url).pathname);
 ${cron.declarations}
-serve({ handle: fetch, staticDir, beginRequest${cron.option} }).catch((error) => {
+serve({ handle: fetch, staticDir, beginRequest, routing${cron.option} }).catch((error) => {
   console.error(\`uf: \${error?.message ?? String(error)}\`);
   Deno.exit(1);
 });
@@ -1901,13 +1922,13 @@ function workerEntrySource(handlerSpecifier, schedules) {
     return `// Generated by \`uf build --adapter edge\`. Not checked in, not edited.
 import { createWorkerFetch, installWorkerLogger } from "@uniflowed/server/edge";
 
-import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
+import { beginRequest, fetch as handle, routing } from ${JSON.stringify(handlerSpecifier)};
 
 // After the imports, so a logger the application installed while it loaded is
 // the one that stays; see \`installWorkerLogger\`.
 installWorkerLogger();
 
-export default { fetch: createWorkerFetch({ handle, beginRequest }) };
+export default { fetch: createWorkerFetch({ handle, beginRequest, routing }) };
 `;
   }
 
@@ -1918,7 +1939,7 @@ export default { fetch: createWorkerFetch({ handle, beginRequest }) };
   return `// Generated by \`uf build --adapter edge\`. Not checked in, not edited.
 import { createWorkerFetch, createWorkerScheduled, installWorkerLogger } from "@uniflowed/server/edge";
 
-import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
+import { beginRequest, fetch as handle, routing } from ${JSON.stringify(handlerSpecifier)};
 
 // After the imports, so a logger the application installed while it loaded is
 // the one that stays; see \`installWorkerLogger\`.
@@ -1929,7 +1950,7 @@ installWorkerLogger();
 const routes = ${JSON.stringify(routes, null, 2)};
 
 export default {
-  fetch: createWorkerFetch({ handle, beginRequest }),
+  fetch: createWorkerFetch({ handle, beginRequest, routing }),
   scheduled: createWorkerScheduled({ handle, beginRequest, routes }),
 };
 `;
@@ -1955,7 +1976,7 @@ import { fileURLToPath } from "node:url";
 
 import { createLambdaHandler } from "@uniflowed/server/lambda";
 
-import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)};
+import { beginRequest, fetch as handle, routing } from ${JSON.stringify(handlerSpecifier)};
 
 // Resolved from this file and not from the working directory: Lambda sets the
 // working directory to the task root today and is under no obligation to keep
@@ -1963,7 +1984,7 @@ import { beginRequest, fetch as handle } from ${JSON.stringify(handlerSpecifier)
 // deployment with a trap in it.
 const staticDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "static");
 
-export const handler = createLambdaHandler({ handle, beginRequest, staticDir });
+export const handler = createLambdaHandler({ handle, beginRequest, staticDir, routing });
 `;
 }
 
@@ -2345,6 +2366,21 @@ async function renderingPlan(server, prerender) {
       path: `${entry.path === "/" ? "" : entry.path}/*`,
       why: "a middleware guards it, and a middleware runs once per request",
     });
+  }
+  // And `app.router`'s three lists, by the source each rule matches: a file
+  // can be neither a redirect nor a rewrite, and a header a file is served
+  // with is the host's to add rather than the file's.
+  for (const [key, what] of [
+    ["redirects", "a redirect"],
+    ["rewrites", "a rewrite"],
+    ["headers", "a response header"],
+  ]) {
+    for (const rule of server.routing?.[key] ?? []) {
+      perRequest.push({
+        path: rule.source,
+        why: `\`app.router.${key}\` names it, and ${what} is answered when a request arrives`,
+      });
+    }
   }
 
   return { urls, perRequest };

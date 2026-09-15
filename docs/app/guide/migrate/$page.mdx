@@ -373,6 +373,8 @@ deployment record does not have yet.
 | `@slot/`, `(.)folder/` | `@slot/`, and `@slot/(.)folder/` inside the slot it renders into |
 | `route.ts` | `$route.js` — `Request` in, `Response` out, served by `uf dev`, `uf preview`, `uf start`, the server adapters and `--compile` |
 | `middleware.ts` | `$middleware.js` in the directory it guards |
+| `NextResponse.rewrite(url)` | `rewrite(url)` from `@uniflowed/router/middleware` |
+| `redirects()`, `rewrites()`, `headers()` in `next.config.js` | `app.router.redirects`, `rewrites` and `headers` in `uf.config.js` |
 | Server Components, `"use client"` | the same: a Server Component never reaches the browser, which gets the Flight payload and the client modules it names |
 | `"use server"` modules | the same — exported async functions the browser calls by id |
 | `generateStaticParams`, `metadata` | the same names |
@@ -394,10 +396,14 @@ deployment record does not have yet.
    table, converting the types as you go. Put `"use client"` at the top of each
    `$error.js`.
 2. **Replace `next.config.js`.** `output` is the last two rows above, and
-   `images` is `app.builtins.images`. There is no `redirects()`, `rewrites()` or
-   `headers()`: a redirect is a middleware that returns `Response.redirect`, a
-   header is set on the `Response` a handler or middleware returns, and a rewrite
-   has no counterpart.
+   `images` is `app.builtins.images`. `redirects()`, `rewrites()` and
+   `headers()` become `app.router.redirects`, `rewrites` and `headers`: the same
+   sources written as data, with a rule's `headers` an object rather than a list
+   of `{ key, value }`. A rewrite to another origin is a route handler that
+   fetches it, and a `has` or `missing` condition is a middleware that returns
+   `rewrite()` or `Response.redirect`
+   ([Redirects, rewrites and response headers](/guide/routing#redirects-rewrites-and-response-headers)
+   has the whole table).
 3. **Change the imports** by the table: `next/navigation` to
    `@uniflowed/router`, `next/headers` and `next/server` to `@uniflowed/server`,
    `next/cache` to `@uniflowed/server/cache`, `next/dynamic` to React's `lazy`.
@@ -451,8 +457,9 @@ deployment record does not have yet.
   function-level cache or `"use cache"`
   ([#961](https://github.com/ubugeeei-prod/uf/issues/961)), and the `ppr` mode
   name selects nothing yet.
-- **Middleware and request APIs.** A middleware cannot rewrite the request, and
-  `cookies()` reads without writing.
+- **Middleware and request APIs.** A rewrite changes the path and never the
+  request's headers, neither a middleware's nor a config rule's proxies to
+  another origin, and `cookies()` reads without writing.
 - **Images and fonts.** Resized at build time only, with no AVIF or lossy WebP
   ([#997](https://github.com/ubugeeei-prod/uf/issues/997)), no remote images and
   no request-time optimizer; a font is self-hosted from a file you import rather

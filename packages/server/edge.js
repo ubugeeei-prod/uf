@@ -49,6 +49,8 @@ import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { createLevelConsoleLogger } from "./internal/log.js";
+import type { RoutingRules } from "./internal/routing.js";
+import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
 import { elapsedMs, installLoggerUnlessChosen, logRequest, processLogger } from "./log.js";
 import { runScheduled } from "./schedule.js";
 
@@ -252,6 +254,12 @@ export type WorkerHandlerOptions = {|
   readonly handle: (request: Request) => Promise<Response>,
   /** That same module's `beginRequest`; see the header. */
   readonly beginRequest: (request: Request) => RequestLifecycle,
+  /**
+   * That same module's `routing`: its redirects answer before the assets
+   * binding is asked, and its headers go on whatever answers. See
+   * `./internal/routing.js`.
+   */
+  readonly routing?: RoutingRules,
 |};
 
 /**
@@ -282,7 +290,7 @@ export type WorkerHandlerOptions = {|
 export function createWorkerFetch(
   options: WorkerHandlerOptions,
 ): (request: Request, env: EdgeEnvironment, ctx?: ExecutionContext) => Promise<Response> {
-  const { handle, beginRequest } = options;
+  const { handle, beginRequest, routing } = options;
 
   return async function fetchFromWorker(
     request: Request,
@@ -296,7 +304,11 @@ export function createWorkerFetch(
     // account of it there will ever be.
     let status = 500;
     try {
-      const response = await lifecycle.run(async () => {
+      const answer = async (): Promise<Response> => {
+        const moved = redirectFor(routing, request);
+        if (moved != null) {
+          return moved;
+        }
         const assets = env?.ASSETS;
         const method = request.method.toUpperCase();
         if (assets != null && (method === "GET" || method === "HEAD")) {
@@ -326,7 +338,10 @@ export function createWorkerFetch(
           lifecycle.context.buildFile = (pathname) => assetFile(assets, request, pathname);
         }
         return await handle(request);
-      });
+      };
+      const response = await lifecycle.run(async () =>
+        withHeaders(await answer(), headersFor(routing, request)),
+      );
       status = response.status;
       return response;
     } catch (error) {

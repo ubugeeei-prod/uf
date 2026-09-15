@@ -53,6 +53,20 @@ export async function toRequest(incoming, config) {
 }
 
 /**
+ * A Node request as a `Request` that carries its address and nothing else.
+ *
+ * For the questions asked about a URL alone — `app.router`'s redirects and
+ * headers, in front of Vite's own middleware — which must not wrap the body a
+ * later middleware turns into the `Request` the application reads.
+ *
+ * @param {import("node:http").IncomingMessage} incoming
+ */
+export function toAddressRequest(incoming) {
+  const host = incoming.headers.host ?? "localhost";
+  return new Request(new URL(incoming.originalUrl ?? incoming.url ?? "/", `http://${host}`));
+}
+
+/**
  * Write a `Response` to a Node response.
  *
  * One implementation, reached late. This was a second copy of the loop in
