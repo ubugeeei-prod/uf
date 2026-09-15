@@ -24,7 +24,7 @@ jobs:
       - uses: useblacksmith/checkout@0647fdbab2614a5eb86d2971070e325060d91056 # v1.7.0
         with:
           persist-credentials: false
-      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
       # why3 only knows about provers listed in ~/.why3.conf, which does not
       # exist on a fresh runner, so z3 has to be detected before proving.
       - run: nix develop . --command why3 config detect
