@@ -839,14 +839,28 @@ environment beside `client` and `ssr` (`packages/vite/internal/flight.js`):
   `@uniflowed/router/rsc`'s `createFlightRenderer`. A `"use client"` module is
   replaced there by one `createClientReference` per export, so its code never
   runs in that graph and a server component's code never reaches the browser.
-- **`ssr`** holds `@uniflowed/router/server`'s `createDocumentRenderer`, which
+- **`ssr`** holds `@uniflowed/router/rsc/ssr`'s `createDocumentRenderer`, which
   reads the payload with React's own Flight client and renders that tree into
   HTML while writing the same bytes into the document, and the server copy of
   every client module. It reaches `rsc` through one bridge module: the rsc
   environment's module runner under `uf dev`, the rsc build's output in a build.
-- **`client`** hydrates the payload the document carries (`hydrateFlight`) and
-  holds no page, layout or loader — only the client modules, each an entry of
-  its own, loaded when a payload names its chunk.
+- **`client`** hydrates the payload the document carries
+  (`@uniflowed/router/rsc/client`'s `hydrateFlight`) and holds no page, layout
+  or loader — only the client modules, each an entry of its own, loaded when a
+  payload names its chunk.
+
+Those three entries are the only modules of the router that reach
+`react-server-dom-parcel`, and each refuses a React older than 19.3 before it
+does anything. The router's peers admit React 19.2.3 and list `react-dom` and
+`react-server-dom-parcel` as optional, because Expo SDK 57 and React Native 0.87
+ship React 19.2.3 and a native app renders no Server Component (#992). So
+`@uniflowed/router/client` and `@uniflowed/router/server`, where an application
+rendered from its modules starts, never import React's Flight client, and
+`internal/runtime.js` is handed the payload fetch by `hydrateFlight` rather than
+importing it: a bundler resolves every import it is shown, and a build without
+the package must not meet one. `@uniflowed/vite` checks for both packages while
+it reads its configuration, and `crates/uf_lib/tests/package_surface.rs` holds
+the router's import graph to the split.
 
 `uf build` runs the three in that order, because each needs what the one before
 it found: the rsc build finds the client modules, the client build writes their

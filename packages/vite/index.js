@@ -111,6 +111,7 @@ import { createChannelMiddleware } from "./internal/diagnostics.js";
 import { devtoolsPreamble } from "./internal/devtools.js";
 import { send, toRequest } from "./internal/http.js";
 import { beginRequest } from "./internal/serve.js";
+import { serverComponentsProblem } from "./internal/server-components.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
@@ -353,6 +354,16 @@ function flowPlugin({
 
     config(userConfig, env) {
       const projectRoot = path.resolve(userConfig.root ?? process.cwd());
+      // Before anything is resolved. Routes that render as React Server
+      // Components need `react-server-dom-parcel` and React 19.3, and the router
+      // installs without either (ubugeeei-prod/uf#992). Said here, once, rather
+      // than as an unresolved import deep in a build or a failure inside a render.
+      if (flightState != null) {
+        const problem = serverComponentsProblem(projectRoot);
+        if (problem != null) {
+          throw new Error(problem);
+        }
+      }
       isProduction = env.mode === "production" || env.command === "build";
       // A reference names the client manifest only in a build, where a client
       // build writes the chunks it names; a dev server names the URL it serves.
