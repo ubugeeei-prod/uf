@@ -166,6 +166,317 @@ fn a_link_is_believed_only_when_node_modules_has_one() {
     }
 }
 
+fn unlink_request_for(target: LinkTarget, directory: Option<&str>) -> UnlinkRequest {
+    UnlinkRequest {
+        target,
+        name: "ui".to_owned(),
+        directory: directory.map(Utf8PathBuf::from),
+        operands: vec!["ui".to_owned()],
+    }
+}
+
+/// `uf unlink NAME` runs only where there is a link to take out, for every
+/// manager, and otherwise says what is there instead.
+#[test]
+fn unlink_runs_only_where_node_modules_or_yarn_has_a_link() {
+    use uf_pm::{PackageManager, YarnEdition};
+
+    let root = Utf8Path::new("/work/app");
+    let request = unlink_request_for(LinkTarget::Package, None);
+    for manager in PackageManager::ALL {
+        let berry = manager == PackageManager::Yarn(YarnEdition::Berry);
+        let linked = unlink_plan(
+            root,
+            manager,
+            &request,
+            Some(&LinkState::Linked("/work/ui".into())),
+            None,
+            None,
+        );
+        let resolved = unlink_plan(
+            root,
+            manager,
+            &request,
+            Some(&LinkState::Absent),
+            Some("portal:/work/ui"),
+            None,
+        );
+        if berry {
+            assert!(linked.is_err(), "Yarn 2+ records every link in resolutions");
+            assert_eq!(resolved.as_deref(), Ok("portal:/work/ui"));
+            continue;
+        }
+        assert_eq!(linked.as_deref(), Ok("../ui"), "{manager}");
+        assert!(resolved.is_err(), "{manager} does not link through resolutions");
+        let broken = unlink_plan(
+            root,
+            manager,
+            &request,
+            Some(&LinkState::Broken("../gone".into())),
+            None,
+            None,
+        );
+        assert_eq!(broken.as_deref(), Ok("../gone"), "{manager}: still a link");
+        for (state, says) in [
+            (Some(LinkState::Installed), "is an installed package, not a link"),
+            (Some(LinkState::Absent), "there is no node_modules/ui"),
+            (None, "there is no node_modules/ui"),
+        ] {
+            let why = unlink_plan(root, manager, &request, state.as_ref(), None, None)
+                .expect_err(&format!("{manager}: {state:?}"));
+            assert!(why.contains(says), "{manager}: {why}");
+        }
+    }
+}
+
+/// A link that leads somewhere other than the directory named, or that is how
+/// the manifest's own path dependency is installed, is not `uf link`'s to undo.
+#[test]
+fn unlink_leaves_a_link_it_did_not_make() {
+    use uf_pm::{PackageManager, YarnEdition};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().canonicalize().unwrap()).unwrap();
+    let app = root.join("app");
+    fs::create_dir_all(app.join("vendor/ui")).unwrap();
+    fs::create_dir_all(root.join("ui")).unwrap();
+
+    let other = root.join("other");
+    let elsewhere = unlink_plan(
+        &app,
+        PackageManager::Npm,
+        &unlink_request_for(LinkTarget::Package, Some(other.as_str())),
+        Some(&LinkState::Linked(root.join("ui"))),
+        None,
+        None,
+    )
+    .expect_err("a link to another checkout");
+    assert!(
+        elsewhere.contains("links to ../ui, not to ../other"),
+        "{elsewhere}"
+    );
+
+    let vendored = LinkState::Linked(app.join("vendor/ui"));
+    for manager in [
+        PackageManager::Npm,
+        PackageManager::Bun,
+        PackageManager::Yarn(YarnEdition::Classic),
+    ] {
+        let why = unlink_plan(
+            &app,
+            manager,
+            &unlink_request_for(LinkTarget::Package, None),
+            Some(&vendored),
+            None,
+            Some("file:vendor/ui"),
+        )
+        .expect_err(&format!("{manager}"));
+        assert!(
+            why.contains("declares ui as file:vendor/ui") && why.contains("uf remove ui"),
+            "{manager}: {why}"
+        );
+    }
+    // pnpm writes a `link:` dependency beside the override for the same link,
+    // and only pnpm can tell the two apart, so it is asked.
+    assert_eq!(
+        unlink_plan(
+            &app,
+            PackageManager::Pnpm,
+            &unlink_request_for(LinkTarget::Package, None),
+            Some(&vendored),
+            None,
+            Some("link:vendor/ui"),
+        )
+        .as_deref(),
+        Ok("vendor/ui")
+    );
+    assert_eq!(
+        unlink_outcome(
+            &app,
+            PackageManager::Pnpm,
+            "ui",
+            Some(&vendored),
+            None,
+            Some("link:vendor/ui"),
+            None,
+        ),
+        Ok(Unlinked::StillDeclared("link:vendor/ui".to_owned()))
+    );
+}
+
+/// What unlinking left, for every manager: the declared release back, nothing
+/// at all, or a failure that says what is still there.
+#[test]
+fn unlink_says_what_node_modules_has_afterwards() {
+    use uf_pm::PackageManager;
+
+    let root = Utf8Path::new("/work/app");
+    for manager in PackageManager::ALL {
+        assert_eq!(
+            unlink_outcome(
+                root,
+                manager,
+                "ui",
+                Some(&LinkState::Installed),
+                None,
+                Some("^1.0.0"),
+                Some("1.0.0")
+            ),
+            Ok(Unlinked::Reinstalled("1.0.0".to_owned())),
+            "{manager}"
+        );
+        assert_eq!(
+            unlink_outcome(
+                root,
+                manager,
+                "ui",
+                Some(&LinkState::Installed),
+                None,
+                None,
+                Some("1.0.0")
+            ),
+            Ok(Unlinked::Transitive("1.0.0".to_owned())),
+            "{manager}"
+        );
+        assert_eq!(
+            unlink_outcome(root, manager, "ui", Some(&LinkState::Absent), None, None, None),
+            Ok(Unlinked::Gone),
+            "{manager}"
+        );
+        let missing = unlink_outcome(
+            root,
+            manager,
+            "ui",
+            Some(&LinkState::Absent),
+            None,
+            Some("^1.0.0"),
+            None,
+        )
+        .expect_err("declared, and not there");
+        assert!(missing.contains("run `uf install`"), "{manager}: {missing}");
+        let still = unlink_outcome(
+            root,
+            manager,
+            "ui",
+            Some(&LinkState::Linked("/work/ui".into())),
+            None,
+            None,
+            None,
+        )
+        .expect_err("still a link");
+        assert!(still.contains("still links to ../ui"), "{manager}: {still}");
+        assert_eq!(
+            still.contains("pnpm-workspace.yaml"),
+            manager == PackageManager::Pnpm,
+            "{manager}: {still}"
+        );
+        let resolved = unlink_outcome(
+            root,
+            manager,
+            "ui",
+            Some(&LinkState::Absent),
+            Some("portal:/work/ui"),
+            None,
+            None,
+        )
+        .expect_err("still resolved");
+        assert!(
+            resolved.contains("still resolves ui to portal:/work/ui"),
+            "{manager}: {resolved}"
+        );
+    }
+}
+
+/// Unregistering removes a link to this package and nothing else, and says
+/// what is there when it is not one.
+#[test]
+fn unregistering_removes_only_a_link_to_this_package() {
+    use uf_pm::PackageManager;
+
+    let entry = Utf8PathBuf::from("/usr/lib/node_modules/ui");
+    assert_eq!(
+        unregister_plan(
+            PackageManager::Npm,
+            "ui",
+            &Registration::Linked(entry.clone())
+        ),
+        Ok(entry.clone())
+    );
+    let elsewhere = unregister_plan(
+        PackageManager::Npm,
+        "ui",
+        &Registration::Elsewhere {
+            entry: entry.clone(),
+            to: "/work/other".into(),
+        },
+    )
+    .unwrap_err();
+    assert!(
+        elsewhere.contains("links to /work/other, not to this package"),
+        "{elsewhere}"
+    );
+    let installed =
+        unregister_plan(PackageManager::Npm, "ui", &Registration::Installed(entry)).unwrap_err();
+    assert!(installed.contains("installed from a registry"), "{installed}");
+    assert_eq!(
+        unregister_plan(PackageManager::Bun, "ui", &Registration::Absent).unwrap_err(),
+        "ui is not registered with bun"
+    );
+}
+
+/// Each manager is given the package the way its own unlink takes it: npm and
+/// pnpm a name to unregister, Yarn 1 and bun nothing, Yarn 2+ the path it
+/// linked, and bun nothing to run at all for a link in the project.
+#[test]
+fn unlink_names_the_package_the_way_each_manager_takes_it() {
+    use uf_pm::{PackageManager, YarnEdition};
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = Utf8PathBuf::from_path_buf(dir.path().canonicalize().unwrap()).unwrap();
+    let app = root.join("app");
+    fs::create_dir_all(&app).unwrap();
+    fs::create_dir_all(root.join("ui")).unwrap();
+    fs::write(app.join("package.json"), r#"{ "name": "acme-app" }"#).unwrap();
+    fs::write(root.join("ui/package.json"), r#"{ "name": "@acme/ui" }"#).unwrap();
+
+    let register = |manager| unlink_request(&app, manager, None).unwrap();
+    assert_eq!(register(PackageManager::Npm).operands, ["acme-app"]);
+    assert_eq!(register(PackageManager::Pnpm).operands, ["acme-app"]);
+    assert!(
+        register(PackageManager::Yarn(YarnEdition::Classic))
+            .operands
+            .is_empty()
+    );
+    assert!(register(PackageManager::Bun).operands.is_empty());
+
+    let by_path = unlink_request(&app, PackageManager::Npm, Some("../ui")).unwrap();
+    assert_eq!(by_path.target, LinkTarget::Package);
+    assert_eq!(by_path.name, "@acme/ui");
+    assert_eq!(by_path.operands, ["@acme/ui"]);
+    assert_eq!(by_path.directory.as_deref(), Some(root.join("ui").as_path()));
+
+    let berry = PackageManager::Yarn(YarnEdition::Berry);
+    let by_path = unlink_request(&app, berry, Some("../ui")).unwrap();
+    assert_eq!(by_path.target, LinkTarget::Directory);
+    assert_eq!(by_path.operands, ["../ui"]);
+    assert_eq!(
+        by_path.operation(berry),
+        Some(Operation::Unlink {
+            target: LinkTarget::Directory
+        })
+    );
+    assert_eq!(
+        unlink_request(&app, PackageManager::Bun, Some("@acme/ui"))
+            .unwrap()
+            .operation(PackageManager::Bun),
+        None,
+        "bun has no unlink <name>, so uf removes the link itself"
+    );
+
+    assert!(unlink_request(&root.join("nowhere"), PackageManager::Npm, None).is_err());
+    assert!(unlink_request(&app, PackageManager::Npm, Some("../nowhere")).is_err());
+}
+
 /// The first `uf add`: both files moved, and the screen says which fields.
 #[test]
 fn an_add_that_changed_something_names_the_field_and_the_tree() {

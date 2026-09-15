@@ -75,6 +75,7 @@ pub(crate) const KNOWN: &[&str] = &[
     "update",
     "dedupe",
     "link",
+    "unlink",
     "patch",
     "pm",
     "catalog",
@@ -272,6 +273,14 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
             },
             "links a directory into node_modules; with nothing named, makes this package \
              linkable from other projects on this machine",
+        ),
+        "unlink" => dependency_stages(
+            resolved,
+            Operation::Unlink {
+                target: uf_pm::LinkTarget::Package,
+            },
+            "takes a link out of node_modules and installs what the manifest declares in its \
+             place; with nothing named, removes this package from the manager's global links",
         ),
         // The listing is uf's own — it reads the workspace's manifests and
         // nothing else — and `uf catalog set` rewrites them and then delegates

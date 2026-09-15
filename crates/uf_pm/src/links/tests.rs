@@ -191,3 +191,244 @@ fn a_yarn_link_is_read_from_resolutions_and_nothing_else_is() {
     assert_eq!(linked_resolution(&app, "__proto__"), None);
     assert_eq!(linked_resolution(&app, "missing"), None);
 }
+
+/// A lookup that answers from a fixed list of variables, and nothing else.
+fn variables(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
+    move |name| {
+        pairs
+            .iter()
+            .find(|(key, _)| *key == name)
+            .map(|(_, value)| (*value).to_owned())
+    }
+}
+
+#[test]
+fn each_managers_global_directory_follows_its_own_variables() {
+    let dirs = GlobalDirs::from_env(&variables(&[
+        ("HOME", "/home/me"),
+        ("PNPM_HOME", "/opt/pnpm"),
+        ("XDG_DATA_HOME", "/data"),
+        ("BUN_INSTALL", "/opt/bun"),
+    ]));
+    assert_eq!(dirs.npm, None, "npm is asked, not guessed");
+    assert_eq!(dirs.pnpm.as_deref(), Some(Utf8Path::new("/opt/pnpm")));
+    assert_eq!(
+        dirs.bun.as_deref(),
+        Some(Utf8Path::new("/opt/bun/install/global"))
+    );
+    if !cfg!(windows) {
+        assert_eq!(dirs.yarn.as_deref(), Some(Utf8Path::new("/data/yarn/link")));
+    }
+
+    let dirs = GlobalDirs::from_env(&variables(&[
+        ("HOME", "/home/me"),
+        ("BUN_INSTALL", "/opt/bun"),
+        ("BUN_INSTALL_GLOBAL_DIR", "/opt/bun-global"),
+    ]));
+    assert_eq!(dirs.bun.as_deref(), Some(Utf8Path::new("/opt/bun-global")));
+    if cfg!(target_os = "macos") {
+        assert_eq!(
+            dirs.pnpm.as_deref(),
+            Some(Utf8Path::new("/home/me/Library/pnpm"))
+        );
+    } else if !cfg!(windows) {
+        assert_eq!(
+            dirs.pnpm.as_deref(),
+            Some(Utf8Path::new("/home/me/.local/share/pnpm"))
+        );
+    }
+    if !cfg!(windows) {
+        assert_eq!(
+            dirs.yarn.as_deref(),
+            Some(Utf8Path::new("/home/me/.config/yarn/link"))
+        );
+    }
+
+    assert_eq!(GlobalDirs::from_env(&|_| None), GlobalDirs::default());
+}
+
+#[test]
+fn a_registry_entry_is_where_each_manager_keeps_a_registered_package() {
+    let (_dir, root) = project();
+    fs::create_dir_all(root.join("pnpm/global/5/node_modules")).unwrap();
+    fs::create_dir_all(root.join("pnpm/global/v11")).unwrap();
+    let dirs = GlobalDirs {
+        npm: Some(root.join("npm/lib/node_modules")),
+        pnpm: Some(root.join("pnpm")),
+        yarn: Some(root.join("yarn/link")),
+        bun: Some(root.join("bun/install/global")),
+    };
+
+    assert_eq!(
+        registry_entries(PackageManager::Npm, "@acme/ui", &dirs),
+        [root.join("npm/lib/node_modules/@acme/ui")]
+    );
+    assert_eq!(
+        registry_entries(PackageManager::Pnpm, "@acme/ui", &dirs),
+        [
+            root.join("pnpm/global/5/node_modules/@acme/ui"),
+            root.join("pnpm/global/v11/node_modules/@acme/ui"),
+        ]
+    );
+    assert_eq!(
+        registry_entries(
+            PackageManager::Yarn(YarnEdition::Classic),
+            "@acme/ui",
+            &dirs
+        ),
+        [root.join("yarn/link/@acme/ui")]
+    );
+    assert_eq!(
+        registry_entries(PackageManager::Bun, "@acme/ui", &dirs),
+        [root.join("bun/install/global/node_modules/@acme/ui")]
+    );
+    assert!(
+        registry_entries(PackageManager::Yarn(YarnEdition::Berry), "@acme/ui", &dirs).is_empty(),
+        "Yarn 2+ keeps no registry"
+    );
+    assert!(registry_entries(PackageManager::Npm, "../../etc", &dirs).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn a_registration_is_a_link_to_this_package_and_anything_else_says_what_is_there() {
+    let (_dir, root) = project();
+    let ui = root.join("ui");
+    let other = root.join("other");
+    fs::create_dir_all(&ui).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    let entry = root.join("registry/ui");
+    let only = |entry: &Utf8PathBuf| registration(std::slice::from_ref(entry), &ui);
+
+    assert_eq!(only(&entry), Registration::Absent);
+
+    symlink(&entry, "../other");
+    assert_eq!(
+        only(&entry),
+        Registration::Elsewhere {
+            entry: entry.clone(),
+            to: other,
+        }
+    );
+
+    fs::remove_file(&entry).unwrap();
+    symlink(&entry, "../ui");
+    assert_eq!(only(&entry), Registration::Linked(entry.clone()));
+
+    // A link to this package in any layout is the registration, whatever an
+    // older layout holds under the same name.
+    let installed = root.join("old-registry/ui");
+    fs::create_dir_all(&installed).unwrap();
+    assert_eq!(
+        registration(&[installed.clone(), entry.clone()], &ui),
+        Registration::Linked(entry.clone())
+    );
+    assert_eq!(only(&installed), Registration::Installed(installed.clone()));
+
+    fs::remove_file(&entry).unwrap();
+    symlink(&entry, "../gone");
+    assert_eq!(
+        only(&entry),
+        Registration::Elsewhere {
+            entry: entry.clone(),
+            to: Utf8PathBuf::from("../gone"),
+        }
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn only_a_link_is_removed_and_never_what_it_leads_to() {
+    let (_dir, root) = project();
+    let app = root.join("app");
+    fs::create_dir_all(root.join("ui")).unwrap();
+    fs::write(root.join("ui/package.json"), "{}").unwrap();
+    symlink(&app.join("node_modules/@acme/ui"), "../../../ui");
+
+    remove_link(&app, "@acme/ui").unwrap();
+    assert!(fs::symlink_metadata(app.join("node_modules/@acme/ui")).is_err());
+    assert!(
+        root.join("ui/package.json").is_file(),
+        "what the link led to is untouched"
+    );
+
+    fs::create_dir_all(app.join("node_modules/left-pad")).unwrap();
+    assert!(
+        remove_link(&app, "left-pad").is_err(),
+        "a directory is no link"
+    );
+    assert!(app.join("node_modules/left-pad").is_dir());
+    assert!(remove_link(&app, "../ui").is_err());
+    assert!(root.join("ui").is_dir());
+}
+
+#[test]
+fn a_link_override_is_taken_out_only_where_pnpm_wrote_it_the_way_pnpm_writes() {
+    let (_dir, root) = project();
+    let app = root.join("app");
+    let file = app.join("pnpm-workspace.yaml");
+
+    assert_eq!(remove_link_override(&app, "scratch-lib").unwrap(), None);
+
+    fs::write(&file, "overrides:\n  scratch-lib: link:../lib\n").unwrap();
+    assert_eq!(
+        remove_link_override(&app, "scratch-lib")
+            .unwrap()
+            .as_deref(),
+        Some("link:../lib")
+    );
+    assert!(
+        !file.exists(),
+        "pnpm link created the file, and nothing else was in it"
+    );
+
+    fs::write(
+        &file,
+        "packages:\n  - app\noverrides:\n  '@acme/ui': link:../ui\n  react: 18.3.1\n",
+    )
+    .unwrap();
+    assert_eq!(
+        remove_link_override(&app, "@acme/ui").unwrap().as_deref(),
+        Some("link:../ui")
+    );
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "packages:\n  - app\noverrides:\n  react: 18.3.1\n"
+    );
+
+    fs::write(
+        &file,
+        "overrides:\n  scratch-lib: link:../lib\ncatalog:\n  react: ^18.3.1\n",
+    )
+    .unwrap();
+    assert!(remove_link_override(&app, "scratch-lib").unwrap().is_some());
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "catalog:\n  react: ^18.3.1\n"
+    );
+
+    for (untouched, name) in [
+        ("overrides:\n  react: 18.3.1\n", "react"),
+        ("overrides: { scratch-lib: 'link:../lib' }\n", "scratch-lib"),
+        (
+            "overrides:\n  scratch-lib: link:../lib # mine\n",
+            "scratch-lib",
+        ),
+        (
+            "overrides:\n  scratch-lib: link:../lib\n  scratch-lib: link:../other\n",
+            "scratch-lib",
+        ),
+        (
+            "overrides:\n  scratch-lib:\n    nested: link:../lib\n",
+            "scratch-lib",
+        ),
+    ] {
+        fs::write(&file, untouched).unwrap();
+        assert_eq!(
+            remove_link_override(&app, name).unwrap(),
+            None,
+            "{untouched}"
+        );
+        assert_eq!(fs::read_to_string(&file).unwrap(), untouched);
+    }
+}

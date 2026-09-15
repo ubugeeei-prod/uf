@@ -912,6 +912,20 @@ pub(crate) enum Commands {
         #[arg(value_name = "NAME|DIR")]
         target: Option<String>,
     },
+    /// Undo `uf link`: take a link out of this project, or stop this package
+    /// being linkable.
+    ///
+    /// `uf unlink @acme/ui` or `uf unlink ../ui` removes the link from this
+    /// project, and reinstalls the release package.json declares when it
+    /// declares one. `uf unlink` in a package removes what `uf link` registered
+    /// for it. uf checks `node_modules` and the manager's registry before and
+    /// after, says what it removed, and when there is nothing to unlink says so
+    /// and exits 0.
+    Unlink {
+        /// A package this project links, or the directory it links to.
+        #[arg(value_name = "NAME|DIR")]
+        target: Option<String>,
+    },
     /// Show the versions a workspace shares, and change one everywhere.
     ///
     /// A package more than one manifest declares is a catalogue entry, and the
