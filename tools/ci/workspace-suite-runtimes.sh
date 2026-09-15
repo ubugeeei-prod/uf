@@ -37,10 +37,15 @@ TAB=$(printf '\t')
 #
 # pnpm and both Yarns are not an action but a script, which pins their
 # releases in one place; a job that runs the script installs all four.
+#
+# The last row is not a runtime but has the same shape: the React Compiler
+# conformance run fails rather than skips without its fixture checkout, so a
+# job running the suite has to run the step that fetches it.
 RUNTIMES="bun:oven-sh/setup-bun:crates/uf_cli/tests/bun_host.rs
 deno:denoland/setup-deno:crates/uf_cli/tests/deno_host.rs
 node:actions/setup-node:crates/uf_cli/tests/permissions.rs
-package-managers:tools/ci/install-package-managers.sh:crates/uf_cli/tests/managers.rs"
+package-managers:tools/ci/install-package-managers.sh:crates/uf_cli/tests/managers.rs
+react-compiler-fixtures:tools/react-compiler/sync.sh:crates/uf_transform/tests/react_compiler_conformance/main.rs"
 
 # One pass, emitting `RUNS <workflow> <job>` and
 # `MISSING <workflow> <job> <runtime> <file>`, so the results survive the

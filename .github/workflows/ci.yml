@@ -101,6 +101,11 @@ jobs:
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+      # The React Compiler's own fixtures, at the commit `react_compiler` was
+      # published from. `rust:test` runs uf's compile path over them and fails
+      # when any fixture's result differs from
+      # `crates/uf_transform/tests/react_compiler_conformance/baseline.tsv`.
+      - run: tools/react-compiler/sync.sh
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: nightly-2026-08-01
@@ -614,6 +619,9 @@ jobs:
         with:
           persist-credentials: false
       - run: tools/upstream/sync.sh
+      # The React Compiler's fixtures, for the conformance test in the suite,
+      # which fails rather than skips without them. Same reason as `Test`.
+      - run: tools/react-compiler/sync.sh
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: nightly-2026-08-01

@@ -256,6 +256,44 @@ jobs:
 YAML
 expect 0 "the same Deno in every suite job"
 
+echo "a suite job without the React Compiler fixture sync is named"
+mkdir -p "$work/crates/uf_transform/tests/react_compiler_conformance"
+: > "$work/crates/uf_transform/tests/react_compiler_conformance/main.rs"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace
+YAML
+expect 1 "the conformance run fails without its fixtures"
+names "without react-compiler-fixtures"
+names "crates/uf_transform/tests/react_compiler_conformance/main.rs"
+
+echo "a suite job that syncs the React Compiler fixtures passes"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - run: tools/react-compiler/sync.sh
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace
+YAML
+expect 0 "the fixtures are synced before the suite"
+rm "$work/crates/uf_transform/tests/react_compiler_conformance/main.rs"
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures case(s) failed" >&2
   exit 1
