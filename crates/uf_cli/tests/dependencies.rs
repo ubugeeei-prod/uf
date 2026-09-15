@@ -908,6 +908,10 @@ fn link_a_directory_links_it_into_the_project() {
         .unwrap_or_else(|error| panic!("nothing was linked: {error}\n{stdout}"));
     assert!(linked.file_type().is_symlink(), "a copy, not a link");
     assert!(row(&stdout, "command").contains("npm link --ignore-scripts ./vendor/tiny"));
+    // npm wrote nothing but the link: no manifest entry, no lockfile entry. The
+    // report reads `node_modules`, so it says what happened anyway.
+    assert!(stdout.contains("linked tiny in"), "{stdout}");
+    assert!(!stdout.contains("already up to date"), "{stdout}");
 }
 
 /// Yarn 2+ links by path and keeps no registry of names, so `uf link <name>`

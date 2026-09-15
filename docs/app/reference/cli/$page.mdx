@@ -1740,16 +1740,49 @@ match a directory beside the project still means the package.
 
 | | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
 | --- | --- | --- | --- | --- | --- |
-| `uf link` | `npm link` | `pnpm link` | `yarn link` | refused | `bun link` |
-| `uf link NAME` | `npm link NAME` | `pnpm link NAME` | `yarn link NAME` | refused | `bun link NAME` |
+| `uf link` | `npm link` | `pnpm link`; pnpm 12 refuses it | `yarn link` | refused | `bun link` |
+| `uf link NAME` | `npm link NAME` | `pnpm link NAME`; pnpm 12 refuses it | `yarn link NAME` | refused | `bun link NAME` |
 | `uf link DIR` | `npm link DIR` | `pnpm link DIR` | refused | `yarn link DIR` | refused |
 
-Yarn 1 and bun link by name only and Yarn 2+ by path only, and each refusal names
-the form that manager has. Linking installs, so dependency scripts stay refused:
-`--ignore-scripts`, or `--config.ignore-scripts=true` for `pnpm link`, which
-rejects the flag. Linking a directory or a name is reported like `uf add`, with
-the manifest and the tree; registering changes nothing in the project, so it
-prints the three rows and the manager's own answer.
+Yarn 1 and bun link by name only, and Yarn 2+ by path only. uf refuses the form a
+manager does not have and names the one it does. pnpm 12 links by path only too.
+uf cannot tell which pnpm a project runs, so pnpm refuses those two forms itself
+and uf adds the command to run instead. Linking installs, so dependency scripts
+stay refused: `--ignore-scripts`, or `--config.ignore-scripts=true` for
+`pnpm link`, which rejects the flag.
+
+What a link did is read from `node_modules`, not taken from the manager's exit
+code. npm, Yarn 1 and bun write nothing but the link itself, with no manifest
+entry and no lockfile entry. So the report names the package and where
+`node_modules` now leads for it, above anything the manifest and the tree gained:
+
+```
+$ uf link ../lib
+
+  manager    npm
+  chosen by  no lockfile or packageManager field
+  command    npm link --ignore-scripts ../lib
+  lockfile   package-lock.json · not written
+
+  linked
+
+    @acme/ui  ../lib
+
+✓ linked @acme/ui in 161.9ms
+```
+
+If the manager exits 0 but `node_modules/<name>` is still the installed package,
+is missing, or is a link to nothing, `uf link` fails and says which of the three
+it found.
+
+Yarn 2+ records a link before it makes one: it writes a `portal:` resolution, and
+a resolution only affects a package the project already depends on. Linking a
+package nothing uses yet is reported as **recorded**, with a warning, rather than
+as linked. Yarn 4 also refuses to link a package whose manifest says
+`"private": true`.
+
+Registering changes nothing in the project, so `uf link` with nothing named prints
+the three rows and the manager's own answer.
 
 ### uf clean [--deps] [--dry-run]
 
