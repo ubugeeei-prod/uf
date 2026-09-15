@@ -115,7 +115,7 @@ export type MiddlewareContext = {|
  * tell it from a `Response` without trusting the shape of an object.
  */
 export class Rewrite {
-  +destination: string;
+  readonly destination: string;
 
   constructor(destination: string) {
     this.destination = destination;
