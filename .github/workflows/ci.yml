@@ -157,7 +157,20 @@ jobs:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
-      - run: ./target/release/uf run rust:test
+      # A crash in the suite leaves a core, kept with the binary that wrote it.
+      # `uf_fmt`'s `guarantees` died of SIGSEGV twice on 2026-09-14 with nothing
+      # but the signal in the log, and 560 runs looking for it found nothing:
+      # the crash that can be read is the one that happens. See #1071.
+      - run: tools/ci/test-cores.sh run ./target/release/uf run rust:test
+      - if: failure()
+        run: tools/ci/test-cores.sh collect
+      - if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-cores-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-cores-packed
+          if-no-files-found: ignore
+          retention-days: 3
 
   flow-format:
     name: Flow format
