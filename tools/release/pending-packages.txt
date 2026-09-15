@@ -45,7 +45,6 @@
 # and `uf inspect` reports it.
 
 brand
-cell
 effect
 form
 i18n
@@ -53,11 +52,9 @@ immer
 mock
 react-native
 react-native-testing
-state
 std
 story
 temporal
 testing
 tui
-ui
 web
