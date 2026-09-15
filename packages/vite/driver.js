@@ -73,6 +73,7 @@ import {
   createPrerenderGate,
   createServeHandler,
   documentAssetsFor,
+  forViteBase,
   loadBuild,
   nodeListener,
   providerSpecifier,
@@ -487,7 +488,11 @@ async function preview() {
         previewServer.middlewares.use((request, response, next) => {
           answerRouting(routing, toAddressRequest(request), response)
             .then((answered) => {
-              if (!answered) next();
+              if (answered) return;
+              // The bare base path is the root, which Vite only knows as
+              // `/docs/`; see `forViteBase`.
+              forViteBase(routing, request);
+              next();
             })
             .catch(next);
         });

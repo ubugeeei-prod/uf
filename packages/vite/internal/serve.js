@@ -643,6 +643,33 @@ export async function answerRouting(routing, request, response) {
 }
 
 /**
+ * A request [`answerRouting`] let through, spelled so Vite's own middleware
+ * recognises it.
+ *
+ * Vite serves under its `base` with the trailing slash, `/docs/`, and its base
+ * middleware answers every other path with a 404 of its own, the bare `/docs`
+ * included. But `/docs` is the application's root under `app.router.basePath`,
+ * and the only spelling of it unless the trailing-slash policy is `"always"`,
+ * which has already answered `/docs` with a `308` by the time this is asked.
+ * So a request for exactly the base goes on to Vite as `/docs/`, which Vite
+ * takes the base off and hands on as the root. The application is handed the
+ * root either way.
+ *
+ * @param {{basePath?: string} | undefined} routing the bundle's `routing`
+ * @param {import("node:http").IncomingMessage} request
+ */
+export function forViteBase(routing, request) {
+  const base = routing?.basePath ?? "";
+  const url = request.url ?? "/";
+  if (base === "") return;
+  const queryAt = url.indexOf("?");
+  const pathname = queryAt === -1 ? url : url.slice(0, queryAt);
+  if (pathname === base) {
+    request.url = `${base}/${queryAt === -1 ? "" : url.slice(queryAt)}`;
+  }
+}
+
+/**
  * `app.router.rewrites` for this request, for `uf dev`: the rewritten request,
  * or `null`.
  *

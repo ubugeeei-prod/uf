@@ -93,7 +93,7 @@ import { createFetchHandler } from "@uniflowed/server/fetch";
 import { beginRequest } from "@uniflowed/server/host";
 import { createLambdaHandler } from "@uniflowed/server/lambda";
 import { installLogger, processLogger, recordingLogger } from "@uniflowed/server/log";
-import { createServeHandler, createStaticHandler } from "@uniflowed/server/node";
+import { type RoutingRules, createServeHandler, createStaticHandler } from "@uniflowed/server/node";
 import { createHandler as createStandaloneHandler } from "@uniflowed/server/standalone";
 
 // The other front door, for the comparison. Reached by path rather than by
@@ -898,6 +898,112 @@ describe("the front doors", () => {
     for (const [url, expected] of Object.entries(expectations)) {
       const reference = await doors["uf start"](url);
       expect(`uf start GET ${url}: ${reference}`).toContain(`uf start GET ${url}: ${expected}`);
+      for (const name of [
+        "adapter node",
+        "adapter edge",
+        "adapter serverless",
+        "uf build --compile",
+      ]) {
+        const answered = await doors[name](url);
+        expect(`${name} GET ${url}: ${answered}`).toBe(`${name} GET ${url}: ${reference}`);
+      }
+    }
+  });
+
+  it("give one answer under app.router's base path and trailing-slash policy", async () => {
+    // What a `trailingSlash: "never"` build writes: `guide.html` rather than
+    // `guide/index.html`, and every file at the root of the directory. The base
+    // path is in the URLs a build writes, never in its file names.
+    const built = {
+      "index.html": "<!doctype html><p>home</p>",
+      "guide.html": "<!doctype html><p>guide</p>",
+      "assets/client.js": "console.log(1);",
+    };
+    const distDir = directoryWith(built);
+    const routing: RoutingRules = {
+      basePath: "/docs",
+      trailingSlash: "never",
+      redirects: [{ source: "/moved/:slug", destination: "/posts/:slug", permanent: true }],
+    };
+    const app = {
+      ...appWith({
+        // The application is handed the path without the base, whichever door
+        // the request came through, and the handler says which path it got.
+        handler: (request: Request) => {
+          const { pathname } = new URL(request.url);
+          return pathname === "/api/health" ? Response.json({ path: pathname }) : null;
+        },
+      }),
+      routing,
+    };
+
+    const started = createViteServeHandler({ entry: app, assets, distDir });
+    const handle = createFetchHandler({ app, document: assets });
+    const deployed = createServeHandler({ staticDir: distDir, handle, routing });
+    const worker = createWorkerFetch({ handle, beginRequest, routing });
+    const invoked = createLambdaHandler({ handle, beginRequest, staticDir: distDir, routing });
+    const compiled = createStandaloneHandler({ app, assets: embedded(built), document: assets });
+
+    // The status, where a redirect points, and the body: everything the two
+    // settings decide.
+    const described = (status: number, location: ?string, body: string): string =>
+      `${String(status)} location=${location ?? "-"} ${body.replace(/\s+/g, " ")}`.trimEnd();
+
+    const doors = {
+      "uf start": async (url: string) => {
+        const response = await started(request(url));
+        return described(response.status, response.headers.get("location"), await response.text());
+      },
+      "adapter node": async (url: string) => {
+        const response = await deployed(request(url));
+        return described(response.status, response.headers.get("location"), await response.text());
+      },
+      "adapter edge": async (url: string) => {
+        const response = await worker(
+          request(url),
+          { ASSETS: assetsBinding(distDir) },
+          executionContext(),
+        );
+        return described(response.status, response.headers.get("location"), await response.text());
+      },
+      "adapter serverless": async (url: string) => {
+        const result = await invoked(await eventFor(request(url)));
+        return described(result.statusCode, result.headers.location, result.body);
+      },
+      "uf build --compile": async (url: string) => {
+        const response = nodeResponse();
+        await compiled({ method: "GET", url, headers: { host: "localhost" } }, response);
+        return described(response.statusCode, response.headers.location, response.body());
+      },
+    };
+
+    const expectations = {
+      // The application's root is the base itself, and the other spelling of
+      // it is a redirect.
+      "/docs": "200 location=- <!doctype html><p>home</p>",
+      "/docs/": "308 location=/docs",
+      // A page the build wrote as `guide.html`, at the spelling the policy
+      // uses, and a `308` to it from the other spelling, with the query kept.
+      "/docs/guide": "200 location=- <!doctype html><p>guide</p>",
+      "/docs/guide/?tab=api": "308 location=/docs/guide?tab=api",
+      // A hashed asset, from the root of the directory.
+      "/docs/assets/client.js": "200 location=- console.log(1);",
+      // A render and a route handler, each handed the application path.
+      "/docs/posts/hello": "200 location=- <!doctype html><p>/posts/hello</p>",
+      "/docs/api/health": '200 location=- {"path":"/api/health"}',
+      // A redirect rule's source is written without the base, and its
+      // destination is answered with it.
+      "/docs/moved/hello": "308 location=/docs/posts/hello",
+      // Outside the base nothing answers: not a page, not a file, and not a
+      // path that only starts with the base's characters.
+      "/guide": "404 location=- 404 Not Found",
+      "/assets/client.js": "404 location=- 404 Not Found",
+      "/docsx": "404 location=- 404 Not Found",
+    };
+
+    for (const [url, expected] of Object.entries(expectations)) {
+      const reference = await doors["uf start"](url);
+      expect(`uf start GET ${url}: ${reference}`).toBe(`uf start GET ${url}: ${String(expected)}`);
       for (const name of [
         "adapter node",
         "adapter edge",

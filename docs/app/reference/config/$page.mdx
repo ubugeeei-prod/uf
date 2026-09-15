@@ -106,6 +106,8 @@ of it.
 | `router.redirects` | `[]` | `{ source, destination, permanent }`: a redirect answered before anything else, the first match winning — see [below](#routerredirects-routerrewrites-and-routerheaders) |
 | `router.rewrites` | `[]` | `{ source, destination }`: the route at `destination` served at the path that was asked for |
 | `router.headers` | `[]` | `{ source, headers }`: response headers by path, every match applied |
+| `router.basePath` | none | The path the application is served under, such as `"/docs"`. Every address uf writes for a browser carries it, and a request outside it is a `404` — see [below](#routerbasepath-and-routertrailingslash) |
+| `router.trailingSlash` | `"ignore"` | Which spelling of a path is the page: `"never"` redirects `/about/` to `/about`, `"always"` redirects `/about` to `/about/`, and `"ignore"` answers both |
 | `runtime.default` | `"node"` | The runtime this project is written for. `node`, `deno` and `bun`; naming a runtime uf has no host for is an error that says which key was meant ([#246](https://github.com/ubugeeei-prod/uf/issues/246)) |
 | `runtime.compatibility` | `["node", "bun", "deno"]` | The other runtimes it states it runs on, from the same three. Written into `.uf/install.json` as the hosts that must be available |
 | `runtime.capabilityJsHost.default` | `"node"` | **The host a command starts when no tool key names one.** `uf dev`, `uf build`, `uf preview`, `uf start` and `uf test` resolve through this key, not through `runtime.default`, when [`runtime`](#runtime-and-packagemanager) and the keys nearer the command are absent. `uf build --compile` embeds its runtime from this key whatever they say ([#1036](https://github.com/ubugeeei-prod/uf/issues/1036)) |
@@ -161,6 +163,29 @@ source — and a rewrite to another origin. Every server front door applies the
 three the same way; a static deployment refuses them by name.
 [Redirects, rewrites and response headers](/guide/routing#redirects-rewrites-and-response-headers)
 has the order they apply in and the table from `next.config.js`.
+
+### router.basePath and router.trailingSlash
+
+`next.config.js`'s `basePath` and `trailingSlash`:
+
+```js
+router: {
+  basePath: "/docs",
+  trailingSlash: "never",
+}
+```
+
+A base path is literal segments starting with `/` and not ending with one:
+`"/docs"` or `"/en/docs"`. `"/"`, a trailing slash, an empty segment, `.` or
+`..`, a query or a fragment, and a `:name` or `*` pattern are errors when the
+file is loaded, each with a sentence that says why. Routes, a `Link`'s `to`,
+`redirect()` and the three lists above are all written without it.
+
+`"never"` writes a prerendered page as `about.html`, and `"always"` and
+`"ignore"` write `about/index.html`. Next.js's default is `trailingSlash: false`,
+which is `"never"` here.
+[A base path and a trailing slash](/guide/routing#a-base-path-and-a-trailing-slash)
+has what carries the base and where the two apply.
 
 ### targets
 

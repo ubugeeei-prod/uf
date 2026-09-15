@@ -975,8 +975,91 @@ project with a server adapter, or write the host's own file.
 | `has`, `missing` | a `$middleware.js` that checks, then returns `rewrite()` or `Response.redirect` |
 | `/:slug`, `/:path*` | the same |
 | `/(.*)`, `/:slug(\\d{1,})`, `/:slug+`, `/:slug?` | refused by name |
-| `basePath: false`, `locale` | not read |
+| `basePath: false` | a destination with its origin written out; a source is always under the [base path](#a-base-path-and-a-trailing-slash) |
+| `locale` | not read |
 | `NextResponse.rewrite(url)` in `middleware.ts` | `rewrite(url)` from `@uniflowed/router/middleware` |
+
+## A base path and a trailing slash
+
+Two more keys decide the address a page is answered at, rather than which route
+answers it: where on its host the application is served, and which spelling of
+a path is the page.
+
+```js
+// uf.config.js
+export default defineConfig({
+  app: {
+    router: {
+      basePath: "/docs",
+      trailingSlash: "never",
+    },
+  },
+});
+```
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `basePath` | none | Serves the application under this path. A request outside it is a plain `404`, and every address uf writes for a browser carries it. |
+| `trailingSlash` | `"ignore"` | `"never"` answers `/about/` with a `308` to `/about`. `"always"` answers `/about` with a `308` to `/about/`. `"ignore"` answers both. |
+
+A base path is literal segments with no trailing slash. `uf.config.js` is
+refused when it is not one, and `"/"`, `"/docs/"`, a `:name` pattern and a query
+each get a sentence saying why.
+
+### What carries the base path
+
+Everything a project writes is an application path, without the base: route
+directories, a `Link`'s `to`, `router.push`, `redirect()`, and a rule's `source`
+and `destination`. `/guide` is `/guide` whether the site is served at `/` or at
+`/docs`. uf puts the base in front of what reaches a browser:
+
+- the `href` a `Link` renders, so a link followed before hydration goes where a
+  click does;
+- the history entry a navigation writes, and the `Location` a `redirect()` or a
+  redirect rule answers with;
+- every asset URL in a document, and the payload URL a client navigation
+  fetches;
+- every `<loc>` in `sitemap.xml`, and the `Sitemap:` line in `robots.txt`.
+
+The trailing-slash policy spells those addresses too, so following a link uf
+wrote is never a redirect.
+
+In the other direction, middleware, route handlers and pages get the request
+with the base already taken off: `new URL(request.url).pathname` is
+`/api/health` under `/docs` as well. Code that builds an absolute address
+itself puts the base back with `basePath()`:
+
+```js
+// app/account/$middleware.js
+import { basePath } from "@uniflowed/router";
+import { cookies } from "@uniflowed/server";
+
+export default function middleware(request: Request): Response | void {
+  if (cookies().get("session") == null) {
+    return Response.redirect(new URL(`${basePath()}/sign-in`, request.url), 302);
+  }
+}
+```
+
+Under a base, the application's root is the base itself: `/docs`, or `/docs/`
+under `"always"`. A path whose last segment has an extension, like
+`/sitemap.xml`, keeps the spelling it was written with under every policy.
+
+### Where they apply
+
+`uf dev`, `uf preview`, `uf start`, `uf build --compile` and every server
+adapter take the base off and apply the policy before anything else answers,
+a redirect rule and the build's own files included, and the tests ask each of
+them the same questions.
+
+`uf build` writes its files without the base, `dist/index.html` and
+`dist/assets/…`, so a static host serves `dist/` at `/docs/`. Under `"never"` a
+prerendered page is written as `about.html` rather than `about/index.html`,
+which static hosts serve at `/about` without a redirect to the slash. The host
+applies no policy of uf's, so the `308` from the other spelling, and what
+answers outside the base, are the host's to configure. A crawler reads
+`robots.txt` only at the root of a host, so a site served under a base path
+puts its own there.
 
 ## When a route is rendered
 

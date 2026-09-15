@@ -116,6 +116,7 @@ import {
   answerRouting,
   answersInFrontOfFiles,
   beginRequest,
+  forViteBase,
   rewriteRouting,
 } from "./internal/serve.js";
 import { serverComponentsProblem } from "./internal/server-components.js";
@@ -768,7 +769,11 @@ function flowPlugin({
           }
           answerRouting(routing, toAddressRequest(request), response)
             .then((answered) => {
-              if (!answered) next();
+              if (answered) return;
+              // The bare base path is the root, which Vite only knows as
+              // `/docs/`; see `forViteBase`.
+              forViteBase(routing, request);
+              next();
             })
             .catch(next);
         });
