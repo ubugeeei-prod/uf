@@ -332,8 +332,7 @@ export default defineConfig({
     // task is the same run with its report printed.
     "react-compiler:sync": "tools/react-compiler/sync.sh",
     "react-compiler:conformance": {
-      command:
-        "cargo test -p uf_transform --test react_compiler_conformance -- --nocapture",
+      command: "cargo test -p uf_transform --test react_compiler_conformance -- --nocapture",
       dependsOn: ["react-compiler:sync"],
     },
 
