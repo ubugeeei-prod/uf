@@ -331,7 +331,8 @@ fn ui_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             name: "files",
             provider: "uf".to_string(),
             detail: format!(
-                "writes {}/<name>.js and the components it imports, and refuses to replace a file \
+                "writes <name>.js, and the components it imports, into `ui.directory` \
+                 ({} unless uf.config.js names another), and refuses to replace a file \
                  somebody edited",
                 uf_ui::DEFAULT_DIRECTORY
             ),

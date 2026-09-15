@@ -165,9 +165,10 @@ Writes styled components into the project, with the components they import.
 uf ui add button dialog tabs select
 ```
 
-Each component is one file in `app/components/ui/` — `dialog.js` is
-`@uniflowed/ui`'s dialog dressed in `@uniflowed/stylex`'s tokens — and from then
-on the file is the project's to change. The behaviour stays imported from
+Each component is one file in `app/components/ui/`, or in the directory
+[`ui.directory`](/reference/config#ui) names. `dialog.js` is `@uniflowed/ui`'s
+dialog dressed in `@uniflowed/stylex`'s tokens, and from then on the file is the
+project's to change. The behaviour stays imported from
 `@uniflowed/ui`, so a fix to a focus trap still arrives by upgrading it; what
 the file owns is the look.
 

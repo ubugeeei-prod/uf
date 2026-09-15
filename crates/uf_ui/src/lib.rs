@@ -88,9 +88,11 @@
 //!
 //! # Where a component is written, and how its imports resolve
 //!
-//! Into [`DEFAULT_DIRECTORY`], every component beside every other, so
-//! `./button.js` means in the project exactly what it means in the registry, and
-//! a page imports `./components/ui/dialog.js`.
+//! Into [`DEFAULT_DIRECTORY`], or the directory a project's `ui.directory` names,
+//! every component beside every other, so `./button.js` means in the project
+//! exactly what it means in the registry, and a page imports
+//! `./components/ui/dialog.js`. The CLI reads the key and refuses a path that
+//! leaves the project; this crate is handed the directory.
 //!
 //! # Theming, dark mode included
 //!

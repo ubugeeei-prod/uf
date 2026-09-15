@@ -930,6 +930,18 @@ export type UniflowedConfig = {
    */
   readonly staged?: { readonly [string]: string | $ReadOnlyArray<string> },
   /**
+   * Where `uf ui add` writes the components a project owns, and where
+   * `uf ui list` and `uf ui diff` look for them.
+   *
+   * `directory` is relative to the project root, and `app/components/ui` when
+   * absent. Every component goes in the one directory, because each imports
+   * the ones it builds on as siblings (`./button.js`). A path that leaves the
+   * project is refused before anything is written.
+   */
+  readonly ui?: {
+    readonly directory?: string,
+  },
+  /**
    * Vite's own configuration, merged over the one uf generates.
    *
    * uf reads none of it, which is the point: an option Vite adds tomorrow
