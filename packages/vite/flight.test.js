@@ -8,11 +8,14 @@
 // build is a slow way to find out which line. What a real build and a real
 // server do with them is `crates/uf_cli/tests/vite.rs`. See ubugeeei-prod/uf#519.
 
+import fs from "node:fs";
+
 import { describe, expect, it } from "@uniflowed/test";
 import { parseAst } from "vite";
 
 import uniflowed from "./index.js";
 import {
+  FLIGHT_BROWSER_DEPENDENCIES,
   RSC_ENVIRONMENT,
   clientExportNames,
   clientModuleUrlPlugin,
@@ -306,5 +309,47 @@ describe("which applications render React Server Components", () => {
     // no document to carry a payload.
     expect(rendersFlight({}, { mount: "render", routeTarget: "web" })).toBe(false);
     expect(rendersFlight({}, { mount: "hydrate", routeTarget: "native" })).toBe(false);
+  });
+});
+
+describe("what the browser's graph pre-bundles for React Server Components", () => {
+  /** The configuration `uf:flow` gives `uf dev`, for an application whose `app` is `app`. */
+  function servedWith(app: $FlowFixMe): $FlowFixMe {
+    const flow = uniflowed({ root: "/project", config: { app } }).find(
+      (plugin) => plugin.name === "uf:flow",
+    );
+    return flow.config({ root: "/project" }, { mode: "development", command: "serve" });
+  }
+
+  it("is React's Flight client, under the specifier the router imports it by", () => {
+    // ubugeeei-prod/uf#1126. An installed router is in `node_modules`, where
+    // Vite pre-bundles nothing it first meets while serving, so the browser was
+    // sent the CommonJS file and hydration threw. The optimizer finds a
+    // pre-bundled dependency by the specifier that imports it, so the name is
+    // read off the router rather than written here a second time.
+    const reader = fs.readFileSync(
+      new URL("../router/internal/flight-browser.js", import.meta.url),
+      "utf8",
+    );
+    const imported = [...reader.matchAll(/from "(react-server-dom-parcel\/[^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    const { include } = servedWith({}).optimizeDeps;
+
+    expect(imported.length > 0).toBe(true);
+    for (const specifier of imported) {
+      expect(FLIGHT_BROWSER_DEPENDENCIES).toContain(specifier);
+      expect(include).toContain(specifier);
+    }
+  });
+
+  it("is none of it for an application that renders no Server Component", () => {
+    // `react-server-dom-parcel` is an optional peer of the router, which such a
+    // project need not install (ubugeeei-prod/uf#992).
+    const { include } = servedWith({ rsc: false }).optimizeDeps;
+
+    for (const specifier of FLIGHT_BROWSER_DEPENDENCIES) {
+      expect(include).not.toContain(specifier);
+    }
   });
 });
