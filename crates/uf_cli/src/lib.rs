@@ -276,8 +276,16 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             json,
             fix,
             fix_unsafe,
+            explain_any,
             paths,
-        } => commands::check::check(&cwd, ui, json, fix_mode(fix, fix_unsafe), &paths),
+        } => commands::check::check(
+            &cwd,
+            ui,
+            json,
+            fix_mode(fix, fix_unsafe),
+            &paths,
+            explain_any.as_deref(),
+        ),
         Commands::Completion { shell } => {
             commands::completion::completion(ui, shell);
             Ok(())
@@ -357,7 +365,13 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Start { host, port, mode } => {
             commands::serve::start(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }
-        Commands::Prepare { fix } => commands::prepare::prepare(&cwd, ui, fix),
+        Commands::Prepare { install_hooks, fix } => {
+            if install_hooks {
+                commands::prepare::install_hooks(&cwd, ui)
+            } else {
+                commands::prepare::prepare(&cwd, ui, fix)
+            }
+        }
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump, force } => commands::release::release(&cwd, ui, bump, force),
         Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
@@ -368,6 +382,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             concurrency,
             force,
             why,
+            recursive,
+            filter,
             script,
             args,
         } => match script {
@@ -381,14 +397,24 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                     concurrency,
                     force,
                     why,
+                    recursive,
+                    filter,
                 },
             ),
+            // Listing is one project's tasks, and a selector over members
+            // that would then be ignored is a flag that silently does
+            // nothing.
+            None if recursive || !filter.is_empty() => Err(anyhow!(
+                "`-r` and `--filter` choose where a task runs, and no task was named\n\n  \
+                 name one — `uf run build -r` — or run `uf run` to see what this project defines"
+            )),
             None => commands::task::list_tasks(&cwd, ui),
         },
         Commands::Test {
             list,
             mode,
             watch,
+            changed,
             json,
             filter,
             bail,
@@ -410,6 +436,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 list,
                 mode,
                 watch,
+                changed,
                 json,
                 filter,
                 bail,

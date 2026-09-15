@@ -3284,8 +3284,9 @@ fn binding_name(pattern: &BindingPattern<'_>, index: usize) -> CompactString {
     }
 }
 
-/// The name a declaration binds, for naming a hole.
-fn declaration_name<'a>(declaration: &Declaration<'a>) -> Option<&'a str> {
+/// The name a declaration binds, for naming a hole — and, in
+/// [`crate::locate`], for naming the declaration a finding is in.
+pub(crate) fn declaration_name<'a>(declaration: &Declaration<'a>) -> Option<&'a str> {
     match declaration {
         Declaration::VariableDeclaration(variables) => variables
             .declarations

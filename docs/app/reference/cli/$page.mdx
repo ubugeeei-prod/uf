@@ -823,6 +823,20 @@ finds. `--why` prints, for every task, the reason it ran or was replayed —
 `packages/core/index.js changed`, `declares no inputs, so it always runs`,
 `dist/app.js is missing`.
 
+**Across a workspace.** `-r` / `--recursive` runs the task in every workspace
+member that defines it, each after the members its `package.json` depends on;
+the workspace root's own task is not one of them. `--filter SELECTOR` runs it
+only in the members the selector picks, implies `-r`, and may be repeated: a
+name, a glob over names and paths, a path (`./packages/ui`), `name...` for a
+member and everything it depends on, `name^...` for only those, `...name` for a
+member and everything that depends on it, and `...^name` for only those. A
+selector that picks no member is an error. `member#task` in `dependsOn` names a
+task in another member, by the member's name or path, from the workspace root or
+from inside a member. Each member's results are kept in its own
+`.uf/cache/task`, a task that depends on a task in another member is keyed on
+that task's result as well, and `--why` prints the graph first when a run spans
+more than one member.
+
 ### uf exec PACKAGE [ARGS...]
 
 Runs a package's binary, forwarding everything after the name to it and
@@ -850,7 +864,10 @@ here, and it delegates to whichever package manager the project uses (`npx
 Type-checks the project with Flow. `--json` for the machine-readable report.
 `--fix` and `--fix-unsafe` are `uf lint`'s, and mean the same thing here: they
 apply the *lint* fixes. Type inference has no fix catalogue — a type error is
-not something uf knows how to rewrite.
+not something uf knows how to rewrite. `--explain-any <package>` lists every
+place a dependency typed from its TypeScript declarations is `any`: each hole
+the translation left, and each error Flow reports inside the translation. Every
+entry gives the declaration file, the line and the declaration.
 
 #### The `--json` report has two lists of diagnostics
 
@@ -865,6 +882,8 @@ type errors are**:
 | `typeCheck.diagnostics` | Type errors, from the inference backend |
 | `typeCheck.status` | `checked`, or why inference did not run |
 | `typeCheck.backend`, `.filesChecked`, `.filesFromCache`, `.elapsedMs` | What inference did and how long it took |
+| `typeCheck.translatedPackages` | Each dependency typed from its TypeScript declarations, with its `holes` and `findings` counts |
+| `typeCheck.explainAny` | With `--explain-any`, that package's `holes` and `findings`, each with `path`, `line` and `declaration` |
 | `unavailableRules` | Lint rules that need inference uf does not implement yet, and did not run |
 
 A reader who counts `diagnostics` and reports that gets zero for a project with
@@ -1003,16 +1022,37 @@ reached fails the run. `--watch` and `--coverage` cannot be combined.
 
 ### uf prepare
 
-Runs the checks and code generation a commit should not go without. Five steps,
+Runs the checks and code generation a commit should not go without. Six steps,
 in order, and every one of them does something:
 
 | Step | What it does |
 | --- | --- |
-| `discover-staged-files` | Asks git for the files in the index, and narrows the two checks to them |
+| `discover-staged-files` | Asks git for the files in the index, and narrows the checks to them |
 | `generate-router-types` | Writes `router.js` from the reserved page files |
 | `generate-server-action-types` | Writes `server-actions.js`: every callable server action, keyed by `module#export`, with its real type read off the declaring module |
+| `run-staged-tasks` | Runs the tasks [`staged`](/reference/config#staged) names, each once, with the staged files its glob matches appended |
 | `run-lint` | `uf lint` over the staged files |
 | `run-format-check` | `uf fmt --check` over the staged files |
+
+**Every step reads what is staged, not what is on disk.** A file that is half
+staged — `git add -p` — has its staged content put in the working tree for the
+run, and its unstaged half put back afterwards; the copy waits under
+`.uf/prepare/unstaged/` while the run holds it, and a run that was killed is
+undone by the next one before it does anything else.
+
+A staged task that rewrites a **fully** staged file has fixed what is being
+committed, and uf stages the rewrite, so the fix lands in the commit. One that
+rewrites a **half**-staged file has rewritten a mixture that exists only for the
+run: the rewrite is not kept, the step fails, and the commit stops, so the fix
+can be made by hand to the half that is staged.
+
+`uf prepare --install-hooks` wires this into git. It writes a dispatcher to
+`.githooks/pre-commit` that runs `uf prepare` in the project, and points this
+clone's `core.hooksPath` at `.githooks`; commit the file, and every other clone
+runs the command once. There is no `postinstall` script, for the same reason
+there are no lifecycle scripts. A `pre-commit` uf did not write, or a
+`core.hooksPath` already set to another directory, is refused rather than
+overwritten.
 
 With `--fix` those last two write instead of only reporting: the lint step
 applies `uf lint`'s **safe** fixes and the format step formats. Safe only,
@@ -1037,11 +1077,7 @@ file its own linter rejects is a hook nobody keeps.
 
 Outside a git working tree there is no staged set, so every file is checked and
 the run says why. With git and an empty index there is nothing to check, and the
-two checks are skipped.
-
-`uf prepare` reads the working tree, not the staged blob. A file that is half
-staged is checked as it is on disk; uf does not stash the unstaged half the way
-`lint-staged` does.
+checks are skipped.
 
 ## Editors
 

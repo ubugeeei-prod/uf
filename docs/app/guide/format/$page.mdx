@@ -232,6 +232,91 @@ Anything whose path contains one of the arguments is read and nothing else, so
 `uf fmt dialog.js` is a way to format the file in front of you. A pattern that
 matches nothing is an error rather than a clean run.
 
+### Project rules
+
+A rule your team writes is a JavaScript module listed in `plugins` and switched
+on in `lint.rules`. `uf lint` runs it beside uf's own rules, into one report:
+
+```js
+// uf.config.js
+export default {
+  plugins: ["./rules/acme.js"],
+  lint: { rules: { "acme/no-foo": "error" } },
+};
+```
+
+```js
+// rules/acme.js
+export default {
+  name: "acme",
+  rules: {
+    "no-foo": {
+      meta: { messages: { reserved: "`{{ name }}` is reserved for the build" } },
+      create(context) {
+        return {
+          Identifier(node) {
+            if (node.name === "foo") {
+              context.report({ node, messageId: "reserved", data: { name: node.name } });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+```
+
+The shape is ESLint's, so a rule you already have mostly moves as it is. A
+plugin is a module whose default export has a `name` and `rules`, and a rule's
+id is the two joined: `acme/no-foo`. Vite ignores a key it does not know, so
+the same object can also be one of the project's Vite plugins. What a rule
+gets:
+
+- **Listeners** keyed by ESTree node type, and by the type with `:exit` on the
+  way out. The tree is the one uf's own Flow parser produced, so type
+  annotations and component syntax are nodes like any other, and every node
+  has a `parent`. There are no selectors beyond a node type. An identifier
+  with a type annotation spans the annotation too, as in any Flow ESTree, so a
+  fix that renames one replaces `node.name.length` characters from
+  `node.range[0]` rather than the whole node.
+- **`context.report`** with a `node` or a `loc` (lines from 1, columns from 0),
+  and a `message`, or a `messageId` from `meta.messages` filled from `data`.
+- **`context.sourceCode`** — `text`, `ast`, `lines`, `getText(node)`,
+  `getLocFromIndex` and `getIndexFromLoc` — with `context.filename` and
+  `context.cwd`.
+- **`fix`**, reported only by a rule that sets `meta.fixable`, with ESLint's
+  fixer: `replaceText`, `replaceTextRange`, `insertTextBefore`,
+  `insertTextAfter`, their `Range` forms, `remove` and `removeRange`.
+
+What is not there fails out loud instead of answering nothing. There is no
+scope analysis, no token list, and no `context.options`, because `lint.rules`
+takes a level and nothing else. A rule that calls `getScope` throws, and a rule
+that throws is named in the report.
+
+The rules run in one worker on the project's Capability JS Host — Node.js or
+Bun, through the Flow loader `uf test` uses, so a rule module can be written in
+Flow — and the worker is started only when a project rule is on, from
+`@uniflowed/host`, which has to be installed. Its cost is bounded and reported.
+It has 30 seconds to load the plugins and 5 seconds for each file; a worker past
+either is stopped and the file named, and after three workers the remaining
+files are named rather than tried. `uf lint --json` carries a `projectRules`
+object with the time spent inside each rule, the wall time of the whole pass
+and every problem — a plugin that did not import, a rule no plugin defines, a
+file that ran out of time — and any problem fails the run.
+
+A rule's fixes go through the same two tiers as uf's own, and the rule picks
+the tier with the word ESLint already gives it. `meta.fixable: "whitespace"`
+promises edits that only move layout, and `--fix` applies those; `"code"` is
+applied by `--fix-unsafe` alone, because uf cannot read an edit to find out
+whether the program still means what it meant. Either way the result has to
+parse and stay formatted, exactly as with uf's own fixes.
+
+The language server runs project rules too, with one worker for the whole
+editor session. Their findings appear beside uf's, a finding with a fix has it
+in the lightbulb menu, "Fix all" on save applies the `"whitespace"` ones, and
+anything that keeps a rule from answering is written to the editor's log for
+the server.
+
 ### When lint is too expensive
 
 The slowest lint is usually not "the linter"; it is one rule repeatedly asking

@@ -193,6 +193,16 @@ pub(crate) enum Commands {
         /// still parses and still formats — read the diff before committing it.
         #[arg(long, conflicts_with = "fix")]
         fix_unsafe: bool,
+        /// List every place a package typed from its TypeScript declarations
+        /// is `any`, each with the declaration it is in.
+        ///
+        /// A package that ships no Flow is typed from a translation of its
+        /// `.d.ts`, and the report counts what the translation could not say:
+        /// the holes it typed `any`, and the errors Flow reports inside it.
+        /// This names each one — the declaration file, the line, the
+        /// declaration and why — for the package named here.
+        #[arg(long, value_name = "PACKAGE")]
+        explain_any: Option<String>,
         /// Only check files whose path contains one of these patterns.
         #[arg(value_name = "PATH")]
         paths: Vec<String>,
@@ -469,6 +479,15 @@ pub(crate) enum Commands {
     Mcp,
     /// Run the checks and code generation a commit should not go without.
     Prepare {
+        /// Write the committed git hook that runs `uf prepare` before each
+        /// commit — `.githooks/pre-commit` — and point this clone's
+        /// `core.hooksPath` at it, instead of running the checks.
+        ///
+        /// Once per clone, by hand: uf runs no `postinstall` script. A hook uf
+        /// did not write, or a `core.hooksPath` already set elsewhere, is
+        /// refused rather than overwritten.
+        #[arg(long, conflicts_with = "fix")]
+        install_hooks: bool,
         /// Apply `uf lint`'s safe fixes to the staged files and format them,
         /// instead of only reporting what is wrong with them.
         ///
@@ -572,6 +591,16 @@ pub(crate) enum Commands {
         /// Say, for each task, why it ran or was answered from the cache.
         #[arg(long)]
         why: bool,
+        /// Run the task in every workspace member that defines it, each one
+        /// after the members its `package.json` depends on.
+        #[arg(long, short = 'r')]
+        recursive: bool,
+        /// Run the task only in the members this selects: a name, a glob, a
+        /// path (`./packages/ui`), `name...` for a member and what it depends
+        /// on, `...name` for a member and what depends on it. Repeatable, and
+        /// implies `-r`.
+        #[arg(long, value_name = "SELECTOR")]
+        filter: Vec<String>,
         /// The task to run, as named under `tasks` in `uf.config.js`.
         /// Omit it to see what this project defines.
         script: Option<String>,
@@ -611,6 +640,16 @@ pub(crate) enum Commands {
         /// Re-run the affected tests whenever a source file changes.
         #[arg(long)]
         watch: bool,
+        /// Run only the test files a change since REF reaches.
+        ///
+        /// A change is anything that differs from the commit where HEAD's
+        /// history left REF — committed since, staged or not — and any
+        /// untracked file git does not ignore. A test file is reached when it
+        /// imports a changed file, directly or through other modules. A change
+        /// to `uf.config.js`, a `package.json`, a lockfile or a `.env` file
+        /// runs the whole suite.
+        #[arg(long, value_name = "REF")]
+        changed: Option<String>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
@@ -1190,6 +1229,7 @@ mod tests {
                 json: true,
                 fix: false,
                 fix_unsafe: false,
+                explain_any: None,
                 paths: Vec::new()
             }
             .wants_json()
@@ -1215,6 +1255,8 @@ mod tests {
                 concurrency: None,
                 force: false,
                 why: false,
+                recursive: false,
+                filter: Vec::new(),
                 script: Some("build".to_string()),
                 args: Vec::new(),
             }
@@ -1226,6 +1268,8 @@ mod tests {
                 concurrency: None,
                 force: false,
                 why: false,
+                recursive: false,
+                filter: Vec::new(),
                 script: None,
                 args: Vec::new(),
             }

@@ -179,6 +179,8 @@ report names each package typed that way once, with how many of its places are
 `any` and how many errors Flow reports inside the translation, and
 `typeCheck.translatedPackages` in `--json` carries the same. A second check reads
 the translation back from `.uf/cache/dts` rather than making it again.
+`uf check --explain-any <package>` lists each hole and each of those errors with
+the declaration file, the line, and the declaration it is in.
 
 The names in `these imports are typed as any` are where the check cannot see.
 Before `uf install`, that list is every `@uniflowed/*` package the scaffold
@@ -209,7 +211,8 @@ Flow's own library definitions come first — the DOM, Node's built-ins, React �
 then uf's for Vite's client API and Web Crypto, then the project's: every file
 under `flow-typed/`, which needs no configuration, and whatever the `[libs]`
 section of a `.flowconfig` names, in order. A later definition shadows an earlier
-one. `uf explain check` says the same in two lines:
+one. `uf explain check` gives the same order, with where a dependency's types
+come from between the two:
 
 <figure className="terminal">
 
@@ -219,7 +222,10 @@ one. `uf explain check` says the same in two lines:
     1. library definitions
         provider  flow (upstream)
         what      Flow's own, then `flow-typed` and whatever `.flowconfig`'s [libs] names
-    2. type checking
+    2. dependencies
+        provider  uf
+        what      a package's own Flow when it ships some; otherwise a Flow translation of its TypeScript declarations, each hole typed any — `uf check --explain-any <package>` lists them
+    3. type checking
         provider  flow (upstream)
         what      uf does not type-check; Flow is the type system
 ```

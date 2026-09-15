@@ -113,6 +113,60 @@ pub(super) struct TranslatedPackage {
     pub(super) from_cache: bool,
 }
 
+/// Every place a package typed from its declarations is `any`, or typed less
+/// precisely than TypeScript types it: what `uf check --explain-any` prints.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct Explanation {
+    /// The package name that was asked about.
+    pub(super) package: String,
+    /// Whether this run typed a package of that name from declarations.
+    ///
+    /// `false` is an answer of its own, and not the same as a package with
+    /// nothing to explain: nothing imported the package, or it ships Flow, or
+    /// it has no declarations. Two empty lists under `false` are not a clean
+    /// bill.
+    pub(super) translated: bool,
+    /// Every hole the translation left, by declaration file and line.
+    pub(super) holes: Vec<ExplainedHole>,
+    /// Every error Flow reports inside the translation, other than
+    /// declaration-site variance, by declaration file and line.
+    pub(super) findings: Vec<ExplainedFinding>,
+}
+
+/// One hole, where a reader can find it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ExplainedHole {
+    /// The declaration file, project-relative.
+    pub(super) path: String,
+    /// The one-based line in it.
+    pub(super) line: u32,
+    /// The declaration the hole is in.
+    pub(super) declaration: String,
+    /// The construct, as `uf_dts::Construct` spells it.
+    pub(super) construct: &'static str,
+    /// What the translation did instead.
+    pub(super) reason: String,
+}
+
+/// One error Flow reports inside a translation, where a reader can find it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ExplainedFinding {
+    /// The declaration file the translated line came from, project-relative.
+    pub(super) path: String,
+    /// The one-based line: the same line in the declaration file as in its
+    /// translation, because a translation keeps every line where it was.
+    pub(super) line: u32,
+    /// The declaration the line is in, when it is in one.
+    pub(super) declaration: Option<String>,
+    /// Flow's error code.
+    pub(super) code: Option<String>,
+    /// Flow's message.
+    pub(super) message: String,
+}
+
 /// Every package typed from declarations so far, and the sources that stand
 /// in for them in the batch.
 pub(super) struct Declarations {
@@ -352,6 +406,78 @@ impl Declarations {
                 from_cache: package.from_cache,
             })
             .collect()
+    }
+}
+
+impl Declarations {
+    /// Every hole and finding of each package named `name` this run typed from
+    /// its declarations — of every copy, since two installed copies are two
+    /// translations.
+    ///
+    /// A finding is named by reading its declaration file again and asking
+    /// [`uf_dts::declaration_at`] which declaration the line is in: a parse of
+    /// each file that has a finding, paid only when somebody asked.
+    pub(super) fn explain(&self, name: &str, diagnostics: &[TypeDiagnostic]) -> Explanation {
+        let translated: Vec<(&Package, &Translation)> = self
+            .packages
+            .values()
+            .filter(|package| package.name == name)
+            .filter_map(|package| Some((package, package.translation.as_ref()?)))
+            .collect();
+
+        let mut holes = Vec::new();
+        // Each translated module's path in the batch, to the declaration file
+        // it was translated from.
+        let mut declaration_files: FxHashMap<String, String> = FxHashMap::default();
+        for (package, translation) in &translated {
+            for module in &translation.modules {
+                let path = format!("{}/{}", package.declarations, module.path);
+                declaration_files.insert(
+                    format!("{}/{}", package.declarations, flow_path(&module.path)),
+                    path.clone(),
+                );
+                holes.extend(module.holes.iter().map(|hole| ExplainedHole {
+                    path: path.clone(),
+                    line: hole.line,
+                    declaration: hole.declaration.to_string(),
+                    construct: hole.construct.as_str(),
+                    reason: hole.reason.to_string(),
+                }));
+            }
+        }
+
+        let mut sources: FxHashMap<String, Option<String>> = FxHashMap::default();
+        let mut findings = Vec::new();
+        for diagnostic in diagnostics {
+            // Counted as `TranslatedPackage::findings` counts them.
+            if !diagnostic.is_error() || diagnostic.code == Some("incompatible-variance") {
+                continue;
+            }
+            let Some(path) = declaration_files.get(diagnostic.primary.path.as_str()) else {
+                continue;
+            };
+            let line = diagnostic.primary.start.line;
+            let source = sources
+                .entry(path.clone())
+                .or_insert_with(|| fs::read_to_string(self.root.join(path)).ok());
+            findings.push(ExplainedFinding {
+                path: path.clone(),
+                line,
+                declaration: source
+                    .as_deref()
+                    .and_then(|source| uf_dts::declaration_at(source, line)),
+                code: diagnostic.code.map(str::to_owned),
+                message: diagnostic.message_text(),
+            });
+        }
+        findings.sort_by(|left, right| (&left.path, left.line).cmp(&(&right.path, right.line)));
+
+        Explanation {
+            package: name.to_owned(),
+            translated: !translated.is_empty(),
+            holes,
+            findings,
+        }
     }
 }
 

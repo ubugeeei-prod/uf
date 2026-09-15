@@ -200,19 +200,36 @@ fn a_re_export_is_an_edge() {
 }
 
 #[test]
-fn a_specifier_pointing_at_nothing_is_dropped() {
-    let graph = ImportGraph::build([("src/a.test.js", "import x from './missing.js';\n")]);
-    assert_eq!(graph.affected(["src/missing.js"]).len(), 1);
-    assert_eq!(graph.affected_tests(["src/missing.js"], is_test).len(), 0);
+fn a_specifier_pointing_at_nothing_links_nothing_else() {
+    let graph = ImportGraph::build([
+        ("src/a.test.js", "import x from './missing.js';\n"),
+        ("src/other.js", "export default 1;\n"),
+    ]);
+
+    // An import that resolves to no module is no edge for a change anywhere
+    // else to follow.
+    assert_eq!(graph.affected(["src/other.js"]).len(), 1);
+    assert!(graph.affected_tests(["src/other.js"], is_test).is_empty());
+    // A change at the path it names is another matter: that file appearing,
+    // or being deleted, is what decides whether the import works at all.
+    assert_eq!(graph.affected_tests(["src/missing.js"], is_test).len(), 1);
 }
 
 #[test]
 fn a_module_added_later_closes_the_edge_that_pointed_at_it() {
-    let mut graph = ImportGraph::build([("src/a.test.js", "import x from './late.js';\n")]);
-    assert!(graph.affected_tests(["src/late.js"], is_test).is_empty());
+    let mut graph = ImportGraph::build([
+        ("src/a.test.js", "import x from './late.js';\n"),
+        ("src/deeper.js", "export default 1;\n"),
+    ]);
+    // `late.js` does not exist yet, so nothing links `deeper.js` to the test.
+    assert!(graph.affected_tests(["src/deeper.js"], is_test).is_empty());
 
-    graph.insert("src/late.js", "export default 1;\n");
-    assert_eq!(graph.affected_tests(["src/late.js"], is_test).len(), 1);
+    // Inserting it closes the test's edge without rescanning the test.
+    graph.insert(
+        "src/late.js",
+        "import deeper from './deeper.js';\nexport default deeper;\n",
+    );
+    assert_eq!(graph.affected_tests(["src/deeper.js"], is_test).len(), 1);
 }
 
 #[test]
@@ -240,6 +257,44 @@ fn removing_a_module_removes_its_edges() {
             .map(|p| p.as_str())
             .collect::<Vec<_>>(),
         vec!["src/b.test.js"]
+    );
+}
+
+#[test]
+fn deleting_a_dependency_reaches_the_tests_that_still_import_it() {
+    let mut graph = ImportGraph::build(project());
+    graph.remove("src/shared.js");
+
+    // Both tests still import `./shared.js`, and they are the files the
+    // deletion breaks.
+    similar_asserts::assert_eq!(
+        graph
+            .affected_tests(["src/shared.js"], is_test)
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/a.test.js", "src/b.test.js"]
+    );
+}
+
+#[test]
+fn a_deleted_dependency_imported_without_its_extension_still_reaches_its_importer() {
+    let mut graph = ImportGraph::build([
+        ("src/util.js", "export const util = 1;\n"),
+        (
+            "src/u.test.js",
+            "import { util } from './util';\nit('u', () => {});\n",
+        ),
+    ]);
+    graph.remove("src/util.js");
+
+    similar_asserts::assert_eq!(
+        graph
+            .affected_tests(["src/util.js"], is_test)
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<Vec<_>>(),
+        vec!["src/u.test.js"]
     );
 }
 

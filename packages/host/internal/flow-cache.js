@@ -70,7 +70,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { inSourceTests } from "../transform.js";
+import { environmentVariable, inSourceTests } from "../transform.js";
 import { writeAtomically } from "../write-atomically.js";
 
 /**
@@ -161,8 +161,9 @@ export function writeCached(entry, output) {
  * map appended inline when there is one.
  *
  * Inline, because `--enable-source-maps` reads a `data:` URL without touching
- * the disk again, and because `crates/uf_cli`'s Deno loader writes the same
- * bytes for the same module — see `compile_for_a_loader`.
+ * the disk again, and because every loader that shares this cache — Node's two,
+ * and Deno's, which is the in-thread one — has to frame a module the same way
+ * for an entry one of them wrote to be the module another reads.
  */
 export function framed(out) {
   return out.map
@@ -177,6 +178,12 @@ export function framed(out) {
  * line the author wrote; `inSourceTests` from the run, which is also in the
  * key above; and the config bootstrap flag the config loader sets on the
  * process that compiles `uf.config.js` itself.
+ *
+ * The flag is read through `environmentVariable`, which answers "unset" for a
+ * variable the process may not read. A Deno worker `uf test` starts is granted
+ * the variables uf set on it and nothing else, and a plain `process.env` read
+ * of this one threw `NotCapable` out of the first compile of every cold run —
+ * measured on Deno 2.9, and a variable no `uf test` worker is ever given.
  */
 export function compileOptions(root) {
   return {
@@ -184,6 +191,6 @@ export function compileOptions(root) {
     development: true,
     sourceMap: true,
     inSourceTests: inSourceTests(),
-    configBootstrap: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1",
+    configBootstrap: environmentVariable("UF_TRANSFORM_BOOTSTRAP_CONFIG") === "1",
   };
 }

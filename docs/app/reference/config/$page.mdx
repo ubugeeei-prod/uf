@@ -53,6 +53,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `plugins` | Vite plugins, appended to uf's own |
 | `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
+| `staged` | The tasks `uf prepare` runs over the staged files before a commit |
 | `pm`, `publish`, `package`, `release` | Which registry uf reads from and publishes to, and how a release is built |
 | `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
 
@@ -178,10 +179,15 @@ a process.
 | `["ssg"]` | Prerenders everything, and **fails**, naming the route, if anything can only be answered per request |
 | `["ssr"]` | Prerenders nothing. Every route is rendered per request |
 | `["csr"]` | Prerenders one shell that is no route's document, and the browser renders every route from it |
+| contains `isr` (the default does) | Prerenders what `ssg` would, and regenerates a prerendered page that states a lifetime with `cacheLife` once the lifetime passes, when `rendering.cache.route` is on and a server is deployed |
 
-`ppr` and `isr` are **Planned**. Naming one alongside an implemented mode is
-allowed and selects nothing; a list that names *only* planned modes is refused
-while the config is read, because there is no build behind it.
+`isr` allows what `ssg` allows, because a regenerated page is a prerendered
+document with a lifetime: `["isr"]` alone prerenders every route. The
+[rendering guide](/guide/rendering) has what regeneration does on each target.
+
+`ppr` is **Planned**. Naming it alongside an implemented mode is allowed and
+selects nothing; a list that names *only* `ppr` is refused while the config is
+read, because there is no build behind it.
 
 `csr` is the one value that **cannot share the list**. The others answer "where
 does this route's document come from", which is what makes the list a set the
@@ -826,6 +832,35 @@ What an attestation does and does not prove is in
 `pm.provenance: "off"` turns the reads off for a machine with no route to a
 registry.
 
+## staged
+
+The tasks `uf prepare` runs before a commit, keyed by a glob over the staged
+files:
+
+```js
+export default defineConfig({
+  tasks: {
+    format: "uf fmt",
+    stylelint: "node_modules/.bin/stylelint --fix",
+  },
+  staged: {
+    "*.{js,jsx}": "format",
+    "styles/**/*.css": ["stylelint"],
+  },
+});
+```
+
+A glob with no `/` matches a file's name wherever the file is; a glob with a `/`
+matches its path from the project root. The value names tasks under `tasks` —
+one, or several in order — and each runs once, through `uf run`, with every
+staged file its glob matches appended to its command. A glob that matches no
+staged file runs nothing.
+
+The tasks read what is staged: a half-staged file shows its staged content for
+the length of the run. A rewrite of a fully staged file is staged, so the fix is
+in the commit; a rewrite of a half-staged file is not kept, and fails the run.
+See [`uf prepare`](/reference/cli#uf-prepare).
+
 ## tasks and plugins
 
 ```js
@@ -850,7 +885,10 @@ export default defineConfig({
 
 `uf run ci` runs the task, and everything `dependsOn` reaches before it. Tasks
 with no path between them run at once; see
-[`uf run`](/reference/cli#uf-run-script-args).
+[`uf run`](/reference/cli#uf-run-script-args). In a workspace, `member#task` in
+`dependsOn` names a task another member defines in its own `uf.config.js` — by
+the member's name or its path — and a name this config defines as written is
+always that task, `#` or not.
 
 `inputs` and `outputs` are paths or globs from the project root — `*` stops at
 a `/`, `**` crosses one, and a pattern beginning `!` excludes what it matches.

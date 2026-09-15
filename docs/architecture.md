@@ -472,7 +472,11 @@ them and checked against the SHA-256 of every file they read, so a warm check
 translates nothing ([#946](https://github.com/ubugeeei-prod/uf/issues/946)).
 A package's own Flow outranks its declarations: one that publishes `@flow`
 sources, or a `.flow` file beside a module — which is read in place of that
-module, as Flow reads it — is never translated.
+module, as Flow reads it — is never translated. `uf check --explain-any
+<package>` lists each hole and each error Flow reports inside a package's
+translation by the declaration it is in. A translation keeps every line where it
+was, so a line of a translated module is the same line of its declaration file,
+and `uf_dts::declaration_at` names the declaration from that.
 
 *Which* copy is Node's answer, not the hoisted one. A bare specifier is resolved
 by climbing `node_modules` from the file that wrote it, so code inside
@@ -770,12 +774,17 @@ is refused where it is constructed rather than allowed to guess.
 namespace goes behind the seam without uf naming either. The seam itself is
 `packages/server/internal/cache-provider.js`: five methods over strings, no
 staleness, no eviction policy, no fill. Everything a cache decides stays in the
-store; a provider decides only where bytes go. A durable store is what turns
-time-based revalidation and on-demand invalidation into ISR — a URL rendered
-once, served from a store four processes share, refreshed behind a reader, and
-dropped the moment a mutation says it is wrong. What is not written is seeding
-that store from `uf build`'s prerender, so the *first* request to each URL still
-renders.
+store; a provider decides only where bytes go. A durable store makes the route
+cache shared — a URL rendered once, served from a store four processes share,
+refreshed behind a reader, and dropped the moment a mutation says it is wrong —
+and incremental static regeneration is that store started from the build. A
+prerendered page that states a lifetime is written under
+`dist/__uf/regenerate/`, where no static half answers its URL, and recorded in
+`.uf/build/server/regenerate.json`. The fetch handler seeds the page's entry
+from that document, through a reader the front door puts on the request; keeps
+it servable past its lifetime until a background refresh replaces it; and never
+seeds a key twice, so an invalidated page renders rather than going back to the
+build's copy.
 
 Nothing is cached without a stated lifetime: a route says `cacheLife` and
 `cacheTag` from inside its own render, a request says `cache` at the call, and a
@@ -978,10 +987,10 @@ JavaScript execution is delegated to a Capability JS Host.
 
 The zero-config host set is Node.js, Deno, and Bun — as *targets*. What each of
 them does today is a different question and is answered in one place,
-[`docs/hosts.md`](./hosts.md): Node.js and Bun each have a Flow loader and a
-test that starts the binary; Deno has no module hook to install one in, so uf
-compiles the project ahead of time and hands it an import map, which runs a
-suite and leaves a named gap; and Edge starts the generated Cloudflare Worker
+[`docs/hosts.md`](./hosts.md): Node.js, Bun and Deno each have a Flow loader
+and a test that starts the binary — Deno's installed through the synchronous
+`registerHooks` it implemented in 2.8, where it used to be an ahead-of-time pass
+and an import map; and Edge starts the generated Cloudflare Worker
 under Wrangler local while still lacking a source-level host or Flow loader.
 Reading the host set as a support matrix is how "uf runs on Deno" came to be
 written down; the matrix is the matrix.

@@ -35,7 +35,6 @@ use uf_test::{
 
 use crate::cli::{CoverageReporterArg, ResultReporterArg};
 use crate::commands::builder::uniflowed_package;
-use crate::commands::deno_loader;
 use crate::commands::runtimes;
 use crate::commands::vite::{Host, find_program};
 
@@ -45,6 +44,8 @@ use crate::support::{
 };
 use crate::ui::Ui;
 
+pub(crate) mod bun;
+mod changed;
 mod coverage;
 mod payload;
 mod render;
@@ -65,6 +66,8 @@ pub(crate) struct TestArgs {
     pub(crate) mode: Option<String>,
     /// Re-run affected tests when a file changes.
     pub(crate) watch: bool,
+    /// Run only the test files a change since this ref reaches.
+    pub(crate) changed: Option<String>,
     /// Emit machine-readable JSON on stdout.
     pub(crate) json: bool,
     /// Keep only tests whose fully qualified name contains this pattern.
@@ -156,9 +159,26 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
              edit affected, so its coverage would not be the project's"
         );
     }
+    // `--changed` is one selection, made from git before the run; watch mode
+    // makes its own after every edit. Asked for both, neither can keep the
+    // promise the other makes.
+    if args.watch && args.changed.is_some() {
+        bail!(
+            "--watch and --changed cannot be combined: watch mode already re-runs what each edit \
+             affects"
+        );
+    }
+    // Watch mode's reason, in the same words: a report over the files a change
+    // reached is not the project's coverage, and a threshold held against it
+    // would fail a pull request over files it never touched.
+    if args.changed.is_some() && args.coverage {
+        bail!(
+            "--changed and --coverage cannot be combined: a run over the files a change reaches \
+             would report coverage that is not the project's"
+        );
+    }
 
     let resolved = load_config(cwd)?;
-    refuse_a_runner_uf_test_cannot_run_yet(&resolved.config)?;
     let root = resolved.root.clone();
     // Named paths override `.gitignore`, as they do for `uf lint` and
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
@@ -166,28 +186,31 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // behind — still has to be runnable by name.
     //
     // A one-shot, non-coverage run over an existing path can stay inside that
-    // path. Watch mode still needs the whole import graph so edits to a shared
-    // dependency re-run the selected tests, and coverage still needs every
-    // JavaScript file so "not covered" means something.
-    let needs_project_scan = args.watch || args.coverage || resolved.config.test.coverage.enabled;
-    let (scan, selected_path_scan) = if needs_project_scan {
-        (
-            scan_selected_source_files(&root, &resolved.config, &args.paths)?,
-            false,
-        )
+    // path. Watch mode and `--changed` still need the whole import graph, so a
+    // change to a shared dependency reaches the selected tests, and coverage
+    // still needs every JavaScript file so "not covered" means something.
+    //
+    // Every host is one of those now. Deno used to need the whole project even
+    // for a narrowed run, because its loader was an ahead-of-time pass over
+    // the scan and a module the scan left out was a module Deno met as Flow.
+    // Its loader is a hook, asked about each import as it happens, so a run
+    // narrowed to one directory needs only that directory on every host.
+    let needs_project_scan = args.watch
+        || args.changed.is_some()
+        || args.coverage
+        || resolved.config.test.coverage.enabled;
+    let scan = if needs_project_scan {
+        scan_selected_source_files(&root, &resolved.config, &args.paths)?
     } else {
         match scan_existing_selected_source_files(&root, &resolved.config, &args.paths)? {
-            Some(scan) => (scan, true),
-            None => (
-                scan_selected_source_files(&root, &resolved.config, &args.paths)?,
-                false,
-            ),
+            Some(scan) => scan,
+            None => scan_selected_source_files(&root, &resolved.config, &args.paths)?,
         }
     };
     render_ignore_deprecation(ui, ignore_deprecation(&resolved.config));
     crate::support::render_deprecations(ui, resolved.config.test_runner_deprecation());
     let unreadable = unreadable_lines(&scan.unreadable);
-    let mut files = scan.files;
+    let files = scan.files;
     // Before anything is run. A file uf could not read might have been a test,
     // and a test that silently did not run is the worst thing a runner can do.
     if !unreadable.is_empty() {
@@ -214,7 +237,67 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         bail!("no file matched {}", quoted_list(&args.paths));
     }
 
+    // Asked before `--list` and before a Bun runner takes the suite, so both
+    // show and run what this selection chose. The graph is built over every
+    // file the scan found; the selection only ever narrows which test files run.
+    let changed = args
+        .changed
+        .as_deref()
+        .map(|reference| changed::select(&root, reference, &files))
+        .transpose()?;
+
+    // `test.runner` naming Bun hands the suite to `bun test`, and uf's own
+    // runner never starts: not for `--list`, which Bun cannot answer without
+    // running the files, and not for anything after it. What reaches Bun, and
+    // why a report is always read back, is [`bun`].
+    let runner = resolved.config.test_runner_tool();
+    if let uf_config::TestRunnerSpec::Bun(_) = &runner.spec {
+        let refused = bun::refused_flags(&args);
+        if !refused.is_empty() {
+            let reasons: Vec<String> = refused
+                .iter()
+                .map(|refusal| format!("{} — {}", refusal.flag, refusal.reason))
+                .collect();
+            bail!(
+                "`test.runner` is `{}`, and `bun test` cannot honour {}:\n  {}",
+                runner.spec,
+                plural(refused.len(), "flag"),
+                reasons.join("\n  ")
+            );
+        }
+        if args.reporter.is_some() && args.reporter_outfile.is_none() {
+            bail!("--reporter needs --reporter-outfile");
+        }
+        let env = project_env(&resolved, args.mode.as_deref(), TEST)?;
+        // Coverage switched on in `uf.config.js` is asked of Bun the way
+        // `--coverage` is; the thresholds Bun cannot be held to are refused in
+        // [`bun::run`]. A `--changed` run asks for none, for the reason uf's
+        // own runner collects none on one.
+        let coverage_configured = resolved.config.test.coverage.enabled;
+        let args = TestArgs {
+            coverage: changed.is_none() && (args.coverage || coverage_configured),
+            ..args
+        };
+        let selected: Vec<ProjectFile> = test_bearing(files)
+            .into_iter()
+            .filter(|file| args.paths.is_empty() || selects(&args.paths, &file.relative_path))
+            .collect();
+        // `--changed` is uf's to answer, not Bun's: Bun is handed the files the
+        // selection reached, and runs nothing else.
+        let selected = match &changed {
+            Some(selection) => changed::narrow(ui, selection, selected, coverage_configured),
+            None => selected,
+        };
+        return bun::run(ui, &resolved, env, &selected, &args);
+    }
+
     if args.list {
+        if let Some(selection) = &changed {
+            // `false`: `--list` collects nothing, so there is no coverage to
+            // say is missing.
+            let tests = changed::narrow(ui, selection, test_bearing(files), false);
+            return render_list(ui, &root, &tests, &args.filter());
+        }
         return render_list(ui, &root, &files, &args.filter());
     }
     let application_target = test_application_target(&resolved.config);
@@ -253,7 +336,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     // machine" would be a true sentence that sent a reader somewhere useless.
     // The `can_collect_coverage` check below still stands for Bun and Deno,
     // where the question is about the host that was already chosen.
-    if args.browser && (args.coverage || resolved.config.test.coverage.enabled) {
+    // A `--changed` run collects no coverage, even when `uf.config.js` turns it
+    // on, for the reason `--changed --coverage` is refused above.
+    let coverage_on = changed.is_none() && (args.coverage || resolved.config.test.coverage.enabled);
+    if args.browser && coverage_on {
         bail!(
             "`uf test --browser --coverage` cannot measure anything: V8 is counting in the \
              renderer exactly as it counts in Node, but `NODE_V8_COVERAGE` is Node's own switch \
@@ -266,7 +352,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let resolved_host = runtime.host;
     let host_kind = test_host_kind(resolved_host.kind, args.browser);
     let settings = &resolved.config.test.coverage;
-    if (args.coverage || settings.enabled) && !host_kind_can_collect_coverage(host_kind) {
+    if coverage_on && !host_kind_can_collect_coverage(host_kind) {
         bail!(
             "`uf test --coverage` needs Node.js: coverage is V8's own count, written out \
              through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
@@ -275,29 +361,9 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             host_kind.name()
         );
     }
-    if selected_path_scan && host_kind == HostKind::Deno {
-        // Deno has no runtime Flow hook. Its AOT tree must contain every
-        // project file a selected test could import, not just the selected
-        // path itself.
-        let scan = scan_selected_source_files(&root, &resolved.config, &args.paths)?;
-        let unreadable = unreadable_lines(&scan.unreadable);
-        if !unreadable.is_empty() {
-            crate::commands::lint::render_unreadable(ui, &unreadable);
-            bail!("{} could not be read", plural(unreadable.len(), "file"));
-        }
-        files = scan.files;
-    }
-
-    let mut host = test_host(
-        &root,
-        &resolved.config,
-        &env,
-        &files,
-        args.browser,
-        resolved_host,
-    )?
-    .with_snapshot_updates(args.update_snapshots)
-    .with_axe(resolved.config.accessibility.axe.as_json());
+    let mut host = test_host(&root, &resolved.config, &env, args.browser, resolved_host)?
+        .with_snapshot_updates(args.update_snapshots)
+        .with_axe(resolved.config.accessibility.axe.as_json());
 
     // Every JavaScript file the project has, before discovery narrows it to the
     // ones that declare tests: a file no test imports never becomes a script,
@@ -312,7 +378,7 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         .map(|file| file.relative_path.clone())
         .collect();
 
-    let raw = if args.coverage || settings.enabled {
+    let raw = if coverage_on {
         let raw = coverage::RawCoverage::create(&root)?;
         host = host.with_coverage_dir(raw.directory().to_path_buf());
         Some(raw)
@@ -321,6 +387,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     };
 
     let files = test_bearing(files);
+    let files = match &changed {
+        Some(selection) => changed::narrow(ui, selection, files, settings.enabled),
+        None => files,
+    };
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
     let report = timer.measure("run", || {
@@ -349,7 +419,6 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let recorded = record_timings(&root, timings, &report, &files);
     if args.json {
         ui.json(&test_payload(
-            &root,
             &host,
             &report,
             collected.as_ref().map(|(coverage, _)| coverage),
@@ -411,19 +480,15 @@ fn write_results_report(root: &Utf8Path, args: &TestArgs, report: &TestRunReport
 /// project that has not installed its dependencies is told that rather than
 /// being handed a module-not-found from inside a worker.
 ///
-/// `sources` is the project as `uf_project` scanned it, and only Deno reads it:
-/// that host has no module hook, so its Flow loader is an ahead-of-time pass
-/// over exactly those files (see [`crate::commands::deno_loader`]) rather than
-/// something installed in the runtime. Passing the scan rather than repeating
-/// it keeps the set of files uf compiles equal to the set it reports on.
-///
 /// `browser` swaps the host rather than adding a flag to one: the process uf
 /// starts is a different module, the thing that runs the test body is a page,
 /// and everything above this function is unchanged. See [`HostKind::Browser`]
-/// and [`uf_test::browser`] for what that costs and what it depends on. It is
-/// the one kind `sources` says nothing about — a page is served its modules
-/// through the same `uf transform` the Node loader calls, one request at a
-/// time, so there is no ahead-of-time pass to give a file list to.
+/// and [`uf_test::browser`] for what that costs and what it depends on.
+///
+/// No host needs the project's file list any more. Deno did, while its Flow
+/// loader was an ahead-of-time pass that could only compile what it was told
+/// about; every host now transforms each module as it is imported, so the
+/// command is the same whatever the run selected.
 ///
 /// `host` is the runtime [`runtimes::resolve`] settled for the suite, resolved
 /// by the caller rather than here so a watch session and a one-shot run share
@@ -432,7 +497,6 @@ pub(crate) fn test_host(
     root: &Utf8Path,
     config: &uf_config::UniflowedConfig,
     env: &ProjectEnv,
-    sources: &[ProjectFile],
     browser: bool,
     host: Host,
 ) -> Result<HostCommand> {
@@ -480,46 +544,22 @@ pub(crate) fn test_host(
     // permission set has to grant, and the two must be the same list or a test
     // would be handed a variable it may not read.
     let exported = env.exported();
-    // Deno's Flow loader is a directory rather than a module, and the worker it
-    // runs is the compiled copy inside it. Built before the command, because
-    // the worker's path is part of the command.
-    //
-    // `Browser` is not Deno-with-a-page: the project's Capability JS Host stops
-    // deciding anything the moment `--browser` is passed, the driver is Node,
-    // and the page is served each module through `uf transform` as it asks for
-    // it. There is nothing to compile ahead of time, so a Deno project run with
-    // `--browser` gets no pass — which is also why the pass's three gaps are
-    // not this mode's.
-    let deno = match kind {
-        HostKind::Deno => Some(deno_loader::build(
-            root,
-            config,
-            scope.as_deref().unwrap_or(root),
-            sources,
-            // `uf test` sets `UF_IN_SOURCE_TESTS` on every worker it starts, so
-            // the ahead-of-time pass has to compile `import.meta.uf.test` to
-            // uf's test API the way a hook reading that variable would. A pass
-            // that got this wrong would silently drop every in-source test.
-            true,
-        )?),
-        HostKind::Node | HostKind::Bun | HostKind::Browser => None,
-    };
-    let mut command = HostCommand::new(
-        kind,
-        program,
-        deno.as_ref().map_or(worker, |deno| deno.worker.clone()),
-        root.to_path_buf(),
-    )
-    .with_flow_loader(
-        Utf8Path::new("@uniflowed/host/register"),
-        &loader.join("bun-preload.js"),
-    )
-    // Every worker gets the project's `.env` values, so a test reads
-    // `process.env.DATABASE_URL` and finds what `uf dev` would have found.
-    .with_env(exported.clone());
-    if let Some(deno) = deno.as_ref() {
-        command = command.with_deno_import_map(&deno.import_map);
+    // Deno's hook is `node:module`'s `registerHooks`, and a Deno older than
+    // the release that implemented it would start every worker only for the
+    // preload to refuse inside each one. Asked once, here, so the refusal is
+    // one sentence about the host rather than a failed file per test file.
+    if kind == HostKind::Deno {
+        require_deno_hooks(&program)?;
     }
+    let mut command = HostCommand::new(kind, program, worker, root.to_path_buf())
+        .with_flow_loader(
+            Utf8Path::new("@uniflowed/host/register"),
+            &loader.join("bun-preload.js"),
+            &loader.join("deno-preload.js"),
+        )
+        // Every worker gets the project's `.env` values, so a test reads
+        // `process.env.DATABASE_URL` and finds what `uf dev` would have found.
+        .with_env(exported.clone());
     // The worker transforms through the binary that started it, never a
     // different `uf` that happens to be on PATH.
     let uf_binary = uf_binary()?;
@@ -588,8 +628,8 @@ pub(crate) fn test_host(
     }
     if !command.loads_flow() {
         // No host reaches this today: Node registers hooks, Bun preloads a
-        // plugin, Deno was handed a compiled tree above, and a browser run's
-        // driver serves the page every module through `uf transform`. It stays
+        // plugin, Deno preloads `registerHooks`, and a browser run's driver
+        // serves the page every module through `uf transform`. It stays
         // because the question it asks belongs to `uf_runtime::HOSTS` rather
         // than to this function — a fifth `HostKind` whose row has no
         // `flow_loader` must be refused here rather than allowed to meet a
@@ -627,6 +667,62 @@ fn test_host_kind(host: uf_config::CapabilityJsHost, browser: bool) -> HostKind 
 
 const fn host_kind_can_collect_coverage(kind: HostKind) -> bool {
     matches!(kind, HostKind::Node)
+}
+
+/// The first Deno release with `node:module`'s `registerHooks`.
+///
+/// `@uniflowed/host/deno-preload` installs the Flow loader through that hook
+/// and nothing else, so this is the floor for running a uf project on Deno at
+/// all. The preload checks for the hook itself, from inside the process; this
+/// is the same line drawn before any process starts.
+const DENO_WITH_HOOKS: (u64, u64) = (2, 8);
+
+/// Refuse a Deno that predates the hook the Flow loader is built on.
+///
+/// A version that cannot be read is let through rather than refused. The
+/// preload asks the runtime whether the hook exists and says the same sentence
+/// from inside the worker, so an unreadable `--version` costs a later message
+/// and never a run that silently cannot load Flow — while refusing it would
+/// turn a Deno build that prints its version differently into a host uf will
+/// not start for no reason it can name.
+fn require_deno_hooks(program: &Utf8Path) -> Result<()> {
+    let Ok(output) = std::process::Command::new(program.as_std_path())
+        .arg("--version")
+        .output()
+    else {
+        return Ok(());
+    };
+    match deno_version(&String::from_utf8_lossy(&output.stdout)) {
+        Some(found) if found < DENO_WITH_HOOKS => bail!("{}", deno_too_old(program, found)),
+        _ => Ok(()),
+    }
+}
+
+/// What a person is told about a Deno older than [`DENO_WITH_HOOKS`].
+fn deno_too_old(program: &Utf8Path, (major, minor): (u64, u64)) -> String {
+    format!(
+        "`uf test` cannot run on the Deno at {program}: it is {major}.{minor}, and uf loads Flow \
+         on Deno through `node:module`'s `registerHooks`, which Deno implemented in {}.{}. Run \
+         `deno upgrade`, or name Node.js or Bun in `app.runtime.capabilityJsHost.default`.",
+        DENO_WITH_HOOKS.0, DENO_WITH_HOOKS.1
+    )
+}
+
+/// The `major.minor` in what `deno --version` prints.
+///
+/// The first line is `deno 2.9.6 (stable, release, aarch64-apple-darwin)`; a
+/// pre-release carries a suffix on the patch (`2.10.0-rc.1`), which is past
+/// the two numbers this reads. Anything that does not start with `deno` is not
+/// a Deno this knows how to read, and answers `None`.
+fn deno_version(text: &str) -> Option<(u64, u64)> {
+    let mut words = text.split_whitespace();
+    if words.next()? != "deno" {
+        return None;
+    }
+    let mut numbers = words.next()?.split(['.', '-', '+']);
+    let major = numbers.next()?.parse().ok()?;
+    let minor = numbers.next()?.parse().ok()?;
+    Some((major, minor))
 }
 
 /// The `uf` every worker in this run transforms its modules through.
@@ -667,7 +763,7 @@ const fn host_kind_can_collect_coverage(kind: HostKind) -> bool {
 /// warning in the run header, and a warning in a passing run is read by
 /// nobody: the run would still report on a compiler nobody chose. A refusal
 /// names the one thing that fixes it.
-fn uf_binary() -> Result<Utf8PathBuf> {
+pub(crate) fn uf_binary() -> Result<Utf8PathBuf> {
     let current_exe = std::env::current_exe()
         .ok()
         .and_then(|binary| Utf8PathBuf::from_path_buf(binary).ok());
@@ -834,9 +930,17 @@ pub(crate) const fn runtime_host(kind: HostKind) -> RuntimeHost {
 /// `PATH` is here because `packages/host/transform.js` searches it to identify
 /// the `uf` it will run.
 ///
+/// `NODE_V8_COVERAGE` is the one name uf only *sometimes* sets — on a Node
+/// worker that collects coverage — and it is here for Deno, which never gets
+/// it: Deno's `node:child_process` reads it whenever a child is started with an
+/// explicit environment, to decide whether to pass Node's switch on, and the
+/// Deno loader starts `uf transform` exactly that way. Ungranted, that read is
+/// `NotCapable`, and the first Flow import fails with it.
+///
 /// The project's own `.env` names are added beside these per run; they are not
 /// constant and are not uf's.
-pub(crate) const WORKER_ENVIRONMENT: [&str; 6] = [
+pub(crate) const WORKER_ENVIRONMENT: [&str; 7] = [
+    "NODE_V8_COVERAGE",
     "PATH",
     "UF_AXE",
     "UF_BINARY",
@@ -859,15 +963,12 @@ fn worker_permissions(
     // project's set: it is the same disclosure the read and write lists make,
     // for the category Deno is the only host to have.
     toolchain.env.extend(env.iter().cloned());
-    if kind == HostKind::Deno {
-        // Nothing to start. Node and Bun transform each module as they load it,
-        // through a `uf transform` child; Deno's modules were compiled before
-        // it started, so the one grant uf cannot scope on Node is one it does
-        // not need at all here. Taking it away is small and it is the whole
-        // argument for this host: the run that can express the most is the run
-        // that should be asking for the least.
-        toolchain.run.clear();
-    }
+    // Deno keeps `run` like the other two. It used to be cleared here, while
+    // Deno's modules were compiled before it started and nothing needed
+    // starting; its loader transforms each module as it loads now, through a
+    // `uf transform` child, so it is granted that one program — by name,
+    // `--allow-run=<this uf>`, which is the scope Node's
+    // `--allow-child-process` cannot express.
     // The error is the feature: a set this host cannot enforce stops the run
     // and names the host that can, rather than being partly applied.
     uf_runtime::permissions::host_arguments(runtime_host(kind), permissions, &toolchain)
@@ -1024,28 +1125,6 @@ pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicati
     }
 }
 
-/// Refuse a runner `uf test` cannot run yet, rather than running uf's own in
-/// its place.
-///
-/// `test.runner: "bun@1.4"` parses — a project can write down what it means to
-/// run, and `uf inspect` shows it — but `bun test` behind `uf test` is
-/// ubugeeei-prod/uf#942. Running uf's own runner instead would report the suite
-/// green or red by rules the project did not choose, and answering for a suite
-/// it was not asked to run is the one thing a runner must never do.
-fn refuse_a_runner_uf_test_cannot_run_yet(config: &UniflowedConfig) -> Result<()> {
-    let runner = config.test_runner_tool();
-    if let Some(issue) = runner.spec.tracking_issue() {
-        bail!(
-            "`test.runner` is `{}`, and `uf test` cannot run it yet: a suite run by `bun test` \
-             behind `uf test` is ubugeeei-prod/uf#{issue}. Until it lands, write `runner: \"uf\"` \
-             — or leave the key out — to run the suite with uf's own runner, or run `bun test` \
-             directly.",
-            runner.spec
-        );
-    }
-    Ok(())
-}
-
 fn refuse_unsupported_test_target(target: TestApplicationTarget) -> Result<()> {
     match target {
         TestApplicationTarget::Web => Ok(()),
@@ -1116,6 +1195,44 @@ mod tests {
             absolute_path: Utf8PathBuf::from(path),
             source: source.to_owned(),
             kind: SourceKind::JavaScript,
+        }
+    }
+
+    #[test]
+    fn a_deno_version_is_read_from_what_deno_prints() {
+        assert_eq!(
+            deno_version("deno 2.9.6 (stable, release, aarch64-apple-darwin)\nv8 15.0.245.2\n"),
+            Some((2, 9))
+        );
+        assert_eq!(
+            deno_version("deno 1.46.3 (stable, release, x86_64-unknown-linux-gnu)"),
+            Some((1, 46))
+        );
+        assert_eq!(deno_version("deno 2.10.0-rc.1 (canary)"), Some((2, 10)));
+        assert_eq!(deno_version("node v26.8.1"), None);
+        assert_eq!(deno_version(""), None);
+    }
+
+    /// The floor is the release that implemented `registerHooks`, and the
+    /// refusal says so — which release it found, which one it needs, and what
+    /// to do — rather than leaving the first Flow import to fail per file.
+    #[test]
+    fn a_deno_without_the_hook_is_refused_by_name() {
+        assert!((1, 46) < DENO_WITH_HOOKS);
+        assert!((2, 7) < DENO_WITH_HOOKS);
+        assert!((2, 8) >= DENO_WITH_HOOKS);
+        assert!((2, 10) >= DENO_WITH_HOOKS);
+        assert!((3, 0) >= DENO_WITH_HOOKS);
+
+        let message = deno_too_old(Utf8Path::new("/usr/local/bin/deno"), (2, 7));
+        for expected in [
+            "/usr/local/bin/deno",
+            "2.7",
+            "2.8",
+            "registerHooks",
+            "deno upgrade",
+        ] {
+            assert!(message.contains(expected), "{expected}: {message}");
         }
     }
 

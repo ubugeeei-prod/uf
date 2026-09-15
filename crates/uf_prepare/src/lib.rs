@@ -21,12 +21,20 @@
 //!
 //! # What "staged" means here
 //!
-//! [`discover_staged_files`] asks git for the files in the index. It reads the
-//! *working tree* copy of those files, not the staged blob: uf does not stash
-//! unstaged changes the way `lint-staged` does, so a file that is half staged
-//! is checked as it is on disk. That is stated rather than hidden because it
-//! is the one place `uf prepare` differs from the tool it is compatible with,
-//! and a partially staged file is the case where the difference shows.
+//! [`discover_staged_files`] asks git for the files in the index, and a run
+//! checks what is *in* the index for them, not what is on disk: a file that is
+//! half staged is checked as it will be committed. [`StagedView`] is how — the
+//! staged content is put in the working tree for the length of the run and the
+//! unstaged half is put back after, which is what `lint-staged` does with a
+//! stash, done without the stash. See [`index`] for why, and for what happens
+//! to a fix made to a half-staged file.
+//!
+//! # What runs, and how it is wired into git
+//!
+//! `staged` in `uf.config.js` maps globs to tasks, and [`staged_runs`] is which
+//! staged files each entry hands its tasks. [`install_hooks`] writes the
+//! committed dispatcher that makes git run `uf prepare` before a commit — a
+//! command a person runs once per clone, never a `postinstall` script.
 //!
 //! A project with no git — an exported tarball, a fresh directory, a CI job
 //! that unpacked an archive — has no staged set at all. There the run widens
@@ -40,6 +48,14 @@ use camino::Utf8Path;
 use compact_str::{CompactString, ToCompactString};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+
+pub mod hooks;
+pub mod index;
+mod staged;
+
+pub use hooks::{HookError, HookInstall, HookState, hook_state, install_hooks};
+pub use index::{IndexError, StagedView, changed_since_staged, recover_interrupted, stage};
+pub use staged::{StagedGlobError, StagedRun, staged_runs};
 
 /// The steps of a plan, inline up to eight.
 pub type PrepareSteps = SmallVec<[PrepareStep; 8]>;
@@ -71,6 +87,7 @@ impl Default for PreparePlan {
                 PrepareStep::DiscoverStagedFiles,
                 PrepareStep::GenerateRouterTypes,
                 PrepareStep::GenerateServerActionTypes,
+                PrepareStep::RunStagedTasks,
                 PrepareStep::RunLint,
                 PrepareStep::RunFormatCheck,
             ],
@@ -118,6 +135,13 @@ pub enum PrepareStep {
     GenerateRouterTypes,
     /// Write the Flow types of every callable server action.
     GenerateServerActionTypes,
+    /// Run the tasks `staged` in `uf.config.js` names, each over the staged
+    /// files its glob matches.
+    ///
+    /// Before the two checks, because a staged task is where a project puts
+    /// the tools that rewrite files, and the checks should read what those
+    /// tools left rather than what they were handed.
+    RunStagedTasks,
     /// Lint the staged files.
     RunLint,
     /// Check that the staged files are formatted.
@@ -137,6 +161,7 @@ impl PrepareStep {
             Self::DiscoverStagedFiles => "discover-staged-files",
             Self::GenerateRouterTypes => "generate-router-types",
             Self::GenerateServerActionTypes => "generate-server-action-types",
+            Self::RunStagedTasks => "run-staged-tasks",
             Self::RunLint => "run-lint",
             Self::RunFormatCheck => "run-format-check",
         }
@@ -453,11 +478,40 @@ fn inside_work_tree(root: &Utf8Path) -> Result<bool, NoStagedSet> {
     }
 }
 
+/// `git -C root`, with git's own path variables made absolute first.
+///
+/// Git starts a hook with `GIT_INDEX_FILE` set — and `GIT_DIR`, in a linked
+/// worktree — and a relative value is relative to the directory git started
+/// the hook in, which is the repository root. `-C` moves git before it reads
+/// them, so for a project in a subdirectory a relative value names a file that
+/// is not there, and `git diff --cached` inside a hook read no index at all.
+/// uf's own working directory is the one git started the hook in, so that is
+/// what they are resolved against.
+pub(crate) fn git_command(root: &Utf8Path) -> Command {
+    let mut command = Command::new("git");
+    command.arg("-C").arg(root.as_str());
+    for name in [
+        "GIT_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_WORK_TREE",
+        "GIT_OBJECT_DIRECTORY",
+    ] {
+        let Some(value) = std::env::var_os(name) else {
+            continue;
+        };
+        let path = std::path::PathBuf::from(value);
+        if path.is_relative()
+            && let Ok(here) = std::env::current_dir()
+        {
+            command.env(name, here.join(path));
+        }
+    }
+    command
+}
+
 /// Run git in `root`, or say why it could not be run.
 fn git(root: &Utf8Path, args: &[&str]) -> Result<std::process::Output, NoStagedSet> {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(root.as_str())
+    let output = git_command(root)
         .args(args)
         .output()
         .map_err(|error| match error.kind() {
@@ -502,6 +556,7 @@ mod tests {
                 PrepareStep::DiscoverStagedFiles,
                 PrepareStep::GenerateRouterTypes,
                 PrepareStep::GenerateServerActionTypes,
+                PrepareStep::RunStagedTasks,
                 PrepareStep::RunLint,
                 PrepareStep::RunFormatCheck,
             ]
@@ -520,6 +575,7 @@ mod tests {
             "generate-server-action-types"
         );
         assert_eq!(PrepareStep::RunFormatCheck.name(), "run-format-check");
+        assert_eq!(PrepareStep::RunStagedTasks.name(), "run-staged-tasks");
         for step in default_plan().steps {
             let json = serde_json::to_string(&step).expect("a step serializes");
             assert_eq!(json, format!("\"{}\"", step.name()));

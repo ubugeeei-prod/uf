@@ -627,6 +627,88 @@ fn a_package_s_own_flow_outranks_its_typescript_declarations() {
     assert_eq!(value["typeCheck"]["untypedModules"], serde_json::json!([]));
 }
 
+/// `--explain-any` names every place a translated package is `any`: each hole
+/// with its construct, and each error Flow reports inside the translation with
+/// the declaration its line is in. Before it, the footer's counts were all a
+/// reader had to go on.
+#[test]
+fn explain_any_names_each_hole_and_each_finding_by_its_declaration() {
+    let dir = tempfile::tempdir().unwrap();
+    let package = dir.path().join("node_modules/tagged");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&package).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    fs::write(
+        package.join("package.json"),
+        r#"{ "name": "tagged", "version": "2.0.0", "types": "./index.d.ts" }"#,
+    )
+    .unwrap();
+    fs::write(
+        package.join("index.d.ts"),
+        "export interface Tagged {\n  [Symbol.toStringTag]: string;\n  name: string;\n}\n\
+         export declare namespace inner {\n  type Missing = NotDeclaredAnywhere;\n}\n\
+         export declare function tag(name: string): Tagged;\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { tag } from \"tagged\";\nexport const name: string = tag(\"a\").name;\n",
+    )
+    .unwrap();
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["check", "--json", "--explain-any", "tagged"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let value: Value = serde_json::from_str(&stdout).expect("--json must parse");
+    let explained = &value["typeCheck"]["explainAny"];
+
+    assert_eq!(explained["package"], "tagged", "{explained:#}");
+    assert_eq!(explained["translated"], true, "{explained:#}");
+    let holes = explained["holes"].as_array().unwrap();
+    assert!(
+        holes.iter().any(|hole| hole["declaration"] == "Tagged"
+            && hole["construct"] == "computed-key"
+            && hole["path"] == "node_modules/tagged/index.d.ts"
+            && hole["line"] == 2),
+        "{explained:#}"
+    );
+    let findings = explained["findings"].as_array().unwrap();
+    assert!(
+        findings
+            .iter()
+            .any(|finding| finding["declaration"] == "inner.Missing"
+                && finding["path"] == "node_modules/tagged/index.d.ts"
+                && finding["line"] == 6),
+        "{explained:#}"
+    );
+
+    let human = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["check", "--color", "never", "--explain-any", "tagged"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8(human.stdout).unwrap();
+    assert!(text.contains("tagged: 1 hole typed as any"), "{text}");
+    assert!(
+        text.contains("node_modules/tagged/index.d.ts:2 Tagged [computed-key]"),
+        "{text}"
+    );
+
+    let absent = uf()
+        .arg("--cwd")
+        .arg(dir.path())
+        .args(["check", "--json", "--explain-any", "not-imported"])
+        .output()
+        .unwrap();
+    let absent: Value = serde_json::from_slice(&absent.stdout).expect("--json must parse");
+    assert_eq!(absent["typeCheck"]["explainAny"]["translated"], false);
+}
+
 /// A hand-written library definition is full of `any`, and that is what one is
 /// *for*: the point of `declare module "editor-pkg"` is to describe a package
 /// that ships no types, and every member uf cannot transcribe is an `any` on

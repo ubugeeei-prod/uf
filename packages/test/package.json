@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/test",
-  "version": "0.0.0-alpha.34",
+  "version": "0.0.0-alpha.35",
   "description": "The test API and worker for `uf test`: describe/it, a full matcher set, and the process uf fans test files out to.",
   "type": "module",
   "license": "MIT",
@@ -11,7 +11,10 @@
     "directory": "packages/test"
   },
   "exports": {
-    ".": "./index.js",
+    ".": {
+      "uniflowed-bun-test": "./bun/index.js",
+      "default": "./index.js"
+    },
     "./in-source": "./in-source.js",
     "./worker": "./worker.js",
     "./browser-worker": "./browser-worker.js",
@@ -19,6 +22,7 @@
   },
   "files": [
     "browser-worker.js",
+    "bun",
     "in-source.js",
     "index.js",
     "internal",
@@ -26,7 +30,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/host": "0.0.0-alpha.34"
+    "@uniflowed/host": "0.0.0-alpha.35"
   },
   "peerDependencies": {
     "axe-core": ">=4"

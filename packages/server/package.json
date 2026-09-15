@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/server",
-  "version": "0.0.0-alpha.34",
+  "version": "0.0.0-alpha.35",
   "description": "Request-scoped server functions for the Unified Toolchain for Flow (React).",
   "type": "module",
   "license": "MIT",
@@ -15,6 +15,7 @@
     "./bun": "./bun.js",
     "./cache": "./cache.js",
     "./cache/filesystem": "./cache-filesystem.js",
+    "./cache/kv": "./cache-kv.js",
     "./deno": "./deno.js",
     "./edge": "./edge.js",
     "./events": "./events.js",
@@ -32,6 +33,7 @@
   "files": [
     "bun.js",
     "cache-filesystem.js",
+    "cache-kv.js",
     "cache.js",
     "deno.js",
     "edge.js",
@@ -51,6 +53,6 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.34"
+    "@uniflowed/core": "0.0.0-alpha.35"
   }
 }
