@@ -34,9 +34,14 @@ cd "$root"
 # parses under dash is a script that fails somebody's check.
 TAB=$(printf '\t')
 
+#
+# The last row is not a runtime but has the same shape: the React Compiler
+# conformance run fails rather than skips without its fixture checkout, so a
+# job running the suite has to run the step that fetches it.
 RUNTIMES="bun:oven-sh/setup-bun:crates/uf_cli/tests/bun_host.rs
 deno:denoland/setup-deno:crates/uf_cli/tests/deno_host.rs
-node:actions/setup-node:crates/uf_cli/tests/permissions.rs"
+node:actions/setup-node:crates/uf_cli/tests/permissions.rs
+react-compiler-fixtures:tools/react-compiler/sync.sh:crates/uf_transform/tests/react_compiler_conformance/main.rs"
 
 # One pass, emitting `RUNS <workflow> <job>` and
 # `MISSING <workflow> <job> <runtime> <file>`, so the results survive the

@@ -41,6 +41,10 @@ jobs:
           # released, not whatever has merged since.
           ref: ${{ inputs.version && format('uf@{0}', inputs.version) || github.ref }}
       - run: tools/upstream/sync.sh
+      # The React Compiler's fixtures. The suite below includes the conformance
+      # run over them, which fails rather than skips when they are absent, so a
+      # publish without this step would fail before sending a package.
+      - run: tools/react-compiler/sync.sh
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
         with:
           toolchain: nightly-2026-08-01
