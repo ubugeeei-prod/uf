@@ -3,6 +3,12 @@ set -eu
 
 script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 
+# Probe for ubugeeei-prod/uf#1071, not for merge.
+if [ -n "${UF_LINK_PROBE_DIR:-}" ]; then
+  bash "$script_dir/../ci/link-probe-hook.sh" "$script_dir" "$@" ||
+    printf '%s\n' "uf-cc-linker: the link probe failed" >&2
+fi
+
 for candidate in "${CC:-}" cc clang gcc; do
   if [ -z "$candidate" ] || ! command -v "$candidate" >/dev/null 2>&1; then
     continue

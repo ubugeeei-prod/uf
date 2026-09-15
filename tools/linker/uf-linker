@@ -26,6 +26,19 @@ run_linker() {
   linker=$1
   shift
 
+  # Probe for ubugeeei-prod/uf#1071, not for merge.
+  if [ -n "${UF_LINK_PROBE_TRACE:-}" ]; then
+    out="(response file)"
+    prev=
+    for arg in "$@"; do
+      if [ "$prev" = -o ]; then
+        out=${arg##*/}
+      fi
+      prev=$arg
+    done
+    printf '%s %s\n' "$linker" "$out" >> "$UF_LINK_PROBE_TRACE"
+  fi
+
   runtime_dir=$(cc_runtime_lib_dir || true)
   if [ -n "$runtime_dir" ]; then
     set -- -L "$runtime_dir" "$@"
