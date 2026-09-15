@@ -919,6 +919,17 @@ export type UniflowedConfig = {
   },
   readonly tasks?: { readonly [string]: TaskDefinition },
   /**
+   * Tasks `uf prepare` runs before a commit, keyed by a glob over the staged
+   * files.
+   *
+   * A glob with no `/` matches a file's name wherever it is; one with a `/`
+   * matches its path from the project root. Each task named runs once, with
+   * every staged file its glob matches appended to its command, over what is
+   * staged rather than what is on disk. A fix to a fully staged file is staged
+   * with it; a fix to a half-staged one is not kept, and stops the commit.
+   */
+  readonly staged?: { readonly [string]: string | $ReadOnlyArray<string> },
+  /**
    * Vite's own configuration, merged over the one uf generates.
    *
    * uf reads none of it, which is the point: an option Vite adds tomorrow

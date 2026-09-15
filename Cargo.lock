@@ -3830,6 +3830,7 @@ version = "0.0.0-alpha.35"
 dependencies = [
  "camino",
  "compact_str",
+ "globset",
  "serde",
  "serde_json",
  "smallvec",

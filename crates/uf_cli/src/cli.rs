@@ -479,6 +479,15 @@ pub(crate) enum Commands {
     Mcp,
     /// Run the checks and code generation a commit should not go without.
     Prepare {
+        /// Write the committed git hook that runs `uf prepare` before each
+        /// commit — `.githooks/pre-commit` — and point this clone's
+        /// `core.hooksPath` at it, instead of running the checks.
+        ///
+        /// Once per clone, by hand: uf runs no `postinstall` script. A hook uf
+        /// did not write, or a `core.hooksPath` already set elsewhere, is
+        /// refused rather than overwritten.
+        #[arg(long, conflicts_with = "fix")]
+        install_hooks: bool,
         /// Apply `uf lint`'s safe fixes to the staged files and format them,
         /// instead of only reporting what is wrong with them.
         ///
