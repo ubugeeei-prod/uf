@@ -1064,8 +1064,6 @@ between runs and a pre-bundled worker. Neither exists yet.
   that is happy-dom, which computes no layout, so `color-contrast` and the rules
   about overlapping targets come back *incomplete* rather than decided. `uf dev`'s
   audit runs in a real browser and answers them.
-- `@uniflowed/react-testing` needs a DOM and says so when called; component
-  tests need one supplied.
 - Deno runs a suite through an ahead-of-time pass rather than a loader, so a
   module the pass could not enumerate — a path computed at run time, a file a
   test writes and then imports — is still Flow when Deno meets it, and

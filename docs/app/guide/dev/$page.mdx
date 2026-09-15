@@ -208,11 +208,10 @@ stopped streaming — and says nothing when only the milliseconds moved, which
 would be every reload. A page with nothing suspended in it says nothing at all,
 because there is no order to report about a document that arrived whole.
 
-This is the half of the picture that comes off the wire. uf has no Flight payload
-yet — the browser re-renders the matched tree from the same modules the server
-used, which is why the client/server split is route-level (see
-[Server Components](/guide/server-components)) — and when there is one, this is
-where it will be reported.
+This is the HTML half of what comes off the wire. The same document carries the
+Flight payload its tree was rendered from, and the browser hydrates that payload
+rather than rendering the route's modules again —
+[Server Components](/guide/server-components#the-current-contract) has the rest.
 
 To reach the dev server from another device, `--host` binds a routable address —
 but only if `dev.allowedHosts` in your config is non-empty. That is deliberate:
