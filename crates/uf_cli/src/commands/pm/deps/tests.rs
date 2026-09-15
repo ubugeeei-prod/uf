@@ -138,12 +138,30 @@ fn a_link_is_believed_only_when_node_modules_has_one() {
                 "is a link to ../gone, which does not exist",
             ),
         ] {
-            let why = link_report(base, manager, "ui", state.clone(), None)
-                .expect_err(&format!("{manager}: {state:?} is not a link"));
-            assert!(
-                why.contains(says) && why.ends_with("nothing was linked"),
-                "{manager}: {why}"
-            );
+            // Only an absent package leaves room for a link Yarn 2+ recorded
+            // and did not install. An installed package or a broken link beside
+            // a resolution means the link did not take, on every manager.
+            let resolutions: &[Option<&str>] = if state == Some(LinkState::Absent) {
+                &[None]
+            } else {
+                &[None, Some("portal:/work/ui")]
+            };
+            for resolution in resolutions {
+                let why = link_report(
+                    base,
+                    manager,
+                    "ui",
+                    state.clone(),
+                    resolution.map(str::to_owned),
+                )
+                .expect_err(&format!(
+                    "{manager}: {state:?} beside {resolution:?} is not a link"
+                ));
+                assert!(
+                    why.contains(says) && why.ends_with("nothing was linked"),
+                    "{manager}: {why}"
+                );
+            }
         }
 
         let recorded = link_report(

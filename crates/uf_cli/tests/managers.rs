@@ -563,6 +563,9 @@ fn link_by_name_links_the_package_uf_link_registered() {
                     ensure(stderr.contains("uf link <path to the package>"), || {
                         format!("the refusal does not say what to run instead:\n{stderr}")
                     })?;
+                    ensure(!stderr.contains(&format!("`uf {command}` again")), || {
+                        format!("the refusal also says to run the refused form again:\n{stderr}")
+                    })?;
                 }
             }
             _ => {
