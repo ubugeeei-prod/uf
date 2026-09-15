@@ -62,9 +62,10 @@ of them runs as it did before they existed: on the host
 `packageManager` names `npm`, `pnpm`, `yarn` or `bun`. Two more keys sit beside
 them. `build.builder` is the builder `uf dev` and `uf build` drive: `"vite"`,
 which is `@uniflowed/vite` and the default, or a module of your own.
-`test.runner` is `"uf"`, the runner built into uf and the default; `"bun@1.4"`
-is read, and `uf test` refuses it until `bun test` can run behind `uf test`
-([#942](https://github.com/ubugeeei-prod/uf/issues/942)).
+`test.runner` is `"uf"`, the runner built into uf and the default, or
+`"bun@1.4"`, which runs the suite with `bun test` on that Bun — see
+[Choosing a runner](/guide/testing#choosing-a-runner) for what only uf's own
+runner does.
 
 ### Writing a version
 

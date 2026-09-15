@@ -89,6 +89,64 @@ middleware runs before a request is resolved, and a callable server action is a
 `POST` endpoint the browser can dial. A directory of files has no answer for
 any of them.
 
+## `isr`: pages that regenerate
+
+A prerendered page can say how long its document stays true, from inside its
+own render:
+
+```js
+// @flow
+import { cacheLife, cacheTag } from "@uniflowed/server/cache";
+
+export default async function Prices() {
+  cacheLife({ revalidate: 300 });
+  cacheTag("prices");
+  return <PriceTable prices={await loadPrices()} />;
+}
+```
+
+When `app.rendering.modes` allows `isr` (the default list does),
+[`rendering.cache.route`](/guide/cache) is on, and the build leaves a server
+behind, `uf build` writes such a page for regeneration:
+
+- The first request is answered with the document the build wrote, without a
+  render.
+- Once the lifetime has passed, counted from when the build rendered the page,
+  the next request still gets that document, and the server regenerates the
+  page in the background.
+- When the regeneration succeeds, the new document replaces the old one in a
+  single step, in memory and in the durable store. There is no rebuild.
+- `revalidateTag("prices")` or `revalidatePath("/prices")` in a route handler or
+  a server action expires the page. The next request renders it, and it never
+  goes back to the build's copy.
+
+The document is written under `dist/__uf/regenerate/` rather than at the page's
+own URL, so no static file server answers the page before the server does.
+
+A page stays the plain prerendered document it always was when it states no
+lifetime, calls `noStore`, or answers something other than `200`. A tag alone
+is not enough: the route cache keeps nothing without a lifetime, and a
+regenerated page with no end is one another process could go on serving after a
+tag was revalidated. `isr` allows what `ssg` does, so a page that states no
+lifetime is prerendered under `["isr"]` too.
+
+### Where it works
+
+| Where the build runs | What keeps a regenerated page |
+| --- | --- |
+| `uf start`, `uf preview` | the filesystem store under `.uf/cache/route`, unless `rendering.cache.store` names another |
+| `--adapter node`, `bun`, `deno`, `container` | the filesystem store under `.uf/cache/route` in the server's working directory, unless `rendering.cache.store` names another |
+| `--adapter edge` | Workers KV, through `@uniflowed/server/cache/kv`, bound as `UF_CACHE` in the `wrangler.json` the build writes |
+| `--adapter serverless` | a provider module named in `rendering.cache.store`. Without one the build is refused by name, because an instance's memory and its `/tmp` go with the instance |
+| `--adapter static` | nothing: the adapter refuses a regenerating page by name, because a static host has no server to regenerate it |
+| `build.staticBuild` | nothing: no server is left to regenerate a page, so every page is a plain document |
+| `uf build --compile` | nothing: a compiled binary carries no route cache, so it renders a regenerating page for every request |
+
+`rendering.cache.store: "memory"`, said explicitly, keeps regenerated pages in
+each process's memory, and a restart starts every page from the build's copy
+again. [Caching](/guide/cache#regenerating-prerendered-pages) has how the store
+treats a regenerated page, and why Workers KV rather than the Cache API.
+
 ## Reading the build
 
 The summary says the plan in words:

@@ -152,49 +152,19 @@ fn the_embedded_registry_reads() {
     }
 }
 
-/// Every module `@uniflowed/ui` ships has a styled component, except the ones
-/// named below — and that list may only shrink.
+/// Every component module `@uniflowed/ui` ships has a styled component.
 ///
-/// It is a list with a direction on purpose. ubugeeei-prod/uf#947 is done when
-/// it is empty, and a list that could also grow would let a new headless module
-/// arrive with no styled half and nobody noticing.
+/// While the registry was being written this test carried a list of modules
+/// still waiting for one, which could only shrink; ubugeeei-prod/uf#947 was done
+/// when it was empty. With the list gone, a module added to the package arrives
+/// with its styled half or fails here, rather than waiting on a list nobody
+/// reads.
 #[test]
 fn every_module_the_headless_package_ships_has_a_component() {
-    const NOT_YET: &[&str] = &[
-        "calendar",
-        "carousel",
-        "combobox",
-        "context-menu",
-        "date-picker",
-        "field",
-        "input-otp",
-        "menu",
-        "menubar",
-        "navigation-menu",
-        "resizable",
-        "scroll-area",
-        "sidebar",
-        "slider",
-        "table",
-        "toast",
-    ];
-
-    let modules = headless_modules();
     let components = components_on_disk();
-
-    for pending in NOT_YET {
-        assert!(
-            modules.contains(*pending),
-            "`{pending}` is waiting for a component, and `@uniflowed/ui` has no such module"
-        );
-        assert!(
-            !components.contains(*pending),
-            "`{pending}` has a component now; take it off `NOT_YET`"
-        );
-    }
-    let missing: Vec<&String> = modules
-        .iter()
-        .filter(|module| !components.contains(*module) && !NOT_YET.contains(&module.as_str()))
+    let missing: Vec<String> = headless_modules()
+        .into_iter()
+        .filter(|module| !components.contains(module))
         .collect();
     assert!(
         missing.is_empty(),
@@ -229,8 +199,9 @@ fn a_component_with_no_module_answers_one_the_headless_package_declined() {
 ///
 /// Every module but the hook modules. `@uniflowed/ui/interactions` exports
 /// `usePress` and the rest of the interactions layer rather than a component, so
-/// it has no styled half to wait for, and counting it would put it on `NOT_YET`
-/// — a list that is only allowed to shrink, which it never could.
+/// it has no styled half, and counting it would fail
+/// `every_module_the_headless_package_ships_has_a_component` over a module that
+/// never could have one.
 ///
 /// The exemption is `uf_lib`'s list rather than one written here. That crate
 /// holds every name on it to a module that exports hooks and nothing

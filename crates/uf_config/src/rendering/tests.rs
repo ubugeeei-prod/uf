@@ -82,9 +82,9 @@ fn the_docs_site_configuration_still_builds() {
 
 #[test]
 fn a_planned_mode_beside_an_implemented_one_is_allowed() {
-    // `modes` is an allowlist: naming `isr` permits something that never gets
+    // `modes` is an allowlist: naming `ppr` permits something that never gets
     // selected, which changes nothing and is worth no error.
-    let config = with_modes(&[RenderingMode::Ssg, RenderingMode::Isr]);
+    let config = with_modes(&[RenderingMode::Ssg, RenderingMode::Ppr]);
     check(Utf8Path::new("uf.config.js"), &config).unwrap();
     assert_eq!(
         RenderingPlan::resolve(&config).prerender(),
@@ -94,15 +94,34 @@ fn a_planned_mode_beside_an_implemented_one_is_allowed() {
 
 #[test]
 fn a_list_of_only_planned_modes_is_refused() {
-    let config = with_modes(&[RenderingMode::Ppr, RenderingMode::Isr]);
+    let config = with_modes(&[RenderingMode::Ppr]);
     let error = check(Utf8Path::new("uf.config.js"), &config).unwrap_err();
     assert!(matches!(
         error,
         ConfigError::NoImplementedRenderingMode { .. }
     ));
     let message = error.to_string();
-    assert!(message.contains("ppr, isr"), "{message}");
+    assert!(message.contains("ppr"), "{message}");
     assert!(message.contains("ssg"), "{message}");
+}
+
+#[test]
+fn isr_is_implemented_and_prerenders_what_ssg_does() {
+    // A regenerated page is a prerendered document with a lifetime, and a page
+    // that states none is a static document. So `["isr"]` alone is a build that
+    // prerenders every route and keeps a server to regenerate them.
+    assert!(RenderingMode::Isr.is_implemented());
+    let alone = with_modes(&[RenderingMode::Isr]);
+    check(Utf8Path::new("uf.config.js"), &alone).unwrap();
+    let plan = RenderingPlan::resolve(&alone);
+    assert_eq!(plan.prerender(), Prerender::Everything);
+    assert!(plan.emits_a_server());
+
+    // Beside `ssr`, a route that cannot be prerendered is rendered per
+    // request, the way the default decides.
+    let beside = RenderingPlan::resolve(&with_modes(&[RenderingMode::Ssr, RenderingMode::Isr]));
+    assert_eq!(beside.prerender(), Prerender::Possible);
+    assert!(beside.emits_a_server());
 }
 
 #[test]

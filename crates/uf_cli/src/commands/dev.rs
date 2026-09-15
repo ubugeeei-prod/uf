@@ -351,8 +351,15 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
     // per workspace folder and has every reason to say which one, and a server
     // that read `.` instead answered with uf's defaults while looking like it
     // had read the project's `uf.config.js`.
-    let config =
-        load_config(cwd).map_or_else(|_| UniflowedConfig::default(), |resolved| resolved.config);
+    let resolved = load_config(cwd).ok();
+    let root = resolved
+        .as_ref()
+        .map_or_else(|| cwd.to_path_buf(), |resolved| resolved.root.clone());
+    let config = resolved.map_or_else(UniflowedConfig::default, |resolved| resolved.config);
+    // Project rules start with the first document that needs linting and live
+    // as long as the server does: a keystroke must never pay for a host's
+    // start-up. See `EditorRules`.
+    let mut project_rules = EditorRules::new(root);
     let fmt = config.fmt.clone();
     // Same reasoning: `uf_lib::builtin_modules` rebuilds the whole registry on
     // every call, and a hover happens on mouse-move.
@@ -434,15 +441,17 @@ pub(crate) fn lsp(cwd: &Utf8Path) -> Result<()> {
             "exit" => return Ok(()),
             "textDocument/didOpen" => {
                 if let Some((uri, text)) = opened_document(&message) {
-                    let document = Document::lint(&uri, text, &config);
+                    let document = Document::lint(&uri, text, &config, &mut project_rules);
                     publish_diagnostics(&mut stdout, &uri, &document)?;
+                    project_rules.tell(&mut stdout)?;
                     documents.insert(uri, document);
                 }
             }
             "textDocument/didChange" => {
                 if let Some((uri, text)) = changed_document(&message) {
-                    let document = Document::lint(&uri, text, &config);
+                    let document = Document::lint(&uri, text, &config, &mut project_rules);
                     publish_diagnostics(&mut stdout, &uri, &document)?;
+                    project_rules.tell(&mut stdout)?;
                     documents.insert(uri, document);
                 }
             }
@@ -593,7 +602,15 @@ struct Document {
     /// because most documents are never asked, and the one that is may be
     /// typed into many times between two questions.
     config: OnceCell<config_file::Outline>,
+    /// The edits the project's own rules reported with their findings, in
+    /// bytes of [`Document::text`].
+    project_fixes: Vec<ProjectFix>,
 }
+
+mod project_rules;
+
+use crate::commands::lint::plugins::{self, ProjectFix};
+use project_rules::EditorRules;
 
 impl Document {
     /// Take the editor's text and lint it.
@@ -601,13 +618,29 @@ impl Document {
     /// The single place the LSP calls the linter for an open document.
     /// Diagnostics, quick fixes and hover all need the same answer for the
     /// same text, and asking three different ways is how an editor ends up
-    /// offering a fix for a diagnostic it is not showing.
-    fn lint(uri: &str, text: String, config: &UniflowedConfig) -> Self {
-        let diagnostics = lint_text(uri, &text, config);
+    /// offering a fix for a diagnostic it is not showing. The project's own
+    /// rules are part of that answer, so their findings join uf's here and
+    /// nowhere else.
+    fn lint(uri: &str, text: String, config: &UniflowedConfig, rules: &mut EditorRules) -> Self {
+        let mut diagnostics = lint_text(uri, &text, config);
+        let answer = rules.lint(
+            &uf_lint::SourceFile {
+                path: document_path(uri),
+                source: text.clone(),
+            },
+            config,
+        );
+        if let Some(found) = diagnostics.as_mut()
+            && !answer.diagnostics.is_empty()
+        {
+            found.extend(answer.diagnostics);
+            plugins::sort(found);
+        }
         Self {
             text,
             diagnostics,
             config: OnceCell::new(),
+            project_fixes: answer.fixes,
         }
     }
 
@@ -735,6 +768,28 @@ fn code_actions(
             }
         }
 
+        // A project rule's fix, for the finding it came with. Matched by rule
+        // and place rather than looked up in the catalogue: the rule is the
+        // project's, and the edit arrived with the finding. Both tiers, for the
+        // reason uf's own are — a click is a person asking.
+        for diagnostic in &in_range {
+            for fix in document.project_fixes.iter().filter(|fix| {
+                fix.rule == diagnostic.rule
+                    && fix.line == diagnostic.line
+                    && fix.column == diagnostic.column
+            }) {
+                actions.push(json!({
+                    "title": format!("Fix `{}` the way the rule suggests", fix.rule),
+                    "kind": QUICK_FIX,
+                    "diagnostics": [encode_diagnostic(&lines, diagnostic)],
+                    "isPreferred": fix.safety == Safety::Safe,
+                    "edit": {
+                        "changes": { &uri: [project_rules::fix_edit(source, fix)] },
+                    },
+                }));
+            }
+        }
+
         // The whitespace rules, whose answer is `uf fmt` rather than an edit of
         // uf's own devising — but only where the formatter really does remove
         // them.
@@ -775,10 +830,20 @@ fn code_actions(
     // what the program does must be asked for rather than arrive with a
     // keystroke somebody has stopped thinking about.
     if wanted(only.as_deref(), FIX_ALL) {
-        let edits: Vec<Value> = fix::plan(source, diagnostics, false)
+        let mut edits: Vec<Value> = fix::plan(source, diagnostics, false)
             .iter()
             .map(|fix| fix_edit(&lines, fix))
             .collect();
+        // The project's own safe fixes join only when uf has none: the two
+        // catalogues cannot be planned for overlap against each other, and an
+        // editor refuses a workspace edit whose edits overlap as a whole. The
+        // next save applies them, which is the round `uf lint --fix` takes too.
+        if edits.is_empty() {
+            edits = plugins::plan_fixes(&document.project_fixes, false)
+                .into_iter()
+                .map(|fix| project_rules::fix_edit(source, fix))
+                .collect();
+        }
         if !edits.is_empty() {
             actions.push(json!({
                 "title": "Fix all uf lint problems in this file",

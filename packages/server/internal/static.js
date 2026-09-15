@@ -24,6 +24,7 @@
 import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
+import { currentContext } from "./context.js";
 import { prerenderedMayAnswer } from "./draft.js";
 
 /**
@@ -99,6 +100,28 @@ export type StaticFile = {|
 /** Begin serving `root`, whose real path is resolved on the first request. */
 export function staticRoot(root: string): StaticRoot {
   return { root: path.resolve(root), realRoot: null };
+}
+
+/**
+ * Let the request being answered read the build's files through `serveStatic`.
+ *
+ * For a page the build regenerates. Its document is not at its own URL, so the
+ * static half has just answered `null` for the request, and the application
+ * behind it starts the page from the document at the path the build recorded.
+ * That path is answered by this host's static half and nothing else — the same
+ * containment check, the same symlink re-check — because it *is* that static
+ * half, asked a second question.
+ *
+ * Nothing outside a request: the reader is put on the request's context and
+ * takes its origin from the request's URL.
+ */
+export function offerBuildFiles(
+  request: Request,
+  serveStatic: (request: Request) => Promise<Response | null>,
+): void {
+  const context = currentContext();
+  if (context == null) return;
+  context.buildFile = (pathname) => serveStatic(new Request(new URL(pathname, request.url)));
 }
 
 /**

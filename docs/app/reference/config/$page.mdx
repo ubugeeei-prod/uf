@@ -209,10 +209,15 @@ a process.
 | `["ssg"]` | Prerenders everything, and **fails**, naming the route, if anything can only be answered per request |
 | `["ssr"]` | Prerenders nothing. Every route is rendered per request |
 | `["csr"]` | Prerenders one shell that is no route's document, and the browser renders every route from it |
+| contains `isr` (the default does) | Prerenders what `ssg` would, and regenerates a prerendered page that states a lifetime with `cacheLife` once the lifetime passes, when `rendering.cache.route` is on and a server is deployed |
 
-`ppr` and `isr` are **Planned**. Naming one alongside an implemented mode is
-allowed and selects nothing; a list that names *only* planned modes is refused
-while the config is read, because there is no build behind it.
+`isr` allows what `ssg` allows, because a regenerated page is a prerendered
+document with a lifetime: `["isr"]` alone prerenders every route. The
+[rendering guide](/guide/rendering) has what regeneration does on each target.
+
+`ppr` is **Planned**. Naming it alongside an implemented mode is allowed and
+selects nothing; a list that names *only* `ppr` is refused while the config is
+read, because there is no build behind it.
 
 `csr` is the one value that **cannot share the list**. The others answer "where
 does this route's document come from", which is what makes the list a set the
@@ -664,7 +669,7 @@ uf's rule table, and a test asserts the table matches the descriptors.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `runtime` | the runner's, then [`runtime`](#runtime-and-packagemanager) | What `uf test` runs tests on: `"bun@1.4"` |
-| `runner` | `"uf"` | The runner. `"uf"` is the one built into uf. `"bun@1.4"` is read, implies Bun 1.4 as the test runtime, and is refused by `uf test` until [#942](https://github.com/ubugeeei-prod/uf/issues/942); beside a `runtime` naming anything else it is an error naming both keys |
+| `runner` | `"uf"` | The runner. `"uf"` is the one built into uf. `"bun@1.4"` runs the suite with `bun test` and implies Bun 1.4 as the test runtime ([Choosing a runner](/guide/testing#choosing-a-runner)); beside a `runtime` naming anything else it is an error naming both keys |
 | `module` | `"@uniflowed/test"` | The module test files import |
 | `runner.jsHosts` | `["node", "deno", "bun"]` | Hosts that may run workers |
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
@@ -910,7 +915,10 @@ export default defineConfig({
 
 `uf run ci` runs the task, and everything `dependsOn` reaches before it. Tasks
 with no path between them run at once; see
-[`uf run`](/reference/cli#uf-run-script-args).
+[`uf run`](/reference/cli#uf-run-script-args). In a workspace, `member#task` in
+`dependsOn` names a task another member defines in its own `uf.config.js` — by
+the member's name or its path — and a name this config defines as written is
+always that task, `#` or not.
 
 `inputs` and `outputs` are paths or globs from the project root — `*` stops at
 a `/`, `**` crosses one, and a pattern beginning `!` excludes what it matches.
