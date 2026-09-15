@@ -853,8 +853,10 @@ fi
 # never renamed into place. Each is named `.<name>.incoming.<pid>`, which is
 # also how `uf` names its own, and an install removes those whose process is
 # gone.
+# Spelled out in full: `crates/uf_cli/tests/installer.rs` holds `uf_rm`'s
+# runtime store to this exact line.
+runtime_dir="${install_root}/runtimes/uf@${version}"
 runtimes_dir="${install_root}/runtimes"
-runtime_dir="${runtimes_dir}/uf@${version}"
 mkdir -p "$runtimes_dir"
 
 uf_sweep() {
