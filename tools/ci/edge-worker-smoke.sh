@@ -16,7 +16,9 @@
 #      reference calls it, and the same action refused from another origin;
 #   3. the isr-app fixture: a page that regenerates, answered first with the
 #      document the build wrote and then, past its lifetime, with one the
-#      Worker rendered, which a restarted Worker reads back out of Workers KV;
+#      Worker rendered, which a restarted Worker reads back out of Workers KV,
+#      and rendered by a Worker started after an invalidation rather than
+#      answered with the build's document;
 #   4. a probe built from `packages/vite/internal/worker-builtins.js`: every
 #      Node built-in that table says a Worker provides only as a stub must still
 #      throw, or the warnings `uf build --adapter edge` prints are wrong.
@@ -349,6 +351,24 @@ if [ -z "$restarted" ] || [ "$restarted" = "$built" ]; then
   fail "a restarted Worker answered /clock with the build's document, so the regenerated one was not kept in KV"
 fi
 pass "a restarted Worker reads the regenerated /clock back out of KV"
+
+# An invalidation is kept in KV too. A fresh Worker invalidates the page's tag
+# before anything asks for the page, so no regeneration is running behind it,
+# and is stopped. The next Worker finds no regenerated page in KV and a build's
+# document older than the invalidation, so it renders the page.
+stop_worker
+start_worker "$regenerating/.uf/deploy/edge" isr-app-invalidating
+assert_response POST /api/revalidate 200 '"expired"'
+stop_worker
+start_worker "$regenerating/.uf/deploy/edge" isr-app-after-invalidation
+assert_status GET /clock 200 -D "$work/headers"
+invalidated="$(rendered_instant "$work/body")"
+if [ -z "$invalidated" ] || [ "$invalidated" = "$built" ] ||
+  ! grep -i '^x-uf-cache: miss' "$work/headers" >/dev/null 2>&1; then
+  dump_wrangler_log
+  fail "a Worker started after /clock was invalidated did not render it (instant ${invalidated:-none}, the build's $built, $(grep -i '^x-uf-cache' "$work/headers"))"
+fi
+pass "a Worker started after /clock was invalidated renders it rather than the build's document"
 stop_worker
 
 # 4. The Node built-ins a Worker provides only as stubs, measured again.
