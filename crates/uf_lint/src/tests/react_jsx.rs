@@ -176,6 +176,9 @@ fn array_index_key_reports_every_way_an_index_is_spelled_into_a_key() {
         "{index.toString()}",
         "{String(index)}",
         "{\"item-\" + index}",
+        // A property of the item does not rescue the index: two items with
+        // one label that swap places keep each other's keys.
+        "{`${item.label}-${index}`}",
     ] {
         let markup =
             format!("<ul>{{items.map((item, index) => <li key={key}>{{item.label}}</li>)}}</ul>");
@@ -186,11 +189,13 @@ fn array_index_key_reports_every_way_an_index_is_spelled_into_a_key() {
 
 #[test]
 fn array_index_key_follows_the_index_through_every_iteration_method() {
+    // `<Row />` rather than an empty `<li />`: a component may keep state for
+    // the key to misplace, and an empty host element keeps none.
     for markup in [
-        "<ul>{items.forEach((item, index) => { rows.push(<li key={index} />); })}</ul>",
-        "<ul>{items.filter((item, index) => { rows.push(<li key={index} />); return true; })}</ul>",
-        "<ul>{items.flatMap((item, index) => [<li key={index} />])}</ul>",
-        "<ul>{items.reduce((rows, item, index) => rows.concat(<li key={index} />), [])}</ul>",
+        "<ul>{items.forEach((item, index) => { rows.push(<Row key={index} />); })}</ul>",
+        "<ul>{items.filter((item, index) => { rows.push(<Row key={index} />); return true; })}</ul>",
+        "<ul>{items.flatMap((item, index) => [<Row key={index} />])}</ul>",
+        "<ul>{items.reduce((rows, item, index) => rows.concat(<Row key={index} />), [])}</ul>",
         "<ul>{React.Children.map(children, (child, index) => React.cloneElement(child, { key: index }))}</ul>",
     ] {
         let diagnostics = lint_js(INDEX_KEY, &page(markup));
@@ -211,6 +216,14 @@ fn array_index_key_accepts_keys_that_are_not_positions() {
         // A fixed-length list never reorders, and `Array.from` is how one is
         // built.
         "<p>{Array.from({ length: 5 }, (_, index) => <b key={index} />)}</p>",
+        // A key that also holds the item changes when the item does, so React
+        // remounts the element rather than handing it another item's state.
+        // `docs/app/reference/ui/registry.js` keys its code spans this way.
+        "<p>{items[0].label.split(\" \").map((word, index) => <b key={`${index}:${word}`}>{word}</b>)}</p>",
+        "<p>{items[0].label.split(\" \").map((word, index) => <b key={String(index) + word}>{word}</b>)}</p>",
+        // An empty cell keeps no state for a key to hand over.
+        // `packages/ui/calendar.js` keys its blank days by column.
+        "<tr>{items.map((item, column) => <td key={`blank-${column}`} />)}</tr>",
         "<ul>{React.Children.map(children, (child) => React.cloneElement(child, { key: child.key }))}</ul>",
     ] {
         let diagnostics = lint_js(INDEX_KEY, &page(markup));
@@ -226,6 +239,18 @@ fn array_index_key_leaves_a_prop_called_index_alone() {
     );
 
     assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn array_index_key_still_reports_an_empty_control() {
+    // An `<input>` keeps what was typed into it, so an index key hands one
+    // item's text to another even when the element holds nothing else.
+    let diagnostics = lint_js(
+        INDEX_KEY,
+        &page("<form>{items.map((item, index) => <input key={index} name={item.id} />)}</form>"),
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
 }
 
 // --- react/jsx-no-duplicate-props -------------------------------------------

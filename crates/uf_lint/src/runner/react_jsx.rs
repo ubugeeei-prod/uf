@@ -32,6 +32,11 @@
 //! * `Array.from({ length: n }, (_, i) => …)` builds a list that never
 //!   reorders, which is exactly when an index is a correct key, so
 //!   `react/no-array-index-key` does not follow `Array.from`.
+//! * A key that holds the item as well as its index, `${index}:${word}`,
+//!   changes when the item does, so React remounts the element rather than
+//!   handing it another item's state. An empty host element that is not a
+//!   form control, a media or embedded element, a disclosure or a canvas keeps
+//!   no state for a key to carry. `react/no-array-index-key` reports neither.
 //! * Text inside `<code>` and `<pre>` is meant to be read, slashes and all.
 //!
 //! Two shapes the plugin passes over are reported, because each is the same
@@ -166,7 +171,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &JsxWork) -> Vec<Finding> {
         void_children: levels.void_children.is_some(),
         comment_text: levels.comment_text.is_some(),
         params: Vec::new(),
-        pending_index: None,
+        pending_iteration: None,
         literal: 0,
         found: Vec::new(),
     };
@@ -300,11 +305,10 @@ struct Walk<'ast> {
     void_children: bool,
     comment_text: bool,
     /// Parameters of the functions the walk is inside, innermost last, each
-    /// marked `true` when it is the index an iteration method hands its
-    /// callback.
-    params: Vec<(&'ast str, bool)>,
-    /// Which parameter of the function about to be entered is an index.
-    pending_index: Option<usize>,
+    /// with what it is to the iteration that calls its function.
+    params: Vec<(&'ast str, Param)>,
+    /// The iteration whose callback is the function about to be entered.
+    pending_iteration: Option<Iteration>,
     /// How many `<code>` and `<pre>` elements enclose the node being visited.
     literal: u32,
     found: Vec<Finding>,
@@ -345,8 +349,8 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
             self.check_element_call(loc, call);
         }
 
-        let index = if self.index_key {
-            index_position(&call.callee)
+        let iteration = if self.index_key {
+            iteration_of(&call.callee)
         } else {
             None
         };
@@ -356,14 +360,14 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
                 ExpressionOrSpread::Expression(argument) => {
                     // Set only for a function written right there, so that it
                     // is that function and no other that consumes it.
-                    if let Some((callback, index_at)) = index
-                        && callback == position
+                    if let Some(iteration) = iteration
+                        && iteration.callback == position
                         && as_function(argument).is_some()
                     {
-                        self.pending_index = Some(index_at);
+                        self.pending_iteration = Some(iteration);
                     }
                     let walked = self.expression(argument);
-                    self.pending_index = None;
+                    self.pending_iteration = None;
                     walked?;
                 }
                 ExpressionOrSpread::Spread(spread) => self.expression(&spread.argument)?,
@@ -374,15 +378,19 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
 
     /// Every function, which is where parameters come into scope.
     fn function_(&mut self, loc: &'ast Loc, function: &'ast Function) -> Result<(), ()> {
-        let index_at = self.pending_index.take();
+        let iteration = self.pending_iteration.take();
         let outer = self.params.len();
         for (position, param) in function.params.params.iter().enumerate() {
             let ast::function::Param::RegularParam { argument, .. } = param else {
                 continue;
             };
             if let ast::pattern::Pattern::Identifier { inner, .. } = argument {
-                self.params
-                    .push((&inner.name.name, index_at == Some(position)));
+                let role = match iteration {
+                    Some(iteration) if iteration.index == position => Param::Index,
+                    Some(iteration) if iteration.item == position => Param::Item,
+                    _ => Param::Other,
+                };
+                self.params.push((&inner.name.name, role));
             }
         }
         let walked = ast_visitor::function_default(self, loc, function);
@@ -406,7 +414,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
             self.check_children_prop(element);
         }
         if self.index_key {
-            self.check_index_key(opening);
+            self.check_index_key(element);
         }
         if self.void_children
             && let Some(name) = tag
@@ -593,7 +601,13 @@ impl<'ast> Walk<'ast> {
     // --- react/no-array-index-key -------------------------------------------
 
     /// A `key` attribute built from the index of an enclosing iteration.
-    fn check_index_key(&mut self, opening: &'ast jsx::Opening<Loc, Loc>) {
+    ///
+    /// Not on an empty host element that keeps no state of its own — a blank
+    /// `<td />` in a calendar row, keyed by its column — because a key only
+    /// matters for what it carries across renders, and that element carries
+    /// nothing.
+    fn check_index_key(&mut self, element: &'ast jsx::Element<Loc, Loc>) {
+        let opening = &element.opening_element;
         let Some(key) = attribute(opening, "key") else {
             return;
         };
@@ -603,9 +617,30 @@ impl<'ast> Walk<'ast> {
         let jsx::expression_container::Expression::Expression(value) = &container.expression else {
             return;
         };
-        if let Some(index) = self.index_in(value) {
+        let carries_nothing = host_name(&opening.name).is_some_and(holds_no_state)
+            && !has_spread(opening)
+            && attribute(opening, "children").is_none()
+            && attribute(opening, "dangerouslySetInnerHTML").is_none()
+            && !element.children.1.iter().any(renders_something);
+        if carries_nothing {
+            return;
+        }
+        if let Some(index) = self.position_key(value) {
             self.report(&key.loc, ARRAY_INDEX_KEY, index_message(index));
         }
+    }
+
+    /// The index a key is built from, when the key says nothing but where the
+    /// item stands.
+    ///
+    /// A key that also holds the item itself — `${index}:${word}` — says more:
+    /// it changes when the item at that position does, so React remounts the
+    /// element instead of handing it the state of the item that stood there
+    /// before. A property of the item is not enough: `${item.kind}-${index}`
+    /// stays the same when two items of one kind swap places.
+    fn position_key(&self, key: &'ast Expression) -> Option<&'ast str> {
+        let index = self.index_in(key)?;
+        (!self.mentions_item(key)).then_some(index)
     }
 
     /// The index parameter `expression` is built from, when it is one.
@@ -616,7 +651,7 @@ impl<'ast> Walk<'ast> {
         match &**expression {
             ExpressionInner::Identifier { inner, .. } => {
                 let name: &'ast str = &inner.name;
-                self.is_index(name).then_some(name)
+                (self.role(name) == Some(Param::Index)).then_some(name)
             }
             ExpressionInner::TemplateLiteral { inner, .. } => inner
                 .expressions
@@ -628,31 +663,42 @@ impl<'ast> Walk<'ast> {
                 self.index_in(&inner.left)
                     .or_else(|| self.index_in(&inner.right))
             }
-            ExpressionInner::Call { inner, .. } => {
-                if let Some(member) = member_of(&inner.callee)
-                    && property_name(member) == Some("toString")
-                    && inner.arguments.arguments.is_empty()
-                {
-                    return self.index_in(&member.object);
-                }
-                if is_identifier(&inner.callee, "String")
-                    && let [ExpressionOrSpread::Expression(argument)] = &*inner.arguments.arguments
-                {
-                    return self.index_in(argument);
-                }
-                None
-            }
+            ExpressionInner::Call { inner, .. } => self.index_in(converted(inner)?),
             _ => None,
         }
     }
 
-    /// Whether the innermost parameter called `name` is an iteration index.
-    fn is_index(&self, name: &str) -> bool {
+    /// Whether `expression` reads the item an iteration handed its callback,
+    /// as a whole, in one of the shapes [`Self::index_in`] reads.
+    fn mentions_item(&self, expression: &'ast Expression) -> bool {
+        match &**expression {
+            ExpressionInner::Identifier { inner, .. } => {
+                self.role(&inner.name) == Some(Param::Item)
+            }
+            ExpressionInner::TemplateLiteral { inner, .. } => inner
+                .expressions
+                .iter()
+                .any(|part| self.mentions_item(part)),
+            ExpressionInner::Binary { inner, .. }
+                if matches!(inner.operator, ast::expression::BinaryOperator::Plus) =>
+            {
+                self.mentions_item(&inner.left) || self.mentions_item(&inner.right)
+            }
+            ExpressionInner::Call { inner, .. } => {
+                converted(inner).is_some_and(|value| self.mentions_item(value))
+            }
+            _ => false,
+        }
+    }
+
+    /// What the innermost parameter called `name` is to the iteration that
+    /// handed it over, when `name` is a parameter at all.
+    fn role(&self, name: &str) -> Option<Param> {
         self.params
             .iter()
             .rev()
             .find(|(param, _)| *param == name)
-            .is_some_and(|(_, index)| *index)
+            .map(|(_, role)| *role)
     }
 
     // --- react/jsx-no-duplicate-props ---------------------------------------
@@ -748,7 +794,7 @@ impl<'ast> Walk<'ast> {
         if self.index_key
             && let Some(props) = props
             && let Some((at, value)) = object_property(props, "key")
-            && let Some(index) = self.index_in(value)
+            && let Some(index) = self.position_key(value)
         {
             self.report(at, ARRAY_INDEX_KEY, index_message(index));
         }
@@ -909,21 +955,77 @@ fn list_callback(call: &ast::expression::Call<Loc, Loc>) -> Option<(&'static str
     }
 }
 
-/// Which argument of an iteration method is its callback, and which of the
-/// callback's parameters is the index.
-fn index_position(callee: &Expression) -> Option<(usize, usize)> {
+/// What a callback parameter is to the iteration that calls the callback.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Param {
+    /// The item the iteration is at.
+    Item,
+    /// That item's position.
+    Index,
+    /// Anything else, including every parameter of a function that is not an
+    /// iteration's callback.
+    Other,
+}
+
+/// Where an iteration method's callback is, and where its parameters are.
+#[derive(Clone, Copy)]
+struct Iteration {
+    /// Which argument of the call is the callback.
+    callback: usize,
+    /// Which parameter of the callback is the item.
+    item: usize,
+    /// Which parameter of the callback is the index.
+    index: usize,
+}
+
+/// The iteration a call makes, when its callee is an iteration method.
+fn iteration_of(callee: &Expression) -> Option<Iteration> {
     let member = member_of(callee)?;
     let method = property_name(member)?;
+    let at = |callback, item, index| Iteration {
+        callback,
+        item,
+        index,
+    };
     if is_children_api(&member.object) {
-        return matches!(method, "map" | "forEach").then_some((1, 1));
+        return matches!(method, "map" | "forEach").then(|| at(1, 0, 1));
     }
     match method {
         "every" | "filter" | "find" | "findIndex" | "findLast" | "findLastIndex" | "flatMap"
-        | "forEach" | "map" | "some" => Some((0, 1)),
-        "reduce" | "reduceRight" => Some((0, 2)),
+        | "forEach" | "map" | "some" => Some(at(0, 0, 1)),
+        "reduce" | "reduceRight" => Some(at(0, 1, 2)),
         _ => None,
     }
 }
+
+/// The value `x.toString()` or `String(x)` converts, when `call` is one.
+fn converted(call: &ast::expression::Call<Loc, Loc>) -> Option<&Expression> {
+    if let Some(member) = member_of(&call.callee)
+        && property_name(member) == Some("toString")
+        && call.arguments.arguments.is_empty()
+    {
+        return Some(&member.object);
+    }
+    match &*call.arguments.arguments {
+        [ExpressionOrSpread::Expression(argument)] if is_identifier(&call.callee, "String") => {
+            Some(argument)
+        }
+        _ => None,
+    }
+}
+
+/// Whether a host element keeps nothing across renders that a key could carry
+/// to the wrong item: anything but a form control, a media or embedded
+/// element, a disclosure, a dialog or a canvas.
+fn holds_no_state(tag: &str) -> bool {
+    !STATEFUL_ELEMENTS.contains(tag)
+}
+
+/// Host elements that keep state of their own between renders.
+static STATEFUL_ELEMENTS: phf::Set<&'static str> = phf::phf_set! {
+    "audio", "canvas", "details", "dialog", "embed", "iframe", "input", "object", "select",
+    "textarea", "video",
+};
 
 /// `React.createElement`, `React.cloneElement`, or either imported bare.
 fn element_api(callee: &Expression) -> Option<ElementApi> {

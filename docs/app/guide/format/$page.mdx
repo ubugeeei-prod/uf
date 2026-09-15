@@ -437,7 +437,7 @@ running it.
 | `no-danger`, `no-danger-with-children` | `security/no-dangerously-set-inner-html` |
 | `no-unstable-nested-components` | `flow/nested-component` |
 | `jsx-key` | `react/jsx-key`, which also reports a `<>` fragment in a list, and leaves `React.Children.map` alone because React keys what it returns |
-| `no-array-index-key` | `react/no-array-index-key` |
+| `no-array-index-key` | `react/no-array-index-key`, which leaves alone a key that also holds the item itself, and an empty element with no state for a key to carry |
 | `jsx-no-duplicate-props` | `react/jsx-no-duplicate-props` |
 | `no-children-prop` | `react/no-children-prop` |
 | `void-dom-elements-no-children` | `react/void-dom-elements-no-children` |
