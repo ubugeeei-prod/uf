@@ -86,14 +86,7 @@ pub fn structure(source: &str) -> String {
     // of exactly that, and it overflows a default test thread in a debug
     // build. The formatter has the same shape of problem for real, which is
     // ubugeeei-prod/uf#136; this is only the helper getting out of its way.
-    let source = source.to_owned();
-    std::thread::Builder::new()
-        .name("uf-fmt-structure".to_owned())
-        .stack_size(uf_flow::PARSE_STACK_BYTES)
-        .spawn(move || structure_here(&source))
-        .expect("spawns")
-        .join()
-        .expect("the tree renders")
+    on_the_parse_stack("uf-fmt-structure", || structure_here(source))
 }
 
 fn structure_here(source: &str) -> String {
@@ -115,6 +108,33 @@ fn structure_here(source: &str) -> String {
 ///
 /// Panics when `source` does not parse.
 pub fn comments(source: &str) -> Vec<(bool, String)> {
+    // On the parser's stack as well, because `uf_flow::parse` asks every
+    // caller for it and a test thread has 2 MiB. The shipped sources happen
+    // to fit, the deepest needing between 640 and 768 KiB, which is how
+    // parsing on the test thread went unnoticed. A source at the nesting
+    // ceiling needs some 45 MiB, and overflowing there aborts the whole test
+    // binary instead of failing one test. See ubugeeei-prod/uf#1071.
+    on_the_parse_stack("uf-fmt-comments", || comments_here(source))
+}
+
+/// Run `read` on a thread with the stack `uf_flow::parse` asks its callers
+/// for, and return what it returns.
+///
+/// A panic on that thread is resumed on this one with its own payload, so a
+/// failure reads the way it would have without the thread.
+fn on_the_parse_stack<T: Send>(name: &str, read: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name(name.to_owned())
+            .stack_size(uf_flow::PARSE_STACK_BYTES)
+            .spawn_scoped(scope, read)
+            .expect("spawns")
+            .join()
+            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+    })
+}
+
+fn comments_here(source: &str) -> Vec<(bool, String)> {
     let parsed = uf_flow::parse(source).unwrap_or_else(|error| panic!("parses: {error}"));
     parsed
         .comments()

@@ -1201,6 +1201,12 @@ and registers uf's plugins:
   serves the markup `uf build` writes.
 - `uf:mdx` is `@mdx-js/rollup` with GitHub-flavoured markdown, front matter and
   heading ids, so `$page.mdx` works with no configuration.
+- `uf:barrel-imports` rewrites a named import from `@uniflowed/ui` to the file
+  that defines the name, in every environment and under `uf dev`, reading the
+  barrel the project resolves. A namespace such as `Dialog` comes from a
+  generated view of the barrel that imports only its parts. Without it, the rsc
+  pass would load the barrel, record every client module it re-exports, and
+  give the client build all of them for a page that uses one.
 
 A build is three passes: the client bundle (with a manifest, so the renderer
 knows which script and stylesheet tags to write), the server bundle (kept

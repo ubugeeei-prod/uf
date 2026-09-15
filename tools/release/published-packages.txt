@@ -27,6 +27,7 @@
 #   tools/release/trust-npm.sh
 #
 # and run `uf run release:preflight` before tagging to see where things stand.
+cell
 config
 core
 fetch
@@ -39,7 +40,10 @@ react-testing
 relay
 router
 server
+state
 stylex
+temporal
 test
+ui
 validator
 vite

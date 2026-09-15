@@ -28,6 +28,11 @@
 //                 markdown, front matter, heading ids and build-time syntax
 //                 highlighting, so `.mdx` works with
 //                 no configuration.
+// * `uf:barrel-imports` — a named import from `@uniflowed/ui` becomes an import
+//                 from the file that defines the name, in every environment,
+//                 so a page using one component loads that component's module
+//                 rather than every module the barrel re-exports. See
+//                 `internal/barrel-imports.js`.
 // * `uf:asset`  — an imported image is decoded, resized to the widths the
 //                 project declares and re-encoded by `uf assets`, and an
 //                 imported font is self-hosted with the `@font-face` and the
@@ -53,6 +58,7 @@ import {
   auditTag,
 } from "./internal/a11y.js";
 import { assetPlugin } from "./internal/assets.js";
+import { barrelImportsPlugin, namespaceViewOf } from "./internal/barrel-imports.js";
 import { emit, reportRenderError } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
@@ -95,6 +101,7 @@ import {
   builtBridgeSource,
   builtReferencesSource,
   clientManifestSource,
+  clientModuleUrlPlugin,
   clientReferencePlugin,
   compilerRuntimeSource,
   createFlightState,
@@ -210,7 +217,10 @@ export default function uniflowed(options = {}) {
       command: options.command,
       accessibility,
     }),
-    ...(flightState == null ? [] : [clientReferencePlugin(flightState)]),
+    ...(flightState == null ? [] : [clientReferencePlugin(flightState), clientModuleUrlPlugin()]),
+    // After the references, so a client module the rsc graph has already
+    // replaced is not read for imports it no longer has; see the file.
+    barrelImportsPlugin(),
     mdxPlugin(markdown),
     assetPlugin({
       images: builtins.images ?? {},
@@ -604,7 +614,9 @@ function flowPlugin({
     },
 
     async transform(code, id, transformOptions) {
-      if (!isFlowModule(id)) return null;
+      // A view of a barrel's namespace has the barrel's path and none of its
+      // source: `uf:barrel-imports` generates it as JavaScript.
+      if (!isFlowModule(id) || namespaceViewOf(id) != null) return null;
       // Both server graphs: neither gets a refresh wrapper, and the rsc graph's
       // findings are reported as that graph's.
       const rsc = this.environment?.name === RSC_ENVIRONMENT;
