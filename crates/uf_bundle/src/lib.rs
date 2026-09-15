@@ -11,17 +11,25 @@
 //!   rather than a sequence of them.
 //! - [`embed`] packs the same set of assets into a JavaScript module, which is
 //!   how `uf build --compile` gets `dist/` inside a standalone binary.
+//! - [`analysis`] answers the question the report leaves open — *why* each
+//!   module is in a bundle — per route, from the module graph a builder writes
+//!   for `uf build --analyze`.
 //!
 //! Compressed figures come from really compressing the bytes at fixed settings
 //! ([`size::GZIP_LEVEL`], [`size::BROTLI_QUALITY`]), never from an estimate, and
 //! those settings are written into the report so two runs are only ever compared
 //! on equal terms.
 
+pub mod analysis;
 pub mod budget;
 pub mod embed;
 pub mod report;
 pub mod size;
 
+pub use analysis::{
+    ANALYSIS_FILE, ANALYSIS_VIEW_FILE, AnalysisError, BundleAnalysis, MODULE_GRAPH_FILE,
+    ModuleGraph, RouteFiles, analyze, read_module_graph, write_analysis,
+};
 pub use budget::{
     BudgetOutcome, BudgetScope, BudgetViolation, BudgetViolations, BundleBudgets, SizeBudget,
     evaluate,

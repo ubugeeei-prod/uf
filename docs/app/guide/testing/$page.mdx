@@ -1170,18 +1170,18 @@ between runs and a pre-bundled worker. Neither exists yet.
 - Coverage is Node-only, and a worker that has to be killed — a file that timed
   out, a worker that crashed — takes its counts with it, because they are
   written when the process exits.
-- Module mocking is Node-only; see "Which hosts" above.
+- Module mocking works on Node and on Deno 2.8 or newer, and raises
+  `UnsupportedError` on Bun; see "Which hosts" above.
 - The accessibility audit is only as good as the DOM under it. On a Node worker
   that is happy-dom, which computes no layout, so `color-contrast` and the rules
   about overlapping targets come back *incomplete* rather than decided. `uf dev`'s
   audit runs in a real browser and answers them.
-- `@uniflowed/react-testing` needs a DOM and says so when called; component
-  tests need one supplied.
 - Deno needs 2.8 or newer, the release with the `registerHooks` its Flow loader
   is built on; an older Deno is refused by version rather than failing later on
   syntax it cannot read. And on Deno a test that imports a package with a native
   addon fails, because Deno cannot `require()` one while a module hook is
   installed — which is Deno's to fix.
+>>>>>>> origin/main
 
 ## Where to go next
 
