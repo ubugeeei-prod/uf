@@ -592,6 +592,33 @@ fn nesting_at_the_ceiling_is_formatted() {
     similar_asserts::assert_eq!(formatted.output, again.output);
 }
 
+/// The helpers that read a tree back give the parser the stack it asks for,
+/// so a source the formatter accepts is one the guarantees can check.
+///
+/// `support::comments` parsed on the test thread, which has 2 MiB, and
+/// `uf_flow::parse` asks for `PARSE_STACK_BYTES`. The shipped sources fit
+/// anyway, and so nothing noticed; an object literal costs about 150 KiB of
+/// stack per level unoptimized, and this is three hundred of them. See
+/// ubugeeei-prod/uf#1071.
+#[test]
+fn the_guarantee_helpers_read_a_source_at_the_nesting_ceiling() {
+    let depth = uf_flow::MAX_NESTING_DEPTH;
+    let source = format!(
+        "x = /* kept */ {}1{};\n",
+        "{a:".repeat(depth),
+        "}".repeat(depth)
+    );
+    let comments = support::comment_multiset(&source);
+    let [((is_line, text), count)] = comments.iter().collect::<Vec<_>>()[..] else {
+        panic!("one comment, got {comments:?}");
+    };
+    assert!(
+        !is_line && text.contains("kept") && *count == 1,
+        "{comments:?}"
+    );
+    assert!(support::structure(&source).contains("<loc>"));
+}
+
 /// Nesting does not cost exponentially.
 ///
 /// ubugeeei-prod/uf#125. `print_arguments` prints the argument it is
