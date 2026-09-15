@@ -62,7 +62,9 @@ scan() {
       # and reading it as a command is how this check first reported four jobs
       # that run no suite at all.
       /^ *#/ { next }
-      /run:|uses:/ { body = body " " $0 }
+      # `deno-version:` too, because installing a runtime is half the rule; the
+      # other half is installing the one the suite needs.
+      /run:|uses:|deno-version:/ { body = body " " $0 }
       END { if (job != "") printf "%s\t%s\n", job, body }
     ' "$workflow" | while IFS="$TAB" read -r job body; do
       case "$body" in
@@ -82,6 +84,12 @@ scan() {
           *) echo "MISSING $workflow $job $name $needed_by" ;;
         esac
       done
+      case "$body" in
+        *"denoland/setup-deno"*)
+          version=$(printf '%s\n' "$body" | sed -n 's/.*deno-version:[[:space:]]*\([^[:space:]]*\).*/\1/p')
+          echo "DENO $workflow $job ${version:-default}"
+          ;;
+      esac
     done
   done
 }
@@ -105,6 +113,22 @@ if echo "$findings" | grep -q '^MISSING '; then
   done
   echo >&2
   echo "a job runs the workspace suite without a runtime the suite starts" >&2
+  exit 1
+fi
+
+# And every job that installs Deno for the suite asks for the same Deno.
+# Present was not enough: `publish.yml` installed `v1.x` while `ci.yml`
+# installed `v2.x`, and `uf@0.0.0-alpha.36` failed every `deno_host` test in the
+# publish job, before a single package was sent, on a Deno too old for
+# `registerHooks`.
+deno_versions=$(echo "$findings" | grep '^DENO ' | awk '{print $4}' | sort -u)
+if [ "$(printf '%s\n' "$deno_versions" | grep -c .)" -gt 1 ]; then
+  echo >&2
+  echo "$findings" | grep '^DENO ' | while read -r _ workflow job version; do
+    echo "$workflow: '$job' installs Deno $version." >&2
+  done
+  echo >&2
+  echo "jobs running the workspace suite install different Deno versions" >&2
   exit 1
 fi
 
