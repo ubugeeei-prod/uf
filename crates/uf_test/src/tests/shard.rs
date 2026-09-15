@@ -191,6 +191,7 @@ fn file(path: &str, statuses: &[TestStatus]) -> FileReport {
                 attempts: 1,
                 duration_micros: 100,
                 output: Vec::new(),
+                bench: None,
             })
             .collect(),
         output: Vec::new(),

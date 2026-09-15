@@ -22,6 +22,7 @@ fn record(name: &str, status: TestStatus) -> TestRecord {
         attempts: 1,
         duration_micros: 1_500,
         output: Vec::new(),
+        bench: None,
     }
 }
 

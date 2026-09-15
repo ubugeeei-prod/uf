@@ -152,6 +152,20 @@ it.skipBecause = refusing(
 );
 export const test = it;
 
+/**
+ * `bench`, which `bun:test` has no counterpart for.
+ *
+ * Its modifiers refuse too, by name, rather than failing on `undefined`.
+ */
+const refuseBench = refusing(
+  "bench",
+  '`bun:test` has no benchmarks; run them with `runner: "uf"` and `uf test --bench`',
+);
+export const bench = (..._args) => refuseBench();
+bench.only = refuseBench;
+bench.skip = refuseBench;
+bench.todo = refuseBench;
+
 /** uf's matchers that Bun's `expect` has no counterpart for. */
 const MATCHERS_BUN_LACKS = [
   "toBeChecked",

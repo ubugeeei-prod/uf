@@ -1314,6 +1314,116 @@ fn a_shard_is_refused_with_watch_and_named_when_it_is_not_one() {
     assert!(stderr.contains("there is no shard 3 of 2"), "{stderr}");
 }
 
+/// A test file, and a benchmark file whose benchmark waits a couple of
+/// milliseconds a call, so its median is nowhere near zero.
+const BENCHED: [(&str, &str); 2] = [
+    (
+        "src/sum.test.js",
+        "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nit(\"adds\", () => {\n  expect(1 + 1).toBe(2);\n});\n",
+    ),
+    (
+        "src/wait.bench.js",
+        "// @flow\nimport { bench } from \"@uniflowed/test\";\n\nbench(\"waits\", () => new Promise((resolve) => setTimeout(resolve, 2)), {\n  warmup: 1,\n  iterations: 5,\n});\n",
+    ),
+];
+
+/// The case named `name` in a `--json` document.
+fn case_named<'a>(document: &'a serde_json::Value, name: &str) -> &'a serde_json::Value {
+    document["tests"]
+        .as_array()
+        .and_then(|cases| cases.iter().find(|case| case["name"] == name))
+        .unwrap_or_else(|| panic!("no case named {name}: {document:#}"))
+}
+
+#[test]
+fn a_benchmark_is_skipped_by_a_run_of_the_tests_and_timed_by_a_run_of_the_benchmarks() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&BENCHED);
+
+    let tests = json(project.path(), &[]);
+    assert_eq!(case_named(&tests, "waits")["status"], "bench");
+    assert_eq!(case_named(&tests, "adds")["status"], "passed");
+
+    let benches = json(project.path(), &["--bench"]);
+    let waits = case_named(&benches, "waits");
+    assert_eq!(waits["status"], "passed", "{benches:#}");
+    assert_eq!(waits["bench"]["samples"], 5, "{waits:#}");
+    assert!(
+        waits["bench"]["medianMicros"]
+            .as_u64()
+            .is_some_and(|median| median >= 1_000),
+        "{waits:#}"
+    );
+    assert_eq!(case_named(&benches, "adds")["status"], "not-bench");
+    assert_eq!(benches["benchmarks"]["found"], false);
+}
+
+#[test]
+fn a_benchmark_slower_than_its_saved_baseline_fails_the_run_by_name() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&BENCHED);
+    let dir = project.path();
+
+    let (saved, stdout, stderr) = run(dir, &["--bench", "--save-baseline"]);
+    assert!(saved, "{stdout}\n{stderr}");
+    assert!(
+        stdout.contains("saved to .uf/bench-baseline.json"),
+        "{stdout}"
+    );
+    let path = dir.join(".uf/bench-baseline.json");
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("the baseline was written"))
+            .expect("the baseline is JSON");
+    assert_eq!(written["benchmarks"][0]["name"], "waits", "{written:#}");
+
+    let baseline = |median: u64| {
+        format!(
+            "{{\"version\":1,\"benchmarks\":[{{\"file\":\"src/wait.bench.js\",\"name\":\"waits\",\"medianMicros\":{median},\"samples\":5}}]}}"
+        )
+    };
+    // A hundredth of what a call that waits two milliseconds takes.
+    std::fs::write(&path, baseline(20)).expect("rewrite the baseline");
+    let (passed, stdout, stderr) = run(dir, &["--bench"]);
+    assert!(!passed, "{stdout}");
+    assert!(
+        stderr.contains("1 benchmark ran slower than .uf/bench-baseline.json allows"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("src/wait.bench.js > waits"), "{stderr}");
+
+    // A hundred times what it takes is an improvement, which passes.
+    std::fs::write(&path, baseline(10_000_000)).expect("rewrite the baseline");
+    let (passed, stdout, stderr) = run(dir, &["--bench"]);
+    assert!(passed, "{stdout}\n{stderr}");
+    assert!(stdout.contains("improved"), "{stdout}");
+}
+
+#[test]
+fn a_run_of_the_benchmarks_is_refused_with_what_would_change_its_numbers() {
+    let project = Project::new(&BENCHED);
+
+    for flags in [
+        &["--watch"][..],
+        &["--shard", "1/2"][..],
+        &["--coverage"][..],
+        &["--browser"][..],
+    ] {
+        let mut args = vec!["--bench"];
+        args.extend_from_slice(flags);
+        let (success, _, stderr) = run(project.path(), &args);
+
+        assert!(!success, "{flags:?}");
+        assert!(
+            stderr.contains(&format!("{} and --bench cannot be combined", flags[0])),
+            "{flags:?}: {stderr}"
+        );
+    }
+}
+
 #[test]
 fn a_project_with_no_tests_is_a_green_run() {
     if !host_ready() {

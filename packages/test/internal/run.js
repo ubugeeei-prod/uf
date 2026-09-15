@@ -13,11 +13,18 @@ import * as output from "./output.js";
 import * as snapshot from "./snapshot.js";
 import { AssertionError } from "./expect.js";
 import { type Site, firstUserSite, siteInFile, userFrames } from "./frames.js";
-import { type Body, type Case, type Suite, collected } from "./registry.js";
+import { type BenchOptions, type Body, type Case, type Suite, collected } from "./registry.js";
 
 /** How one case ended. */
 export type Outcome =
-  | {| readonly status: "passed" |}
+  | {|
+      readonly status: "passed",
+      /**
+       * One timing per measured call, in whole microseconds, for a benchmark
+       * run under `uf test --bench`.
+       */
+      readonly samples?: $ReadOnlyArray<number>,
+    |}
   | {|
       readonly status: "failed",
       readonly message: string,
@@ -29,7 +36,7 @@ export type Outcome =
     |}
   | {|
       readonly status: "skipped",
-      readonly reason: "explicit" | "not-only" | "filtered",
+      readonly reason: "explicit" | "not-only" | "filtered" | "bench" | "not-bench",
       readonly message?: string | null,
     |}
   | {| readonly status: "todo" |};
@@ -56,10 +63,30 @@ export type RunOptions = {|
    * which file that is — a test's name alone does not locate it.
    */
   readonly file?: string,
+  /**
+   * Run the benchmarks and report the tests skipped, rather than the other way
+   * round. `uf test --bench` sets it.
+   */
+  readonly bench?: boolean,
 |};
 
 /** Default budget for one case, matching what most runners use. */
 export const DEFAULT_TIMEOUT_MS: number = 5000;
+
+/** Calls a benchmark makes and throws away before it times any, unless it says. */
+export const DEFAULT_BENCH_WARMUP: number = 5;
+
+/** Timed calls a benchmark makes, unless it says. */
+export const DEFAULT_BENCH_ITERATIONS: number = 50;
+
+/** Most timed calls one benchmark may ask for, and most samples `uf` keeps. */
+export const MAX_BENCH_ITERATIONS: number = 100000;
+
+/** Most untimed calls one benchmark may ask for first. */
+export const MAX_BENCH_WARMUP: number = 10000;
+
+/** The longest delay `setTimeout` honours; past it, the timer fires at once. */
+const MAX_TIMER_MS = 2147483647;
 
 /** The separator between a suite's name and its child's. */
 export const NAME_SEPARATOR: string = " > ";
@@ -76,7 +103,9 @@ function fullName(path: $ReadOnlyArray<string>): string {
  */
 function hasOnly(node: Suite | Case, inherited: boolean): boolean {
   const marked = inherited || node.modifier === "only";
-  if (node.kind === "test") {
+  // A benchmark is a case like a test: `bench.only` restricts a file as
+  // `it.only` does.
+  if (node.kind !== "suite") {
     return marked;
   }
   return node.children.some((child) => hasOnly(child, marked));
@@ -214,9 +243,19 @@ async function runCase(
     report({ status: "skipped", reason: "filtered" });
     return true;
   }
+  // A run is the tests or the benchmarks, never both. A benchmark timed inside
+  // an ordinary run would slow every suite that has one, beside workers busy
+  // with other files; a test inside a run of benchmarks would be timed with
+  // them.
+  const benchmark = test.kind === "bench";
+  if (benchmark !== (options.bench === true)) {
+    report({ status: "skipped", reason: benchmark ? "bench" : "not-bench" });
+    return true;
+  }
 
   const timeoutMs = test.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let outcome: Outcome = { status: "passed" };
+  let samples: $ReadOnlyArray<number> | null = null;
   // Setup, body and teardown run *inside* the case's output context, and that
   // nesting is the whole of the fix for #207. What names a printed line is no
   // longer where the runner had got to when the line arrived — which named the
@@ -231,7 +270,11 @@ async function runCase(
       for (const hook of context.beforeEach) {
         await withTimeout(hook, timeoutMs);
       }
-      await withTimeout(body, timeoutMs);
+      if (benchmark) {
+        samples = await measure(body, test.bench, timeoutMs);
+      } else {
+        await withTimeout(body, timeoutMs);
+      }
     } catch (thrown) {
       outcome = failure(thrown, options.file ?? null);
     }
@@ -252,8 +295,72 @@ async function runCase(
   // is the file's, and a snapshot taken outside one fails with something better
   // than a key belonging to whichever test happened to run last.
   snapshot.exitTest();
-  report(outcome);
+  report(outcome.status === "passed" && samples != null ? { status: "passed", samples } : outcome);
   return outcome.status !== "failed";
+}
+
+/**
+ * Time a benchmark's body: `warmup` calls thrown away, then `iterations` timed.
+ *
+ * The body is called directly and awaited, with nothing else between the two
+ * readings of the clock: a timer set around every call would be timed with
+ * it, and on a body that takes microseconds that is most of the number. The
+ * budget is held around the whole loop instead, at one call's budget per
+ * call, so a benchmark that hangs still fails rather than holding the worker.
+ */
+async function measure(
+  body: Body,
+  options: BenchOptions | null,
+  timeoutMs: number,
+): Promise<$ReadOnlyArray<number>> {
+  const warmup = count("warmup", options?.warmup, DEFAULT_BENCH_WARMUP, 0, MAX_BENCH_WARMUP);
+  const iterations = count(
+    "iterations",
+    options?.iterations,
+    DEFAULT_BENCH_ITERATIONS,
+    1,
+    MAX_BENCH_ITERATIONS,
+  );
+  const rounds = warmup + iterations;
+  const samples: Array<number> = [];
+  await withTimeout(
+    async () => {
+      for (let round = 0; round < rounds; round += 1) {
+        const started = performance.now();
+        await body();
+        if (round >= warmup) {
+          samples.push(Math.round((performance.now() - started) * 1000));
+        }
+      }
+    },
+    Math.min(timeoutMs * rounds, MAX_TIMER_MS),
+  );
+  return samples;
+}
+
+/**
+ * A benchmark option that has to be a whole number from `least` to `most`.
+ *
+ * Refused rather than clamped: `iterations: 0` or `warmup: 1e9` is a mistake,
+ * and a benchmark quietly run some other number of times reports numbers
+ * about a run nobody asked for.
+ */
+function count(
+  option: string,
+  value: ?number,
+  fallback: number,
+  least: number,
+  most: number,
+): number {
+  if (value == null) {
+    return fallback;
+  }
+  if (!Number.isInteger(value) || value < least || value > most) {
+    throw new Error(
+      `bench \`${option}\` has to be a whole number from ${least} to ${most}, and was ${String(value)}`,
+    );
+  }
+  return value;
 }
 
 /**
@@ -306,13 +413,16 @@ async function runSuite(
     if (state.bail) {
       break;
     }
-    if (child.kind === "test") {
+    if (child.kind !== "suite") {
       const willRun =
         !inner.skipped &&
         child.modifier !== "skip" &&
         child.modifier !== "todo" &&
         child.body != null &&
-        (!onlyMode || inner.onlyPath || child.modifier === "only");
+        (!onlyMode || inner.onlyPath || child.modifier === "only") &&
+        // A benchmark in a run of the tests, or a test in a run of the
+        // benchmarks, is reported skipped and sets nothing up.
+        (child.kind === "bench") === (options.bench === true);
       if (willRun) {
         try {
           await setUpOnce();

@@ -242,6 +242,7 @@ fn merge_refused_flags(args: &TestArgs) -> Vec<&'static str> {
         (args.threads.is_some(), "-j"),
         (args.watch_interval.is_some(), "--watch-interval"),
         (args.coverage, "--coverage"),
+        (args.bench, "--bench"),
         (args.mode.is_some(), "--mode"),
         (!args.paths.is_empty(), "PATH"),
     ]

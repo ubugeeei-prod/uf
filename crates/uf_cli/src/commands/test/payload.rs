@@ -147,6 +147,11 @@ fn record_payload(record: &TestRecord) -> Value {
     {
         object.insert(String::from("skipReason"), json!(message));
     }
+    if let Some(stats) = &record.bench
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(String::from("bench"), json!(stats));
+    }
     value
 }
 
@@ -168,6 +173,14 @@ fn skip_message(status: &TestStatus) -> Option<&str> {
             reason: SkipReason::Filtered,
             ..
         } => Some("filtered"),
+        TestStatus::Skipped {
+            reason: SkipReason::Bench,
+            ..
+        } => Some("bench"),
+        TestStatus::Skipped {
+            reason: SkipReason::NotBench,
+            ..
+        } => Some("not-bench"),
         TestStatus::Passed | TestStatus::Failed { .. } | TestStatus::Todo => None,
     }
 }
@@ -188,6 +201,14 @@ fn test_status_name(status: &TestStatus) -> &'static str {
             reason: SkipReason::Filtered,
             ..
         } => "filtered",
+        TestStatus::Skipped {
+            reason: SkipReason::Bench,
+            ..
+        } => "bench",
+        TestStatus::Skipped {
+            reason: SkipReason::NotBench,
+            ..
+        } => "not-bench",
         TestStatus::Todo => "todo",
     }
 }

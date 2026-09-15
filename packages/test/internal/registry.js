@@ -30,14 +30,29 @@ export type Body = () => mixed | Promise<mixed>;
 /** The suffix written on a registration call. */
 export type Modifier = "none" | "only" | "skip" | "todo";
 
-/** One registered test case. */
+/**
+ * How a benchmark runs under `uf test --bench`.
+ *
+ * `warmup` calls are made and their times thrown away, then `iterations` calls
+ * are each timed. `timeout` is the budget for one call, in milliseconds, and
+ * the benchmark as a whole is held to that budget once per call.
+ */
+export type BenchOptions = {|
+  readonly warmup?: number,
+  readonly iterations?: number,
+  readonly timeout?: number,
+|};
+
+/** One registered test case, or one benchmark. */
 export type Case = {|
-  readonly kind: "test",
+  readonly kind: "test" | "bench",
   readonly name: string,
   readonly body: Body | null,
   readonly modifier: Modifier,
   readonly skipReason: string | null,
   readonly timeoutMs: number | null,
+  /** How to run it, for a benchmark; `null` for a test. */
+  readonly bench: BenchOptions | null,
   readonly line: number,
   readonly column: number,
 |};
@@ -125,15 +140,17 @@ function addCase(
   modifier: Modifier,
   timeoutMs: number | null,
   skipReason: string | null = null,
+  bench: BenchOptions | null = null,
 ): void {
   const position = callSite();
   current.children.push({
-    kind: "test",
+    kind: bench == null ? "test" : "bench",
     name,
     body,
     modifier,
     skipReason,
     timeoutMs,
+    bench,
     line: position.line,
     column: position.column,
   });
@@ -216,6 +233,34 @@ export const it: $FlowFixMe = caseApi();
 
 /** `test` is `it`, for people who write it that way. */
 export const test: $FlowFixMe = it;
+
+/** The `bench` API, and its modifiers. See [`suiteApi`] for the shape. */
+function benchApi(): $FlowFixMe {
+  const api: $FlowFixMe = (name: string, body: Body, options?: BenchOptions) => {
+    addCase(name, body, "none", options?.timeout ?? null, null, options ?? {});
+  };
+  api.only = (name: string, body: Body, options?: BenchOptions) => {
+    addCase(name, body, "only", options?.timeout ?? null, null, options ?? {});
+  };
+  api.skip = (name: string, body?: Body) => {
+    addCase(name, body ?? null, "skip", null, null, {});
+  };
+  api.todo = (name: string) => {
+    addCase(name, null, "todo", null, null, {});
+  };
+  return api;
+}
+
+/**
+ * Register one benchmark.
+ *
+ * `uf test` reports a benchmark as skipped, so a suite does not pay for timing
+ * one, and `uf test --bench` runs the benchmarks in place of the tests and
+ * reports how long each call took. `bench.only`, `bench.skip` and `bench.todo`
+ * do what `it`'s do. See [`BenchOptions`] for `warmup`, `iterations` and
+ * `timeout`.
+ */
+export const bench: $FlowFixMe = benchApi();
 
 /**
  * Substitute a row into a name, the way every runner spells it: `%s` for the

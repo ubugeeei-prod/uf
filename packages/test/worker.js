@@ -152,6 +152,17 @@ function write(event: { readonly [string]: mixed }): void {
  * the `serving` store this runs inside — it is what every event written from
  * this file, or from anything this file leaves behind, is stamped with.
  */
+/**
+ * Whether this is a run of the benchmarks, `uf test --bench`.
+ *
+ * Read from the environment, as snapshot updates are: it is a property of the
+ * run, set once on the worker by `uf`, and not something each request says.
+ */
+function benching(): boolean {
+  const value = (globalThis: $FlowFixMe).process?.env?.UF_TEST_BENCH;
+  return value != null && value !== "" && value !== "0";
+}
+
 async function runFile(request: Request, generation: number): Promise<void> {
   const started = performance.now();
   // Everything the previous file changed and this package shares with it goes
@@ -224,7 +235,12 @@ async function runImportedFile(
   try {
     const absolute = fileURLToPath(pathToFileURL(request.file).href);
     await run(
-      { filter: request.filter ?? null, timeoutMs: request.timeoutMs, file: absolute },
+      {
+        filter: request.filter ?? null,
+        timeoutMs: request.timeoutMs,
+        file: absolute,
+        bench: benching(),
+      },
       (result) => {
         write({
           event: "test",

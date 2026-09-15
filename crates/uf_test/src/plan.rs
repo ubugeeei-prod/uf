@@ -26,6 +26,8 @@ pub enum TestKind {
     Describe,
     /// A runnable test call such as `it` or `test`.
     Test,
+    /// A benchmark, `bench`, which only `uf test --bench` runs.
+    Bench,
 }
 
 /// The `.only` / `.skip` / `.todo` suffix written on a registration call.
@@ -163,6 +165,14 @@ impl TestPlan {
             .count()
     }
 
+    /// Count benchmarks, which `uf test --bench` runs in place of the tests.
+    pub fn bench_count(&self) -> usize {
+        self.cases
+            .iter()
+            .filter(|case| case.kind == TestKind::Bench)
+            .count()
+    }
+
     /// Count declarations whose name came from another test runner.
     ///
     /// These are the ones that cannot run here at all; see
@@ -195,6 +205,10 @@ pub enum SkipReason {
     NotOnly,
     /// A `--filter` or path filter excluded it.
     Filtered,
+    /// A benchmark, in a run of the tests: only `uf test --bench` runs it.
+    Bench,
+    /// A test, in a run of the benchmarks.
+    NotBench,
 }
 
 /// What a run will do with one declaration.
@@ -262,6 +276,27 @@ impl PlanResolution {
     pub fn set_selection(&mut self, index: usize, selection: Selection) {
         if let Some(slot) = self.selections.get_mut(index) {
             *slot = selection;
+        }
+    }
+
+    /// Skip what this kind of run does not run: the benchmarks in a run of the
+    /// tests, and the tests in a run of the benchmarks (`benches`).
+    ///
+    /// Only a declaration that would otherwise run changes. A `.skip` or a
+    /// `.todo` is reported as what it is in either kind of run, which is the
+    /// order the worker decides in.
+    pub fn select_run_kind(&mut self, plan: &TestPlan, benches: bool) {
+        for (index, case) in plan.cases.iter().enumerate() {
+            let reason = match case.kind {
+                TestKind::Test if benches => SkipReason::NotBench,
+                TestKind::Bench if !benches => SkipReason::Bench,
+                TestKind::Describe | TestKind::Test | TestKind::Bench => continue,
+            };
+            if let Some(slot) = self.selections.get_mut(index)
+                && slot.is_run()
+            {
+                *slot = Selection::Skipped(reason);
+            }
         }
     }
 

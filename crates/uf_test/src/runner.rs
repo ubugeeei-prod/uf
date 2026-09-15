@@ -399,7 +399,10 @@ impl TestRunner {
             // After the retries, not before: a status set here is not a reason
             // to throw away a working worker, and nothing above can produce
             // this shape without also producing records.
-            let declared = selected.plan.runnable_count();
+            // Benchmarks count. The worker reports every one, run or skipped,
+            // so a benchmark that never reached `@uniflowed/test` is as missing
+            // as a test would be.
+            let declared = selected.plan.runnable_count() + selected.plan.bench_count();
             if declared > 0
                 && outcome.records.is_empty()
                 && matches!(outcome.status, FileStatus::Completed)

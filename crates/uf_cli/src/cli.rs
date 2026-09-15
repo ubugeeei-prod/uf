@@ -681,6 +681,28 @@ pub(crate) enum Commands {
             default_missing_value = ".uf/test-shards"
         )]
         merge_shards: Option<String>,
+        /// Run the benchmarks `bench()` declares, in place of the tests.
+        ///
+        /// One file at a time unless `-j` says otherwise, so a benchmark is not
+        /// timed beside another. Each one's median is compared with the
+        /// baseline a previous `--save-baseline` wrote, and a regression past
+        /// `--bench-threshold` fails the run.
+        #[arg(long)]
+        bench: bool,
+        /// Read the baseline from FILE instead of `.uf/bench-baseline.json`.
+        #[arg(long, value_name = "FILE", requires = "bench")]
+        baseline: Option<String>,
+        /// Save this run's medians as the baseline, rather than failing on them.
+        #[arg(long, requires = "bench")]
+        save_baseline: bool,
+        /// How far past its baseline a median may go, in per cent; 20 unless given.
+        #[arg(
+            long,
+            value_name = "PERCENT",
+            requires = "bench",
+            value_parser = clap::value_parser!(u32).range(1..=1000)
+        )]
+        bench_threshold: Option<u32>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
