@@ -78,9 +78,6 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           key: release-${{ matrix.target }}
-      # `.cargo/config.toml` routes the Linux targets through the wild linker.
-      - if: runner.os == 'Linux'
-        run: cargo install wild-linker --version 0.10.0 --locked
 
       - name: Resolve version
         id: version
