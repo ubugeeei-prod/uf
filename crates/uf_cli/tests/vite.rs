@@ -1916,6 +1916,88 @@ fn dev_answers_the_fixture_the_way_a_build_does() {
     });
 }
 
+/// `uf dev` sends the browser React's Flight client pre-bundled when the
+/// project installed `@uniflowed/router` rather than linking it
+/// (ubugeeei-prod/uf#1126).
+///
+/// `react-server-dom-parcel` is CommonJS, and the module that imports it in the
+/// browser is the router's `internal/flight-browser.js`. The dependency
+/// optimizer is told to skip every `@uniflowed/*` package, because they ship
+/// Flow, and Vite pre-bundles a dependency it first meets while serving only
+/// when the module importing it is outside `node_modules`. So the import in an
+/// installed router reached the browser as the CommonJS file itself, and
+/// hydration stopped on "does not provide an export named 'createFromFetch'". A
+/// linked router is outside `node_modules`, which is why the router is copied
+/// into the project here: the layout every project outside this repository has.
+#[test]
+fn dev_pre_bundles_the_flight_client_an_installed_router_imports() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let project = Project::new(&minimal_app());
+    copy_tree(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/router"),
+        &project.path().join("node_modules/@uniflowed/router"),
+    );
+
+    serve_dev_on_any_port(project.path(), |server, port, said, body| {
+        let context = |what: &str, response: &str| {
+            format!("`uf dev` {what}\n{response}\n{}", server_said(said))
+        };
+        assert!(
+            body.starts_with("HTTP/1.1 200"),
+            "{}",
+            context("did not render `/`", body)
+        );
+
+        let reader = get(
+            server,
+            port,
+            "/node_modules/@uniflowed/router/internal/flight-browser.js",
+            said,
+        );
+        assert!(
+            reader.starts_with("HTTP/1.1 200"),
+            "{}",
+            context(
+                "did not serve the installed router's Flight reader",
+                &reader
+            )
+        );
+        // The URLs the reader imports React's Flight client by: the package's
+        // own file when it is not pre-bundled, the optimizer's when it is.
+        let mut clients: Vec<&str> = reader
+            .split('"')
+            .filter(|url| url.starts_with('/') && url.contains("react-server-dom-parcel"))
+            .collect();
+        clients.sort_unstable();
+        clients.dedup();
+        let [client] = clients.as_slice() else {
+            panic!(
+                "{}",
+                context(
+                    "did not import React's Flight client from exactly one URL",
+                    &reader
+                )
+            );
+        };
+        assert!(
+            client.contains("/.vite/deps/"),
+            "{}",
+            context(
+                &format!("imported React's Flight client from {client}, which is not pre-bundled"),
+                &reader
+            )
+        );
+        let served = get(server, port, client, said);
+        assert!(
+            served.starts_with("HTTP/1.1 200") && served.contains("createFromFetch"),
+            "{}",
+            context("did not serve React's Flight client at that URL", &served)
+        );
+    });
+}
+
 /// Runtime imports of `@uniflowed/react` go straight to the application's
 /// React peer.
 ///
