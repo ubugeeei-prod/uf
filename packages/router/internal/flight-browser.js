@@ -187,6 +187,10 @@ export function readDocumentPayload(
  * refusal — is a document, whatever its status.
  */
 export async function fetchFlight(url: string): Promise<FetchedFlight> {
+  // Outside the `try` below, which answers every failure to fetch with a
+  // document load: too old a React is not a network failure, and a navigation
+  // that quietly reloaded the page would hide it.
+  requireServerComponentsReact(ENTRY);
   let response: Response;
   try {
     response = await fetch(flightUrl(url), {
