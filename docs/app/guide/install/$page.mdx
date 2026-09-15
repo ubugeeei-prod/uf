@@ -81,6 +81,29 @@ Two paths that do work: run uf under **WSL2**, where the Linux install above
 applies unchanged; or build it from source with `cargo install`, below, which
 needs no artifact.
 
+### Updating, and going back
+
+<div className="command"><code>uf self-update</code></div>
+
+installs the newest release through the same script, with the same checks, and
+switches `uf`, `ufr` and `ufx` to it. `uf self-update --check` says whether
+there is a newer release without installing it, and
+`uf self-update 0.0.0-alpha.35` installs that release instead of the newest.
+
+The version an update replaces stays in the store, under
+`~/.local/share/uf/runtimes`, and is recorded beside it, so
+
+<div className="command"><code>uf self-update --rollback</code></div>
+
+switches back to it without the network. Running the installer again records
+what it replaced in the same place, so a rollback after `curl … | sh` returns
+to the version that one replaced.
+
+Every switch, the installer's and uf's, renames each link over the old one with
+`uf` last, and only ever renames a whole runtime into the store. An update that
+is interrupted leaves the old version working, or the new one — never a `uf`
+that points at nothing.
+
 ## With Nix
 
 The repository is a flake, and it is the whole install: it pins the Rust

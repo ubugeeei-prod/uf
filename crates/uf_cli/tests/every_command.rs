@@ -121,7 +121,7 @@ const COVERAGE: &[(&str, &str)] = &[
     ),
     (
         "self-update",
-        "toolchain.rs: runs the installer against a release on disk",
+        "toolchain.rs: installs, checks and rolls back, killed at every step",
     ),
     ("use", "toolchain.rs: acquires, activates, and refuses"),
     ("ls", "dependencies.rs: asks the package manager"),
