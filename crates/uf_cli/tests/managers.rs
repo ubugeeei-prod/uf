@@ -162,7 +162,10 @@ fn rows() -> Vec<Row> {
             None => Some(Row { manager, bin: None }),
             Some(directory) => {
                 let installed = installed.as_ref()?;
-                let bin = installed.join(directory).join("node_modules/.bin");
+                // The script's link to the program itself, not npm's
+                // `node_modules/.bin`: pnpm 12's entry there is a placeholder
+                // only a shell can start.
+                let bin = installed.join(directory).join("bin");
                 assert!(
                     bin.join(manager.program()).exists(),
                     "{} is not in {}: run `tools/ci/install-package-managers.sh {}`",
