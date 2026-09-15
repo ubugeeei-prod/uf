@@ -44,6 +44,7 @@ use crate::support::{
 };
 use crate::ui::Ui;
 
+pub(crate) mod bun;
 mod coverage;
 mod payload;
 mod render;
@@ -157,7 +158,6 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     }
 
     let resolved = load_config(cwd)?;
-    refuse_a_runner_uf_test_cannot_run_yet(&resolved.config)?;
     let root = resolved.root.clone();
     // Named paths override `.gitignore`, as they do for `uf lint` and
     // `uf fmt`: a suite that writes its fixture into an ignored directory —
@@ -211,6 +211,43 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             .any(|file| selects(&args.paths, &file.relative_path))
     {
         bail!("no file matched {}", quoted_list(&args.paths));
+    }
+
+    // `test.runner` naming Bun hands the suite to `bun test`, and uf's own
+    // runner never starts: not for `--list`, which Bun cannot answer without
+    // running the files, and not for anything after it. What reaches Bun, and
+    // why a report is always read back, is [`bun`].
+    let runner = resolved.config.test_runner_tool();
+    if let uf_config::TestRunnerSpec::Bun(_) = &runner.spec {
+        let refused = bun::refused_flags(&args);
+        if !refused.is_empty() {
+            let reasons: Vec<String> = refused
+                .iter()
+                .map(|refusal| format!("{} — {}", refusal.flag, refusal.reason))
+                .collect();
+            bail!(
+                "`test.runner` is `{}`, and `bun test` cannot honour {}:\n  {}",
+                runner.spec,
+                plural(refused.len(), "flag"),
+                reasons.join("\n  ")
+            );
+        }
+        if args.reporter.is_some() && args.reporter_outfile.is_none() {
+            bail!("--reporter needs --reporter-outfile");
+        }
+        let env = project_env(&resolved, args.mode.as_deref(), TEST)?;
+        // Coverage switched on in `uf.config.js` is asked of Bun the way
+        // `--coverage` is; the thresholds Bun cannot be held to are refused in
+        // [`bun::run`].
+        let args = TestArgs {
+            coverage: args.coverage || resolved.config.test.coverage.enabled,
+            ..args
+        };
+        let selected: Vec<ProjectFile> = test_bearing(files)
+            .into_iter()
+            .filter(|file| args.paths.is_empty() || selects(&args.paths, &file.relative_path))
+            .collect();
+        return bun::run(ui, &resolved, env, &selected, &args);
     }
 
     if args.list {
@@ -1032,28 +1069,6 @@ pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicati
             FrameworkPreset::Uniflowed | FrameworkPreset::React => TestApplicationTarget::Web,
         },
     }
-}
-
-/// Refuse a runner `uf test` cannot run yet, rather than running uf's own in
-/// its place.
-///
-/// `test.runner: "bun@1.4"` parses — a project can write down what it means to
-/// run, and `uf inspect` shows it — but `bun test` behind `uf test` is
-/// ubugeeei-prod/uf#942. Running uf's own runner instead would report the suite
-/// green or red by rules the project did not choose, and answering for a suite
-/// it was not asked to run is the one thing a runner must never do.
-fn refuse_a_runner_uf_test_cannot_run_yet(config: &UniflowedConfig) -> Result<()> {
-    let runner = config.test_runner_tool();
-    if let Some(issue) = runner.spec.tracking_issue() {
-        bail!(
-            "`test.runner` is `{}`, and `uf test` cannot run it yet: a suite run by `bun test` \
-             behind `uf test` is ubugeeei-prod/uf#{issue}. Until it lands, write `runner: \"uf\"` \
-             — or leave the key out — to run the suite with uf's own runner, or run `bun test` \
-             directly.",
-            runner.spec
-        );
-    }
-    Ok(())
 }
 
 fn refuse_unsupported_test_target(target: TestApplicationTarget) -> Result<()> {

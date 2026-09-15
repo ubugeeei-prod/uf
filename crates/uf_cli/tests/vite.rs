@@ -2152,6 +2152,185 @@ fn preview_and_start_serve_the_whole_of_a_build() {
     }
 }
 
+/// The application whose one interesting page regenerates.
+fn isr_app_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/isr-app")
+}
+
+/// The instant a document of the isr-app fixture says it was rendered at.
+fn rendered_instant(response: &str) -> Option<u64> {
+    let start = response.find("rendered at ")? + "rendered at ".len();
+    response[start..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
+}
+
+/// What a server's first answer for the regenerating page has to be.
+#[derive(Clone, Copy)]
+enum FirstAnswer {
+    /// The document the build wrote: nothing has regenerated the page yet.
+    TheBuilds,
+    /// A regenerated document, which a restarted server can only have read
+    /// back from the durable store.
+    Regenerated,
+}
+
+/// A prerendered page that states a lifetime changes after it, with no rebuild.
+///
+/// Under both servers that serve a build, each from a route cache emptied
+/// first, so each starts the page from the document the build wrote: the first
+/// answer carries the build's instant, and once the one-second lifetime has
+/// passed a later answer carries a later one. Then `uf start` once more without
+/// emptying the cache, which is a restart — and a restart answers with a
+/// regenerated document read back from disk, never with the build's.
+///
+/// `tools/ci/edge-worker-smoke.sh` asks the same questions of the edge adapter
+/// under workerd, where what a regeneration writes is kept in Workers KV.
+#[test]
+fn a_regenerated_page_changes_after_its_lifetime_without_a_rebuild() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let root = isr_app_root();
+    let build = uf().arg("--cwd").arg(&root).arg("build").output().unwrap();
+    assert!(
+        build.status.success(),
+        "the fixture must build before it can be served\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let document = root.join("dist/__uf/regenerate/clock/index.html");
+    assert!(
+        document.is_file(),
+        "a page that states a lifetime is written for regeneration"
+    );
+    assert!(
+        !root.join("dist/clock").exists(),
+        "and not at its own URL, where a file server would answer it forever"
+    );
+    assert!(
+        root.join("dist/index.html").is_file(),
+        "a page that states no lifetime is the document it always was"
+    );
+    let manifest = fs::read_to_string(root.join(".uf/build/server/regenerate.json")).unwrap();
+    assert!(manifest.contains("\"/clock\""), "{manifest}");
+    let written = fs::read_to_string(&document).unwrap();
+    let built = rendered_instant(&written)
+        .unwrap_or_else(|| panic!("the build's document names no instant:\n{written}"));
+
+    for (command, first, emptied) in [
+        ("preview", FirstAnswer::TheBuilds, true),
+        ("start", FirstAnswer::TheBuilds, true),
+        ("start", FirstAnswer::Regenerated, false),
+    ] {
+        if emptied {
+            match fs::remove_dir_all(root.join(".uf/cache/route")) {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => panic!("could not empty the fixture's route cache: {error}"),
+            }
+        }
+        regenerate_under(&root, command, built, first);
+    }
+
+    assert_eq!(
+        fs::read_to_string(&document).unwrap(),
+        written,
+        "nothing may rebuild the document the servers regenerated from"
+    );
+}
+
+/// Start `uf <command>` on the isr-app fixture and hold it to `first`.
+fn regenerate_under(root: &Path, command: &str, built: u64, first: FirstAnswer) {
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        let port_text = port.to_string();
+        let args = [command, "--host", "127.0.0.1", "--port", port_text.as_str()];
+        let answered = std::thread::scope(|scope| {
+            let mut server = Server::start(root, &args, scope, &said);
+            if wait_for_http(port, "/", Duration::from_secs(90)).is_none() {
+                refused.push(format!(
+                    "attempt {attempt} on port {port}: {}",
+                    server.evidence(&said)
+                ));
+                return false;
+            }
+            assert_regenerates(&mut server, port, &said, built, first, command);
+            true
+        });
+        if answered {
+            return;
+        }
+    }
+    panic!(
+        "`uf {command}` never answered, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
+/// The first answer for `/clock`, and then, for a server starting from the
+/// build, a regenerated one.
+fn assert_regenerates(
+    server: &mut Server,
+    port: u16,
+    said: &Mutex<String>,
+    built: u64,
+    first: FirstAnswer,
+    command: &str,
+) {
+    let answer = get(server, port, "/clock", said);
+    let lowered = answer.to_ascii_lowercase();
+    assert!(
+        lowered.contains("x-uf-cache: hit") || lowered.contains("x-uf-cache: stale"),
+        "`uf {command}` answered a regenerating page without the cache:\n{answer}"
+    );
+    let instant = rendered_instant(&answer)
+        .unwrap_or_else(|| panic!("`uf {command}` answered /clock with no instant:\n{answer}"));
+    match first {
+        FirstAnswer::TheBuilds => assert_eq!(
+            instant, built,
+            "`uf {command}` must answer the first request for a regenerating page with the \
+             build's document, without rendering:\n{answer}"
+        ),
+        FirstAnswer::Regenerated => {
+            assert_ne!(
+                instant, built,
+                "a restarted `uf {command}` answered with the build's document, so the page it \
+                 regenerated before the restart was not kept on disk:\n{answer}"
+            );
+            return;
+        }
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        std::thread::sleep(Duration::from_millis(250));
+        let answer = get(server, port, "/clock", said);
+        match rendered_instant(&answer) {
+            Some(instant) if instant > built => return,
+            Some(instant) => assert_eq!(
+                instant, built,
+                "`uf {command}` answered /clock with an instant older than the build's:\n{answer}"
+            ),
+            None => panic!(
+                "`uf {command}` answered /clock with no instant:\n{answer}\n{}",
+                server.evidence(said)
+            ),
+        }
+        assert!(
+            Instant::now() < deadline,
+            "`uf {command}` still answers /clock with the build's document 30 seconds past its \
+             one-second lifetime\n{}",
+            server.evidence(said)
+        );
+    }
+}
+
 /// The `uf:render` envelope a response carries, which is what says whether it
 /// was rendered for this request.
 ///

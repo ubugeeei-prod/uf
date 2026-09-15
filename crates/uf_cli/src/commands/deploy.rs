@@ -463,7 +463,7 @@ fn platform_files(
     match adapter {
         DeployAdapter::Edge => vec![(
             directory.join("wrangler.json"),
-            wrangler_config(root, schedules),
+            wrangler_config(root, schedules, links_kv_cache(&root.join(WORK_DIR))),
         )],
         DeployAdapter::Container => vec![
             (directory.join("Dockerfile"), DOCKERFILE.to_owned()),
@@ -508,7 +508,17 @@ const WORKERS_COMPATIBILITY_DATE: &str = "2024-09-23";
 /// * `not_found_handling: "none"`, so a miss comes back as a 404 the Worker
 ///   can fall through, and the 404 a visitor sees is the project's own
 ///   `$not-found` rather than Cloudflare's.
-fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -> String {
+///
+/// And a fourth when `kv_cache` is set, which is when the linked `handler.js`
+/// keeps its cache in Workers KV: a `kv_namespaces` entry binding
+/// [`KV_BINDING`], with no `id`. `wrangler dev` gives such a binding a local
+/// namespace, and `wrangler deploy` provisions one; a deployment with a
+/// namespace of its own adds the `id`.
+fn wrangler_config(
+    root: &Utf8Path,
+    schedules: &[schedules::DeclaredSchedule],
+    kv_cache: bool,
+) -> String {
     let mut config = json!({
         "name": worker_name(root),
         "main": "./worker.js",
@@ -522,6 +532,14 @@ fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -
             "not_found_handling": "none",
         },
     });
+    // The namespace a regenerated page is kept in, bound under the name the
+    // provider reads. Without the binding the first regenerated page fails
+    // with a message naming it; with a binding and no provider it would be a
+    // namespace nothing uses, which is why this follows the linked file rather
+    // than the build.
+    if kv_cache {
+        config["kv_namespaces"] = json!([{ "binding": KV_BINDING }]);
+    }
     // Cloudflare's own scheduler, told what to fire — and the `worker.js`
     // written beside this now exports a `scheduled()` for it to call, which is
     // the half #712 emitted this without. One without the other is a
@@ -542,6 +560,24 @@ fn wrangler_config(root: &Utf8Path, schedules: &[schedules::DeclaredSchedule]) -
         "{}\n",
         serde_json::to_string_pretty(&config).unwrap_or_default()
     )
+}
+
+/// The binding `@uniflowed/server/cache/kv` reads its namespace from.
+const KV_BINDING: &str = "UF_CACHE";
+
+/// The module a generated `handler.js` imports when it keeps its cache in KV.
+const KV_PROVIDER: &str = "@uniflowed/server/cache/kv";
+
+/// Whether the `handler.js` the driver generated in `work` keeps its cache in
+/// Workers KV.
+///
+/// Read from the generated source rather than decided again from the config:
+/// the driver chooses the store — the project's `rendering.cache.store`, or KV
+/// for a build that regenerates pages and named none — and the binding has to
+/// follow what was linked, not a second reading of why.
+fn links_kv_cache(work: &Utf8Path) -> bool {
+    fs::read_to_string(work.join("handler.js").as_std_path())
+        .is_ok_and(|source| source.contains(KV_PROVIDER))
 }
 
 /// The project's directory name, as a name Cloudflare accepts.
@@ -787,7 +823,7 @@ mod tests {
 
     #[test]
     fn the_wrangler_config_asks_for_what_the_bundle_needs() {
-        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[]);
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[], false);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(config["name"], "served-app");
         assert_eq!(config["main"], "./worker.js");
@@ -822,7 +858,7 @@ mod tests {
                 cron: "0 6 * * 1".to_owned(),
             },
         ];
-        let written = wrangler_config(Utf8Path::new("/src/served-app"), &declared);
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &declared, false);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert_eq!(config["triggers"]["crons"][0], "*/15 * * * *");
         assert_eq!(config["triggers"]["crons"][1], "0 6 * * 1");
@@ -833,9 +869,51 @@ mod tests {
     /// interpret, and a project with no schedules said nothing.
     #[test]
     fn no_schedules_writes_no_triggers_key() {
-        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[]);
+        let written = wrangler_config(Utf8Path::new("/src/served-app"), &[], false);
         let config: serde_json::Value = serde_json::from_str(&written).unwrap();
         assert!(config.get("triggers").is_none(), "{written}");
+    }
+
+    /// A Worker that keeps its cache in KV is bound to the namespace the
+    /// provider reads, and one that does not is bound to no namespace at all.
+    #[test]
+    fn a_kv_cache_is_bound_only_where_the_handler_uses_one() {
+        let bound = wrangler_config(Utf8Path::new("/src/isr-app"), &[], true);
+        let config: serde_json::Value = serde_json::from_str(&bound).unwrap();
+        assert_eq!(config["kv_namespaces"][0]["binding"], KV_BINDING);
+        // No `id`: `wrangler dev` makes a local namespace for the binding, and
+        // a deploy provisions one.
+        assert!(config["kv_namespaces"][0].get("id").is_none(), "{bound}");
+
+        let unbound = wrangler_config(Utf8Path::new("/src/served-app"), &[], false);
+        let config: serde_json::Value = serde_json::from_str(&unbound).unwrap();
+        assert!(config.get("kv_namespaces").is_none(), "{unbound}");
+    }
+
+    /// Whether the binding is needed is read off the generated handler, which is
+    /// where the store was chosen.
+    #[test]
+    fn a_kv_cache_is_read_off_the_generated_handler() {
+        let directory = tempfile::tempdir().unwrap();
+        let work = Utf8Path::from_path(directory.path()).unwrap();
+        assert!(!links_kv_cache(work), "no handler.js links nothing");
+
+        fs::write(
+            work.join("handler.js"),
+            "import { createCacheStore } from \"@uniflowed/server/cache\";\n",
+        )
+        .unwrap();
+        assert!(
+            !links_kv_cache(work),
+            "a store in memory needs no namespace"
+        );
+
+        fs::write(
+            work.join("handler.js"),
+            format!("import {{ createCacheProvider }} from \"{KV_PROVIDER}\";\n"),
+        )
+        .unwrap();
+        assert!(links_kv_cache(work));
     }
 
     /// The refusal #531 asks for by name, on every target that would not run it.

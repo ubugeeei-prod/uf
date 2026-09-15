@@ -365,7 +365,13 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Start { host, port, mode } => {
             commands::serve::start(&cwd, ui, commands::serve::ServeArgs { host, port, mode })
         }
-        Commands::Prepare { fix } => commands::prepare::prepare(&cwd, ui, fix),
+        Commands::Prepare { install_hooks, fix } => {
+            if install_hooks {
+                commands::prepare::install_hooks(&cwd, ui)
+            } else {
+                commands::prepare::prepare(&cwd, ui, fix)
+            }
+        }
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump, force } => commands::release::release(&cwd, ui, bump, force),
         Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),

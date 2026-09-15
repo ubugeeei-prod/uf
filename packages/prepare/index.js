@@ -21,6 +21,7 @@ export type PrepareStep =
   | "discover-staged-files"
   | "generate-router-types"
   | "generate-server-action-types"
+  | "run-staged-tasks"
   | "run-lint"
   | "run-format-check";
 

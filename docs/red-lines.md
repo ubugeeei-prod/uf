@@ -29,10 +29,12 @@ experience is all-in-one; the implementation is federated.
 
 Those are different things, and CRA's mistake was assuming they had to match.
 
-This is the target, and uf does not meet it today: `uf_fmt` and `uf_test` are
-uf's own implementations. That is deliberate — a Flow-aware formatter and a
-Flow-aware test runner did not exist, and "orchestrate the provider that does
-not exist" is not a plan — but it is an exception rather than a revision of the
+This is the target, and uf does not fully meet it today: `uf_fmt` is uf's own
+implementation, and so is `uf_test` — though `uf_test` is now the default
+rather than the only one, because `test.runner: "bun"` hands a suite to
+`bun test`. Owning them is deliberate — a Flow-aware formatter and a Flow-aware
+test runner did not exist, and "orchestrate the provider that does not exist"
+is not a plan — but it is an exception rather than a revision of the
 principle, and the audit below treats it as one. An exception stays an
 exception by staying replaceable.
 
@@ -146,7 +148,10 @@ a stage that cannot be explained is a stage that should not exist.
 implementations rather than orchestrated providers. That is a deliberate
 choice — a Flow-aware formatter and a Flow-aware test runner did not exist —
 but each is a place where uf owns a tool rather than the graph, and each has
-to stay replaceable or it becomes the thing this document is about.
+to stay replaceable or it becomes the thing this document is about. `uf_test`
+now is: `test.runner` selects it or `bun test`, and `uf explain test` names the
+runner and prints the command a Bun runner is started with. `uf_fmt` has no
+second implementation yet.
 
 ## How each open line gets closed
 
