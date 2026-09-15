@@ -925,18 +925,37 @@ pub(crate) enum Commands {
         #[command(subcommand)]
         command: Option<CatalogCommand>,
     },
-    /// Replace this uf with the newest release.
+    /// Replace this uf with the newest release, or with the one it replaced.
     ///
     /// The command `uf upgrade` was named after and never was. It resolves the
     /// newest release, downloads it, checks it against the sha256 published
-    /// beside it and links it — through the same installer
+    /// beside it and unpacks it — through the same installer
     /// `curl -fsSL https://setup.uniflowed.dev | sh` runs, because a second
     /// implementation of a checked download is a second one to get wrong. See
     /// ubugeeei-prod/uf#424 and ubugeeei-prod/uf#499.
     ///
-    /// `UF_VERSION` pins a version, `UF_RELEASE_BASE` points at a mirror, and
-    /// both mean here what they mean to the installer.
-    SelfUpdate,
+    /// Then `uf`, `ufr` and `ufx` are switched one rename at a time, `uf` last,
+    /// so a process killed at any point leaves every name pointing at a
+    /// complete runtime. The version they pointed at stays in the store and is
+    /// recorded, and `--rollback` switches back to it without the network.
+    ///
+    /// `UF_VERSION` pins a version when none is named, `UF_RELEASE_BASE`
+    /// points at a mirror, and both mean here what they mean to the installer.
+    SelfUpdate {
+        /// The release to install instead of the newest: `0.0.0-alpha.35`, or
+        /// `uf@0.0.0-alpha.35` as the tags spell it.
+        #[arg(value_name = "VERSION", conflicts_with_all = ["check", "rollback"])]
+        version: Option<String>,
+        /// Say whether a newer release exists, and change nothing.
+        #[arg(long, conflicts_with = "rollback")]
+        check: bool,
+        /// Switch back to the version that was active before the last switch.
+        ///
+        /// From the store, so it needs no network: nothing uf switches away
+        /// from is deleted.
+        #[arg(long)]
+        rollback: bool,
+    },
     /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
     ///
     /// A version this machine does not have is downloaded and verified, by the

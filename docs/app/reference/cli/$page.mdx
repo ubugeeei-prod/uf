@@ -1798,6 +1798,10 @@ from source can install itself into the store under its own version, with no
 network. `runtime.json` beside the runtime records which of the three it was —
 `release`, `mirror` or `running-binary`.
 
+It switches the way [`uf self-update`](#uf-self-update) does — one rename per
+name, `uf` last — and records the version it replaced, so
+[`uf self-update --rollback`](#uf-self-update---rollback) returns to it.
+
 ### uf env doctor
 
 Reports which JavaScript hosts are installed on this machine, which one uf would
@@ -1846,12 +1850,17 @@ removes nothing.
 
 ### uf self-update
 
-Replaces this uf with the newest release: resolves it, downloads
-`uf-<target>.tar.gz`, checks it against the `sha256` published beside it,
-refuses an archive whose members escape their own directory, unpacks it into
-the runtime store and relinks `uf`, `ufr` and `ufx`.
+Replaces this uf with the newest release, or with the one named —
+`uf self-update 0.0.0-alpha.35`, or `uf@0.0.0-alpha.35` as the tags spell it. It
+resolves the release, downloads `uf-<target>.tar.gz`, checks it against the
+`sha256` published beside it — and against its Sigstore signature when
+`cosign` is installed — refuses an archive whose members escape their own
+directory, unpacks it into the runtime store, and switches `uf`, `ufr` and
+`ufx` to it. A version the store already holds is switched to without
+downloading anything, and asking for the version that is already active
+changes nothing.
 
-All six of those are the installer's —
+Everything up to the switch is the installer's —
 `infra/cloudflare/setup-assets/install.sh`, the script
 `curl -fsSL https://setup.uniflowed.dev | sh` runs — embedded in the uf binary
 at build time and piped into `sh`. uf does not carry a second downloader: a
@@ -1861,11 +1870,18 @@ Embedding rather than fetching it means a self-update executes only what this
 uf was built from, and the only thing crossing the network is an archive whose
 digest is checked.
 
+**An interrupted update leaves a working uf.** Each of the three names is made
+beside itself and renamed over the old one, `uf` last, and a runtime is only
+ever renamed into the store whole — so a process killed at any point leaves
+every name running the old version or the new one, never a missing or
+half-written binary. Running the same command again finishes the switch. The
+installer switches the same way.
+
 It reads no project, so a `uf.config.js` uf cannot parse is not a reason to be
-unable to install a uf that can. `UF_VERSION` pins a version instead of
-resolving the newest, `UF_RELEASE_BASE` points at a mirror, and
-`UF_INSTALL_ROOT` and `UF_BIN_DIR` move the store and the links — each meaning
-here exactly what it means to the installer.
+unable to install a uf that can. `UF_VERSION` pins a version when none is
+named, `UF_RELEASE_BASE` points at a mirror, and `UF_INSTALL_ROOT` and
+`UF_BIN_DIR` move the store and the links — each meaning here exactly what it
+means to the installer.
 
 `uf upgrade` was the name this was meant to be, and never what it did: it
 re-read the workspace and wrote a plan file, fetching nothing and replacing no
@@ -1875,6 +1891,26 @@ Typing it now names the three commands it could have meant —
 `uf self-update` for a newer uf, [`uf update`](#uf-update-package) for newer
 dependencies, and [`uf install`](#uf-install), which is where re-reading the
 workspace and recording the plan now lives, in `.uf/install.json`.
+
+### uf self-update --check
+
+Resolves the newest release and says whether it is newer than the active uf,
+and changes nothing: no download, no link, no record. The newest is the newest
+whatever `UF_VERSION` pins, and versions are compared as semver, so `alpha.10`
+is newer than `alpha.9`. It exits 0 whether there is an update or not.
+
+### uf self-update --rollback
+
+Switches back to the version that was active before the last switch. Every
+switch records the version it replaces in `previous-version`, beside the
+runtimes — `uf self-update`, [`uf use`](#uf-use-toolchain) and the installer
+alike, so a rollback after `curl … | sh` returns to what that replaced. Nothing
+a switch replaces is deleted, so a rollback needs no network. It records what
+it rolled back from, too, and a second `--rollback` undoes the first.
+
+It refuses, changing nothing, when no version is recorded, and when the
+recorded one is no longer in the store — naming `uf self-update <version>`,
+which downloads it again.
 
 ## Publishing
 

@@ -34,6 +34,17 @@ checksum_base="${UF_CHECKSUM_BASE:-}"
 signing_workflow="${UF_SIGNING_WORKFLOW:-.github/workflows/release.yml}"
 signing_issuer="${UF_SIGNING_ISSUER:-https://token.actions.githubusercontent.com}"
 
+# How far to go. Unset, which is what a person gets, runs every step. `uf`
+# sets it when it drives this script, because the last step is one it takes
+# itself:
+#
+#   resolve  print the version UF_VERSION resolves to on stdout, and stop
+#            before anything is downloaded — `uf self-update --check`
+#   unpack   download, verify and unpack into the store, and stop before
+#            linking — `uf self-update` and `uf use` switch the links
+#            themselves, and record what they switched from
+stop_after="${UF_STOP_AFTER:-}"
+
 # Decoded size of the embedded logo, which the iTerm2 protocol asks for.
 uf_logo_bytes=10511
 
@@ -168,6 +179,15 @@ case "$verify_origin" in
   *)
     uf_fail "UF_VERIFY_ORIGIN=${verify_origin} is not one uf understands" \
       "it is auto (the default), require, or off"
+    ;;
+esac
+
+# The same for how far to go: a misspelled `unpack` must not link.
+case "$stop_after" in
+  "" | resolve | unpack) ;;
+  *)
+    uf_fail "UF_STOP_AFTER=${stop_after} is not one uf understands" \
+      "it is resolve, unpack, or unset to install and link"
     ;;
 esac
 
@@ -497,7 +517,11 @@ need tar
 need mktemp
 need uname
 
-uf_brand
+# A resolution is a question uf asked on its reader's behalf, and uf draws the
+# answer itself.
+if [ "$stop_after" != "resolve" ]; then
+  uf_brand
+fi
 
 case "$(uname -s)" in
   Darwin) os="apple-darwin" ;;
@@ -589,6 +613,12 @@ elif [ "$requested_version" = "latest" ]; then
   fi
 else
   channel_url="https://github.com/${repo}/releases/download/uf@${requested_version}"
+fi
+
+# The answer, and nothing else, on the stream nothing else here writes to.
+if [ "$stop_after" = "resolve" ]; then
+  printf '%s\n' "$version"
+  exit 0
 fi
 
 uf_field "target" "$target"
@@ -797,37 +827,129 @@ if tar -tzf "${tmp_dir}/${archive}" | grep -Eq '^/|(^|/)\.\.(/|$)'; then
     "the archive is not one uf published — do not unpack it"
 fi
 
-# Unpack beside the runtime and swap it in, rather than over it.
+# Unpack beside the runtime, never over it, and never with it gone.
 #
-# Two reasons, and the second is why this is not a nicety. A download that
-# unpacks badly must leave the working runtime alone rather than replace it
-# with half of another one. And `uf self-update` runs *from* the binary this
-# is about to write: on Linux, writing to a file that is currently being
-# executed is `ETXTBSY`, GNU tar does not recover from it, and it is not one
-# of the errors it unlinks and retries. So reinstalling the version that is
-# already active — which is exactly what `uf self-update` does on a machine
-# that is already up to date, the most ordinary way anyone runs it — would
-# fail with `Cannot open: Text file busy`. Unlinking the old directory after a
-# successful unpack is fine: a running process keeps the inode it is executing,
-# and the name going away does not disturb it.
+# Into a staging directory first, for two reasons. A download that unpacks
+# badly must leave the working runtime alone rather than replace it with half
+# of another one. And `uf self-update` runs *from* the binary this is about to
+# replace: on Linux, writing to a file that is being executed is `ETXTBSY`,
+# and GNU tar does not recover from it. A rename writes nothing to the file —
+# the running process keeps the inode it is executing — so everything below
+# moves a file by renaming it.
+#
+# Every step is one rename, so a process killed at any point leaves each name
+# pointing at a complete runtime:
+#
+#   - a version that is not installed yet is the staging directory, renamed;
+#   - a version that is — the one being reinstalled, possibly the one running
+#     — has its files replaced one rename at a time, `bin/uf` last. Removing
+#     it and renaming the staging directory in, which this used to do, left
+#     every link dangling between the two commands, and for good when the
+#     process died between them;
+#   - each link is made beside its name and renamed over it, `uf` last.
+#     `ln -sfn` removes the old link first wherever `ln` does, as BSD's does.
+#
+# What a kill can leave is a staging directory, a link or a record that was
+# never renamed into place. Each is named `.<name>.incoming.<pid>`, which is
+# also how `uf` names its own, and an install removes those whose process is
+# gone.
+# Spelled out in full: `crates/uf_cli/tests/installer.rs` holds `uf_rm`'s
+# runtime store to this exact line.
 runtime_dir="${install_root}/runtimes/uf@${version}"
-staging_dir="${runtime_dir}.incoming.$$"
-rm -rf "$staging_dir"
-mkdir -p "$staging_dir" "$bin_dir"
-tar -xzf "${tmp_dir}/${archive}" -C "$staging_dir"
-rm -rf "$runtime_dir"
-mv "$staging_dir" "$runtime_dir"
-staging_dir=""
-uf_step "unpacked" "$(uf_tilde "$runtime_dir")"
+runtimes_dir="${install_root}/runtimes"
+mkdir -p "$runtimes_dir"
 
+uf_sweep() {
+  for leftover in "$@"; do
+    [ -e "$leftover" ] || [ -L "$leftover" ] || continue
+    pid="${leftover##*.}"
+    case "$pid" in
+      "" | *[!0-9]*) continue ;;
+    esac
+    kill -0 "$pid" 2>/dev/null && continue
+    rm -rf "$leftover"
+  done
+}
+uf_sweep "$runtimes_dir"/.uf@*.incoming.* \
+  "$bin_dir"/.uf.incoming.* "$bin_dir"/.ufr.incoming.* "$bin_dir"/.ufx.incoming.* \
+  "$install_root"/.previous-version.incoming.*
+
+staging_dir="${runtimes_dir}/.uf@${version}.incoming.$$"
+rm -rf "$staging_dir"
+mkdir -p "$staging_dir"
+tar -xzf "${tmp_dir}/${archive}" -C "$staging_dir"
+
+# Checked before anything moves, so an incomplete build replaces nothing.
 for name in uf ufr ufx; do
-  if [ ! -x "${runtime_dir}/bin/${name}" ]; then
+  if [ ! -x "${staging_dir}/bin/${name}" ]; then
     uf_fail "the archive has no bin/${name}" \
       "this build is incomplete — please report it"
   fi
-  ln -sfn "${runtime_dir}/bin/${name}" "${bin_dir}/${name}"
+done
+
+if [ -d "$runtime_dir" ]; then
+  # Listed into a file rather than piped: a loop reading a pipe runs in a
+  # subshell, and a failure there is not one `set -e` stops this script for.
+  (cd "$staging_dir" && find . ! -type d) >"${tmp_dir}/files"
+  while IFS= read -r file; do
+    file="${file#./}"
+    [ "$file" = "bin/uf" ] && continue
+    mkdir -p "${runtime_dir}/$(dirname "$file")"
+    mv -f "${staging_dir}/${file}" "${runtime_dir}/${file}"
+  done <"${tmp_dir}/files"
+  mv -f "${staging_dir}/bin/uf" "${runtime_dir}/bin/uf"
+  rm -rf "$staging_dir"
+else
+  mv "$staging_dir" "$runtime_dir"
+fi
+staging_dir=""
+uf_step "unpacked" "$(uf_tilde "$runtime_dir")"
+
+# `uf` switches the links itself, and records what it switched from.
+if [ "$stop_after" = "unpack" ]; then
+  printf '\n' >&2
+  exit 0
+fi
+
+# The version `uf` runs now, when it is one of this store's, so that
+# `uf self-update --rollback` can return to it. Recorded before any link moves:
+# recorded after, a kill between the two would leave the record naming the
+# version before that one, and a rollback would switch to a version nobody
+# asked for. `readlink` is not POSIX, only everywhere; where it is missing,
+# nothing is recorded and a rollback says there is nothing to return to.
+previous=""
+if current="$(readlink "${bin_dir}/uf" 2>/dev/null)"; then
+  case "$current" in
+    "${runtimes_dir}/uf@"*/bin/uf)
+      previous="${current#"${runtimes_dir}/uf@"}"
+      previous="${previous%/bin/uf}"
+      ;;
+  esac
+fi
+case "$previous" in
+  "$version" | */*) previous="" ;;
+esac
+if [ -n "$previous" ]; then
+  record="${install_root}/.previous-version.incoming.$$"
+  printf '%s\n' "$previous" >"$record"
+  mv -f "$record" "${install_root}/previous-version"
+fi
+
+mkdir -p "$bin_dir"
+for name in ufr ufx uf; do
+  if [ -d "${bin_dir}/${name}" ]; then
+    uf_fail "${bin_dir}/${name} is a directory, where uf links its binary" \
+      "move it out of the way, and run the installer again"
+  fi
+  incoming="${bin_dir}/.${name}.incoming.$$"
+  rm -f "$incoming"
+  ln -s "${runtime_dir}/bin/${name}" "$incoming"
+  mv -f "$incoming" "${bin_dir}/${name}"
 done
 uf_step "linked" "uf, ufr, ufx into $(uf_tilde "$bin_dir")"
+if [ -n "$previous" ]; then
+  uf_step "kept" "uf ${previous}, the version this replaced"
+fi
 
 printf '\n' >&2
 if [ -z "$uf_colour" ]; then

@@ -548,7 +548,19 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             )
         }
         Commands::Use { runtime } => commands::toolchain::use_runtime(&cwd, ui, &runtime),
-        Commands::SelfUpdate => commands::toolchain::self_update(ui),
+        Commands::SelfUpdate {
+            version,
+            check,
+            rollback,
+        } => {
+            // clap refuses any two of the three together.
+            let action = match (version.as_deref(), check, rollback) {
+                (_, _, true) => commands::toolchain::SelfUpdate::Rollback,
+                (_, true, _) => commands::toolchain::SelfUpdate::Check,
+                (version, _, _) => commands::toolchain::SelfUpdate::Install(version),
+            };
+            commands::toolchain::self_update(ui, action)
+        }
         Commands::Why { package } => commands::pm::why(&cwd, ui, &package),
         Commands::Ls { args } => {
             commands::pm::query(&cwd, ui, "uf ls", uf_pm::Operation::List, &args)

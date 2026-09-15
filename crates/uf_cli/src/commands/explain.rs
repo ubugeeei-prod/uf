@@ -668,27 +668,38 @@ fn self_update_stages() -> Vec<Stage> {
         Stage {
             name: "resolution",
             provider: INSTALLER.to_string(),
-            detail: "the newest release, stable channel first and prereleases after; UF_VERSION \
-                     pins one and UF_RELEASE_BASE points at a mirror"
+            detail: "the newest release, stable channel first and prereleases after; a VERSION \
+                     argument or UF_VERSION pins one, UF_RELEASE_BASE points at a mirror, and \
+                     --check stops here"
                 .to_string(),
         },
         Stage {
             name: "download",
             provider: INSTALLER.to_string(),
-            detail: "uf-<target>.tar.gz and the sha256 published beside it, over curl".to_string(),
+            detail: "uf-<target>.tar.gz and the sha256 published beside it, over curl; nothing, \
+                     when the store already holds that version"
+                .to_string(),
         },
         Stage {
             name: "verification",
             provider: INSTALLER.to_string(),
-            detail: "the digest must match, and an archive whose members escape their own \
-                     directory is refused before tar is given it"
+            detail: "the digest must match, a Sigstore bundle must verify when cosign is \
+                     installed, and an archive whose members escape their own directory is \
+                     refused before tar is given it"
+                .to_string(),
+        },
+        Stage {
+            name: "unpack",
+            provider: INSTALLER.to_string(),
+            detail: "into a staged directory renamed into the store; a version already there \
+                     has its files replaced one rename at a time"
                 .to_string(),
         },
         Stage {
             name: "activation",
             provider: "uf".to_string(),
-            detail: "uf, ufr and ufx are linked at the unpacked version, and runtime.json \
-                     records where it came from"
+            detail: "uf, ufr and ufx are switched one rename at a time, uf last, and the version \
+                     they replace is recorded for --rollback, which needs no network"
                 .to_string(),
         },
     ]
