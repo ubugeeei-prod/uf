@@ -45,7 +45,7 @@ const UNTYPED_MODULES_SHOWN: usize = 5;
 /// file is clean" and "your file is clean, and so are the eleven modules that
 /// had to be typed to say so" — and because they are what explains the time.
 #[cfg(feature = "upstream-typecheck")]
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct Batch {
     /// Files the reader asked about.
     requested: usize,
@@ -61,6 +61,14 @@ struct Batch {
     /// footer and one of them is a project about to be told its own types do
     /// not exist.
     libdefs: usize,
+    /// The dependencies typed from their TypeScript declarations because they
+    /// ship no Flow, each with how many of its places are `any`.
+    ///
+    /// Reported once per package, because a package typed from a translation
+    /// is typed less completely than one typed from Flow its authors wrote,
+    /// and a reader deciding how far to trust a clean check has to know by
+    /// how much.
+    translated: Vec<declarations::TranslatedPackage>,
 }
 
 /// Severity counts from the type-checking half of `uf check`.
@@ -125,9 +133,9 @@ impl TypeCheck {
 
     /// What the batch was made of, for a run that produced one.
     #[cfg(feature = "upstream-typecheck")]
-    fn batch(&self) -> Option<Batch> {
+    fn batch(&self) -> Option<&Batch> {
         match self {
-            Self::Checked(_, batch) => Some(*batch),
+            Self::Checked(_, batch) => Some(batch),
             Self::Unavailable | Self::Failed(_) => None,
         }
     }
@@ -286,15 +294,19 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
     // for twice and there are finitely many of them.
     let mut installed: Vec<SourceFile> = Vec::new();
     let mut read: FxHashSet<String> = FxHashSet::default();
+    // The packages with no Flow and with TypeScript declarations, typed from a
+    // translation of those. ubugeeei-prod/uf#946.
+    let mut declarations = declarations::Declarations::open(root);
     let mut builtins = None;
     let batch_paths = loop {
-        // In its own scope: the walk borrows `installed`, and the round that
-        // follows it grows `installed`.
+        // In its own scope: the walk borrows `installed` and `declarations`,
+        // and the round that follows it grows both.
         let round = {
             let pool: Vec<Source<'_>> = project
                 .iter()
                 .copied()
                 .chain(installed.iter())
+                .chain(declarations.sources().iter())
                 .map(as_input)
                 .collect();
             match module_closure(&seeds, &pool, &libs, &limits) {
@@ -319,8 +331,12 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
             Err(error) if error.is_unavailable() => return TypeCheck::Unavailable,
             Err(error) => return TypeCheck::Failed(error),
         };
-        let more = dependencies::load_packages(root, &unresolved, &mut read);
-        if more.is_empty() {
+        let more = dependencies::load_packages(root, &unresolved, &mut read, &mut declarations);
+        // A package translated this round changes the batch without adding a
+        // file to `installed`, so it keeps the rounds going too — its
+        // declarations import packages of their own.
+        let translated = declarations.flush();
+        if more.is_empty() && !translated {
             break paths;
         }
         installed.extend(more);
@@ -331,14 +347,18 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
         .iter()
         .copied()
         .chain(installed.iter())
+        .chain(declarations.sources().iter())
         .filter(|source| reached.contains(source.path.as_str()))
         .map(as_input)
         .collect();
-    let counts = Batch {
+    let mut counts = Batch {
         requested: checked.len(),
         imported: batch.len().saturating_sub(checked.len()),
         builtins,
         libdefs: libs.len(),
+        // Filled once the check has run: what a translated package reports
+        // includes the errors Flow finds inside it.
+        translated: Vec::new(),
     };
 
     // Under the project root, because that is what the cache is about: the same
@@ -354,6 +374,9 @@ fn type_check(sources: &[SourceFile], available: &[SourceFile], root: &Utf8Path)
     }
     match check_sources_cached(&batch, &libs, &limits, cache.as_ref()) {
         Ok(mut report) => {
+            // Before the filter below, which drops every diagnostic about a
+            // file nobody asked about — and a translation is such a file.
+            counts.translated = declarations.translated(&report.diagnostics);
             let asked_about: FxHashSet<&str> =
                 checked.iter().map(|source| source.path.as_str()).collect();
             report.diagnostics.retain(|diagnostic| {
@@ -409,6 +432,7 @@ fn type_check_payload(types: &TypeCheck) -> Value {
             value["requested"] = json!(batch.requested);
             value["imported"] = json!(batch.imported);
             value["libdefs"] = json!(batch.libdefs);
+            value["translatedPackages"] = json!(batch.translated);
         }
         value["filesSkipped"] = json!(report.files_skipped);
         value["filesFromCache"] = json!(report.files_from_cache);
@@ -650,6 +674,7 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
             }
             let untyped = untyped_module_list(report);
             let host_conditional = host_conditional_module_list(report);
+            let translated = translated_package_list(&batch.translated);
             ui.render(|renderer, out| {
                 renderer.blank(out);
                 renderer.key_values(out, 2, &rows);
@@ -675,9 +700,49 @@ fn render_type_footer(ui: &mut Ui, types: &TypeCheck) {
                     let items: Vec<&str> = host_conditional.iter().map(String::as_str).collect();
                     renderer.bullet_list(out, 4, &items);
                 }
+                if !translated.is_empty() {
+                    renderer.blank(out);
+                    push_spaces(out, 2);
+                    renderer.status(
+                        out,
+                        Status::Info,
+                        "these packages ship no Flow; uf check typed them from their TypeScript declarations",
+                    );
+                    let items: Vec<&str> = translated.iter().map(String::as_str).collect();
+                    renderer.bullet_list(out, 4, &items);
+                }
             });
         }
     }
+}
+
+/// Each translated package as the footer names it: its name, its version, and
+/// how many of its places are `any` — once, however many files import it.
+#[cfg(feature = "upstream-typecheck")]
+fn translated_package_list(packages: &[declarations::TranslatedPackage]) -> Vec<String> {
+    packages
+        .iter()
+        .map(|package| {
+            let name = match (&package.types_package, &package.version) {
+                (Some(types), Some(version)) => format!("{}, from {types}@{version}", package.name),
+                (Some(types), None) => format!("{}, from {types}", package.name),
+                (None, Some(version)) => format!("{}@{version}", package.name),
+                (None, None) => package.name.clone(),
+            };
+            let holes = match package.holes {
+                0 => "no holes".to_owned(),
+                1 => "1 hole typed as any".to_owned(),
+                holes => format!("{holes} holes typed as any"),
+            };
+            match package.findings {
+                0 => format!("{name}: {holes}"),
+                1 => format!("{name}: {holes}, 1 Flow error inside its translation"),
+                findings => {
+                    format!("{name}: {holes}, {findings} Flow errors inside its translation")
+                }
+            }
+        })
+        .collect()
 }
 
 /// The untyped imports to name on screen, with the tail summarised.
@@ -708,6 +773,8 @@ fn limited_module_list<T: std::fmt::Display>(modules: &[T]) -> Vec<String> {
     named
 }
 
+#[cfg(feature = "upstream-typecheck")]
+mod declarations;
 #[cfg(feature = "upstream-typecheck")]
 mod dependencies;
 // `pub(crate)` rather than private: `uf lint` asks it which files are library

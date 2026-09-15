@@ -28,8 +28,42 @@
 // by `packages/host/flow-modules.test.js`; Bun asks it before it calls
 // anything, and a dependency uf does not own goes to Bun's own loader having
 // never touched this file.
+//
+// # The transform cache, shared with Node's loaders
+//
+// Every module this hook compiles is kept in `.uf/cache/transform/`, under the
+// same key Node's loaders use and in the same bytes: development output with
+// its source map appended inline (`./internal/flow-cache.js`). Until
+// ubugeeei-prod/uf#944 this hook compiled every module on every run, so a
+// `uf test` on Bun — and a suite `test.runner: "bun"` hands to `bun test` —
+// started a `uf transform` and waited on it for every Flow module in the graph,
+// every time, while the same run on Node read them back from disk.
+//
+// The bytes have to be the same, not merely equivalent. This hook used to ask
+// for no source map, and an entry written that way under Node's key would be
+// served to the next Node run as a module with no map — stack frames and code
+// frames pointing at generated lines, silently, depending on which host ran
+// first. Asking for the map here makes the two hosts' entries interchangeable:
+// either host warms the cache for the other.
 
-import { FLOW_MODULE_PATTERN, inSourceTests, isFlowModule, transformFlow } from "./transform.js";
+import {
+  FLOW_MODULE_PATTERN,
+  isFlowModule,
+  sharedService,
+  transformFlow,
+  ufBinaryIdentity,
+} from "./transform.js";
+import {
+  cacheDirectoryFor,
+  cacheEntryFor,
+  compileOptions,
+  framed,
+  readCached,
+  writeCached,
+} from "./internal/flow-cache.js";
+
+const root = process.env.UF_PROJECT_ROOT ?? process.cwd();
+const cacheDirectory = cacheDirectoryFor(root);
 
 Bun.plugin({
   name: "uniflowed-flow",
@@ -48,18 +82,23 @@ Bun.plugin({
       // already. That it would be wrong for anything else is the reason the
       // agreement is a test rather than a comment.
       if (!isFlowModule(args.path)) return declined(file, source);
-      const out = await transformFlow(source, file, {
-        development: true,
-        sourceMap: false,
-        inSourceTests: inSourceTests(),
-        configBootstrap: process.env.UF_TRANSFORM_BOOTSTRAP_CONFIG === "1",
-      });
+
+      // Read under the binary as it is now, written under the binary the
+      // service is executing: "The two identities" in `./internal/flow-cache.js`.
+      const cached = readCached(cacheEntryFor(cacheDirectory, ufBinaryIdentity(), source, file));
+      if (cached != null) return { contents: cached, loader: "js" };
+
+      const options = compileOptions(root);
+      const out = await transformFlow(source, file, options);
       if (out == null) return declined(file, source);
+      const output = framed(out);
+      const service = sharedService(root, { configBootstrap: options.configBootstrap });
+      writeCached(cacheEntryFor(cacheDirectory, service.identity, source, file), output);
 
       // `js` and not the file's own extension: the transform has already
       // turned the JSX into calls, and asking Bun to parse JSX in the output
       // would be asking it to parse code that no longer has any.
-      return { contents: out.code, loader: "js" };
+      return { contents: output, loader: "js" };
     });
   },
 });

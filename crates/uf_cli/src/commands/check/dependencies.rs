@@ -35,11 +35,17 @@
 //! pragma because a *project's* files are uf's to have an opinion about; a
 //! dependency's are not, and the pragma is how a package says otherwise.
 //!
+//! A package with no Flow can still have types, written in TypeScript. Those
+//! are not read here: [`super::declarations`] reads what TypeScript would read
+//! for the specifier and hands the checker a translation of it, and none of
+//! the package's JavaScript.
+//!
 //! # And how much of one
 //!
-//! All of it: every `.js`, `.jsx`, `.mjs`, `.cjs` and `package.json` under the
-//! package directory, because an `exports` map may name any of them and a
-//! module reached from one may name any other. A package larger than
+//! All of it: every `.js`, `.jsx`, `.mjs` and `.cjs`, the `.flow` file a
+//! package may publish beside any of them — which Flow reads in place of the
+//! module — and `package.json`, because an `exports` map may name any of them
+//! and a module reached from one may name any other. A package larger than
 //! [`MAX_PACKAGE_FILES`] is skipped whole rather than in part — a batch holding
 //! half a package resolves an import to a file that is missing for no reason
 //! the author could discover, whereas one holding none of it leaves the
@@ -63,10 +69,13 @@ use std::io::Read;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use uf_check::UnresolvedImport;
+use uf_dts::types_package;
 use uf_infra::FxHashSet;
 use uf_lint::SourceFile;
 use uf_project::SourceKind;
 use walkdir::WalkDir;
+
+use super::declarations::Declarations;
 
 /// The directory an installed package is read from.
 const INSTALLED: &str = "node_modules";
@@ -101,10 +110,17 @@ const FLOW_PRAGMA: &str = "@flow";
 /// next round does not walk it again. That is what makes the caller's loop
 /// terminate: a round that finds no directory it has not already attempted
 /// adds no sources, and the loop ends.
+///
+/// A specifier whose package ships no Flow — or is not installed at all — is
+/// handed to `declarations` instead, which types it from TypeScript
+/// declarations when there are any. Those sources are not in the returned
+/// list: a translation is replaced when a later round asks the same package
+/// for another subpath, so `declarations` keeps them.
 pub(super) fn load_packages(
     root: &Utf8Path,
     unresolved: &[UnresolvedImport],
     read: &mut FxHashSet<String>,
+    declarations: &mut Declarations,
 ) -> Vec<SourceFile> {
     let mut loaded = Vec::new();
     let ancestors = ancestor_bases(root);
@@ -112,15 +128,34 @@ pub(super) fn load_packages(
         let Some(name) = package_name(&import.specifier) else {
             continue;
         };
-        let Some(directory) = installed_for(root, &ancestors, &import.importer, name) else {
-            continue;
-        };
-        if !read.insert(directory.clone()) {
-            continue;
+        let installed = installed_for(root, &ancestors, &import.importer, name);
+        if let Some(directory) = &installed
+            && read.insert(directory.clone())
+        {
+            let files = read_package(root, directory);
+            if !files.is_empty() {
+                declarations.typed_by_flow(directory);
+                loaded.extend(files);
+                continue;
+            }
         }
-        loaded.extend(read_package(root, &directory));
+        declarations.request(
+            name,
+            &subpath(&import.specifier, name),
+            installed.as_deref(),
+            &mut || installed_for(root, &ancestors, &import.importer, &types_package(name)),
+        );
     }
     loaded
+}
+
+/// The subpath of its package that `specifier` names, in the shape an
+/// `exports` map is keyed by: `.` for `zod`, `./v4/core` for `zod/v4/core`.
+fn subpath(specifier: &str, name: &str) -> String {
+    match specifier.strip_prefix(name) {
+        None | Some("") => ".".to_owned(),
+        Some(rest) => format!(".{rest}"),
+    }
 }
 
 /// The directory Node's climb from `importer` finds `name` in, or [`None`]
@@ -278,7 +313,9 @@ fn read_package(root: &Utf8Path, directory: &str) -> Vec<SourceFile> {
             continue;
         };
         let kind = SourceKind::from_path(&path);
-        if !matches!(kind, Some(kind) if kind.is_flow() || kind == SourceKind::PackageManifest) {
+        if !matches!(kind, Some(kind) if kind.is_flow() || kind == SourceKind::PackageManifest)
+            && !is_flow_beside_module(&path)
+        {
             continue;
         }
         if paths.len() == MAX_PACKAGE_FILES {
@@ -311,6 +348,20 @@ fn read_package(root: &Utf8Path, directory: &str) -> Vec<SourceFile> {
     }
     files.sort_by(|left, right| left.path.cmp(&right.path));
     files
+}
+
+/// Whether `path` is a `.flow` file beside a module: `index.js.flow` beside
+/// `index.js`.
+///
+/// `uf_project` has no kind for one, because a project writes its Flow in the
+/// module itself. A package ships one to give JavaScript it compiled the types
+/// its source had, and the checker reads it in place of the module.
+fn is_flow_beside_module(path: &Utf8Path) -> bool {
+    path.as_str().strip_suffix(".flow").is_some_and(|module| {
+        [".js", ".jsx", ".mjs", ".cjs"]
+            .iter()
+            .any(|extension| module.ends_with(extension))
+    })
 }
 
 /// Whether a file's header opts into Flow.
@@ -436,6 +487,7 @@ mod tests {
                 &root,
                 &[import("@uniflowed/not-installed-anywhere", "src/app.js")],
                 &mut read,
+                &mut Declarations::uncached(&root),
             )
             .is_empty()
         );
@@ -495,6 +547,7 @@ mod tests {
             &root,
             &[import("bar", "node_modules/foo/index.js")],
             &mut read,
+            &mut Declarations::uncached(&root),
         );
 
         assert_eq!(
@@ -522,6 +575,7 @@ mod tests {
                 import("bar", "node_modules/foo/index.js"),
             ],
             &mut read,
+            &mut Declarations::uncached(&root),
         );
 
         let paths: Vec<&str> = loaded.iter().map(|file| file.path.as_str()).collect();
@@ -545,13 +599,159 @@ mod tests {
         ]);
         let root = root_of(&directory);
         let mut read = FxHashSet::default();
+        let mut declarations = Declarations::uncached(&root);
 
         assert!(
-            load_packages(&root, &[import("plain", "src/app.js")], &mut read).is_empty(),
+            load_packages(
+                &root,
+                &[import("plain", "src/app.js")],
+                &mut read,
+                &mut declarations
+            )
+            .is_empty(),
             "a dependency that does not opt into Flow exports `any` either way"
         );
         // Recorded even so, or the caller's loop would walk it every round.
         assert!(read.contains("node_modules/plain"));
-        assert!(load_packages(&root, &[import("plain", "src/app.js")], &mut read).is_empty());
+        assert!(
+            load_packages(
+                &root,
+                &[import("plain", "src/app.js")],
+                &mut read,
+                &mut declarations
+            )
+            .is_empty()
+        );
+        // It has no declarations either, so nothing stands in for it.
+        assert!(!declarations.flush());
+    }
+
+    #[test]
+    fn a_package_with_declarations_and_no_flow_is_typed_from_them() {
+        let directory = project(&[
+            (
+                "node_modules/typed/package.json",
+                r#"{ "name": "typed", "types": "./index.d.ts" }"#,
+            ),
+            ("node_modules/typed/index.js", "exports.answer = 42;\n"),
+            (
+                "node_modules/typed/index.d.ts",
+                "export declare const answer: 42;\n",
+            ),
+        ]);
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+        let mut declarations = Declarations::uncached(&root);
+
+        let loaded = load_packages(
+            &root,
+            &[
+                import("typed/absent", "src/app.js"),
+                import("typed", "src/app.js"),
+            ],
+            &mut read,
+            &mut declarations,
+        );
+
+        assert!(loaded.is_empty(), "none of its JavaScript is read");
+        assert!(declarations.flush());
+        let paths: Vec<&str> = declarations
+            .sources()
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "node_modules/typed/package.json",
+                "node_modules/typed/index.d.ts.flow"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_package_that_ships_flow_is_not_also_typed_from_its_declarations() {
+        let directory = project(&[
+            (
+                "node_modules/both/package.json",
+                r#"{ "name": "both", "main": "./index.js", "types": "./index.d.ts" }"#,
+            ),
+            (
+                "node_modules/both/index.js",
+                "// @flow\nexport const answer: 42 = 42;\n",
+            ),
+            (
+                "node_modules/both/index.d.ts",
+                "export declare const answer: 42;\n",
+            ),
+        ]);
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+        let mut declarations = Declarations::uncached(&root);
+
+        let loaded = load_packages(
+            &root,
+            &[import("both", "src/app.js")],
+            &mut read,
+            &mut declarations,
+        );
+        // A later round asking for a subpath its Flow does not publish.
+        load_packages(
+            &root,
+            &[import("both/index.d.ts", "src/app.js")],
+            &mut read,
+            &mut declarations,
+        );
+
+        assert!(!loaded.is_empty());
+        assert!(!declarations.flush());
+        assert!(declarations.sources().is_empty());
+    }
+
+    #[test]
+    fn a_package_that_ships_flow_beside_its_javascript_is_read_as_flow() {
+        let directory = project(&[
+            (
+                "node_modules/shadowed/package.json",
+                r#"{ "name": "shadowed", "main": "./index.js", "types": "./index.d.ts" }"#,
+            ),
+            ("node_modules/shadowed/index.js", "exports.answer = 42;\n"),
+            (
+                "node_modules/shadowed/index.js.flow",
+                "// @flow\ndeclare export var answer: 42;\n",
+            ),
+            (
+                "node_modules/shadowed/index.d.ts",
+                "export declare const answer: string;\n",
+            ),
+        ]);
+        let root = root_of(&directory);
+        let mut read = FxHashSet::default();
+        let mut declarations = Declarations::uncached(&root);
+
+        let loaded = load_packages(
+            &root,
+            &[import("shadowed", "src/app.js")],
+            &mut read,
+            &mut declarations,
+        );
+
+        let paths: Vec<&str> = loaded.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "node_modules/shadowed/index.js",
+                "node_modules/shadowed/index.js.flow",
+                "node_modules/shadowed/package.json",
+            ]
+        );
+        assert!(!declarations.flush(), "its Flow outranks its declarations");
+    }
+
+    #[test]
+    fn a_specifier_names_its_subpath_the_way_an_exports_map_is_keyed() {
+        assert_eq!(subpath("zod", "zod"), ".");
+        assert_eq!(subpath("zod/v4/core", "zod"), "./v4/core");
+        assert_eq!(subpath("@tanstack/query-core", "@tanstack/query-core"), ".");
     }
 }

@@ -130,6 +130,9 @@ impl RscGraphBuilder {
         }
 
         report_client_graph_leaks(&graph_modules, &resolved, &mut diagnostics);
+        // Before sorting and deduplicating, which compare the rendered message:
+        // two leaks from one module reached two ways are still one leak.
+        super::report::attach_client_chains(&graph_modules, &entries, &index, &mut diagnostics);
 
         diagnostics.sort_by(|left, right| {
             left.module()

@@ -168,7 +168,7 @@ fn the_tools_that_write_are_named_for_it() {
 }
 
 /// Every description ends with exactly one of the three sentences, so that a
-/// tool claiming "Reads only" is one that does.
+/// tool claiming to change none of your files is one that does not.
 #[test]
 fn every_description_states_one_effect() {
     let notes = [Effect::Reads, Effect::Writes, Effect::Runs].map(Effect::note);
@@ -222,7 +222,14 @@ fn every_advertised_tool_is_one_the_server_dispatches() {
 
     for tool in tools() {
         let name = tool["name"].as_str().expect("a name").to_owned();
-        let result = call(&cwd, &name, &json!({ "command": "build" }));
+        // Arguments each schema accepts, so the call gets past the check in
+        // front of the dispatch instead of stopping at it.
+        let arguments = if name == "uf_explain" {
+            json!({ "command": "build" })
+        } else {
+            json!({})
+        };
+        let result = call(&cwd, &name, &arguments);
         let text = result["content"][0]["text"]
             .as_str()
             .expect("a text block")
@@ -230,6 +237,12 @@ fn every_advertised_tool_is_one_the_server_dispatches() {
         assert!(
             !text.contains("no tool named"),
             "{name} is listed but not dispatched"
+        );
+        // By its prefix: a command's own report can say "did not run" about
+        // something inside it, as `uf check`'s does.
+        assert!(
+            !text.starts_with(&format!("{name} did not run:")),
+            "{name} was refused: {text}"
         );
     }
 }
@@ -407,4 +420,173 @@ fn a_message_that_is_not_an_object_is_refused_rather_than_ignored() {
 fn the_session_ends_when_the_input_does() {
     let dir = scratch();
     assert!(replies(&path_of(&dir), "").is_empty());
+}
+
+/// One `tools/call` over the protocol, and the result it was answered with.
+fn tool_call(cwd: &Utf8Path, name: &str, arguments: Value) -> Value {
+    let out = exchange(
+        cwd,
+        &[request(
+            10,
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        )],
+    );
+    assert!(out[0].get("error").is_none(), "{:?}", out[0]);
+    out[0]["result"].clone()
+}
+
+/// The text of a result that holds exactly one block.
+fn only_text(result: &Value) -> String {
+    let blocks = result["content"].as_array().expect("content blocks");
+    assert_eq!(blocks.len(), 1, "{blocks:?}");
+    blocks[0]["text"].as_str().expect("a text block").to_owned()
+}
+
+/// #994: every schema is closed, and a misspelled argument used to be dropped
+/// and the tool run over the whole project — a different request, answered
+/// as a success.
+#[test]
+fn a_misspelled_argument_is_a_tool_error_that_names_it() {
+    let dir = broken_project();
+    let result = tool_call(
+        &path_of(&dir),
+        "uf_lint",
+        json!({ "pathz": ["matches-nothing"] }),
+    );
+
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert_eq!(
+        only_text(&result),
+        "uf_lint did not run: `pathz` is not an argument; the arguments are `paths`"
+    );
+}
+
+#[test]
+fn arguments_that_do_not_fit_are_named_and_refused() {
+    let dir = scratch();
+    let cwd = path_of(&dir);
+    let cases = [
+        (
+            "uf_lint",
+            json!({ "paths": "src" }),
+            "uf_lint did not run: `paths` must be an array, not a string",
+        ),
+        (
+            "uf_lint",
+            json!({ "paths": ["src", 3] }),
+            "uf_lint did not run: `paths[1]` must be a string, not a number",
+        ),
+        (
+            "uf_explain",
+            json!({}),
+            "uf_explain did not run: `command` is required",
+        ),
+        (
+            "uf_explain",
+            json!({ "command": 7 }),
+            "uf_explain did not run: `command` must be a string, not a number",
+        ),
+        (
+            "uf_info",
+            json!({ "verbose": true }),
+            "uf_info did not run: `verbose` is not an argument, and it takes none",
+        ),
+        (
+            "uf_test",
+            json!({ "filter": "a", "path": ["b"] }),
+            "uf_test did not run: `path` is not an argument; the arguments are `filter`, `paths`",
+        ),
+        (
+            "uf_lint",
+            Value::Null,
+            "uf_lint did not run: `arguments` must be an object, not null",
+        ),
+        (
+            "uf_lint",
+            json!(["src"]),
+            "uf_lint did not run: `arguments` must be an object, not an array",
+        ),
+    ];
+    for (tool, arguments, expected) in cases {
+        let result = tool_call(&cwd, tool, arguments.clone());
+        assert_eq!(result["isError"], true, "{tool} {arguments}");
+        assert_eq!(only_text(&result), expected, "{tool} {arguments}");
+    }
+}
+
+/// The half of "refused" that matters: nothing ran. `uf_fmt_write` is the tool
+/// whose running shows on disk, and the call spelled right beside it is what
+/// makes an untouched file evidence rather than coincidence.
+#[test]
+fn a_refused_call_runs_nothing() {
+    let dir = scratch();
+    let root = dir.path();
+    std::fs::write(root.join("uf.config.js"), "export default {};\n").expect("a config");
+    std::fs::write(
+        root.join("package.json"),
+        "{\"name\":\"ugly\",\"private\":true}\n",
+    )
+    .expect("a manifest");
+    std::fs::create_dir_all(root.join("src")).expect("a source directory");
+    let ugly = "// @flow\nexport const a    =   1\n";
+    std::fs::write(root.join("src/ugly.js"), ugly).expect("a source file");
+    let cwd = path_of(&dir);
+    let read = || std::fs::read_to_string(root.join("src/ugly.js")).expect("the source file");
+
+    let refused = tool_call(&cwd, "uf_fmt_write", json!({ "pathz": ["src"] }));
+    assert_eq!(refused["isError"], true, "{refused:?}");
+    assert_eq!(read(), ugly);
+
+    let accepted = tool_call(&cwd, "uf_fmt_write", json!({ "paths": ["src"] }));
+    assert_eq!(accepted["isError"], false, "{accepted:?}");
+    assert_ne!(read(), ugly);
+}
+
+/// `uf mcp --help` names every tool `tools/list` does. The help used to say the
+/// read-only commands became "tools of the same name", which none of them is,
+/// and a description is all an agent — or the person configuring one — has to
+/// go on (#994).
+#[test]
+fn the_help_names_every_tool_the_server_lists() {
+    use clap::CommandFactory;
+
+    let mut root = crate::Cli::command();
+    let help = root
+        .find_subcommand_mut("mcp")
+        .expect("uf mcp is a subcommand")
+        .render_long_help()
+        .to_string();
+    for tool in tools() {
+        let name = tool["name"].as_str().expect("a name");
+        assert!(
+            help.contains(name),
+            "`uf mcp --help` does not name {name}:\n{help}"
+        );
+    }
+}
+
+/// Every keyword a published schema uses is one [`misfit`] enforces, so no
+/// schema can state a rule the server does not hold a call to.
+#[test]
+fn every_published_schema_uses_only_keywords_the_check_enforces() {
+    fn walk(at: &str, schema: &Value) {
+        let object = schema.as_object().expect("a schema is an object");
+        for (keyword, value) in object {
+            assert!(
+                SCHEMA_KEYWORDS.contains(&keyword.as_str()),
+                "{at} uses `{keyword}`, which misfit does not enforce"
+            );
+            if keyword == "properties" {
+                for (property, inner) in value.as_object().expect("properties") {
+                    walk(&format!("{at}.{property}"), inner);
+                }
+            } else if keyword == "items" {
+                walk(&format!("{at}[]"), value);
+            }
+        }
+    }
+    for tool in tools() {
+        walk(tool["name"].as_str().expect("a name"), &tool["inputSchema"]);
+    }
 }
