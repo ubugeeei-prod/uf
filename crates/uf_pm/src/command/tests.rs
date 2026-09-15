@@ -341,6 +341,8 @@ fn only_the_operations_that_install_can_run_scripts() {
                 // `pnpm patch` extracts into a temporary directory; the commit
                 // is the half that installs.
                 | Operation::Patch
+                // A registry read.
+                | Operation::Info
         );
         assert_eq!(installs, expected, "{operation:?}");
     }
@@ -437,6 +439,10 @@ fn yarn_editions_disagree_exactly_where_yarn_changed() {
         differing,
         [
             Operation::InstallFrozen,
+            // Berry's production install is `yarn workspaces focus`, which has
+            // no frozen form.
+            Operation::InstallProd,
+            Operation::InstallFrozenProd,
             Operation::Exec,
             Operation::DlxExec,
             Operation::Update,
@@ -447,6 +453,19 @@ fn yarn_editions_disagree_exactly_where_yarn_changed() {
             // `yarn patch` is Berry's, and Yarn 1 never had one.
             Operation::Patch,
             Operation::PatchCommit,
+            // Yarn 1's `dedupe` only says it is unnecessary.
+            Operation::Dedupe,
+            // Yarn 1 links by name, Berry by path.
+            Operation::Link {
+                target: LinkTarget::Register,
+            },
+            Operation::Link {
+                target: LinkTarget::Package,
+            },
+            Operation::Link {
+                target: LinkTarget::Directory,
+            },
+            Operation::Info,
         ]
     );
 }
@@ -467,15 +486,20 @@ fn search_is_unsupported_where_the_manager_has_none() {
     assert_eq!(without, [PackageManager::Bun, YARN_BERRY, YARN_CLASSIC]);
 }
 
-/// Every operation but those three, so a manager uf supports can answer the
-/// rest of the table without uf substituting anybody.
+/// Every operation but the ones named here, so a manager uf supports can
+/// answer the rest of the table without uf substituting anybody.
 #[test]
-fn search_and_patch_are_the_only_operations_a_manager_can_lack() {
+fn only_the_operations_named_here_can_be_missing_from_a_manager() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
             if matches!(
                 operation,
-                Operation::Search | Operation::Patch | Operation::PatchCommit
+                Operation::Search
+                    | Operation::Patch
+                    | Operation::PatchCommit
+                    | Operation::InstallFrozenProd
+                    | Operation::Dedupe
+                    | Operation::Link { .. }
             ) {
                 continue;
             }
@@ -485,6 +509,193 @@ fn search_and_patch_are_the_only_operations_a_manager_can_lack() {
             );
         }
     }
+}
+
+/// The everyday verbs of ubugeeei-prod/uf#976, one manager's row at a time:
+/// `install --prod`, `dedupe`, the three `link`s and `info`, each as the
+/// command that manager's users already type, or as nothing where it has none.
+#[test]
+fn every_manager_maps_the_everyday_verbs_or_has_none() {
+    let link = |target| Operation::Link { target };
+    let rows: [(PackageManager, [Option<&str>; 7]); 6] = [
+        (
+            PackageManager::Uf,
+            [
+                Some("uf install --prod"),
+                Some("uf install --frozen-lockfile --prod"),
+                Some("uf dedupe"),
+                Some("uf link"),
+                Some("uf link"),
+                Some("uf link"),
+                Some("uf info"),
+            ],
+        ),
+        (
+            PackageManager::Npm,
+            [
+                Some("npm install --omit=dev"),
+                Some("npm ci --omit=dev"),
+                Some("npm dedupe"),
+                Some("npm link"),
+                Some("npm link"),
+                Some("npm link"),
+                Some("npm view"),
+            ],
+        ),
+        (
+            PackageManager::Pnpm,
+            [
+                Some("pnpm install --prod"),
+                Some("pnpm install --frozen-lockfile --prod"),
+                Some("pnpm dedupe"),
+                Some("pnpm link"),
+                Some("pnpm link"),
+                Some("pnpm link"),
+                Some("pnpm view"),
+            ],
+        ),
+        (
+            YARN_CLASSIC,
+            [
+                Some("yarn install --production"),
+                Some("yarn install --frozen-lockfile --production"),
+                None,
+                Some("yarn link"),
+                Some("yarn link"),
+                None,
+                Some("yarn info"),
+            ],
+        ),
+        (
+            YARN_BERRY,
+            [
+                Some("yarn workspaces focus --all --production"),
+                None,
+                Some("yarn dedupe"),
+                None,
+                None,
+                Some("yarn link"),
+                Some("yarn npm info"),
+            ],
+        ),
+        (
+            PackageManager::Bun,
+            [
+                Some("bun install --production"),
+                Some("bun install --frozen-lockfile --production"),
+                None,
+                Some("bun link"),
+                Some("bun link"),
+                None,
+                Some("bun info"),
+            ],
+        ),
+    ];
+
+    for (manager, expected) in rows {
+        let operations = [
+            Operation::InstallProd,
+            Operation::InstallFrozenProd,
+            Operation::Dedupe,
+            link(LinkTarget::Register),
+            link(LinkTarget::Package),
+            link(LinkTarget::Directory),
+            Operation::Info,
+        ];
+        for (operation, expected) in operations.into_iter().zip(expected) {
+            assert_eq!(
+                command_for(manager, operation)
+                    .map(|invocation| invocation.to_string())
+                    .as_deref(),
+                expected,
+                "{manager} {operation:?}"
+            );
+        }
+    }
+}
+
+/// A production install is never the plain install under another name: the
+/// flag that leaves `devDependencies` out is the whole point of it.
+#[test]
+fn a_production_install_differs_from_the_plain_install_wherever_it_exists() {
+    for manager in PackageManager::ALL {
+        let install = supported(manager, Operation::Install);
+        assert_ne!(
+            install,
+            supported(manager, Operation::InstallProd),
+            "{manager}"
+        );
+        if let Some(frozen) = command_for(manager, Operation::InstallFrozenProd) {
+            assert_ne!(
+                frozen,
+                supported(manager, Operation::InstallFrozen),
+                "{manager}"
+            );
+        }
+    }
+}
+
+/// What installs is what gets told to leave scripts alone, and `info`, which
+/// only reads a registry, is not.
+#[test]
+fn the_everyday_verbs_that_install_are_the_ones_that_can_run_scripts() {
+    for operation in [
+        Operation::InstallProd,
+        Operation::InstallFrozenProd,
+        Operation::Dedupe,
+        Operation::Link {
+            target: LinkTarget::Register,
+        },
+        Operation::Link {
+            target: LinkTarget::Package,
+        },
+        Operation::Link {
+            target: LinkTarget::Directory,
+        },
+    ] {
+        assert!(operation.installs_packages(), "{operation:?}");
+    }
+    assert!(!Operation::Info.installs_packages());
+}
+
+/// A path is written as a path, and everything else is a name — including a
+/// name that looks like a path to a person skimming it.
+#[test]
+fn a_link_target_is_a_path_only_when_it_is_written_as_one() {
+    assert_eq!(LinkTarget::of(None), LinkTarget::Register);
+    for path in [".", "..", "./ui", "../ui", "/work/ui", "../../packages/ui"] {
+        assert_eq!(LinkTarget::of(Some(path)), LinkTarget::Directory, "{path}");
+    }
+    for name in ["ui", "@acme/ui", "left-pad", ".bin-tools", "..."] {
+        let expected = if name == "..." {
+            // Three dots is not `..`, and not `../` either.
+            LinkTarget::Package
+        } else {
+            LinkTarget::Package
+        };
+        assert_eq!(LinkTarget::of(Some(name)), expected, "{name}");
+    }
+}
+
+/// An invocation with a variable renders it in front, where a reader would
+/// type it, and serializes it only when there is one.
+#[test]
+fn a_variable_is_rendered_before_the_program_and_serialized_only_when_set() {
+    let mut invocation = supported(YARN_BERRY, Operation::Install);
+    assert_eq!(
+        serde_json::to_string(&invocation).unwrap(),
+        r#"{"program":"yarn","args":["install"]}"#
+    );
+
+    invocation.env.push(("YARN_ENABLE_SCRIPTS", "false"));
+    assert_eq!(
+        invocation.to_string(),
+        "YARN_ENABLE_SCRIPTS=false yarn install"
+    );
+    assert_eq!(
+        serde_json::to_string(&invocation).unwrap(),
+        r#"{"program":"yarn","args":["install"],"env":[["YARN_ENABLE_SCRIPTS","false"]]}"#
+    );
 }
 
 /// Two managers have `patch`, three do not, and the two that do have both

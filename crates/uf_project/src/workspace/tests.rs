@@ -90,6 +90,48 @@ fn negated_package_workspace_patterns_are_excluded() {
     assert_eq!(names(&found), vec!["public"]);
 }
 
+/// pnpm reads its members from `pnpm-workspace.yaml` and ignores
+/// `package.json#workspaces`, so a pnpm monorepo whose members have no uf
+/// config of their own used to have no members at all.
+#[test]
+fn pnpm_workspace_yaml_packages_are_members() {
+    let (_dir, root) = tree(&[]);
+    fs::write(
+        root.join("pnpm-workspace.yaml"),
+        "# the members\npackages:\n  - 'apps/*'\n  - \"packages/*\" # libraries\n  - '!packages/private'\n\
+         catalog:\n  react: ^19.0.0\n",
+    )
+    .unwrap();
+    for package in ["apps/web", "packages/ui", "packages/private", "tools/lint"] {
+        fs::create_dir_all(root.join(package)).unwrap();
+        fs::write(
+            root.join(package).join("package.json"),
+            format!(r#"{{ "name": "{}" }}"#, package.rsplit('/').next().unwrap()),
+        )
+        .unwrap();
+    }
+
+    let found = discover_workspaces(&root, &UniflowedConfig::default());
+
+    // `catalog:` is not a list of members, and `tools/lint` is in none.
+    assert_eq!(names(&found), vec!["ui", "web"]);
+}
+
+/// The flow form of the same list, and the list ending where the next key
+/// begins.
+#[test]
+fn pnpm_workspace_packages_are_read_in_either_yaml_form() {
+    assert_eq!(
+        pnpm_workspace_packages("packages: [apps/*, 'packages/*']\n"),
+        vec!["apps/*", "packages/*"]
+    );
+    assert_eq!(
+        pnpm_workspace_packages("onlyBuiltDependencies:\n  - esbuild\npackages:\n  - libs/*\n"),
+        vec!["libs/*"]
+    );
+    assert!(pnpm_workspace_packages("catalog:\n  react: ^19\n").is_empty());
+}
+
 #[test]
 fn a_package_workspace_and_config_member_are_one_member() {
     let (_dir, root) = tree(&["packages/app"]);

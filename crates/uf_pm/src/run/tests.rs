@@ -422,3 +422,305 @@ fn a_workspace_marker_that_is_not_a_regular_file_does_not_count() {
         ["pnpm", "add", "react"]
     );
 }
+
+/// A directory shaped like a Yarn 1 workspace root: `workspaces` in its own
+/// `package.json`.
+fn yarn_workspace() -> (tempfile::TempDir, Utf8PathBuf) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let root = Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8");
+    std::fs::write(
+        root.join("package.json"),
+        r#"{ "name": "root", "private": true, "workspaces": ["packages/*"] }"#,
+    )
+    .expect("a manifest");
+    (dir, root)
+}
+
+/// Yarn 1 refuses `yarn add` *and* `yarn remove` at a workspace root without
+/// `-W`, which through uf was a command that failed and told you to add a flag
+/// uf never passed — the Yarn 1 half of ubugeeei-prod/uf#484.
+#[test]
+fn yarn_1_is_told_the_workspace_root_is_meant_on_add_and_remove() {
+    let (_guard, root) = yarn_workspace();
+
+    for operation in [
+        Operation::Add {
+            kind: DependencyKind::Prod,
+        },
+        Operation::Remove,
+    ] {
+        let args = args_in(
+            &root,
+            PackageManager::Yarn(YarnEdition::Classic),
+            operation,
+            &["left-pad"],
+            true,
+        );
+        assert_eq!(
+            args.get(2).map(String::as_str),
+            Some("--ignore-workspace-root-check"),
+            "{operation:?}: {args:?}"
+        );
+    }
+    // `yarn upgrade` has no such check, and a flag it does not need is a flag
+    // that can only be wrong later.
+    assert_eq!(
+        args_in(
+            &root,
+            PackageManager::Yarn(YarnEdition::Classic),
+            Operation::Update,
+            &[],
+            true,
+        ),
+        ["yarn", "upgrade"]
+    );
+    // And no other manager is told Yarn 1's flag.
+    for manager in [
+        PackageManager::Npm,
+        PackageManager::Pnpm,
+        PackageManager::Yarn(YarnEdition::Berry),
+        PackageManager::Bun,
+    ] {
+        let invocation = invocation_for(&root, manager, Operation::Remove, &[], true)
+            .expect("every manager removes");
+        assert!(
+            !invocation
+                .args
+                .iter()
+                .any(|arg| arg == "--ignore-workspace-root-check"),
+            "{manager}: {invocation}"
+        );
+    }
+}
+
+/// A member of that workspace is not its root, and is left alone.
+#[test]
+fn yarn_1_inside_a_member_is_not_told_about_the_root() {
+    let (_guard, root) = yarn_workspace();
+    let member = root.join("packages/ui");
+    std::fs::create_dir_all(&member).expect("a member directory");
+    std::fs::write(member.join("package.json"), r#"{ "name": "ui" }"#).expect("a manifest");
+
+    assert_eq!(
+        args_in(
+            &member,
+            PackageManager::Yarn(YarnEdition::Classic),
+            Operation::Add {
+                kind: DependencyKind::Prod,
+            },
+            &["left-pad"],
+            true,
+        ),
+        ["yarn", "add", "left-pad"]
+    );
+}
+
+/// Yarn 2+ answers `--ignore-scripts` with "Unsupported option name" on every
+/// command, so uf's refusal is the setting Yarn reads from the environment,
+/// and no flag at all.
+#[test]
+fn yarn_2_refuses_scripts_through_its_setting_rather_than_a_flag_it_rejects() {
+    for operation in Operation::ALL {
+        let Ok(invocation) = invocation_for(
+            nowhere(),
+            PackageManager::Yarn(YarnEdition::Berry),
+            operation,
+            &[],
+            false,
+        ) else {
+            continue;
+        };
+        assert!(
+            !invocation.args.iter().any(|arg| arg == "--ignore-scripts"),
+            "{operation:?}: {invocation}"
+        );
+        let refused = invocation.env.contains(&("YARN_ENABLE_SCRIPTS", "false"));
+        assert_eq!(
+            refused,
+            operation.installs_packages(),
+            "{operation:?}: {invocation}"
+        );
+    }
+    // And allowed scripts leave the setting alone.
+    let allowed = invocation_for(
+        nowhere(),
+        PackageManager::Yarn(YarnEdition::Berry),
+        Operation::Install,
+        &[],
+        true,
+    )
+    .expect("berry installs");
+    assert!(allowed.env.is_empty(), "{allowed}");
+}
+
+/// `pnpm link --ignore-scripts` is "Unknown option: 'ignore-scripts'"; the
+/// setting spelled as pnpm's `--config.` is accepted by every command.
+#[test]
+fn pnpm_link_is_told_about_scripts_in_the_spelling_it_accepts() {
+    for target in crate::LinkTarget::ALL {
+        let args = args(
+            PackageManager::Pnpm,
+            Operation::Link { target },
+            &["../lib"],
+            false,
+        );
+        assert_eq!(
+            args,
+            ["pnpm", "link", "--config.ignore-scripts=true", "../lib"],
+            "{target:?}"
+        );
+    }
+    // `pnpm remove --ignore-scripts` is the same refusal — which every
+    // `uf remove` in a pnpm project hit — and `patch-commit` does not declare
+    // the flag either.
+    assert_eq!(
+        args(
+            PackageManager::Pnpm,
+            Operation::Remove,
+            &["left-pad"],
+            false
+        ),
+        ["pnpm", "remove", "--config.ignore-scripts=true", "left-pad"]
+    );
+    assert_eq!(
+        args(
+            PackageManager::Pnpm,
+            Operation::PatchCommit,
+            &["/tmp/p"],
+            false
+        ),
+        [
+            "pnpm",
+            "patch-commit",
+            "--config.ignore-scripts=true",
+            "/tmp/p"
+        ]
+    );
+    // Everywhere else pnpm keeps the flag it documents.
+    assert_eq!(
+        args(PackageManager::Pnpm, Operation::Dedupe, &[], false),
+        ["pnpm", "dedupe", "--ignore-scripts"]
+    );
+}
+
+/// `uf info <package> <field>` puts the field where each manager reads it.
+#[test]
+fn an_info_field_is_a_positional_everywhere_but_yarn_2() {
+    assert_eq!(
+        args(
+            PackageManager::Npm,
+            Operation::Info,
+            &["react", "version"],
+            false
+        ),
+        ["npm", "view", "react", "version"]
+    );
+    assert_eq!(
+        args(
+            PackageManager::Yarn(YarnEdition::Classic),
+            Operation::Info,
+            &["react", "version"],
+            false,
+        ),
+        ["yarn", "info", "react", "version"]
+    );
+    assert_eq!(
+        args(
+            PackageManager::Bun,
+            Operation::Info,
+            &["react", "version"],
+            false
+        ),
+        ["bun", "info", "react", "version"]
+    );
+    assert_eq!(
+        args(
+            PackageManager::Yarn(YarnEdition::Berry),
+            Operation::Info,
+            &["react", "version"],
+            false,
+        ),
+        ["yarn", "npm", "info", "react", "--fields", "version"]
+    );
+    // With no field there is nothing to spell differently.
+    assert_eq!(
+        args(
+            PackageManager::Yarn(YarnEdition::Berry),
+            Operation::Info,
+            &["react"],
+            false,
+        ),
+        ["yarn", "npm", "info", "react"]
+    );
+}
+
+/// A refusal says what to run instead, for each everyday verb a manager lacks.
+#[test]
+fn every_missing_everyday_verb_is_refused_with_what_to_run_instead() {
+    for (manager, operation, advice) in [
+        (
+            PackageManager::Yarn(YarnEdition::Classic),
+            Operation::Dedupe,
+            "uf install",
+        ),
+        (PackageManager::Bun, Operation::Dedupe, "uf update"),
+        (
+            PackageManager::Yarn(YarnEdition::Classic),
+            Operation::Link {
+                target: crate::LinkTarget::Directory,
+            },
+            "uf link <its name>",
+        ),
+        (
+            PackageManager::Bun,
+            Operation::Link {
+                target: crate::LinkTarget::Directory,
+            },
+            "uf link <its name>",
+        ),
+        (
+            PackageManager::Yarn(YarnEdition::Berry),
+            Operation::Link {
+                target: crate::LinkTarget::Package,
+            },
+            "uf link <path to the package>",
+        ),
+        (
+            PackageManager::Yarn(YarnEdition::Berry),
+            Operation::Link {
+                target: crate::LinkTarget::Register,
+            },
+            "uf link <path to the package>",
+        ),
+        (
+            PackageManager::Yarn(YarnEdition::Berry),
+            Operation::InstallFrozenProd,
+            "uf install --prod",
+        ),
+    ] {
+        let Err(ManagerRunError::Unsupported {
+            operation: name,
+            hint,
+            ..
+        }) = invocation_for(nowhere(), manager, operation, &[], false)
+        else {
+            panic!("{manager} {operation:?} was not refused");
+        };
+        assert_eq!(name, operation.name());
+        assert!(hint.contains(advice), "{manager} {operation:?}: {hint}");
+    }
+}
+
+/// `yarn up` is project-wide wherever it runs, so it is the one member-scoped
+/// operation uf refuses; everything else runs per member.
+#[test]
+fn only_yarn_2s_update_cannot_be_scoped_to_members() {
+    for manager in PackageManager::ALL {
+        for operation in Operation::ALL {
+            let refused = check_member_operation(manager, operation).is_err();
+            let expected = manager == PackageManager::Yarn(YarnEdition::Berry)
+                && operation == Operation::Update;
+            assert_eq!(refused, expected, "{manager} {operation:?}");
+        }
+    }
+}

@@ -168,8 +168,8 @@ impl Ladder {
     }
 }
 
-/// `uf install`, and `uf install --frozen-lockfile`.
-pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
+/// `uf install`, `uf install --frozen-lockfile`, and either of them `--prod`.
+pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool, prod: bool) -> Result<()> {
     let mut timer = PhaseTimer::start();
     let resolved = timer.measure("config", || load_config(cwd))?;
     crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
@@ -189,6 +189,21 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, _) = installable(&detection);
+    let operation = match (frozen, prod) {
+        (false, false) => Operation::Install,
+        (true, false) => Operation::InstallFrozen,
+        (false, true) => Operation::InstallProd,
+        (true, true) => Operation::InstallFrozenProd,
+    };
+    let heading = match (frozen, prod) {
+        (false, false) => "uf install",
+        (true, false) => "uf install --frozen-lockfile",
+        (false, true) => "uf install --prod",
+        (true, true) => "uf install --frozen-lockfile --prod",
+    };
+    // A manager with no such install — Yarn 2+ has no frozen production one —
+    // is refused here, before the plan or `uf.lock` below is written.
+    uf_pm::invocation_for(&resolved.root, manager, operation, &[], true)?;
     // The release `packageManager` pins, and the runtime it runs on, in front
     // of `PATH` for the manager — installed the first time, and refused rather
     // than locked when this is a frozen install that would have to write
@@ -227,16 +242,6 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool) -> Result<()> {
     timer.lap("workspace");
     let prelude = timer.phases().to_vec();
 
-    let operation = if frozen {
-        Operation::InstallFrozen
-    } else {
-        Operation::Install
-    };
-    let heading = if frozen {
-        "uf install --frozen-lockfile"
-    } else {
-        "uf install"
-    };
     let project = project_label(&resolved.root).to_string();
     // A script no install runs, such as `start` or `ios`, is not refused, and uf
     // does not run it either. That is said once, because a project whose

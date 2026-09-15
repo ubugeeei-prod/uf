@@ -204,6 +204,7 @@ pub(crate) fn set(
             operands: &[],
             retry: "uf install".to_owned(),
             announced: true,
+            scope: &super::Scope::Project,
         },
     )
 }

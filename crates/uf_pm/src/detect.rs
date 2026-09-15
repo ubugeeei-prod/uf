@@ -306,6 +306,21 @@ pub fn is_pnpm_workspace_root(dir: &Utf8Path) -> bool {
     lockfile::is_regular_file(&dir.join(PNPM_WORKSPACE_FILE))
 }
 
+/// Whether `dir`'s own `package.json` declares `workspaces`.
+///
+/// The Yarn 1 counterpart of [`is_pnpm_workspace_root`], for the same reason:
+/// `yarn add` and `yarn remove` at a workspace root refuse unless told the root
+/// is meant. The manifest is read with detection's own guards — no symlink,
+/// nothing oversized, no prototype-pollution keys — and one that cannot be read
+/// declares nothing.
+#[must_use]
+pub fn declares_workspaces(dir: &Utf8Path) -> bool {
+    let path = dir.join("package.json");
+    let mut issues = DetectionIssues::new();
+    workspace::read_manifest(&path, &DetectionOptions::new(), &mut issues)
+        .is_some_and(|manifest| workspace::manifest_has_workspaces(&path, &manifest, &mut issues))
+}
+
 /// Resolve `.` and `..` without touching the filesystem.
 ///
 /// Purely lexical on purpose: resolving through symlinks would let a crafted

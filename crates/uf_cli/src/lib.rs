@@ -245,6 +245,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             dev,
             optional,
             peer,
+            workspace,
             specs,
         } => commands::pm::add(
             &cwd,
@@ -256,6 +257,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 peer,
             }
             .into(),
+            &commands::pm::Scope::from_flags(workspace.filter, workspace.workspace_root),
         ),
         Commands::Build {
             size_report,
@@ -333,7 +335,11 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         }
         Commands::Fmt { check, paths } => commands::fmt::fmt(&cwd, ui, check, &paths),
         Commands::I18n { command } => commands::i18n::i18n(&cwd, ui, command),
-        Commands::Info => commands::info::info(&cwd, ui),
+        Commands::Info { package: None, .. } => commands::info::info(&cwd, ui),
+        Commands::Info {
+            package: Some(package),
+            field,
+        } => commands::pm::info(&cwd, ui, &package, field.as_deref()),
         Commands::Explain {
             command,
             json,
@@ -342,7 +348,10 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Inspect { json } => commands::inspect::inspect(&cwd, ui, json),
         Commands::Transform => commands::transform::transform_service(&cwd),
         Commands::Assets => commands::assets::assets_service(&cwd),
-        Commands::Install { frozen_lockfile } => commands::pm::install(&cwd, ui, frozen_lockfile),
+        Commands::Install {
+            frozen_lockfile,
+            prod,
+        } => commands::pm::install(&cwd, ui, frozen_lockfile, prod),
         Commands::Lint {
             json, rules: true, ..
         } => commands::lint::rules_command(&cwd, ui, json),
@@ -378,7 +387,12 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         }
         Commands::Publish => commands::release::publish(&cwd, ui),
         Commands::Release { bump, force } => commands::release::release(&cwd, ui, bump, force),
-        Commands::Remove { names } => commands::pm::remove(&cwd, ui, &names),
+        Commands::Remove { workspace, names } => commands::pm::remove(
+            &cwd,
+            ui,
+            &names,
+            &commands::pm::Scope::from_flags(workspace.filter, workspace.workspace_root),
+        ),
         Commands::Routes { command } => commands::routes::routes(&cwd, ui, command),
         Commands::Ui { command } => commands::ui::ui(&cwd, ui, command),
         Commands::Run {
@@ -463,6 +477,8 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             }
         },
         Commands::Patch { target, commit } => commands::pm::patch(&cwd, ui, &target, commit),
+        Commands::Link { target } => commands::pm::link(&cwd, ui, target.as_deref()),
+        Commands::Dedupe => commands::pm::dedupe(&cwd, ui),
         Commands::Catalog { command } => match command {
             None => commands::pm::catalog(&cwd, ui),
             Some(cli::CatalogCommand::Set {
@@ -477,6 +493,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             minor,
             patch,
             dry_run,
+            workspace,
         } => {
             // clap's group makes at most one of the three true.
             let level = match (latest, minor, patch) {
@@ -485,7 +502,14 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
                 (_, _, true) => Some(uf_pm::ranges::Level::Patch),
                 _ => None,
             };
-            commands::pm::update(&cwd, ui, &packages, level, dry_run)
+            commands::pm::update(
+                &cwd,
+                ui,
+                &packages,
+                level,
+                dry_run,
+                &commands::pm::Scope::from_flags(workspace.filter, workspace.workspace_root),
+            )
         }
         Commands::Use { runtime } => commands::toolchain::use_runtime(&cwd, ui, &runtime),
         Commands::SelfUpdate => commands::toolchain::self_update(ui),

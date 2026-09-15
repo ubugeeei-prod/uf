@@ -1,8 +1,9 @@
-//! `uf add`, `uf remove`, `uf update` and `uf why`: one dependency at a time.
+//! `uf add`, `uf remove`, `uf update`, `uf dedupe`, `uf link`, `uf info` and
+//! `uf why`: one dependency at a time.
 //!
-//! `uf install` is the whole tree; these four are the four things a person does
-//! to it between installs. All of them are the project's own package manager,
-//! for the reason [`uf_pm::run`] gives at length: uf's resolver reaches no
+//! `uf install` is the whole tree; these are the things a person does to it
+//! between installs. All of them are the project's own package manager, for
+//! the reason [`uf_pm::run`] gives at length: uf's resolver reaches no
 //! registry, so an `uf add` that claimed to have fetched `date-fns` would be
 //! lying about the one moment where lying matters — installing a new package is
 //! exactly when a `postinstall` script arrives.
@@ -32,17 +33,29 @@
 //! `uf why` writes nothing, so it reports the three rows *before* the manager
 //! runs and nothing after: the manager's explanation is the answer, and the
 //! last thing on the screen should be the answer.
+//!
+//! # Workspaces
+//!
+//! `--filter` and `-w` choose which of a workspace's projects `uf add`,
+//! `uf remove` and `uf update` change, and the manager runs once in each chosen
+//! project's directory. That is the one spelling every manager agrees on: npm,
+//! pnpm, both Yarns and bun all read "run in a member's directory" as "change
+//! that member", and all of them settle the one lockfile at the workspace root.
+//! The flags they each have for it — npm's `--workspace`, pnpm's `--filter`,
+//! `yarn workspace <name>` — take different selectors and do not exist on bun's
+//! `add` at all, so reaching for them would make `--filter` mean five things.
+//! The selector grammar is `uf run --filter`'s, resolved by uf, so it means one.
 
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, anyhow};
-use camino::Utf8Path;
+use anyhow::{Context, Result, anyhow, bail};
+use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
-use uf_config::load_config;
+use uf_config::{ResolvedConfig, load_config};
 use uf_pm::delta::LockfileDelta;
 use uf_pm::{
-    DependencyKind, DetectionOptions, ManagerRunError, Operation, PackageManagerPlan,
+    DependencyKind, DetectionOptions, LinkTarget, ManagerRunError, Operation, PackageManagerPlan,
     check_workspace_manifests, detect_package_manager_with, install_workspace, installable,
     is_polluting_json_key, run_operation_with_detection,
 };
@@ -61,12 +74,125 @@ use crate::ui::Ui;
 /// specifiers is a script, and a script does not read a list of two hundred.
 const MANIFEST_CHANGES_SHOWN: usize = 15;
 
-/// `uf add [--dev|--optional|--peer] SPEC...`.
+/// Which of a workspace's projects `uf add`, `uf remove` and `uf update`
+/// change.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) enum Scope {
+    /// The project uf was pointed at, which is what every one of these meant
+    /// before there was a choice.
+    #[default]
+    Project,
+    /// The root of the workspace around it, from anywhere inside (`-w`).
+    WorkspaceRoot,
+    /// The members these selectors pick (`--filter`), in `uf run --filter`'s
+    /// grammar.
+    Members(Vec<String>),
+}
+
+impl Scope {
+    /// From the two flags, which clap has already refused together.
+    pub(crate) fn from_flags(filter: Vec<String>, workspace_root: bool) -> Self {
+        if workspace_root {
+            Self::WorkspaceRoot
+        } else if filter.is_empty() {
+            Self::Project
+        } else {
+            Self::Members(filter)
+        }
+    }
+}
+
+/// One project a scoped command runs the manager in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Target {
+    /// The directory the manager runs in, whose `package.json` it changes.
+    pub(super) dir: Utf8PathBuf,
+    /// What the report calls it, when it is not simply the project.
+    pub(super) label: Option<String>,
+}
+
+/// Where a scoped command settles the lockfile, and where it runs the manager.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Targets {
+    /// The workspace root — or, unscoped, the project itself — whose lockfile
+    /// every run below writes.
+    pub(super) base: Utf8PathBuf,
+    /// The projects, in the order the manager runs in them.
+    pub(super) each: Vec<Target>,
+}
+
+/// Resolve `scope` against the workspace `resolved` belongs to.
+///
+/// # Errors
+///
+/// When a scope names a workspace and the project is not in one, and when a
+/// selector picks no member — a misspelt `--filter` that changed nothing and
+/// exited 0 would be a command that succeeded at not doing what it was asked.
+pub(super) fn targets(resolved: &ResolvedConfig, scope: &Scope) -> Result<Targets> {
+    let selectors = match scope {
+        Scope::Project => {
+            return Ok(Targets {
+                base: resolved.root.clone(),
+                each: vec![Target {
+                    dir: resolved.root.clone(),
+                    label: None,
+                }],
+            });
+        }
+        Scope::WorkspaceRoot => None,
+        Scope::Members(selectors) => Some(selectors),
+    };
+
+    let Some((root, members)) = uf_project::enclosing_workspace(&resolved.root, &resolved.config)
+    else {
+        bail!(
+            "{} chooses projects in a workspace, and {} is not in one\n\n  \
+             a workspace is a package.json that lists `workspaces`, a pnpm-workspace.yaml, \
+             or a directory whose members have a uf.config.js of their own",
+            if selectors.is_some() {
+                "--filter"
+            } else {
+                "--workspace-root"
+            },
+            project_label(&resolved.root)
+        );
+    };
+    let Some(selectors) = selectors else {
+        return Ok(Targets {
+            base: root.clone(),
+            each: vec![Target {
+                dir: root,
+                label: Some("workspace root".to_owned()),
+            }],
+        });
+    };
+
+    let dependencies = uf_project::workspace_dependencies(&root, &members);
+    let selected =
+        uf_project::select_workspaces(&members, &dependencies, selectors).map_err(|error| {
+            let names = members
+                .iter()
+                .map(|member| member.name.as_str())
+                .collect::<Vec<_>>();
+            anyhow!("{error}\n\n  members: {}", names.join(", "))
+        })?;
+    let each = selected
+        .into_iter()
+        .map(|at| Target {
+            dir: root.join(&members[at].path),
+            label: Some(members[at].name.to_string()),
+        })
+        .collect();
+    Ok(Targets { base: root, each })
+}
+
+/// `uf add [--dev|--optional|--peer] [--filter SELECTOR|-w] SPEC...`.
 pub(crate) fn add(
     cwd: &Utf8Path,
     ui: &mut Ui,
     specs: &[String],
     kind: DependencyKind,
+    scope: &Scope,
 ) -> Result<()> {
     delegate(
         cwd,
@@ -77,12 +203,13 @@ pub(crate) fn add(
             operands: specs,
             retry: retry_line("uf add", specs),
             announced: false,
+            scope,
         },
     )
 }
 
-/// `uf remove NAME...`.
-pub(crate) fn remove(cwd: &Utf8Path, ui: &mut Ui, names: &[String]) -> Result<()> {
+/// `uf remove [--filter SELECTOR|-w] NAME...`.
+pub(crate) fn remove(cwd: &Utf8Path, ui: &mut Ui, names: &[String], scope: &Scope) -> Result<()> {
     delegate(
         cwd,
         ui,
@@ -92,6 +219,7 @@ pub(crate) fn remove(cwd: &Utf8Path, ui: &mut Ui, names: &[String]) -> Result<()
             operands: names,
             retry: retry_line("uf remove", names),
             announced: false,
+            scope,
         },
     )
 }
@@ -100,7 +228,12 @@ pub(crate) fn remove(cwd: &Utf8Path, ui: &mut Ui, names: &[String]) -> Result<()
 /// with, and nothing else moves at all.
 ///
 /// [`super::update`] is the command; this is the half of it that delegates.
-pub(super) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result<()> {
+pub(super) fn update(
+    cwd: &Utf8Path,
+    ui: &mut Ui,
+    packages: &[String],
+    scope: &Scope,
+) -> Result<()> {
     delegate(
         cwd,
         ui,
@@ -110,8 +243,68 @@ pub(super) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
             operands: packages,
             retry: retry_line("uf update", packages),
             announced: false,
+            scope,
         },
     )
+}
+
+/// `uf dedupe`: the manager's own, and the tree it leaves.
+///
+/// Refused by name on Yarn 1, whose `yarn dedupe` exists only to say `yarn
+/// install` already does it, and on bun, which has none.
+pub(crate) fn dedupe(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    delegate(
+        cwd,
+        ui,
+        &Request {
+            heading: "uf dedupe",
+            operation: Operation::Dedupe,
+            operands: &[],
+            retry: "uf dedupe".to_owned(),
+            announced: false,
+            scope: &Scope::Project,
+        },
+    )
+}
+
+/// `uf link [NAME|DIR]`.
+///
+/// A directory or a name is linked into this project, and reported like an
+/// add: the manifest and the tree. With nothing named it registers this
+/// package with the manager's global directory, which changes nothing in this
+/// project — so it is reported the way a query is, and the manager's own line
+/// about where it put the link is the answer. [`LinkTarget::of`] decides which
+/// of the three was asked for.
+pub(crate) fn link(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Result<()> {
+    let operation = Operation::Link {
+        target: LinkTarget::of(target),
+    };
+    let Some(target) = target else {
+        return query(cwd, ui, "uf link", operation, &[]);
+    };
+    let operands = [target.to_owned()];
+    delegate(
+        cwd,
+        ui,
+        &Request {
+            heading: "uf link",
+            operation,
+            operands: &operands,
+            retry: format!("uf link {target}"),
+            announced: false,
+            scope: &Scope::Project,
+        },
+    )
+}
+
+/// `uf info PACKAGE [FIELD]`: the registry's answer, through the project's own
+/// manager, so it is the registry that manager would install from.
+pub(crate) fn info(cwd: &Utf8Path, ui: &mut Ui, package: &str, field: Option<&str>) -> Result<()> {
+    let operands = std::iter::once(package)
+        .chain(field)
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    query(cwd, ui, "uf info", Operation::Info, &operands)
 }
 
 /// `uf why NAME`.
@@ -119,8 +312,10 @@ pub(super) fn update(cwd: &Utf8Path, ui: &mut Ui, packages: &[String]) -> Result
 /// The one command here that changes nothing, so it neither takes the
 /// `install_workspace` guard — there is no install to guard — nor rewrites
 /// `uf.lock`. Asking why a package is installed must not install anything.
-/// `uf ls`, `uf audit` and `uf search`: read the project, change nothing. And
-/// `uf patch`, which changes a temporary directory and not this project.
+/// `uf ls`, `uf audit`, `uf search` and `uf info`: read the project, change
+/// nothing. And `uf patch`, which changes a temporary directory and not this
+/// project, and `uf link` with nothing named, which changes the manager's
+/// global directory.
 ///
 /// The same shape as [`why`] and for the same reason — the manager's own
 /// output is the answer, so uf says who it is about to ask and then gets out
@@ -146,14 +341,26 @@ pub(crate) fn query(
         &DetectionOptions::from_config(&resolved.config),
     );
     let (manager, substituted) = installable(&detection);
+    // Only an operation that installs has scripts to refuse, and only reading
+    // the approvals for one keeps `uf ls` from depending on a manifest it has
+    // no reason to parse. Registering a package for `uf link` is the query
+    // that installs.
+    let allow_scripts = if operation.installs_packages() {
+        let plan = PackageManagerPlan::infer_from_config(&resolved.config);
+        scripts_allowed(&resolved.root, manager, &plan)?
+    } else {
+        true
+    };
+    // Before the manager is installed: a manager with no such command is
+    // refused without first being downloaded to find that out.
+    let invocation =
+        uf_pm::invocation_for(&resolved.root, manager, operation, operands, allow_scripts)?;
     // The release `packageManager` pins, and the runtime it runs on, in front
     // of `PATH` for the manager's process — installed the first time.
     let path =
         crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
             ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
         })?;
-
-    let invocation = uf_pm::invocation_for(&resolved.root, manager, operation, operands, true)?;
     let project = project_label(&resolved.root).to_string();
     let manager_label = manager.to_string();
     let source = chosen_by(&detection.source, substituted);
@@ -174,13 +381,20 @@ pub(crate) fn query(
         renderer.blank(out);
     });
 
-    run_operation_with_detection(&resolved.root, &detection, operation, operands, true, &path)
-        .map_err(|error| {
-            failed_hint(
-                error,
-                &format!("{manager_label} reported a problem; its output is above"),
-            )
-        })?;
+    run_operation_with_detection(
+        &resolved.root,
+        &detection,
+        operation,
+        operands,
+        allow_scripts,
+        &path,
+    )
+    .map_err(|error| {
+        failed_hint(
+            error,
+            &format!("{manager_label} reported a problem; its output is above"),
+        )
+    })?;
     Ok(())
 }
 
@@ -218,6 +432,7 @@ pub(crate) fn patch(cwd: &Utf8Path, ui: &mut Ui, target: &str, commit: bool) -> 
                 operands: &operands,
                 retry: format!("uf patch --commit {target}"),
                 announced: false,
+                scope: &Scope::Project,
             },
         );
     }
@@ -299,6 +514,8 @@ pub(super) struct Request<'a> {
     /// rewrites it, and only then delegates the install. Drawing a second
     /// banner in the middle of that would read as a second command.
     pub(super) announced: bool,
+    /// Which of the workspace's projects the manager runs in.
+    pub(super) scope: &'a Scope,
 }
 
 /// Detect, refuse scripts, run the manager, and report both files.
@@ -309,38 +526,58 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     uf_pm::check_operands(request.operands)?;
     let resolved = load_config(cwd)?;
     crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
+    // Which projects, before which manager: a selector that picks nothing is
+    // refused before anything else is looked at.
+    let targets = targets(&resolved, request.scope)?;
+    // The workspace root's own config decides the manager, the release of it
+    // uf's store holds, and the script policy. A member with no `uf.config.js`
+    // says nothing about any of them, and `-w` run from one must not mean "the
+    // defaults, and whatever manager is on PATH".
+    let resolved = if targets.base == resolved.root {
+        resolved
+    } else {
+        load_config(&targets.base)?
+    };
     let plan = PackageManagerPlan::infer_from_config(&resolved.config);
+    let base = targets.base.as_path();
 
-    let detection = detect_package_manager_with(
-        &resolved.root,
-        &DetectionOptions::from_config(&resolved.config),
-    );
+    let detection =
+        detect_package_manager_with(base, &DetectionOptions::from_config(&resolved.config));
     let tracks_uf_lock = tracks_uf_lock(&detection);
+    let (manager, _) = installable(&detection);
+    // A manager without the command, or without a per-member form of it, is
+    // refused here too, before the workspace guard below rewrites `uf.lock`.
+    uf_pm::invocation_for(base, manager, request.operation, request.operands, true)?;
+    if matches!(request.scope, Scope::Members(_)) {
+        uf_pm::check_member_operation(manager, request.operation)?;
+    }
 
     // The same refusal `uf install` makes, for the same reason and a stronger
     // one: adding a dependency is when a lifecycle script most often arrives,
     // and this is the guard that runs before anything is fetched. Delegated
     // projects get the guard without being forced to grow `uf.lock`.
     if tracks_uf_lock {
-        install_workspace(&resolved.root, &resolved.config)?;
+        install_workspace(base, &resolved.config)?;
     } else {
-        check_workspace_manifests(&resolved.root, &resolved.config)?;
+        check_workspace_manifests(base, &resolved.config)?;
     }
 
     // Both "before" states have to be read before the manager runs. A manifest
     // read afterwards is the manifest the manager wrote, and a lockfile read
     // afterwards is the lockfile it wrote: either one would report that nothing
     // changed, every time.
-    let manifest_path = resolved.root.join("package.json");
-    let manifest_before = dependency_entries(&manifest_path);
-    let (manager, _) = installable(&detection);
+    let manifests_before = targets
+        .each
+        .iter()
+        .map(|target| dependency_entries(&target.dir.join("package.json")))
+        .collect::<Vec<_>>();
     let path =
         crate::commands::runtimes::manager_path(&resolved, manager, false, &mut |message| {
             ui.render_err(|renderer, out| renderer.status(out, uf_term::Status::Info, message));
         })?;
-    let tree_before = uf_pm::delta::snapshot(&resolved.root, manager);
+    let tree_before = uf_pm::delta::snapshot(base, manager);
 
-    let project = project_label(&resolved.root).to_string();
+    let project = project_label(base).to_string();
     let announced = request.announced;
     ui.render(|renderer, out| {
         if !announced {
@@ -349,36 +586,52 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         renderer.blank(out);
     });
 
-    let outcome = run_operation_with_detection(
-        &resolved.root,
-        &detection,
-        request.operation,
-        request.operands,
-        scripts_allowed(&resolved.root, manager, &plan)?,
-        &path,
-    )
-    .map_err(|error| {
-        failed_hint(
-            error,
-            &format!(
-                "the manager printed why above; fix that and run `{}` again",
-                request.retry
-            ),
+    let allow_scripts = scripts_allowed(base, manager, &plan)?;
+    let mut commands = Vec::with_capacity(targets.each.len());
+    let mut outcome = None;
+    for target in &targets.each {
+        let run = run_operation_with_detection(
+            &target.dir,
+            &detection,
+            request.operation,
+            request.operands,
+            allow_scripts,
+            &path,
         )
-    })?;
+        .map_err(|error| {
+            let place = target
+                .label
+                .as_ref()
+                .map(|label| format!(" in {label}"))
+                .unwrap_or_default();
+            failed_hint(
+                error,
+                &format!(
+                    "the manager printed why above{place}; fix that and run `{}` again",
+                    request.retry
+                ),
+            )
+        })?;
+        commands.push(match &target.label {
+            Some(label) => format!("{}  ({label})", run.invocation),
+            None => run.invocation.to_string(),
+        });
+        outcome = Some(run);
+    }
+    let outcome = outcome.ok_or_else(|| anyhow!("no project was chosen to run the manager in"))?;
 
     // The manifests the manager just rewrote are checked again. A native uf
     // project also rewrites the lock and store it owns; a delegated project
     // leaves that to npm, pnpm, Yarn or Bun.
     if tracks_uf_lock {
-        install_workspace(&resolved.root, &resolved.config).with_context(|| {
+        install_workspace(base, &resolved.config).with_context(|| {
             format!(
                 "`{}` succeeded, but uf could not rewrite {} from the manifests it changed",
                 outcome.invocation, resolved.config.pm.lockfile
             )
         })?;
     } else {
-        check_workspace_manifests(&resolved.root, &resolved.config).with_context(|| {
+        check_workspace_manifests(base, &resolved.config).with_context(|| {
             format!(
                 "`{}` succeeded, but uf could not re-check the manifests it changed",
                 outcome.invocation
@@ -386,8 +639,17 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         })?;
     }
 
-    let manifest = manifest_changes(&manifest_before, &dependency_entries(&manifest_path));
-    let tree_after = uf_pm::delta::snapshot(&resolved.root, manager);
+    let mut manifest = Vec::new();
+    for (target, before) in targets.each.iter().zip(&manifests_before) {
+        let after = dependency_entries(&target.dir.join("package.json"));
+        manifest.extend(manifest_changes(before, &after).into_iter().map(|change| {
+            ManifestChange {
+                member: target.label.clone(),
+                ..change
+            }
+        }));
+    }
+    let tree_after = uf_pm::delta::snapshot(base, manager);
     let tree = uf_pm::delta::diff(&tree_before, &tree_after);
 
     let report = DepsReport {
@@ -395,8 +657,8 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         continued: request.announced,
         manager: outcome.manager.to_string(),
         chosen_by: chosen_by(&outcome.source, outcome.substituted),
-        command: outcome.invocation.to_string(),
-        lockfile: lockfile_label(&resolved.root, &tree_after),
+        commands,
+        lockfile: lockfile_label(base, &tree_after),
         manifest,
         tree,
         elapsed: started.elapsed(),
@@ -416,7 +678,8 @@ struct DepsReport {
     continued: bool,
     manager: String,
     chosen_by: String,
-    command: String,
+    /// One command line per project the manager ran in, in that order.
+    commands: Vec<String>,
     lockfile: String,
     manifest: Vec<ManifestChange>,
     tree: LockfileDelta,
@@ -429,16 +692,18 @@ struct DepsReport {
 /// it with [`uf_term::Capabilities::plain`] and read the layout rather than
 /// asserting on whatever npm happened to resolve today.
 fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
-    renderer.key_values(
-        out,
-        2,
-        &[
-            KeyValue::new("manager", &report.manager),
-            KeyValue::toned("chosen by", &report.chosen_by, Tone::Muted),
-            KeyValue::toned("command", &report.command, Tone::Path),
-            KeyValue::toned("lockfile", &report.lockfile, Tone::Path),
-        ],
+    let mut rows = vec![
+        KeyValue::new("manager", &report.manager),
+        KeyValue::toned("chosen by", &report.chosen_by, Tone::Muted),
+    ];
+    rows.extend(
+        report
+            .commands
+            .iter()
+            .map(|command| KeyValue::toned("command", command.as_str(), Tone::Path)),
     );
+    rows.push(KeyValue::toned("lockfile", &report.lockfile, Tone::Path));
+    renderer.key_values(out, 2, &rows);
 
     let elapsed = format_duration(report.elapsed);
     if report.manifest.is_empty() && report.tree.is_unchanged() {
@@ -476,18 +741,24 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
 
 /// What happened, in one clause, from the files rather than from the request.
 ///
-/// The manifest is what these commands are *for*, so it speaks first. A run
-/// that changed no manifest entry but did move the tree says that instead of
-/// claiming a package was added: `uf add react` in a project that already
-/// depended on `react` at that range really did change the tree and really did
-/// not change the manifest, and both halves are worth saying.
+/// The manifest is what `uf add`, `uf remove` and `uf update` are *for*, so for
+/// them it speaks first. A run that changed no manifest entry but did move the
+/// tree says that instead of claiming a package was added: `uf add react` in a
+/// project that already depended on `react` at that range really did change
+/// the tree and really did not change the manifest, and both halves are worth
+/// saying. `uf dedupe` never meant to change a manifest, so for it the tree is
+/// the whole sentence.
 fn headline(report: &DepsReport) -> String {
     if report.manifest.is_empty() {
+        let manifest_was_the_point = matches!(
+            report.heading,
+            "uf add" | "uf remove" | "uf update" | "uf patch --commit"
+        );
         // `uf update --latest` rewrote the manifests itself and said so a few
         // lines above; from the manager's side there was then nothing left to
         // change. Saying "the manifest already said so" there would read as a
         // denial of the line the reader just saw.
-        if report.continued {
+        if report.continued || !manifest_was_the_point {
             return format!(
                 "{} in the tree",
                 plural(report.tree.changes.len(), "change")
@@ -518,22 +789,32 @@ fn headline(report: &DepsReport) -> String {
     )
 }
 
-/// The manifest entries that moved, capped, with the field they moved in.
+/// The manifest entries that moved, capped, with the field they moved in —
+/// and the workspace member, when the command chose members.
 fn render_manifest_changes(renderer: &Renderer, out: &mut String, changes: &[ManifestChange]) {
     renderer.blank(out);
-    let mut table = Table::new(vec![
-        Column::left(""),
+    let members = changes.iter().any(|change| change.member.is_some());
+    let mut columns = vec![Column::left("")];
+    if members {
+        columns.push(Column::left("workspace"));
+    }
+    columns.extend([
         Column::left("field"),
         Column::left("package"),
         Column::left("range"),
     ]);
+    let mut table = Table::new(columns);
     for change in changes.iter().take(MANIFEST_CHANGES_SHOWN) {
-        table.push(vec![
-            Cell::toned(change.mark(), change.tone()),
+        let mut row = vec![Cell::toned(change.mark(), change.tone())];
+        if members {
+            row.push(Cell::new(change.member.as_deref().unwrap_or_default()));
+        }
+        row.extend([
             Cell::new(change.field),
             Cell::new(&change.name),
             Cell::toned(&change.range, Tone::Number),
         ]);
+        table.push(row);
     }
     renderer.table(out, 4, &table);
 
@@ -547,6 +828,9 @@ fn render_manifest_changes(renderer: &Renderer, out: &mut String, changes: &[Man
 /// One dependency map entry that is different from how it was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ManifestChange {
+    /// The workspace member whose manifest it is, when the command chose
+    /// members rather than the project.
+    member: Option<String>,
     /// The `package.json` field it is in, or was in.
     field: &'static str,
     /// The package name.
@@ -631,6 +915,7 @@ fn manifest_changes(
             Some(_) => ManifestChangeKind::Reranged,
         };
         changes.push(ManifestChange {
+            member: None,
             field,
             name: name.clone(),
             range: range.clone(),
@@ -642,6 +927,7 @@ fn manifest_changes(
             continue;
         }
         changes.push(ManifestChange {
+            member: None,
             field,
             name: name.clone(),
             range: range.clone(),

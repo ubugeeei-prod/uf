@@ -167,7 +167,12 @@ are how a freshly cloned repository runs code nobody read —
 [What uf does not do](/guide/scope) has the argument.
 
 A dependency's install scripts are off too: every command that installs hands the
-manager `--ignore-scripts`. Some dependencies genuinely need to build, and
+manager `--ignore-scripts`. Yarn 2+ rejects that flag on every command as an
+unsupported option, so it is given the setting Yarn reads instead,
+`YARN_ENABLE_SCRIPTS=false`, and `pnpm remove`, `pnpm link` and
+`pnpm patch-commit`, which do not accept the flag either, are given
+`--config.ignore-scripts=true`. Some dependencies genuinely need
+to build, and
 `uf pm approve-builds` lists the ones in your tree that would run code at install
 time:
 
@@ -240,6 +245,43 @@ it as a flag. `uf remove` — or `uf uninstall` — takes a name out of every fi
 that lists it, the lockfile and `node_modules`, and a name the manifest never
 listed is not an error.
 
+In a workspace, `--filter` chooses the members `uf add`, `uf remove` and
+`uf update` change, with the selectors `uf run --filter` takes, and `-w` chooses
+the workspace root from anywhere inside it:
+
+<figure className="terminal">
+
+```
+$ uf add zod --filter api --filter web
+
+  manager    pnpm
+  chosen by  pnpm-lock.yaml
+  command    pnpm add --ignore-scripts zod  (api)
+  command    pnpm add --ignore-scripts zod  (web)
+  lockfile   pnpm-lock.yaml · 212 packages · 96.10 kB
+
+  manifest
+
+       workspace  field         package  range
+    +  api        dependencies  zod      ^4.1.8
+    +  web        dependencies  zod      ^4.1.8
+
+✓ 2 packages recorded in dependencies in 2.41s
+```
+
+</figure>
+
+uf runs the manager in each member's directory, which npm, pnpm, both Yarns and
+Bun all read as "this member", and the lockfile they write is the workspace
+root's. A selector that picks nothing is refused with the list of members.
+Yarn 2+ cannot update one member — `yarn up` moves a package everywhere — so
+`uf update --filter` is refused there.
+
+`uf link ../ui` links a package you are developing into the project, and `uf link`
+inside it makes it linkable by name from other projects. Yarn 1 and Bun link by
+name only, Yarn 2+ by path only, and uf refuses the other form with the one to
+use. `uf dedupe` collapses the versions your ranges allow to be one.
+
 ## Asking about the tree
 
 `uf why`, `uf ls` and `uf audit` hand the question to the manager that resolved
@@ -293,14 +335,22 @@ error: bun has no `search`: npm and pnpm can search the registry; `uf exec --yes
 | Command | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
 | --- | --- | --- | --- | --- | --- |
 | `uf install` | `npm install` | `pnpm install` | `yarn install` | `yarn install` | `bun install` |
+| `uf install --prod` | `npm install --omit=dev` | `pnpm install --prod` | `yarn install --production` | `yarn workspaces focus --all --production` | `bun install --production` |
 | `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
 | `uf remove` | `npm uninstall` | `pnpm remove` | `yarn remove` | `yarn remove` | `bun remove` |
 | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
+| `uf dedupe` | `npm dedupe` | `pnpm dedupe` | refused | `yarn dedupe` | refused |
+| `uf link DIR` | `npm link` | `pnpm link` | refused | `yarn link` | refused |
+| `uf link NAME` | `npm link` | `pnpm link` | `yarn link` | refused | `bun link` |
 | `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
 | `uf ls` | `npm ls` | `pnpm list` | `yarn list` | `yarn info --all` | `bun pm ls` |
 | `uf audit` | `npm audit` | `pnpm audit` | `yarn audit` | `yarn npm audit` | `bun audit` |
+| `uf info` | `npm view` | `pnpm view` | `yarn info` | `yarn npm info` | `bun info` |
 | `uf search` | `npm search` | `pnpm search` | refused | refused | refused |
 | `uf patch` | refused | `pnpm patch` | refused | `yarn patch` | refused |
+
+`uf info react` prints the registry's metadata for a package, and
+`uf info react version` one field of it.
 
 ## Updating
 
@@ -337,7 +387,10 @@ uf reads the registry for that report itself, over HTTPS, from `pm.registry` in
 ## Workspaces, catalogues and patches
 
 `uf add#web react` runs the command in the workspace member named `web`, by its
-package name or its path. `uf catalog` lists the packages more than one manifest
+package name or its path, and `uf add react --filter web --filter 'api...'` in
+every member the selectors pick — see [Adding and removing](#adding-and-removing).
+A workspace's members are what `package.json#workspaces`, `pnpm-workspace.yaml`
+and the members' own `uf.config.js` say they are. `uf catalog` lists the packages more than one manifest
 declares and the ones whose manifests disagree about the range, and
 `uf catalog set NAME RANGE` makes every manifest that declares the package agree.
 `uf patch PACKAGE` opens a copy of a dependency to edit and `uf patch --commit DIR`

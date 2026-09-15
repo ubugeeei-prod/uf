@@ -73,6 +73,8 @@ pub(crate) const KNOWN: &[&str] = &[
     "remove",
     "uninstall",
     "update",
+    "dedupe",
+    "link",
     "patch",
     "pm",
     "catalog",
@@ -256,6 +258,20 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
             resolved,
             Operation::Update,
             "moves the lockfile to the newest versions the manifest ranges already allow",
+        ),
+        "dedupe" => dependency_stages(
+            resolved,
+            Operation::Dedupe,
+            "collapses the versions the declared ranges allow to be one, in the lockfile and \
+             node_modules",
+        ),
+        "link" => dependency_stages(
+            resolved,
+            Operation::Link {
+                target: uf_pm::LinkTarget::Directory,
+            },
+            "links a directory into node_modules; with nothing named, makes this package \
+             linkable from other projects on this machine",
         ),
         // The listing is uf's own — it reads the workspace's manifests and
         // nothing else — and `uf catalog set` rewrites them and then delegates

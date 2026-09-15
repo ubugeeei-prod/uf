@@ -66,6 +66,9 @@ source and the compiled build, named by export conditions; see
 Prints the version, the resolved JavaScript host, and the project uf found.
 The first thing to run when something is behaving unexpectedly.
 
+Given a package, it prints what the registry says about that instead —
+[`uf info PACKAGE [FIELD]`](#uf-info-package-field).
+
 ### uf inspect
 
 Prints what uf resolved from your config — the effective options, the route
@@ -1276,6 +1279,9 @@ forbids.
 Installs dependencies with the host's package manager, and refuses lifecycle
 scripts while doing it — the manager is passed `--ignore-scripts`, and a
 manifest that declares scripts of its own fails before anything is fetched.
+Yarn 2+ answers `--ignore-scripts` with "Unsupported option name" on every
+command, so it is given `YARN_ENABLE_SCRIPTS=false` instead — the setting it
+reads — and the `command` row shows it in front of the program.
 
 On a terminal, the phases are drawn as they happen and redrawn where they
 stand: resolving, fetching, linking, auditing, each with what it is working on,
@@ -1311,6 +1317,26 @@ failing step can still print a diff of the real one. The manager's own lockfile
 is then checked by the manager, which is the case where `package.json` has not
 moved but `package-lock.json` no longer pins what it asks for.
 
+### uf install --prod
+
+Leaves `devDependencies` out of `node_modules` — what a server or a production
+image installs — while the lockfile still describes all of them. `--production`
+is the same flag.
+
+| Manager | `uf install --prod` | `uf install --frozen-lockfile --prod` |
+| --- | --- | --- |
+| npm | `npm install --omit=dev` | `npm ci --omit=dev` |
+| pnpm | `pnpm install --prod` | `pnpm install --frozen-lockfile --prod` |
+| Yarn 1 | `yarn install --production` | `yarn install --frozen-lockfile --production` |
+| Yarn 2+ | `yarn workspaces focus --all --production` | refused |
+| Bun | `bun install --production` | `bun install --frozen-lockfile --production` |
+
+Yarn 2+ has one production install, `yarn workspaces focus`, and it never
+writes the lockfile, so it has nothing to refuse. uf refuses the frozen form by
+name rather than run an install that cannot fail for the reason
+`--frozen-lockfile` exists: check the lockfile with `uf install
+--frozen-lockfile`, then install with `uf install --prod`.
+
 ### uf add [--dev|--optional|--peer] SPEC...
 
 Adds dependencies: resolves them, installs them, and writes both the manifest
@@ -1338,10 +1364,43 @@ command now works there.
 
 It is passed only where the project root *is* the workspace root. Run inside a
 member package, `uf add` resolves to that member and the flag is not passed, so
-the dependency still lands where you are. npm, Yarn and Bun add to a workspace
-root without being asked twice, and none of them is given the flag.
+the dependency still lands where you are. Yarn 1 has the same refusal, on
+`yarn remove` as well as `yarn add`, and is given its own spelling of the flag,
+`--ignore-workspace-root-check`, in the same place and nowhere else. npm, Yarn
+2+ and Bun add to a workspace root without being asked twice, and none of them
+is given a flag.
 
 Running it twice changes nothing the second time, and says so in a line.
+
+#### --filter and -w
+
+`--filter SELECTOR` runs `uf add`, `uf remove` or `uf update` for the workspace
+members the selector picks instead of this project, and `-w`
+(`--workspace-root`) for the workspace root, from anywhere inside the workspace:
+
+```
+uf add zod --filter @acme/api --filter @acme/web
+uf remove lodash --filter './packages/*'
+uf add --dev vitest -w
+```
+
+The selector is [`uf run --filter`](#uf-run-script-args)'s — a name, a glob, a
+path, `name...` for a member and what it depends on, `...name` for what depends
+on it — and a selector that picks nothing is an error listing the members,
+before anything is installed. The members are what `package.json#workspaces`,
+`pnpm-workspace.yaml` and the members' own `uf.config.js` say they are.
+
+uf runs the manager once in each chosen member's directory, and every manager
+reads that the same way: the member's `package.json` changes, and the workspace
+root's lockfile is the one written. The flags the managers have for it — npm's
+`--workspace`, pnpm's `--filter`, `yarn workspace NAME` — take different
+selectors, and bun's `add` has none, so uf does not use them. It also means a
+path specifier is read from the member: `file:../../vendor/ui`, not
+`./vendor/ui`. The summary prints a `command` row per member and a `workspace`
+column in the manifest table.
+
+Yarn 2+'s `yarn up` moves a package in every workspace that declares it,
+wherever it runs, so `uf update --filter` is refused there by name.
 
 ### uf remove NAME...
 
@@ -1564,6 +1623,54 @@ its own surface — reached with `uf exec` — because uf cannot know which of t
 only read: `pnpm audit --fix` rewrites a lockfile.
 
 `uf uninstall` is `uf remove`, which npm and pnpm both spell that way.
+
+### uf info PACKAGE [FIELD]
+
+Prints what the registry says about a package, through the project's own
+manager — `npm view`, `pnpm view`, `yarn info`, `yarn npm info` on Yarn 2+,
+`bun info` — so the answer comes from the registry that manager installs from. A
+second word narrows it to one field, `uf info react version`, which Yarn 2+ is
+handed as `--fields version`. With no package, `uf info` prints uf's own
+version, host and paths, as it always has.
+
+### uf dedupe
+
+Collapses the versions the declared ranges allow to be one, and reports the tree
+it leaves: `npm dedupe`, `pnpm dedupe`, `yarn dedupe` on Yarn 2+, each with
+lifecycle scripts refused like every command that installs.
+
+Yarn 1's `yarn dedupe` exists only to say it is unnecessary — `yarn install`
+already dedupes — and bun has none. On those two uf refuses by name and says what
+to run instead: `uf install` on Yarn 1, and `uf update` on bun, which resolves
+every range to its newest match again.
+
+### uf link [NAME|DIR]
+
+Links a package you are developing into this project, or makes this one
+linkable:
+
+```
+uf link ../ui        # link that directory into this project
+uf link              # inside ../ui: make it linkable from other projects
+uf link @acme/ui     # in one of them: link the package registered above
+```
+
+A target is a path when it is written as one — `.`, `..`, or starting with
+`./`, `../` or `/` — and a package name otherwise, so a name that happens to
+match a directory beside the project still means the package.
+
+| | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
+| --- | --- | --- | --- | --- | --- |
+| `uf link` | `npm link` | `pnpm link` | `yarn link` | refused | `bun link` |
+| `uf link NAME` | `npm link NAME` | `pnpm link NAME` | `yarn link NAME` | refused | `bun link NAME` |
+| `uf link DIR` | `npm link DIR` | `pnpm link DIR` | refused | `yarn link DIR` | refused |
+
+Yarn 1 and bun link by name only and Yarn 2+ by path only, and each refusal names
+the form that manager has. Linking installs, so dependency scripts stay refused:
+`--ignore-scripts`, or `--config.ignore-scripts=true` for `pnpm link`, which
+rejects the flag. Linking a directory or a name is reported like `uf add`, with
+the manifest and the tree; registering changes nothing in the project, so it
+prints the three rows and the manager's own answer.
 
 ### uf clean [--deps] [--dry-run]
 
