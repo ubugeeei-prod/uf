@@ -7,7 +7,7 @@
 
 import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
-import { act, cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
+import { cleanup, fireEvent, render, screen, userEvent } from "@uniflowed/react-testing";
 
 import { Example } from "./date-picker.example.js";
 
@@ -46,10 +46,13 @@ describe("DatePicker", () => {
   it("says when the field does not hold a date", async () => {
     render(<Example />);
     const field = html(screen.getByRole("textbox", { name: "Start date" }));
-    await userEvent.type(field, "x");
-    act(() => {
-      field.blur();
-    });
+    await userEvent.clear(field);
+    await userEvent.type(field, "someday");
+    // Leaving the field is what commits it. Dispatched on the field itself
+    // rather than through `field.blur()`, which does nothing unless the field
+    // still has focus, and whether it does after typing depends on what else
+    // the worker ran first.
+    fireEvent.blur(field);
     expect(field).toHaveAttribute("aria-invalid", "true");
   });
 
