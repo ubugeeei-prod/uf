@@ -16,7 +16,7 @@
 //! | --------- | -- | --- | ---- | ------------ | ---------- | --- |
 //! | `Install` | `uf install` | `npm install` | `pnpm install` | `yarn install` | `yarn install` | `bun install` |
 //! | `InstallFrozen` | `uf install --frozen-lockfile` | `npm ci` | `pnpm install --frozen-lockfile` | `yarn install --frozen-lockfile` | `yarn install --immutable` | `bun install --frozen-lockfile` |
-//! | `InstallProd` | `uf install --prod` | `npm install --omit=dev` | `pnpm install --prod` | `yarn install --production` | `yarn workspaces focus --all --production` | `bun install --production` |
+//! | `InstallProd` | `uf install --prod` | `npm install --omit=dev` | `pnpm install --prod` | `yarn install --production` | `yarn workspaces focus --all --production` | `bun install --omit=dev` |
 //! | `InstallFrozenProd` | `uf install --frozen-lockfile --prod` | `npm ci --omit=dev` | `pnpm install --frozen-lockfile --prod` | `yarn install --frozen-lockfile --production` | — | `bun install --frozen-lockfile --production` |
 //! | `Add { kind: Prod }` | `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
 //! | `Add { kind: Dev }` | `uf add --dev` | `npm install --save-dev` | `pnpm add --save-dev` | `yarn add --dev` | `yarn add --dev` | `bun add --dev` |
@@ -146,6 +146,15 @@ impl LinkTarget {
 }
 
 fn is_written_as_a_path(operand: &str) -> bool {
+    // A backslash is in no npm package name, so `.\ui` and `..\ui` are paths on
+    // every platform; an absolute path is whatever this platform calls one —
+    // `C:\work\ui` and `\\server\share\ui` on Windows.
+    if operand.starts_with(".\\")
+        || operand.starts_with("..\\")
+        || std::path::Path::new(operand).is_absolute()
+    {
+        return true;
+    }
     operand == "."
         || operand == ".."
         || ["./", "../", "/"]
@@ -644,7 +653,10 @@ const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
     match operation {
         Operation::Install => spec("bun", &["install"]),
         Operation::InstallFrozen => spec("bun", &["install", "--frozen-lockfile"]),
-        Operation::InstallProd => spec("bun", &["install", "--production"]),
+        // Not `--production`, which freezes the lockfile as well — "lockfile
+        // had changes, but lockfile is frozen" is the frozen form's failure, and
+        // this one may still bring a stale lockfile up to date.
+        Operation::InstallProd => spec("bun", &["install", "--omit=dev"]),
         Operation::InstallFrozenProd => {
             spec("bun", &["install", "--frozen-lockfile", "--production"])
         }

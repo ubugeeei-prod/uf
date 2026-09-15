@@ -335,7 +335,7 @@ error: bun has no `search`: npm and pnpm can search the registry; `uf exec --yes
 | Command | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
 | --- | --- | --- | --- | --- | --- |
 | `uf install` | `npm install` | `pnpm install` | `yarn install` | `yarn install` | `bun install` |
-| `uf install --prod` | `npm install --omit=dev` | `pnpm install --prod` | `yarn install --production` | `yarn workspaces focus --all --production` | `bun install --production` |
+| `uf install --prod` | `npm install --omit=dev` | `pnpm install --prod` | `yarn install --production` | `yarn workspaces focus --all --production` | `bun install --omit=dev` |
 | `uf add` | `npm install` | `pnpm add` | `yarn add` | `yarn add` | `bun add` |
 | `uf remove` | `npm uninstall` | `pnpm remove` | `yarn remove` | `yarn remove` | `bun remove` |
 | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |

@@ -155,6 +155,17 @@ fn package_workspaces(root: &Utf8Path, config: &UniflowedConfig) -> Vec<Workspac
 }
 
 fn package_workspace_patterns(root: &Utf8Path) -> Option<Vec<String>> {
+    // pnpm reads its members from `pnpm-workspace.yaml` and ignores
+    // `package.json#workspaces` entirely, and nothing but pnpm reads the YAML
+    // file. So where it lists members it is the list: a stale `workspaces`
+    // field beside it names directories pnpm never installs into, and a
+    // `--filter` that picked one would run pnpm somewhere pnpm does not look.
+    if let Ok(source) = fs::read_to_string(root.join("pnpm-workspace.yaml")) {
+        let listed = pnpm_workspace_packages(&source);
+        if !listed.is_empty() {
+            return Some(listed);
+        }
+    }
     let mut patterns = Vec::new();
     if let Some(workspaces) = fs::read_to_string(root.join("package.json"))
         .ok()
@@ -172,12 +183,6 @@ fn package_workspace_patterns(root: &Utf8Path) -> Option<Vec<String>> {
             }
             _ => {}
         }
-    }
-    // pnpm ignores `package.json#workspaces` and reads its members from here
-    // instead, so a pnpm monorepo with no uf config in its members had none as
-    // far as `--filter` could tell.
-    if let Ok(source) = fs::read_to_string(root.join("pnpm-workspace.yaml")) {
-        patterns.extend(pnpm_workspace_packages(&source));
     }
 
     (!patterns.is_empty()).then_some(patterns)

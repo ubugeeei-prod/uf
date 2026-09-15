@@ -724,3 +724,25 @@ fn only_yarn_2s_update_cannot_be_scoped_to_members() {
         }
     }
 }
+
+/// A Yarn 2 or 3 production install that fails is told about the plugin
+/// `yarn workspaces focus` lives in, and nothing else gets a guess.
+#[test]
+fn a_failed_yarn_2_production_install_names_the_plugin_it_needs() {
+    for manager in PackageManager::ALL {
+        for operation in Operation::ALL {
+            let hint = failure_hint(manager, operation);
+            if manager == PackageManager::Yarn(YarnEdition::Berry)
+                && operation == Operation::InstallProd
+            {
+                let hint = hint.expect("the production install names the plugin");
+                assert!(
+                    hint.contains("yarn plugin import workspace-tools"),
+                    "{hint}"
+                );
+            } else {
+                assert_eq!(hint, None, "{manager} {operation:?}");
+            }
+        }
+    }
+}

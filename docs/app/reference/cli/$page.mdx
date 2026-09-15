@@ -1329,13 +1329,19 @@ is the same flag.
 | pnpm | `pnpm install --prod` | `pnpm install --frozen-lockfile --prod` |
 | Yarn 1 | `yarn install --production` | `yarn install --frozen-lockfile --production` |
 | Yarn 2+ | `yarn workspaces focus --all --production` | refused |
-| Bun | `bun install --production` | `bun install --frozen-lockfile --production` |
+| Bun | `bun install --omit=dev` | `bun install --frozen-lockfile --production` |
+
+Bun's own `--production` freezes the lockfile too, so the form that may still
+bring a stale lockfile up to date is `--omit=dev`.
 
 Yarn 2+ has one production install, `yarn workspaces focus`, and it never
 writes the lockfile, so it has nothing to refuse. uf refuses the frozen form by
 name rather than run an install that cannot fail for the reason
 `--frozen-lockfile` exists: check the lockfile with `uf install
---frozen-lockfile`, then install with `uf install --prod`.
+--frozen-lockfile`, then install with `uf install --prod`. On Yarn 2 and 3 that
+command comes from the workspace-tools plugin, which Yarn 4 includes, and a
+failed `uf install --prod` there says to run `yarn plugin import
+workspace-tools`.
 
 ### uf add [--dev|--optional|--peer] SPEC...
 

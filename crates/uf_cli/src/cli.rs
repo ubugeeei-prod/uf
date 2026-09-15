@@ -452,7 +452,7 @@ pub(crate) enum Commands {
         ///
         /// `npm install --omit=dev`, `pnpm install --prod`, `yarn install
         /// --production`, `yarn workspaces focus --all --production`, `bun
-        /// install --production`. With `--frozen-lockfile` it is the CI form of
+        /// install --omit=dev`. With `--frozen-lockfile` it is the CI form of
         /// the same, which Yarn 2+ has no command for and uf says so.
         #[arg(long, alias = "production")]
         prod: bool,

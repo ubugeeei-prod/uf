@@ -276,7 +276,12 @@ pub(crate) fn install(cwd: &Utf8Path, ui: &mut Ui, frozen: bool, prod: bool) -> 
         screen.close();
         (run, screen.echoed)
     };
-    let outcome = outcome.map_err(|error| frozen_hint(error, frozen))?;
+    let outcome = outcome.map_err(|error| match uf_pm::run::failure_hint(manager, operation) {
+        Some(hint) if matches!(error, uf_pm::ManagerRunError::Failed { .. }) => {
+            anyhow::anyhow!("{error}\n\n  {hint}")
+        }
+        _ => frozen_hint(error, frozen),
+    })?;
 
     let read_back = Instant::now();
     let after = uf_pm::delta::snapshot(&resolved.root, manager);

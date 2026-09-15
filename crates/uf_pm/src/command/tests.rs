@@ -581,7 +581,7 @@ fn every_manager_maps_the_everyday_verbs_or_has_none() {
         (
             PackageManager::Bun,
             [
-                Some("bun install --production"),
+                Some("bun install --omit=dev"),
                 Some("bun install --frozen-lockfile --production"),
                 None,
                 Some("bun link"),
@@ -663,7 +663,22 @@ fn the_everyday_verbs_that_install_are_the_ones_that_can_run_scripts() {
 #[test]
 fn a_link_target_is_a_path_only_when_it_is_written_as_one() {
     assert_eq!(LinkTarget::of(None), LinkTarget::Register);
-    for path in [".", "..", "./ui", "../ui", "/work/ui", "../../packages/ui"] {
+    // Windows spells a drive and a share differently, and only Windows reads
+    // them as absolute.
+    #[cfg(windows)]
+    for path in [r"C:\work\ui", r"\\server\share\ui"] {
+        assert_eq!(LinkTarget::of(Some(path)), LinkTarget::Directory, "{path}");
+    }
+    for path in [
+        ".",
+        "..",
+        "./ui",
+        "../ui",
+        "/work/ui",
+        "../../packages/ui",
+        r".\ui",
+        r"..\ui",
+    ] {
         assert_eq!(LinkTarget::of(Some(path)), LinkTarget::Directory, "{path}");
     }
     for name in ["ui", "@acme/ui", "left-pad", ".bin-tools", "..."] {

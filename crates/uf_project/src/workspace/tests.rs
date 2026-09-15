@@ -132,6 +132,31 @@ fn pnpm_workspace_packages_are_read_in_either_yaml_form() {
     assert!(pnpm_workspace_packages("catalog:\n  react: ^19\n").is_empty());
 }
 
+/// Beside a `pnpm-workspace.yaml` that lists members, a `workspaces` field is
+/// the list pnpm ignores, and a member only it names is no member at all.
+#[test]
+fn pnpm_workspace_yaml_replaces_the_workspaces_field_beside_it() {
+    let (_dir, root) = tree(&[]);
+    fs::write(
+        root.join("package.json"),
+        r#"{ "workspaces": ["packages/*", "legacy/*"] }"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("pnpm-workspace.yaml"),
+        "packages:\n  - packages/*\n",
+    )
+    .unwrap();
+    for package in ["packages/ui", "legacy/old"] {
+        fs::create_dir_all(root.join(package)).unwrap();
+        fs::write(root.join(package).join("package.json"), "{}").unwrap();
+    }
+
+    let found = discover_workspaces(&root, &UniflowedConfig::default());
+
+    assert_eq!(names(&found), vec!["ui"]);
+}
+
 #[test]
 fn a_package_workspace_and_config_member_are_one_member() {
     let (_dir, root) = tree(&["packages/app"]);

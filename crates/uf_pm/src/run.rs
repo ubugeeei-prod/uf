@@ -361,6 +361,25 @@ pub fn check_member_operation(
     Ok(())
 }
 
+/// The sentence a manager's own failure usually needs, where uf knows one.
+///
+/// Yarn 2 and 3 have `yarn workspaces focus` only once the workspace-tools
+/// plugin is imported; Yarn 4 includes it. A project's Yarn release and its
+/// plugins are not something the table can see, and refusing every Yarn 2+
+/// project would refuse the ones that have the plugin, so uf runs the command
+/// and, when it fails, says what is most likely missing.
+#[must_use]
+pub fn failure_hint(manager: PackageManager, operation: Operation<'_>) -> Option<&'static str> {
+    match (manager, operation) {
+        (PackageManager::Yarn(YarnEdition::Berry), Operation::InstallProd) => Some(
+            "on Yarn 2 and 3, `yarn workspaces focus` needs the workspace-tools plugin: run \
+             `yarn plugin import workspace-tools`, then `uf install --prod` again — Yarn 4 \
+             includes it",
+        ),
+        _ => None,
+    }
+}
+
 /// Tell `manager` not to run dependency scripts during `operation`.
 ///
 /// `--ignore-scripts` is the spelling almost everywhere, and the two places it
