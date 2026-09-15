@@ -580,3 +580,210 @@ fn records_are_written_under_the_projects_uf_directory() {
         .count();
     assert_eq!(entries, 1);
 }
+
+// --- across a workspace ------------------------------------------------------
+
+/// Three members, `utils` ← `ui` ← `app` by `package.json`, each with a
+/// cacheable `build` that appends its own name to `order.txt` at the root —
+/// which is the whole record of what ran, and in what order.
+fn workspace() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let write = |path: &str, contents: &str| {
+        let file = root.join(path);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, contents).unwrap();
+    };
+    write(
+        "package.json",
+        r#"{ "name": "root", "private": true, "workspaces": ["packages/*"] }"#,
+    );
+    write(
+        "uf.config.js",
+        "export default defineConfig({ tasks: {} });\n",
+    );
+    for (name, depends_on) in [
+        ("utils", ""),
+        ("ui", r#""utils": "workspace:*""#),
+        ("app", r#""ui": "workspace:*""#),
+    ] {
+        write(
+            &format!("packages/{name}/package.json"),
+            &format!(r#"{{ "name": "{name}", "dependencies": {{ {depends_on} }} }}"#),
+        );
+        write(
+            &format!("packages/{name}/src/index.js"),
+            &format!("export const name = {name:?};\n"),
+        );
+        write(
+            &format!("packages/{name}/uf.config.js"),
+            &format!(
+                "export default defineConfig({{ tasks: {{ build: {{ command: \"echo {name} >> ../../order.txt\", inputs: [\"src/**\"] }} }} }});\n"
+            ),
+        );
+    }
+    dir
+}
+
+/// `uf run build -r` runs every member's `build` after the members it depends
+/// on, keeps each member's results in that member, and — once one member has
+/// changed — runs that member and what depends on it again, and replays the
+/// rest.
+#[test]
+fn a_task_runs_across_a_workspace_in_dependency_order_with_a_cache_per_package() {
+    let dir = workspace();
+    let root = dir.path();
+
+    let first = run(root, &["build", "-r"]);
+    assert!(
+        first.ok,
+        "stdout:\n{}\nstderr:\n{}",
+        first.stdout, first.stderr
+    );
+    assert_eq!(lines(root, "order.txt"), vec!["utils", "ui", "app"]);
+    for member in ["utils", "ui", "app"] {
+        assert!(
+            root.join("packages")
+                .join(member)
+                .join(".uf/cache/task")
+                .is_dir(),
+            "{member} keeps no records of its own"
+        );
+    }
+    assert!(
+        !root.join(".uf/cache/task").exists(),
+        "the workspace root ran nothing, so it has nothing to record"
+    );
+
+    let second = run(root, &["build", "-r"]);
+    assert!(second.ok, "{}", second.stderr);
+    assert_eq!(
+        lines(root, "order.txt"),
+        vec!["utils", "ui", "app"],
+        "nothing changed, so nothing ran again"
+    );
+
+    fs::write(
+        root.join("packages/ui/src/index.js"),
+        "export const name = \"ui, changed\";\n",
+    )
+    .unwrap();
+    let third = run(root, &["build", "-r", "--why"]);
+    assert!(third.ok, "{}", third.stderr);
+    assert_eq!(
+        lines(root, "order.txt"),
+        vec!["utils", "ui", "app", "ui", "app"],
+        "ui changed: ui and app run again, and utils is replayed"
+    );
+    assert!(
+        third.stderr.lines().any(|line| {
+            line.trim_start().starts_with("app#build") && line.ends_with("after ui#build")
+        }),
+        "--why prints the graph the run spans:\n{}",
+        third.stderr
+    );
+    assert!(
+        third.stderr.contains("ui#build changed"),
+        "--why names the member whose change reran app:\n{}",
+        third.stderr
+    );
+}
+
+#[test]
+fn filter_selects_members_by_name_path_glob_and_what_they_depend_on() {
+    let dir = workspace();
+    let root = dir.path();
+    let ran = |selector: &str| -> Vec<String> {
+        let _ = fs::remove_file(root.join("order.txt"));
+        let run = run(root, &["build", "--force", "--filter", selector]);
+        assert!(
+            run.ok,
+            "--filter {selector}\nstdout:\n{}\nstderr:\n{}",
+            run.stdout, run.stderr
+        );
+        lines(root, "order.txt")
+    };
+
+    assert_eq!(ran("ui"), vec!["ui"]);
+    assert_eq!(ran("./packages/utils"), vec!["utils"]);
+    assert_eq!(ran("u*"), vec!["utils", "ui"]);
+    assert_eq!(ran("app..."), vec!["utils", "ui", "app"]);
+    assert_eq!(ran("app^..."), vec!["utils", "ui"]);
+    assert_eq!(ran("...ui"), vec!["ui", "app"]);
+    assert_eq!(ran("...^utils"), vec!["ui", "app"]);
+}
+
+/// A misspelt `--filter` that ran nothing and exited 0 would be a check that
+/// passed without running.
+#[test]
+fn a_filter_that_selects_nothing_is_refused() {
+    let dir = workspace();
+    let run = run(dir.path(), &["build", "--filter", "nope"]);
+    assert!(!run.ok);
+    assert!(
+        run.stderr.contains("selects no workspace member"),
+        "{}",
+        run.stderr
+    );
+    assert!(
+        run.stderr.contains("members: app, ui, utils"),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn depends_on_names_a_task_in_another_member() {
+    let dir = workspace();
+    let root = dir.path();
+    fs::write(
+        root.join("uf.config.js"),
+        "export default defineConfig({ tasks: { release: { command: \"echo root >> order.txt\", dependsOn: [\"app#build\"] } } });\n",
+    )
+    .unwrap();
+
+    let release = run(root, &["release"]);
+    assert!(
+        release.ok,
+        "stdout:\n{}\nstderr:\n{}",
+        release.stdout, release.stderr
+    );
+    assert_eq!(lines(root, "order.txt"), vec!["app", "root"]);
+
+    // From inside a member, where the sibling it names is only found through
+    // the workspace above it.
+    fs::write(
+        root.join("packages/app/uf.config.js"),
+        "export default defineConfig({ tasks: { build: { command: \"echo app >> ../../order.txt\", dependsOn: [\"ui#build\"] } } });\n",
+    )
+    .unwrap();
+    fs::remove_file(root.join("order.txt")).unwrap();
+    let inside = run(&root.join("packages/app"), &["build"]);
+    assert!(
+        inside.ok,
+        "stdout:\n{}\nstderr:\n{}",
+        inside.stdout, inside.stderr
+    );
+    assert_eq!(lines(root, "order.txt"), vec!["ui", "app"]);
+}
+
+#[test]
+fn a_member_the_workspace_does_not_have_is_named_before_anything_runs() {
+    let dir = workspace();
+    let root = dir.path();
+    fs::write(
+        root.join("uf.config.js"),
+        "export default defineConfig({ tasks: { release: { command: \"echo root >> order.txt\", dependsOn: [\"ap#build\"] } } });\n",
+    )
+    .unwrap();
+
+    let release = run(root, &["release"]);
+    assert!(!release.ok);
+    assert!(
+        release.stderr.contains("no workspace member named \"ap\""),
+        "{}",
+        release.stderr
+    );
+    assert!(release.stderr.contains("app"), "{}", release.stderr);
+    assert!(!root.join("order.txt").exists());
+}

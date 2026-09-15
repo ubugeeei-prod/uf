@@ -823,6 +823,20 @@ finds. `--why` prints, for every task, the reason it ran or was replayed —
 `packages/core/index.js changed`, `declares no inputs, so it always runs`,
 `dist/app.js is missing`.
 
+**Across a workspace.** `-r` / `--recursive` runs the task in every workspace
+member that defines it, each after the members its `package.json` depends on;
+the workspace root's own task is not one of them. `--filter SELECTOR` runs it
+only in the members the selector picks, implies `-r`, and may be repeated: a
+name, a glob over names and paths, a path (`./packages/ui`), `name...` for a
+member and everything it depends on, `name^...` for only those, `...name` for a
+member and everything that depends on it, and `...^name` for only those. A
+selector that picks no member is an error. `member#task` in `dependsOn` names a
+task in another member, by the member's name or path, from the workspace root or
+from inside a member. Each member's results are kept in its own
+`.uf/cache/task`, a task that depends on a task in another member is keyed on
+that task's result as well, and `--why` prints the graph first when a run spans
+more than one member.
+
 ### uf exec PACKAGE [ARGS...]
 
 Runs a package's binary, forwarding everything after the name to it and
