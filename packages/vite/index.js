@@ -56,6 +56,7 @@ import { assetPlugin } from "./internal/assets.js";
 import { emit, reportRenderError } from "./internal/events.js";
 import remarkFrontmatterExport from "./internal/frontmatter.js";
 import { highlightPlugin } from "./internal/highlight.js";
+import { moduleId } from "./internal/module-graph.js";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 
@@ -117,6 +118,7 @@ import {
   beginRequest,
   rewriteRouting,
 } from "./internal/serve.js";
+import { serverComponentsProblem } from "./internal/server-components.js";
 
 /** A resolved virtual id: Vite's convention is a leading NUL byte. */
 const resolved = (id) => `\0${id}`;
@@ -365,6 +367,16 @@ function flowPlugin({
 
     config(userConfig, env) {
       const projectRoot = path.resolve(userConfig.root ?? process.cwd());
+      // Before anything is resolved. Routes that render as React Server
+      // Components need `react-server-dom-parcel` and React 19.3, and the router
+      // installs without either (ubugeeei-prod/uf#992). Said here, once, rather
+      // than as an unresolved import deep in a build or a failure inside a render.
+      if (flightState != null) {
+        const problem = serverComponentsProblem(projectRoot);
+        if (problem != null) {
+          throw new Error(problem);
+        }
+      }
       isProduction = env.mode === "production" || env.command === "build";
       // A reference names the client manifest only in a build, where a client
       // build writes the chunks it names; a dev server names the URL it serves.
@@ -622,10 +634,17 @@ function flowPlugin({
       // business: Vite already injects a stylesheet in dev, extracts it in a
       // build, code-splits it per chunk, and replaces it over HMR. A module
       // whose styles are gone stops importing it, and Vite notices.
+      //
+      // The stylesheet is named by the module's path from the project root, the
+      // spelling `moduleId` gives the module graph report, and not by its
+      // absolute path. In a client chunk the stylesheet is one of the chunk's
+      // sources, so its name is written into the source map a site publishes,
+      // and an absolute name would publish where the machine that built it
+      // keeps its files. A module outside the root climbs out with `../`.
       const styled = out.css != null && out.css !== "";
       let output = out.code;
       if (styled) {
-        const styleId = `${STYLE_PREFIX}${cleanId(id)}.css`;
+        const styleId = `${STYLE_PREFIX}${moduleId(root, cleanId(id))}.css`;
         styles.set(styleId, out.css);
         output = `import ${JSON.stringify(styleId)};\n${output}`;
       }

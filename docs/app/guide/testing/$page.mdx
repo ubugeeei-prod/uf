@@ -762,6 +762,76 @@ Threshold misses fail with the same non-zero exit as a failing test. LCOV and
 Cobertura are files for other services; the JSON report grows a `coverage`
 object only when coverage was actually collected.
 
+### Splitting a suite across machines
+
+`--shard INDEX/COUNT` runs one part of a suite, and `--merge-shards` reports the
+parts as one run:
+
+```yaml
+# .github/workflows/test.yml, abridged
+jobs:
+  test:
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      # check out, install, and restore .uf/test-timings.json from a cache
+      - run: uf test --shard ${{ matrix.shard }}/3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-shard-${{ matrix.shard }}
+          path: .uf/test-shards
+          include-hidden-files: true
+  report:
+    needs: test
+    if: always()
+    steps:
+      # check out and install
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: test-shard-*
+          path: shards
+      - run: uf test --merge-shards shards --reporter junit --reporter-outfile junit.xml
+      # save .uf/test-timings.json to the cache
+```
+
+Every shard cuts the same partition without talking to the others. Test files
+are handed out heaviest first, each to the shard with the least expected time
+so far, so the shards finish together rather than holding the same number of
+files. The expected time is what `.uf/test-timings.json` recorded for a file,
+or its size when nothing was recorded. A shard leaves that file as it found it,
+and the merge records the whole suite's durations: save it after the merge and
+restore it before the shards, and the next split is balanced by real times.
+
+Each shard writes `.uf/test-shards/INDEX-of-COUNT.json` holding its report and,
+under `--coverage`, what it measured. A shard reports its own results, but its
+coverage is only recorded: the coverage reports and thresholds describe the
+whole suite, so the merge writes them. `--merge-shards DIR` reads the records in
+`DIR` and in the directories directly inside it, which is where a CI system
+puts artefacts from several jobs. `DIR` defaults to `.uf/test-shards`.
+
+The merge refuses records that would misreport the suite:
+
+- a shard missing, or recorded twice;
+- shards that disagree about how many there are;
+- a file two shards both ran;
+- a record written by a uf that writes them differently;
+- shards cut from different timings, which put some files in two shards and
+  others in none. Every record carries a fingerprint of the partition it was
+  cut from, and the refusal names the fingerprints that disagree.
+
+What a merge reports is what one run over the suite reports: the same files,
+cases, statuses and counts, and a JUnit document that differs only in its
+times. Coverage adds up the counts, the way one run adds up its workers', so
+every ratio is the same. One count can differ: a line that runs when a module
+is loaded is counted once for each process that loaded it, and that already
+changes with `-j` in a single run.
+
+`--shard` combines with `--changed`, whose selection is cut into shards, and
+with `--list`, which shows one shard's files. It is refused with `--watch` and
+under a Bun runner.
+
 ## Flags worth knowing
 
 | Flag | What it does |
@@ -771,6 +841,8 @@ object only when coverage was actually collected.
 | `--watch` | Re-run what the change affected |
 | `--watch-interval MS` | Poll for watched changes at this interval |
 | `--changed REF` | Only the test files a change since REF reaches |
+| `--shard INDEX/COUNT` | Run one part of a suite split across machines |
+| `--merge-shards [DIR]` | Report the shards' records as one run |
 | `--bail[=N]` | Stop after N failures; N defaults to 1 |
 | `--retry N` | Re-run a failing test up to N more times |
 | `-j N`, `--threads N` | Run at most N files at once; defaults to one per core |
@@ -1165,8 +1237,7 @@ between runs and a pre-bundled worker. Neither exists yet.
 
 ## Not there yet
 
-- No concurrent cases within a single file, and no `--shard` for splitting a
-  suite across machines.
+- No concurrent cases within a single file.
 - Coverage is Node-only, and a worker that has to be killed — a file that timed
   out, a worker that crashed — takes its counts with it, because they are
   written when the process exits.

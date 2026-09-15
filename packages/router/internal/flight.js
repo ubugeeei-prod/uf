@@ -60,6 +60,32 @@ export type FlightRoot = {|
   readonly tree: Node,
 |};
 
+/**
+ * What fetching a route's payload turned into.
+ *
+ * Declared here rather than beside the fetch in `./flight-browser.js`, because
+ * the router's navigation names this type and must not import React's Flight
+ * client: `./runtime.js` is in every application's bundle, and that client is
+ * only in the bundles of applications that render Server Components
+ * (ubugeeei-prod/uf#992).
+ */
+export type FetchedFlight =
+  | {|
+      readonly kind: "flight",
+      /** The route the server answered for: a redirect's target, when there was one. */
+      readonly url: string,
+      readonly root: Promise<FlightRoot>,
+    |}
+  | {|
+      /**
+       * The answer was not a payload: a redirect off this origin, or a host
+       * that had no payload for the URL. The browser should load `url` as a
+       * document.
+       */
+      readonly kind: "document",
+      readonly url: string,
+    |};
+
 /** The part of a resolved route that crosses to the browser. */
 export function routeState(resolved: ResolvedRoute): RouteState {
   return {

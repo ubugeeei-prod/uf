@@ -240,7 +240,8 @@ pub(crate) enum Commands {
     /// two different things and neither spelling said which. See
     /// ubugeeei-prod/uf#322 for what that cost, and #488 for the rename.
     Init {
-        /// The template to scaffold. `react` is the only one today.
+        /// The template to scaffold: `react`, the default, or `monorepo` for an
+        /// application and a library as workspace packages of one repository.
         #[arg(value_name = "TEMPLATE")]
         template: Option<String>,
         /// Scaffold a library rather than an application.
@@ -259,7 +260,8 @@ pub(crate) enum Commands {
         /// segment is the package's name unless `--name` says otherwise.
         #[arg(value_name = "PATH")]
         path: Utf8PathBuf,
-        /// The template to scaffold. `react` is the only one today.
+        /// The template to scaffold: `react`, the default, or `monorepo` for an
+        /// application and a library as workspace packages of one repository.
         #[arg(value_name = "TEMPLATE")]
         template: Option<String>,
         /// Scaffold a library rather than an application.
@@ -658,6 +660,27 @@ pub(crate) enum Commands {
         /// runs the whole suite.
         #[arg(long, value_name = "REF")]
         changed: Option<String>,
+        /// Run one part of a suite split across machines, like `2/3`.
+        ///
+        /// Every shard cuts the same partition from the test files and the
+        /// durations `.uf/test-timings.json` recorded, so each machine can run
+        /// its part alone, and together they run every test file once. Each
+        /// shard writes a record to `.uf/test-shards` for `--merge-shards`.
+        #[arg(long, value_name = "INDEX/COUNT", conflicts_with = "merge_shards")]
+        shard: Option<uf_test::Shard>,
+        /// Report the shard records in DIR as one run over the whole suite.
+        ///
+        /// Runs nothing. Writes what one run would have written: the summary or
+        /// `--json`, `--reporter junit`, and the coverage reports when the
+        /// shards measured. It records the suite's durations for the next split
+        /// and fails when the suite failed. DIR defaults to `.uf/test-shards`.
+        #[arg(
+            long,
+            value_name = "DIR",
+            num_args = 0..=1,
+            default_missing_value = ".uf/test-shards"
+        )]
+        merge_shards: Option<String>,
         /// Emit machine-readable JSON on stdout.
         #[arg(long)]
         json: bool,
@@ -1063,11 +1086,13 @@ pub(crate) enum Shell {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum AppTemplate {
     React,
+    /// An application and a library as workspace packages of one repository.
+    Monorepo,
 }
 
 impl AppTemplate {
     /// Every template, for a message that has to list them.
-    pub(crate) const ALL: [&'static str; 1] = ["react"];
+    pub(crate) const ALL: [&'static str; 2] = ["react", "monorepo"];
 
     /// The template `value` names, or `None` when it names something else.
     ///
@@ -1077,6 +1102,7 @@ impl AppTemplate {
     pub(crate) fn parse(value: &str) -> Option<Self> {
         match value {
             "react" => Some(Self::React),
+            "monorepo" => Some(Self::Monorepo),
             _ => None,
         }
     }

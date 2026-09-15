@@ -22,7 +22,18 @@ graph decided, know what reaches the client bundle and what stays on the server,
 and know what uf reports and where `uf lint` fits.
 
 **What you need first:** a project with routes — [Routing](/guide/routing) — and
-[Rendering modes](/guide/rendering) for where a document comes from.
+[Rendering modes](/guide/rendering) for where a document comes from. Server
+Components also need React 19.3 or newer, with `react-dom` and
+`react-server-dom-parcel` from the same release.
+
+`@uniflowed/router` itself installs beside React 19.2.3, the React that Expo SDK
+57 and React Native 0.87 ship, and lists `react-dom` and
+`react-server-dom-parcel` as optional peers. A native app, or an application
+rendered from its modules, does not need them. On a React older than 19.3,
+`uf dev` and `uf build` stop before they render and name the React they found,
+and the router's Server Components entries (`@uniflowed/router/rsc`,
+`@uniflowed/router/rsc/client` and `@uniflowed/router/rsc/ssr`) refuse to start
+with the same advice.
 
 ## The current contract
 

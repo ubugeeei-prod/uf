@@ -26,10 +26,20 @@
 import { createFromFetch, createFromReadableStream } from "react-server-dom-parcel/client.browser";
 
 import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
-import { FLIGHT_CONTENT_TYPE, type FlightRoot, documentPathOf, flightUrl } from "./flight.js";
+import {
+  FLIGHT_CONTENT_TYPE,
+  type FetchedFlight,
+  type FlightRoot,
+  documentPathOf,
+  flightUrl,
+} from "./flight.js";
+import { requireServerComponentsReact } from "./react-version.js";
 
 /** A module namespace, as far as the loader looks into one. */
 type ModuleNamespace = { +[string]: mixed };
+
+/** The entry a refusal names: the one an application reaches this module through. */
+const ENTRY = "@uniflowed/router/rsc/client";
 
 /**
  * Install the module hook React's Flight client resolves references through.
@@ -39,6 +49,7 @@ type ModuleNamespace = { +[string]: mixed };
  * as an accessor cannot be assigned to, and hydration must not throw over it.
  */
 export function installBrowserModules(): void {
+  requireServerComponentsReact(ENTRY);
   const loaded: Map<string, ModuleNamespace> = new Map();
   // A function with three properties, which is the shape React's Parcel client
   // calls: `parcelRequire(id)` for a module, `parcelRequire.load(url)` for the
@@ -156,26 +167,9 @@ export function readDocumentPayload(
   document: DocumentLike,
   observe: ?(callback: () => void) => (() => void) | null,
 ): Promise<FlightRoot> {
+  requireServerComponentsReact(ENTRY);
   return createFromReadableStream(documentPayload(document, observe));
 }
-
-/** What fetching a route's payload turned into. */
-export type FetchedFlight =
-  | {|
-      readonly kind: "flight",
-      /** The route the server answered for: a redirect's target, when there was one. */
-      readonly url: string,
-      readonly root: Promise<FlightRoot>,
-    |}
-  | {|
-      /**
-       * The answer was not a payload: a redirect off this origin, or a host
-       * that had no payload for the URL. The browser should load `url` as a
-       * document.
-       */
-      readonly kind: "document",
-      readonly url: string,
-    |};
 
 /**
  * Fetch `url`'s payload.
@@ -193,6 +187,10 @@ export type FetchedFlight =
  * refusal — is a document, whatever its status.
  */
 export async function fetchFlight(url: string): Promise<FetchedFlight> {
+  // Outside the `try` below, which answers every failure to fetch with a
+  // document load: too old a React is not a network failure, and a navigation
+  // that quietly reloaded the page would hide it.
+  requireServerComponentsReact(ENTRY);
   let response: Response;
   try {
     response = await fetch(flightUrl(url), {

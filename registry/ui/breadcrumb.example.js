@@ -20,7 +20,7 @@ export component Example() {
         </BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem>
-          <BreadcrumbLink href="/projects/atlas">Atlas</BreadcrumbLink>
+          <BreadcrumbLink href="?project=atlas">Atlas</BreadcrumbLink>
         </BreadcrumbItem>
         <BreadcrumbSeparator />
         <BreadcrumbItem>

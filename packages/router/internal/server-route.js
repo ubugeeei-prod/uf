@@ -23,6 +23,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { RouteState } from "./flight.js";
+import { requireServerComponentsReact } from "./react-version.js";
 
 const storage: AsyncLocalStorage<RouteState> = new AsyncLocalStorage();
 
@@ -38,8 +39,13 @@ export function withServerRoute<T>(route: RouteState, body: () => T): T {
  * route is to call a router hook from a server module that is not being
  * rendered by the router — a script, a route handler, a module evaluated at
  * import time — and each of those is a mistake worth a sentence.
+ *
+ * The React version is checked first. On a React older than 19.3 the Flight
+ * renderer that would have put the hook inside a route refuses to start, so the
+ * sentence worth reading is that one, not "outside a route".
  */
 export function serverRoute(caller: string): RouteState {
+  requireServerComponentsReact(`${caller}()`);
   const route = storage.getStore();
   if (route == null) {
     throw new Error(

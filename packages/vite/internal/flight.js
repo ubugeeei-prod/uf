@@ -512,13 +512,18 @@ export function loadClientModule(url) {
  *
  * No route table: the browser resolves no route and imports no page. What it
  * has is the application root and the payload the document carries, which
- * `hydrateFlight` reads. Strict Mode and navigation are generated constants
- * for the reasons `clientModuleSource` in `./routes.js` gives.
+ * `hydrateFlight` reads. That function comes from `@uniflowed/router/rsc/client`,
+ * not from `@uniflowed/router/client`, the entry an application rendered from
+ * its modules starts from. So only this kind of application has React's Flight
+ * client in its bundle: `react-server-dom-parcel` is an optional peer of the
+ * router, and a project on React 19.2 does not install it (ubugeeei-prod/uf#992).
+ * Strict Mode and navigation are generated constants for the reasons
+ * `clientModuleSource` in `./routes.js` gives.
  */
 export function flightClientSource(appEntry, options = {}) {
   const strictMode = options.strictMode === true ? ", strictMode: true" : "";
   const navigation = options.navigation === "document" ? ', navigation: "document"' : "";
-  return `import { hydrateFlight } from "@uniflowed/router/client";
+  return `import { hydrateFlight } from "@uniflowed/router/rsc/client";
 import App from ${JSON.stringify(appEntry)};
 hydrateFlight({ App${strictMode}${navigation} });
 `;
@@ -529,9 +534,10 @@ hydrateFlight({ App${strictMode}${navigation} });
  *
  * The exports and their order are `serverModuleSource`'s in `./routes.js`, and
  * that comment is the argument for them. Two things differ. The renderer is
- * `createDocumentRenderer`, which renders the payload the rsc graph writes
- * rather than the route's modules, and adds `flight` for a browser that is
- * navigating. And `routes`, `notFound` and `errors` come through the bridge,
+ * `createDocumentRenderer` from `@uniflowed/router/rsc/ssr`, an entry of its own
+ * for the reason `flightClientSource` gives. It renders the payload the rsc graph
+ * writes rather than the route's modules, and adds `flight` for a browser that
+ * is navigating. And `routes`, `notFound` and `errors` come through the bridge,
  * because the page modules they import are the rsc graph's: the driver reads a
  * page's `generateStaticParams` from the graph that renders it.
  */
@@ -544,9 +550,9 @@ export function flightServerSource(
   return `import {
   createActionDispatcher,
   createDispatcher,
-  createDocumentRenderer,
   createMiddlewareRunner,
 } from "@uniflowed/router/server";
+import { createDocumentRenderer } from "@uniflowed/router/rsc/ssr";
 import { handlers, middleware } from ${JSON.stringify(routesId)};
 import { actions } from ${JSON.stringify(actionsId)};
 import { renderFlight, routes, notFound, errors } from ${JSON.stringify(FLIGHT_VIRTUAL.bridge)};

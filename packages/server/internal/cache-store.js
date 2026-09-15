@@ -109,6 +109,12 @@
 //   with a copy serves it until its own `revalidate`, which is the number the
 //   application named as how stale that page may be. Bounded, and by the
 //   application's own statement rather than by uf's convenience.
+// * An invalidation is **written down** as well as carried out. Expiring
+//   entries reaches no page that has none, and a regenerated page nothing has
+//   regenerated since the build has none: the next process to ask would start
+//   it from the build's copy, which the invalidation just said is wrong. So the
+//   instant is kept in the provider, and a seed older than it is refused; see
+//   [`CacheStore.recordInvalidation`].
 // * A durable write does not block the answer. It is tracked, reported through
 //   `onError` when it fails, and awaited by [`CacheStore.settled`] — which
 //   `../cache.js` hands to the request so a host that freezes its process the
@@ -337,6 +343,18 @@ type FillAttempt = {| restored: "hit" | "stale" | null |};
 const PROVIDER_METHODS = ["read", "write", "remove", "invalidateTag", "invalidatePath", "clear"];
 
 /**
+ * The key an invalidation of a tag or a path is recorded under, in memory and
+ * in a provider.
+ *
+ * The one durable key without a build in front; [`CacheStore.recordInvalidation`]
+ * says why. Its first member is a name no build uf mints can have, so it cannot
+ * be an entry's key under some build.
+ */
+function invalidationKey(kind: "tag" | "path", name: string): string {
+  return hashCacheKey(["uf:invalidated", kind, name]);
+}
+
+/**
  * Refuse a provider that cannot answer the seam, at the line that wired it.
  *
  * Checked at construction rather than at the first call, which is the opposite
@@ -473,6 +491,11 @@ export class CacheStore {
    * carry a seed; see [`seedFrom`] for why a key is never asked twice.
    */
   readonly seededKeys: Set<string> = new Set();
+  /**
+   * When each tag and path was last invalidated in this process, under
+   * [`invalidationKey`]. See [`recordInvalidation`].
+   */
+  readonly invalidated: Map<string, number> = new Map();
 
   constructor(options?: CacheStoreOptions) {
     this.now = options?.now ?? Date.now;
@@ -638,8 +661,11 @@ export class CacheStore {
     this.filling.clear();
     // Seeds too: a store that has been cleared holds nothing newer than the
     // build, so the build's copy is a correct place to start again. What must
-    // not re-seed is a key that was *invalidated*, and `clear` is not that.
+    // not re-seed is a key that was *invalidated*, and `clear` is not that —
+    // which is also why the invalidation records go with everything else, here
+    // and in the provider's own `clear`.
     this.seededKeys.clear();
+    this.invalidated.clear();
     this.durably((provider) => provider.clear());
   }
 
@@ -793,19 +819,22 @@ export class CacheStore {
    * writing it to a shared store would be a write per process of bytes that
    * store holds a newer copy of the moment anybody refreshes.
    *
-   * # What a restart does to that promise
+   * # What the mark cannot know
    *
-   * It keeps it for one process's life and no longer, because the mark is in
-   * memory. A process that starts after a page was invalidated, and before
-   * anything regenerated it, finds nothing durable for the page and seeds it
-   * again — stale at once if the build is older than the page's lifetime, so
-   * that reader starts the refresh. A durable provider that recorded
-   * invalidations would close that window; the ones uf has do not, and the
-   * guide says so.
+   * The mark is this process's memory, so it says nothing about an
+   * invalidation this process did not see happen to a page it had seeded: one
+   * that ran in another process, one that ran here before the page was first
+   * asked for, and one that ran before a restart. Each leaves the durable store
+   * without the page, and the build's copy would be taken again — served as
+   * fresh until the page's lifetime, counted from the build, had passed. So a
+   * seed is also refused when one of its tags, or its path, was invalidated at
+   * or after the instant the build rendered it. [`recordInvalidation`] is where
+   * that is written down, and [`invalidatedSince`] is where it is read.
    *
    * `null` for a key already seeded, a seed that answers nothing or fails
-   * (reported through `onError`), and an entry already past `expiresAt`, which
-   * a fill then replaces exactly as it replaces an expired entry in memory.
+   * (reported through `onError`), an entry already past `expiresAt`, which a
+   * fill then replaces exactly as it replaces an expired entry in memory, and
+   * an entry invalidated since it was rendered.
    */
   async seedFrom(hash: string, request: CacheRequest): Promise<CacheEntry<mixed> | null> {
     const seed = request.seed;
@@ -823,9 +852,43 @@ export class CacheStore {
     if (entry == null || this.now() >= entry.expiresAt) {
       return null;
     }
+    if (await this.invalidatedSince(entry)) {
+      return null;
+    }
     this.seeds += 1;
     this.store(hash, entry);
     return entry;
+  }
+
+  /**
+   * Whether one of `entry`'s tags, or its path, was invalidated at or after the
+   * instant it was stored.
+   *
+   * This process's records first, then the provider's, which are every other
+   * process's and every earlier process's. A provider that cannot answer is
+   * taken to have said yes: what is being decided is whether an older copy may
+   * be served, and a render is right whichever the answer would have been.
+   */
+  async invalidatedSince(entry: CacheEntry<mixed>): Promise<boolean> {
+    const keys = [
+      ...entry.tags.map((tag) => invalidationKey("tag", tag)),
+      ...(entry.path == null ? [] : [invalidationKey("path", entry.path)]),
+    ];
+    const since = (at: number | void) => at != null && at >= entry.storedAt;
+    if (keys.some((key) => since(this.invalidated.get(key)))) {
+      return true;
+    }
+    const provider = this.provider;
+    if (provider == null || keys.length === 0) {
+      return false;
+    }
+    try {
+      const records = await Promise.all(keys.map((key) => provider.read(key)));
+      return records.some((record) => since(record?.storedAt));
+    } catch (error) {
+      this.onError(error);
+      return true;
+    }
   }
 
   /**
@@ -1084,14 +1147,70 @@ export class CacheStore {
    * window and why it is the application's own number.
    */
   revalidateTag(tag: string): number {
+    this.recordInvalidation("tag", tag);
     this.durably((provider) => provider.invalidateTag(tag));
     return this.expireWhere((entry) => entry.tags.includes(tag));
   }
 
   /** Expire every entry filled for `path`, here and durably. Answers how many here. */
   revalidatePath(path: string): number {
+    this.recordInvalidation("path", path);
     this.durably((provider) => provider.invalidatePath(path));
     return this.expireWhere((entry) => entry.path === path);
+  }
+
+  /**
+   * Write down that `tag` or `path` was invalidated, and when: in memory for
+   * this process, and in the provider for every other one.
+   *
+   * Expiring entries reaches only the entries there are, and a regenerated page
+   * that nothing has regenerated since the build has none: its one copy is the
+   * build's, which any process can take. So the invalidation that says that
+   * copy is wrong is kept as a fact of its own, or the next process to ask for
+   * the page — another one, this one before anybody asked, or one that
+   * restarted — starts it from that copy again. [`seedFrom`] reads it back.
+   *
+   * # How it is kept
+   *
+   * As an ordinary entry, through the provider's own `write`, so every provider
+   * keeps it without a method of its own: the instant as `storedAt`, no tags
+   * and no path, so no invalidation takes it out, and no end.
+   *
+   * Under the one durable key with no build in front, on purpose. An
+   * invalidation is a statement about data, which no build owns, and it is
+   * compared with the instant a build rendered its copy. So a build rendered
+   * after the invalidation is still started from, and a build rendered before
+   * it and deployed after it, which is the ordinary order of a deploy, is not.
+   *
+   * Started before the entries are expired, so a provider that finishes work
+   * in the order it was started never holds the page gone and the reason not
+   * yet written.
+   *
+   * Bounded in memory by `maxEntries`, oldest first, as the entries are. A
+   * record dropped here is still in the provider. With no provider, the page
+   * is left with this process's other mark, that it seeded the key already.
+   */
+  recordInvalidation(kind: "tag" | "path", name: string): void {
+    const key = invalidationKey(kind, name);
+    const at = this.now();
+    this.invalidated.delete(key);
+    if (this.invalidated.size >= this.maxEntries) {
+      const oldest = this.invalidated.keys().next();
+      if (oldest.done !== true) {
+        this.invalidated.delete(oldest.value);
+      }
+    }
+    this.invalidated.set(key, at);
+    this.durably((provider) =>
+      provider.write(key, {
+        value: encodeCacheValue(null),
+        storedAt: at,
+        revalidateAt: END_OF_TIME,
+        expiresAt: END_OF_TIME,
+        tags: [],
+        path: null,
+      }),
+    );
   }
 
   /** Drop every entry `matches` describes, counting them. */

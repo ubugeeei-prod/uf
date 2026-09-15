@@ -352,6 +352,12 @@ navigator. `@uniflowed/router/native` keeps the shared half small: resolve a uf
 route against the generated table, reject destinations a native bundle cannot
 own, and hand the result to the application's navigator.
 
+`@uniflowed/router` installs beside the React 19.2.3 that Expo SDK 57 and React
+Native 0.87 ship. Its peers are `react` 19.2.3 or newer, with `react-dom` and
+`react-server-dom-parcel` optional, so a native app installs neither. Only the
+router's Server Components entries need React 19.3, and nothing a native bundle
+imports reaches them.
+
 ```js
 // @flow
 import {
@@ -677,8 +683,7 @@ In an app `create-expo-app` made:
   but nothing turns it into React Navigation stacks and tabs yet
   ([#991](https://github.com/ubugeeei-prod/uf/issues/991)).
 - **An Expo project without workarounds.** `uf` has to be installed wherever
-  EAS Build or Xcode bundles. `@uniflowed/router` needs React 19.3, while Expo
-  SDK 57 ships 19.2.3, so the router does not install in an SDK 57 app yet
+  EAS Build or Xcode bundles
   ([#992](https://github.com/ubugeeei-prod/uf/issues/992)).
 - **A native host renderer.** `render()` can use React Test Renderer as an
   optional JSON adapter, but uf cannot render React Native's own components or

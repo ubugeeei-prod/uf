@@ -129,7 +129,7 @@ pub(super) fn render_report(
     phases: &[Phase],
     duration: Duration,
     args: &TestArgs,
-    host: &uf_test::HostCommand,
+    host: Option<&uf_test::HostCommand>,
     timing_note: Option<&str>,
     record_note: Option<&str>,
     coverage: Option<&CoverageSection>,
@@ -140,9 +140,13 @@ pub(super) fn render_report(
     // browser was *found* on this machine, and a run whose result depends on
     // which binary answered and does not say which is a run nobody can
     // reproduce from the report.
-    let runtime = match host.browser.as_ref() {
-        Some(browser) => format!("{browser} (driven from {})", host.kind.program()),
-        None => host.kind.program().to_string(),
+    let runtime = match host {
+        Some(host) => match host.browser.as_ref() {
+            Some(browser) => format!("{browser} (driven from {})", host.kind.program()),
+            None => host.kind.program().to_string(),
+        },
+        // `uf test --merge-shards` started no host: each shard ran on its own.
+        None => String::from("each shard's own"),
     };
     // What the run started, which is not what `-j` allowed once `uf` sizes the
     // pool from recorded durations; the configured count stands in for a run

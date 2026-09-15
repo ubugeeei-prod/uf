@@ -19,6 +19,8 @@
     "./client": "./client.js",
     "./native": "./native.js",
     "./rsc": "./rsc.js",
+    "./rsc/client": "./rsc-client.js",
+    "./rsc/ssr": "./rsc-ssr.js",
     "./server": "./server.js",
     "./routing": "./routing.js",
     "./package.json": "./package.json",
@@ -34,18 +36,23 @@
     "middleware.js",
     "native.js",
     "routing.js",
+    "rsc-client.js",
+    "rsc-ssr.js",
     "rsc.js",
     "server-components.js",
     "server.js",
     "!*.test.js"
   ],
   "peerDependencies": {
-    "react": ">=19.3.0",
-    "react-dom": ">=19.3.0",
+    "react": ">=19.2.3",
+    "react-dom": ">=19.2.3",
     "react-server-dom-parcel": ">=19.3.0"
   },
   "peerDependenciesMeta": {
     "react-dom": {
+      "optional": true
+    },
+    "react-server-dom-parcel": {
       "optional": true
     }
   },

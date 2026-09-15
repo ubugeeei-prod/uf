@@ -2280,6 +2280,13 @@ enum FirstAnswer {
     /// A regenerated document, which a restarted server can only have read
     /// back from the durable store.
     Regenerated,
+    /// None. The server is asked to invalidate the page's tag before anything
+    /// has asked for the page, and is then stopped.
+    Invalidates,
+    /// A render. The page was invalidated before this server started and
+    /// nothing has regenerated it since, so the build's document, which is
+    /// older than the invalidation, is known wrong.
+    Rendered,
 }
 
 /// A prerendered page that states a lifetime changes after it, with no rebuild.
@@ -2290,6 +2297,11 @@ enum FirstAnswer {
 /// passed a later answer carries a later one. Then `uf start` once more without
 /// emptying the cache, which is a restart — and a restart answers with a
 /// regenerated document read back from disk, never with the build's.
+///
+/// Then an invalidation a restart has to remember. `uf start` from an emptied
+/// cache invalidates the page's tag and is stopped before anything asked for
+/// the page, so the only copy of the page left is the build's. The restarted
+/// server must render the page rather than serve that copy.
 ///
 /// `tools/ci/edge-worker-smoke.sh` asks the same questions of the edge adapter
 /// under workerd, where what a regeneration writes is kept in Workers KV.
@@ -2329,6 +2341,8 @@ fn a_regenerated_page_changes_after_its_lifetime_without_a_rebuild() {
         ("preview", FirstAnswer::TheBuilds, true),
         ("start", FirstAnswer::TheBuilds, true),
         ("start", FirstAnswer::Regenerated, false),
+        ("start", FirstAnswer::Invalidates, true),
+        ("start", FirstAnswer::Rendered, false),
     ] {
         if emptied {
             match fs::remove_dir_all(root.join(".uf/cache/route")) {
@@ -2387,14 +2401,35 @@ fn assert_regenerates(
     first: FirstAnswer,
     command: &str,
 ) {
+    if let FirstAnswer::Invalidates = first {
+        let answer = http_request("127.0.0.1", port, "POST", "/api/revalidate", Some("{}"));
+        assert!(
+            answer
+                .lines()
+                .next()
+                .is_some_and(|line| line.contains(" 200"))
+                && answer.contains("\"expired\""),
+            "`uf {command}` did not run the fixture's invalidation:\n{answer}\n{}",
+            server.evidence(said)
+        );
+        return;
+    }
     let answer = get(server, port, "/clock", said);
     let lowered = answer.to_ascii_lowercase();
+    let instant = rendered_instant(&answer)
+        .unwrap_or_else(|| panic!("`uf {command}` answered /clock with no instant:\n{answer}"));
+    if let FirstAnswer::Rendered = first {
+        assert!(
+            lowered.contains("x-uf-cache: miss") && instant > built,
+            "a `uf {command}` started after /clock was invalidated must render it rather than \
+             answer with the build's document, which is older than the invalidation:\n{answer}"
+        );
+        return;
+    }
     assert!(
         lowered.contains("x-uf-cache: hit") || lowered.contains("x-uf-cache: stale"),
         "`uf {command}` answered a regenerating page without the cache:\n{answer}"
     );
-    let instant = rendered_instant(&answer)
-        .unwrap_or_else(|| panic!("`uf {command}` answered /clock with no instant:\n{answer}"));
     match first {
         FirstAnswer::TheBuilds => assert_eq!(
             instant, built,
@@ -2409,6 +2444,7 @@ fn assert_regenerates(
             );
             return;
         }
+        FirstAnswer::Invalidates | FirstAnswer::Rendered => unreachable!("answered above"),
     }
 
     let deadline = Instant::now() + Duration::from_secs(30);
