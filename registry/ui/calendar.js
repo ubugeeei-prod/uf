@@ -12,7 +12,7 @@
 //
 // The month's frame, the buttons to the months either side, and each day: the
 // chosen day filled, today ringed, and a day that cannot be chosen struck
-// through. `@uniflowed/ui/calendar` owns the grid: a `<table role="grid">` named
+// through. `@uniflowed/ui`'s `Calendar` owns the grid: a `<table role="grid">` named
 // by its caption, weekday headings that give a reader the whole weekday name,
 // one day in the tab order with the keyboard moving between days and months,
 // and a polite announcement of the month shown. A day is drawn from
@@ -39,9 +39,9 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/calendar";
+import * as Primitive from "@uniflowed/ui";
 
-export type { DateValue } from "@uniflowed/ui/calendar";
+export type { DateValue } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

@@ -53,8 +53,6 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      - run: cargo install wild-linker --version 0.10.0 --locked
-      - run: wild --version
       # The suite drives the docs site through the real `@uniflowed/vite`, and
       # those tests now fail rather than skip when the workspace is not
       # installed. Without this the publish job failed on a missing fixture
@@ -77,9 +75,15 @@ jobs:
       # publishing a single package: a release with a tag, a GitHub release and
       # nothing on npm. `tools/ci/workspace-suite-runtimes.sh` is why the next
       # runtime cannot be added to one workflow and not the other.
+      #
+      # Then the same thing happened with the version. `ci.yml` moved to `v2.x`
+      # when uf's Deno host started loading Flow through `registerHooks`, which
+      # arrived in Deno 2.8. This job stayed on `v1.x`, and `uf@0.0.0-alpha.36`
+      # failed every Deno test here before publishing a package. That check now
+      # covers the version too.
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - run: deno --version
       # GitHub-hosted Ubuntu runners install Chromium-family browsers but do
       # not give Chromium a usable sandbox under the AppArmor/user-namespace

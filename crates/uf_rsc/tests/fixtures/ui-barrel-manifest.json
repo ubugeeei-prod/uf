@@ -1,0 +1,61 @@
+{
+  "version": 3,
+  "engine": "uf-native",
+  "buildFingerprint": "71527ae95b8871ca4467cfe1c007937a061888fad13c7da20eb669bacb59fb0b",
+  "modules": [
+    {
+      "path": "app/$layout.js",
+      "environment": "server",
+      "reachability": "server-only",
+      "proximity": "isolated",
+      "imports": [],
+      "externalImports": [],
+      "exports": [
+        "default"
+      ]
+    },
+    {
+      "path": "app/$page.js",
+      "environment": "server",
+      "reachability": "server-only",
+      "proximity": "reaches-boundary",
+      "imports": [],
+      "externalImports": [
+        "@uniflowed/ui"
+      ],
+      "exports": [
+        "default"
+      ]
+    },
+    {
+      "path": "app/counter/$page.js",
+      "environment": "server",
+      "reachability": "server-only",
+      "proximity": "isolated",
+      "imports": [],
+      "externalImports": [
+        "@uniflowed/ui"
+      ],
+      "exports": [
+        "default"
+      ]
+    }
+  ],
+  "clientBoundaries": [
+    {
+      "importer": "app/$page.js",
+      "target": {
+        "kind": "package",
+        "specifier": "@uniflowed/ui/switch"
+      }
+    }
+  ],
+  "clientBundleRoots": [
+    {
+      "kind": "package",
+      "specifier": "@uniflowed/ui/switch"
+    }
+  ],
+  "serverActions": [],
+  "diagnostics": []
+}

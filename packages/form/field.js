@@ -96,7 +96,7 @@
 
 "use client";
 
-import type { FieldSource } from "@uniflowed/ui/field";
+import type { FieldSource } from "@uniflowed/ui";
 
 import type { FieldSegment, FieldValues } from "./internal/field-path.js";
 import type { UseFormReturn } from "./use-form.js";

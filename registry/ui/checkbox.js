@@ -11,7 +11,7 @@
 //
 // The box, the tick, the dash and the label beside them, all inside the one
 // button the part renders, so the whole row is the target and its words are
-// the name. `@uniflowed/ui/checkbox` owns `role="checkbox"`, an `aria-checked`
+// the name. `@uniflowed/ui`'s `Checkbox` owns `role="checkbox"`, an `aria-checked`
 // of `true`, `false` or `mixed`, `Space` toggling it, and `Enter` submitting
 // the form it is in rather than toggling. The box follows `aria-checked`
 // through `:is([aria-checked=true])` and `:is([aria-checked=mixed])`.
@@ -35,7 +35,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { Checkbox as CheckboxPart } from "@uniflowed/ui/checkbox";
+import { Checkbox as CheckboxPart } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

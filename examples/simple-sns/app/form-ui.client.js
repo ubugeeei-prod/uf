@@ -3,14 +3,15 @@
 
 import * as React from "@uniflowed/react";
 import { useFormStatus } from "react-dom";
-import { AlertRoot, AlertDescription } from "@uniflowed/ui/alert";
 import {
+  AlertDescription,
+  AlertRoot,
   FieldRoot,
   FieldLabel,
   FieldControl,
   FieldDescription,
   FieldError as PrimitiveError,
-} from "@uniflowed/ui/field";
+} from "@uniflowed/ui";
 import { Icon } from "./ui.js";
 import { fieldError, type FormState } from "./social-model.js";
 

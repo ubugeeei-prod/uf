@@ -103,42 +103,9 @@ fn collections_are_sorted() {
     );
 }
 
-#[test]
-fn known_package_client_modules_are_written_as_manifest_targets() {
-    let mut builder = RscGraphBuilder::new();
-    builder.add_source(
-        "app/$page.js",
-        "import { Switch } from \"@uniflowed/ui/switch\";\nexport default function Page() {}\n",
-    );
-    builder.add_entry("app/$page.js", EntryKind::Server);
-    let graph = builder.build();
-    let registry =
-        ServerActionRegistry::from_graph(&graph, &BuildId::new("fixture-build-id").unwrap());
-    let manifest = RscManifest::new(&graph, &registry);
-
-    assert_eq!(manifest.client_boundaries.len(), 1);
-    assert_eq!(manifest.client_boundaries[0].importer, "app/$page.js");
-    assert_eq!(
-        manifest.client_boundaries[0].target,
-        RscManifestClientReference::Package {
-            specifier: CompactString::const_new("@uniflowed/ui/switch")
-        }
-    );
-    assert_eq!(
-        manifest.client_bundle_roots,
-        [RscManifestClientReference::Package {
-            specifier: CompactString::const_new("@uniflowed/ui/switch")
-        }]
-    );
-    assert_eq!(
-        manifest.modules[0].proximity,
-        ClientBoundaryProximity::ReachesBoundary
-    );
-}
-
-/// Through the barrel, the manifest names the module a page's import reaches:
-/// the same target the subpath import above writes, so the client code a route
-/// needs is one component's rather than the package's.
+/// Through the barrel, the manifest names the module a page's import reaches,
+/// as the page's one boundary and the build's one client bundle root: the
+/// client code the route needs is `switch`'s, not the package's.
 #[test]
 fn a_name_imported_from_the_ui_barrel_is_written_as_its_module() {
     let mut builder = RscGraphBuilder::new();
@@ -158,6 +125,41 @@ fn a_name_imported_from_the_ui_barrel_is_written_as_its_module() {
     assert_eq!(manifest.client_boundaries[0].importer, "app/$page.js");
     assert_eq!(manifest.client_boundaries[0].target, switch);
     assert_eq!(manifest.client_bundle_roots, [switch]);
+}
+
+/// The manifest `packages/vite/rsc-split.test.js` reads, as `uf build` writes
+/// it: a layout, a page importing `{ Switch }` from the barrel, and a page
+/// importing only `AlertRoot`, a Server Component part.
+///
+/// A snapshot, because the file is the contract between the two languages.
+/// Here, the one boundary is `@uniflowed/ui/switch`; there, the split ships the
+/// first page and drops the second, reading this same file.
+#[test]
+fn the_ui_barrel_manifest_the_vite_split_reads_matches_its_snapshot() {
+    let page = |import: &str| format!("// @flow\n{import}\nexport default function Page() {{}}\n");
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/$layout.js",
+        "// @flow\nexport default function Layout() {}\n",
+    );
+    builder.add_source(
+        "app/$page.js",
+        &page("import { Switch } from \"@uniflowed/ui\";"),
+    );
+    builder.add_source(
+        "app/counter/$page.js",
+        &page("import { AlertRoot } from \"@uniflowed/ui\";"),
+    );
+    for entry in ["app/$layout.js", "app/$page.js", "app/counter/$page.js"] {
+        builder.add_entry(entry, EntryKind::Server);
+    }
+    let graph = builder.build();
+    let registry =
+        ServerActionRegistry::from_graph(&graph, &BuildId::new("fixture-build-id").unwrap());
+    similar_asserts::assert_eq!(
+        RscManifest::new(&graph, &registry).to_json().unwrap(),
+        include_str!("../../tests/fixtures/ui-barrel-manifest.json")
+    );
 }
 
 #[test]

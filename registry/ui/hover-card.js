@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The look: the trigger as a link, and the card as a panel beside it. The
-// behaviour is imported from `@uniflowed/ui/hover-card`: it waits for a pointer
+// behaviour is imported from `@uniflowed/ui`'s `HoverCard`: it waits for a pointer
 // and not for focus, it stays while the pointer travels onto it and while focus
 // is inside it, `Escape` dismisses it and gives focus back, and it is neither a
 // tooltip nor a dialog — its content follows its trigger in the reading order,
@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/hover-card";
+import * as Primitive from "@uniflowed/ui";
 
 /**
  * Every prop a caller passes that this file does not name, on its way to the

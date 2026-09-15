@@ -1,5 +1,79 @@
 # Changelog
 
+## uf@0.0.0-alpha.36
+
+_2026-09-15_
+
+Thirty-three changes. `@uniflowed/ui`, `@uniflowed/state`, `@uniflowed/cell`
+and `@uniflowed/temporal` now publish from the release workflow (#1119, #1120),
+so `uf ui add` can install what its components import. The registry now has all
+forty headless components (#1049, #1095). The reference renders each one live
+(#1098), and `ui.directory` sets where `uf ui add` writes them (#1114). The
+router installs beside the React 19.2.3 that Expo SDK 57 ships and checks for
+React 19.3 only where Flight loads. `hydrateFlight` and `createDocumentRenderer`
+moved to `@uniflowed/router/rsc/client` and `@uniflowed/router/rsc/ssr` (#1107).
+The router also serves redirects, rewrites and response headers (#1108), and
+writes the Flight payload only between elements (#1110). `uf test` can run a
+suite on `bun test` (#1061), run only what a change reaches with `--changed`
+(#1094), split a suite across machines with `--shard` (#1104), and measure
+`bench()` against a baseline (#1111). `uf run` runs tasks across a workspace
+(#1075). `uf prepare` installs a committed git hook with tasks over staged files
+(#1090). `uf build --analyze` reports each route's modules and the imports
+behind them (#1096). `uf lint` runs a project's own JavaScript rules (#1078).
+`uf install --prod`, `uf dedupe`, `uf link` and `uf info` join the
+package-manager commands (#1117). A prerendered page regenerates once its
+lifetime passes (#1079), and an invalidation survives a restart (#1105). A
+prerendered or cached route that reads the request is refused at build time
+(#1115). Flow loads on Deno through `registerHooks` (#1023). `uf new` gains a
+monorepo template, plus remote templates pinned to a commit or digest (#1099,
+#1103). `uf check --explain-any` names every place a translated dependency
+falls back to `any` (#1077).
+
+### Added
+
+- **pm**: dedupe, link, info, install --prod, and --filter/-w on add, remove and update (#1117)
+- **router**: redirects, rewrites and response headers, and rewrite() from middleware (#1108)
+- **rsc, build**: refuse a route written once whose render reads the request (#1115)
+- **ui**: name where `uf ui add` writes components with `ui.directory` (#1114)
+- **new**: remote templates, pinned to a commit or a digest and never run (#1103)
+- **test**: declare benchmarks with `bench()`, and run them against a baseline with `uf test --bench` (#1111)
+- **new**: a monorepo template, and every template built and checked in CI (#1099)
+- **test**: split a suite across machines with `--shard`, and report it as one run with `--merge-shards` (#1104)
+- **ui**: the last sixteen components in the registry (#1095)
+- **build**: `uf build --analyze`, each route's modules and the imports behind them (#1096)
+- **run**: run tasks across a workspace with -r, --filter and pkg#task (#1075)
+- **test**: run only the test files a change since a ref reaches, with `--changed` (#1094)
+- **lint**: run a project's own JavaScript rules from `plugins` in `uf lint` (#1078)
+- **server, vite, cli**: regenerate a prerendered page once its lifetime passes (#1079)
+- **prepare**: a committed git hook, and staged tasks over what is staged (#1090)
+- **test**: run a suite with `bun test` when `test.runner` names Bun (#1061)
+- **check**: name every place a translated dependency is any (#1077)
+- **ui**: fourteen controls, indicators and disclosures in the registry (#1049)
+- **host**: load Flow on Deno through registerHooks, and grade Deno implemented (#1023)
+
+### Fixed
+
+- **docs, ci**: remove a conflict marker from the testing guide, and refuse one in CI (#1116)
+- **router**: write the Flight payload only between elements (#1110)
+- **router**: install beside React 19.2.3 and check React 19.3 where Flight loads (#1107)
+- **vite**: name a module's StyleX stylesheet by its path from the project root (#1109)
+- **server**: keep an invalidation where a restarted process reads it (#1105)
+- **rsc**: see through the `@uniflowed/ui` barrel to the client modules a name reaches (#1101)
+- **mcp**: hold every tool's paths to the project (#1086)
+
+### Documentation
+
+- **ui**: render every registry component live in the components reference (#1098)
+- link uf lsp and uf mcp to their guides, and close the UI guide like the others (#1106)
+- describe Server Components after the Flight payload, and cite open issues for open gaps (#1093)
+- **migrate**: say what moves today, and keep only the walls that are real (#1087)
+
+### Internal
+
+- **release**: publish @uniflowed/temporal from publish.yml (#1120)
+- **release**: publish @uniflowed/cell, state and ui from publish.yml (#1119)
+- **release**: name #1085 in the uf@0.0.0-alpha.35 section (#1092)
+
 ## uf@0.0.0-alpha.35
 
 _2026-09-14_

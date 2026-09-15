@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The row of page links, their targets, and the current page's look.
-// `@uniflowed/ui/pagination` owns the markup a reader relies on: a named
+// `@uniflowed/ui`'s `Pagination` owns the markup a reader relies on: a named
 // `<nav>`, one `aria-current="page"`, previous and next named in words rather
 // than in chevrons, a disabled end that is not a link, and a polite status that
 // says "Page 3 of 12" when the page changes. The current page is drawn from
@@ -37,7 +37,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/pagination";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

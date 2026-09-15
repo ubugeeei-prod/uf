@@ -18,7 +18,7 @@
 // # What this file owns, and what it does not
 //
 // The look: the panel, its width, and its height against the room the page has
-// left. The behaviour is imported from `@uniflowed/ui/popover`: focus moved in
+// left. The behaviour is imported from `@uniflowed/ui`'s `Popover`: focus moved in
 // when it opens, `Escape` and a press outside that close it and give focus back
 // to the trigger, `Tab` that leaves, and the panel kept against its trigger as
 // the page scrolls, flipped to the other side when it does not fit. The part
@@ -43,7 +43,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/popover";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

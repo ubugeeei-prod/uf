@@ -10,7 +10,7 @@
 // # What this file owns, and what it does not
 //
 // The look: two tones and three sizes, and a pressed state drawn from
-// `aria-pressed` through `:is([aria-pressed=true])`. `@uniflowed/ui/toggle`
+// `aria-pressed` through `:is([aria-pressed=true])`. `@uniflowed/ui`'s `Toggle`
 // owns `aria-pressed` itself and the press that flips it.
 //
 // # What to keep true when you change it
@@ -31,7 +31,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { Toggle as TogglePart } from "@uniflowed/ui/toggle";
+import { Toggle as TogglePart } from "@uniflowed/ui";
 
 /** Whether a toggle has an edge while it is not pressed. */
 export type ToggleTone = "ghost" | "outline";

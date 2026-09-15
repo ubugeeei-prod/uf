@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/rm",
-  "version": "0.0.0-alpha.35",
+  "version": "0.0.0-alpha.36",
   "private": true,
   "description": "Flow declarations for @uniflowed/rm, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,7 +19,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/config": "0.0.0-alpha.35",
-    "@uniflowed/core": "0.0.0-alpha.35"
+    "@uniflowed/config": "0.0.0-alpha.36",
+    "@uniflowed/core": "0.0.0-alpha.36"
   }
 }

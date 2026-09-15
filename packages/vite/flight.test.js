@@ -15,6 +15,7 @@ import uniflowed from "./index.js";
 import {
   RSC_ENVIRONMENT,
   clientExportNames,
+  clientModuleUrlPlugin,
   clientReferencePlugin,
   compilerRuntimeSource,
   createFlightState,
@@ -175,6 +176,75 @@ describe("a client module in the rsc graph", () => {
     );
     expect(out).toBe(null);
     expect(state.clientModules.size).toBe(0);
+  });
+});
+
+describe("a file of an installed uf package, in the browser under `uf dev`", () => {
+  /** A plugin context whose `resolve` answers `id`, as Vite's resolver would, and records each question. */
+  function resolvingTo(id: string): $FlowFixMe {
+    const asked: Array<string> = [];
+    return {
+      asked,
+      resolve: async (specifier: string) => {
+        asked.push(specifier);
+        return { id };
+      },
+    };
+  }
+
+  it("is its path, the URL a client reference names, and never Vite's versioned one", async () => {
+    // ubugeeei-prod/uf#1118. The reference loaded `dialog.js` and the client
+    // component's import loaded `dialog.js?v=…`, so `Dialog.Trigger` found no
+    // `Dialog.Root` in a context that was another module's.
+    const versioned = "/project/node_modules/@uniflowed/ui/dialog.js?v=1a2b3c4d";
+    for (const [specifier, importer] of [
+      ["@uniflowed/ui", "/project/app/opener.js"],
+      ["./dialog.js", "/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog"],
+      ["/project/node_modules/@uniflowed/ui/dialog.js", "/project/app/opener.js"],
+      ["/node_modules/@uniflowed/ui/dialog.js", undefined],
+    ]) {
+      const out = await clientModuleUrlPlugin().resolveId.call(
+        resolvingTo(versioned),
+        specifier,
+        importer,
+        {},
+      );
+      expect(out.id).toBe("/project/node_modules/@uniflowed/ui/dialog.js");
+    }
+  });
+
+  it("keeps every other query, such as a namespace view's", async () => {
+    const out = await clientModuleUrlPlugin().resolveId.call(
+      resolvingTo("/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog&v=1a2b3c4d"),
+      "/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog",
+      "/project/app/opener.js",
+      {},
+    );
+    expect(out.id).toBe("/project/node_modules/@uniflowed/ui/index.js?uf-namespace=Dialog");
+  });
+
+  it("leaves every other import to Vite, without resolving it a second time", async () => {
+    const context = resolvingTo("/project/node_modules/some-library/index.js?v=1a2b3c4d");
+    const plugin = clientModuleUrlPlugin();
+
+    expect(await plugin.resolveId.call(context, "some-library", "/project/app/page.js", {})).toBe(
+      null,
+    );
+    expect(await plugin.resolveId.call(context, "./button.js", "/project/app/page.js", {})).toBe(
+      null,
+    );
+    expect(context.asked).toEqual([]);
+  });
+
+  it("is the browser's graph under `uf dev` alone, and every application rendering RSC has it", () => {
+    const plugin = clientModuleUrlPlugin();
+    expect(plugin.apply).toBe("serve");
+    expect(plugin.applyToEnvironment({ name: "client" })).toBe(true);
+    expect(plugin.applyToEnvironment({ name: "ssr" })).toBe(false);
+    expect(plugin.applyToEnvironment({ name: RSC_ENVIRONMENT })).toBe(false);
+
+    const names = uniflowed({ root: "/project", config: {} }).map((each) => each.name);
+    expect(names).toContain("uf:rsc-client-urls");
   });
 });
 

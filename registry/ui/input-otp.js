@@ -12,7 +12,7 @@
 //
 // The boxes, the gap between groups, the separator, and the one field laid
 // invisibly over them so that a click anywhere in the row lands in it.
-// `@uniflowed/ui/input-otp` owns the field itself: one real `<input>` with
+// `@uniflowed/ui`'s `InputOtp` owns the field itself: one real `<input>` with
 // `autocomplete="one-time-code"`, so a phone can offer the code from a
 // message, the characters a `kind` allows, `onComplete` once every box is
 // full, and boxes that are `aria-hidden` because the field already says
@@ -36,8 +36,8 @@ import { createContext, useContext } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { InputOtpKind } from "@uniflowed/ui/input-otp";
-import * as Primitive from "@uniflowed/ui/input-otp";
+import type { InputOtpKind } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

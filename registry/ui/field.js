@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The label's type, the input's box and the help and error lines under it.
-// `@uniflowed/ui/field` owns the wiring: the ids the label and the control
+// `@uniflowed/ui`'s `Field` owns the wiring: the ids the label and the control
 // share, one `aria-describedby` that names the description and the error only
 // while each is there, `aria-invalid` only while the field is invalid,
 // `aria-required`, and an error that is announced when it appears. The box's
@@ -35,7 +35,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/field";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

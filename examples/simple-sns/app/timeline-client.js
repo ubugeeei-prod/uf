@@ -12,7 +12,7 @@ import {
   useOptimistic,
   useState,
 } from "@uniflowed/react";
-import { CollapsibleRoot, CollapsibleTrigger, CollapsibleContent } from "@uniflowed/ui/collapsible";
+import { CollapsibleRoot, CollapsibleTrigger, CollapsibleContent } from "@uniflowed/ui";
 import { AsyncRegion, useRetryableResource } from "./async-region.client.js";
 import { timelineData } from "./social-queries.js";
 import { createPost, likePost } from "./social-actions.js";

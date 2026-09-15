@@ -47,8 +47,9 @@ fn a_full_analysis_flows_from_sources_to_a_manifest() {
 /// The list exists because the scan skips `node_modules` (#718), so in an
 /// installed tree uf cannot see its own components' directives. A list that
 /// nothing checks is a list that is wrong by the second component added, so
-/// this holds it to the files — and to the exports map, since the list claims
-/// to say what a project can *import*, not what is on disk.
+/// this holds it to the files — the modules `packages/ui/index.js` imports and
+/// re-exports from, since the barrel is the package's only entry point and a
+/// module it does not reach is not one a project can use.
 ///
 /// Deliberately in `uf_rsc` and deliberately through [`module_environment`]:
 /// the question "is this a client module" already has an answer in this
@@ -56,34 +57,31 @@ fn a_full_analysis_flows_from_sources_to_a_manifest() {
 /// check that two rules agree rather than that the list is right. `uf_lib`
 /// holds the data; the crate that owns the rule holds the guard.
 #[test]
-fn the_client_module_list_names_exactly_the_ui_subpaths_that_are_client_modules() {
+fn the_client_module_list_names_exactly_the_ui_modules_that_are_client_modules() {
     let package = repository_root().join("packages").join("ui");
-    let manifest = std::fs::read_to_string(package.join("package.json"))
-        .expect("packages/ui/package.json cannot be read");
-    let manifest: serde_json::Value =
-        serde_json::from_str(&manifest).expect("packages/ui/package.json does not parse");
-    let exports = manifest["exports"]
-        .as_object()
-        .expect("packages/ui/package.json has no exports map");
+    let barrel = std::fs::read_to_string(package.join("index.js"))
+        .expect("packages/ui/index.js cannot be read");
 
     let mut client: Vec<String> = Vec::new();
-    for (specifier, target) in exports {
-        // The barrel is `.`; every other key is `./name`, and the subpath is
-        // what a project writes after the package name.
-        let Some(subpath) = specifier.strip_prefix("./") else {
+    for import in crate::scan::scan_imports(&barrel).iter() {
+        // `./switch.js` is the module uf names `@uniflowed/ui/switch`.
+        let Some(module) = import
+            .specifier
+            .strip_prefix("./")
+            .and_then(|file| file.strip_suffix(".js"))
+        else {
             continue;
         };
-        let target = target
-            .as_str()
-            .unwrap_or_else(|| panic!("the export {specifier} is a conditions object, not a file"));
-        let file = package.join(target.trim_start_matches("./"));
+        let file = package.join(format!("{module}.js"));
         let source = std::fs::read_to_string(&file)
             .unwrap_or_else(|error| panic!("{} cannot be read: {error}", file.display()));
         if module_environment(&source).runs_on_client() {
-            client.push(subpath.to_string());
+            client.push(module.to_owned());
         }
     }
+    // The barrel names `interactions.js` twice, for its hooks and its types.
     client.sort();
+    client.dedup();
 
     let listed: Vec<String> = uf_lib::CLIENT_MODULE_SUBPATHS
         .iter()

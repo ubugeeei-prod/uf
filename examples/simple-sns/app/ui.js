@@ -3,9 +3,8 @@
 import * as React from "@uniflowed/react";
 import { Link } from "@uniflowed/router";
 import { props, stylex } from "@uniflowed/stylex";
-import { SkeletonBox } from "@uniflowed/ui/skeleton";
+import { AvatarFallback, AvatarImage, AvatarRoot, SkeletonBox } from "@uniflowed/ui";
 import { avatarPhoto, type User } from "./social-model.js";
-import { AvatarRoot, AvatarImage, AvatarFallback } from "@uniflowed/ui/avatar";
 
 /**
  * Render decorative line icons on a shared grid; the owning control supplies its accessible name.

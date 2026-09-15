@@ -16,13 +16,13 @@
 //!
 //! Acquiring a release means resolving a version, downloading
 //! `uf-<target>.tar.gz`, checking it against the sha256 published beside it,
-//! refusing an archive whose members escape their own directory, unpacking it
-//! and linking the three binaries. `infra/cloudflare/setup-assets/install.sh`
-//! does all six, it is what `curl -fsSL https://setup.uniflowed.dev | sh`
-//! runs, and `tools/release/test-install.sh` proves it against a real packaged
-//! release on every release build. So uf does not write a second one: it runs
-//! that one, from [`INSTALLER`], by piping it into `sh` exactly the way the
-//! documented install line does.
+//! refusing an archive whose members escape their own directory, and unpacking
+//! it. `infra/cloudflare/setup-assets/install.sh` does all five, it is what
+//! `curl -fsSL https://setup.uniflowed.dev | sh` runs, and
+//! `tools/release/test-install.sh` proves it against a real packaged release on
+//! every release build. So uf does not write a second one: it runs that one,
+//! from [`INSTALLER`], by piping it into `sh` exactly the way the documented
+//! install line does.
 //!
 //! The alternative was porting it to Rust, and it is worse in every direction
 //! that matters here. uf links no HTTP client — `uf_pm::registry` and
@@ -32,12 +32,26 @@
 //! and the `latest` resolution existing twice, drifting independently, with
 //! the shell copy still the one every new user's first command runs. One
 //! implementation, exercised by the installer's own tests, is the whole point.
+//! That is also why `uf self-update --check` asks the installer which release
+//! is newest rather than asking GitHub itself: `UF_STOP_AFTER=resolve` makes
+//! it answer and stop.
 //!
 //! The script is embedded at build time rather than fetched at run time. A
 //! self-update that downloaded a shell script and ran it would be trusting the
 //! network with code execution *before* any checksum is involved; embedding it
 //! means `uf self-update` trusts exactly what `uf` was built from, and the
 //! only thing that crosses the network is an archive whose digest is checked.
+//!
+//! # Switching is uf's
+//!
+//! The sixth step the installer takes for a person, linking `uf`, `ufr` and
+//! `ufx`, uf takes itself: it runs the installer with `UF_STOP_AFTER=unpack`
+//! and switches the links in [`switch`], where a process killed at any point
+//! leaves every name pointing at a complete runtime. Both make the switch the
+//! same way — one rename per name, `uf` last — and both record the version
+//! they switched away from in `<root>/previous-version`, which is what
+//! `uf self-update --rollback` reads. Nothing uf switches away from is
+//! deleted, so a rollback needs no network.
 //!
 //! # The store is the installer's too
 //!
@@ -50,19 +64,25 @@
 //! `~/.local/bin/uf` the two of them take turns overwriting with different
 //! kinds of file.
 
-use std::fs;
+mod switch;
+
+use std::cmp::Ordering;
 use std::io::Write as _;
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, anyhow, bail};
 use camino::{Utf8Path, Utf8PathBuf};
-use serde_json::json;
 use uf_config::load_config;
 use uf_rm::{RuntimeReference, RuntimeUsePlan, RuntimeUseStep, XdgEnv, XdgLayout};
 use uf_term::{KeyValue, Status, Tone};
 
-use crate::support::{enabled, write_json_file};
+use crate::support::enabled;
 use crate::ui::Ui;
+
+use switch::{
+    Step, Switched, active_version, binary_file, install_running_binary, is_executable_file,
+    links_agree, recorded_previous, switch_to,
+};
 
 /// The installer, as it stood when this binary was built.
 ///
@@ -169,17 +189,44 @@ impl Store {
         }
     }
 
+    /// What `UF_INSTALL_ROOT` names: the runtimes, and the record beside them.
+    fn root(&self) -> &Utf8Path {
+        self.runtimes.parent().unwrap_or(&self.runtimes)
+    }
+
+    /// Where the version the last switch replaced is recorded.
+    ///
+    /// One version on one line, beside the runtimes rather than in the state
+    /// directory with `active-runtime.json`, because the installer switches
+    /// versions too and has to write it: a person who updated with
+    /// `curl … | sh` rolls back to what that replaced, not to whatever uf
+    /// itself last switched away from.
+    fn previous_record(&self) -> Utf8PathBuf {
+        self.root().join("previous-version")
+    }
+
     /// Where `uf@<version>` is unpacked, whoever unpacked it.
     fn version_dir(&self, version: &str) -> Utf8PathBuf {
         self.runtimes.join(format!("uf@{version}"))
     }
 
-    /// The `uf` binary of an installed version, which is the file whose
-    /// existence decides whether anything has to be downloaded.
+    /// The `uf` binary of an installed version.
     fn binary(&self, version: &str) -> Utf8PathBuf {
         self.version_dir(version)
             .join("bin")
-            .join(if cfg!(windows) { "uf.exe" } else { "uf" })
+            .join(binary_file("uf"))
+    }
+
+    /// Whether all three binaries of `version` are in the store, and run.
+    ///
+    /// All three, and not `uf` alone: a runtime missing `ufx` is one a switch
+    /// would leave `ufx` dangling into, and the installer refuses to unpack
+    /// such a build for the same reason.
+    fn has_complete(&self, version: &str) -> bool {
+        let bin = self.version_dir(version).join("bin");
+        BINARIES
+            .iter()
+            .all(|name| is_executable_file(&bin.join(binary_file(name))))
     }
 }
 
@@ -199,6 +246,20 @@ fn set_to_something(value: String) -> Option<String> {
     (!value.is_empty()).then_some(value)
 }
 
+/// Whether `text` can be a uf version: what a release tag carries after `uf@`.
+///
+/// Checked wherever a version arrives from outside — an argument, the
+/// installer's answer, a record on disk — because it becomes a directory name
+/// and a URL segment, and a version of `../bin` would be both somewhere else.
+fn is_version(text: &str) -> bool {
+    !text.is_empty()
+        && text.len() <= 64
+        && !text.starts_with(['.', '-'])
+        && text
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+' | b'_'))
+}
+
 /// `uf use uf@<version>`: make that version the one `uf` runs.
 pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<()> {
     let resolved = load_config(cwd)?;
@@ -213,9 +274,12 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
         );
     }
     let version = requested.version.to_string();
+    if !is_version(&version) {
+        bail!("{version:?} is not a uf version: a release is named like uf@0.1.0");
+    }
     let store = Store::from_process();
 
-    let origin = if store.binary(&version).exists() {
+    let origin = if store.has_complete(&version) {
         Origin::AlreadyInstalled
     } else if version == OWN_VERSION {
         // The one case where copying the running binary is not a lie: the
@@ -250,6 +314,7 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
     let manifest = report.runtime_manifest.to_string();
     let binary = report.runtime_binary.to_string();
     let source = report.origin.as_str();
+    let kept = kept(&report);
     let steps = plan
         .steps
         .iter()
@@ -258,21 +323,21 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
     let step_labels = steps.iter().map(String::as_str).collect::<Vec<_>>();
     let summary = format!("now using {runtime_label}");
 
+    let mut rows = vec![
+        KeyValue::new("auto switch", enabled(plan.auto_switch)),
+        KeyValue::new("source", source),
+        KeyValue::toned("shim", &shim, Tone::Path),
+        KeyValue::toned("state", &state, Tone::Path),
+        KeyValue::toned("manifest", &manifest, Tone::Path),
+        KeyValue::toned("binary", &binary, Tone::Path),
+    ];
+    if let Some(kept) = &kept {
+        rows.push(KeyValue::new("kept", kept));
+    }
     ui.render(|renderer, out| {
         renderer.banner(out, "uf use", Some(&runtime_label));
         renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("auto switch", enabled(plan.auto_switch)),
-                KeyValue::new("source", source),
-                KeyValue::toned("shim", &shim, Tone::Path),
-                KeyValue::toned("state", &state, Tone::Path),
-                KeyValue::toned("manifest", &manifest, Tone::Path),
-                KeyValue::toned("binary", &binary, Tone::Path),
-            ],
-        );
+        renderer.key_values(out, 2, &rows);
         renderer.blank(out);
         renderer.heading(out, 2, "steps");
         renderer.bullet_list(out, 4, &step_labels);
@@ -282,7 +347,19 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
     Ok(())
 }
 
-/// `uf self-update`: resolve the newest release and switch to it.
+/// What `uf self-update` was asked to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelfUpdate<'a> {
+    /// Install the newest release, or the one named, and switch to it.
+    Install(Option<&'a str>),
+    /// Say whether a newer release exists, and change nothing.
+    Check,
+    /// Switch back to the version the last switch replaced.
+    Rollback,
+}
+
+/// `uf self-update`: install a release and switch to it, say whether there is
+/// one to install, or switch back.
 ///
 /// The command `uf upgrade` was named after and never was
 /// (ubugeeei-prod/uf#424, ubugeeei-prod/uf#499). It reads no project — a
@@ -290,217 +367,344 @@ pub(crate) fn use_runtime(cwd: &Utf8Path, ui: &mut Ui, runtime: &str) -> Result<
 /// be unable to install one — so it takes no working directory and honours
 /// only the installer's own variables: `UF_VERSION` to pin, `UF_RELEASE_BASE`
 /// for a mirror, `UF_REPO`, `UF_INSTALL_ROOT` and `UF_BIN_DIR`.
-pub(crate) fn self_update(ui: &mut Ui) -> Result<()> {
+pub(crate) fn self_update(ui: &mut Ui, action: SelfUpdate<'_>) -> Result<()> {
     let store = Store::from_process();
-    let requested = variable("UF_VERSION").unwrap_or_else(|| "latest".to_owned());
+    match action {
+        SelfUpdate::Install(named) => update(ui, &store, named),
+        SelfUpdate::Check => check(ui, &store),
+        SelfUpdate::Rollback => roll_back(ui, &store),
+    }
+}
 
-    acquire(&store, &requested)?;
-    // The installer resolved `latest`; asking it what it resolved to means
-    // reading the link it just wrote, rather than parsing its prose.
-    let version = installed_version(&store)?;
-    let report = activate(&store, &version, Origin::acquired())?;
-
-    let runtime_label = format!("uf@{version}");
-    let was = if version == OWN_VERSION {
-        format!("{OWN_VERSION} was already the newest")
+/// `uf self-update [VERSION]`.
+fn update(ui: &mut Ui, store: &Store, named: Option<&str>) -> Result<()> {
+    let requested = named.map_or_else(
+        || variable("UF_VERSION").unwrap_or_else(|| "latest".to_owned()),
+        ToOwned::to_owned,
+    );
+    let requested = requested.strip_prefix("uf@").unwrap_or(&requested);
+    let version = if requested == "latest" {
+        resolve(store, requested)?
     } else {
-        format!("{OWN_VERSION} → {version}")
+        requested.to_owned()
+    };
+    if !is_version(&version) {
+        bail!(
+            "{version:?} is not a uf version: a release is named like 0.0.0-alpha.35, \
+             or uf@0.0.0-alpha.35"
+        );
+    }
+    let runtime_label = format!("uf@{version}");
+    let active = active_version(store);
+
+    if active.as_deref() == Some(version.as_str())
+        && store.has_complete(&version)
+        && links_agree(store, &version)
+    {
+        let shim = store.bin_dir.join("uf").to_string();
+        let binary = store.binary(&version).to_string();
+        ui.render(|renderer, out| {
+            renderer.banner(out, "uf self-update", Some(&runtime_label));
+            renderer.blank(out);
+            renderer.key_values(
+                out,
+                2,
+                &[
+                    KeyValue::toned("shim", &shim, Tone::Path),
+                    KeyValue::toned("binary", &binary, Tone::Path),
+                ],
+            );
+            renderer.blank(out);
+            renderer.status(
+                out,
+                Status::Success,
+                &format!("{runtime_label} is already active; nothing changed"),
+            );
+        });
+        return Ok(());
+    }
+
+    let origin = if store.has_complete(&version) {
+        // Switched away from earlier and kept, so there is nothing to fetch.
+        Origin::AlreadyInstalled
+    } else {
+        acquire(store, &version)?;
+        Origin::acquired()
+    };
+    let report = activate(store, &version, origin)?;
+
+    let from = match &active {
+        Some(active) => format!("uf@{active}"),
+        None => format!("uf@{OWN_VERSION}, this binary; no runtime in the store was active"),
     };
     let shim = report.shim.to_string();
     let binary = report.runtime_binary.to_string();
     let manifest = report.runtime_manifest.to_string();
     let source = report.origin.as_str();
+    let kept = kept(&report);
 
+    let mut rows = vec![
+        KeyValue::new("from", &from),
+        KeyValue::new("source", source),
+        KeyValue::toned("shim", &shim, Tone::Path),
+        KeyValue::toned("manifest", &manifest, Tone::Path),
+        KeyValue::toned("binary", &binary, Tone::Path),
+    ];
+    if let Some(kept) = &kept {
+        rows.push(KeyValue::new("kept", kept));
+    }
     ui.render(|renderer, out| {
         renderer.banner(out, "uf self-update", Some(&runtime_label));
         renderer.blank(out);
-        renderer.key_values(
-            out,
-            2,
-            &[
-                KeyValue::new("version", &was),
-                KeyValue::new("source", source),
-                KeyValue::toned("shim", &shim, Tone::Path),
-                KeyValue::toned("manifest", &manifest, Tone::Path),
-                KeyValue::toned("binary", &binary, Tone::Path),
-            ],
-        );
+        renderer.key_values(out, 2, &rows);
         renderer.blank(out);
         renderer.status(out, Status::Success, &format!("now using {runtime_label}"));
     });
     Ok(())
 }
 
-/// Run the embedded installer for one version, or `latest`.
+/// `uf self-update --check`: the newest release beside the active one.
+///
+/// Always the newest, whatever `UF_VERSION` pins: the question is whether
+/// something newer exists, and a pin is an answer to a different one.
+fn check(ui: &mut Ui, store: &Store) -> Result<()> {
+    let newest = resolve(store, "latest")?;
+    let (current, active) = match active_version(store) {
+        Some(version) => {
+            let detail = format!("uf@{version}, linked at {}", store.bin_dir.join("uf"));
+            (version, detail)
+        }
+        None => (
+            OWN_VERSION.to_owned(),
+            format!("uf@{OWN_VERSION}, this binary; no runtime in the store is active"),
+        ),
+    };
+    let newest_label = format!("uf@{newest}");
+
+    let (status, summary) = match order(&newest, &current) {
+        Some(Ordering::Greater) => (
+            Status::Info,
+            format!("{newest_label} is newer; `uf self-update` installs it"),
+        ),
+        Some(Ordering::Less) => (
+            Status::Info,
+            format!("uf@{current} is newer than the newest release, {newest_label}"),
+        ),
+        Some(Ordering::Equal) => (
+            Status::Success,
+            format!("uf@{current} is the newest release"),
+        ),
+        None if newest == current => (
+            Status::Success,
+            format!("uf@{current} is the newest release"),
+        ),
+        None => (
+            Status::Info,
+            format!(
+                "the newest release is {newest_label}, and uf cannot order it against uf@{current}"
+            ),
+        ),
+    };
+
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf self-update --check", None);
+        renderer.blank(out);
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::new("active", &active),
+                KeyValue::new("newest", &newest_label),
+            ],
+        );
+        renderer.blank(out);
+        renderer.status(out, status, &summary);
+    });
+    Ok(())
+}
+
+/// Semver precedence between two versions, when both are versions.
+///
+/// `alpha.10` is newer than `alpha.9`, which a string comparison gets the
+/// other way round — the mistake that offers a downgrade as an update.
+fn order(left: &str, right: &str) -> Option<Ordering> {
+    Some(uf_pm::Version::parse(left)?.cmp(&uf_pm::Version::parse(right)?))
+}
+
+/// `uf self-update --rollback`: switch back, from the store, offline.
+fn roll_back(ui: &mut Ui, store: &Store) -> Result<()> {
+    let record = store.previous_record();
+    let Some(previous) = recorded_previous(store) else {
+        bail!(
+            "there is no version to roll back to: {record} names none\n\n  \
+             it is written when `uf self-update`, `uf use` or the installer switches uf \
+             from one runtime in the store to another"
+        );
+    };
+    let active = active_version(store);
+    if active.as_deref() == Some(previous.as_str()) {
+        bail!(
+            "uf@{previous} is the version recorded to roll back to, and it is already active\n\n  \
+             `uf self-update <version>` switches to any other release"
+        );
+    }
+    if !store.has_complete(&previous) {
+        bail!(
+            "uf@{previous} is the version to roll back to, and {} no longer holds all of it\n\n  \
+             `uf self-update {previous}` downloads it again",
+            store.version_dir(&previous)
+        );
+    }
+
+    let report = activate(store, &previous, Origin::AlreadyInstalled)?;
+    let runtime_label = format!("uf@{previous}");
+    let from = active.map_or_else(
+        || "no runtime in the store".to_owned(),
+        |active| format!("uf@{active}"),
+    );
+    let shim = report.shim.to_string();
+    let binary = report.runtime_binary.to_string();
+    let kept = kept(&report);
+
+    let mut rows = vec![
+        KeyValue::new("from", &from),
+        KeyValue::toned("shim", &shim, Tone::Path),
+        KeyValue::toned("binary", &binary, Tone::Path),
+    ];
+    if let Some(kept) = &kept {
+        rows.push(KeyValue::new("kept", kept));
+    }
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf self-update --rollback", Some(&runtime_label));
+        renderer.blank(out);
+        renderer.key_values(out, 2, &rows);
+        renderer.blank(out);
+        renderer.status(
+            out,
+            Status::Success,
+            &format!("rolled back to {runtime_label}"),
+        );
+    });
+    Ok(())
+}
+
+/// The line saying which version a switch kept for `--rollback`, if any.
+fn kept(report: &Switched) -> Option<String> {
+    report
+        .replaced
+        .as_ref()
+        .map(|replaced| format!("uf@{replaced}, which `uf self-update --rollback` returns to"))
+}
+
+/// Point the machine's `uf` at `version`, and record what it is and what it
+/// replaced. See [`switch`] for what a kill at any point leaves.
+fn activate(store: &Store, version: &str, origin: Origin) -> Result<Switched> {
+    switch_to(store, version, origin, &mut |_: Step| Ok(()))
+}
+
+/// How far the installer goes before it hands back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StopAfter {
+    /// Print the version `UF_VERSION` resolves to, and download nothing.
+    Resolve,
+    /// Download, verify and unpack into the store, and link nothing.
+    Unpack,
+}
+
+impl StopAfter {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Resolve => "resolve",
+            Self::Unpack => "unpack",
+        }
+    }
+}
+
+/// The version the installer resolves `requested` to.
+fn resolve(store: &Store, requested: &str) -> Result<String> {
+    let printed = run_installer(store, requested, StopAfter::Resolve)?;
+    let version = printed.trim();
+    if !is_version(version) {
+        bail!("the uf installer resolved uf@{requested} to {version:?}, which is not a version");
+    }
+    Ok(version.to_owned())
+}
+
+/// Download, verify and unpack `version` into the store, linking nothing.
+fn acquire(store: &Store, version: &str) -> Result<()> {
+    run_installer(store, version, StopAfter::Unpack)?;
+    if !store.has_complete(version) {
+        bail!(
+            "the uf installer reported success, and {} does not hold uf, ufr and ufx",
+            store.version_dir(version)
+        );
+    }
+    Ok(())
+}
+
+/// Run the embedded installer for one version, or `latest`, as far as
+/// `stop_after`, and return what it printed on stdout.
 ///
 /// Piped into `sh` on stdin, which is what `curl … | sh` does, so the script
 /// runs the way it is tested rather than the way a second caller invented. Its
-/// output is the reader's: it draws the download, the checksum and the unpack
+/// stderr is the reader's: it draws the download, the checksum and the unpack
 /// as they happen, and a failure it diagnoses — a version that does not exist,
 /// a checksum that does not match, an archive whose members escape — is the
-/// diagnosis a reader needs, not one paraphrased through here.
+/// diagnosis a reader needs, not one paraphrased through here. Its stdout
+/// carries nothing but a resolution's answer.
 ///
 /// # Errors
 ///
 /// When `sh` cannot be started, or the installer exits non-zero. On a platform
 /// with no `sh`, before either.
 #[cfg(unix)]
-fn acquire(store: &Store, version: &str) -> Result<()> {
-    let root = store
-        .runtimes
-        .parent()
-        .ok_or_else(|| anyhow!("the runtime store {} has no parent", store.runtimes))?;
-
+fn run_installer(store: &Store, version: &str, stop_after: StopAfter) -> Result<String> {
     let mut child = Command::new("sh")
         .env("UF_VERSION", version)
-        .env("UF_INSTALL_ROOT", root.as_str())
+        .env("UF_INSTALL_ROOT", store.root().as_str())
         .env("UF_BIN_DIR", store.bin_dir.as_str())
+        .env("UF_STOP_AFTER", stop_after.as_str())
         .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
         .spawn()
         .with_context(|| "failed to run sh, which the uf installer is written in")?;
-    child
+    let mut stdin = child
         .stdin
         .take()
-        .ok_or_else(|| anyhow!("sh accepted no script on stdin"))?
-        .write_all(INSTALLER.as_bytes())
-        .with_context(|| "failed to hand the installer to sh")?;
-    let status = child
-        .wait()
+        .ok_or_else(|| anyhow!("sh accepted no script on stdin"))?;
+    // A script that stops early — at a resolution, or at a failure it has
+    // already explained — may close its end before reading the rest. What
+    // happened is in its exit status, not in the pipe.
+    if let Err(error) = stdin.write_all(INSTALLER.as_bytes())
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        return Err(error).with_context(|| "failed to hand the installer to sh");
+    }
+    drop(stdin);
+    let output = child
+        .wait_with_output()
         .with_context(|| "failed to wait for the uf installer")?;
 
-    if !status.success() {
+    if !output.status.success() {
         // The installer has already said what went wrong, in its own words and
         // with the fix; repeating a guess here would bury it.
-        bail!("the uf installer could not install uf@{version}");
+        let verb = match stop_after {
+            StopAfter::Resolve => "resolve",
+            StopAfter::Unpack => "install",
+        };
+        bail!("the uf installer could not {verb} uf@{version}");
     }
-    Ok(())
+    String::from_utf8(output.stdout)
+        .map_err(|_| anyhow!("the uf installer printed a version that is not UTF-8"))
 }
 
 #[cfg(not(unix))]
-fn acquire(_store: &Store, version: &str) -> Result<()> {
+fn run_installer(_store: &Store, version: &str, _stop_after: StopAfter) -> Result<String> {
     bail!(
         "uf publishes no Windows build yet, so uf@{version} cannot be acquired here\n\n  \
          run uf under WSL2, or build from source:\n    \
          cargo install --git https://github.com/ubugeeei-prod/uf uf_cli"
     )
-}
-
-/// The version the installer just made active, read from the link it wrote.
-fn installed_version(store: &Store) -> Result<String> {
-    let link = store.bin_dir.join("uf");
-    let target = fs::read_link(link.as_std_path())
-        .with_context(|| format!("the installer linked no {link}"))?;
-    let target = Utf8PathBuf::from_path_buf(target)
-        .map_err(|path| anyhow!("the installer linked a non-UTF-8 path: {}", path.display()))?;
-
-    // `<runtimes>/uf@<version>/bin/uf`, so the version is two directories up.
-    target
-        .parent()
-        .and_then(Utf8Path::parent)
-        .and_then(Utf8Path::file_name)
-        .and_then(|name| name.strip_prefix("uf@"))
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| anyhow!("{link} does not point into the uf runtime store: {target}"))
-}
-
-/// Install the running binary as its own version.
-///
-/// Only ever called when the requested version *is* [`OWN_VERSION`], which is
-/// what makes it a copy rather than a rename. `ufr` and `ufx` are the same
-/// binary with a different `argv[0]`, so all three are written.
-fn install_running_binary(store: &Store, version: &str) -> Result<()> {
-    let bin_dir = store.version_dir(version).join("bin");
-    fs::create_dir_all(&bin_dir).with_context(|| format!("failed to create {bin_dir}"))?;
-
-    let current_exe = std::env::current_exe().with_context(|| "failed to locate current uf")?;
-    for name in BINARIES {
-        let destination = bin_dir.join(if cfg!(windows) {
-            format!("{name}.exe")
-        } else {
-            (*name).to_owned()
-        });
-        fs::copy(&current_exe, destination.as_std_path()).with_context(|| {
-            format!(
-                "failed to install {destination} from {}",
-                current_exe.display()
-            )
-        })?;
-        mark_executable(&destination)?;
-    }
-    Ok(())
-}
-
-/// What activating a version wrote.
-#[derive(Debug)]
-struct RuntimeUseApplyReport {
-    active_runtime: Utf8PathBuf,
-    runtime_manifest: Utf8PathBuf,
-    runtime_binary: Utf8PathBuf,
-    shim: Utf8PathBuf,
-    origin: Origin,
-}
-
-/// Point the machine's `uf` at `version`, and record what it is.
-///
-/// The version must already be in the store; everything that puts it there is
-/// above. Linking rather than writing a shell wrapper is the installer's own
-/// `ln -sfn`, and all three names move together — a `uf` that is version A
-/// beside a `ufx` that is still version B is a machine nobody can reason
-/// about.
-fn activate(store: &Store, version: &str, origin: Origin) -> Result<RuntimeUseApplyReport> {
-    let runtime_binary = store.binary(version);
-    if !runtime_binary.exists() {
-        bail!("uf@{version} is not installed: {runtime_binary} does not exist");
-    }
-
-    let runtime_manifest = store.version_dir(version).join("runtime.json");
-    // A version the installer unpacked has no manifest, and inventing an
-    // origin for it would be a guess written down as a fact. An existing one
-    // is left alone: where a binary came from is settled when it arrives, and
-    // activating it a second time does not change the answer.
-    let origin = match (origin, recorded_origin(&runtime_manifest)) {
-        (Origin::AlreadyInstalled, Some(recorded)) => recorded,
-        (origin, _) => origin,
-    };
-    write_json_file(
-        &runtime_manifest,
-        &json!({
-            "name": RUNTIME_NAME,
-            "version": version,
-            "binary": runtime_binary.as_str(),
-            "source": origin.as_str(),
-        }),
-    )?;
-
-    fs::create_dir_all(&store.bin_dir)
-        .with_context(|| format!("failed to create {}", store.bin_dir))?;
-    for name in BINARIES {
-        link(
-            &store.version_dir(version).join("bin").join(name),
-            &store.bin_dir.join(name),
-        )?;
-    }
-
-    fs::create_dir_all(&store.state_dir)
-        .with_context(|| format!("failed to create {}", store.state_dir))?;
-    let active_runtime = store.state_dir.join("active-runtime.json");
-    write_json_file(
-        &active_runtime,
-        &json!({
-            "name": RUNTIME_NAME,
-            "version": version,
-            "manifest": runtime_manifest.as_str(),
-            "binary": runtime_binary.as_str(),
-        }),
-    )?;
-
-    Ok(RuntimeUseApplyReport {
-        active_runtime,
-        runtime_manifest,
-        runtime_binary,
-        shim: store.bin_dir.join("uf"),
-        origin,
-    })
 }
 
 /// The `source` a manifest already records, when it is one uf writes.
@@ -509,7 +713,7 @@ fn activate(store: &Store, version: &str, origin: Origin) -> Result<RuntimeUseAp
 /// point of reading it is to avoid overwriting a fact with a guess — and a
 /// file uf cannot read is not a fact.
 fn recorded_origin(manifest: &Utf8Path) -> Option<Origin> {
-    let contents = fs::read_to_string(manifest).ok()?;
+    let contents = std::fs::read_to_string(manifest).ok()?;
     let value: serde_json::Value = serde_json::from_str(&contents).ok()?;
     match value.get("source")?.as_str()? {
         "release" => Some(Origin::Release),
@@ -517,59 +721,6 @@ fn recorded_origin(manifest: &Utf8Path) -> Option<Origin> {
         "running-binary" => Some(Origin::RunningBinary),
         _ => None,
     }
-}
-
-/// Link `target` at `path`, replacing whatever was there.
-///
-/// `ln -sfn`, spelled out: the installer's own line, so a machine cannot end
-/// up with `uf` a symlink and `ufx` a shell script depending on which of the
-/// two last ran.
-#[cfg(unix)]
-fn link(target: &Utf8Path, path: &Utf8Path) -> Result<()> {
-    if !target.exists() {
-        bail!("the runtime is missing {target}");
-    }
-    // `symlink` refuses an existing path, and a `uf` already linked to the
-    // previous version is the normal case rather than an error.
-    match fs::remove_file(path.as_std_path()) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => {
-            return Err(error).with_context(|| format!("failed to replace {path}"));
-        }
-    }
-    std::os::unix::fs::symlink(target.as_std_path(), path.as_std_path())
-        .with_context(|| format!("failed to link {path} to {target}"))
-}
-
-/// A batch file that runs the versioned binary, for a platform with no
-/// symlink an unprivileged user may create.
-#[cfg(not(unix))]
-fn link(target: &Utf8Path, path: &Utf8Path) -> Result<()> {
-    let target = target.with_extension("exe");
-    if !target.exists() {
-        bail!("the runtime is missing {target}");
-    }
-    let path = path.with_extension("cmd");
-    fs::write(&path, format!("@echo off\r\n\"{target}\" %*\r\n"))
-        .with_context(|| format!("failed to write {path}"))
-}
-
-#[cfg(unix)]
-fn mark_executable(path: &Utf8Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let mut permissions = fs::metadata(path)
-        .with_context(|| format!("failed to read permissions for {path}"))?
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(path, permissions)
-        .with_context(|| format!("failed to update permissions for {path}"))
-}
-
-#[cfg(not(unix))]
-fn mark_executable(_path: &Utf8Path) -> Result<()> {
-    Ok(())
 }
 
 fn xdg_layout_from_process() -> XdgLayout {
