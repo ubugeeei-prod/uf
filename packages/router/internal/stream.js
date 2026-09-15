@@ -851,7 +851,7 @@ function withPayload(
  * A document's chunks, with the Flight payload it was rendered from written
  * into it as it arrives.
  *
- * Three rules, and each is the answer to a way the obvious version is wrong.
+ * Four rules, and each is the answer to a way the obvious version is wrong.
  *
  * **Nothing before the head.** The first chunk this is handed is the whole
  * opening of the document — `assembled` does not let one go until the head is
@@ -862,9 +862,20 @@ function withPayload(
  * **Written as soon as it exists.** A payload row usually exists before the
  * HTML rendered from it — React's client reads the row, then the boundary
  * renders — so waiting for the next HTML chunk would put the browser's copy
- * behind the markup it hydrates. Each HTML chunk is followed by whatever
- * payload is waiting, and a payload that arrives while the HTML is idle is
- * written then, without a chunk of HTML to follow.
+ * behind the markup it hydrates. Each HTML chunk that ends between elements is
+ * followed by whatever payload is waiting, and a payload that arrives while the
+ * HTML is idle there is written then, without a chunk of HTML to follow.
+ *
+ * **Only between elements.** React hands its HTML on through a fixed-size
+ * buffer, so a chunk can end anywhere: inside a tag, an attribute's value, a
+ * comment, a character reference or an inline `<script>`. A payload element
+ * written after such a chunk is not an element. It is part of the attribute,
+ * the comment or the text it landed in, the browser never reads it, and React's
+ * client closes the payload with rows missing, which is the "Connection closed"
+ * a page reports instead of hydrating. So a waiting payload goes out only where
+ * the HTML written so far ends between elements, which [`advanced`] follows
+ * from chunk to chunk, and otherwise waits for the HTML that finishes what is
+ * open.
  *
  * **`</body></html>` waits for the end of the payload.** The HTML can finish
  * first — the last boundary's markup is rendered from rows that are already
@@ -917,12 +928,13 @@ async function* interleaved(
     }
   })();
 
-  let opened = false;
+  // Nothing written yet, and nothing may go before the head.
+  let boundary: Boundary = NOTHING_WRITTEN;
   let closing = "";
   try {
     let next = chunks.next();
     while (true) {
-      if (opened && written !== "") {
+      if (boundary.safe && written !== "") {
         const out = written;
         written = "";
         yield out;
@@ -945,8 +957,8 @@ async function* interleaved(
       }
       if (text !== "") {
         yield text;
+        boundary = advanced(boundary, text);
       }
-      opened = true;
       next = chunks.next();
     }
     while (!ended || written !== "") {
@@ -970,6 +982,54 @@ async function* interleaved(
       void reader.cancel();
     }
   }
+}
+
+/** Where the HTML written so far leaves the next payload element. */
+type Boundary = {|
+  /** Whether a payload element may be written now. */
+  readonly safe: boolean,
+  /** The `script` or `style` element the HTML is inside, if it is inside one. */
+  readonly rawText: string | null,
+  /** A tag, or a comment, the HTML has started and not yet finished. */
+  readonly open: string,
+|};
+
+const NOTHING_WRITTEN: Boundary = { safe: false, rawText: null, open: "" };
+
+/**
+ * `boundary`, once `html` has been written after it.
+ *
+ * A payload element may follow HTML that ends with a `>` outside a `<script>`
+ * and a `<style>`. The test can be that short because React wrote the HTML: it
+ * escapes `<` and `>` in text and in attribute values, so a `>` it wrote closes
+ * a tag or a comment, and HTML that ends any other way ends inside one, or
+ * inside a character reference or a run of text. What React does not escape is
+ * the content of an inline script or stylesheet, where a `>` is code, so an
+ * opening `<script>` or `<style>` is followed to its closing tag. A tag split
+ * across two chunks is carried in `open` and read whole with the next one.
+ */
+function advanced(boundary: Boundary, html: string): Boundary {
+  const text = boundary.open + html;
+  let rawText = boundary.rawText;
+  const tags = /<(\/?)(script|style)(?=[\s/>])[^>]*>/gi;
+  let tag = tags.exec(text);
+  while (tag != null) {
+    const name = tag[2].toLowerCase();
+    if (tag[1] === "/") {
+      if (rawText === name) {
+        rawText = null;
+      }
+    } else if (rawText == null) {
+      rawText = name;
+    }
+    tag = tags.exec(text);
+  }
+  const start = text.lastIndexOf("<");
+  return {
+    safe: rawText == null && text.endsWith(">"),
+    rawText,
+    open: start > text.lastIndexOf(">") ? text.slice(start) : "",
+  };
 }
 
 /**
