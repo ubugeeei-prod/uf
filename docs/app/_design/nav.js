@@ -334,7 +334,7 @@ export const sections: $ReadOnlyArray<Section> = [
     landing: {
       href: "/guide/migrate",
       title: "Migrating to uf",
-      blurb: "From CRA, Vite or Next.js: what survives, what is lost, what it costs.",
+      blurb: "From CRA, Vite or Next.js: what carries over, the moves in order, and what still differs.",
     },
     pages: [],
     then: "/guide/start",
