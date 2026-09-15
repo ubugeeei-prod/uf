@@ -208,6 +208,87 @@ function excerpt(html: string): string {
 }
 
 /**
+ * The audit this process started last, settled or not.
+ *
+ * axe-core runs one audit at a time per process and refuses a second outright
+ * ("Axe is already running") rather than queueing it. One file never starts two
+ * on purpose, but a worker serves many files: a case that timed out in the
+ * middle of an audit leaves that audit running, and the next file's first audit
+ * used to fail on it — reported under a file that had done nothing wrong.
+ */
+let running: Promise<mixed> = Promise.resolve();
+
+/**
+ * Run `audit` once the audit already running has settled, however it settles.
+ *
+ * Waiting rather than failing is safe because the audit being waited on always
+ * ends — axe-core walks a finite tree — and a case that waits too long is still
+ * bounded by its own timeout.
+ */
+function afterTheAuditRunning<T>(audit: () => Promise<T>): Promise<T> {
+  const turn = running.then(audit, audit);
+  running = turn.then(
+    () => undefined,
+    () => undefined,
+  );
+  return turn;
+}
+
+/** How long to wait between looks at an audit this module did not start. */
+const FOREIGN_AUDIT_POLL_MS = 10;
+
+/** How long an audit this module did not start may hold axe-core. */
+const FOREIGN_AUDIT_LIMIT_MS = 10000;
+
+// The timer and the clock as they were when this module loaded, so a file that
+// fakes timers cannot stall a wait for a real audit to end.
+const pause: typeof setTimeout = setTimeout;
+const now: () => number = Date.now.bind(Date);
+
+/**
+ * Whether axe-core refused to start because an audit is already running.
+ *
+ * `running` queues every audit this module starts, so a refusal means an audit
+ * started somewhere else. `uf dev`'s overlay runs axe-core itself, and stopping
+ * the overlay cannot recall an audit already walking the page: its own test can
+ * leave one finishing into the next file in the worker.
+ */
+function isAlreadyRunning(error: mixed): boolean {
+  return error instanceof Error && error.message.startsWith("Axe is already running");
+}
+
+/**
+ * Run the audit once axe-core is free of an audit this module did not start.
+ *
+ * Looks again every `FOREIGN_AUDIT_POLL_MS` until axe-core takes it, and after
+ * `FOREIGN_AUDIT_LIMIT_MS` says what held the engine rather than waiting on an
+ * audit that is not going to end.
+ */
+function runOnceAxeIsFree(
+  axe: $FlowFixMe,
+  node: mixed,
+  options: mixed,
+  since: number = now(),
+): Promise<mixed> {
+  return Promise.resolve()
+    .then(() => axe.run(node, options))
+    .catch((error: mixed) => {
+      if (!isAlreadyRunning(error)) {
+        throw error;
+      }
+      if (now() - since >= FOREIGN_AUDIT_LIMIT_MS) {
+        throw new Error(
+          "axe-core has been running an audit uf did not start for ten seconds, such as " +
+            "`uf dev`'s overlay or a direct `axe.run`; this assertion could not start its own.",
+        );
+      }
+      return new Promise((resolve) => {
+        pause(resolve, FOREIGN_AUDIT_POLL_MS);
+      }).then(() => runOnceAxeIsFree(axe, node, options, since));
+    });
+}
+
+/**
  * Audit `node` and report what it found, weakest results already dropped.
  *
  * Rejects when axe-core is not installed or the host has no document to audit.
@@ -229,7 +310,9 @@ export async function auditElement(
   }
   const axe = await axeEngine();
   const options = resolveOptions(overrides);
-  const results = await axe.run(node, axeRunOptions(options));
+  const results = await afterTheAuditRunning(() =>
+    runOnceAxeIsFree(axe, node, axeRunOptions(options)),
+  );
   const found: Array<AxeViolation> = [];
   for (const raw of arrayAt(results, "violations")) {
     const violation: AxeViolation = {

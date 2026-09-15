@@ -103,6 +103,32 @@ describe("toHaveNoAxeViolations", () => {
     await expect(container).toHaveNoAxeViolations();
   });
 
+  it("waits for an audit already running rather than refusing to start", async () => {
+    // Two audits at once is what a file meets when the file before it in the
+    // same worker gave up on one: a case that timed out while axe was still
+    // walking its tree leaves axe-core running, and axe-core refuses a second
+    // run outright — "Axe is already running" — so the *next* file's audit
+    // failed, naming a file that had done nothing wrong. Both are started here
+    // before either settles, which is the same situation inside one file.
+    const { container } = render(<Accessible />);
+    await Promise.all([
+      expect(container).toHaveNoAxeViolations(),
+      expect(container).toHaveNoAxeViolations(),
+    ]);
+  });
+
+  it("waits for an audit it did not start, such as the one `uf dev` runs over a page", async () => {
+    // `uf dev`'s overlay runs axe-core itself, outside the queue above, and
+    // stopping the overlay cannot recall an audit already walking the page. A
+    // file that stops it can leave that audit running into the next file in the
+    // same worker, whose first assertion then met "Axe is already running".
+    const { container } = render(<Accessible />);
+    const axe = (await import("axe-core")).default;
+    const foreign = axe.run(container);
+    await expect(container).toHaveNoAxeViolations();
+    await foreign;
+  });
+
   it("fails over a tree axe has something to say about", async () => {
     const { container } = render(<Inaccessible />);
     let thrown: mixed = null;

@@ -108,6 +108,7 @@ import {
 import { DATA_ID, ROOT_ID } from "./internal/document.js";
 import { decodePayload } from "./internal/payload.js";
 import { createPayloadReader, domObserver } from "./internal/payload-rows.js";
+import { installBrowserModules, readDocumentPayload } from "./internal/flight-browser.js";
 
 /**
  * Hydrate the current document.
@@ -211,6 +212,70 @@ export async function hydrate(options: {|
   // hydration reporter, dynamically imported for the same reason: a production
   // bundle has no path to the module rather than merely no reason to run it.
   // See `./internal/devtools.js` and ubugeeei-prod/uf#503.
+  if (import.meta.hot != null) {
+    const { reportDevtools } = await import("./internal/devtools.js");
+    reportDevtools(window);
+  }
+}
+
+/**
+ * Hydrate a document React Server Components rendered.
+ *
+ * [`hydrate`] resolves the route from its modules and renders it again over the
+ * server's markup. This one resolves nothing and imports no route module: the
+ * document carries the Flight payload its tree was rendered from, React's own
+ * client reads it, and the tree the browser hydrates is the tree the server
+ * rendered — a Server Component is markup and a reference, and a client
+ * component is the one kind of module this page loads. See
+ * ubugeeei-prod/uf#519.
+ *
+ * The payload is read while the document is still arriving. Row 0 is in the
+ * shell, so hydration starts as soon as the module script runs, and every row
+ * after it lands in a later chunk that the reader picks up as it is parsed — so
+ * a boundary the server completes after hydration began resolves then, with no
+ * second request.
+ *
+ * Everything else is [`hydrate`]'s, for the reasons written there: the
+ * navigation mode is installed before the first render, the development
+ * hydration report captures the server's markup before React repairs it, and
+ * Strict Mode wraps the root.
+ */
+export async function hydrateFlight(options: {|
+  readonly App: React.ComponentType<AppProps>,
+  readonly strictMode?: boolean,
+  readonly navigation?: Navigation,
+|}): Promise<void> {
+  installNavigation(options.navigation ?? "client");
+  installBrowserModules();
+  const flight = readDocumentPayload(document, domObserver(document));
+
+  const url = window.location.pathname + window.location.search;
+  const { App } = options;
+  const container = document.getElementById(ROOT_ID) ?? document;
+  prepareDocumentForHydration(document);
+
+  let recovery = null;
+  let restoreDevHead = null;
+  if (import.meta.hot != null) {
+    const { captureServerMarkup, hydrationErrorHandler, prepareDevHeadForHydration } =
+      await import("./internal/hydration.js");
+    restoreDevHead = prepareDevHeadForHydration(document);
+    recovery = hydrationErrorHandler(container, captureServerMarkup(container), document);
+  }
+
+  const tree = <App url={url} flight={flight} />;
+
+  startTransition(() => {
+    hydrateRoot(
+      container,
+      options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
+      recovery == null ? undefined : { onRecoverableError: recovery },
+    );
+    if (restoreDevHead != null) {
+      setTimeout(restoreDevHead, 250);
+    }
+  });
+
   if (import.meta.hot != null) {
     const { reportDevtools } = await import("./internal/devtools.js");
     reportDevtools(window);

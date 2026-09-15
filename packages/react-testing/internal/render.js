@@ -16,7 +16,13 @@ import { createRequire } from "node:module";
 import type * as React from "@uniflowed/react";
 import { act } from "@uniflowed/react";
 
-import { bodyOf, installActEnvironment, installDom, setActEnvironment } from "./dom.js";
+import {
+  beforeWindowRestore,
+  bodyOf,
+  installActEnvironment,
+  installDom,
+  setActEnvironment,
+} from "./dom.js";
 
 /** What `render` hands back. */
 export type RenderResult = {|
@@ -49,6 +55,11 @@ const mounted: Array<Mounted> = [];
  */
 export function render(ui: React.Node, options?: {| readonly container?: Element |}): RenderResult {
   installDom();
+  // A file that renders and never calls `cleanup` leaves its roots here for the
+  // next file in the worker. They have to be unmounted before the worker takes
+  // the window back, because unmounting goes through React and React reads the
+  // window as it does.
+  beforeWindowRestore(cleanup);
   cleanup();
 
   const { createRoot } = requireClient();

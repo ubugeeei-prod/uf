@@ -669,6 +669,91 @@ describe("fireEvent", () => {
 
     expect(heard).toEqual(["focus", "focusin"]);
   });
+
+  it("builds every pointer event with its pointer type, enter and leave included", () => {
+    // `pointerType` is the difference between a mouse arriving and a finger
+    // arriving. A `pointerenter` built as a bare `Event` had none, so a test of
+    // a tooltip that must not open on touch wrote the property on by hand.
+    const { container } = render(<button type="button">press</button>);
+    const button = elementIn(container, "button");
+    const heard: Array<string> = [];
+    for (const name of [
+      "pointerover",
+      "pointerenter",
+      "pointerout",
+      "pointerleave",
+      "pointercancel",
+    ]) {
+      button.addEventListener(name, (event: $FlowFixMe) => {
+        heard.push(`${String(event.type)}:${String(event.pointerType)}`);
+      });
+    }
+
+    fireEvent.pointerEnter(button, { pointerType: "touch" });
+    fireEvent.pointerLeave(button, { pointerType: "pen" });
+    fireEvent.pointerCancel(button, { pointerType: "touch" });
+
+    expect(heard).toEqual([
+      "pointerover:touch",
+      "pointerenter:touch",
+      "pointerout:pen",
+      "pointerleave:pen",
+      "pointercancel:touch",
+    ]);
+  });
+
+  it("reaches onPointerEnter and onMouseEnter, which React builds from over and out", () => {
+    // React never listens for an enter or a leave: they do not bubble, so the
+    // root would not hear them. It computes them from the `over` and `out`
+    // events a browser sends just before, which is why those are sent too.
+    component Target() {
+      const [state, setState] = useState("away");
+      return (
+        <output
+          onMouseEnter={() => setState("mouse over")}
+          onMouseLeave={() => setState("mouse gone")}
+          onPointerEnter={(event) => setState(`over by ${String(event.pointerType)}`)}
+          onPointerLeave={() => setState("gone")}
+        >
+          {state}
+        </output>
+      );
+    }
+    const { container } = render(<Target />);
+    const output = elementIn(container, "output");
+
+    fireEvent.pointerEnter(output, { pointerType: "pen" });
+    expect(output.textContent).toBe("over by pen");
+
+    fireEvent.pointerLeave(output, { pointerType: "pen" });
+    expect(output.textContent).toBe("gone");
+
+    fireEvent.mouseEnter(output);
+    expect(output.textContent).toBe("mouse over");
+
+    fireEvent.mouseLeave(output);
+    expect(output.textContent).toBe("mouse gone");
+  });
+
+  it("does not bubble an enter or a leave, which a browser never does", () => {
+    const { container } = render(
+      <section>
+        <button type="button">press</button>
+      </section>,
+    );
+    const section = elementIn(container, "section");
+    const heard: Array<string> = [];
+    section.addEventListener("pointerenter", () => heard.push("enter reached the parent"));
+    section.addEventListener("pointerleave", () => heard.push("leave reached the parent"));
+    section.addEventListener("pointerover", () => heard.push("over bubbled"));
+
+    fireEvent.pointerEnter(elementIn(container, "button"));
+    fireEvent.pointerLeave(elementIn(container, "button"));
+
+    // An element is told the pointer entered *it*; its parent is told the
+    // pointer is over something inside, which is a different sentence.
+    expect(heard).toEqual(["over bubbled"]);
+  });
 });
 
 describe("userEvent", () => {

@@ -13,6 +13,12 @@ when a visitor clicks a link? uf answers them with two settings, because the
 answers compose.
 </div>
 
+**What you will be able to do:** choose where each route's document comes from
+and what a click does, read the route decisions `uf build` reports, and pick a
+deployment shape.
+
+**What you need first:** routes to render — [Routing](/guide/routing).
+
 ## The two axes
 
 `app.rendering.modes` says where a document comes from, and `uf build` picks
@@ -137,6 +143,25 @@ handlers, [Server Components](/guide/server-components) for the client/server
 split that decides whether an action is callable from the browser,
 [Server actions](/guide/server-actions) for the endpoint itself, and the
 [config reference](/reference/config#renderingmodes) for the exact defaults.
+
+## How a page navigates
+
+A document React Server Components rendered carries the Flight payload its tree
+was rendered from, and the browser hydrates that payload rather than rendering
+the route's modules again. A link after that fetches the next route's payload
+from `<route>/__uf.flight` — `/guide/rendering/__uf.flight` for this page — and
+renders it in place:
+
+- **a prerendered route has its payload beside its document**, so a static host
+  serves navigation from files, with no rewrite rule, as `text/x-component`;
+- **a server-rendered route answers the payload per request**, after the
+  middleware that guards its path and before any route handler;
+- **anything that is not a payload is a document load**: a redirect off the
+  site, a static host's `404.html` for a file it lacks, a middleware's own
+  refusal. The browser navigates the way a link without JavaScript would.
+
+`app.rsc: false` turns this off, and a navigation imports the next route's
+modules instead.
 
 ## `navigation: "document"`
 
@@ -327,3 +352,8 @@ And when not to: an application with state that has to survive a navigation —
 a media player that keeps playing, a form half filled in, a list scrolled to
 where the visitor left it — is asking for the client router, which is why it is
 the default.
+
+## Where to go next
+
+[Server Components](/guide/server-components) is next: the `"use client"`
+boundary, and how uf decides which modules reach the browser.

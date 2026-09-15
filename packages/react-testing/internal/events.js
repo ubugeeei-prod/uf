@@ -54,10 +54,35 @@ const EVENT_TYPES: { readonly [string]: string } = {
   pointerdown: "PointerEvent",
   pointerup: "PointerEvent",
   pointermove: "PointerEvent",
+  // Every pointer event, and not only the three a click is made of. Built as a
+  // bare `Event`, a `pointerenter` has no `pointerType` — and `pointerType` is
+  // the whole difference between a mouse arriving and a finger arriving, which
+  // is what a tooltip that must not open on touch is tested on. That test had
+  // to build its event by hand and write the property onto it.
+  pointercancel: "PointerEvent",
+  pointerenter: "PointerEvent",
+  pointerleave: "PointerEvent",
+  pointerover: "PointerEvent",
+  pointerout: "PointerEvent",
+  gotpointercapture: "PointerEvent",
+  lostpointercapture: "PointerEvent",
 };
 
-/** Events that do not bubble, whatever else is said about them. */
-const NON_BUBBLING = new Set(["focus", "blur", "mouseenter", "mouseleave"]);
+/**
+ * Events that do not bubble, whatever else is said about them.
+ *
+ * The enter and leave events are dispatched to each element they concern and
+ * never bubble, for a pointer as for a mouse. A `pointerenter` that bubbled
+ * told every ancestor the pointer had entered *it*, which a browser never does.
+ */
+const NON_BUBBLING = new Set([
+  "focus",
+  "blur",
+  "mouseenter",
+  "mouseleave",
+  "pointerenter",
+  "pointerleave",
+]);
 
 /**
  * The bubbling event React actually listens for, for each one that does not
@@ -149,6 +174,28 @@ function optionsFor(name: string, init: EventInit): EventInit {
 }
 
 /**
+ * The bubbling event a browser sends just *before* each enter and leave, and
+ * the one React builds its enter and leave handlers from.
+ *
+ * The same shape of problem as `ALSO_BUBBLES`, with the pair the other way
+ * round. React does not listen for `pointerenter` at all: `onPointerEnter`,
+ * `onPointerLeave`, `onMouseEnter` and `onMouseLeave` are computed at the root
+ * from `pointerover`, `pointerout`, `mouseover` and `mouseout`, because the
+ * enter and leave events do not bubble and the root would never hear them. So
+ * a bare `pointerenter` reached a listener added to the element and no React
+ * handler, and a component written with `onPointerEnter` could not be tested
+ * with the event its name says. A browser sends over before enter and out
+ * before leave, which is the order here. Testing Library pairs them too, and
+ * for the same reason.
+ */
+const PRECEDED_BY: { readonly [string]: string } = {
+  mouseenter: "mouseover",
+  mouseleave: "mouseout",
+  pointerenter: "pointerover",
+  pointerleave: "pointerout",
+};
+
+/**
  * Dispatch one event, inside `act`.
  *
  * Returns whether the event ran to completion — `false` when a handler called
@@ -158,8 +205,14 @@ function optionsFor(name: string, init: EventInit): EventInit {
 export function dispatch(target: EventTarget, name: string, init?: EventInit): boolean {
   const event = construct(name, init ?? {});
   const paired = ALSO_BUBBLES[name];
+  const preceding = PRECEDED_BY[name];
   let ran = true;
   actively(() => {
+    if (preceding != null) {
+      // Before, and inside the same `act`, for the reasons `ALSO_BUBBLES`
+      // gives about its pair.
+      target.dispatchEvent(construct(preceding, init ?? {}));
+    }
     ran = target.dispatchEvent(event);
     if (paired != null) {
       // Both, in the order a browser sends them, and inside the same `act` so

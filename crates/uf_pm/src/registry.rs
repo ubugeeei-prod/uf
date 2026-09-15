@@ -381,17 +381,16 @@ pub fn packuments(
 /// A request that did not produce a body.
 ///
 /// The three are kept apart because they are three different sentences to a
-/// reader. curl exits 22 for an HTTP status it was told to fail on and
-/// something else for a connection it could not make, and "that registry does
-/// not have this name" is a different problem from "uf could not reach that
-/// registry" — which is in turn different from "this machine has no curl".
+/// reader. "That registry does not have this name" is a different problem from
+/// "uf could not reach that registry" — which is in turn different from "this
+/// machine has no curl". [`classify`] is where the first two are told apart.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HttpFailure {
     /// `curl` could not be started at all.
     Program(String),
-    /// The host answered, with a status curl was told to treat as a failure.
+    /// The host answered, with an HTTP status of 400 or above.
     Answered(String),
-    /// The request never got an answer.
+    /// The request never got a whole answer.
     Unreachable(String),
 }
 
@@ -409,8 +408,13 @@ impl HttpFailure {
     }
 }
 
-/// curl's exit status for an HTTP response it was asked to treat as a failure.
-const CURL_HTTP_ERROR: i32 = 22;
+/// What `--write-out` prints after the body: a newline, then the HTTP status.
+///
+/// On a line of its own, so that nothing in a body can be read as part of the
+/// status: the status is whatever follows the last newline curl wrote. curl
+/// prints it whether or not `-f` failed the transfer, and prints `000` when no
+/// response arrived at all.
+const WRITE_OUT_STATUS: &str = "\n%{http_code}";
 
 /// GET one URL over TLS, bounded, and hand back the body.
 ///
@@ -420,7 +424,13 @@ const CURL_HTTP_ERROR: i32 = 22;
 pub(crate) fn get(url: &str, accept: &str) -> Result<Vec<u8>, HttpFailure> {
     let output = Command::new("curl")
         .args([
+            // `-f` still, so that the body of a response curl retries past — a
+            // `503` before the answer — is never written ahead of the answer.
+            // What it no longer decides is whether the host answered: the
+            // status `--write-out` reports does. See [`classify`].
             "-fsSL",
+            "--write-out",
+            WRITE_OUT_STATUS,
             "--retry",
             "1",
             "--max-time",
@@ -447,20 +457,55 @@ pub(crate) fn get(url: &str, accept: &str) -> Result<Vec<u8>, HttpFailure> {
         Ok(output) => output,
         Err(source) => return Err(HttpFailure::Program(source.to_string())),
     };
-    if !output.status.success() {
-        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(if output.status.code() == Some(CURL_HTTP_ERROR) {
-            HttpFailure::Answered(detail)
-        } else {
-            HttpFailure::Unreachable(detail)
-        });
+    classify(output.status.code(), &output.stdout, &output.stderr)
+}
+
+/// What one run of curl came to: its exit status, what it wrote, and what it
+/// said.
+///
+/// Decided by the HTTP status, because curl's exit status does not carry it.
+/// This used to count a failure as an answer when curl exited 22, and curl
+/// 8.7.1 on macOS exits 56 for the same 404 — so every package the registry
+/// holds no attestation for was reported as *unknown*, uf's word for "could
+/// not reach the registry", when the registry had answered and curl had said so
+/// in words (#1005). The status is the registry's own answer, and reads the
+/// same from every curl that received one.
+///
+/// A pure function, so that a 404 under any exit status can be tested without
+/// a registry or a particular build of curl.
+fn classify(exit: Option<i32>, stdout: &[u8], stderr: &[u8]) -> Result<Vec<u8>, HttpFailure> {
+    let (body, status) = match stdout.iter().rposition(|&byte| byte == b'\n') {
+        Some(at) => (&stdout[..at], &stdout[at + 1..]),
+        None => (&stdout[..0], stdout),
+    };
+    let status = std::str::from_utf8(status)
+        .ok()
+        .and_then(|status| status.trim().parse::<u16>().ok());
+    match status {
+        Some(status @ 400..=599) => Err(HttpFailure::Answered(format!(
+            "the registry answered {status}"
+        ))),
+        // A success status alone is not a whole answer: curl reports the status
+        // of a response it then failed to finish reading — a timeout part way
+        // through — and half a packument is not a packument.
+        Some(200..=299) if exit == Some(0) => {
+            if body.len() > MAX_PACKUMENT_BYTES {
+                return Err(HttpFailure::Answered(format!(
+                    "the answer is larger than {MAX_PACKUMENT_BYTES} bytes"
+                )));
+            }
+            Ok(body.to_vec())
+        }
+        // `000`, which is curl for no response at all, or anything else.
+        _ => {
+            let said = String::from_utf8_lossy(stderr).trim().to_owned();
+            Err(HttpFailure::Unreachable(if said.is_empty() {
+                String::from("curl ended without an answer")
+            } else {
+                said
+            }))
+        }
     }
-    if output.stdout.len() > MAX_PACKUMENT_BYTES {
-        return Err(HttpFailure::Answered(format!(
-            "the answer is larger than {MAX_PACKUMENT_BYTES} bytes"
-        )));
-    }
-    Ok(output.stdout)
 }
 
 /// The abbreviated packument's two fields.

@@ -135,6 +135,45 @@ fn a_value_a_parent_uf_injected_does_not_count_as_the_environment() {
     assert_eq!(exported.get(INJECTED).map(String::as_str), Some("API"));
 }
 
+/// A runtime uf put in front of `PATH` reaches every process started with the
+/// environment: ahead of what this process inherited, outside the marker that
+/// names file values, and not over a `PATH` the caller wrote itself.
+#[test]
+fn a_path_prefix_goes_in_front_of_path_and_not_in_the_marker() {
+    let dir = project(&[(".env", "API=file\n")]);
+    let load = || {
+        load_from(
+            &root(&dir),
+            &UniflowedConfig::default(),
+            "development",
+            &BTreeMap::new(),
+        )
+        .unwrap()
+    };
+
+    let plain = load();
+    assert!(
+        plain.exported().iter().all(|(name, _)| name != "PATH"),
+        "an environment nobody prefixed sets no PATH at all"
+    );
+
+    let env = load().with_path_prefix("/store/node-26.8.2/bin");
+    assert_eq!(
+        env.path_prefix(),
+        [camino::Utf8PathBuf::from("/store/node-26.8.2/bin")]
+    );
+    let exported: BTreeMap<String, String> = env.exported().into_iter().collect();
+    let path = exported.get("PATH").expect("PATH is exported");
+    assert!(path.starts_with("/store/node-26.8.2/bin"), "{path}");
+    let inherited = std::env::var("PATH").unwrap_or_default();
+    assert!(path.ends_with(&inherited), "{path}");
+    assert_eq!(exported.get(INJECTED).map(String::as_str), Some("API"));
+
+    let overridden = BTreeSet::from(["PATH"]);
+    let beneath: BTreeMap<String, String> = env.exported_beneath(&overridden).into_iter().collect();
+    assert!(!beneath.contains_key("PATH"), "{beneath:?}");
+}
+
 #[test]
 fn env_files_replaces_the_cascade_when_it_is_set() {
     let dir = project(&[

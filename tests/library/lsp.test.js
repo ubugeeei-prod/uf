@@ -18,7 +18,7 @@
 // whole conversation, in order — the same shape `crates/uf_cli/tests/cli.rs`
 // uses.
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -90,6 +90,10 @@ type Answer = {
   },
   contents?: { kind: string, value: string },
   range?: Range,
+  // A `CompletionList`, which completion sends instead of a bare list when
+  // the list is not finished.
+  isIncomplete?: boolean,
+  items?: Array<Entry>,
 };
 
 type Wire = {
@@ -113,10 +117,15 @@ const framed = (message: Message): string => {
  * `cwd` matters: the server reads `uf.config.js` from its working directory,
  * once, at start-up.
  */
-const session = (messages: Array<Message>, cwd: string = process.cwd()): Array<Wire> => {
+const session = (
+  messages: Array<Message>,
+  cwd: string = process.cwd(),
+  env: { [string]: string } = {},
+): Array<Wire> => {
   const run = spawnSync(UF, ["lsp"], {
     input: messages.map(framed).join(""),
     cwd,
+    env: { ...process.env, ...env },
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
   });
@@ -503,13 +512,177 @@ describe("completion in uf.config.js", () => {
     };
   };
 
-  const completeAt = (document: string, cwd?: string): { text: string, items: Array<Entry> } => {
+  const completeAt = (
+    document: string,
+    cwd?: string,
+    env?: { [string]: string },
+  ): { text: string, items: Array<Entry> } => {
     const { text, line, character } = marked(document);
-    const messages = session([didOpen(text, CONFIG), complete(9, line, character), EXIT], cwd);
+    const messages = session([didOpen(text, CONFIG), complete(9, line, character), EXIT], cwd, env);
     return { text, items: listed(messages, 9) };
   };
 
   const labels = (items: Array<Entry>): Array<string> => items.map((item) => item.label ?? "");
+
+  // Node's releases, newest first, with a prerelease that is never offered.
+  const NODE_RELEASES: Array<{ version: string, date: string, lts?: string }> = [
+    { version: "27.0.0-rc.1", date: "2026-10-02" },
+    { version: "26.10.0", date: "2026-10-01" },
+    { version: "24.14.0", date: "2026-08-20", lts: "Krypton" },
+    { version: "22.20.0", date: "2026-06-01", lts: "Jod" },
+  ];
+  const NODE_VERSIONS = ["26", "24", "22", "26.10.0", "24.14.0", "22.20.0"];
+
+  // Where release lists are cached and fetched from, for one test: a fresh
+  // cache — holding Node's list, fetched just now, when `cached` — and a
+  // publisher on `file://` serving nodejs.org's `index.json` when `published`,
+  // and serving nothing otherwise. Nothing here reaches a network.
+  const releaseLists = (options: {
+    cached?: boolean,
+    published?: boolean,
+  }): { env: { [string]: string }, cache: string, cleanup: () => void } => {
+    const cache = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-releases-cache-"));
+    const publisher = fs.mkdtempSync(path.join(os.tmpdir(), "uf-lsp-releases-publisher-"));
+    if (options.cached === true) {
+      const index = {
+        format: 1,
+        tool: "node",
+        fetchedAt: Math.floor(Date.now() / 1000),
+        sources: ["fixture"],
+        releases: NODE_RELEASES,
+      };
+      fs.writeFileSync(path.join(cache, "node.json"), JSON.stringify(index));
+    }
+    if (options.published === true) {
+      const rows = NODE_RELEASES.map((release) => ({
+        version: `v${release.version}`,
+        date: release.date,
+        files: [],
+        lts: release.lts ?? false,
+      }));
+      fs.writeFileSync(path.join(publisher, "index.json"), JSON.stringify(rows));
+    }
+    return {
+      env: { UF_INDEX_CACHE: cache, UF_TOOL_INDEX_BASE: `file://${publisher}` },
+      cache,
+      cleanup: () => {
+        fs.rmSync(cache, { recursive: true, force: true });
+        fs.rmSync(publisher, { recursive: true, force: true });
+      },
+    };
+  };
+
+  it("completes the tool names a key typed as a runtime takes", () => {
+    const lists = releaseLists({});
+    try {
+      const { text, items } = completeAt(
+        'export default defineConfig({ test: { runtime: "‸" } });\n',
+        undefined,
+        lists.env,
+      );
+
+      expect(labels(items)).toEqual(["node", "bun", "deno"]);
+      expect(apply(text, [items[1].textEdit ?? {}])).toBe(
+        'export default defineConfig({ test: { runtime: "bun" } });\n',
+      );
+    } finally {
+      lists.cleanup();
+    }
+  });
+
+  it("completes a tool's versions after its `@`, majors first, from the cached release list", () => {
+    const lists = releaseLists({ cached: true });
+    try {
+      const { text, items } = completeAt(
+        'export default defineConfig({ runtime: "node@‸" });\n',
+        undefined,
+        lists.env,
+      );
+
+      expect(labels(items)).toEqual(NODE_VERSIONS);
+      expect(items[1].kind).toBe(12);
+      expect(items[1].detail).toBe("24.14.0 · LTS Krypton");
+      expect(apply(text, [items[1].textEdit ?? {}])).toBe(
+        'export default defineConfig({ runtime: "node@24" });\n',
+      );
+    } finally {
+      lists.cleanup();
+    }
+  });
+
+  it("fetches a missing release list behind the request instead of waiting for it", async () => {
+    // A server held open the way an editor holds it, because the point is what
+    // happens between one request and the next.
+    const lists = releaseLists({ published: true });
+    const child = spawn(UF, ["lsp"], {
+      env: { ...process.env, ...lists.env },
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    const closed = new Promise((resolve) => child.on("close", resolve));
+    const answers: Map<number, Wire> = new Map();
+    let pending = Buffer.alloc(0);
+    child.stdout.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      for (;;) {
+        const split = pending.indexOf("\r\n\r\n");
+        if (split < 0) {
+          return;
+        }
+        const header = pending.subarray(0, split).toString("utf8");
+        const length = Number.parseInt(header.replace(/^Content-Length:\s*/i, ""), 10);
+        if (pending.length < split + 4 + length) {
+          return;
+        }
+        const message: Wire = JSON.parse(
+          pending.subarray(split + 4, split + 4 + length).toString("utf8"),
+        );
+        pending = pending.subarray(split + 4 + length);
+        if (message.id != null) {
+          answers.set(message.id, message);
+        }
+      }
+    });
+    const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const text = 'export default defineConfig({ runtime: "node@" });\n';
+    const character = text.indexOf("@") + 1;
+    const ask = async (id: number): Promise<Wire> => {
+      child.stdin.write(framed(complete(id, 0, character)));
+      for (let waited = 0; waited < 10_000; waited += 10) {
+        const found = answers.get(id);
+        if (found != null) {
+          return found;
+        }
+        await pause(10);
+      }
+      throw new Error(`no answer for id ${id}`);
+    };
+
+    try {
+      child.stdin.write(framed(didOpen(text, CONFIG)));
+
+      // Answered at once, with nothing yet — and told to ask again.
+      expect((await ask(1)).result).toEqual({ isIncomplete: true, items: [] });
+
+      // Asked again as somebody types, until the list has landed.
+      let versions: Array<Entry> = [];
+      for (let id = 2; id < 500 && versions.length === 0; id += 1) {
+        const result = (await ask(id)).result;
+        if (Array.isArray(result)) {
+          versions = result;
+        } else {
+          await pause(20);
+        }
+      }
+      expect(labels(versions)).toEqual(NODE_VERSIONS);
+      // And it is cached, so the next session does not wait even once.
+      expect(fs.existsSync(path.join(lists.cache, "node.json"))).toBe(true);
+    } finally {
+      child.stdin.end(framed(EXIT));
+      await closed;
+      lists.cleanup();
+    }
+  });
 
   it("completes a half-typed key from the config schema, with its documentation and type", () => {
     // Unclosed and mid-word: the state a document is in when somebody wants a

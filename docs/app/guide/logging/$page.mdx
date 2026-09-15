@@ -15,6 +15,13 @@ id when it arrives, and that id is readable from a loader, a route handler and a
 server component's render without anybody being handed a request.
 </div>
 
+**What you will be able to do:** log structured records, read the request id
+from inside a render, choose a format and a level, and send lines somewhere
+else.
+
+**What you need first:** a project that serves requests —
+[Routing](/guide/routing).
+
 ## Saying something
 
 ```js
@@ -153,3 +160,8 @@ is `ECONNRESET` far more often than it is an authorization code.
 fixed length before it is formatted. A path or a user agent is text a client
 chose, and a newline in one would close its own record and open a fabricated
 one — which is how a log becomes evidence of something that did not happen.
+
+## Where to go next
+
+[Web vitals](/guide/vitals) is next: five numbers the browser already has, sent
+only where you say.
