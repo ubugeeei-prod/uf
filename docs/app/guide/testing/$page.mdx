@@ -1030,6 +1030,86 @@ blamed on the file that waited rather than the file that stopped time. Which
 files follow which changes with the timings cache, so a suite that depended on
 it would fail differently every run.
 
+## Choosing a runner
+
+`uf test` runs a suite with uf's own runner unless `uf.config.js` names another:
+
+```js
+export default defineConfig({
+  test: { runner: "bun" }, // or "bun@1.4"
+});
+```
+
+`"bun"` is the `bun` on `PATH`. `"bun@1.4"` is locked in `uf.lock` and installed
+into uf's store the first time `uf test` needs it, as `test: { runtime:
+"bun@1.4" }` would be. A `test.runtime` that names anything but Bun is refused,
+because `bun test` runs on Bun alone.
+
+With `runner: "bun"`, uf still discovers the test files — the same files its own
+runner would run — and hands exactly those to `bun test`, with uf's Flow preload
+loaded, so a test file written in Flow imports. The test files do not change:
+they keep importing `@uniflowed/test`, and uf starts Bun with an export
+condition under which that package *is* `bun:test`. `uf explain test` prints the
+exact command.
+
+**What maps.** `describe`, `it` and `test` with `.only`, `.skip`, `.todo` and
+`.each` (rows are handed to the body whole, as uf's own runner does), the four
+hooks, `fn`, `spyOn`, and `uft`'s clock and mock-reset members are Bun's.
+`expect` is Bun's too, so its own matchers work — and its failure messages are
+Bun's.
+
+**What refuses.** Anything with no Bun equivalent raises `UnsupportedError` at
+the moment it is used, naming what was called: `it.skipBecause` (Bun's skips
+carry no reason into a report), the DOM matchers and `toHaveNoAxeViolations`,
+the snapshot matchers (the two runners key snapshots differently, so a snapshot
+would be compared against, or rewritten over, one uf did not write),
+`uft.stubEnv` and `uft.stubGlobal`, module mocking, and
+`uft.advanceTimersByTimeAsync`. `uf test` itself refuses, before Bun starts, a
+project that declares `permissions` or coverage thresholds, and in-source tests
+— each is a promise uf keeps for its own runner and cannot keep through Bun.
+
+**Flags.** Path filters, `-t` (still a substring: uf escapes it for Bun's
+regular expression), `--watch`, `--bail`, `--retry`, `-j`, `--coverage` with
+`text` or `lcov`, and `--reporter junit --reporter-outfile` mean the same thing
+to Bun and pass through. `--json`, `--list`, `--browser`, `--watch-interval`,
+`-u` and a Cobertura report do not, and are refused by name rather than dropped.
+Coverage under Bun is Bun's own count of the JavaScript the preload produced,
+not uf's mapping back to your Flow lines.
+
+**What uf still checks.** Bun reports a file whose registrations went somewhere
+it could not see as "0 tests" and exits 0. So uf always has Bun write a JUnit
+report, reads it back, and fails the run when a file its discovery says declares
+tests produced no case at all — the rule uf's own runner enforces for the same
+reason.
+
+**The difference, measured.** These numbers are relative, and only relative.
+They come from 12 rounds on a shared 8-core M3 at a load average of about 3,
+with the runs alternating, so the ratios carry over and the milliseconds may
+not. Absolute numbers on a quiet machine belong to the benchmark in
+[#945](https://github.com/ubugeeei-prod/uf/issues/945). The suite is 50 Flow
+files and 1,000 cases, run with the transform cache warm:
+
+| Run | Wall, median (p25–p75) | CPU |
+| --- | --- | --- |
+| `uf test`, `runner: "uf"` | 79 ms (78–80) | 100 ms |
+| `uf test`, `runner: "bun"` | 61 ms (60–61) | 70 ms |
+| the `bun test` command that starts, alone | 56 ms (55–57) | 60 ms |
+| `bun test` on the same suite as plain JavaScript | 33 ms (33–33) | 30 ms |
+
+Around `bun test`, `uf test` reads the config, discovers the files and reads
+the report back. Here that adds 5 ms. Bun's preload reads compiled Flow from
+`.uf/cache/transform`, the same cache uf's own runner uses
+([#944](https://github.com/ubugeeei-prod/uf/issues/944)). A warm run therefore
+compiles nothing under either runner, and on this suite the Bun runner is the
+faster of the two. The rest of the gap to plain `bun test` is spent inside
+Bun, loading the preload and the compiled modules. It has not been broken down
+further.
+
+Keep the default for what only uf's runner does — module mocking, DOM matchers
+and accessibility audits, coverage against your Flow source, permissions,
+browser mode, and skip reasons that survive into reports. Choose Bun for a suite
+that already relies on Bun's own matchers or behaviour.
+
 ## Where it stands
 
 50 files, 1,000 tests, 2,000 assertions, on an 8-core M-series Mac, best of

@@ -125,6 +125,14 @@ pub struct UniflowedConfig {
     pub runtime: Option<Written<RuntimeSpec>>,
     pub server: ServerConfig,
     pub site: SiteConfig,
+    /// Tasks `uf prepare` runs before a commit, keyed by a glob over the
+    /// staged files.
+    ///
+    /// A glob with no `/` matches a file's name wherever it is; one with a `/`
+    /// matches its path from the project root. Each task named runs once, with
+    /// every staged file its glob matches appended to its command, over what
+    /// is staged rather than what is on disk. See `uf_prepare`.
+    pub staged: BTreeMap<CompactString, StagedTasks>,
     pub std: StdConfig,
     pub story: StoryConfig,
     pub task_runner: TaskRunnerConfig,
@@ -1653,6 +1661,26 @@ pub enum TaskRunnerEngine {
     /// ubugeeei-prod/uf#272.
     #[default]
     ViteTask,
+}
+
+/// The tasks one entry of `staged` names: one, written as a string, or several
+/// in the order they run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum StagedTasks {
+    One(CompactString),
+    Many(Vec<CompactString>),
+}
+
+impl StagedTasks {
+    /// The task names, in order.
+    #[must_use]
+    pub fn names(&self) -> &[CompactString] {
+        match self {
+            Self::One(name) => std::slice::from_ref(name),
+            Self::Many(names) => names,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

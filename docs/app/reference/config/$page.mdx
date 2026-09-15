@@ -53,6 +53,7 @@ of any key whose type is a fixed set — and explains a key you hover. See
 | `plugins` | Vite plugins, appended to uf's own |
 | `vite` | Vite's own configuration, merged over uf's |
 | `tasks` | Named tasks for `uf run` |
+| `staged` | The tasks `uf prepare` runs over the staged files before a commit |
 | `pm`, `publish`, `package`, `release` | Which registry uf reads from and publishes to, and how a release is built |
 | `server`, `story`, `std`, `vrt` | The server adapter, stories, the standard library, visual tests |
 
@@ -825,6 +826,35 @@ What an attestation does and does not prove is in
 [Security](https://github.com/ubugeeei-prod/uf/blob/main/docs/security.md).
 `pm.provenance: "off"` turns the reads off for a machine with no route to a
 registry.
+
+## staged
+
+The tasks `uf prepare` runs before a commit, keyed by a glob over the staged
+files:
+
+```js
+export default defineConfig({
+  tasks: {
+    format: "uf fmt",
+    stylelint: "node_modules/.bin/stylelint --fix",
+  },
+  staged: {
+    "*.{js,jsx}": "format",
+    "styles/**/*.css": ["stylelint"],
+  },
+});
+```
+
+A glob with no `/` matches a file's name wherever the file is; a glob with a `/`
+matches its path from the project root. The value names tasks under `tasks` —
+one, or several in order — and each runs once, through `uf run`, with every
+staged file its glob matches appended to its command. A glob that matches no
+staged file runs nothing.
+
+The tasks read what is staged: a half-staged file shows its staged content for
+the length of the run. A rewrite of a fully staged file is staged, so the fix is
+in the commit; a rewrite of a half-staged file is not kept, and fails the run.
+See [`uf prepare`](/reference/cli#uf-prepare).
 
 ## tasks and plugins
 

@@ -361,6 +361,40 @@ switches the installer to a flat `<base>/<version>/<asset>` layout; or build
 from source, which needs the pinned nightly Rust toolchain and the vendored
 Flow submodule, and takes minutes rather than seconds.
 
+## Before the commit, too
+
+A pipeline is the second place a check runs; the first is the commit.
+`uf prepare` is the pre-commit command — the staged files, the generated types,
+whatever [`staged`](/reference/config#staged) in `uf.config.js` names, then
+`uf lint` and `uf fmt --check` — and one command wires it into git:
+
+<figure className="terminal">
+
+```
+$ uf prepare --install-hooks
+uf prepare · my-site
+────────────────────
+
+✓ wrote .githooks/pre-commit
+✓ set core.hooksPath to .githooks
+› git runs `uf prepare` before each commit now; commit .githooks/pre-commit, so that every clone runs this once and gets the same hook
+```
+
+</figure>
+
+Commit `.githooks/pre-commit`. Git keeps `core.hooksPath` in `.git/config`,
+which is not versioned, so each clone runs `uf prepare --install-hooks` once —
+uf runs no `postinstall` script to do it on anyone's behalf. A clone without
+`uf` on `PATH` has its commit refused, with the way to skip the check once on
+purpose: `git commit --no-verify`.
+
+The run checks what is staged. A file that is half staged is checked as it will
+be committed, and its unstaged half is put back afterwards. A staged task that
+fixes a fully staged file has its fix staged with it; one that would have to fix
+a half-staged file stops the commit instead, so the fix is made by hand to the
+half that is being committed. CI runs the same checks over the whole tree, which
+is what still catches a commit made with `--no-verify`.
+
 ## What is not here
 
 There is no Jenkins, Buildkite, Woodpecker or Drone file, and no Docker image
