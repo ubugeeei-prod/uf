@@ -8,7 +8,7 @@
 import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
-import type { Edge } from "@uniflowed/ui/sheet";
+import type { Edge } from "@uniflowed/ui";
 
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "./sheet.js";
 import { Example } from "./sheet.example.js";

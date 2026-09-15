@@ -10,7 +10,7 @@
 // # What this file owns, and what it does not
 //
 // The look: the scrim, the panel, the spacing, the close button in the corner.
-// The behaviour is imported from `@uniflowed/ui/dialog`, and staying imported
+// The behaviour is imported from `@uniflowed/ui`'s `Dialog`, and staying imported
 // is the point of the arrangement. Focus moved into the dialog and kept there,
 // `Escape`, the press outside, focus given back to whatever opened it, the page
 // behind made inert and held still: each of those is a fix that reaches this
@@ -46,7 +46,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/dialog";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

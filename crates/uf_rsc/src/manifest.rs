@@ -120,9 +120,11 @@ pub enum RscManifestClientReference {
         /// Path relative to the project root.
         path: Utf8PathBuf,
     },
-    /// A package module, named by the exact imported specifier.
+    /// A package module: `@uniflowed/ui/switch` for the `switch` module a name
+    /// imported from `@uniflowed/ui` comes from, or the package itself when the
+    /// import binds no name the scan can read.
     Package {
-        /// Imported bare specifier.
+        /// The package, then the module when the import names one.
         specifier: CompactString,
     },
 }

@@ -8,6 +8,7 @@
 //! - no module runs anything when it is imported,
 //! - every module opens with the `// @flow` pragma,
 //! - every `exports` subpath resolves and every shipped module is reachable,
+//! - `@uniflowed/ui` is imported through its barrel and nothing else,
 //! - no test file is published, by the allowlist or through `exports`,
 //! - every shipped `package.json` declares `"sideEffects": false`,
 //! - the Rust registry in `uf_lib` and the shipped subpaths agree,
@@ -1077,8 +1078,17 @@ fn every_exports_subpath_resolves_to_a_shipped_file() {
     }
 }
 
+/// Every shipped module is an `exports` target, or imported by one.
+///
+/// Reachable is the claim, and a module reaches a consumer either way: as a
+/// subpath of its own, or as the relative import of a module that is one.
+/// `@uniflowed/ui` is the case that needs the second half — its only entry is
+/// `index.js`, which imports every component module — and an unreachable
+/// module is still exactly what this catches: a file npm packs that no import
+/// starting from `exports` ever loads.
 #[test]
 fn every_shipped_module_is_reachable_through_exports() {
+    let shipped = shipped_files().into_iter().collect::<BTreeSet<_>>();
     for relative in shipped_manifests() {
         let package_dir = relative.parent().unwrap_or(Utf8Path::new("")).to_path_buf();
         let manifest = manifest(&relative);
@@ -1089,6 +1099,26 @@ fn every_shipped_module_is_reachable_through_exports() {
             .into_iter()
             .map(|(_, target)| target.trim_start_matches("./").to_string())
             .collect::<BTreeSet<_>>();
+
+        // The modules an import starting from `exports` loads, followed through
+        // relative imports and kept inside the package.
+        let mut reached = BTreeSet::new();
+        let mut work: Vec<Utf8PathBuf> = targets
+            .iter()
+            .map(|target| package_dir.join(target))
+            .collect();
+        while let Some(module) = work.pop() {
+            if !shipped.contains(&module) || !reached.insert(module.clone()) {
+                continue;
+            }
+            for specifier in module_specifiers(&read(&module)) {
+                if let Some(next) = resolve_relative(&module, &specifier)
+                    && next.starts_with(&package_dir)
+                {
+                    work.push(next);
+                }
+            }
+        }
 
         for module in shipped_modules() {
             let Ok(inside) = module.strip_prefix(&package_dir) else {
@@ -1107,12 +1137,99 @@ fn every_shipped_module_is_reachable_through_exports() {
                 continue;
             }
             assert!(
-                targets.contains(inside.as_str()),
-                "{relative} ships {inside} without an exports subpath, so it is \
-                 unreachable from outside the package"
+                reached.contains(&module),
+                "{relative} ships {inside}, which no import starting from its \
+                 exports loads, so it is unreachable from outside the package"
             );
         }
     }
+}
+
+/// `@uniflowed/ui` has one way in: `import { DialogRoot } from "@uniflowed/ui"`.
+///
+/// The package once exported a subpath per component beside its barrel, and
+/// the code, the documentation and the examples mixed the two: two answers to
+/// the first question a reader asks. The barrel carries every part under its
+/// own name, `sideEffects: false` lets a bundler keep only the modules the names
+/// come from, and `uf_rsc` sees through it to the one module a name reaches, so
+/// a subpath buys nothing the barrel does not give.
+///
+/// Two halves. The manifest exports `.` and nothing else, so a subpath does not
+/// resolve. And nothing a reader copies an import from spells one: the registry
+/// `uf ui add` writes from, the documentation, the examples and the templates
+/// `uf create` writes are searched for the text itself, prose included; the
+/// packages and the suites are searched for import specifiers only, because a
+/// test may hold the name `uf_rsc` gives a module, `@uniflowed/ui/switch`, as
+/// data.
+#[test]
+fn ui_is_imported_through_its_barrel_and_nothing_else() {
+    let ui = manifest(Utf8Path::new("ui/package.json"));
+    let exports = ui["exports"]
+        .as_object()
+        .expect("packages/ui/package.json exports a map");
+    let subpaths: Vec<&String> = exports.keys().filter(|key| *key != ".").collect();
+    assert!(
+        subpaths.is_empty(),
+        "packages/ui/package.json exports {subpaths:?} beside its barrel; \
+         `@uniflowed/ui` is imported one way, from `@uniflowed/ui`"
+    );
+    assert_eq!(exports["."], "./index.js");
+
+    let repository = lib_root().join("..");
+    let copied_from: &[&str] = &["registry", "docs", "examples", "crates/uf_project/src"];
+    let imported_by: &[&str] = &["packages", "tests"];
+    let mut found = Vec::new();
+    for (directories, prose) in [(copied_from, true), (imported_by, false)] {
+        for directory in directories {
+            let walk = WalkDir::new(repository.join(directory))
+                .into_iter()
+                .filter_entry(|entry| {
+                    !matches!(
+                        entry.file_name().to_str(),
+                        Some("node_modules" | ".uf" | "dist")
+                    )
+                });
+            for entry in walk {
+                let entry = entry.expect("the tree can be walked");
+                let Some(path) = Utf8Path::from_path(entry.path()) else {
+                    continue;
+                };
+                let extension = path.extension().unwrap_or_default();
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let texts: Vec<String> = if prose {
+                    if !matches!(extension, "js" | "md" | "mdx" | "rs") {
+                        continue;
+                    }
+                    let source = fs::read_to_string(path).unwrap_or_default();
+                    source.lines().map(str::to_owned).collect()
+                } else {
+                    if extension != "js" {
+                        continue;
+                    }
+                    module_specifiers(&fs::read_to_string(path).unwrap_or_default())
+                };
+                for text in texts {
+                    if names_a_ui_subpath(&text) {
+                        found.push(format!("{path}: {}", text.trim()));
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        found.is_empty(),
+        "`@uniflowed/ui` is imported from its barrel alone, and these name a subpath:\n  {}",
+        found.join("\n  ")
+    );
+}
+
+/// Whether `text` names `@uniflowed/ui/` followed by a module name.
+fn names_a_ui_subpath(text: &str) -> bool {
+    text.match_indices("@uniflowed/ui/").any(|(at, prefix)| {
+        text[at + prefix.len()..].starts_with(|next: char| next.is_ascii_lowercase())
+    })
 }
 
 /// Every relative import in a shipped module must resolve to a shipped file.

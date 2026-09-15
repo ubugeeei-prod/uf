@@ -24,9 +24,9 @@ naive version breaks; this page is the shorter version.
 
 ```js
 // @flow
-import { Select } from "@uniflowed/ui";
-// or, to import only what you use:
-import { SelectRoot } from "@uniflowed/ui/select";
+// One entry point: a family as a namespace, or a part by its own name.
+// `Select.Root` and `SelectRoot` are the same component.
+import { Select, SelectRoot } from "@uniflowed/ui";
 ```
 
 ## What ships
@@ -138,23 +138,25 @@ like progress while weakening the guarantees above.
 
 ## Import shapes
 
-The root entry exports namespaces for app code:
+`@uniflowed/ui` is the package's one entry point. It exports namespaces for app
+code:
 
 ```js
 import { Dialog, Field, Select } from "@uniflowed/ui";
 ```
 
-Every primitive also has a subpath with flat names, which is useful for presets,
-wrappers and tests that want one dependency edge:
+and every part under its own name as well, which suits presets, wrappers and
+tests that want one part:
 
 ```js
-import { DialogRoot, DialogTrigger } from "@uniflowed/ui/dialog";
+import { DialogRoot, DialogTrigger } from "@uniflowed/ui";
 ```
 
-The subpath names are the module names in the table above. `internal/` is not
-exported; helpers such as roving focus and prop composition are part of the
-primitive contracts, not a public toolkit for building a second library beside
-this one.
+There is no subpath to import instead. A bundler keeps the modules in the table
+above that the imported names come from and drops the rest, because the package
+declares `sideEffects: false`. `internal/` is not exported; helpers such as
+roving focus and prop composition are part of the primitive contracts, not a
+public toolkit for building a second library beside this one.
 
 ## Changing the element
 

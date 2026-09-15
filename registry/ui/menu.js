@@ -13,7 +13,7 @@
 // The panel, its rows, the check beside a checked row and the dot beside a
 // chosen one, shortcut text, the labels and lines that group rows, and the
 // arrow on a row that opens a submenu. `context-menu.js` and `menubar.js` dress
-// their menus with these same parts. `@uniflowed/ui/menu` owns the pattern:
+// their menus with these same parts. `@uniflowed/ui`'s `Menu` owns the pattern:
 // `role="menu"` named by its trigger, focus on the rows and between them from
 // the keyboard, submenus, `aria-checked` on checkbox and radio rows, and
 // `aria-expanded` on a row whose submenu is open. The focused row is drawn from
@@ -38,8 +38,8 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { Align, LogicalSide, MenuSelect } from "@uniflowed/ui/menu";
-import * as Primitive from "@uniflowed/ui/menu";
+import type { Align, LogicalSide, MenuSelect } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

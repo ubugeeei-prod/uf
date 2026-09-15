@@ -12,7 +12,7 @@
 //
 // The layout beside the page, the column's width open and collapsed, its
 // header and footer, the items with their icons, and the button that opens and
-// collapses it. `@uniflowed/ui/sidebar` owns the rest: a named `<nav>`, a
+// collapses it. `@uniflowed/ui`'s `Sidebar` owns the rest: a named `<nav>`, a
 // button that says with `aria-expanded` whether the column is open and names
 // what it controls, a sheet in place of the column on a narrow screen, and an
 // item that keeps its name while collapsed to an icon, with a tooltip saying
@@ -39,8 +39,8 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { SidebarSide } from "@uniflowed/ui/sidebar";
-import * as Primitive from "@uniflowed/ui/sidebar";
+import type { SidebarSide } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

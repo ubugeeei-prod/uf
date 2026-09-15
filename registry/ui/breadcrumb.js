@@ -10,7 +10,7 @@
 // # What this file owns, and what it does not
 //
 // The row, the links' look, the chevrons between them and the current page.
-// `@uniflowed/ui/breadcrumb` owns the markup a reader navigates: a named
+// `@uniflowed/ui`'s `Breadcrumb` owns the markup a reader navigates: a named
 // `<nav>` around an ordered list, `aria-current="page"` on the last crumb,
 // which is not a link, and separators that are `aria-hidden` so the trail is
 // not read as "Home slash Settings slash Billing".
@@ -31,7 +31,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/breadcrumb";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

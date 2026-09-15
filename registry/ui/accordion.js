@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The rules between sections, the headings' look, the chevrons and the panels'
-// spacing. The pattern is imported from `@uniflowed/ui/accordion`: each section
+// spacing. The pattern is imported from `@uniflowed/ui`'s `Accordion`: each section
 // is a real heading holding a button with `aria-expanded`, each panel a region
 // named by that button, `type="single"` closing one section as another opens,
 // and closed panels kept in the document as `hidden="until-found"` so
@@ -34,8 +34,8 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { AccordionType } from "@uniflowed/ui/accordion";
-import * as Primitive from "@uniflowed/ui/accordion";
+import type { AccordionType } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

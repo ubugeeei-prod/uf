@@ -12,7 +12,7 @@
 //
 // The frame the table scrolls sideways in, the rules between rows, the headings'
 // type, the sort buttons and the arrow beside a sorted heading.
-// `@uniflowed/ui/table` owns the markup and what it says: a real `<table>` with
+// `@uniflowed/ui`'s `Table` owns the markup and what it says: a real `<table>` with
 // `<th scope="col">`, a button inside every sortable heading and `aria-sort` on
 // the heading the rows are sorted by, a polite announcement when the sort
 // changes, and `aria-rowcount` and `aria-rowindex` for a table that shows part
@@ -40,12 +40,12 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { Sort } from "@uniflowed/ui/table";
-import * as Primitive from "@uniflowed/ui/table";
+import type { Sort } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 import { Checkbox } from "./checkbox.js";
 
-export type { Sort } from "@uniflowed/ui/table";
+export type { Sort } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

@@ -13,7 +13,7 @@
 // Only a focus ring for the area: what the area looks like is the page's. The
 // panel and its rows are `menu.js`'s parts under context-menu names, so a
 // context menu and a menu look alike and change together.
-// `@uniflowed/ui/context-menu` owns opening at the pointer, a long press on a
+// `@uniflowed/ui`'s `ContextMenu` owns opening at the pointer, a long press on a
 // touch screen, opening from the keyboard on a focused area, and the menu
 // pattern after that.
 //
@@ -30,7 +30,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/context-menu";
+import * as Primitive from "@uniflowed/ui";
 
 import {
   MenuCheckboxItem,

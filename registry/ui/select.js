@@ -9,7 +9,7 @@
 //
 // # Use a native `<select>` when one will do
 //
-// `@uniflowed/ui/select` says it first and means it: the platform's control is
+// `@uniflowed/ui`'s `Select` says it first and means it: the platform's control is
 // announced correctly by software nobody here has tested against, is a wheel
 // on a phone, autofills and validates. This component is for the list a native
 // select cannot draw — an option with an icon, a second line or a check.
@@ -53,8 +53,8 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { Align, LogicalSide } from "@uniflowed/ui/select";
-import * as Primitive from "@uniflowed/ui/select";
+import type { Align, LogicalSide } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /**
  * Every prop a caller passes that this file does not name, on its way to the

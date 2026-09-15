@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The trigger, its chevron and the spacing of the region. The disclosure
-// pattern is imported from `@uniflowed/ui/collapsible`: `aria-expanded` and
+// pattern is imported from `@uniflowed/ui`'s `Collapsible`: `aria-expanded` and
 // `aria-controls` on the trigger, and a closed region that is
 // `hidden="until-found"` rather than removed, so the browser's find-in-page
 // still reaches its text and opens it. The chevron turns from `aria-expanded`
@@ -33,7 +33,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/collapsible";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

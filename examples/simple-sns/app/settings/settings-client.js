@@ -4,7 +4,7 @@
 import * as React from "@uniflowed/react";
 import { callAction } from "../action-result.client.js";
 import { useActionState, useState } from "@uniflowed/react";
-import { FieldControl } from "@uniflowed/ui/field";
+import { FieldControl } from "@uniflowed/ui";
 import { updateSettings } from "../social-actions.js";
 import { FormField, FormStatus, SubmitButton } from "../form-ui.client.js";
 import { Avatar } from "../ui.js";

@@ -10,7 +10,7 @@
 // # What this file owns, and what it does not
 //
 // The line: its colour, thickness, length and the space around it.
-// `@uniflowed/ui/separator` owns the one decision in it: `role="separator"`
+// `@uniflowed/ui`'s `Separator` owns the one decision in it: `role="separator"`
 // with an `aria-orientation` for a boundary a reader should be told about, and
 // `aria-hidden` for a rule that is only decoration.
 //
@@ -26,7 +26,7 @@
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { Separator as SeparatorPart } from "@uniflowed/ui/separator";
+import { Separator as SeparatorPart } from "@uniflowed/ui";
 
 /** Which way the line runs. */
 export type SeparatorOrientation = "horizontal" | "vertical";

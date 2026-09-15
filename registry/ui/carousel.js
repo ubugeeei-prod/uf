@@ -10,7 +10,7 @@
 //
 // # What this file owns, and what it does not
 //
-// The frame, the slide that shows, and the buttons. `@uniflowed/ui/carousel`
+// The frame, the slide that shows, and the buttons. `@uniflowed/ui`'s `Carousel`
 // owns the pattern: a `role="group"` described as a carousel and named by
 // `label`, each slide a group described as a slide and named such as "2 of 5",
 // slides out of sight also out of reach (`inert`), previous and next buttons
@@ -33,7 +33,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/carousel";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

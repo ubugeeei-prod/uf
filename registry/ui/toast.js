@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The corner the notices stack in, each notice's card, its title and
-// description type, and its buttons. `@uniflowed/ui/toast` owns the rest: a
+// description type, and its buttons. `@uniflowed/ui`'s `Toast` owns the rest: a
 // `toast()` a page calls from anywhere, a named `role="region"` that `F6`
 // reaches without joining the tab order, a polite live region for ordinary
 // notices and an assertive one for urgent ones, a limit on how many show at
@@ -33,9 +33,9 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/toast";
+import * as Primitive from "@uniflowed/ui";
 
-export { dismissAllToasts, dismissToast, toast, updateToast } from "@uniflowed/ui/toast";
+export { dismissAllToasts, dismissToast, toast, updateToast } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

@@ -399,13 +399,13 @@ describe("the edges between the packages", () => {
     // pattern: an assertion over an empty list passes, and would go on passing
     // after the shape of an import changed.
     const found = packageImports(
-      'import type { A } from "@uniflowed/ui/field";\n' +
+      'import type { A } from "@uniflowed/ui";\n' +
         'import { b } from "@uniflowed/core";\n' +
         'import { type C, d } from "@uniflowed/react";\n' +
         'import { type E } from "@uniflowed/hooks";\n',
     );
     expect(found).toEqual([
-      { specifier: "@uniflowed/ui/field", type: true },
+      { specifier: "@uniflowed/ui", type: true },
       { specifier: "@uniflowed/core", type: false },
       { specifier: "@uniflowed/react", type: false },
       { specifier: "@uniflowed/hooks", type: true },

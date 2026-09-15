@@ -12,7 +12,7 @@
 //
 // The field, the list as a panel under it, the highlight on the option the
 // keyboard is on and the check beside the chosen one. The pattern is imported
-// from `@uniflowed/ui/combobox`: focus that stays in the field while
+// from `@uniflowed/ui`'s `Combobox`: focus that stays in the field while
 // `aria-activedescendant` moves over the options, `Enter` taking the
 // highlighted option and leaving the form alone when there is none, `Escape`
 // closing and then clearing, and a status that counts the results for a reader
@@ -37,8 +37,8 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { Align, LogicalSide } from "@uniflowed/ui/combobox";
-import * as Primitive from "@uniflowed/ui/combobox";
+import type { Align, LogicalSide } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

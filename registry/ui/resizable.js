@@ -12,7 +12,7 @@
 //
 // The group's direction, the panels' overflow, and the handle's line, the area
 // around it a pointer can land on, and its ring. How big each panel is comes
-// from what `@uniflowed/ui/resizable` writes: `--uf-resizable-size` on each
+// from what `@uniflowed/ui`'s `Resizable` writes: `--uf-resizable-size` on each
 // panel, a percentage of the group. The part owns what the handle is: a
 // focusable `role="separator"` with `aria-valuenow` between `aria-valuemin` and
 // `aria-valuemax`, `aria-controls` naming the primary panel, the keys that move
@@ -34,7 +34,7 @@ import { createContext, useContext } from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/resizable";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

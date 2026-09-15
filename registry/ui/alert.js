@@ -9,7 +9,7 @@
 //
 // # What this file owns, and what it does not
 //
-// The box, its tones and its type. `@uniflowed/ui/alert` owns the decision that
+// The box, its tones and its type. `@uniflowed/ui`'s `Alert` owns the decision that
 // makes it more than a box: `role="alert"` is a live region, so it is only put
 // on an alert rendered with `live`, and a callout that was on the page when it
 // loaded gets none — otherwise it interrupts every reader on every load, or is
@@ -32,7 +32,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/alert";
+import * as Primitive from "@uniflowed/ui";
 
 /** What the alert is about, drawn as the colour of its edge. */
 export type AlertTone = "neutral" | "info" | "danger";

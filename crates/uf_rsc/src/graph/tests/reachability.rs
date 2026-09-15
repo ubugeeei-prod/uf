@@ -57,44 +57,15 @@ fn a_client_module_imported_by_a_server_module_is_a_boundary() {
     );
 }
 
+/// `@uniflowed/ui` exports its barrel alone, so a subpath is not an import a
+/// project can write: it does not resolve, and it is no boundary. What the
+/// barrel reaches is below, from
+/// `a_name_imported_from_the_ui_barrel_is_a_boundary_at_the_module_that_exports_it`.
 #[test]
-fn a_known_client_package_module_imported_by_a_server_module_is_a_boundary() {
-    let mut builder = RscGraphBuilder::new();
-    builder.add_module(server("app/page.js").with_import("@uniflowed/ui/switch"));
-    builder.add_entry("app/page.js", EntryKind::Server);
-    let graph = builder.build();
-
-    assert_eq!(graph.client_boundaries().len(), 1);
-    assert_eq!(
-        graph.client_boundaries()[0].target,
-        ClientBoundaryTarget::Package(CompactString::const_new("@uniflowed/ui/switch"))
-    );
-    assert_eq!(
-        graph.client_bundle_roots(),
-        &[ClientBoundaryTarget::Package(CompactString::const_new(
-            "@uniflowed/ui/switch"
-        ))]
-    );
-    assert_eq!(
-        graph.module("app/page.js").unwrap().proximity,
-        ClientBoundaryProximity::ReachesBoundary
-    );
-    assert!(
-        graph
-            .module("app/page.js")
-            .unwrap()
-            .requires_client_bundle()
-    );
-    assert_eq!(
-        graph
-            .module("app/page.js")
-            .unwrap()
-            .external_imports
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>(),
-        vec![CompactString::const_new("@uniflowed/ui/switch")]
-    );
+fn a_ui_subpath_is_no_way_in_and_no_boundary() {
+    let graph = page_importing("import { Switch } from \"@uniflowed/ui/switch\";");
+    assert!(graph.client_boundaries().is_empty());
+    assert!(graph.client_bundle_roots().is_empty());
 }
 
 #[test]
@@ -407,8 +378,9 @@ fn package_targets(graph: &RscGraph) -> Vec<&str> {
 }
 
 /// The barrel is not a client module, and a name imported from it reaches the
-/// one that exports it: the boundary is `@uniflowed/ui/switch`, as it is through
-/// the subpath, and not the whole package.
+/// one that exports it: the page's one boundary and the build's one client
+/// bundle root are `@uniflowed/ui/switch`, not the whole package, so the client
+/// code the route needs is that one component's.
 #[test]
 fn a_name_imported_from_the_ui_barrel_is_a_boundary_at_the_module_that_exports_it() {
     let graph = page_importing("import { Switch } from \"@uniflowed/ui\";");
@@ -419,9 +391,13 @@ fn a_name_imported_from_the_ui_barrel_is_a_boundary_at_the_module_that_exports_i
             "@uniflowed/ui/switch"
         ))]
     );
+    let page = graph.module("app/page.js").unwrap();
+    assert_eq!(page.proximity, ClientBoundaryProximity::ReachesBoundary);
+    assert!(page.requires_client_bundle());
+    // What the page wrote is the barrel; what it reaches is one module.
     assert_eq!(
-        graph.module("app/page.js").unwrap().proximity,
-        ClientBoundaryProximity::ReachesBoundary
+        page.external_imports.iter().cloned().collect::<Vec<_>>(),
+        vec![CompactString::const_new("@uniflowed/ui")]
     );
 }
 
@@ -549,26 +525,6 @@ fn a_module_above_a_boundary_names_the_imports_that_reach_it() {
     assert_eq!(
         chain(&graph, "app/section.js"),
         ["app/section.js", "app/Counter.js"]
-    );
-}
-
-#[test]
-fn a_module_above_a_package_boundary_names_the_import_that_reaches_it() {
-    let mut builder = RscGraphBuilder::new();
-    builder.add_module(server("app/page.js").with_import("./section.js"));
-    builder.add_module(server("app/section.js").with_import("@uniflowed/ui/switch"));
-    builder.add_entry("app/page.js", EntryKind::Server);
-    let graph = builder.build();
-
-    assert_eq!(
-        reason(&graph, "app/page.js"),
-        ClientBundleReason::ImportsPackage {
-            chain: vec![
-                graph.module_id("app/page.js").unwrap(),
-                graph.module_id("app/section.js").unwrap(),
-            ],
-            specifier: CompactString::const_new("@uniflowed/ui/switch"),
-        }
     );
 }
 

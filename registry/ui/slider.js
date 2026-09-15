@@ -11,7 +11,7 @@
 // # What this file owns, and what it does not
 //
 // The rail, the filled part of it and the thumbs, across or down. Where they
-// sit comes from what `@uniflowed/ui/slider` writes: `--uf-slider-start` and
+// sit comes from what `@uniflowed/ui`'s `Slider` writes: `--uf-slider-start` and
 // `--uf-slider-end` on the range, and `--uf-slider-fraction` on each thumb,
 // all fractions of the way from `min` to `max`. The part owns the rest: a
 // `role="slider"` thumb for every value with `aria-valuenow` and the bounds
@@ -34,7 +34,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import * as Primitive from "@uniflowed/ui/slider";
+import * as Primitive from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };

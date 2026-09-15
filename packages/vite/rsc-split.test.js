@@ -408,30 +408,28 @@ describe("the client route table", () => {
     expect(source).toContain(`import(${JSON.stringify(path.join(root, "app/$page.js"))})`);
   });
 
-  it("keeps a route whose only client boundary is a package module", () => {
-    // Manifest version 3 can name a package specifier as the far side of a
-    // boundary. The route filter still decides from the importing project
-    // module's proximity: a page that imports `@uniflowed/ui/switch` is a page
-    // the browser must hydrate, even though there is no scanned file for the
-    // package module itself.
+  it("ships a page that imports one component from the barrel, as that component's module", () => {
+    // `crates/uf_rsc` writes this manifest for the three files `splitProject`
+    // creates, with `app/$page.js` importing `{ Switch }` from `@uniflowed/ui`
+    // and `app/counter/$page.js` importing only `AlertRoot`, a Server
+    // Component part. `the_ui_barrel_manifest_the_vite_split_reads_matches_its_snapshot`
+    // holds the file to what `uf build` writes, so this reads the contract
+    // rather than a description of it.
+    const written = JSON.parse(
+      fs.readFileSync(
+        new URL("../../crates/uf_rsc/tests/fixtures/ui-barrel-manifest.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    // One component's module, not the package: the barrel is not a client
+    // module, and the one name the page imports reaches `switch` alone.
+    expect(written.clientBundleRoots).toEqual([
+      { kind: "package", specifier: "@uniflowed/ui/switch" },
+    ]);
+
     const root = splitProject();
     const table = scanRoutes(path.join(root, "app"));
-    const manifest = manifestIn(root, {
-      ...splitManifest(),
-      modules: [
-        manifestModule("app/$layout.js", false),
-        manifestModule("app/$page.js", true),
-        manifestModule("app/counter/$page.js", false),
-      ],
-      clientBoundaries: [
-        {
-          importer: "app/$page.js",
-          target: { kind: "package", specifier: "@uniflowed/ui/switch" },
-        },
-      ],
-      clientBundleRoots: [{ kind: "package", specifier: "@uniflowed/ui/switch" }],
-    });
-    const shipsPage = clientRouteFilter(manifest, root, table);
+    const shipsPage = clientRouteFilter(manifestIn(root, written), root, table);
 
     const source = routesModuleSource(table, { shipsPage });
 

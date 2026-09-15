@@ -11,8 +11,8 @@
 // # What this file owns, and what it does not
 //
 // The look: the scrim, a panel attached to `side`, the close button in its
-// corner. The behaviour is imported from `@uniflowed/ui/sheet`, which is
-// `@uniflowed/ui/dialog` with an edge: focus moved in and kept in, `Escape`,
+// corner. The behaviour is imported from `@uniflowed/ui`'s `Sheet`, which is
+// `@uniflowed/ui`'s `Dialog` with an edge: focus moved in and kept in, `Escape`,
 // the press outside, focus given back, the page behind made inert and held
 // still. The part writes the edge as `data-side` on the panel, and every
 // position below is drawn from that attribute through
@@ -44,8 +44,8 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import type { Edge } from "@uniflowed/ui/sheet";
-import * as Primitive from "@uniflowed/ui/sheet";
+import type { Edge } from "@uniflowed/ui";
+import * as Primitive from "@uniflowed/ui";
 
 import type { ButtonSize, ButtonTone } from "./button.js";
 import { Button } from "./button.js";

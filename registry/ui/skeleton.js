@@ -9,7 +9,7 @@
 //
 // # What this file owns, and what it does not
 //
-// The shapes: a line, a block and a circle in `sunken`. `@uniflowed/ui/skeleton`
+// The shapes: a line, a block and a circle in `sunken`. `@uniflowed/ui`'s `Skeleton`
 // owns what a reader who cannot see them is told: every box is `aria-hidden`,
 // the region they stand in is `aria-busy`, and a polite status that was in the
 // document from the first render says "Loading…" and then "Loaded".
@@ -29,7 +29,7 @@ import * as React from "@uniflowed/react";
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { SkeletonBox as BoxPart, SkeletonRoot as RootPart } from "@uniflowed/ui/skeleton";
+import { SkeletonBox as BoxPart, SkeletonRoot as RootPart } from "@uniflowed/ui";
 
 /** The shape a box stands in for. */
 export type SkeletonShape = "line" | "block" | "circle";

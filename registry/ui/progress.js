@@ -9,7 +9,7 @@
 //
 // # What this file owns, and what it does not
 //
-// The track and the fill. `@uniflowed/ui/progress` owns what a reader is told:
+// The track and the fill. `@uniflowed/ui`'s `Progress` owns what a reader is told:
 // `role="progressbar"`, `aria-valuemin`, `aria-valuemax`, and an
 // `aria-valuenow` that is left off, rather than set to zero, while the amount
 // is unknown — zero would say that nothing has happened. The fill is drawn from
@@ -30,7 +30,7 @@
 import type { StyleArgument } from "@uniflowed/stylex";
 import { props, stylex } from "@uniflowed/stylex";
 import { ufTokens } from "@uniflowed/stylex/tokens.stylex.js";
-import { Progress as ProgressPart } from "@uniflowed/ui/progress";
+import { Progress as ProgressPart } from "@uniflowed/ui";
 
 /** Every prop a caller passes that this file does not name, for the part. */
 type Rest = { readonly key?: empty, readonly [string]: mixed };
