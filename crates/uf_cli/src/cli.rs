@@ -232,10 +232,18 @@ pub(crate) enum Commands {
     /// two different things and neither spelling said which. See
     /// ubugeeei-prod/uf#322 for what that cost, and #488 for the rename.
     Init {
-        /// The template to scaffold: `react`, the default, or `monorepo` for an
-        /// application and a library as workspace packages of one repository.
+        /// The template to scaffold: `react`, the default; `monorepo` for an
+        /// application and a library as workspace packages of one repository;
+        /// or a remote template pinned to its exact bytes —
+        /// `github:owner/repo#<commit>`, `git+https://…#<commit>`, or an
+        /// `https://….tar.gz` with `--integrity`.
         #[arg(value_name = "TEMPLATE")]
         template: Option<String>,
+        /// The digest a remote tarball template must have:
+        /// `sha512-<base64>` or `sha256:<hex>`. A tarball whose download hashes
+        /// to anything else is refused before it is unpacked.
+        #[arg(long, value_name = "DIGEST", requires = "template")]
+        integrity: Option<String>,
         /// Scaffold a library rather than an application.
         #[arg(long)]
         lib: bool,
@@ -252,10 +260,18 @@ pub(crate) enum Commands {
         /// segment is the package's name unless `--name` says otherwise.
         #[arg(value_name = "PATH")]
         path: Utf8PathBuf,
-        /// The template to scaffold: `react`, the default, or `monorepo` for an
-        /// application and a library as workspace packages of one repository.
+        /// The template to scaffold: `react`, the default; `monorepo` for an
+        /// application and a library as workspace packages of one repository;
+        /// or a remote template pinned to its exact bytes —
+        /// `github:owner/repo#<commit>`, `git+https://…#<commit>`, or an
+        /// `https://….tar.gz` with `--integrity`.
         #[arg(value_name = "TEMPLATE")]
         template: Option<String>,
+        /// The digest a remote tarball template must have:
+        /// `sha512-<base64>` or `sha256:<hex>`. A tarball whose download hashes
+        /// to anything else is refused before it is unpacked.
+        #[arg(long, value_name = "DIGEST", requires = "template")]
+        integrity: Option<String>,
         /// Scaffold a library rather than an application.
         #[arg(long)]
         lib: bool,

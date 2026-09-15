@@ -102,6 +102,7 @@ pub fn install(source: &Source, into: &Utf8Path) -> Result<(), EnvError> {
 /// The digest the publisher says the archive has.
 fn expected_digest(source: &Source, scratch: &Utf8Path) -> Result<Digest, EnvError> {
     match &source.checksum {
+        Checksum::Known(digest) => Ok(digest.clone()),
         Checksum::Sha256File { url, file } => {
             let listing = scratch.join(".checksums");
             download(url, &listing)?;
@@ -349,6 +350,25 @@ fn require(program: &'static str) -> Result<(), EnvError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A digest a person wrote down is the answer, and learning it fetches
+    /// nothing: the URL here does not resolve, and the scratch directory does
+    /// not exist, so either being touched would fail the call.
+    #[test]
+    fn a_known_digest_is_expected_without_fetching_anything() {
+        let digest = Digest::Sha256Hex("ab".repeat(32));
+        let source = Source {
+            archive: "https://example.invalid/template.tar.gz".to_owned(),
+            checksum: Checksum::Known(digest.clone()),
+            format: Format::TarGz,
+            strip: 0,
+        };
+
+        assert_eq!(
+            expected_digest(&source, Utf8Path::new("/nonexistent/scratch")).ok(),
+            Some(digest)
+        );
+    }
 
     #[test]
     fn a_digest_is_found_by_name_not_by_position() {

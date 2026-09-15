@@ -60,6 +60,35 @@ repository of several packages needs and one package does not:
 Every template — `react`, `monorepo` and `--lib` — is formatted, linted, type
 checked, tested and built in CI, in `crates/uf_cli/tests/templates.rs`.
 
+### uf new PATH SOURCE
+
+A template from somewhere else, pinned to its exact bytes:
+
+| Source | Pinned by |
+| --- | --- |
+| `github:owner/repo#<commit>` | the commit id, written in full |
+| `git+https://host/repo.git#<commit>` | the commit id, written in full |
+| `https://host/template.tar.gz --integrity sha512-<base64>` | the digest; `sha256:<hex>` works too |
+
+A branch, a tag or a short commit id is refused, because each is a name that
+can come to mean other code after you read it, and a tarball without
+`--integrity` is refused rather than trusted. A tarball is hashed before it is
+unpacked, and one whose digest does not match is never unpacked. After a git
+checkout, the commit that arrived is compared with the one you named. `https`
+and `file` are the only transports.
+
+The template is copied, and nothing in it runs: no install, no lifecycle
+script, no generator. Git runs with your own and the system's configuration
+ignored and its hooks switched off. A symbolic link in a template is refused,
+and the fetch's `.git` directory is left behind. Nothing is written until the
+whole template has arrived and passed its check, so a refused template leaves
+no half of a project.
+
+When the template's `package.json` declares an install-time lifecycle script,
+`uf new` says so: `uf install` refuses to run one until `pm.allowLifecycleScripts`
+allows it, and that is when to read it. `--name` does not apply, because a
+remote template's manifest is written as its author wrote it.
+
 `--name` sets the package's name when it should not be the directory's, and
 `--force` writes into a directory that already holds files.
 
