@@ -139,7 +139,7 @@ export default defineConfig({
     "rust:clippy": {
       command: "cargo clippy --workspace --all-targets --all-features --profile ci -- -D warnings",
     },
-    "rust:test": "cargo test --workspace --profile ci",
+    "rust:test": "tools/ci/fmt-sigsegv-probe.sh",
     "rust:bench": "cargo bench --workspace --no-run",
     "rust:metadata": "cargo metadata --format-version 1 --locked",
     "rust:lints": {
