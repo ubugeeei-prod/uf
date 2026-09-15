@@ -219,7 +219,9 @@ renders it in place:
   refusal. The browser navigates the way a link without JavaScript would.
 
 `app.rsc: false` turns this off, and a navigation imports the next route's
-modules instead.
+modules instead. That mode runs on React 19.2.3 or newer without
+`react-server-dom-parcel`; the payload needs React 19.3 (see
+[Server Components](/guide/server-components)).
 
 ## `navigation: "document"`
 

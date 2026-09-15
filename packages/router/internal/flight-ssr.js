@@ -25,12 +25,16 @@
 import { createFromReadableStream } from "react-server-dom-parcel/client.edge";
 
 import type { FlightRoot } from "./flight.js";
+import { requireServerComponentsReact } from "./react-version.js";
 
 /** A module namespace, as far as the hook looks into one. */
 type ModuleNamespace = { +[string]: mixed };
 
 /** The server copy of the client module at a browser chunk URL. */
 export type ClientModuleLoader = (url: string) => Promise<ModuleNamespace>;
+
+/** The entry a refusal names: the one an application reaches this module through. */
+const ENTRY = "@uniflowed/router/rsc/ssr";
 
 /**
  * Install the module hook React's Flight client resolves references through.
@@ -40,6 +44,7 @@ export type ClientModuleLoader = (url: string) => Promise<ModuleNamespace>;
  * stale one.
  */
 export function installServerModules(load: ClientModuleLoader): void {
+  requireServerComponentsReact(ENTRY);
   const loaded: Map<string, ModuleNamespace> = new Map();
   // The browser's hook, on a server; `./flight-browser.js` has the shape.
   function parcelRequire(id: string): ModuleNamespace {
@@ -68,5 +73,6 @@ export function installServerModules(load: ClientModuleLoader): void {
 
 /** Read a payload into its root value, as React's client does in the browser. */
 export function readPayload(stream: ReadableStream<Uint8Array>): Promise<FlightRoot> {
+  requireServerComponentsReact(ENTRY);
   return createFromReadableStream(stream);
 }

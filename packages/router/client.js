@@ -14,6 +14,13 @@
 // *before* `hydrateRoot`, so the first client render is synchronous and
 // matches the server's markup exactly.
 //
+// An application whose routes render as React Server Components, the default,
+// starts from neither: `hydrateFlight` in `./rsc-client.js` hydrates the Flight
+// payload its document carries. That is a separate entry so that this one,
+// which every other web application imports, never names React's Flight
+// client. The client is an optional peer that needs React 19.3, and a project
+// on React 19.2 does not install it (ubugeeei-prod/uf#992).
+//
 // # What "its loader data" means once the loader can defer
 //
 // It is a payload rather than a value: `internal/payload.js` writes the model
@@ -108,7 +115,7 @@ import {
 import { DATA_ID, ROOT_ID } from "./internal/document.js";
 import { decodePayload } from "./internal/payload.js";
 import { createPayloadReader, domObserver } from "./internal/payload-rows.js";
-import { installBrowserModules, readDocumentPayload } from "./internal/flight-browser.js";
+import { prepareDocumentForHydration } from "./internal/prepare-document.js";
 
 /**
  * Hydrate the current document.
@@ -215,106 +222,6 @@ export async function hydrate(options: {|
   if (import.meta.hot != null) {
     const { reportDevtools } = await import("./internal/devtools.js");
     reportDevtools(window);
-  }
-}
-
-/**
- * Hydrate a document React Server Components rendered.
- *
- * [`hydrate`] resolves the route from its modules and renders it again over the
- * server's markup. This one resolves nothing and imports no route module: the
- * document carries the Flight payload its tree was rendered from, React's own
- * client reads it, and the tree the browser hydrates is the tree the server
- * rendered — a Server Component is markup and a reference, and a client
- * component is the one kind of module this page loads. See
- * ubugeeei-prod/uf#519.
- *
- * The payload is read while the document is still arriving. Row 0 is in the
- * shell, so hydration starts as soon as the module script runs, and every row
- * after it lands in a later chunk that the reader picks up as it is parsed — so
- * a boundary the server completes after hydration began resolves then, with no
- * second request.
- *
- * Everything else is [`hydrate`]'s, for the reasons written there: the
- * navigation mode is installed before the first render, the development
- * hydration report captures the server's markup before React repairs it, and
- * Strict Mode wraps the root.
- */
-export async function hydrateFlight(options: {|
-  readonly App: React.ComponentType<AppProps>,
-  readonly strictMode?: boolean,
-  readonly navigation?: Navigation,
-|}): Promise<void> {
-  installNavigation(options.navigation ?? "client");
-  installBrowserModules();
-  const flight = readDocumentPayload(document, domObserver(document));
-
-  const url = window.location.pathname + window.location.search;
-  const { App } = options;
-  const container = document.getElementById(ROOT_ID) ?? document;
-  prepareDocumentForHydration(document);
-
-  let recovery = null;
-  let restoreDevHead = null;
-  if (import.meta.hot != null) {
-    const { captureServerMarkup, hydrationErrorHandler, prepareDevHeadForHydration } =
-      await import("./internal/hydration.js");
-    restoreDevHead = prepareDevHeadForHydration(document);
-    recovery = hydrationErrorHandler(container, captureServerMarkup(container), document);
-  }
-
-  const tree = <App url={url} flight={flight} />;
-
-  startTransition(() => {
-    hydrateRoot(
-      container,
-      options.strictMode === true ? <StrictMode>{tree}</StrictMode> : tree,
-      recovery == null ? undefined : { onRecoverableError: recovery },
-    );
-    if (restoreDevHead != null) {
-      setTimeout(restoreDevHead, 250);
-    }
-  });
-
-  if (import.meta.hot != null) {
-    const { reportDevtools } = await import("./internal/devtools.js");
-    reportDevtools(window);
-  }
-}
-
-function prepareDocumentForHydration(document: Document): void {
-  const head = document.head;
-  const envelope = head.querySelector('meta[name="uf:render"]');
-  if (envelope != null && head.firstChild !== envelope) {
-    head.insertBefore(envelope, head.firstChild);
-  }
-  moveLayoutMetaAfterRouteHead(head, head.querySelector("meta[charset]"));
-  moveLayoutMetaAfterRouteHead(head, head.querySelector('meta[name="viewport"]'));
-  document.getElementById("_R_")?.remove();
-  normalizeReactFormActions(document);
-}
-
-function moveLayoutMetaAfterRouteHead(head: HTMLHeadElement, meta: Element | null): void {
-  if (meta == null) {
-    return;
-  }
-  const colorScheme = head.querySelector('meta[name="color-scheme"]');
-  if (colorScheme != null && colorScheme !== meta) {
-    head.insertBefore(meta, colorScheme);
-    return;
-  }
-  head.appendChild(meta);
-}
-
-const SERVER_FORM_PLACEHOLDER = "javascript:throw new Error('React form unexpectedly submitted.')";
-const CLIENT_FORM_PLACEHOLDER =
-  "javascript:throw new Error('A React form was unexpectedly submitted. If you called form.submit() manually, consider using form.requestSubmit() instead. If you\\'re trying to use event.stopPropagation() in a submit event handler, consider also calling event.preventDefault().')";
-
-function normalizeReactFormActions(document: Document): void {
-  for (const form of document.querySelectorAll("form")) {
-    if (form.getAttribute("action") === SERVER_FORM_PLACEHOLDER) {
-      form.setAttribute("action", CLIENT_FORM_PLACEHOLDER);
-    }
   }
 }
 

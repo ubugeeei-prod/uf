@@ -57,6 +57,7 @@ import { routeBoundaries } from "./internal/boundary-data.js";
 import { composeRoute, pageComponent } from "./internal/compose.js";
 import { ErrorRoutePage } from "./internal/error-view.js";
 import { type FlightRoot, routeState } from "./internal/flight.js";
+import { requireServerComponentsReact } from "./internal/react-version.js";
 import type { ErrorModule, PageModule, ResolvedRoute, ResolvedSlot } from "./internal/resolve.js";
 import { resolveFailure, resolveMatch } from "./internal/resolve.js";
 import type { RouteParams, RouteTable, SearchParams } from "./internal/routing.js";
@@ -139,6 +140,9 @@ export function createFlightRenderer(options: {|
   readonly notFound: RouteTable["notFound"],
   readonly errors: RouteTable["errors"],
 |}): FlightRenderer {
+  // Before anything else: on a React older than 19.3 nothing below can render,
+  // and React's Flight renderer would only say so from inside a render.
+  requireServerComponentsReact("@uniflowed/router/rsc");
   const table: RouteTable = {
     routes: options.routes,
     notFound: options.notFound,
