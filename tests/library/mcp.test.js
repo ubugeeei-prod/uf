@@ -259,6 +259,38 @@ describe("uf mcp", () => {
     expect(fs.readFileSync(path.join(root, "src", "ugly.js"), "utf8")).not.toBe(UGLY);
   });
 
+  // #993, driven the way the issue drove it: `uf_fmt_write` with `../outside`
+  // rewrote the directory beside the project.
+  it("holds paths to the project, and writes nothing outside it", () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), "uf-mcp-escape-"));
+    const root = path.join(parent, "project");
+    fs.mkdirSync(path.join(root, "src"), { recursive: true });
+    fs.writeFileSync(path.join(root, "uf.config.js"), "export default {};\n");
+    fs.writeFileSync(path.join(root, "package.json"), '{"name":"project","private":true}\n');
+    fs.mkdirSync(path.join(parent, "outside"));
+    const outside = path.join(parent, "outside", "ugly.js");
+    fs.writeFileSync(outside, UGLY);
+    fs.symlinkSync(path.join(parent, "outside"), path.join(root, "link"));
+
+    const out = session(
+      [
+        INITIALIZE,
+        callTool(2, "uf_fmt_write", { paths: ["../outside"] }),
+        callTool(3, "uf_fmt_write", { paths: [path.join(parent, "outside")] }),
+        callTool(4, "uf_lint_fix", { paths: ["link"] }),
+      ],
+      root,
+    );
+
+    for (const id of [2, 3, 4]) {
+      expect(answered(out, id).isError).toBe(true);
+    }
+    expect(blocks(out, 2)[0].text).toContain("`../outside` climbs out of the project root");
+    expect(blocks(out, 3)[0].text).toContain("is an absolute path");
+    expect(blocks(out, 4)[0].text).toContain("`link` leads out of the project root");
+    expect(fs.readFileSync(outside, "utf8")).toBe(UGLY);
+  });
+
   it("answers an unknown method as a protocol error", () => {
     const out = session([INITIALIZE, request(2, "resources/list")], brokenProject());
     const found = out.find((message) => message.id === 2);
