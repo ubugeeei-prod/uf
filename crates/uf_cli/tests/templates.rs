@@ -191,3 +191,174 @@ fn a_word_that_is_not_a_template_is_refused_with_the_templates_named() {
         "it scaffolded anyway"
     );
 }
+
+/// `uf args` in `dir`: whether it succeeded, and everything it printed.
+fn attempt(dir: &Path, args: &[&str]) -> (bool, String) {
+    let output = uf()
+        .arg("--cwd")
+        .arg(dir)
+        .args(["--color", "never"])
+        .args(args)
+        .output()
+        .expect("uf started");
+    (
+        output.status.success(),
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )
+}
+
+/// A small template to fetch, in a directory of its own under `scratch`.
+fn template_source(scratch: &Project) -> PathBuf {
+    let source = scratch.path().join("template-source");
+    std::fs::create_dir_all(source.join("app")).expect("the template's app directory");
+    std::fs::write(
+        source.join("package.json"),
+        "{ \"name\": \"from-a-template\", \"private\": true }\n",
+    )
+    .expect("the template's manifest");
+    std::fs::write(
+        source.join("app/$page.js"),
+        "// @flow\nexport component Page() {\n  return <main>from a template</main>;\n}\n",
+    )
+    .expect("the template's page");
+    source
+}
+
+/// `git args` in `dir`, with an identity and nothing from this machine's
+/// configuration, returning what it printed.
+fn git(dir: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(dir)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .args([
+            "-c",
+            "user.name=uf",
+            "-c",
+            "user.email=uf@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .output()
+        .expect("git started");
+    assert!(
+        output.status.success(),
+        "git {}: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// The SHA-256 of a file, in hex, from whichever tool this machine has.
+fn sha256(path: &Path) -> String {
+    for program in ["sha256sum", "shasum"] {
+        let mut command = Command::new(program);
+        if program == "shasum" {
+            command.args(["-a", "256"]);
+        }
+        let Ok(output) = command.arg(path).output() else {
+            continue;
+        };
+        if output.status.success() {
+            return String::from_utf8_lossy(&output.stdout)
+                .split_whitespace()
+                .next()
+                .expect("a digest")
+                .to_owned();
+        }
+    }
+    panic!("neither sha256sum nor shasum is available");
+}
+
+/// A repository template arrives at the commit it names, without its `.git`,
+/// and a branch is refused before anything is fetched.
+#[test]
+fn a_git_template_is_fetched_at_the_commit_it_is_pinned_to_and_a_branch_is_refused() {
+    let scratch = Project::new(&[]);
+    let source = template_source(&scratch);
+    git(&source, &["init", "--quiet", "--initial-branch", "main"]);
+    git(&source, &["add", "."]);
+    git(&source, &["commit", "--quiet", "-m", "template"]);
+    let commit = git(&source, &["rev-parse", "HEAD"]).trim().to_owned();
+    let url = format!("git+file://{}", source.display());
+
+    let (ok, said) = attempt(scratch.path(), &["new", "site", &format!("{url}#{commit}")]);
+
+    assert!(ok, "{said}");
+    let site = scratch.path().join("site");
+    assert!(site.join("app/$page.js").is_file(), "{said}");
+    assert!(site.join("package.json").is_file(), "{said}");
+    assert!(!site.join(".git").exists(), "the fetch's .git was copied");
+    assert!(
+        said.contains(&commit),
+        "the summary does not name the commit:\n{said}"
+    );
+
+    let (ok, said) = attempt(scratch.path(), &["new", "moved", &format!("{url}#main")]);
+
+    assert!(!ok, "a branch was accepted:\n{said}");
+    assert!(said.contains("branch or a tag"), "{said}");
+    assert!(
+        !scratch.path().join("moved").exists(),
+        "a refused template wrote files"
+    );
+}
+
+/// The `Done when` of ubugeeei-prod/uf#975: a tarball whose bytes are not the
+/// ones it was pinned to is refused, and nothing is written.
+#[test]
+fn a_tarball_template_whose_integrity_does_not_match_is_refused_and_writes_nothing() {
+    let scratch = Project::new(&[]);
+    let source = template_source(&scratch);
+    let archive = scratch.path().join("template.tar.gz");
+    let tar = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&source)
+        .arg(".")
+        .status()
+        .expect("tar started");
+    assert!(tar.success(), "tar could not package the template");
+    let url = format!("file://{}", archive.display());
+    let wrong = format!("sha256:{}", "0".repeat(64));
+
+    let (ok, said) = attempt(
+        scratch.path(),
+        &["new", "refused", &url, "--integrity", &wrong],
+    );
+
+    assert!(!ok, "a tarball that does not match was accepted:\n{said}");
+    assert!(said.contains("does not match the integrity"), "{said}");
+    assert!(
+        said.contains(&wrong),
+        "the expected digest is not named:\n{said}"
+    );
+    assert!(
+        !scratch.path().join("refused").exists(),
+        "a refused template wrote files"
+    );
+
+    let right = format!("sha256:{}", sha256(&archive));
+    let (ok, said) = attempt(
+        scratch.path(),
+        &["new", "accepted", &url, "--integrity", &right],
+    );
+
+    assert!(ok, "{said}");
+    assert!(
+        scratch.path().join("accepted/app/$page.js").is_file(),
+        "{said}"
+    );
+
+    let (ok, said) = attempt(scratch.path(), &["new", "unpinned", &url]);
+
+    assert!(!ok, "a tarball with no integrity was accepted:\n{said}");
+    assert!(said.contains("--integrity"), "{said}");
+}

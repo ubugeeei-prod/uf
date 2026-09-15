@@ -31,7 +31,10 @@ Both take an optional template after that. `react` is the default, so it is
 left out here, and `monorepo` writes an application and a library as workspace
 packages of one repository, with one configuration for the checks and tasks
 that build the library before the application. `--lib` on either scaffolds a
-library instead.
+library instead. A template can also come from somewhere else —
+`github:owner/repo#<commit>`, or a tarball with its `--integrity` — as long as
+it is pinned to its exact bytes; [the command reference](/reference/cli) says
+what is checked.
 
 They used to be one command, `uf create app`, whose single optional argument
 was a template when it named one and a directory when it did not — so
