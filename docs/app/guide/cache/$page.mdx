@@ -390,6 +390,15 @@ a key this process has not seen — and a read is what it replaces a *render* wi
 which is the trade the whole feature is: 0.16 ms becomes a file read or a network
 hop instead of 52 ms, on every process rather than on the one that rendered it.
 
+## In the browser
+
+Everything above is on the server. The client router has one cache of its own:
+`app.rendering.staleTime`, how many seconds a navigation shows a page it already
+fetched without asking again. It is off by default, and `router.refresh()` and
+every server action clear it.
+[Keeping what a navigation fetched](/guide/routing#keeping-what-a-navigation-fetched)
+has what is kept and when.
+
 ## What is not here
 
 - **The data cache and the action cache.** `rendering.cache.data` and

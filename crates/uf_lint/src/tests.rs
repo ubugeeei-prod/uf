@@ -15,6 +15,7 @@ mod flow_type;
 mod input;
 mod package;
 mod react;
+mod react_compiler;
 mod react_jsx;
 mod react_native;
 mod react_tree;

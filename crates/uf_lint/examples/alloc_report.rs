@@ -35,6 +35,8 @@ use uf_profiler::{
 static GLOBAL: CountingAllocator = CountingAllocator::new();
 
 fn main() {
+    const RUNS: usize = 5;
+
     let mut path = None;
     let mut phases = false;
     for arg in std::env::args().skip(1) {
@@ -45,23 +47,33 @@ fn main() {
     }
     let path = path.unwrap_or_else(|| String::from("packages/router/internal/runtime.js"));
     let source = std::fs::read_to_string(&path).expect("read the module");
-    let file = SourceFile {
-        path: path.clone(),
-        source,
-    };
     let config = UniflowedConfig::default();
-    println!("{path}: {} bytes", file.source.len());
+    println!("{path}: {} bytes", source.len());
+
+    // `uf_transform::lint` remembers the React Compiler's findings for a module
+    // by path and text, so linting the same text twice would answer the second
+    // run from memory and measure none of the compile. Every run lints its own
+    // copy, differing only in a trailing comment — the same work, never the
+    // same question — and the copies are made before anything is measured.
+    let copies: Vec<SourceFile> = (0..=2 * RUNS)
+        .map(|run| SourceFile {
+            path: path.clone(),
+            source: format!("{source}\n// alloc_report run {run}\n"),
+        })
+        .collect();
+    let (warm, rest) = copies.split_first().expect("a copy to warm up with");
+    let (headline, phase_runs) = rest.split_at(RUNS);
 
     // Warm up: the first run pays for whatever is initialised once.
-    let _ = uf_lint::lint_source(&file, &config).expect("lints");
+    let _ = uf_lint::lint_source(warm, &config).expect("lints");
 
-    let runs = 5;
+    let runs = RUNS as u64;
     CountingAllocator::enable();
     let window = Window::open();
     let before = AllocSnapshot::capture();
     let start = std::time::Instant::now();
-    for _ in 0..runs {
-        let report = uf_lint::lint_source(&file, &config).expect("lints");
+    for file in headline {
+        let report = uf_lint::lint_source(file, &config).expect("lints");
         std::hint::black_box(&report);
     }
     // Measured with the span gate shut, so it is the linter's own time and not
@@ -94,9 +106,9 @@ fn main() {
             sort_by: SortBy::Allocations,
             ..ReportConfig::default()
         });
-        for _ in 0..runs {
+        for file in phase_runs {
             recorder.record(|| {
-                let report = uf_lint::lint_source(&file, &config).expect("lints");
+                let report = uf_lint::lint_source(file, &config).expect("lints");
                 std::hint::black_box(report)
             });
         }

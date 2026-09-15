@@ -77,6 +77,13 @@ import { composeRoute, pageComponent } from "./compose.js";
 import { type FetchedFlight, type FlightRoot, type RouteState, routeState } from "./flight.js";
 import { Head } from "./head.js";
 import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
+import {
+  clearNavigationCache,
+  flightNavigations,
+  keepsNavigations,
+  navigationKey,
+  routeNavigations,
+} from "./navigation-cache.js";
 import { hasClientPage, matchRoute, nearestBoundary } from "./routing.js";
 import type { RouteParams, SearchParams } from "./routing.js";
 import {
@@ -141,6 +148,10 @@ export { resolveFailure, resolveMatch } from "./resolve.js";
 // the application; see `./base-path.js`.
 export type { RoutingSettings, TrailingSlash } from "./base-path.js";
 export { basePath, installRouting } from "./base-path.js";
+
+// `app.rendering.staleTime`, installed by the same entry; see
+// `./navigation-cache.js`.
+export { installStaleTime } from "./navigation-cache.js";
 
 // ---------------------------------------------------------------------------
 // View transitions
@@ -671,9 +682,13 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
     }
     setPending(true);
     try {
+      // An interception depends on the page it starts from, so it is resolved
+      // every time; any other navigation reads what this page kept while it is
+      // fresh. See `./navigation-cache.js`.
+      const key = navigationKey(target.pathname, target.search);
       const nextResolved =
         (intercepting ? await resolveInterception(routeTable(), origin, next) : null) ??
-        (await resolveMatch(routeTable(), next));
+        (await (routeNavigations.read(key) ?? keepRoute(key, resolveMatch(routeTable(), next))));
       // An intercepted entry remembers where it was intercepted from, so back
       // and forward can put the page underneath under it again. Every other
       // entry is written the way it always was.
@@ -781,7 +796,8 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
         window.location.reload();
         return;
       }
-      resolveMatch(routeTable(), next).then(arrive);
+      const key = navigationKey(window.location.pathname, window.location.search);
+      (routeNavigations.read(key) ?? keepRoute(key, resolveMatch(routeTable(), next))).then(arrive);
     };
     window.addEventListener("popstate", onPopState);
     return () => {
@@ -824,6 +840,17 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
       if (matched == null || load == null) {
         return;
       }
+      // With `app.rendering.staleTime` set, the whole route: its loader runs
+      // now, and the click, a later visit and the back button read what it
+      // answered while it is fresh. Otherwise only the modules it will need.
+      if (keepsNavigations()) {
+        const key = navigationKey(target.pathname, target.search);
+        await (
+          routeNavigations.read(key) ??
+          keepRoute(key, resolveMatch(routeTable(), applicationPath + target.search))
+        );
+        return;
+      }
       await Promise.all([
         loadOnce(load),
         ...matched.route.layouts.map((layout) => loadOnce(layout)),
@@ -841,6 +868,9 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
         window.location.reload();
         return;
       }
+      // Everything a navigation kept is older than what this asks for, so none
+      // of it is shown again; see `./navigation-cache.js`.
+      clearNavigationCache();
       // A refresh of an intercepted page refreshes both of its halves: the
       // page underneath, resolved again for its own URL, and the interception
       // resolved again over it. Resolving only the address bar's URL would
@@ -935,7 +965,14 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     }
     setPending(true);
     try {
-      const fetched = await (takePrefetched(next) ?? fetchFlight(next));
+      // The route this page already has while it is fresh, then a prefetch
+      // still in hand, then the network. See `./navigation-cache.js`.
+      const key = navigationKey(target.pathname, target.search);
+      const fetched = await (
+        flightNavigations.read(key) ??
+        takePrefetched(next) ??
+        keepFlight(key, fetchFlight(next))
+      );
       // Not a payload: a redirect off this origin, or a host that has no payload
       // for this URL. The browser loads it as a document, which is what the
       // anchor would have done.
@@ -994,8 +1031,10 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     const onPopState = () => {
       const next = window.location.pathname + window.location.search;
       // The history entry already moved; a payload that cannot be had for it is
-      // a document to load, and a reload is the browser's way to load it.
-      fetchFlight(next).then(
+      // a document to load, and a reload is the browser's way to load it. While
+      // this page keeps the route fresh, what it kept is what comes back.
+      const key = navigationKey(window.location.pathname, window.location.search);
+      (flightNavigations.read(key) ?? keepFlight(key, fetchFlight(next))).then(
         (fetched) => {
           if (fetched.kind === "document") {
             window.location.reload();
@@ -1037,7 +1076,15 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       if (target.origin !== window.location.origin) {
         return;
       }
-      await prefetchFlight(target.pathname + target.search);
+      const next = target.pathname + target.search;
+      // Kept for every navigation to it while it is fresh, when a project set
+      // `app.rendering.staleTime`; otherwise held for the one click after it.
+      if (keepsNavigations()) {
+        const key = navigationKey(target.pathname, target.search);
+        await (flightNavigations.read(key) ?? keepFlight(key, fetchFlight(next)));
+        return;
+      }
+      await prefetchFlight(next);
     },
     refresh: async () => {
       if (!isBrowser()) {
@@ -1047,7 +1094,13 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
         window.location.reload();
         return;
       }
-      const fetched = await fetchFlight(window.location.pathname + window.location.search);
+      // Everything a navigation kept is older than what this asks for, so none
+      // of it is shown again; see `./navigation-cache.js`.
+      clearNavigationCache();
+      const fetched = await keepFlight(
+        navigationKey(window.location.pathname, window.location.search),
+        fetchFlight(window.location.pathname + window.location.search),
+      );
       if (fetched.kind === "document") {
         window.location.reload();
         return;
@@ -1097,6 +1150,57 @@ const prefetchedFlights: Map<
   string,
   {| readonly fetched: Promise<FetchedFlight>, readonly at: number |},
 > = new Map();
+
+/**
+ * `fetched`, kept under `key` for as long as `app.rendering.staleTime` says,
+ * and forgotten again if it turns out not to be a route to show twice: a
+ * request that failed, an answer that was a document rather than a payload, or
+ * a payload React could not read.
+ */
+function keepFlight(key: string, fetched: Promise<FetchedFlight>): Promise<FetchedFlight> {
+  if (!keepsNavigations()) {
+    return fetched;
+  }
+  flightNavigations.store(key, fetched);
+  const forget = () => {
+    flightNavigations.forget(key, fetched);
+  };
+  void fetched.then((answer) => {
+    if (answer.kind === "document") {
+      forget();
+      return;
+    }
+    // A route that answered with its error or not-found boundary is shown this
+    // once: asked again, it may have recovered.
+    void answer.root.then((root) => {
+      if (root.route.status !== 200) {
+        forget();
+      }
+    }, forget);
+  }, forget);
+  return fetched;
+}
+
+/**
+ * `resolved`, kept under `key` for as long as `app.rendering.staleTime` says,
+ * and forgotten again if it did not resolve to a page: a loader that threw or
+ * redirected, or a route that answered with its error or not-found boundary.
+ */
+function keepRoute(key: string, resolved: Promise<ResolvedRoute>): Promise<ResolvedRoute> {
+  if (!keepsNavigations()) {
+    return resolved;
+  }
+  routeNavigations.store(key, resolved);
+  const forget = () => {
+    routeNavigations.forget(key, resolved);
+  };
+  void resolved.then((route) => {
+    if (route.status !== 200) {
+      forget();
+    }
+  }, forget);
+  return resolved;
+}
 
 function prefetchFlight(url: string): Promise<FetchedFlight> {
   const existing = prefetchedFlights.get(url);

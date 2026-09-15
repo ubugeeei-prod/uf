@@ -19,7 +19,6 @@ members = [
   "crates/uf_prepare",
   "crates/uf_profiler",
   "crates/uf_project",
-  "crates/uf_react_compiler",
   "crates/uf_rm",
   "crates/uf_router",
   "crates/uf_rsc",
@@ -114,6 +113,7 @@ mimalloc = "0.1.52"
 phf = { version = "0.14.0", features = ["macros"] }
 react_compiler = "0.1.0"
 react_compiler_ast = "0.1.0"
+react_compiler_diagnostics = "0.1.0"
 rustc-hash = "2.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }

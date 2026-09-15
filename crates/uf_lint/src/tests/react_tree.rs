@@ -122,9 +122,8 @@ fn an_effect_with_a_cleanup_is_left_alone() {
 #[test]
 fn a_property_read_is_left_alone() {
     // `data.items` and `box.offsetWidth` are the same three tokens, and the
-    // second must *not* move into render — reading layout there is the bug
-    // `react/no-render-side-effects` exists to catch. Nothing in the source
-    // says which one this is, so the rule says nothing.
+    // second must *not* move into render — reading layout there is a bug.
+    // Nothing in the source says which one this is, so the rule says nothing.
     let diagnostics = derived(
         "component List(data: Data) {\n  const [items, setItems] = useState([]);\n  useEffect(() => {\n    setItems(data.items);\n  }, [data]);\n  return <ul>{items}</ul>;\n}\n",
     );
