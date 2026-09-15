@@ -987,12 +987,10 @@ export default defineConfig({
         // in `.github/workflows/links.yml`, and `uf run docs:links:external`
         // is it on a laptop.
         //
-        // Not `install:test`. It packages a release before installing it, and
-        // packaging needs `wild-linker`, which CI installs in that job and a
-        // laptop has no reason to have. A `uf run ci` that fails on a fresh
-        // checkout for a missing linker teaches people to ignore failures,
-        // which costs more than this check earns here — it still runs in the
-        // pipeline, where the linker is present.
+        // Not `install:test`. It packages a release before installing it: a
+        // `dist` build of `uf`, `ufr` and `ufx` that nothing else in this list
+        // needs, which is minutes of a laptop's time for a check about the
+        // installer rather than the code. It still runs in the pipeline.
       ],
     },
   },
