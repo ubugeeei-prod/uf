@@ -244,6 +244,79 @@ it("picks large", () => {
     );
 }
 
+/// A suite split across two shards, merged, writes the coverage reports one run
+/// over the whole suite writes.
+///
+/// Every module is imported by one test file, so it is loaded by one process
+/// however the files are spread, and every count in the reports is comparable.
+/// A module two shards both load is counted once per process that loaded it,
+/// as it already is across the workers of one run.
+#[test]
+fn shards_merge_into_the_coverage_reports_one_run_writes() {
+    if !host_ready() {
+        return;
+    }
+    let project = Project::new(&[
+        ("src/badge.js", BADGE),
+        ("src/small.test.js", BADGE_TEST),
+        (
+            "src/sum.js",
+            "// @flow\nexport function sum(values: Array<number>): number {\n  let total = 0;\n  for (const value of values) {\n    total += value;\n  }\n  return total;\n}\n",
+        ),
+        (
+            "src/sum.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nimport { sum } from \"./sum.js\";\n\nit(\"adds them up\", () => {\n  expect(sum([1, 2, 3])).toBe(6);\n});\n",
+        ),
+        (
+            "src/sign.js",
+            "// @flow\nexport function sign(value: number): string {\n  return value < 0 ? \"negative\" : \"positive\";\n}\n",
+        ),
+        (
+            "src/sign.test.js",
+            "// @flow\nimport { expect, it } from \"@uniflowed/test\";\n\nimport { sign } from \"./sign.js\";\n\nit(\"is negative\", () => {\n  expect(sign(-1)).toBe(\"negative\");\n});\n",
+        ),
+        ("src/unused.js", "// @flow\nexport const unused = 1;\n"),
+    ]);
+    let dir = project.path();
+    let reports = [
+        "--coverage-reporter",
+        "lcov",
+        "--coverage-reporter",
+        "cobertura",
+    ];
+
+    let (passed, _, stderr) = run(
+        dir,
+        &[&["--coverage", "--coverage-dir", "whole"][..], &reports[..]].concat(),
+    );
+    assert!(passed, "{stderr}");
+    for shard in ["1/2", "2/2"] {
+        let (passed, stdout, stderr) = run(dir, &["--shard", shard, "--coverage"]);
+        assert!(passed, "{stdout}\n{stderr}");
+        assert!(
+            !dir.join("coverage").exists(),
+            "a shard records its coverage and writes no report:\n{stdout}"
+        );
+    }
+    let (passed, stdout, stderr) = run(
+        dir,
+        &[
+            &["--merge-shards", "--coverage-dir", "merged"][..],
+            &reports[..],
+        ]
+        .concat(),
+    );
+    assert!(passed, "{stdout}\n{stderr}");
+
+    for report in ["lcov.info", "cobertura-coverage.xml"] {
+        let whole = std::fs::read_to_string(dir.join("whole").join(report))
+            .unwrap_or_else(|error| panic!("the whole run wrote {report}: {error}"));
+        let merged = std::fs::read_to_string(dir.join("merged").join(report))
+            .unwrap_or_else(|error| panic!("the merge wrote {report}: {error}"));
+        similar_asserts::assert_eq!(whole, merged, "{report}");
+    }
+}
+
 #[test]
 fn a_threshold_the_project_set_fails_the_run() {
     if !host_ready() {

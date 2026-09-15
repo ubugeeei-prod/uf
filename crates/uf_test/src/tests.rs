@@ -14,5 +14,6 @@ mod junit;
 mod schedule;
 mod security;
 mod selection;
+mod shard;
 mod timings;
 mod watch;
