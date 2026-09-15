@@ -13,7 +13,9 @@
   "exports": {
     "./assets": "./assets.js",
     "./bun-preload": "./bun-preload.js",
+    "./deno-preload": "./deno-preload.js",
     "./internal/node-hooks.js": "./internal/node-hooks.js",
+    "./internal/sync-hooks.js": "./internal/sync-hooks.js",
     "./module-mocks": "./module-mocks.js",
     "./register": "./register.js",
     "./transform": "./transform.js",
@@ -32,6 +34,7 @@
     "register.js",
     "assets.js",
     "bun-preload.js",
+    "deno-preload.js",
     "module-mocks.js",
     "transform.js",
     "write-atomically.js",
