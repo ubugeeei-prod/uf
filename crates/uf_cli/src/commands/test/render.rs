@@ -31,6 +31,7 @@ pub(super) fn render_list(
     root: &Utf8Path,
     files: &[ProjectFile],
     filter: &TestFilter,
+    benches: bool,
 ) -> Result<()> {
     let plan = merge_plans(
         files
@@ -38,7 +39,10 @@ pub(super) fn render_list(
             .filter(|file| filter.matches_path(&file.relative_path))
             .map(|file| discover_tests(&file.relative_path, &file.source)),
     );
-    let resolution = plan.resolve();
+    let mut resolution = plan.resolve();
+    // The kind of run decides as the worker does: benchmarks are skipped by a
+    // run of the tests, and tests by a run of the benchmarks.
+    resolution.select_run_kind(&plan, benches);
     let runner = runner_plan();
 
     let mut rows = Vec::with_capacity(plan.cases.len());
@@ -64,7 +68,11 @@ pub(super) fn render_list(
             )
         })
         .collect();
-    let discovered = plural(plan.runnable_count(), "runnable test");
+    let discovered = if benches {
+        plural(plan.bench_count(), "benchmark")
+    } else {
+        plural(plan.runnable_count(), "runnable test")
+    };
     let runtime = format!("{:?}", runner.runtime);
     let target = format!("{:?}", runner.performance_target);
     let label = project_label(root).to_string();
@@ -116,6 +124,8 @@ fn selection_label(selection: uf_test::Selection) -> String {
         uf_test::Selection::Skipped(SkipReason::Explicit) => "skip".to_string(),
         uf_test::Selection::Skipped(SkipReason::NotOnly) => "not .only".to_string(),
         uf_test::Selection::Skipped(SkipReason::Filtered) => "filtered".to_string(),
+        uf_test::Selection::Skipped(SkipReason::Bench) => "bench".to_string(),
+        uf_test::Selection::Skipped(SkipReason::NotBench) => "not a bench".to_string(),
     }
 }
 

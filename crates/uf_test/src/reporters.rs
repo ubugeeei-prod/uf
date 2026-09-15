@@ -336,6 +336,8 @@ const fn skip_reason(reason: SkipReason) -> &'static str {
         SkipReason::Explicit => "skipped",
         SkipReason::NotOnly => "not-only",
         SkipReason::Filtered => "filtered",
+        SkipReason::Bench => "bench",
+        SkipReason::NotBench => "not-bench",
     }
 }
 

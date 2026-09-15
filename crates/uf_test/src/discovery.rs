@@ -31,10 +31,11 @@ pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_CASES_PER_FILE: usize = 100_000;
 
 /// The registration identifiers discovery recognises.
-const REGISTRATIONS: [(&str, TestKind); 3] = [
+const REGISTRATIONS: [(&str, TestKind); 4] = [
     ("describe", TestKind::Describe),
     ("it", TestKind::Test),
     ("test", TestKind::Test),
+    ("bench", TestKind::Bench),
 ];
 
 /// Modules whose `describe`, `it` and `test` belong to a different runner.

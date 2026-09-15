@@ -158,6 +158,63 @@ pub struct TestRecord {
     /// attempt whose status it reports.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub output: Vec<OutputChunk>,
+    /// How long its timed calls took, for a benchmark `uf test --bench` ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bench: Option<BenchStats>,
+}
+
+/// Most samples kept from one benchmark: `@uniflowed/test`'s own ceiling on
+/// `iterations`, re-applied because everything a worker sends is untrusted.
+pub const MAX_BENCH_SAMPLES: usize = 100_000;
+
+/// How long each timed call of one benchmark took, summarised.
+///
+/// Made from the worker's samples when the record is built, so a report
+/// carries seven numbers per benchmark rather than every call it made. A
+/// percentile is the nearest-rank one, the smallest sample that at least that
+/// share of the samples do not exceed, and nothing is interpolated: every time
+/// here but the mean is a time one call took.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchStats {
+    /// How many calls were timed.
+    pub samples: usize,
+    /// The fastest call, in microseconds.
+    pub min_micros: u64,
+    /// The median call, in microseconds, which is what a baseline compares.
+    pub median_micros: u64,
+    /// The mean of every call, in microseconds, rounded down.
+    pub mean_micros: u64,
+    /// The 75th percentile, in microseconds.
+    pub p75_micros: u64,
+    /// The 99th percentile, in microseconds.
+    pub p99_micros: u64,
+    /// The slowest call, in microseconds.
+    pub max_micros: u64,
+}
+
+impl BenchStats {
+    /// Summarise `samples`, the first [`MAX_BENCH_SAMPLES`] of them; `None`
+    /// when there are none.
+    pub fn from_samples(samples: &[u64]) -> Option<Self> {
+        let mut sorted = samples[..samples.len().min(MAX_BENCH_SAMPLES)].to_vec();
+        if sorted.is_empty() {
+            return None;
+        }
+        sorted.sort_unstable();
+        let count = sorted.len();
+        let rank = |percent: usize| sorted[(count * percent).div_ceil(100).max(1) - 1];
+        let total: u128 = sorted.iter().map(|sample| u128::from(*sample)).sum();
+        Some(Self {
+            samples: count,
+            min_micros: sorted[0],
+            median_micros: rank(50),
+            mean_micros: u64::try_from(total / count as u128).unwrap_or(u64::MAX),
+            p75_micros: rank(75),
+            p99_micros: rank(99),
+            max_micros: sorted[count - 1],
+        })
+    }
 }
 
 /// Why a file did not finish, when it did not.
@@ -435,6 +492,21 @@ impl TestRunReport {
         self.summary.worker_start_micros = None;
         for file in &mut self.files {
             file.duration_micros = 0;
+            for record in &mut file.records {
+                // How many calls were timed is what the suite asked for; how
+                // long they took is the machine's.
+                if let Some(bench) = &mut record.bench {
+                    *bench = BenchStats {
+                        samples: bench.samples,
+                        min_micros: 0,
+                        median_micros: 0,
+                        mean_micros: 0,
+                        p75_micros: 0,
+                        p99_micros: 0,
+                        max_micros: 0,
+                    };
+                }
+            }
         }
         self
     }

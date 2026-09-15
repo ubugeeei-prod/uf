@@ -832,6 +832,56 @@ changes with `-j` in a single run.
 with `--list`, which shows one shard's files. It is refused with `--watch` and
 under a Bun runner.
 
+### Benchmarks
+
+`bench` declares a benchmark beside the tests, with `.only`, `.skip` and `.todo`
+like `it`:
+
+```js
+// @flow
+import { bench } from "@uniflowed/test";
+
+import { total } from "./cart.js";
+
+const items = Array.from({ length: 1000 }, (_, index) => ({ price: index }));
+
+bench("totals a thousand line items", () => {
+  total(items);
+});
+```
+
+`uf test` reports a benchmark skipped, with the reason `bench`, so a suite does
+not pay for timing one. `uf test --bench` runs the benchmarks in place of the
+tests, and reports the tests skipped as `not-bench`. It runs one file at a time
+unless `-j` says otherwise, because a benchmark timed beside another worker's
+file is timed against it. A benchmark calls its body `warmup` times and throws
+those times away, then times `iterations` calls, awaiting the body on each:
+5 and 50 unless `bench(name, body, { warmup, iterations })` says. `timeout` is
+one call's budget, and the benchmark as a whole gets it once per call. The table
+shows each median, 75th percentile and fastest call; `--json` adds the mean,
+the 99th percentile and the slowest call.
+
+A run of the benchmarks is compared with a baseline:
+
+```console
+$ uf test --bench --save-baseline   # where the baseline is kept
+$ uf test --bench                   # on a change
+```
+
+`--save-baseline` writes each benchmark's median to `.uf/bench-baseline.json`,
+or to the file `--baseline` names. A later `uf test --bench` compares every
+median with that file. A median more than `--bench-threshold` per cent over its
+baseline's, 20 unless given, fails the run and names the benchmark; one that
+improved by as much is named too. A benchmark the baseline has no entry for is
+new, and one the baseline has that did not run is listed. A baseline compares
+only with runs on a machine like the one that wrote it, which is why the default
+lives in `.uf`: to gate CI on one, save it in CI and restore it before `--bench`,
+the way the timings file is restored before `--shard`.
+
+`--bench` is refused with `--watch`, `--shard`, `--coverage` and `--browser`,
+each of which would change what is timed or where. Under a Bun runner `bench`
+refuses by name, because `bun:test` has no benchmarks.
+
 ## Flags worth knowing
 
 | Flag | What it does |
@@ -843,6 +893,10 @@ under a Bun runner.
 | `--changed REF` | Only the test files a change since REF reaches |
 | `--shard INDEX/COUNT` | Run one part of a suite split across machines |
 | `--merge-shards [DIR]` | Report the shards' records as one run |
+| `--bench` | Run the benchmarks in place of the tests |
+| `--save-baseline` | Save this run's benchmark medians as the baseline |
+| `--baseline FILE` | Compare with FILE instead of `.uf/bench-baseline.json` |
+| `--bench-threshold PERCENT` | How far past its baseline a median may go; 20 unless given |
 | `--bail[=N]` | Stop after N failures; N defaults to 1 |
 | `--retry N` | Re-run a failing test up to N more times |
 | `-j N`, `--threads N` | Run at most N files at once; defaults to one per core |
@@ -1165,7 +1219,7 @@ the moment it is used, naming what was called: `it.skipBecause` (Bun's skips
 carry no reason into a report), the DOM matchers and `toHaveNoAxeViolations`,
 the snapshot matchers (the two runners key snapshots differently, so a snapshot
 would be compared against, or rewritten over, one uf did not write),
-`uft.stubEnv` and `uft.stubGlobal`, module mocking, and
+`uft.stubEnv` and `uft.stubGlobal`, module mocking, `bench`, and
 `uft.advanceTimersByTimeAsync`. `uf test` itself refuses, before Bun starts, a
 project that declares `permissions` or coverage thresholds, and in-source tests
 — each is a promise uf keeps for its own runner and cannot keep through Bun.

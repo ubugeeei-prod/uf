@@ -104,8 +104,9 @@ pub use crate::plan::{
     TestModifier, TestPlan, UnsupportedDeclaration,
 };
 pub use crate::report::{
-    AssertionFailure, FileReport, FileStatus, MAX_EXPRESSION_BYTES, MAX_OUTPUT_BYTES_PER_FILE,
-    OutputChunk, OutputStream, TestRecord, TestRunReport, TestStatus, TestSummary,
+    AssertionFailure, BenchStats, FileReport, FileStatus, MAX_BENCH_SAMPLES, MAX_EXPRESSION_BYTES,
+    MAX_OUTPUT_BYTES_PER_FILE, OutputChunk, OutputStream, TestRecord, TestRunReport, TestStatus,
+    TestSummary,
 };
 pub use crate::reporters::{CoverageRow, cobertura, junit, lcov, text_rows};
 pub use crate::retry_schedule::{Attempt, Decision, MAX_DELAY, Schedule};

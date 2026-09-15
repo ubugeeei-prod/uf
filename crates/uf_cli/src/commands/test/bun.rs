@@ -126,6 +126,12 @@ pub(crate) fn refused_flags(args: &TestArgs) -> Vec<RefusedFlag> {
         "a shard is cut from uf's own schedule and records uf's own report, and `bun test` has \
          neither; split the suite with `runner: \"uf\"`",
     );
+    refuse(
+        args.bench,
+        "--bench",
+        "`bun:test` has no benchmarks, and `bench()` refuses under Bun; run them with \
+         `runner: \"uf\"`",
+    );
     refused
 }
 

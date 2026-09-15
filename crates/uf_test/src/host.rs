@@ -144,6 +144,9 @@ pub struct HostCommand {
     pub env: Vec<(String, String)>,
     /// Whether this run may rewrite a snapshot that did not match.
     pub update_snapshots: bool,
+    /// Whether this is a run of the benchmarks, `uf test --bench`, rather than
+    /// of the tests.
+    pub bench: bool,
     /// The project's accessibility rule set, as the JSON `axe.js` reads.
     ///
     /// A property of the project rather than of the invocation, so it travels
@@ -191,6 +194,7 @@ impl HostCommand {
             uf_binary: None,
             env: Vec::new(),
             update_snapshots: false,
+            bench: false,
             axe: None,
             browser: None,
             coverage_dir: None,
@@ -366,6 +370,16 @@ impl HostCommand {
         self
     }
 
+    /// Run the benchmarks in place of the tests: `uf test --bench`.
+    ///
+    /// In the environment, like snapshot updates, because it is a property of
+    /// the run rather than of any one file.
+    #[must_use]
+    pub fn with_benchmarks(mut self, bench: bool) -> Self {
+        self.bench = bench;
+        self
+    }
+
     /// Give every worker the project's accessibility rule set.
     ///
     /// `None` leaves the variable unset, which the matcher reads as "run every
@@ -473,6 +487,9 @@ struct TestEvent {
     received: Option<String>,
     #[serde(default)]
     site: Option<Site>,
+    /// One timing per measured call, in whole microseconds, for a benchmark.
+    #[serde(default)]
+    samples: Option<Vec<u64>>,
     /// The request this was written under. See [`Request::generation`].
     #[serde(default)]
     generation: u64,
@@ -822,10 +839,10 @@ impl Worker {
     /// it.
     pub fn spawn(command: &HostCommand) -> Result<Self, SpawnError> {
         let mut process = Command::new(command.program.as_std_path());
-        // The project's own variables first: uf's three below name the project
-        // root, the binary the worker transforms through and whether snapshots
-        // may be rewritten, and a `.env` file in a cloned repository must not
-        // be able to answer any of those.
+        // The project's own variables first: uf's own below name the project
+        // root, the binary the worker transforms through, whether snapshots
+        // may be rewritten and whether benchmarks run, and a `.env` file in a
+        // cloned repository must not be able to answer any of those.
         for (name, value) in &command.env {
             process.env(name, value);
         }
@@ -838,6 +855,7 @@ impl Worker {
                 "UF_UPDATE_SNAPSHOTS",
                 if command.update_snapshots { "1" } else { "" },
             )
+            .env("UF_TEST_BENCH", if command.bench { "1" } else { "" })
             // What makes `import.meta.uf.test` compile to uf's test API rather
             // than to `void 0`. It is set here — on the worker, by the runner —
             // and by nothing else, so a module compiled for a build can never
@@ -1185,6 +1203,8 @@ fn record_of(file: &str, event: TestEvent) -> TestRecord {
             reason: match event.reason.as_deref() {
                 Some("not-only") => SkipReason::NotOnly,
                 Some("filtered") => SkipReason::Filtered,
+                Some("bench") => SkipReason::Bench,
+                Some("not-bench") => SkipReason::NotBench,
                 _ => SkipReason::Explicit,
             },
             message: event.message.filter(|message| !message.is_empty()),
@@ -1215,6 +1235,10 @@ fn record_of(file: &str, event: TestEvent) -> TestRecord {
         attempts: 1,
         duration_micros: event.duration_micros,
         output: Vec::new(),
+        bench: event
+            .samples
+            .as_deref()
+            .and_then(crate::report::BenchStats::from_samples),
     }
 }
 
@@ -1461,6 +1485,7 @@ mod tests {
                     line: 4,
                     column: 12,
                 }),
+                samples: None,
                 generation: 1,
             },
         );
@@ -1826,6 +1851,7 @@ mod tests {
                     expected: None,
                     received: None,
                     site: None,
+                    samples: None,
                     generation: 1,
                 },
             );
@@ -1855,6 +1881,7 @@ mod tests {
                 expected: None,
                 received: None,
                 site: None,
+                samples: None,
                 generation: 1,
             },
         );
