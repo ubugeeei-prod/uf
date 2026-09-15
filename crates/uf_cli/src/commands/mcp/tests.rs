@@ -590,3 +590,102 @@ fn every_published_schema_uses_only_keywords_the_check_enforces() {
         walk(tool["name"].as_str().expect("a name"), &tool["inputSchema"]);
     }
 }
+
+/// A source file `uf fmt` would rewrite.
+const UGLY: &str = "// @flow\nconst   z   =   1;\n";
+
+/// #993's layout: a project, and beside it a directory holding a file `uf fmt`
+/// would rewrite. The temporary directory, the project, and that file.
+fn project_beside_outside() -> (tempfile::TempDir, Utf8PathBuf, std::path::PathBuf) {
+    let dir = scratch();
+    let project = dir.path().join("project");
+    std::fs::create_dir_all(project.join("src")).expect("a source directory");
+    std::fs::write(project.join("uf.config.js"), "export default {};\n").expect("a config");
+    std::fs::write(
+        project.join("package.json"),
+        "{\"name\":\"project\",\"private\":true}\n",
+    )
+    .expect("a manifest");
+    std::fs::write(project.join("src/ugly.js"), UGLY).expect("a source file");
+    std::fs::create_dir_all(dir.path().join("outside")).expect("a directory beside it");
+    let outside = dir.path().join("outside/ugly.js");
+    std::fs::write(&outside, UGLY).expect("a file beside it");
+    let project = Utf8PathBuf::from_path_buf(project).expect("a UTF-8 path");
+    (dir, project, outside)
+}
+
+/// #993, the reproduction: `uf_fmt_write` with `../outside` rewrote the
+/// directory beside the project.
+#[test]
+fn a_path_that_climbs_out_of_the_project_is_refused_and_nothing_is_written() {
+    let (_dir, project, outside) = project_beside_outside();
+    let result = tool_call(&project, "uf_fmt_write", json!({ "paths": ["../outside"] }));
+
+    assert_eq!(result["isError"], true, "{result:?}");
+    assert_eq!(
+        only_text(&result),
+        "uf_fmt_write did not run: `../outside` climbs out of the project root"
+    );
+    assert_eq!(std::fs::read_to_string(&outside).expect("the file"), UGLY);
+}
+
+#[test]
+fn every_tool_that_takes_paths_holds_them_to_the_project() {
+    let (dir, project, outside) = project_beside_outside();
+    let absolute = dir
+        .path()
+        .join("outside")
+        .to_str()
+        .expect("a UTF-8 path")
+        .to_owned();
+    for tool in tools() {
+        let name = tool["name"].as_str().expect("a name");
+        if tool["inputSchema"]["properties"].get("paths").is_none() {
+            continue;
+        }
+        for (entry, why) in [
+            ("../outside", "climbs out of the project root"),
+            ("src/../../outside", "climbs out of the project root"),
+            (absolute.as_str(), "is an absolute path"),
+        ] {
+            let result = tool_call(&project, name, json!({ "paths": ["src", entry] }));
+            let text = only_text(&result);
+            assert!(
+                text.starts_with(&format!("{name} did not run: `{entry}` {why}")),
+                "{text}"
+            );
+        }
+    }
+    assert_eq!(std::fs::read_to_string(&outside).expect("the file"), UGLY);
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symbolic_link_out_of_the_project_is_refused() {
+    let (dir, project, outside) = project_beside_outside();
+    std::os::unix::fs::symlink(dir.path().join("outside"), project.join("link")).expect("a link");
+
+    for entry in ["link", "link/ugly.js", "link/.."] {
+        let result = tool_call(&project, "uf_fmt_write", json!({ "paths": [entry] }));
+        assert_eq!(
+            only_text(&result),
+            format!(
+                "uf_fmt_write did not run: `{entry}` leads out of the project root through a \
+                 symbolic link"
+            )
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&outside).expect("the file"), UGLY);
+}
+
+/// What stays inside is not refused — including an entry that names nothing,
+/// which `paths` allows because an entry is also a substring to match.
+#[test]
+fn a_path_inside_the_project_is_not_refused() {
+    let (_dir, project, _outside) = project_beside_outside();
+    for entry in ["src", "./src", "src/../src", "ugly", "src/not-there"] {
+        let result = tool_call(&project, "uf_lint", json!({ "paths": [entry] }));
+        let text = result["content"][0]["text"].as_str().expect("a text block");
+        assert!(!text.starts_with("uf_lint did not run:"), "{entry}: {text}");
+    }
+}

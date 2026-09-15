@@ -55,6 +55,16 @@
 //! different request from the one that was sent, reported as a success.
 //! [`misfit`] is the check.
 //!
+//! # `paths` stay inside the project
+//!
+//! Every command joins a `paths` entry onto the project root in the scan they
+//! share, and nothing there asks where the join lands — which is right for
+//! `uf fmt ../elsewhere` typed at a terminal, and was not right here:
+//! `uf_fmt_write` with `../outside` rewrote the directory beside the project,
+//! under a description that promises the checkout (#993).
+//! [`outside_the_project`] refuses such an entry by name, before anything is
+//! read.
+//!
 //! # What a real client found
 //!
 //! Two bugs here were invisible to unit tests and immediate the first time the
@@ -69,7 +79,7 @@
 //!   reason it failed are now two content blocks.
 
 use anyhow::{Context, Result};
-use camino::Utf8Path;
+use camino::{Utf8Component, Utf8Path};
 use serde_json::{Value, json};
 use std::io::{BufRead, IsTerminal, Write};
 
@@ -441,6 +451,9 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
                 .collect()
         })
         .unwrap_or_default();
+    if let Some(why) = outside_the_project(&uf_config::discover_root(cwd), &paths) {
+        return tool_error(format!("{name} did not run: {why}"));
+    }
     let json = spec.speaks == Speaks::Json;
 
     let mut ui = Ui::capturing(spec.speaks.mode());
@@ -518,6 +531,65 @@ fn call(cwd: &Utf8Path, name: &str, arguments: &Value) -> Value {
 /// A tool result that is an error, and says why.
 fn tool_error(text: String) -> Value {
     json!({ "content": [{ "type": "text", "text": text }], "isError": true })
+}
+
+/// The first `paths` entry that leads outside the project, as a reason, or
+/// [`None`] when every one stays inside.
+///
+/// `root` is the one the commands scan from, and an entry is judged the way
+/// the scan uses it: joined onto that root. Three ways out, each refused:
+///
+/// * an absolute path, which a join does not join at all;
+/// * a `..` that climbs above the root, read from the components as written
+///   rather than from a normalised string;
+/// * a symbolic link. The nearest part of the joined path that exists is
+///   resolved and must sit inside the resolved root, compared by component.
+///   The nearest part rather than the whole path, because an entry is also a
+///   substring to match — `ui`, for every path containing it — and need not
+///   name anything that exists.
+///
+/// The command line is not held to this, deliberately. `uf fmt ../elsewhere`
+/// is what the person running it typed; an agent's `paths` were written by
+/// somebody this server cannot ask, under a description that promises the
+/// checkout.
+fn outside_the_project(root: &Utf8Path, paths: &[String]) -> Option<String> {
+    if paths.is_empty() {
+        return None;
+    }
+    let Ok(resolved_root) = root.canonicalize_utf8() else {
+        return Some(format!(
+            "the project root {root} cannot be resolved, so no `paths` entry can be held to it"
+        ));
+    };
+    for entry in paths {
+        let named = Utf8Path::new(entry.trim_start_matches("./"));
+        let mut depth = 0usize;
+        for component in named.components() {
+            match component {
+                Utf8Component::Prefix(_) | Utf8Component::RootDir => {
+                    return Some(format!(
+                        "`{entry}` is an absolute path; `paths` are relative to the project root"
+                    ));
+                }
+                Utf8Component::ParentDir if depth == 0 => {
+                    return Some(format!("`{entry}` climbs out of the project root"));
+                }
+                Utf8Component::ParentDir => depth -= 1,
+                Utf8Component::Normal(_) => depth += 1,
+                Utf8Component::CurDir => {}
+            }
+        }
+        let joined = root.join(named);
+        let reached = joined
+            .ancestors()
+            .find_map(|at| at.canonicalize_utf8().ok());
+        if reached.is_some_and(|reached| !reached.starts_with(&resolved_root)) {
+            return Some(format!(
+                "`{entry}` leads out of the project root through a symbolic link"
+            ));
+        }
+    }
+    None
 }
 
 /// The keywords [`misfit`] enforces, and `description`, which it reads past.
