@@ -1784,6 +1784,52 @@ as linked. Yarn 4 also refuses to link a package whose manifest says
 Registering changes nothing in the project, so `uf link` with nothing named prints
 the three rows and the manager's own answer.
 
+### uf unlink [NAME|DIR]
+
+Undoes `uf link`, in whichever direction it went:
+
+```
+uf unlink @acme/ui   # in a project: take the link out, put back what package.json declares
+uf unlink ../ui      # the same, named by the directory the link leads to
+uf unlink            # inside ../ui: stop it being linkable from other projects
+```
+
+In a project, the link is taken out of `node_modules`. If `package.json`
+declares the package, the release it declares is installed in its place. With
+nothing named, uf removes the entry `uf link` left in the manager's global
+registry.
+
+| | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
+| --- | --- | --- | --- | --- | --- |
+| `uf unlink` | `npm uninstall --global NAME` | `pnpm remove --global NAME` | `yarn unlink` | refused | `bun unlink` |
+| `uf unlink NAME` | `npm uninstall --no-save NAME` | `pnpm unlink NAME` | `yarn unlink NAME` | `yarn unlink NAME` | uf removes the link |
+| `uf unlink DIR` | the name `DIR/package.json` gives | the same | the same | `yarn unlink DIR` | the same |
+
+On npm, Yarn 1 and bun, `uf install` then runs if `package.json` declares the
+package. pnpm and Yarn 2+ reinstall on their own. Unlinking installs, so
+dependency scripts stay refused, as they do for `uf link`.
+
+`uf unlink` checks the filesystem before it runs anything and again afterwards:
+
+- **Nothing to unlink is not an error.** uf says what it found, runs nothing, and exits 0 when:
+  - `node_modules/NAME` is not a link;
+  - it is the path dependency `package.json` declares;
+  - it links somewhere other than `DIR`;
+  - with nothing named, the manager has nothing registered under the package's name.
+- **What was removed is read from the filesystem, not from the manager.** The report names the package and where its link led, or the registry entry it removed. Its last line says what `node_modules` holds now.
+- **Where a manager cannot undo its own link, uf does:**
+  - bun has no `unlink NAME` (it answers "not implemented yet"), so uf removes the link from `node_modules` itself, and only if it is a link.
+  - pnpm 10's `pnpm unlink` answers "Nothing to unlink" about a link its own `pnpm link` made, and leaves that link's override in `pnpm-workspace.yaml`. uf removes that one entry from `overrides` and installs. It does so only when the file is laid out the way pnpm writes it, and otherwise says which entry to delete.
+- **npm's `unlink` is not used.** `npm unlink NAME` is `npm uninstall NAME`, which also takes a declared package out of `package.json`. `--no-save` removes only the link.
+- **pnpm 12 writes a dependency when it links a package the project does not declare.** `uf unlink` removes pnpm's override, then warns that the package is still linked, because `package.json` now declares it as `link:…`. `uf remove` takes that out.
+
+Each manager's registry is found the way that manager finds it:
+- npm: `npm root --global`.
+- pnpm: `PNPM_HOME`.
+- Yarn 1: `XDG_DATA_HOME`, or `~/.config/yarn/link`.
+- bun: `BUN_INSTALL`.
+- Yarn 2+ keeps no registry, so `uf unlink` with nothing named is refused there.
+
 ### uf clean [--deps] [--dry-run]
 
 Removes what a rebuild would write again: the build's output, the documentation

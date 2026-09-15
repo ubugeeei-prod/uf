@@ -392,6 +392,27 @@ pub fn remove_link(root: &Utf8Path, name: &str) -> io::Result<()> {
     })
 }
 
+/// The override `pnpm link` wrote for `name` in the project's
+/// `pnpm-workspace.yaml`, read the way [`remove_link_override`] would remove
+/// it, without removing anything.
+///
+/// What tells a link `pnpm link` made from a `link:` dependency somebody
+/// declared: pnpm 12 writes both for one link, and only the override is its
+/// own.
+#[must_use]
+pub fn link_override(root: &Utf8Path, name: &str) -> Option<String> {
+    if !is_package_name(name) {
+        return None;
+    }
+    let path = root.join("pnpm-workspace.yaml");
+    let metadata = fs::symlink_metadata(&path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_MANIFEST_BYTES {
+        return None;
+    }
+    let source = fs::read_to_string(&path).ok()?;
+    without_link_override(&source, name).map(|(_, value)| value)
+}
+
 /// Take the override `pnpm link` wrote for `name` out of the project's
 /// `pnpm-workspace.yaml`, and return the value it had.
 ///
