@@ -1,0 +1,17 @@
+#!/bin/sh
+# Temporary probe for ubugeeei-prod/uf#1071. Not for merge.
+#
+# The `cc` driver finds this `ld` through `-B`, the way it finds
+# tools/linker/ld. For the uf_fmt `guarantees` test binary it relinks the same
+# inputs first (see relink.sh); every link then goes to tools/linker/uf-linker
+# exactly as tools/linker/ld would send it.
+set -eu
+
+script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
+uf_linker="$script_dir/../../linker/uf-linker"
+
+case " $* " in
+  *"/guarantees-"*) "$script_dir/relink.sh" "$uf_linker" "$@" || true ;;
+esac
+
+exec "$uf_linker" "$@"

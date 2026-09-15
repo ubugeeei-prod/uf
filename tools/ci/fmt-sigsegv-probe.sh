@@ -1,99 +1,112 @@
 #!/usr/bin/env bash
-# Temporary probe for ubugeeei-prod/uf#1071. Not for merge.
+# Temporary probe for ubugeeei-prod/uf#1071, third version. Not for merge.
 #
-# Runs the whole workspace suite the way the Test job does, reports what it
-# left running, then runs the `uf_fmt` `guarantees` test binary many times in
-# parallel with core dumps on, and prints what the kernel and gdb say about any
-# process that dies.
+# Asks one question: does wild write the same bytes when it links the same
+# inputs twice? CI relinks the `guarantees` test binary on every run, and a
+# linker that is occasionally wrong would give a binary that crashes on one run
+# and a fresh, correct one on the rerun, which is the pattern #1071 shows.
 set -u
 
 section() { printf '\n===== %s\n' "$1"; }
 
 section system
 uname -a
-ldd --version | head -1
 nproc
-head -3 /proc/meminfo
-echo "overcommit_memory=$(cat /proc/sys/vm/overcommit_memory) max_map_count=$(cat /proc/sys/vm/max_map_count) pid_max=$(cat /proc/sys/kernel/pid_max)"
-echo "thp=$(cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null)"
-grep -m1 'model name' /proc/cpuinfo
-ulimit -a
+wild --version
+ld.bfd --version | head -1
+gcc --version | head -1
 
-section setup
-mkdir -p /tmp/cores /tmp/probe-logs
-chmod 1777 /tmp/cores
-sudo sysctl -w kernel.core_pattern=/tmp/cores/core.%e.%p || echo "could not set core_pattern"
-ulimit -c unlimited
-command -v gdb > /dev/null || sudo apt-get install -y -qq gdb > /dev/null 2>&1 || echo "no gdb"
-sudo dmesg -C 2> /dev/null || true
-
-section suite
-started=$(date +%s)
-cargo test --workspace --profile ci > /tmp/probe-suite.log 2>&1
-echo "suite exit=$? elapsed=$(( $(date +%s) - started ))s"
-grep -a "signal: \|overflowed its stack\|test result: FAILED\|error: test failed" /tmp/probe-suite.log | tail -20
-
-section leftovers
-free -m
-cat /proc/loadavg
-echo "threads=$(ps -eLf | wc -l)"
-ps -eo pid,ppid,rss,etimes,args --sort=-rss | cut -c1-160 | head -25
+section sources
+echo "packages js: $(find packages -name '*.js' | wc -l)"
+echo "packages js under node_modules: $(find packages -path '*/node_modules/*' -name '*.js' | wc -l)"
 
 section build
-cargo test -p uf_fmt --test guarantees --profile ci --no-run --message-format=json 2> /tmp/probe-build.txt \
+cargo test -p uf_fmt --test guarantees --profile ci --no-run 2>&1 | tail -2
+touch crates/uf_fmt/tests/guarantees.rs
+# A different linker is a different fingerprint, so this relinks the binary
+# through tools/ci/probe-linker, whose `ld` links the same inputs 25 more times
+# before the real link.
+CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/tools/ci/probe-linker/cc-linker" \
+  cargo test -p uf_fmt --test guarantees --profile ci --no-run \
+  --message-format=json 2> /tmp/probe-build.txt \
   | grep -o '"executable":"[^"]*guarantees-[^"]*"' | tail -1 | sed 's/"executable":"//; s/"$//' > /tmp/probe-bin.txt
 tail -2 /tmp/probe-build.txt
 BIN=$(cat /tmp/probe-bin.txt)
-echo "binary: $BIN"
-if [ ! -x "$BIN" ]; then
-  echo "PROBE SUMMARY: build failed"
-  exit 1
+echo "cargo's binary: $BIN"
+cat /tmp/links/linkers.txt 2> /dev/null || echo "the relink hook did not run"
+if [ -x "$BIN" ]; then
+  cp "$BIN" /tmp/links/cargo
 fi
+ls -la /tmp/links | grep -v '\.log$'
+for log in /tmp/links/*.log; do
+  [ -s "$log" ] && { echo "--- $log"; head -5 "$log"; }
+done
 
-workers=24
-iterations=18
-worker() {
-  local w=$1 i code
-  for i in $(seq 1 "$iterations"); do
-    "$BIN" --test-threads 32 > "/tmp/probe-logs/$w.$i.log" 2>&1
-    code=$?
-    if [ "$code" -ne 0 ]; then
-      echo "CRASH worker=$w run=$i exit=$code at $(date +%T)"
-      grep -v ' \.\.\. ok$' "/tmp/probe-logs/$w.$i.log" | tail -12
-    fi
-  done
-}
+section hashes
+sha256sum /tmp/links/wild-* /tmp/links/bfd /tmp/links/cargo 2> /dev/null | grep -v '\.log$' | sort > /tmp/hashes.txt
+cat /tmp/hashes.txt
+echo "distinct wild outputs:"
+grep 'wild-' /tmp/hashes.txt | cut -d' ' -f1 | sort | uniq -c
+
+section differences
+first=$(ls /tmp/links/wild-* | grep -v '\.log$' | head -1)
+readelf -S -W "$first" > /tmp/sections.txt
+for f in $(ls /tmp/links/wild-* | grep -v '\.log$'); do
+  if ! cmp -s "$first" "$f"; then
+    count=$(cmp -l "$first" "$f" | wc -l)
+    echo "--- $f differs from $first in $count bytes; offsets by section:"
+    cmp -l "$first" "$f" | head -5000 | awk '{ print $1 - 1 }' > /tmp/offsets.txt
+    awk '
+      NR == FNR {
+        if ($0 ~ /^ *\[ *[0-9]+\]/) {
+          sub(/^ *\[ *[0-9]+\] */, "")
+          name = $1; off = strtonum("0x" $4); size = strtonum("0x" $5)
+          n++; names[n] = name; offs[n] = off; sizes[n] = size
+        }
+        next
+      }
+      {
+        hit = "(outside sections)"
+        for (i = 1; i <= n; i++) if ($1 >= offs[i] && $1 < offs[i] + sizes[i]) { hit = names[i]; break }
+        counts[hit]++
+      }
+      END { for (h in counts) print "  " counts[h], h }
+    ' /tmp/sections.txt /tmp/offsets.txt
+  fi
+done
 
 section runs
-started=$(date +%s)
-for w in $(seq 1 "$workers"); do worker "$w" & done
-wait
-echo "elapsed=$(( $(date +%s) - started ))s"
-
-section dmesg
-sudo dmesg | grep -i 'segfault\|trap\|general protection\|oom\|killed process' | tail -30
+mkdir -p /tmp/cores /tmp/probe-logs
+chmod 1777 /tmp/cores
+sudo sysctl -w kernel.core_pattern=/tmp/cores/core.%e.%p > /dev/null || true
+ulimit -c unlimited
+crashes=0
+declare -A seen
+for f in /tmp/links/wild-* /tmp/links/bfd; do
+  case "$f" in *.log) continue ;; esac
+  [ -x "$f" ] || continue
+  hash=$(sha256sum "$f" | cut -d' ' -f1)
+  [ -z "${seen[$hash]:-}" ] || continue
+  seen[$hash]=1
+  echo "--- $f ($hash)"
+  for i in $(seq 1 12); do
+    (cd crates/uf_fmt && "$f" --test-threads 32 > "/tmp/probe-logs/$(basename "$f").$i.log" 2>&1)
+    code=$?
+    if [ "$code" -ne 0 ]; then
+      crashes=$((crashes + 1))
+      echo "CRASH $f run=$i exit=$code"
+      grep -v ' \.\.\. ok$' "/tmp/probe-logs/$(basename "$f").$i.log" | tail -8
+    fi
+  done
+done
 
 section cores
-count=0
 for core in /tmp/cores/core.*; do
   [ -e "$core" ] || continue
-  count=$((count + 1))
-  [ "$count" -le 3 ] || continue
-  echo "--- $core"
-  gdb -q -batch \
-    -ex 'set pagination off' \
-    -ex 'p $_siginfo.si_signo' \
-    -ex 'p $_siginfo.si_code' \
-    -ex 'p $_siginfo._sifields._sigfault.si_addr' \
-    -ex 'info registers rip rsp' \
-    -ex 'x/3i $pc' \
-    -ex 'bt 30' \
-    -ex 'info threads' \
-    -ex 'thread apply all bt 10' \
-    "$BIN" "$core" 2>&1 | head -400
-  gdb -q -batch -ex 'maint info sections' "$BIN" "$core" 2>&1 | grep -v '\.debug\|\.note\|\.rela\|\.gnu' | head -300
+  exe="/tmp/links/$(basename "$core" | cut -d. -f2)"
+  echo "--- $core ($exe)"
+  gdb -q -batch -ex 'p $_siginfo._sifields._sigfault.si_addr' -ex 'bt 25' "$exe" "$core" 2>&1 | head -60
 done
 
 section summary
-echo "PROBE SUMMARY: runs=$((workers * iterations)) cores=$count"
-[ "$count" -eq 0 ]
+echo "PROBE SUMMARY: distinct wild outputs=$(grep 'wild-' /tmp/hashes.txt | cut -d' ' -f1 | sort -u | wc -l) crashes=$crashes"
