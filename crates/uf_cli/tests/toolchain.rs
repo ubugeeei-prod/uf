@@ -1,4 +1,5 @@
-//! `uf use` and `uf self-update`, against a release store on disk.
+//! `uf use`, `uf self-update` and `uf self-uninstall`, against a release store
+//! on disk.
 //!
 //! What `uf use uf@0.9.9` used to do was copy the running binary into a
 //! directory called `0.9.9` and write three files saying that is what it was
@@ -971,4 +972,221 @@ fn self_update_over_a_runtime_that_is_running() {
     );
     assert!(runtime_dir(root, "9.9.9").join("bin/ufx").exists());
     assert!(linked_at(root, "9.9.9"));
+}
+
+/// `uf self-uninstall` with every machine directory it resolves inside `root`,
+/// so the suite cannot even plan to remove the developer's own: `HOME` alone is
+/// not enough, because an exported `XDG_DATA_HOME` would win over it.
+fn uf_uninstalling(root: &Path) -> TestCommand {
+    let mut command = uf_in(root, None);
+    command
+        .env("XDG_DATA_HOME", root.join("data"))
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .env("XDG_CONFIG_HOME", root.join("config"))
+        .env("UF_STORE", root.join("data/uf/store"))
+        .env("UF_ENVS", root.join("data/uf/envs"))
+        .env("UF_ROOTS", root.join("state/uf/roots"))
+        .env("UF_INDEX_CACHE", root.join("cache/uf/index"))
+        .arg("self-uninstall");
+    command
+}
+
+/// A machine uf is on the way people get there: installed by the installer,
+/// updated once so there is a version to roll back to, a toolchain in the store
+/// with a project environment and a root, a release index in the cache, and a
+/// tool beside the links that is not uf's.
+fn installed_machine(root: &Path) {
+    let release = root.join("releases");
+    publish(&release, "1.0.0");
+    publish(&release, "2.0.0");
+    assert!(
+        installer(root, &release, "1.0.0")
+            .status()
+            .unwrap()
+            .success()
+    );
+    succeeds(root, &release, &["self-update", "2.0.0"]);
+    for dir in [
+        "data/uf/store/node-24.0.0/bin",
+        "data/uf/envs/app-0123456789abcdef",
+        "state/uf/roots",
+        "cache/uf/index",
+    ] {
+        fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    fs::write(root.join("data/uf/store/node-24.0.0/bin/node"), "node").unwrap();
+    fs::write(root.join("cache/uf/index/node.json"), "{}").unwrap();
+    fs::write(root.join("bin/other-tool"), "not uf's").unwrap();
+}
+
+/// Whether anything at all is at `path`, a dangling link included.
+fn anything_at(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok()
+}
+
+/// `--dry-run` lists everything uf would remove, and removes none of it.
+#[test]
+fn self_uninstall_dry_run_lists_what_it_would_remove_and_removes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    installed_machine(root);
+
+    let output = uf_uninstalling(root).arg("--dry-run").output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    for listed in [
+        "bin/uf",
+        "bin/ufr",
+        "bin/ufx",
+        "share/uf/runtimes",
+        "share/uf/previous-version",
+        "data/uf/store",
+        "data/uf/envs",
+        "state/uf/roots",
+        "cache/uf/index",
+        "active-runtime.json",
+    ] {
+        assert!(stdout.contains(listed), "{listed} is not listed:\n{stdout}");
+    }
+    assert!(!stdout.contains("other-tool"), "{stdout}");
+    assert!(linked_at(root, "2.0.0"));
+    assert!(root.join("data/uf/store").exists());
+    assert!(root.join("share/uf/previous-version").exists());
+}
+
+/// With no terminal to ask on, removing everything takes `--yes`, and without
+/// it nothing goes.
+#[test]
+fn self_uninstall_without_a_terminal_removes_nothing_unless_told_yes() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    installed_machine(root);
+
+    let output = uf_uninstalling(root).output().unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--yes"), "{stderr}");
+    assert!(linked_at(root, "2.0.0"));
+    assert!(root.join("share/uf/runtimes").exists());
+    assert!(root.join("data/uf/store").exists());
+}
+
+/// The uninstall the issue asks for, against the installer's real layout: the
+/// runtimes, the links and the store go — and nothing that is not uf's does.
+#[test]
+fn self_uninstall_removes_the_runtimes_links_and_store_and_nothing_else() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    installed_machine(root);
+
+    let output = uf_uninstalling(root).arg("--yes").output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for name in ["uf", "ufr", "ufx"] {
+        assert!(
+            !anything_at(&root.join("bin").join(name)),
+            "{name} is still there"
+        );
+    }
+    for gone in [
+        "share/uf",
+        "data/uf",
+        "state/uf",
+        "state/uniflowed",
+        "cache/uf",
+    ] {
+        assert!(!anything_at(&root.join(gone)), "{gone} is still there");
+    }
+    assert!(
+        root.join("bin/other-tool").exists(),
+        "a tool that is not uf's went too"
+    );
+    assert!(root.join("bin").is_dir(), "the shared link directory went");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("removed"), "{stdout}");
+}
+
+/// A `uf` in the link directory that is not a link into the store is somebody
+/// else's — Nix's, cargo's, a copy — and stays where it is.
+#[test]
+fn self_uninstall_leaves_what_it_did_not_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    installed_machine(root);
+    fs::remove_file(root.join("bin/ufx")).unwrap();
+    fs::copy(a_real_executable(), root.join("bin/ufx")).unwrap();
+    fs::remove_file(root.join("bin/ufr")).unwrap();
+    std::os::unix::fs::symlink(a_real_executable(), root.join("bin/ufr")).unwrap();
+
+    let output = uf_uninstalling(root).arg("--yes").output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!anything_at(&root.join("bin/uf")));
+    assert!(
+        root.join("bin/ufx").is_file(),
+        "a copy uf did not make went"
+    );
+    assert_eq!(
+        fs::read_link(root.join("bin/ufr")).unwrap(),
+        a_real_executable(),
+        "a link into somebody else's install went"
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("left alone"), "{stdout}");
+}
+
+/// Nothing installed is nothing to remove, and it says so rather than failing.
+#[test]
+fn self_uninstall_with_nothing_installed_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+
+    let output = uf_uninstalling(root).arg("--yes").output().unwrap();
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("nothing to remove"), "{stdout}");
+}
+
+/// A variable pointed at the home directory is one typo in a shell profile, and
+/// it is refused before anything is removed.
+#[test]
+fn self_uninstall_refuses_to_remove_the_home_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    installed_machine(root);
+    fs::create_dir_all(root.join("home/projects")).unwrap();
+
+    let output = uf_uninstalling(root)
+        .env("UF_STORE", root.join("home"))
+        .arg("--yes")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("home directory"), "{stderr}");
+    assert!(root.join("home/projects").is_dir());
+    assert!(
+        linked_at(root, "2.0.0"),
+        "the refusal came after removing the links"
+    );
 }

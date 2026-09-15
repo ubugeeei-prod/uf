@@ -561,6 +561,9 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
             };
             commands::toolchain::self_update(ui, action)
         }
+        Commands::SelfUninstall { dry_run, yes } => {
+            commands::toolchain::self_uninstall(ui, dry_run, yes)
+        }
         Commands::Why { package } => commands::pm::why(&cwd, ui, &package),
         Commands::Ls { args } => {
             commands::pm::query(&cwd, ui, "uf ls", uf_pm::Operation::List, &args)

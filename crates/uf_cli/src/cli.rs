@@ -956,6 +956,25 @@ pub(crate) enum Commands {
         #[arg(long)]
         rollback: bool,
     },
+    /// Remove uf from this machine: its runtimes, its links and its store.
+    ///
+    /// It lists what it would remove — the links in `UF_BIN_DIR` that lead
+    /// into the runtime store, every runtime, the toolchain store `uf env
+    /// install` fills and the caches beside it — and asks before removing any
+    /// of it. A `uf` that is not a link into the store stays where it is.
+    ///
+    /// Not `uf uninstall`, which is `uf remove`: npm and pnpm spell removing a
+    /// dependency that way, and deleting the toolchain must not be one verb
+    /// away from it.
+    SelfUninstall {
+        /// List what would be removed, and remove nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Remove it all without asking, for a script or a machine with no
+        /// terminal.
+        #[arg(short, long)]
+        yes: bool,
+    },
     /// Switch the active uf toolchain, for example `uf use uf@0.1.0`.
     ///
     /// A version this machine does not have is downloaded and verified, by the

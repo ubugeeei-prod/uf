@@ -1939,7 +1939,15 @@ mod tests {
     fn a_command_with_no_provider_is_not_explained() {
         let (_guard, resolved) = defaults();
 
-        for command in ["info", "inspect", "explain", "completion", "init", "new"] {
+        for command in [
+            "info",
+            "inspect",
+            "explain",
+            "completion",
+            "init",
+            "new",
+            "self-uninstall",
+        ] {
             assert!(
                 stages_for(command, &resolved).is_none(),
                 "uf {command} has no provider to name and should not be explained"
