@@ -15,8 +15,8 @@ pub use descriptor::{
     ValidationStep,
 };
 pub use registry::{
-    CLIENT_MODULE_PACKAGE, CLIENT_MODULE_SUBPATHS, builtin_modules, hook_descriptors,
-    is_client_module, module_by_specifier, std_module_descriptors, tui_contract,
+    CLIENT_MODULE_PACKAGE, CLIENT_MODULE_SUBPATHS, builtin_modules, client_modules_exporting,
+    hook_descriptors, is_client_module, module_by_specifier, std_module_descriptors, tui_contract,
 };
 pub use ui::{UI_HOOK_MODULES, ui_components};
 // Re-exported beside [`std_module_descriptors`] rather than left to callers to

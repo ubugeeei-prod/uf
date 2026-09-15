@@ -49,6 +49,7 @@ mod changed;
 mod coverage;
 mod payload;
 mod render;
+mod shards;
 mod watch;
 
 use payload::test_payload;
@@ -68,6 +69,10 @@ pub(crate) struct TestArgs {
     pub(crate) watch: bool,
     /// Run only the test files a change since this ref reaches.
     pub(crate) changed: Option<String>,
+    /// Run only this part of a suite split across machines.
+    pub(crate) shard: Option<uf_test::Shard>,
+    /// Report the shard records in this directory as one run, running nothing.
+    pub(crate) merge_shards: Option<String>,
     /// Emit machine-readable JSON on stdout.
     pub(crate) json: bool,
     /// Keep only tests whose fully qualified name contains this pattern.
@@ -176,6 +181,18 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
             "--changed and --coverage cannot be combined: a run over the files a change reaches \
              would report coverage that is not the project's"
         );
+    }
+    // A shard is one part of a run CI splits across machines, and watch mode is
+    // a loop on this one: there is no part of a loop to hand out.
+    if args.watch && args.shard.is_some() {
+        bail!(
+            "--watch and --shard cannot be combined: watch mode re-runs what each edit affects \
+             on this machine, and a shard is one part of a run split across several"
+        );
+    }
+    // Before anything is scanned or started: a merge runs nothing.
+    if let Some(directory) = args.merge_shards.as_deref() {
+        return shards::merge(cwd, ui, directory, &args);
     }
 
     let resolved = load_config(cwd)?;
@@ -292,13 +309,20 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     }
 
     if args.list {
+        if changed.is_none() && args.shard.is_none() {
+            return render_list(ui, &root, &files, &args.filter());
+        }
+        let mut tests = test_bearing(files);
         if let Some(selection) = &changed {
             // `false`: `--list` collects nothing, so there is no coverage to
             // say is missing.
-            let tests = changed::narrow(ui, selection, test_bearing(files), false);
-            return render_list(ui, &root, &tests, &args.filter());
+            tests = changed::narrow(ui, selection, tests, false);
         }
-        return render_list(ui, &root, &files, &args.filter());
+        if let Some(shard) = args.shard {
+            let (timings, _) = read_timings(&root);
+            tests = shards::cut(ui, &tests, &args, &timings, shard).files;
+        }
+        return render_list(ui, &root, &tests, &args.filter());
     }
     let application_target = test_application_target(&resolved.config);
     refuse_unsupported_test_target(application_target)?;
@@ -393,12 +417,21 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     };
     let mut timer = PhaseTimer::start();
     let (timings, timing_note) = read_timings(&root);
+    // Cut from the timings the run schedules with, so the part this shard runs
+    // is the part every other shard left for it.
+    let cut = args
+        .shard
+        .map(|shard| shards::cut(ui, &files, &args, &timings, shard));
+    let run_files = cut.as_ref().map_or(&files[..], |cut| &cut.files[..]);
     let report = timer.measure("run", || {
-        run_once(ui, &root, &host, &files, &args, timings.clone())
+        run_once(ui, &root, &host, run_files, &args, timings.clone())
     })?;
 
-    let collected = match &raw {
-        Some(raw) => Some(timer.measure("coverage", || {
+    // A shard measures and records. The reports and the thresholds are
+    // statements about the whole suite, so they are `--merge-shards`' to make.
+    let mut measured = None;
+    let collected = match (&raw, &cut) {
+        (Some(raw), None) => Some(timer.measure("coverage", || {
             coverage::collect(
                 &root,
                 settings,
@@ -408,7 +441,13 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
                 &project_paths,
             )
         })?),
-        None => None,
+        (Some(raw), Some(_)) => {
+            measured = Some(timer.measure("coverage", || {
+                coverage::measure(&root, settings, raw, &project_paths)
+            })?);
+            None
+        }
+        (None, _) => None,
     };
     let duration = timer.total();
 
@@ -416,10 +455,24 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         write_results_report(&root, &args, &report)?;
     }
 
-    let recorded = record_timings(&root, timings, &report, &files);
+    // A shard leaves the timings as it found them: every shard in this
+    // checkout has to cut its part from the same durations, and the merge
+    // records the whole suite's.
+    let (recorded, shard_record) = match &cut {
+        Some(cut) => (
+            None,
+            Some(shards::write_record(
+                &root,
+                cut,
+                &report,
+                measured.as_ref(),
+            )?),
+        ),
+        None => (record_timings(&root, timings, &report, &files), None),
+    };
     if args.json {
         ui.json(&test_payload(
-            &host,
+            Some(&host),
             &report,
             collected.as_ref().map(|(coverage, _)| coverage),
         ))?;
@@ -427,16 +480,19 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
         render_report(
             ui,
             &root,
-            &files,
+            run_files,
             &report,
             timer.phases(),
             duration,
             &args,
-            &host,
+            Some(&host),
             timing_note.as_deref(),
             recorded.as_deref(),
             collected.as_ref().map(|(_, section)| section),
         );
+        if let Some(shown) = &shard_record {
+            shards::announce(ui, shown);
+        }
     }
 
     finish(

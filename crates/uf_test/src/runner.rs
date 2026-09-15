@@ -658,19 +658,7 @@ fn assemble(
         bailed: matches!(bail, Bail::After(limit) if failures >= limit.get()),
         ..TestSummary::default()
     };
-    for file in &files {
-        if file.status.is_fatal() {
-            summary.failed_files += 1;
-        }
-        for record in &file.records {
-            match &record.status {
-                TestStatus::Passed => summary.passed += 1,
-                TestStatus::Failed { .. } => summary.failed += 1,
-                TestStatus::Skipped { .. } => summary.skipped += 1,
-                TestStatus::Todo => summary.todo += 1,
-            }
-        }
-    }
+    summary.count_files(&files);
 
     TestRunReport {
         plan,

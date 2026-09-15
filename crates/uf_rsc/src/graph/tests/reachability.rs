@@ -383,6 +383,121 @@ fn a_client_module_importing_server_only_code_directly_is_still_a_leak() {
     );
 }
 
+/// A graph of one server page whose only import is `import`.
+fn page_importing(import: &str) -> RscGraph {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        &format!("{import}\nexport default function Page() {{}}\n"),
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    builder.build()
+}
+
+/// The package targets of a graph's boundaries, in the graph's order.
+fn package_targets(graph: &RscGraph) -> Vec<&str> {
+    graph
+        .client_boundaries()
+        .iter()
+        .filter_map(|boundary| match &boundary.target {
+            ClientBoundaryTarget::Package(specifier) => Some(specifier.as_str()),
+            ClientBoundaryTarget::Module(_) => None,
+        })
+        .collect()
+}
+
+/// The barrel is not a client module, and a name imported from it reaches the
+/// one that exports it: the boundary is `@uniflowed/ui/switch`, as it is through
+/// the subpath, and not the whole package.
+#[test]
+fn a_name_imported_from_the_ui_barrel_is_a_boundary_at_the_module_that_exports_it() {
+    let graph = page_importing("import { Switch } from \"@uniflowed/ui\";");
+    assert_eq!(package_targets(&graph), ["@uniflowed/ui/switch"]);
+    assert_eq!(
+        graph.client_bundle_roots(),
+        &[ClientBoundaryTarget::Package(CompactString::const_new(
+            "@uniflowed/ui/switch"
+        ))]
+    );
+    assert_eq!(
+        graph.module("app/page.js").unwrap().proximity,
+        ClientBoundaryProximity::ReachesBoundary
+    );
+}
+
+/// Several names reach the union of their modules and no others. `ContextMenu`
+/// is a namespace that carries `Menu`'s parts, so it reaches both; `AlertRoot`
+/// is a Server Component's part and reaches nothing.
+#[test]
+fn each_name_from_the_barrel_reaches_only_the_modules_it_comes_from() {
+    let graph = page_importing(
+        "import { AlertRoot, ContextMenu, TabsList, TabsTab } from \"@uniflowed/ui\";",
+    );
+    assert_eq!(
+        package_targets(&graph),
+        [
+            "@uniflowed/ui/context-menu",
+            "@uniflowed/ui/menu",
+            "@uniflowed/ui/tabs"
+        ]
+    );
+}
+
+#[test]
+fn a_barrel_import_that_names_nothing_client_is_no_boundary() {
+    for import in [
+        "import type { Sort } from \"@uniflowed/ui\";",
+        "import { AlertRoot, Separator } from \"@uniflowed/ui\";",
+        "import \"@uniflowed/ui\";",
+    ] {
+        let graph = page_importing(import);
+        assert!(package_targets(&graph).is_empty(), "{import}");
+        assert_ne!(
+            graph.module("app/page.js").unwrap().proximity,
+            ClientBoundaryProximity::ReachesBoundary,
+            "{import}"
+        );
+    }
+}
+
+/// A form whose names the scanner cannot read may use any module the barrel
+/// has, so its boundary is the barrel.
+#[test]
+fn a_barrel_import_that_binds_no_readable_name_is_a_boundary_at_the_barrel() {
+    for import in [
+        "import * as ui from \"@uniflowed/ui\";",
+        "export * from \"@uniflowed/ui\";",
+    ] {
+        let graph = page_importing(import);
+        assert_eq!(package_targets(&graph), ["@uniflowed/ui"], "{import}");
+    }
+}
+
+#[test]
+fn a_module_above_a_barrel_boundary_names_the_module_it_reaches() {
+    let mut builder = RscGraphBuilder::new();
+    builder.add_source(
+        "app/page.js",
+        "import \"./section.js\";\nexport default function Page() {}\n",
+    );
+    builder.add_source(
+        "app/section.js",
+        "import { Switch } from \"@uniflowed/ui\";\nexport const toggle = Switch;\n",
+    );
+    builder.add_entry("app/page.js", EntryKind::Server);
+    let graph = builder.build();
+    assert_eq!(
+        reason(&graph, "app/page.js"),
+        ClientBundleReason::ImportsPackage {
+            chain: vec![
+                graph.module_id("app/page.js").unwrap(),
+                graph.module_id("app/section.js").unwrap(),
+            ],
+            specifier: CompactString::const_new("@uniflowed/ui/switch"),
+        }
+    );
+}
+
 /// The chain a module's path into the client bundle is, spelled out.
 fn reason(graph: &RscGraph, path: &str) -> ClientBundleReason {
     let id = graph

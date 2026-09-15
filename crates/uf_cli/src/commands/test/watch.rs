@@ -275,7 +275,7 @@ fn run_and_report(
         timer.phases(),
         duration,
         args,
-        host,
+        Some(host),
         timing_note.as_deref(),
         record_note.as_deref(),
         // Watch mode collects none: `uf test --watch --coverage` is refused,

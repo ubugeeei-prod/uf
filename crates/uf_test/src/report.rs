@@ -357,6 +357,28 @@ impl TestSummary {
     pub fn is_success(&self) -> bool {
         self.failed == 0 && self.failed_files == 0 && self.foreign_declarations == 0 && !self.bailed
     }
+
+    /// Add each file's outcome, and the status of each of its records, to the
+    /// counts.
+    ///
+    /// The one place those counts are made. Two reports are assembled from
+    /// files — a run's, and a merge of its shards' — and a merged report is only
+    /// the unsharded run's report if both count the same way.
+    pub(crate) fn count_files(&mut self, files: &[FileReport]) {
+        for file in files {
+            if file.status.is_fatal() {
+                self.failed_files += 1;
+            }
+            for record in &file.records {
+                match &record.status {
+                    TestStatus::Passed => self.passed += 1,
+                    TestStatus::Failed { .. } => self.failed += 1,
+                    TestStatus::Skipped { .. } => self.skipped += 1,
+                    TestStatus::Todo => self.todo += 1,
+                }
+            }
+        }
+    }
 }
 
 /// Native test execution report.

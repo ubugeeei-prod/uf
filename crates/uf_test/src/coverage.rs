@@ -486,6 +486,119 @@ pub struct Coverage {
     unmapped: BTreeSet<String>,
 }
 
+/// A [`Coverage`] as a shard record carries it to `uf test --merge-shards`.
+///
+/// Positions are map keys in memory and lists here, because a JSON object's
+/// keys are strings. Every list is written in the order its map iterates, so
+/// one report is always written as the same bytes.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CoverageRecord {
+    files: Vec<FileCoverageRecord>,
+    #[serde(default)]
+    never_loaded: Vec<String>,
+    #[serde(default)]
+    unmapped: Vec<String>,
+}
+
+/// One file of a [`CoverageRecord`].
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileCoverageRecord {
+    path: String,
+    #[serde(default)]
+    lines: Vec<(u32, u64)>,
+    #[serde(default)]
+    functions: Vec<FunctionCoverage>,
+    #[serde(default)]
+    branches: Vec<BranchCoverage>,
+}
+
+impl Serialize for Coverage {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        CoverageRecord {
+            files: self
+                .files
+                .iter()
+                .map(|(path, file)| FileCoverageRecord {
+                    path: path.clone(),
+                    lines: file.lines().collect(),
+                    functions: file.functions().collect(),
+                    branches: file.branches().collect(),
+                })
+                .collect(),
+            never_loaded: self.never_loaded.clone(),
+            unmapped: self.unmapped.iter().cloned().collect(),
+        }
+        .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Coverage {
+    /// Read a record back, held to what a run could have measured: every path a
+    /// path inside the project, and every function name within
+    /// [`MAX_FUNCTION_NAME_BYTES`]. A record arrives as a CI artefact, and one
+    /// naming `../../etc/passwd` would otherwise put that into an LCOV file.
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as _;
+
+        let record = CoverageRecord::deserialize(deserializer)?;
+        let outside = |path: &str| {
+            D::Error::custom(format!(
+                "the coverage names {path:?}, which is not a path inside the project"
+            ))
+        };
+        let mut coverage = Self::new();
+        for file in record.files {
+            if !crate::path::is_safe_relative(&file.path) {
+                return Err(outside(&file.path));
+            }
+            let mut measured = FileCoverage::default();
+            for (line, hits) in file.lines {
+                let slot = measured.lines.entry(line).or_insert(0);
+                *slot = slot.saturating_add(hits);
+            }
+            for function in file.functions {
+                if function.name.len() > MAX_FUNCTION_NAME_BYTES {
+                    return Err(D::Error::custom(format!(
+                        "the coverage of {} names a function longer than {MAX_FUNCTION_NAME_BYTES} \
+                         bytes",
+                        file.path
+                    )));
+                }
+                let mut one = FileCoverage::default();
+                one.functions
+                    .insert(function.at, (function.name, function.hits));
+                measured.merge(&one);
+            }
+            for branch in file.branches {
+                let slot = measured.branches.entry(branch.at).or_insert(0);
+                *slot = slot.saturating_add(branch.hits);
+            }
+            coverage
+                .files
+                .entry(file.path)
+                .or_default()
+                .merge(&measured);
+        }
+        if let Some(path) = record
+            .never_loaded
+            .iter()
+            .chain(&record.unmapped)
+            .find(|path| !crate::path::is_safe_relative(path))
+        {
+            return Err(outside(path));
+        }
+        coverage.unmapped = record.unmapped.into_iter().collect();
+        let mut coverage = coverage.with_never_loaded(record.never_loaded);
+        let files = &coverage.files;
+        coverage
+            .never_loaded
+            .retain(|path| !files.contains_key(path));
+        Ok(coverage)
+    }
+}
+
 impl Coverage {
     /// An empty report.
     #[must_use]
@@ -581,6 +694,12 @@ impl Coverage {
             }
         }
         self.never_loaded.sort();
+        // A file one document never loaded and another measured was loaded.
+        // A run names the files it never loaded only after its workers'
+        // documents are merged, so this never mattered there; it does for
+        // shards, each of which names the files *it* did not load.
+        let files = &self.files;
+        self.never_loaded.retain(|file| !files.contains_key(file));
     }
 
     /// Drop every file the scope does not admit.

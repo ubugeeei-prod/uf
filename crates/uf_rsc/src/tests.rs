@@ -116,6 +116,98 @@ fn the_client_module_list_names_exactly_the_ui_subpaths_that_are_client_modules(
     assert!(!uf_lib::is_client_module("@uniflowed/ui/does-not-exist"));
 }
 
+/// The guard on `uf_lib::client_modules_exporting`: every name the barrel binds
+/// reaches exactly the client modules its value comes from.
+///
+/// Read from `packages/ui/index.js` itself, with this crate's scanner for its
+/// imports and re-exports, so the rule is held to what the barrel does rather
+/// than to a second description of it. A namespace such as `Dialog` is an object
+/// of parts, and comes from every module one of its parts does.
+#[test]
+fn the_barrel_names_the_client_modules_each_export_comes_from() {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let source = std::fs::read_to_string(repository_root().join("packages/ui/index.js"))
+        .expect("packages/ui/index.js cannot be read");
+    let client_module = |specifier: &str| -> Option<String> {
+        let module = specifier.strip_prefix("./")?.strip_suffix(".js")?;
+        uf_lib::CLIENT_MODULE_SUBPATHS
+            .contains(&module)
+            .then(|| module.to_owned())
+    };
+
+    // Every name the barrel imports or re-exports, and the client module it is
+    // from, if it is from one.
+    let mut origin: BTreeMap<String, Option<String>> = BTreeMap::new();
+    for import in crate::scan::scan_imports(&source).iter() {
+        for binding in &import.bindings {
+            if matches!(binding.imported, crate::scan::ImportedName::Named(_)) {
+                origin.insert(binding.local.to_string(), client_module(&import.specifier));
+            }
+        }
+    }
+
+    // Every `export const Name = { Part: Value, … };`, and the modules its
+    // values are from.
+    let mut namespaces: Vec<(String, BTreeSet<String>)> = Vec::new();
+    let mut open: Option<(String, BTreeSet<String>)> = None;
+    for line in source.lines() {
+        if let Some(name) = line
+            .strip_prefix("export const ")
+            .and_then(|rest| rest.strip_suffix(" = {"))
+        {
+            open = Some((name.to_owned(), BTreeSet::new()));
+            continue;
+        }
+        if open.is_some() && line.starts_with("};") {
+            namespaces.extend(open.take());
+            continue;
+        }
+        if let Some((_, modules)) = open.as_mut()
+            && let Some((_, value)) = line.split_once(':')
+            && let Some(Some(module)) = origin.get(value.trim().trim_end_matches(','))
+        {
+            modules.insert(module.clone());
+        }
+    }
+
+    // A floor on both, so a barrel that stopped parsing cannot pass by being
+    // empty.
+    assert!(
+        origin.len() > 100 && namespaces.len() > 20,
+        "almost nothing came out of packages/ui/index.js: {} names, {} namespaces",
+        origin.len(),
+        namespaces.len()
+    );
+
+    let mut wrong: Vec<String> = Vec::new();
+    let expected = origin
+        .iter()
+        .map(|(name, module)| {
+            (
+                name.clone(),
+                module.iter().cloned().collect::<BTreeSet<_>>(),
+            )
+        })
+        .chain(namespaces);
+    for (name, modules) in expected {
+        let rule: BTreeSet<String> = uf_lib::client_modules_exporting(&name)
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        if rule != modules {
+            wrong.push(format!(
+                "{name}: the rule says {rule:?}, the barrel says {modules:?}"
+            ));
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "client_modules_exporting and packages/ui/index.js disagree:\n  {}",
+        wrong.join("\n  ")
+    );
+}
+
 /// The repository, from this crate's manifest directory.
 fn repository_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
