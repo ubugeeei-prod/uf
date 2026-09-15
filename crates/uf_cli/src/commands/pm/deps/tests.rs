@@ -57,7 +57,112 @@ fn report(heading: &'static str, manifest: Vec<ManifestChange>, tree: LockfileDe
         lockfile: "package-lock.json · 17 packages · 12.40 kB".to_owned(),
         manifest,
         tree,
+        link: None,
         elapsed: Duration::from_millis(2100),
+    }
+}
+
+/// What `uf link` printed after npm had linked a package: the manifest and the
+/// tree had not moved, so it said nothing had (ubugeeei-prod/uf#976).
+#[test]
+fn a_link_names_the_package_and_where_it_leads_rather_than_saying_nothing_changed() {
+    let mut report = report("uf link", Vec::new(), unchanged_tree());
+    report.commands = vec!["npm link --ignore-scripts ../ui".to_owned()];
+    report.link = Some(LinkReport {
+        name: "@acme/ui".to_owned(),
+        to: "../ui".to_owned(),
+        recorded: false,
+    });
+
+    let mut out = String::new();
+    render_summary(&plain(), &mut out, &report);
+
+    assert!(!out.contains("already up to date"), "{out}");
+    assert!(out.lines().any(|line| line.trim() == "linked"), "{out}");
+    let row = out
+        .lines()
+        .find(|line| line.trim_start().starts_with("@acme/ui"))
+        .unwrap_or_else(|| panic!("no row for the link:\n{out}"));
+    assert!(row.trim_end().ends_with("../ui"), "{out}");
+    assert!(out.contains("linked @acme/ui in 2.1s"), "{out}");
+}
+
+/// Yarn 2+ records a link it cannot make yet, and the report says that rather
+/// than claiming either a link or a failure.
+#[test]
+fn a_link_yarn_only_recorded_is_a_warning_that_says_why() {
+    let mut report = report("uf link", Vec::new(), unchanged_tree());
+    report.link = Some(LinkReport {
+        name: "ui".to_owned(),
+        to: "portal:/work/ui".to_owned(),
+        recorded: true,
+    });
+
+    let mut out = String::new();
+    render_summary(&plain(), &mut out, &report);
+
+    assert!(out.lines().any(|line| line.trim() == "recorded"), "{out}");
+    assert!(out.contains("portal:/work/ui"), "{out}");
+    assert!(out.contains("nothing here depends on it yet"), "{out}");
+    assert!(!out.contains("linked ui"), "{out}");
+}
+
+/// For every manager, a link is believed only when `node_modules` has one,
+/// and every other state is a failure that says what is there instead.
+#[test]
+fn a_link_is_believed_only_when_node_modules_has_one() {
+    use uf_pm::links::LinkState;
+    use uf_pm::{PackageManager, YarnEdition};
+
+    let base = Utf8Path::new("/work/app");
+    for manager in PackageManager::ALL {
+        let linked = link_report(
+            base,
+            manager,
+            "ui",
+            Some(LinkState::Linked("/work/ui".into())),
+            None,
+        )
+        .unwrap_or_else(|why| panic!("{manager}: {why}"));
+        assert_eq!(linked.to, "../ui", "{manager}");
+        assert!(!linked.recorded, "{manager}");
+
+        for (state, says) in [
+            (
+                Some(LinkState::Installed),
+                "is an installed package, not a link",
+            ),
+            (Some(LinkState::Absent), "there is no node_modules/ui"),
+            (
+                Some(LinkState::Broken("../gone".into())),
+                "is a link to ../gone, which does not exist",
+            ),
+        ] {
+            let why = link_report(base, manager, "ui", state.clone(), None)
+                .expect_err(&format!("{manager}: {state:?} is not a link"));
+            assert!(
+                why.contains(says) && why.ends_with("nothing was linked"),
+                "{manager}: {why}"
+            );
+        }
+
+        let recorded = link_report(
+            base,
+            manager,
+            "ui",
+            Some(LinkState::Absent),
+            Some("portal:/work/ui".to_owned()),
+        );
+        if manager == PackageManager::Yarn(YarnEdition::Berry) {
+            let recorded = recorded.unwrap_or_else(|why| panic!("{why}"));
+            assert!(recorded.recorded);
+            assert_eq!(recorded.to, "portal:/work/ui");
+        } else {
+            assert!(
+                recorded.is_err(),
+                "only Yarn 2+ records a link in resolutions, not {manager}"
+            );
+        }
     }
 }
 

@@ -390,10 +390,14 @@ pub(crate) fn query(
         &path,
     )
     .map_err(|error| {
-        failed_hint(
-            error,
-            &format!("{manager_label} reported a problem; its output is above"),
-        )
+        let mut what_to_do = format!("{manager_label} reported a problem; its output is above");
+        // What the refusal means, where uf knows: pnpm 12 answers `pnpm link`
+        // with nothing named with a usage error, and does not say what to run.
+        if let Some(hint) = uf_pm::run::failure_hint(manager, operation) {
+            what_to_do.push_str("\n\n  ");
+            what_to_do.push_str(hint);
+        }
+        failed_hint(error, &what_to_do)
     })?;
     Ok(())
 }
@@ -587,6 +591,9 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     });
 
     let allow_scripts = scripts_allowed(base, manager, &plan)?;
+    // What `uf link` is about to put in `node_modules`, named before the
+    // manager runs: `uf link DIR` names the package by that directory's manifest.
+    let expected_link = linked_name(base, request);
     let mut commands = Vec::with_capacity(targets.each.len());
     let mut outcome = None;
     for target in &targets.each {
@@ -604,13 +611,15 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
                 .as_ref()
                 .map(|label| format!(" in {label}"))
                 .unwrap_or_default();
-            failed_hint(
-                error,
-                &format!(
-                    "the manager printed why above{place}; fix that and run `{}` again",
-                    request.retry
-                ),
-            )
+            let mut what_to_do = format!(
+                "the manager printed why above{place}; fix that and run `{}` again",
+                request.retry
+            );
+            if let Some(hint) = uf_pm::run::failure_hint(manager, request.operation) {
+                what_to_do.push_str("\n\n  ");
+                what_to_do.push_str(hint);
+            }
+            failed_hint(error, &what_to_do)
         })?;
         commands.push(match &target.label {
             Some(label) => format!("{}  ({label})", run.invocation),
@@ -652,6 +661,21 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
     let tree_after = uf_pm::delta::snapshot(base, manager);
     let tree = uf_pm::delta::diff(&tree_before, &tree_after);
 
+    // npm, Yarn 1 and bun link without writing either file, so whether
+    // anything was linked is read where every manager leaves a link.
+    let link = expected_link
+        .map(|name| {
+            link_report(
+                base,
+                manager,
+                &name,
+                uf_pm::links::link_state(base, &name),
+                uf_pm::links::linked_resolution(base, &name),
+            )
+            .map_err(|why| anyhow!("`{}` succeeded, but {why}", outcome.invocation))
+        })
+        .transpose()?;
+
     let report = DepsReport {
         heading: request.heading,
         continued: request.announced,
@@ -661,6 +685,7 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
         lockfile: lockfile_label(base, &tree_after),
         manifest,
         tree,
+        link,
         elapsed: started.elapsed(),
     };
 
@@ -683,7 +708,23 @@ struct DepsReport {
     lockfile: String,
     manifest: Vec<ManifestChange>,
     tree: LockfileDelta,
+    /// What `uf link NAME` or `uf link DIR` left in `node_modules`, and `None`
+    /// for every other command.
+    link: Option<LinkReport>,
     elapsed: Duration,
+}
+
+/// A link, as `node_modules` has it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkReport {
+    /// The package.
+    name: String,
+    /// Where `node_modules/<name>` leads, written the way someone in the
+    /// project would write it; for a `recorded` link, the resolution Yarn wrote.
+    to: String,
+    /// Yarn 2+ recorded the link in `resolutions`, and nothing in the project
+    /// depends on the package yet, so `node_modules` has no link to it.
+    recorded: bool,
 }
 
 /// Draw the summary.
@@ -706,7 +747,7 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
     renderer.key_values(out, 2, &rows);
 
     let elapsed = format_duration(report.elapsed);
-    if report.manifest.is_empty() && report.tree.is_unchanged() {
+    if report.link.is_none() && report.manifest.is_empty() && report.tree.is_unchanged() {
         // The second time somebody adds the same thing, which is most of the
         // times anybody adds anything twice.
         renderer.blank(out);
@@ -716,6 +757,13 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
             &format!("already up to date in {elapsed}"),
         );
         return;
+    }
+
+    if let Some(link) = &report.link {
+        renderer.blank(out);
+        renderer.heading(out, 2, if link.recorded { "recorded" } else { "linked" });
+        renderer.blank(out);
+        renderer.key_values(out, 4, &[KeyValue::toned(&link.name, &link.to, Tone::Path)]);
     }
 
     if !report.manifest.is_empty() {
@@ -732,11 +780,107 @@ fn render_summary(renderer: &Renderer, out: &mut String, report: &DepsReport) {
     }
 
     renderer.blank(out);
-    renderer.status(
-        out,
-        Status::Success,
-        &format!("{} in {elapsed}", headline(report)),
-    );
+    match &report.link {
+        Some(link) if link.recorded => renderer.status(
+            out,
+            Status::Warn,
+            &format!(
+                "{} recorded in resolutions in {elapsed}; nothing here depends on it yet, so \
+                 node_modules has no link to it",
+                link.name
+            ),
+        ),
+        Some(link) => renderer.status(
+            out,
+            Status::Success,
+            &format!("linked {} in {elapsed}", link.name),
+        ),
+        None => renderer.status(
+            out,
+            Status::Success,
+            &format!("{} in {elapsed}", headline(report)),
+        ),
+    }
+}
+
+/// The package `uf link NAME` or `uf link DIR` is about to link, or `None` for
+/// every other command.
+///
+/// A directory is named by its own manifest. One with no manifest, or one that
+/// names no package, gives `None`: the manager refuses to link it in its own
+/// words, and uf has nothing of its own to check.
+fn linked_name(base: &Utf8Path, request: &Request<'_>) -> Option<String> {
+    let Operation::Link { target } = request.operation else {
+        return None;
+    };
+    let operand = request.operands.first()?;
+    match target {
+        LinkTarget::Register => None,
+        LinkTarget::Package => uf_pm::links::is_package_name(operand).then(|| operand.clone()),
+        LinkTarget::Directory => uf_pm::links::package_name(&base.join(operand)),
+    }
+}
+
+/// What a link command did, from `node_modules` rather than from the manager.
+///
+/// # Errors
+///
+/// The clause that follows "the manager succeeded, but", when nothing is
+/// linked. A success message after a manager that linked nothing is the report
+/// this exists to stop printing (ubugeeei-prod/uf#976).
+fn link_report(
+    base: &Utf8Path,
+    manager: uf_pm::PackageManager,
+    name: &str,
+    state: Option<uf_pm::links::LinkState>,
+    resolution: Option<String>,
+) -> Result<LinkReport, String> {
+    use uf_pm::links::LinkState;
+
+    if let Some(LinkState::Linked(to)) = &state {
+        return Ok(LinkReport {
+            name: name.to_owned(),
+            to: shown_path(base, to),
+            recorded: false,
+        });
+    }
+    // Yarn 2+ records a link in `resolutions`, and a resolution only resolves
+    // a package something already depends on.
+    if manager == uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry)
+        && let Some(resolution) = resolution
+    {
+        return Ok(LinkReport {
+            name: name.to_owned(),
+            to: resolution,
+            recorded: true,
+        });
+    }
+    Err(match state {
+        Some(LinkState::Broken(to)) => format!(
+            "node_modules/{name} is a link to {to}, which does not exist: nothing was linked"
+        ),
+        Some(LinkState::Installed) => {
+            format!("node_modules/{name} is an installed package, not a link: nothing was linked")
+        }
+        _ => format!("there is no node_modules/{name}: nothing was linked"),
+    })
+}
+
+/// A path the way someone standing in the project would write it: `vendor/ui`
+/// inside it, `../ui` beside it, and the whole path anywhere else.
+fn shown_path(base: &Utf8Path, path: &Utf8Path) -> String {
+    let base = base
+        .canonicalize_utf8()
+        .unwrap_or_else(|_| base.to_path_buf());
+    if let Ok(inside) = path.strip_prefix(&base) {
+        return inside.to_string();
+    }
+    if let Some(parent) = base.parent()
+        && let Ok(beside) = path.strip_prefix(parent)
+    {
+        return format!("../{beside}");
+    }
+    path.to_string()
 }
 
 /// What happened, in one clause, from the files rather than from the request.
