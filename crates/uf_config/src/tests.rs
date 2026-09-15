@@ -1241,7 +1241,7 @@ fn naming_one_lint_rule_keeps_the_rest_of_uf_s_table() {
     // not parse.
     for kept in [
         "flow/syntax",
-        "react/hooks-rules",
+        "react-compiler/hooks",
         "flow/nested-component",
         "flow/mixed-import-and-require",
     ] {

@@ -4,7 +4,7 @@
 //!
 //! ```js
 //! // uf-lint-disable-next-line flow/unclear-type
-//! // uf-lint-disable flow/unclear-type, react/hooks-rules
+//! // uf-lint-disable flow/unclear-type, react-compiler/hooks
 //! // uf-lint-enable flow/unclear-type
 //! ```
 //!

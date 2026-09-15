@@ -22,7 +22,6 @@ uf_infra = { path = "../uf_infra" }
 # profiler that is already there when the question arrives rather than one
 # that has to be added first. See `uf_profiler`'s own header.
 uf_profiler = { path = "../uf_profiler" }
-uf_react_compiler = { path = "../uf_react_compiler" }
 uf_router = { path = "../uf_router" }
 uf_transform = { path = "../uf_transform" }
 phf.workspace = true

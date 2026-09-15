@@ -57,9 +57,8 @@ import { unstubAllEnvs, unstubAllGlobals } from "./namespace.js";
 // beside it do — `reset`, `unstubAllEnvs`, `resetModuleState` are all
 // verb-first, and so is what this does to the clock. And `useRealTimers` is
 // not a React hook: it is uf's own timer control, which happens to be named
-// the way every runner names it, and calling it bare in a plain function is a
-// `react/hooks-rules` error on the name alone. A suppression would assert
-// something about this call; the name is simply accurate.
+// the way every runner names it, and React's tools read a `use` prefix as a
+// hook. The name here is simply accurate.
 import { useRealTimers as restoreRealClock } from "./timers.js";
 
 /**

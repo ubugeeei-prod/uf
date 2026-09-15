@@ -19,7 +19,7 @@ fn bench_define_config_parse(c: &mut Criterion) {
           lint: {
             rules: {
               'flow/type-aware/no-explicit-any': 'error',
-              'react/no-render-side-effects': 'error',
+              'react-compiler/purity': 'error',
             },
           },
         });

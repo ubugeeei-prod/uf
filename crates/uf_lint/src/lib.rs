@@ -14,12 +14,11 @@
 //! has no checker yet, enabling one of those puts it in
 //! [`LintReport::unavailable`] instead of silently passing.
 //!
-//! Two of the React rules — `react/hooks-rules` and
-//! `react/no-render-side-effects` — are decided by `uf_react_compiler` rather
-//! than here. They are the same question the compiler's syntax mode asks, so
-//! the predicate lives there and this crate reports what it found: one
-//! predicate, one home, and no way for `uf lint` and `uf build` to disagree
-//! about whether a component is compilable.
+//! The `react-compiler/*` rules are the official React Compiler's own
+//! diagnostics. `uf_transform` runs the compiler — the one `uf build` runs —
+//! with the options `eslint-plugin-react-hooks` gives it, and this crate files
+//! each diagnostic under the rule named for its category, with the compiler's
+//! message. Nothing here decides whether a component breaks a rule of React.
 
 mod flow_builtin;
 mod rules;
@@ -42,8 +41,8 @@ use crate::runner::{
     run_flow_non_const_var_export, run_flow_unclear_type, run_flow_unnecessary_optional_chain,
     run_flow_unsafe_getters_setters, run_flow_unsafe_object_assign, run_module_tree_rules,
     run_no_npm_script_invocation, run_no_tabs, run_no_trailing_whitespace,
-    run_package_no_npm_scripts, run_react_compiler_rules, run_react_component_syntax,
-    run_react_hook_syntax, run_react_native_platform_split, run_react_no_default_export_component,
+    run_package_no_npm_scripts, run_react_component_syntax, run_react_hook_syntax,
+    run_react_native_platform_split, run_react_no_default_export_component,
     run_router_reserved_files, run_router_unsupported_segment,
     run_security_no_dangerously_set_inner_html, run_security_no_eval, run_server_no_client_secret,
     run_server_no_server_only_import_in_client, run_server_use_client_directive_position,
@@ -241,7 +240,6 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_react_component_syntax(&scan, config, &mut diagnostics);
     run_react_hook_syntax(&scan, config, &mut diagnostics);
     run_react_no_default_export_component(&scan, config, &mut diagnostics);
-    run_react_compiler_rules(&scan, config, &mut diagnostics);
     run_react_native_platform_split(&scan, config, &mut diagnostics);
     run_structure_rules(&scan, config, &mut diagnostics);
 
@@ -267,12 +265,28 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
 }
 
 /// Level configured for `rule`, honouring deprecated aliases.
+///
+/// `lint.rules` is uf's default table with the project's document laid over it
+/// (see `uf_config`'s `rules_over_defaults`), so the canonical id is always in
+/// the map and "is it there" cannot tell a level the project wrote from the
+/// default. A deprecated alias is therefore believed whenever the canonical id
+/// still holds its default level: a config that says only
+/// `"react/hooks-rules": "off"` switches `react-compiler/hooks` off, and one
+/// that names the canonical id at any other level keeps it.
 fn configured_level(config: &UniflowedConfig, rule: &str) -> Option<RuleLevel> {
-    config.lint.rules.get(rule).copied().or_else(|| {
-        // Only reached when the canonical id is absent, so the default config
-        // never pays for this lookup.
-        deprecated_aliases_for(rule).find_map(|alias| config.lint.rules.get(alias).copied())
-    })
+    let canonical = config.lint.rules.get(rule).copied();
+    let mut aliases = deprecated_aliases_for(rule).peekable();
+    // The default config names no alias, so it never pays for the lookups below.
+    if aliases.peek().is_none() {
+        return canonical;
+    }
+    let alias = aliases.find_map(|alias| config.lint.rules.get(alias).copied());
+    let default = crate::rules::rule(rule).map(|descriptor| descriptor.default_level);
+    match (canonical, alias) {
+        (Some(level), Some(written)) if Some(level) == default => Some(written),
+        (Some(level), _) => Some(level),
+        (None, alias) => alias,
+    }
 }
 
 /// The level `rule` runs at under `config`: deprecated aliases honoured, and

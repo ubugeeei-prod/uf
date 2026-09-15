@@ -2,9 +2,8 @@
 //! `flow/nested-component` and `flow/nested-hook`.
 //!
 //! They share one walk over the file with an explicit scope stack. Where a hook
-//! may be *called* is `react/hooks-rules`, and that predicate lives in
-//! `uf_react_compiler` next to the rest of the answer to "could this component
-//! have been compiled?" — see [`super::react_compiler`].
+//! may be *called* is a different question, and the official React Compiler
+//! answers it: `react-compiler/hooks`, in [`super::react_compiler`].
 
 use uf_config::UniflowedConfig;
 
