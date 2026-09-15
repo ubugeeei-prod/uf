@@ -2,16 +2,40 @@
 # Temporary probe for ubugeeei-prod/uf#1071. Not for merge.
 #
 # The `cc` driver finds this `ld` through `-B`, the way it finds
-# tools/linker/ld. For the uf_fmt `guarantees` test binary it relinks the same
-# inputs first (see relink.sh); every link then goes to tools/linker/uf-linker
-# exactly as tools/linker/ld would send it.
+# tools/linker/ld. Every call is logged to /tmp/links/invocations.txt. For the
+# uf_fmt `guarantees` test binary it relinks the same inputs first (see
+# relink.sh); every link then goes to tools/linker/uf-linker exactly as
+# tools/linker/ld would send it.
+#
+# gcc hands collect2's arguments over in an `@file` when the command line is
+# long, so the output path is looked for inside those files too.
 set -eu
 
 script_dir=$(CDPATH= cd "$(dirname "$0")" && pwd)
 uf_linker="$script_dir/../../linker/uf-linker"
 
+mkdir -p /tmp/links
+printf 'ld: %s\n' "$*" | cut -c1-600 >> /tmp/links/invocations.txt
+
+target=no
 case " $* " in
-  *"/guarantees-"*) "$script_dir/relink.sh" "$uf_linker" "$@" || true ;;
+  *"/guarantees-"*) target=yes ;;
 esac
+if [ "$target" = no ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      @*)
+        if grep -q "/guarantees-" "${arg#@}" 2> /dev/null; then
+          target=yes
+        fi
+        ;;
+    esac
+  done
+fi
+
+if [ "$target" = yes ] && [ ! -e /tmp/links/relinked ]; then
+  touch /tmp/links/relinked
+  "$script_dir/relink.sh" "$uf_linker" "$@" || true
+fi
 
 exec "$uf_linker" "$@"

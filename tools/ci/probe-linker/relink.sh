@@ -10,7 +10,20 @@ set -u
 
 uf_linker=$1
 shift
-args=("$@")
+
+# Expand `@file` arguments, which gcc uses for long command lines. The files
+# use the same quoting xargs reads.
+args=()
+for arg in "$@"; do
+  if [[ "$arg" == @* && -f "${arg:1}" ]]; then
+    while IFS= read -r line; do
+      args+=("$line")
+    done < <(xargs -a "${arg:1}" printf '%s\n')
+  else
+    args+=("$arg")
+  fi
+done
+
 out_index=-1
 for ((i = 0; i < ${#args[@]}; i++)); do
   if [ "${args[$i]}" = "-o" ]; then
@@ -18,20 +31,19 @@ for ((i = 0; i < ${#args[@]}; i++)); do
   fi
 done
 if [ "$out_index" -lt 0 ]; then
-  echo "relink: no -o in the link arguments" >&2
+  echo "relink: no -o in the link arguments" >> /tmp/links/invocations.txt
   exit 0
 fi
 
-mkdir -p /tmp/links
 printf '%s\n' "${args[@]}" > /tmp/links/args.txt
-echo "wild: $(command -v wild)" > /tmp/links/linkers.txt
+echo "relink: ${#args[@]} arguments, output ${args[$out_index]}, wild at $(command -v wild)" >> /tmp/links/invocations.txt
 
 link_to() {
   local target=$1
   shift
   local a=("${args[@]}")
   a[$out_index]=$target
-  "$@" "${a[@]}" > "$target.log" 2>&1 || echo "relink: $* -> $target failed" >&2
+  "$@" "${a[@]}" > "$target.log" 2>&1 || echo "relink: $* -> $target failed" >> /tmp/links/invocations.txt
 }
 
 for k in $(seq 1 12); do
@@ -43,5 +55,5 @@ for batch in 1 2 3; do
   done
   wait
 done
-link_to /tmp/links/bfd ld.bfd
+link_to /tmp/links/bfd ld.bfd -L "$(dirname "$(gcc -print-libgcc-file-name)")"
 exit 0

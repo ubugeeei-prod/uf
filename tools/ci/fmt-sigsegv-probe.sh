@@ -33,7 +33,10 @@ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/tools/ci/probe-linker/cc-link
 tail -2 /tmp/probe-build.txt
 BIN=$(cat /tmp/probe-bin.txt)
 echo "cargo's binary: $BIN"
-cat /tmp/links/linkers.txt 2> /dev/null || echo "the relink hook did not run"
+echo "linker calls logged: $(grep -c '^ld: ' /tmp/links/invocations.txt 2> /dev/null || echo 0)"
+grep -v '^ld: ' /tmp/links/invocations.txt 2> /dev/null
+grep '^ld: ' /tmp/links/invocations.txt 2> /dev/null | cut -c1-300 | tail -3
+[ -e /tmp/links/relinked ] || echo "the relink hook did not run"
 if [ -x "$BIN" ]; then
   cp "$BIN" /tmp/links/cargo
 fi
