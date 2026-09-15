@@ -275,7 +275,7 @@ export component Page(params: {| readonly id: string |}) {
 | `jest.spyOn`, `vi.spyOn` | `uft.spyOn` |
 | `jest.useFakeTimers()`, `vi.useFakeTimers()` | `uft.useFakeTimers()`, with `advanceTimersByTime`, `runAllTimers` and `setSystemTime` beside it |
 | `vi.stubEnv`, `vi.stubGlobal` | `uft.stubEnv`, `uft.stubGlobal` |
-| `jest.mock(path)`, `vi.mock(path)` | `await uft.mock(path, factory)`, then `await import(path)` — [not hoisted, and Node only](/guide/testing#replacing-a-module) |
+| `jest.mock(path)`, `vi.mock(path)` | `await uft.mock(path, factory)`, then `await import(path)` — [not hoisted, and on Node or Deno 2.8 or newer only](/guide/testing#replacing-a-module) |
 | `@testing-library/react` | `@uniflowed/react-testing`, which installs happy-dom on the first render |
 | `toMatchSnapshot()`, `-u` | `toMatchSnapshot()`, `uf test -u` |
 | `import.meta.vitest` | [`import.meta.uf.test`](/guide/testing#a-test-beside-the-code-it-tests) |
@@ -295,8 +295,8 @@ which a static host serves as documents.
 ### What is still different
 
 - **Mocks are not hoisted.** A `jest.mock` anywhere in a file becomes a
-  `uft.mock` above the `await import(…)` that reaches it, and module mocking and
-  coverage run on Node only
+  `uft.mock` above the `await import(…)` that reaches it. Module mocking runs on
+  Node and on Deno 2.8 or newer, and coverage on Node only
   ([#972](https://github.com/ubugeeei-prod/uf/issues/972) is a suite split
   across machines).
 - **Some ESLint plugin rules have no answer yet** — React

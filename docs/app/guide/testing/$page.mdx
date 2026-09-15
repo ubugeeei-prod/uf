@@ -1059,7 +1059,8 @@ between runs and a pre-bundled worker. Neither exists yet.
 - Coverage is Node-only, and a worker that has to be killed — a file that timed
   out, a worker that crashed — takes its counts with it, because they are
   written when the process exits.
-- Module mocking is Node-only; see "Which hosts" above.
+- Module mocking works on Node and on Deno 2.8 or newer, and raises
+  `UnsupportedError` on Bun; see "Which hosts" above.
 - The accessibility audit is only as good as the DOM under it. On a Node worker
   that is happy-dom, which computes no layout, so `color-contrast` and the rules
   about overlapping targets come back *incomplete* rather than decided. `uf dev`'s
