@@ -53,8 +53,6 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      - run: cargo install wild-linker --version 0.10.0 --locked
-      - run: wild --version
       # The suite drives the docs site through the real `@uniflowed/vite`, and
       # those tests now fail rather than skip when the workspace is not
       # installed. Without this the publish job failed on a missing fixture
