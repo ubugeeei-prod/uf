@@ -101,6 +101,25 @@ export function applicationPathOf(pathname: string): string | null {
 }
 
 /**
+ * A browser pathname in this application's spelling: the base kept, the
+ * application path under it spelled by the policy. A pathname outside the
+ * base is returned as it was.
+ *
+ * For an address the router read back rather than wrote — the document path a
+ * payload URL names has lost its trailing slash, and the history entry a
+ * navigation writes should be the address the server answers without a
+ * redirect.
+ */
+export function canonicalAddress(pathname: string): string {
+  const application = applicationPathOf(pathname);
+  if (application == null) {
+    return pathname;
+  }
+  const spelled = spellPath(application, installedSlash, installedBase !== "");
+  return `${installedBase}${spelled}`;
+}
+
+/**
  * `path` in `policy`'s spelling.
  *
  * The root of an application at the root is `/` whatever the policy says. The

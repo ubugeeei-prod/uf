@@ -554,7 +554,13 @@ pub(crate) fn build(
     // ask for. See [`site`] for which URLs go in and which do not.
     progress.tick("writing metadata files");
     let metadata_files = timer.measure("metadata", || {
-        site::write(&out_dir, &resolved.config.site, &vite.pages, &unguarded)
+        site::write(
+            &out_dir,
+            &resolved.config.site,
+            &resolved.config.app.router,
+            &vite.pages,
+            &unguarded,
+        )
     })?;
 
     progress.tick("measuring shipped assets");

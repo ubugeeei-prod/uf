@@ -50,7 +50,7 @@ import type { RequestLifecycle } from "./internal/context.js";
 import { prerenderedMayAnswer } from "./internal/draft.js";
 import { createLevelConsoleLogger } from "./internal/log.js";
 import type { RoutingRules } from "./internal/routing.js";
-import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
+import { admit, headersFor, withHeaders } from "./internal/routing.js";
 import { elapsedMs, installLoggerUnlessChosen, logRequest, processLogger } from "./log.js";
 import { runScheduled } from "./schedule.js";
 
@@ -305,15 +305,19 @@ export function createWorkerFetch(
     let status = 500;
     try {
       const answer = async (): Promise<Response> => {
-        const moved = redirectFor(routing, request);
-        if (moved != null) {
-          return moved;
+        const admitted = admit(routing, request);
+        if (admitted.kind === "answer") {
+          return admitted.response;
         }
+        // The application path from here on: the assets binding serves
+        // `static/` at its root, and the application is handed the path
+        // without the base.
+        const addressed = admitted.request;
         const assets = env?.ASSETS;
-        const method = request.method.toUpperCase();
+        const method = addressed.method.toUpperCase();
         if (assets != null && (method === "GET" || method === "HEAD")) {
-          let asset = await assets.fetch(request);
-          const redirected = directoryRedirectRequest(request, asset);
+          let asset = await assets.fetch(addressed);
+          const redirected = directoryRedirectRequest(addressed, asset);
           if (redirected != null) {
             await asset.body?.cancel("uf: following the assets binding's directory redirect");
             asset = await assets.fetch(redirected);
@@ -335,9 +339,9 @@ export function createWorkerFetch(
         // wrote. See `./internal/context.js`.
         lifecycle.context.bindings = env == null ? null : (env: $FlowFixMe);
         if (assets != null) {
-          lifecycle.context.buildFile = (pathname) => assetFile(assets, request, pathname);
+          lifecycle.context.buildFile = (pathname) => assetFile(assets, addressed, pathname);
         }
-        return await handle(request);
+        return await handle(addressed);
       };
       const response = await lifecycle.run(async () =>
         withHeaders(await answer(), headersFor(routing, request)),

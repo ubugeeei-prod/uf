@@ -26,6 +26,13 @@ use crate::{ConfigError, UniflowedConfig};
 /// Refuse any rule the hosts would match differently from how it reads.
 pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), ConfigError> {
     let router = &config.app.router;
+    if let Err(reason) = base_path(&router.base_path) {
+        return Err(ConfigError::RouterBasePath {
+            path: path.to_path_buf(),
+            written: router.base_path.to_string(),
+            reason,
+        });
+    }
     let refuse = |key: &'static str, index: usize, reason: String| ConfigError::RouterRule {
         path: path.to_path_buf(),
         key,
@@ -87,6 +94,52 @@ pub(crate) fn check(path: &Utf8Path, config: &UniflowedConfig) -> Result<(), Con
         }
     }
 
+    Ok(())
+}
+
+/// Why `basePath` is not one, if it is not.
+///
+/// A base is literal segments: every host compares it with the start of each
+/// request's path, so a parameter, a query or a trailing slash in it would be
+/// compared as characters and match nothing a visitor sends.
+fn base_path(base: &str) -> Result<(), String> {
+    if base.is_empty() {
+        return Ok(());
+    }
+    if base == "/" {
+        return Err(String::from(
+            "which is the root, and the root is written as no base path at all",
+        ));
+    }
+    if !base.starts_with('/') {
+        return Err(String::from("and a base path starts with `/`"));
+    }
+    if base.ends_with('/') {
+        return Err(format!(
+            "and a base path has no trailing slash: write {:?}",
+            base.trim_end_matches('/')
+        ));
+    }
+    if base.contains(['?', '#']) || base.contains(char::is_whitespace) {
+        return Err(String::from(
+            "and a base path is a path: no query, no fragment and no whitespace",
+        ));
+    }
+    for segment in base.split('/').skip(1) {
+        if segment.is_empty() {
+            return Err(String::from("and a base path has no empty segment (`//`)"));
+        }
+        if segment == "." || segment == ".." {
+            return Err(String::from(
+                "and `.` and `..` are not segments a base path can have",
+            ));
+        }
+        if segment.contains([':', '*']) {
+            return Err(format!(
+                "and `{segment}` is a pattern; a base path is literal segments"
+            ));
+        }
+    }
     Ok(())
 }
 

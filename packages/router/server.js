@@ -54,6 +54,7 @@ import {
   readPayload,
 } from "./internal/flight-ssr.js";
 import { FLIGHT_CONTENT_TYPE, flightUrl } from "./internal/flight.js";
+import { addressOf } from "./internal/base-path.js";
 import type { FlightRenderer } from "./rsc.js";
 
 /** Asset URLs to reference from the document. */
@@ -240,6 +241,14 @@ export type {
   MiddlewareRecord,
 } from "./middleware.js";
 export { createMiddlewareRunner } from "./middleware.js";
+
+/**
+ * `app.router.basePath` and `trailingSlash`, for `virtual:uf/server` to install
+ * before the first render, and `basePath()` for a middleware or a route handler
+ * that builds an address itself. See `./internal/base-path.js`.
+ */
+export type { RoutingSettings, TrailingSlash } from "./internal/base-path.js";
+export { basePath, installRouting } from "./internal/base-path.js";
 
 /**
  * The endpoint a `"use server"` export is dialled at.
@@ -742,7 +751,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
       const onThisOrigin = location.startsWith("/") && !location.startsWith("//");
       return {
         status: rendered.status,
-        headers: { location: onThisOrigin ? flightUrl(location) : location },
+        headers: { location: onThisOrigin ? flightUrl(addressOf(location)) : location },
         stream: null,
       };
     }
@@ -870,7 +879,11 @@ function renderFailure(resolved: ResolvedRoute): mixed {
 }
 
 function redirectDocument(error: RedirectError): RenderResult {
-  const target = escapeAttribute(error.to);
+  // Under `app.router.basePath`, and in the trailing-slash policy's spelling:
+  // `redirect("/sign-in")` names an application path, and a browser follows
+  // an address.
+  const address = addressOf(error.to);
+  const target = escapeAttribute(address);
   // A document rather than an empty body, because a redirect is still an answer
   // a browser may be shown; it goes through the same three methods as a
   // rendered one so that a host has one shape to write, not two.
@@ -879,7 +892,7 @@ function redirectDocument(error: RedirectError): RenderResult {
   );
   return {
     status: error.permanent ? 308 : 307,
-    headers: { Location: error.to },
+    headers: { Location: address },
     pipe: body.pipe,
     stream: body.stream,
     text: body.text,

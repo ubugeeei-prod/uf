@@ -407,9 +407,14 @@ export function fsFileOf(pathname) {
 }
 
 /** `virtual:uf/rsc`: the Flight renderer over the rsc graph's route table. */
-export function rscEntrySource(routesId) {
-  return `import { createFlightRenderer } from "@uniflowed/router/rsc";
+export function rscEntrySource(routesId, routing = {}) {
+  const settings = {
+    basePath: routing.basePath ?? "",
+    trailingSlash: routing.trailingSlash ?? "ignore",
+  };
+  return `import { createFlightRenderer, installRouting } from "@uniflowed/router/rsc";
 import { routes, notFound, errors } from ${JSON.stringify(routesId)};
+installRouting(${JSON.stringify(settings)});
 export { routes, notFound, errors };
 export const renderFlight = createFlightRenderer({ routes, notFound, errors });
 `;
@@ -518,9 +523,17 @@ export function loadClientModule(url) {
 export function flightClientSource(appEntry, options = {}) {
   const strictMode = options.strictMode === true ? ", strictMode: true" : "";
   const navigation = options.navigation === "document" ? ', navigation: "document"' : "";
+  // `routes.js`'s `routingArgumentSource`, spelled here too: that module
+  // imports this one, and a default project's entry has to stay the module it
+  // was, so nothing is written for the root and the default policy.
+  const basePath = options.routing?.basePath ?? "";
+  const trailingSlash = options.routing?.trailingSlash ?? "ignore";
+  const routing =
+    (basePath === "" ? "" : `, basePath: ${JSON.stringify(basePath)}`) +
+    (trailingSlash === "ignore" ? "" : `, trailingSlash: ${JSON.stringify(trailingSlash)}`);
   return `import { hydrateFlight } from "@uniflowed/router/client";
 import App from ${JSON.stringify(appEntry)};
-hydrateFlight({ App${strictMode}${navigation} });
+hydrateFlight({ App${strictMode}${navigation}${routing} });
 `;
 }
 
@@ -539,19 +552,22 @@ export function flightServerSource(
   appEntry,
   routesId,
   actionsId,
-  routing = { redirects: [], rewrites: [], headers: [] },
+  routing = { redirects: [], rewrites: [], headers: [], basePath: "", trailingSlash: "ignore" },
 ) {
   return `import {
   createActionDispatcher,
   createDispatcher,
   createDocumentRenderer,
   createMiddlewareRunner,
+  installRouting,
 } from "@uniflowed/router/server";
 import { handlers, middleware } from ${JSON.stringify(routesId)};
 import { actions } from ${JSON.stringify(actionsId)};
 import { renderFlight, routes, notFound, errors } from ${JSON.stringify(FLIGHT_VIRTUAL.bridge)};
 import { loadClientModule } from ${JSON.stringify(FLIGHT_VIRTUAL.references)};
 import App from ${JSON.stringify(appEntry)};
+export const routing = ${JSON.stringify(routing)};
+installRouting(routing);
 export { routes, handlers, middleware, notFound, errors };
 export { beginRequest } from "@uniflowed/router/server";
 const renderer = createDocumentRenderer({ App, renderFlight, loadClientModule });
@@ -562,7 +578,6 @@ export { shellDocument } from "@uniflowed/router/server";
 export const dispatch = createDispatcher({ handlers });
 export const callAction = createActionDispatcher({ actions });
 export const runMiddleware = createMiddlewareRunner({ middleware });
-export const routing = ${JSON.stringify(routing)};
 `;
 }
 

@@ -25,13 +25,21 @@
  * that accepts an upload should not need the whole thing buffered before it
  * starts.
  *
+ * `path` names the path and query to build it at, when that is not the one the
+ * request line carried — `uf dev` passes the one Vite's base middleware has
+ * already taken `app.router.basePath` off.
+ *
  * @param {import("node:http").IncomingMessage} incoming
  * @param {{server?: {https?: unknown}} | undefined} config the resolved Vite config
+ * @param {string} [path]
  */
-export async function toRequest(incoming, config) {
+export async function toRequest(incoming, config, path) {
   const host = incoming.headers.host ?? "localhost";
   const protocol = config?.server?.https == null ? "http" : "https";
-  const url = new URL(incoming.originalUrl ?? incoming.url ?? "/", `${protocol}://${host}`);
+  const url = new URL(
+    path ?? incoming.originalUrl ?? incoming.url ?? "/",
+    `${protocol}://${host}`,
+  );
 
   const headers = new Headers();
   for (const [name, value] of Object.entries(incoming.headers)) {

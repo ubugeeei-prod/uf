@@ -382,7 +382,7 @@ async function readable(file, message) {
  * the rest moved to `@uniflowed/server`. `uf build --adapter` calls it too,
  * at build time, and bakes the answer into what it emits.
  */
-export function assetsFromManifest(manifest) {
+export function assetsFromManifest(manifest, base = "") {
   // `client` by name first. An application React Server Components render
   // gives the client build one entry per client module as well, and the
   // document's script is the application's entry, not whichever of those the
@@ -418,10 +418,12 @@ export function assetsFromManifest(manifest) {
   };
   collectPreloads(entry);
 
+  // Under `app.router.basePath` when there is one: a prerendered document is
+  // written outside Vite's HTML transform, so nothing else would put it there.
   return {
-    scripts: [`/${entry.file}`],
-    styles: [...styles].map((file) => `/${file}`),
-    preloads: [...preloads].map((file) => `/${file}`),
+    scripts: [`${base}/${entry.file}`],
+    styles: [...styles].map((file) => `${base}/${file}`),
+    preloads: [...preloads].map((file) => `${base}/${file}`),
   };
 }
 
@@ -608,7 +610,12 @@ export function createServeHandler({ entry, assets, distDir, cache, root, build,
  * @param {{redirects?: unknown[], headers?: unknown[]} | undefined} routing
  */
 export function answersInFrontOfFiles(routing) {
-  return (routing?.redirects?.length ?? 0) > 0 || (routing?.headers?.length ?? 0) > 0;
+  return (
+    (routing?.redirects?.length ?? 0) > 0 ||
+    (routing?.headers?.length ?? 0) > 0 ||
+    (routing?.basePath ?? "") !== "" ||
+    (routing?.trailingSlash ?? "ignore") !== "ignore"
+  );
 }
 
 /**
@@ -624,11 +631,14 @@ export function answersInFrontOfFiles(routing) {
  * @param {import("node:http").ServerResponse} response
  */
 export async function answerRouting(routing, request, response) {
-  const { headersFor, pinHeaders, redirectFor, send: write } = await deployment();
+  const { admit, headersFor, pinHeaders, send: write } = await deployment();
   pinHeaders(response, headersFor(routing, request));
-  const moved = redirectFor(routing, request);
-  if (moved == null) return false;
-  await write(response, moved);
+  // A request outside the base path, the other spelling of a path, or a
+  // redirect rule: answered here, before Vite's own base middleware would
+  // answer the first in its words rather than uf's.
+  const admitted = admit(routing, request);
+  if (admitted.kind !== "answer") return false;
+  await write(response, admitted.response);
   return true;
 }
 

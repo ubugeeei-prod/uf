@@ -104,12 +104,23 @@ impl TrailingSlash {
     }
 
     /// `path` — an application path such as `/guide` — in this policy's
-    /// spelling. The root is `/` whatever the policy says.
+    /// spelling.
+    ///
+    /// The root is `/` whatever the policy says, `"ignore"` leaves a path as
+    /// it was written, and so does every policy for a path whose last segment
+    /// looks like a file: `/sitemap.xml/` is not a page. The same rule
+    /// `@uniflowed/server`'s `internal/routing.js` and `@uniflowed/router`'s
+    /// `internal/base-path.js` spell, so a sitemap names the address a server
+    /// answers without a redirect.
     #[must_use]
     pub fn spell(self, path: &str) -> String {
         let trimmed = path.trim_end_matches('/');
         if trimmed.is_empty() {
             return String::from("/");
+        }
+        let last = trimmed.rsplit('/').next().unwrap_or_default();
+        if matches!(self, Self::Ignore) || last.contains('.') {
+            return path.to_owned();
         }
         match self {
             Self::Always => format!("{trimmed}/"),

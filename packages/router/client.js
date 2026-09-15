@@ -101,6 +101,7 @@ import {
   hasClientPage,
   installNavigation,
   installRoutes,
+  installRouting,
   matchRoute,
   resolveFailure,
   resolveMatch,
@@ -109,6 +110,7 @@ import { DATA_ID, ROOT_ID } from "./internal/document.js";
 import { decodePayload } from "./internal/payload.js";
 import { createPayloadReader, domObserver } from "./internal/payload-rows.js";
 import { installBrowserModules, readDocumentPayload } from "./internal/flight-browser.js";
+import { type TrailingSlash, addressOf, applicationPathOf } from "./internal/base-path.js";
 
 /**
  * Hydrate the current document.
@@ -124,6 +126,8 @@ export async function hydrate(options: {|
   readonly errors: RouteTable["errors"],
   readonly strictMode?: boolean,
   readonly navigation?: Navigation,
+  readonly basePath?: string,
+  readonly trailingSlash?: TrailingSlash,
 |}): Promise<void> {
   const table: RouteTable = {
     routes: options.routes,
@@ -136,15 +140,18 @@ export async function hydrate(options: {|
   // `app.rendering.navigation` existed and what a hand-written entry still
   // means: the default is the behaviour, not the absence of one.
   installNavigation(options.navigation ?? "client");
+  installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
+  // The route table has no base path in it, and the address bar does.
+  const applicationPath = applicationPathOf(window.location.pathname) ?? window.location.pathname;
 
   // Before the loader data is read and before `resolveMatch` is called: both
   // would go looking for a page module that is not in this bundle.
-  const matched = matchRoute(table.routes, window.location.pathname);
+  const matched = matchRoute(table.routes, applicationPath);
   if (matched != null && !hasClientPage(matched.route)) {
     return;
   }
 
-  const url = window.location.pathname + window.location.search;
+  const url = applicationPath + window.location.search;
   // Row 0 of the payload, and the reader that will fill in the rows it refers
   // to. Both before `hydrateRoot`, and in this order: `decodePayload` is what
   // tells the reader which rows the page is waiting for, and `watch` is what
@@ -244,12 +251,17 @@ export async function hydrateFlight(options: {|
   readonly App: React.ComponentType<AppProps>,
   readonly strictMode?: boolean,
   readonly navigation?: Navigation,
+  readonly basePath?: string,
+  readonly trailingSlash?: TrailingSlash,
 |}): Promise<void> {
   installNavigation(options.navigation ?? "client");
+  installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
   installBrowserModules();
   const flight = readDocumentPayload(document, domObserver(document));
 
-  const url = window.location.pathname + window.location.search;
+  const url =
+    (applicationPathOf(window.location.pathname) ?? window.location.pathname) +
+    window.location.search;
   const { App } = options;
   const container = document.getElementById(ROOT_ID) ?? document;
   prepareDocumentForHydration(document);
@@ -354,6 +366,8 @@ export async function render(options: {|
   readonly errors: RouteTable["errors"],
   readonly strictMode?: boolean,
   readonly navigation?: Navigation,
+  readonly basePath?: string,
+  readonly trailingSlash?: TrailingSlash,
 |}): Promise<void> {
   const table: RouteTable = {
     routes: options.routes,
@@ -362,14 +376,17 @@ export async function render(options: {|
   };
   installRoutes(table);
   installNavigation(options.navigation ?? "client");
+  installRouting({ basePath: options.basePath, trailingSlash: options.trailingSlash });
 
-  const url = window.location.pathname + window.location.search;
+  const url =
+    (applicationPathOf(window.location.pathname) ?? window.location.pathname) +
+    window.location.search;
   let resolved;
   try {
     resolved = await resolveMatch(table, url);
   } catch (error) {
     if (error instanceof RedirectError) {
-      window.location.replace(error.to);
+      window.location.replace(addressOf(error.to));
       return;
     }
     // The error boundary, chosen the same way the server chooses it. A throw

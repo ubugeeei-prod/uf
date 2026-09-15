@@ -39,7 +39,7 @@ import type { CapabilityOptions, ServerCapabilities } from "./internal/capabilit
 import { assertCapable, capabilitiesFor } from "./internal/capabilities.js";
 import type { RequestLifecycle } from "./internal/context.js";
 import type { RoutingRules } from "./internal/routing.js";
-import { headersFor, redirectFor, withHeaders } from "./internal/routing.js";
+import { admit, headersFor, withHeaders } from "./internal/routing.js";
 import { locateStatic, offerBuildFiles, staticRoot } from "./internal/static.js";
 import type { Schedule } from "./schedule.js";
 import { startSchedules } from "./schedule.js";
@@ -98,12 +98,13 @@ export function createServeHandler(options: {|
   const serveStatic = createStaticHandler({ root: options.staticDir });
   return async function handle(request: Request): Promise<Response> {
     const headers = headersFor(options.routing, request);
-    const moved = redirectFor(options.routing, request);
-    if (moved != null) return withHeaders(moved, headers);
-    const file = await serveStatic(request);
+    const admitted = admit(options.routing, request);
+    if (admitted.kind === "answer") return withHeaders(admitted.response, headers);
+    const addressed = admitted.request;
+    const file = await serveStatic(addressed);
     if (file != null) return withHeaders(file, headers);
-    offerBuildFiles(request, serveStatic);
-    return withHeaders(await options.handle(request), headers);
+    offerBuildFiles(addressed, serveStatic);
+    return withHeaders(await options.handle(addressed), headers);
   };
 }
 
