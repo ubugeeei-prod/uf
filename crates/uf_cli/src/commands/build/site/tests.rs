@@ -1,7 +1,7 @@
 //! What goes in the two files, and what a wrong one would have looked like.
 
 use serde_json::json;
-use uf_config::RobotsConfig;
+use uf_config::{RobotsConfig, TrailingSlash};
 
 use super::{Prerendered, SiteUrl, UnguardedPage, indexable, robots, sitemap};
 
@@ -84,6 +84,53 @@ fn a_relative_or_schemeless_url_is_refused_rather_than_guessed() {
 fn a_query_or_a_fragment_is_refused() {
     assert!(SiteUrl::parse("https://example.com/?utm=1").is_err());
     assert!(SiteUrl::parse("https://example.com/#top").is_err());
+}
+
+// --- `app.router.basePath` and `app.router.trailingSlash` ----------------
+
+#[test]
+fn a_base_path_sits_between_the_site_and_the_route() {
+    // The server answers under the base path and 404s outside it, so a `<loc>`
+    // without it would name a page that does not exist.
+    let site = site().within("/docs", TrailingSlash::Ignore);
+
+    assert_eq!(site.join("/guide"), "https://docs.uniflowed.dev/docs/guide");
+    assert_eq!(
+        site.join("/sitemap.xml"),
+        "https://docs.uniflowed.dev/docs/sitemap.xml"
+    );
+}
+
+#[test]
+fn every_loc_is_spelled_the_way_the_server_answers_without_a_redirect() {
+    let always = site().within("", TrailingSlash::Always);
+    let never = site().within("", TrailingSlash::Never);
+
+    assert_eq!(always.join("/guide"), "https://docs.uniflowed.dev/guide/");
+    assert_eq!(never.join("/guide/"), "https://docs.uniflowed.dev/guide");
+    // A file keeps its name under either policy: `/sitemap.xml/` is no file.
+    assert_eq!(
+        always.join("/sitemap.xml"),
+        "https://docs.uniflowed.dev/sitemap.xml"
+    );
+    assert_eq!(always.join("/"), "https://docs.uniflowed.dev/");
+    assert_eq!(never.join("/"), "https://docs.uniflowed.dev/");
+}
+
+#[test]
+fn the_root_under_a_base_path_is_the_base_spelled_by_the_policy() {
+    assert_eq!(
+        site().within("/docs", TrailingSlash::Never).join("/"),
+        "https://docs.uniflowed.dev/docs"
+    );
+    assert_eq!(
+        site().within("/docs", TrailingSlash::Always).join("/"),
+        "https://docs.uniflowed.dev/docs/"
+    );
+    assert_eq!(
+        site().within("/docs", TrailingSlash::Always).join("/guide"),
+        "https://docs.uniflowed.dev/docs/guide/"
+    );
 }
 
 // --- which URLs ---------------------------------------------------------
