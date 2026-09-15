@@ -132,7 +132,7 @@ export default defineConfig({
 | `build.runtime` | `uf dev`, `uf build` and `uf preview`, before `runtime` |
 | `build.builder` | the builder those commands drive: `"vite"`, the default, or a module of your own |
 | `test.runtime` | `uf test`, before the runtime `test.runner` brings and then `runtime` |
-| `test.runner` | `"uf"`, the default. `"bun@1.4"` is read and refused by `uf test` until [#942](https://github.com/ubugeeei-prod/uf/issues/942) |
+| `test.runner` | `"uf"`, the default, or `"bun@1.4"`, which hands the suite to `bun test` without module mocking or the DOM matchers — see [Choosing a runner](/guide/testing#choosing-a-runner) |
 | `packageManager` | `uf install`, `uf add` and the other package commands, before `package.json#packageManager` and the lockfiles |
 
 `"node@24"` is the newest 24.x, resolved the first time a command needs it,
