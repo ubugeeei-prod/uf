@@ -470,6 +470,13 @@ fn a_native_target_manifest_names_the_native_contract() {
         serde_json::json!("app/$page.native.js"),
         "the build did not consume the native route target:\n{manifest:#}"
     );
+    // The table Metro bundles, one module per platform beside the web
+    // router's `router.js`. See ubugeeei-prod/uf#981.
+    let ios = fs::read_to_string(project.path().join("router.ios.js")).unwrap();
+    assert!(ios.contains("\"./app/$page.native.js\""), "{ios}");
+    assert!(ios.contains("export const routeTable"), "{ios}");
+    assert!(project.path().join("router.android.js").is_file());
+    assert!(project.path().join("router.native.js").is_file());
 }
 
 /// A middleware must run before the path it guards answers.
@@ -686,6 +693,69 @@ fn a_contract_violation_fails_the_build_before_vite_runs() {
     assert!(
         !project.path().join("dist/index.html").exists(),
         "the build prerendered a page despite a contract violation"
+    );
+}
+
+/// A server-only import that a client component reaches fails the build, and
+/// the failure names the chain of imports that put it in the client graph.
+///
+/// The module that imports `@uniflowed/server` is rarely the one to change: it
+/// is a server module, correct where it was written, that some client
+/// component's import pulled into the browser's graph two modules up. Naming
+/// only the importer sends the reader to the wrong file. Like the test above,
+/// the build stops before Vite runs, so this needs neither Node nor the
+/// workspace. See ubugeeei-prod/uf#252.
+#[test]
+fn a_server_only_import_a_client_component_reaches_fails_the_build_naming_its_chain() {
+    let mut files = minimal_app();
+    files[2] = (
+        "app/$page.js",
+        "// @flow\nimport * as React from \"@uniflowed/react\";\nimport { Counter } from \"./Counter.js\";\n\nexport component Page() {\n  return (\n    <main>\n      <Counter />\n    </main>\n  );\n}\n",
+    );
+    files.push((
+        "app/Counter.js",
+        "// @flow\n\"use client\";\n\nimport * as React from \"@uniflowed/react\";\nimport { label } from \"./format.js\";\n\nexport component Counter() {\n  return <button type=\"button\">{label()}</button>;\n}\n",
+    ));
+    files.push((
+        "app/format.js",
+        "// @flow\nimport { session } from \"./session.js\";\n\nexport function label(): string {\n  return `signed in as ${session()}`;\n}\n",
+    ));
+    files.push((
+        "app/session.js",
+        "// @flow\nimport { cookies } from \"@uniflowed/server\";\n\nexport function session(): string {\n  return cookies().get(\"session\") ?? \"nobody\";\n}\n",
+    ));
+    let project = Project::new(&files);
+
+    let output = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .arg("build")
+        // Wide enough that the chain is one line of the report, whatever the
+        // renderer's own idea of a terminal is.
+        .env("COLUMNS", "400")
+        .output()
+        .unwrap();
+
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output.status.success(),
+        "a client component reaching server-only code must fail the build:\n{said}"
+    );
+    for expected in [
+        "rsc/server-only-import-in-client",
+        "app/session.js",
+        "imports server-only `@uniflowed/server`",
+        "`app/Counter.js` → `app/format.js` → `app/session.js`",
+    ] {
+        assert!(said.contains(expected), "missing {expected:?} in:\n{said}");
+    }
+    assert!(
+        !project.path().join("dist/index.html").exists(),
+        "the build prerendered a page despite a server-only import in the client graph"
     );
 }
 

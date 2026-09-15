@@ -29,6 +29,20 @@ const IMPLICIT_EXTENSIONS: [&str; 4] = [".js", ".mjs", ".cjs", ".jsx"];
 /// The basenames a directory specifier is tried with.
 const INDEX_BASENAMES: [&str; 4] = ["index.js", "index.mjs", "index.cjs", "index.jsx"];
 
+/// The module a `.flow` file stands in for — `lib/index.js` for
+/// `lib/index.js.flow` — or [`None`] for any other path.
+///
+/// Only a path Flow would resolve an import to has one. A `.flow` suffix after
+/// anything else, like the `index.d.ts.flow` a translated declaration file is
+/// filed under, shadows nothing.
+fn shadowed_module(path: &str) -> Option<&str> {
+    path.strip_suffix(".flow").filter(|module| {
+        IMPLICIT_EXTENSIONS
+            .iter()
+            .any(|extension| module.ends_with(extension))
+    })
+}
+
 /// Whether `specifier` names a file relative to the importer rather than a
 /// package.
 ///
@@ -87,6 +101,16 @@ pub(super) fn join(importer: &str, specifier: &str) -> Option<CompactString> {
 /// the number of files.
 pub(super) struct ModuleIndex {
     by_path: HashMap<CompactString, usize>,
+    /// The `.flow` files in the batch, by the path of the module each one
+    /// stands beside: `lib/index.js` for `lib/index.js.flow`.
+    ///
+    /// Flow's resolver tries `<path>.flow` before `<path>` for every file it
+    /// resolves to, and that is how a package ships Flow for JavaScript it
+    /// compiled: `index.js` is what a runtime loads, `index.js.flow` what a
+    /// checker reads. Kept apart from `by_path` because the rule is about
+    /// *imports* — a file somebody asked to check is still that file, and
+    /// [`Self::index_of`] answers for it exactly.
+    shadows: HashMap<CompactString, usize>,
 }
 
 impl ModuleIndex {
@@ -97,10 +121,15 @@ impl ModuleIndex {
     /// first occurrence is the one a reader saw reported.
     pub(super) fn new<'a>(paths: impl IntoIterator<Item = &'a str>) -> Self {
         let mut by_path = HashMap::new();
+        let mut shadows = HashMap::new();
         for (index, path) in paths.into_iter().enumerate() {
-            by_path.entry(normalize(path)).or_insert(index);
+            let path = normalize(path);
+            if let Some(module) = shadowed_module(&path) {
+                shadows.entry(module.to_compact_string()).or_insert(index);
+            }
+            by_path.entry(path).or_insert(index);
         }
-        Self { by_path }
+        Self { by_path, shadows }
     }
 
     /// The source `specifier` resolves to, imported from `importer`.
@@ -150,9 +179,14 @@ impl ModuleIndex {
         })
     }
 
-    /// The source at exactly this path: no extension, no `index`.
+    /// The source an import of exactly this path loads: no extension and no
+    /// `index`, but the `.flow` file beside the path when the batch has one,
+    /// because that is the file Flow reads for it.
     pub(super) fn lookup(&self, path: &str) -> Option<usize> {
-        self.by_path.get(path).copied()
+        self.shadows
+            .get(path)
+            .or_else(|| self.by_path.get(path))
+            .copied()
     }
 
     /// The source at this path, however the path is spelled.
@@ -161,8 +195,11 @@ impl ModuleIndex {
     /// resolution produces; a path that came from somewhere else — a `--path`
     /// argument, a caller's own list of files to start from — has not been
     /// through that, so `./src/app.js` and `src/app.js` would be two keys.
+    ///
+    /// Exact, unlike an import: a file somebody asked to check is that file
+    /// even when a `.flow` file stands beside it.
     pub(super) fn index_of(&self, path: &str) -> Option<usize> {
-        self.lookup(&normalize(path))
+        self.by_path.get(&normalize(path)).copied()
     }
 }
 
@@ -382,6 +419,26 @@ mod tests {
         let index = ModuleIndex::new(["a.js"]);
 
         assert_eq!(index.resolve("a.js", "./a.js"), Some(0));
+    }
+
+    #[test]
+    fn a_flow_file_answers_imports_of_the_module_it_sits_beside() {
+        let index = ModuleIndex::new(["lib/index.js", "lib/index.js.flow", "app.js"]);
+
+        assert_eq!(index.resolve("app.js", "./lib/index.js"), Some(1));
+        assert_eq!(index.resolve("app.js", "./lib/index"), Some(1));
+        assert_eq!(index.resolve("app.js", "./lib"), Some(1));
+        assert_eq!(index.lookup("lib/index.js"), Some(1));
+        // A file somebody asked to check is still that file.
+        assert_eq!(index.index_of("lib/index.js"), Some(0));
+    }
+
+    #[test]
+    fn a_flow_suffix_after_anything_but_a_module_shadows_nothing() {
+        let index = ModuleIndex::new(["index.d.ts.flow", "app.js"]);
+
+        assert_eq!(index.lookup("index.d.ts"), None);
+        assert_eq!(index.resolve("app.js", "./index.d.ts.flow"), Some(0));
     }
 
     #[test]

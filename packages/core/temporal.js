@@ -365,6 +365,17 @@ function pad(value: number, width: number): string {
   return String(Math.abs(value)).padStart(width, "0");
 }
 
+/**
+ * `.25` for 250 milliseconds, `.005` for 5, and nothing for none.
+ *
+ * Temporal's `auto` precision, which every `toString` here has to match: the
+ * fewest digits that say the value, rather than the three a millisecond field
+ * has room for.
+ */
+function fractionText(millisecond: number): string {
+  return millisecond === 0 ? "" : `.${pad(millisecond, 3).replace(/0+$/, "")}`;
+}
+
 /** `+09:00`, or `-03:30`, from an offset in milliseconds. */
 function offsetText(offsetMillis: number): string {
   const sign = offsetMillis < 0 ? "-" : "+";
@@ -448,6 +459,25 @@ class LiteDuration {
     }
     if (typeof value === "string") {
       return parseDuration(value);
+    }
+    if (
+      value.years === undefined &&
+      value.months === undefined &&
+      value.weeks === undefined &&
+      value.days === undefined &&
+      value.hours === undefined &&
+      value.minutes === undefined &&
+      value.seconds === undefined &&
+      value.milliseconds === undefined
+    ) {
+      // Refused rather than read as zero, because Temporal refuses it. `{}` is
+      // what a duration built from optional fields looks like when every one of
+      // them was left out, and answering `PT0S` made that a zero on this host
+      // and a `TypeError` on one with Temporal (#1052). A zero that is meant is
+      // written `{ seconds: 0 }`.
+      throw new TypeError(
+        "@uniflowed/core/temporal: a duration needs at least one field, as in { minutes: 30 }",
+      );
     }
     return new LiteDuration({
       years: value.years ?? 0,
@@ -675,17 +705,21 @@ class LiteInstant {
   }
 
   /**
-   * `2026-09-04T06:00:00Z`, and `2026-09-04T06:00:00.250Z` when there is a
+   * `2026-09-04T06:00:00Z`, and `2026-09-04T06:00:00.25Z` when there is a
    * fraction.
    *
-   * `Date.prototype.toISOString` would be one line and would always print
-   * `.000`, which native Temporal does not — and a text difference between the
-   * two implementations is the one bug this module cannot have, because it
-   * would only appear on a browser that had shipped Temporal.
+   * `Date.prototype.toISOString` would be one line and would always print three
+   * fraction digits — `.000`, and `.250` for a quarter of a second — where
+   * native Temporal prints the fewest that say the value. A text difference
+   * between the two implementations is the one bug this module cannot have,
+   * because it only appears on a host that has shipped Temporal, and this one
+   * printed `.250Z` until Node 26 was that host (#1052).
    */
   toString(): string {
     const iso = new Date(this.epochMilliseconds).toISOString();
-    return iso.endsWith(".000Z") ? `${iso.slice(0, -5)}Z` : iso;
+    // `.sssZ` is the last five characters, and `toISOString` keeps the
+    // milliseconds in [0, 1000) on both sides of the epoch.
+    return `${iso.slice(0, -5)}${fractionText(Number(iso.slice(-4, -1)))}Z`;
   }
 
   toJSON(): string {
@@ -809,7 +843,7 @@ class LiteZonedDateTime {
   toString(): string {
     const date = `${yearText(this.year)}-${pad(this.month, 2)}-${pad(this.day, 2)}`;
     const time = `${pad(this.hour, 2)}:${pad(this.minute, 2)}:${pad(this.second, 2)}`;
-    const fraction = this.millisecond === 0 ? "" : `.${pad(this.millisecond, 3)}`;
+    const fraction = fractionText(this.millisecond);
     return `${date}T${time}${fraction}${this.offset}[${this.timeZoneId}]`;
   }
 
@@ -822,15 +856,28 @@ class LiteZonedDateTime {
    *
    * The zone is supplied rather than left out, which is the whole difference
    * between this and `Date.prototype.toLocaleString`: a `ZonedDateTime` knows
-   * which zone it is in, so a caller who omits `timeZone` gets that one instead
-   * of whichever zone the machine happens to be set to.
+   * which zone it is in, so a caller gets that one instead of whichever zone the
+   * machine happens to be set to.
+   *
+   * A `timeZone` in `options` is refused rather than honoured, because Temporal
+   * refuses it: a value that carries its zone has no second one to choose
+   * between. Honouring it made output on this host and a `TypeError` on one
+   * with Temporal (#1052). Formatting somewhere else is a conversion first —
+   * `toInstant().toZonedDateTimeISO(timeZone)` — and then this.
    */
   toLocaleString(locales?: string, options?: DateTimeFormatOptions): string {
+    if (options?.timeZone !== undefined) {
+      throw new TypeError(
+        `@uniflowed/core/temporal: this ZonedDateTime is in ${this.timeZoneId}, so ` +
+          `toLocaleString takes no timeZone. Convert it first, with ` +
+          `toInstant().toZonedDateTimeISO(timeZone).`,
+      );
+    }
     const Formatter = Intl.DateTimeFormat;
     if (Formatter == null) {
       return this.toString();
     }
-    const settings = { ...options, timeZone: options?.timeZone ?? this.timeZoneId };
+    const settings = { ...options, timeZone: this.timeZoneId };
     return new Formatter(locales, settings).format(this.epochMilliseconds);
   }
 }
@@ -1005,7 +1052,7 @@ class LitePlainTime {
 
   toString(): string {
     const base = `${pad(this.hour, 2)}:${pad(this.minute, 2)}:${pad(this.second, 2)}`;
-    return this.millisecond === 0 ? base : `${base}.${pad(this.millisecond, 3)}`;
+    return `${base}${fractionText(this.millisecond)}`;
   }
 
   toJSON(): string {
