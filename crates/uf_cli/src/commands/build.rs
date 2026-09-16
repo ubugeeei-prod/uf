@@ -60,6 +60,7 @@ use crate::ui::Ui;
 
 mod guards;
 mod library;
+mod nonce;
 mod request_state;
 mod site;
 mod spa;
@@ -790,6 +791,26 @@ pub(crate) fn build(
             "{} was already in the output directory, so `site` did not write it",
             relative_to(&resolved.root, kept)
         ));
+    }
+    // Prerendered documents under a rule whose value names `{uf.nonce}`. A
+    // nonce is minted per request and the file was written without one, so the
+    // policy refuses uf's own client entry and the page never hydrates — in
+    // production only, which is why ubugeeei-prod/uf#1171 is worth a line here.
+    //
+    // **This is the only place the level is read.** `nonce::REFUSES_THE_BUILD`
+    // decides whether that sentence is a refusal or a warning, and the sentence
+    // is the same either way, so changing uf's mind is that constant and
+    // nothing at this call site. It is read *here*, after the build, because
+    // the check is driven from the documents Vite actually wrote rather than
+    // from the route table; [`nonce`] argues why that is worth a refusal which
+    // arrives later than this file's others.
+    let nonced = nonce::nonced_pages(&vite.pages, &resolved.config.app.router.headers);
+    if !nonced.is_empty() {
+        let said = nonce::message(&nonced, &config_file);
+        if nonce::REFUSES_THE_BUILD {
+            bail!("{said}");
+        }
+        warnings.push(said);
     }
     let guarded_rows: Vec<(String, String, String)> = unguarded
         .iter()
