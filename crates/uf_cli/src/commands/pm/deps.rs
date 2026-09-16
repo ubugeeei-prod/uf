@@ -54,6 +54,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::Value;
 use uf_config::{ResolvedConfig, load_config};
 use uf_pm::delta::LockfileDelta;
+use uf_pm::links::{LinkState, Registration};
 use uf_pm::{
     DependencyKind, DetectionOptions, LinkTarget, ManagerRunError, Operation, PackageManagerPlan,
     check_workspace_manifests, detect_package_manager_with, install_workspace, installable,
@@ -252,19 +253,280 @@ pub(super) fn update(
 ///
 /// Refused by name on Yarn 1, whose `yarn dedupe` exists only to say `yarn
 /// install` already does it, and on bun, which has none.
-pub(crate) fn dedupe(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+pub(crate) fn dedupe(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
+    if check {
+        return dedupe_check(cwd, ui);
+    }
     delegate(
         cwd,
         ui,
         &Request {
             heading: "uf dedupe",
-            operation: Operation::Dedupe,
+            operation: Operation::Dedupe { check: false },
             operands: &[],
             retry: "uf dedupe".to_owned(),
             announced: false,
             scope: &Scope::Project,
         },
     )
+}
+
+/// What a dedupe would collapse, as far as the manager's answer says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WouldCollapse {
+    /// Nothing: the tree is already as collapsed as the declared ranges allow.
+    Nothing,
+    /// These packages, read out of the manager's answer.
+    These(Vec<String>),
+    /// Something the manager would collapse but did not name.
+    Something,
+    /// The manager failed rather than answered.
+    Failed,
+}
+
+/// `uf dedupe --check`: what a dedupe would collapse, with nothing changed.
+///
+/// For CI, so the answer is an exit code — non-zero when there is anything —
+/// and the report names the packages rather than leaving the reader to run a
+/// dedupe to find out what it would have done.
+///
+/// The managers answer differently enough that uf holds their output back and
+/// prints one report instead of three: pnpm and Yarn 2+ have a check of their
+/// own and exit non-zero, npm has a dry run that exits 0 whatever it finds and
+/// says what it found in JSON. A manager with no dedupe at all is refused by
+/// name before anything runs, as `uf dedupe` is.
+fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    let started = Instant::now();
+    let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
+    let root = resolved.root.clone();
+    let detection =
+        detect_package_manager_with(&root, &DetectionOptions::from_config(&resolved.config));
+    let (manager, substituted) = installable(&detection);
+    let operation = Operation::Dedupe { check: true };
+    // Before the manager is installed: one with no dedupe to check against is
+    // refused without downloading it to find that out. Scripts are allowed
+    // because a check installs nothing for them to run from.
+    uf_pm::invocation_for(&root, manager, operation, &[], true)?;
+    let path = manager_path_for(&resolved, manager, ui)?;
+
+    let project = project_label(&root).to_string();
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf dedupe --check", Some(&project));
+        renderer.blank(out);
+    });
+
+    let run =
+        uf_pm::run::run_captured_with_detection(&root, &detection, operation, &[], true, &path)
+            .map_err(|error| {
+                failed_hint(
+                    error,
+                    "uf could not ask the manager; fix that and run `uf dedupe --check` again",
+                )
+            })?;
+
+    let found = would_collapse(manager, &run);
+    let manager_label = manager.to_string();
+    let source = chosen_by(&detection.source, substituted);
+    let command = run.invocation.to_string();
+    let elapsed = format_duration(started.elapsed());
+    let named = match &found {
+        WouldCollapse::These(named) => named.clone(),
+        _ => Vec::new(),
+    };
+    // What the manager said, for the two answers uf cannot put in its own
+    // words: showing its output beats paraphrasing an answer uf did not read.
+    let said = match &found {
+        WouldCollapse::Something | WouldCollapse::Failed => manager_said(&run),
+        _ => Vec::new(),
+    };
+    let (status, headline) = match &found {
+        WouldCollapse::Nothing => (
+            Status::Success,
+            format!("nothing to collapse: checked in {elapsed}"),
+        ),
+        WouldCollapse::These(named) => (
+            Status::Warn,
+            format!(
+                "{} package{} would collapse; `uf dedupe` collapses {}",
+                named.len(),
+                if named.len() == 1 { "" } else { "s" },
+                if named.len() == 1 { "it" } else { "them" }
+            ),
+        ),
+        WouldCollapse::Something => (
+            Status::Warn,
+            format!("{manager_label} would collapse something; `uf dedupe` collapses it"),
+        ),
+        WouldCollapse::Failed => (
+            Status::Error,
+            format!("{manager_label} did not answer whether anything would collapse"),
+        ),
+    };
+
+    ui.render(|renderer, out| {
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::new("manager", &manager_label),
+                KeyValue::toned("chosen by", &source, Tone::Muted),
+                KeyValue::toned("command", &command, Tone::Path),
+            ],
+        );
+        for (heading, lines) in [("would collapse", &named), ("the manager said", &said)] {
+            if lines.is_empty() {
+                continue;
+            }
+            renderer.blank(out);
+            renderer.heading(out, 2, heading);
+            renderer.blank(out);
+            renderer.bullet_list(
+                out,
+                4,
+                &lines.iter().map(String::as_str).collect::<Vec<_>>(),
+            );
+        }
+        renderer.blank(out);
+        renderer.status(out, status, &headline);
+    });
+
+    match found {
+        WouldCollapse::Nothing => Ok(()),
+        WouldCollapse::Failed => bail!("`{command}` failed rather than answering"),
+        // The exit code is the point of the flag: CI asked a question whose
+        // answer is yes, and nothing was changed on the way to answering it.
+        _ => bail!("the lockfile has duplicates `uf dedupe` would collapse"),
+    }
+}
+
+/// The answer, read the way the manager gave it.
+fn would_collapse(manager: uf_pm::PackageManager, run: &uf_pm::run::CapturedRun) -> WouldCollapse {
+    if matches!(
+        manager,
+        uf_pm::PackageManager::Npm | uf_pm::PackageManager::Uf
+    ) {
+        return npm_would_collapse(&run.stdout);
+    }
+    // pnpm and Yarn 2+ answer with the exit code.
+    if run.succeeded {
+        return WouldCollapse::Nothing;
+    }
+    let said = format!("{}\n{}", run.stdout, run.stderr);
+    if manager == uf_pm::PackageManager::Pnpm {
+        // pnpm exits non-zero when it fails, too, and names this answer.
+        if !said.contains("ERR_PNPM_DEDUPE_CHECK_ISSUES") {
+            return WouldCollapse::Failed;
+        }
+        let named = pnpm_named(&said);
+        return if named.is_empty() {
+            WouldCollapse::Something
+        } else {
+            WouldCollapse::These(named)
+        };
+    }
+    WouldCollapse::Something
+}
+
+/// What npm's `--dry-run --json` summary says a dedupe would do.
+///
+/// npm exits 0 whether or not it would change anything, so the counts are the
+/// answer and the arrays are the names. A removal is the copy npm would take
+/// out; a change is the two sides of a move, `{"from": …, "to": …}`. An entry
+/// uf cannot read still counts, because the counts said it was there.
+fn npm_would_collapse(stdout: &str) -> WouldCollapse {
+    let Some(start) = stdout.find('{') else {
+        return WouldCollapse::Failed;
+    };
+    let Ok(summary) = serde_json::from_str::<Value>(&stdout[start..]) else {
+        return WouldCollapse::Failed;
+    };
+    let counted: u64 = ["added", "removed", "changed"]
+        .iter()
+        .filter_map(|key| summary.get(*key).and_then(Value::as_u64))
+        .sum();
+    if counted == 0 {
+        return WouldCollapse::Nothing;
+    }
+    let mut named = Vec::new();
+    for key in ["remove", "change"] {
+        let Some(entries) = summary.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        named.extend(entries.iter().filter_map(npm_entry));
+    }
+    named.sort();
+    named.dedup();
+    if named.is_empty() {
+        WouldCollapse::Something
+    } else {
+        WouldCollapse::These(named)
+    }
+}
+
+/// One of npm's entries: the package and the version, or the move it describes.
+fn npm_entry(entry: &Value) -> Option<String> {
+    let named = |value: &Value| {
+        value
+            .get("name")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    };
+    let version = |value: &Value| {
+        value
+            .get("version")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    };
+    if let (Some(from), Some(to)) = (entry.get("from"), entry.get("to")) {
+        let name = named(from).or_else(|| named(to))?;
+        return Some(match (version(from), version(to)) {
+            (Some(was), Some(becomes)) => format!("{name} {was} → {becomes}"),
+            _ => name,
+        });
+    }
+    let name = named(entry)?;
+    Some(match version(entry) {
+        Some(version) => format!("{name} {version}"),
+        None => name,
+    })
+}
+
+/// The packages pnpm's own check named, one line each.
+///
+/// pnpm prints the importers it would change as a tree — `└── ms 2.0.0 → 2.1.2`
+/// — above the packages that change would drop. The tree lines carry both
+/// versions, which is the answer; the rest of what pnpm prints is progress.
+fn pnpm_named(said: &str) -> Vec<String> {
+    let mut named = said
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let named = line
+                .strip_prefix("└── ")
+                .or_else(|| line.strip_prefix("├── "))?;
+            (!named.is_empty()).then(|| named.to_owned())
+        })
+        .collect::<Vec<_>>();
+    named.sort();
+    named.dedup();
+    named
+}
+
+/// What the manager printed, for a report that cannot name the packages itself.
+fn manager_said(run: &uf_pm::run::CapturedRun) -> Vec<String> {
+    let mut lines = Vec::new();
+    for stream in [&run.stdout, &run.stderr] {
+        lines.extend(
+            stream
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with("Progress:"))
+                .map(ToOwned::to_owned),
+        );
+    }
+    lines.truncate(12);
+    lines
 }
 
 /// `uf link [NAME|DIR]`.
@@ -295,6 +557,694 @@ pub(crate) fn link(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Result<
             scope: &Scope::Project,
         },
     )
+}
+
+/// `uf unlink [NAME|DIR]`: undo `uf link`, in either direction.
+///
+/// With nothing named, the package in this directory stops being linkable:
+/// the entry `uf link` left in the manager's registry is removed. With a name,
+/// or the directory a link leads to, the link is taken out of this project,
+/// and the release `package.json` declares is installed in its place when it
+/// declares one.
+///
+/// Every part of that is checked on the filesystem, before and after, rather
+/// than taken from the manager. npm, Yarn 1 and bun unlink without writing the
+/// manifest or the lockfile; pnpm 10's `pnpm unlink` says "Nothing to unlink"
+/// about a link its own `pnpm link` made; bun has no `unlink <name>` at all.
+/// When there is nothing to unlink, uf says what it found instead and exits 0
+/// without running anything.
+pub(crate) fn unlink(cwd: &Utf8Path, ui: &mut Ui, target: Option<&str>) -> Result<()> {
+    let started = Instant::now();
+    if let Some(target) = target {
+        uf_pm::check_operands(&[target.to_owned()])?;
+    }
+    let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
+    let root = resolved.root.clone();
+    let detection =
+        detect_package_manager_with(&root, &DetectionOptions::from_config(&resolved.config));
+    let (manager, substituted) = installable(&detection);
+    let request = unlink_request(&root, manager, target)?;
+    let operation = request.operation(manager);
+    // A manager with no such command is refused before anything is read or
+    // run: Yarn 2+ keeps no registry to unregister a package from.
+    if let Some(operation) = operation {
+        uf_pm::invocation_for(&root, manager, operation, &request.operands, true)?;
+    }
+
+    let project = project_label(&root).to_string();
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf unlink", Some(&project));
+        renderer.blank(out);
+    });
+    let mut report = UnlinkReport {
+        manager: manager.to_string(),
+        chosen_by: chosen_by(&detection.source, substituted),
+        commands: Vec::new(),
+        rows: Vec::new(),
+        removed: None,
+        status: Status::Success,
+        headline: String::new(),
+    };
+    let plan = PackageManagerPlan::infer_from_config(&resolved.config);
+    let failed = |error: ManagerRunError| {
+        failed_hint(
+            error,
+            &format!(
+                "the manager printed why above; fix that and run `{}` again",
+                retry_line(
+                    "uf unlink",
+                    &target
+                        .map(ToOwned::to_owned)
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                )
+            ),
+        )
+    };
+
+    if request.target == LinkTarget::Register {
+        let path = manager_path_for(&resolved, manager, ui)?;
+        let dirs = uf_pm::links::GlobalDirs::for_manager(manager, &root, &path);
+        let known = match manager {
+            uf_pm::PackageManager::Npm | uf_pm::PackageManager::Uf => dirs.npm.is_some(),
+            uf_pm::PackageManager::Pnpm => dirs.pnpm.is_some(),
+            uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Classic) => dirs.yarn.is_some(),
+            uf_pm::PackageManager::Bun => dirs.bun.is_some(),
+            uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry) => true,
+        };
+        if !known {
+            bail!(
+                "uf cannot find where {manager} keeps linked packages: {}",
+                if matches!(
+                    manager,
+                    uf_pm::PackageManager::Npm | uf_pm::PackageManager::Uf
+                ) {
+                    "`npm root --global` gave no answer"
+                } else {
+                    "neither the manager's own variable nor HOME is set"
+                }
+            );
+        }
+        let entries = uf_pm::links::registry_entries(manager, &request.name, &dirs);
+        let entry = match unregister_plan(
+            manager,
+            &request.name,
+            &uf_pm::links::registration(&entries, &root),
+        ) {
+            Ok(entry) => entry,
+            Err(nothing) => return nothing_to_unlink(ui, report, &nothing),
+        };
+        guard_manifests(&resolved, &detection)?;
+        let allow_scripts = scripts_allowed(&root, manager, &plan)?;
+        let run = run_operation_with_detection(
+            &root,
+            &detection,
+            Operation::Unlink {
+                target: LinkTarget::Register,
+            },
+            &request.operands,
+            allow_scripts,
+            &path,
+        )
+        .map_err(failed)?;
+        report.commands.push(run.invocation.to_string());
+        if matches!(
+            uf_pm::links::registration(&entries, &root),
+            Registration::Linked(_)
+        ) {
+            bail!(
+                "`{}` succeeded, but {entry} still links to this package",
+                run.invocation
+            );
+        }
+        report.removed = Some(("unregistered", request.name.clone(), entry.to_string()));
+        report.headline = format!(
+            "unregistered {} in {}; other projects can no longer link it by name",
+            request.name,
+            format_duration(started.elapsed())
+        );
+        ui.render(|renderer, out| render_unlink(renderer, out, &report));
+        return Ok(());
+    }
+
+    let name = request.name.as_str();
+    let declared = declared_range(&root.join("package.json"), name);
+    let undone = match unlink_plan(
+        &root,
+        manager,
+        &request,
+        uf_pm::links::link_state(&root, name).as_ref(),
+        uf_pm::links::linked_resolution(&root, name).as_deref(),
+        declared.as_deref(),
+        manager == uf_pm::PackageManager::Pnpm
+            && uf_pm::links::link_override(&root, name).is_some(),
+    ) {
+        Ok(undone) => undone,
+        Err(nothing) => return nothing_to_unlink(ui, report, &nothing),
+    };
+    guard_manifests(&resolved, &detection)?;
+    let path = manager_path_for(&resolved, manager, ui)?;
+    let allow_scripts = scripts_allowed(&root, manager, &plan)?;
+    match operation {
+        Some(operation) => {
+            let run = run_operation_with_detection(
+                &root,
+                &detection,
+                operation,
+                &request.operands,
+                allow_scripts,
+                &path,
+            )
+            .map_err(failed)?;
+            report.commands.push(run.invocation.to_string());
+        }
+        None => {
+            uf_pm::links::remove_link(&root, name)
+                .with_context(|| format!("could not remove the link at node_modules/{name}"))?;
+            report
+                .rows
+                .push(("removed", format!("node_modules/{name}, a link")));
+        }
+    }
+    // npm, Yarn 1 and bun leave a declared package uninstalled once its link
+    // is gone; pnpm and Yarn 2+ reinstall it themselves.
+    let mut reinstall = declared.is_some()
+        && matches!(
+            manager,
+            uf_pm::PackageManager::Npm
+                | uf_pm::PackageManager::Uf
+                | uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Classic)
+                | uf_pm::PackageManager::Bun
+        );
+    // pnpm 10's `pnpm unlink` leaves the override its own `pnpm link` wrote,
+    // and the link with it: take out exactly that entry, and install.
+    let still_undone = match uf_pm::links::link_state(&root, name) {
+        Some(LinkState::Linked(to)) => undone.target.as_ref() == Some(&to),
+        Some(LinkState::Broken(_)) => true,
+        _ => false,
+    };
+    if manager == uf_pm::PackageManager::Pnpm
+        && still_undone
+        && let Some(value) = uf_pm::links::remove_link_override(&root, name)
+            .context("could not take pnpm's override out of pnpm-workspace.yaml")?
+    {
+        report.rows.push((
+            "override",
+            format!("{name}: {value}, taken out of pnpm-workspace.yaml"),
+        ));
+        reinstall = true;
+    }
+    if reinstall {
+        let run = run_operation_with_detection(
+            &root,
+            &detection,
+            Operation::Install,
+            &[],
+            allow_scripts,
+            &path,
+        )
+        .map_err(failed)?;
+        report.commands.push(run.invocation.to_string());
+    }
+
+    let outcome = unlink_outcome(
+        &root,
+        manager,
+        name,
+        &undone,
+        &Afterwards::read(&root, name),
+        declared.as_deref(),
+    )
+    .map_err(|why| {
+        let ran = if report.commands.is_empty() {
+            "removing the link".to_owned()
+        } else {
+            report
+                .commands
+                .iter()
+                .map(|command| format!("`{command}`"))
+                .collect::<Vec<_>>()
+                .join(" and ")
+        };
+        anyhow!("{ran} succeeded, but {why}")
+    })?;
+    let elapsed = format_duration(started.elapsed());
+    report.removed = Some(("unlinked", name.to_owned(), undone.shown.clone()));
+    (report.status, report.headline) = match outcome {
+        Unlinked::Reinstalled(version) => (
+            Status::Success,
+            format!(
+                "unlinked {name} in {elapsed}; node_modules has {name} {version} again, as \
+                 package.json declares"
+            ),
+        ),
+        Unlinked::Transitive(version) => (
+            Status::Success,
+            format!(
+                "unlinked {name} in {elapsed}; node_modules has {name} {version}, which another \
+                 dependency brings in"
+            ),
+        ),
+        Unlinked::Gone => (
+            Status::Success,
+            format!(
+                "unlinked {name} in {elapsed}; nothing here declares it, so node_modules has none"
+            ),
+        ),
+        Unlinked::StillDeclared(range) => (
+            Status::Warn,
+            format!(
+                "{name} is still linked after {elapsed}: package.json declares it as {range}, \
+                 which links it on every install; `uf remove {name}` takes that out"
+            ),
+        ),
+    };
+    ui.render(|renderer, out| render_unlink(renderer, out, &report));
+    Ok(())
+}
+
+/// What `uf unlink` was asked to undo, once the target has a package name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct UnlinkRequest {
+    /// Unregistering, a name, or (for Yarn 2+ only) a path.
+    target: LinkTarget,
+    /// The package.
+    name: String,
+    /// The directory `uf unlink DIR` named, canonical when it exists: a link
+    /// that leads anywhere else is not the one being undone.
+    directory: Option<Utf8PathBuf>,
+    /// What the manager's command is given.
+    operands: Vec<String>,
+}
+
+impl UnlinkRequest {
+    /// The manager command that unlinks, or `None` where uf removes the link
+    /// itself, because bun has no `unlink <name>`.
+    fn operation(&self, manager: uf_pm::PackageManager) -> Option<Operation<'static>> {
+        (manager != uf_pm::PackageManager::Bun || self.target == LinkTarget::Register).then_some(
+            Operation::Unlink {
+                target: self.target,
+            },
+        )
+    }
+}
+
+/// The package `uf unlink` is about, and what the manager is to be given.
+///
+/// # Errors
+///
+/// When nothing names a package: no name in this directory's manifest, a name
+/// that is not one, or a directory whose manifest names none.
+fn unlink_request(
+    root: &Utf8Path,
+    manager: uf_pm::PackageManager,
+    target: Option<&str>,
+) -> Result<UnlinkRequest> {
+    match LinkTarget::of(target) {
+        LinkTarget::Register => {
+            let name = uf_pm::links::package_name(root).ok_or_else(|| {
+                anyhow!(
+                    "`uf unlink` with nothing named unregisters the package in {}, and no \
+                     package.json there names one\n\n  to take a link out of this project, name \
+                     it: `uf unlink <name>` or `uf unlink <path>`",
+                    project_label(root)
+                )
+            })?;
+            // npm and pnpm remove a global package by its name; Yarn 1 and bun
+            // unregister the directory they are run in.
+            let operands = if matches!(
+                manager,
+                uf_pm::PackageManager::Npm
+                    | uf_pm::PackageManager::Uf
+                    | uf_pm::PackageManager::Pnpm
+            ) {
+                vec![name.clone()]
+            } else {
+                Vec::new()
+            };
+            Ok(UnlinkRequest {
+                target: LinkTarget::Register,
+                name,
+                directory: None,
+                operands,
+            })
+        }
+        LinkTarget::Package => {
+            let name = target.unwrap_or_default().to_owned();
+            if !uf_pm::links::is_package_name(&name) {
+                bail!(
+                    "{name:?} is not a package name: `uf unlink` takes the name a package was \
+                     linked by, or the path to it"
+                );
+            }
+            Ok(UnlinkRequest {
+                target: LinkTarget::Package,
+                operands: vec![name.clone()],
+                name,
+                directory: None,
+            })
+        }
+        LinkTarget::Directory => {
+            let written = target.unwrap_or_default();
+            let directory = root.join(written);
+            let name = uf_pm::links::package_name(&directory).ok_or_else(|| {
+                anyhow!(
+                    "{written} holds no package.json that names a package: `uf unlink <dir>` \
+                     unlinks the package that directory is"
+                )
+            })?;
+            let directory = directory.canonicalize_utf8().ok();
+            // Yarn 2+ unlinks by the path it linked by. Every other manager's
+            // unlink takes the name, which the directory's manifest gives.
+            Ok(
+                if manager == uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry) {
+                    UnlinkRequest {
+                        target: LinkTarget::Directory,
+                        name,
+                        directory,
+                        operands: vec![written.to_owned()],
+                    }
+                } else {
+                    UnlinkRequest {
+                        target: LinkTarget::Package,
+                        operands: vec![name.clone()],
+                        name,
+                        directory,
+                    }
+                },
+            )
+        }
+    }
+}
+
+/// The registry entry to remove, or why there is none.
+fn unregister_plan(
+    manager: uf_pm::PackageManager,
+    name: &str,
+    registration: &Registration,
+) -> Result<Utf8PathBuf, String> {
+    match registration {
+        Registration::Linked(entry) => Ok(entry.clone()),
+        Registration::Elsewhere { entry, to } => Err(format!(
+            "{manager}'s {name} at {entry} links to {to}, not to this package"
+        )),
+        Registration::Installed(entry) => Err(format!(
+            "{entry} is {name} installed from a registry, not a link to this package"
+        )),
+        Registration::Absent => Err(format!("{name} is not registered with {manager}")),
+    }
+}
+
+/// The link `uf unlink` is about to take out: where it leads, as the report
+/// shows it, and the directory itself when there is one, so it can be told
+/// apart afterwards from a link the manifest declares.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Undone {
+    shown: String,
+    target: Option<Utf8PathBuf>,
+}
+
+/// The link to take out of the project, or why there is none.
+///
+/// `pnpm_override` is whether `pnpm-workspace.yaml` holds the override
+/// `pnpm link` writes for the package. pnpm installs a declared `link:`
+/// dependency as a link too, and pnpm 12 writes one of those for every link
+/// it makes, so the override is what makes a link pnpm's to undo.
+fn unlink_plan(
+    root: &Utf8Path,
+    manager: uf_pm::PackageManager,
+    request: &UnlinkRequest,
+    before: Option<&LinkState>,
+    resolution: Option<&str>,
+    declared: Option<&str>,
+    pnpm_override: bool,
+) -> Result<Undone, String> {
+    let name = &request.name;
+    // Yarn 2+ records every link it makes in `resolutions`.
+    if manager == uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry) {
+        return resolution
+            .map(|resolution| Undone {
+                shown: resolution.to_owned(),
+                target: resolution_target(root, resolution),
+            })
+            .ok_or_else(|| format!("package.json has no resolution linking {name}"));
+    }
+    match before {
+        Some(LinkState::Linked(to)) => {
+            if let Some(directory) = &request.directory
+                && directory != to
+            {
+                return Err(format!(
+                    "node_modules/{name} links to {}, not to {}",
+                    shown_path(root, to),
+                    shown_path(root, directory)
+                ));
+            }
+            // A path dependency the manifest declares is installed as a link
+            // too, and taking it out is `uf remove`'s job.
+            if let Some(range) = declared
+                && declares_link_to(root, range, to)
+                && !(manager == uf_pm::PackageManager::Pnpm && pnpm_override)
+            {
+                return Err(format!(
+                    "package.json declares {name} as {range}, and {manager} installs that as a \
+                     link; `uf remove {name}` takes it out"
+                ));
+            }
+            Ok(Undone {
+                shown: shown_path(root, to),
+                target: Some(to.clone()),
+            })
+        }
+        Some(LinkState::Broken(to)) => Ok(Undone {
+            shown: to.to_string(),
+            target: None,
+        }),
+        Some(LinkState::Installed) => Err(format!(
+            "node_modules/{name} is an installed package, not a link"
+        )),
+        Some(LinkState::Absent) | None => Err(format!("there is no node_modules/{name}")),
+    }
+}
+
+/// The directory a `portal:` or `link:` resolution points at, when it exists.
+fn resolution_target(root: &Utf8Path, resolution: &str) -> Option<Utf8PathBuf> {
+    let path = ["portal:", "link:"]
+        .iter()
+        .find_map(|protocol| resolution.strip_prefix(protocol))?;
+    root.join(path).canonicalize_utf8().ok()
+}
+
+/// What unlinking left in `node_modules`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Unlinked {
+    /// The release `package.json` declares, at this version.
+    Reinstalled(String),
+    /// A copy another dependency brings in, at this version.
+    Transitive(String),
+    /// Nothing, because nothing declares it.
+    Gone,
+    /// Still the same link, because `package.json` declares it as this path.
+    StillDeclared(String),
+}
+
+/// What the project holds for a package once the manager has run.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Afterwards {
+    /// `node_modules/<name>`.
+    state: Option<LinkState>,
+    /// A `resolutions` entry that still links it.
+    resolution: Option<String>,
+    /// The version `node_modules/<name>` holds.
+    version: Option<String>,
+}
+
+impl Afterwards {
+    fn read(root: &Utf8Path, name: &str) -> Self {
+        Self {
+            state: uf_pm::links::link_state(root, name),
+            resolution: uf_pm::links::linked_resolution(root, name),
+            version: installed_version(root, name),
+        }
+    }
+}
+
+/// What unlinking left, from the filesystem, or what is still linked.
+fn unlink_outcome(
+    root: &Utf8Path,
+    manager: uf_pm::PackageManager,
+    name: &str,
+    undone: &Undone,
+    afterwards: &Afterwards,
+    declared: Option<&str>,
+) -> Result<Unlinked, String> {
+    if let Some(resolution) = &afterwards.resolution {
+        return Err(format!(
+            "package.json still resolves {name} to {resolution}"
+        ));
+    }
+    let version = || {
+        afterwards
+            .version
+            .clone()
+            .unwrap_or_else(|| "of no version".to_owned())
+    };
+    match &afterwards.state {
+        Some(LinkState::Linked(to)) => match declared {
+            // The link that was taken out, back again because the manifest
+            // itself declares it: pnpm 12 writes that dependency when it links.
+            Some(range)
+                if declares_link_to(root, range, to) && undone.target.as_ref() == Some(to) =>
+            {
+                Ok(Unlinked::StillDeclared(range.to_owned()))
+            }
+            // A different link, and the one the manifest declares: the release
+            // put back, which npm and pnpm install as a link to its directory.
+            Some(range) if declares_link_to(root, range, to) => {
+                Ok(Unlinked::Reinstalled(version()))
+            }
+            _ => Err(format!(
+                "node_modules/{name} still links to {}{}",
+                shown_path(root, to),
+                if manager == uf_pm::PackageManager::Pnpm {
+                    "; pnpm keeps that link as an override uf could not take out safely: delete \
+                     it from `overrides` in pnpm-workspace.yaml, or `pnpm.overrides` in \
+                     package.json, and run `uf install`"
+                } else {
+                    ""
+                }
+            )),
+        },
+        Some(LinkState::Broken(to)) => Err(format!(
+            "node_modules/{name} is still a link, to {to}, which does not exist"
+        )),
+        Some(LinkState::Installed) => Ok(if declared.is_some() {
+            Unlinked::Reinstalled(version())
+        } else {
+            Unlinked::Transitive(version())
+        }),
+        Some(LinkState::Absent) | None => match declared {
+            Some(range) => Err(format!(
+                "package.json declares {name} as {range}, and node_modules has none: run `uf \
+                 install`"
+            )),
+            None => Ok(Unlinked::Gone),
+        },
+    }
+}
+
+/// Whether `range` is written as a path, and that path is where a link leads.
+fn declares_link_to(root: &Utf8Path, range: &str, to: &Utf8Path) -> bool {
+    let path = ["file:", "link:", "portal:"]
+        .iter()
+        .find_map(|protocol| range.strip_prefix(protocol))
+        .unwrap_or(range);
+    let written_as_path = path != range
+        || path == "."
+        || path.starts_with("./")
+        || path.starts_with("../")
+        || path.starts_with('/');
+    written_as_path
+        && root
+            .join(path)
+            .canonicalize_utf8()
+            .is_ok_and(|declared| declared == to)
+}
+
+/// The range any dependency field of `manifest` gives `name`.
+fn declared_range(manifest: &Utf8Path, name: &str) -> Option<String> {
+    dependency_entries(manifest)
+        .into_iter()
+        .find_map(|((_, declared), range)| (declared == name).then_some(range))
+}
+
+/// The version `node_modules/<name>` holds, links followed.
+fn installed_version(root: &Utf8Path, name: &str) -> Option<String> {
+    let source =
+        std::fs::read_to_string(root.join("node_modules").join(name).join("package.json")).ok()?;
+    serde_json::from_str::<Value>(&source)
+        .ok()?
+        .get("version")?
+        .as_str()
+        .map(ToOwned::to_owned)
+}
+
+/// The guard every command that runs a manager keeps: `uf.lock` rewritten for
+/// a native project, the manifests checked for everything else.
+fn guard_manifests(resolved: &ResolvedConfig, detection: &uf_pm::Detection) -> Result<()> {
+    if tracks_uf_lock(detection) {
+        install_workspace(&resolved.root, &resolved.config)?;
+    } else {
+        check_workspace_manifests(&resolved.root, &resolved.config)?;
+    }
+    Ok(())
+}
+
+/// [`crate::commands::runtimes::manager_path`], saying what it installs.
+fn manager_path_for(
+    resolved: &ResolvedConfig,
+    manager: uf_pm::PackageManager,
+    ui: &mut Ui,
+) -> Result<Vec<Utf8PathBuf>> {
+    crate::commands::runtimes::manager_path(resolved, manager, false, &mut |message| {
+        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+    })
+}
+
+/// Everything `uf unlink` says once it has checked, and run what it ran.
+struct UnlinkReport {
+    manager: String,
+    chosen_by: String,
+    /// The commands the manager ran, in order.
+    commands: Vec<String>,
+    /// What uf changed itself: bun's link, pnpm's override.
+    rows: Vec<(&'static str, String)>,
+    /// `unlinked` or `unregistered`, the package, and where its link was;
+    /// `None` when there was nothing to unlink.
+    removed: Option<(&'static str, String, String)>,
+    status: Status,
+    headline: String,
+}
+
+fn render_unlink(renderer: &Renderer, out: &mut String, report: &UnlinkReport) {
+    // The manager's own output is above when it ran; the rows start below it.
+    if !report.commands.is_empty() {
+        renderer.blank(out);
+    }
+    let mut rows = vec![
+        KeyValue::new("manager", &report.manager),
+        KeyValue::toned("chosen by", &report.chosen_by, Tone::Muted),
+    ];
+    rows.extend(
+        report
+            .commands
+            .iter()
+            .map(|command| KeyValue::toned("command", command, Tone::Path)),
+    );
+    rows.extend(
+        report
+            .rows
+            .iter()
+            .map(|(key, value)| KeyValue::toned(key, value, Tone::Path)),
+    );
+    renderer.key_values(out, 2, &rows);
+    if let Some((heading, name, was)) = &report.removed {
+        renderer.blank(out);
+        renderer.heading(out, 2, heading);
+        renderer.blank(out);
+        renderer.key_values(out, 4, &[KeyValue::toned(name, was, Tone::Path)]);
+    }
+    renderer.blank(out);
+    renderer.status(out, report.status, &report.headline);
+}
+
+/// Say there is nothing to unlink, and why, and succeed.
+fn nothing_to_unlink(ui: &mut Ui, mut report: UnlinkReport, why: &str) -> Result<()> {
+    report.status = Status::Success;
+    report.headline = format!("nothing to unlink: {why}");
+    ui.render(|renderer, out| render_unlink(renderer, out, &report));
+    Ok(())
 }
 
 /// `uf info PACKAGE [FIELD]`: the registry's answer, through the project's own
@@ -839,8 +1789,6 @@ fn link_report(
     state: Option<uf_pm::links::LinkState>,
     resolution: Option<String>,
 ) -> Result<LinkReport, String> {
-    use uf_pm::links::LinkState;
-
     if let Some(LinkState::Linked(to)) = &state {
         return Ok(LinkReport {
             name: name.to_owned(),

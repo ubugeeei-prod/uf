@@ -596,9 +596,43 @@ fn pnpm_link_is_told_about_scripts_in_the_spelling_it_accepts() {
             "/tmp/p"
         ]
     );
+    // And unlinking, which reinstalls: `pnpm unlink` and `pnpm remove --global`.
+    assert_eq!(
+        args(
+            PackageManager::Pnpm,
+            Operation::Unlink {
+                target: crate::LinkTarget::Package
+            },
+            &["left-pad"],
+            false
+        ),
+        ["pnpm", "unlink", "--config.ignore-scripts=true", "left-pad"]
+    );
+    assert_eq!(
+        args(
+            PackageManager::Pnpm,
+            Operation::Unlink {
+                target: crate::LinkTarget::Register
+            },
+            &["left-pad"],
+            false
+        ),
+        [
+            "pnpm",
+            "remove",
+            "--global",
+            "--config.ignore-scripts=true",
+            "left-pad"
+        ]
+    );
     // Everywhere else pnpm keeps the flag it documents.
     assert_eq!(
-        args(PackageManager::Pnpm, Operation::Dedupe, &[], false),
+        args(
+            PackageManager::Pnpm,
+            Operation::Dedupe { check: false },
+            &[],
+            false
+        ),
         ["pnpm", "dedupe", "--ignore-scripts"]
     );
 }
@@ -660,10 +694,14 @@ fn every_missing_everyday_verb_is_refused_with_what_to_run_instead() {
     for (manager, operation, advice) in [
         (
             PackageManager::Yarn(YarnEdition::Classic),
-            Operation::Dedupe,
+            Operation::Dedupe { check: false },
             "uf install",
         ),
-        (PackageManager::Bun, Operation::Dedupe, "uf update"),
+        (
+            PackageManager::Bun,
+            Operation::Dedupe { check: false },
+            "uf update",
+        ),
         (
             PackageManager::Yarn(YarnEdition::Classic),
             Operation::Link {
@@ -696,6 +734,27 @@ fn every_missing_everyday_verb_is_refused_with_what_to_run_instead() {
             PackageManager::Yarn(YarnEdition::Berry),
             Operation::InstallFrozenProd,
             "uf install --prod",
+        ),
+        (
+            PackageManager::Yarn(YarnEdition::Berry),
+            Operation::Unlink {
+                target: crate::LinkTarget::Register,
+            },
+            "uf unlink <name or path>",
+        ),
+        (
+            PackageManager::Bun,
+            Operation::Unlink {
+                target: crate::LinkTarget::Package,
+            },
+            "removes the link from node_modules itself",
+        ),
+        (
+            PackageManager::Npm,
+            Operation::Unlink {
+                target: crate::LinkTarget::Directory,
+            },
+            "gives it the name that directory's package.json gives",
         ),
     ] {
         let Err(ManagerRunError::Unsupported {

@@ -104,7 +104,8 @@ const COVERAGE: &[(&str, &str)] = &[
     ("update", "dependencies.rs: runs the package manager"),
     (
         "dedupe",
-        "dependencies.rs and managers.rs: runs each package manager's, or says it has none",
+        "dependencies.rs and managers.rs: runs each package manager's, or says it has none; \
+         --check asks the same question and changes nothing",
     ),
     (
         "pm",
@@ -117,6 +118,10 @@ const COVERAGE: &[(&str, &str)] = &[
     (
         "link",
         "dependencies.rs and managers.rs: links on each package manager, or says it cannot",
+    ),
+    (
+        "unlink",
+        "managers.rs: unlinks on each package manager, or says there is nothing to unlink",
     ),
     (
         "catalog",

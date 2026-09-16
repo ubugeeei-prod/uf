@@ -867,7 +867,15 @@ pub(crate) enum Commands {
     /// tree keeps one: `npm dedupe`, `pnpm dedupe`, `yarn dedupe`. Yarn 1
     /// already does it on every install and bun has no command for it, and uf
     /// says which rather than running something else.
-    Dedupe,
+    Dedupe {
+        /// Report what a dedupe would collapse and change nothing, exiting
+        /// non-zero when there is anything.
+        ///
+        /// For CI: the report names each package and the versions that would
+        /// become one.
+        #[arg(long)]
+        check: bool,
+    },
     /// The package manager underneath: what it is allowed to do, and what it
     /// has been told.
     ///
@@ -909,6 +917,20 @@ pub(crate) enum Commands {
     /// the form a manager does not have, and says which to use instead.
     Link {
         /// A directory to link, or the name of a package `uf link` registered.
+        #[arg(value_name = "NAME|DIR")]
+        target: Option<String>,
+    },
+    /// Undo `uf link`: take a link out of this project, or stop this package
+    /// being linkable.
+    ///
+    /// `uf unlink @acme/ui` or `uf unlink ../ui` removes the link from this
+    /// project, and reinstalls the release package.json declares when it
+    /// declares one. `uf unlink` in a package removes what `uf link` registered
+    /// for it. uf checks `node_modules` and the manager's registry before and
+    /// after, says what it removed, and when there is nothing to unlink says so
+    /// and exits 0.
+    Unlink {
+        /// A package this project links, or the directory it links to.
         #[arg(value_name = "NAME|DIR")]
         target: Option<String>,
     },

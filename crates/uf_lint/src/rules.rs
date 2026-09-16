@@ -99,9 +99,16 @@ pub struct RuleDescriptor {
 /// suppression written against the old name keeps meaning something. The
 /// compiler's answers are not the old checks' answers; the formatting and
 /// linting guide says where they differ.
+///
+/// `react/no-derived-state-effect` was uf's own check for an effect that stores
+/// a value derived from props or state, the question the compiler asks as
+/// `EffectDerivationsOfState`. The old id's default was `error`; the new rule's
+/// is `off`, as in the plugin's preset, and the guide says what reports those
+/// effects by default.
 static DEPRECATED_ALIASES: phf::Map<&'static str, &'static str> = phf::phf_map! {
     "flow/type-aware/no-explicit-any" => "flow/unclear-type",
     "react/hooks-rules" => "react-compiler/hooks",
+    "react/no-derived-state-effect" => "react-compiler/no-deriving-state-in-effects",
     "react/no-render-side-effects" => "react-compiler/purity",
 };
 

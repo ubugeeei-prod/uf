@@ -283,8 +283,13 @@ name only, Yarn 2+ and pnpm 12 by path only, and the other form is refused with
 the one to use. What `uf link` reports is read from `node_modules`, because npm,
 Yarn 1 and Bun link without writing the manifest or the lockfile: the report names
 the package and where its link leads, and a manager that exits 0 without linking
-anything is a failure, not `already up to date`. `uf dedupe` collapses the
-versions your ranges allow to be one.
+anything is a failure, not `already up to date`. `uf unlink` undoes either
+direction. It takes a link out of the project and installs what the manifest
+declares in its place, or removes what `uf link` registered. When there is
+nothing to unlink, it says what it found and exits 0. `uf dedupe` collapses the
+versions your ranges allow to be one, and `uf dedupe --check` names what it
+would collapse, changes nothing, and exits non-zero when there is anything —
+which is the form for CI.
 
 ## Asking about the tree
 
@@ -344,8 +349,10 @@ error: bun has no `search`: npm and pnpm can search the registry; `uf exec --yes
 | `uf remove` | `npm uninstall` | `pnpm remove` | `yarn remove` | `yarn remove` | `bun remove` |
 | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
 | `uf dedupe` | `npm dedupe` | `pnpm dedupe` | refused | `yarn dedupe` | refused |
+| `uf dedupe --check` | `npm dedupe --dry-run --json` | `pnpm dedupe --check` | refused | `yarn dedupe --check` | refused |
 | `uf link DIR` | `npm link` | `pnpm link` | refused | `yarn link` | refused |
 | `uf link NAME` | `npm link` | `pnpm link` on pnpm 10; pnpm 12 refuses it | `yarn link` | refused | `bun link` |
+| `uf unlink NAME` | `npm uninstall --no-save` | `pnpm unlink` | `yarn unlink` | `yarn unlink` | uf removes the link |
 | `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
 | `uf ls` | `npm ls` | `pnpm list` | `yarn list` | `yarn info --all` | `bun pm ls` |
 | `uf audit` | `npm audit` | `pnpm audit` | `yarn audit` | `yarn npm audit` | `bun audit` |

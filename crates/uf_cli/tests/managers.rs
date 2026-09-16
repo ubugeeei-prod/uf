@@ -247,8 +247,17 @@ impl Fixture {
     /// link as a relative path worked out from `XDG_DATA_HOME` as it was
     /// given. A link written from the `/var` spelling resolves one directory
     /// too high, and `yarn link NAME` then finds nothing registered.
+    ///
+    /// Under a UUID, because npm masks one wherever it prints it: with the
+    /// fixture's `npm_config_prefix` under this directory, `npm root --global`
+    /// answers `…/***/home/npm-global/lib/node_modules`, and uf has to put the
+    /// segment back to find what `uf link` registered. A temporary directory
+    /// alone never holds a UUID, so nothing here met npm's real answer before
+    /// (ubugeeei-prod/uf#976).
     fn root(&self) -> PathBuf {
-        fs::canonicalize(self.dir.path()).unwrap()
+        fs::canonicalize(self.dir.path())
+            .unwrap()
+            .join("6d0b7f14-9c2a-4e35-8b7d-1f4a6c8e23b9")
     }
 
     fn app(&self) -> PathBuf {
@@ -488,6 +497,54 @@ fn dedupe_is_the_managers_own_or_a_refusal_that_names_it() {
     });
 }
 
+/// `uf dedupe --check` answers without touching the lockfile, on every manager
+/// that has a dedupe, and is refused by name on the two that have none.
+///
+/// The tree here was resolved by the manager a moment ago, so the answer is
+/// "nothing to collapse" — which is the answer CI gets on a healthy project,
+/// and the one that has to be an exit code of 0.
+#[test]
+fn dedupe_check_answers_without_changing_the_lockfile() {
+    each_row(|fixture| {
+        let app = fixture.app();
+        succeeded(
+            &fixture.uf(&app, &["add", "./vendor/tiny"]),
+            "add ./vendor/tiny",
+        )?;
+        let lockfile = app.join(fixture.manager.lockfile());
+        let before = fs::read_to_string(&lockfile).ok();
+
+        let output = fixture.uf(&app, &["dedupe", "--check"]);
+        match fixture.manager {
+            Manager::Yarn1 | Manager::Bun => {
+                let stderr = refused(&output, "dedupe --check")?;
+                ensure(
+                    stderr.contains(&format!("{} has no `dedupe", fixture.manager.label())),
+                    || format!("the refusal does not name the manager:\n{stderr}"),
+                )?;
+            }
+            _ => {
+                let stdout = succeeded(&output, "dedupe --check")?;
+                ensure(stdout.contains("nothing to collapse"), || {
+                    format!(
+                        "a tree the manager just resolved was not reported as deduped:\n{stdout}"
+                    )
+                })?;
+                ensure(
+                    report_row(&stdout, "command").contains("--check")
+                        || report_row(&stdout, "command").contains("--dry-run"),
+                    || format!("uf did not ask the manager to check:\n{stdout}"),
+                )?;
+            }
+        }
+
+        // Whatever it answered, it is a check: the lockfile is untouched.
+        ensure(fs::read_to_string(&lockfile).ok() == before, || {
+            format!("`uf dedupe --check` rewrote {}", lockfile.display())
+        })
+    });
+}
+
 /// `uf link ../lib` puts a link to the checkout where the declared release
 /// was, on the managers that link by path. Yarn 1 and bun link by name only,
 /// and are refused before anything runs.
@@ -598,5 +655,98 @@ fn link_by_name_links_the_package_uf_link_registered() {
                 printed(&by_name)
             )
         })
+    });
+}
+
+/// `uf unlink NAME` takes the link out and puts back the release the manifest
+/// declares, on every manager: including pnpm 10, whose own `pnpm unlink`
+/// answers "Nothing to unlink" about a link its `pnpm link` made, and bun,
+/// which has no `unlink <name>`. A second `uf unlink` finds nothing to do and
+/// says so.
+#[test]
+fn unlink_takes_the_link_out_and_puts_back_what_the_manifest_declares() {
+    each_row(|fixture| {
+        let app = fixture.app();
+        let lib = fs::canonicalize(fixture.lib()).unwrap();
+        succeeded(
+            &fixture.uf(&app, &["add", "./vendor/managers-lib"]),
+            "add ./vendor/managers-lib",
+        )?;
+        // Linked the way each manager links: by name where it keeps a
+        // registry and links by nothing else, by path everywhere else.
+        if matches!(fixture.manager, Manager::Yarn1 | Manager::Bun) {
+            succeeded(&fixture.uf(&fixture.lib(), &["link"]), "link")?;
+            succeeded(
+                &fixture.uf(&app, &["link", "managers-lib"]),
+                "link managers-lib",
+            )?;
+        } else {
+            succeeded(&fixture.uf(&app, &["link", "../lib"]), "link ../lib")?;
+        }
+        ensure(linked(&app, "managers-lib") == Some(lib.clone()), || {
+            "the link there was to take out was never made".to_owned()
+        })?;
+
+        let unlinked = succeeded(
+            &fixture.uf(&app, &["unlink", "managers-lib"]),
+            "unlink managers-lib",
+        )?;
+        ensure(linked(&app, "managers-lib") != Some(lib.clone()), || {
+            format!("node_modules/managers-lib still leads to the checkout:\n{unlinked}")
+        })?;
+        ensure(
+            installed(&app, "managers-lib").as_deref() == Some("1.0.0"),
+            || format!("node_modules/managers-lib is not the declared 1.0.0:\n{unlinked}"),
+        )?;
+        ensure(
+            unlinked.contains("unlinked managers-lib in")
+                && unlinked.contains("managers-lib 1.0.0 again"),
+            || format!("the report does not say what it did:\n{unlinked}"),
+        )?;
+
+        let again = succeeded(
+            &fixture.uf(&app, &["unlink", "managers-lib"]),
+            "unlink managers-lib, a second time",
+        )?;
+        ensure(again.contains("nothing to unlink"), || {
+            format!("a second unlink did not say there was nothing to do:\n{again}")
+        })
+    });
+}
+
+/// `uf unlink` in a package removes what `uf link` registered for it, on every
+/// manager that keeps a registry, and a second one finds nothing registered.
+/// pnpm 12 keeps no registry, so there is never anything to remove; Yarn 4
+/// keeps none either, and uf refuses before running anything.
+#[test]
+fn unlink_with_nothing_named_unregisters_what_uf_link_registered() {
+    each_row(|fixture| {
+        let lib = fixture.lib();
+        match fixture.manager {
+            Manager::Yarn4 => {
+                let stderr = refused(&fixture.uf(&lib, &["unlink"]), "unlink")?;
+                ensure(stderr.contains("keeps no registry"), || {
+                    format!("the refusal does not say why:\n{stderr}")
+                })
+            }
+            Manager::Pnpm12 => {
+                let stdout = succeeded(&fixture.uf(&lib, &["unlink"]), "unlink")?;
+                ensure(stdout.contains("nothing to unlink"), || {
+                    format!("pnpm 12 registered nothing, and uf did not say so:\n{stdout}")
+                })
+            }
+            _ => {
+                succeeded(&fixture.uf(&lib, &["link"]), "link")?;
+                let stdout = succeeded(&fixture.uf(&lib, &["unlink"]), "unlink")?;
+                ensure(stdout.contains("unregistered managers-lib in"), || {
+                    format!("the report does not say what it removed:\n{stdout}")
+                })?;
+                let again = succeeded(&fixture.uf(&lib, &["unlink"]), "unlink, a second time")?;
+                ensure(
+                    again.contains("nothing to unlink") && again.contains("not registered"),
+                    || format!("a second unlink did not find the registration gone:\n{again}"),
+                )
+            }
+        }
     });
 }

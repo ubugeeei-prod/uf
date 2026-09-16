@@ -147,17 +147,16 @@
 //!   enough to matter, and swapping `<div role="navigation">` for `<nav>`
 //!   moves every style and handler attached to that tag.
 //!
-//! # The two rules whose fix is waiting on a shape
+//! # The rule whose fix is waiting on a shape
 //!
-//! `react/no-derived-state-effect` and `react/no-redundant-memo` are the first
-//! rules here whose rewrite *is* mechanical and still cannot be spelled as a
-//! [`Fix`]. Both edits span lines and statements — deleting an effect and a
-//! `useState` and leaving one `const` behind, or unwrapping a call whose
-//! argument is a multi-line arrow — and both need text taken from the file
-//! rather than a `&'static str`. [`Fix`] is one line and one constant by
-//! design, and widening it is a change to `--fix`, `--fix-unsafe`, `uf
-//! prepare` and the editor's code actions all at once. It is the change the
-//! comment on [`Fix`] anticipates; it is not this catalogue growing a row.
+//! `react/no-redundant-memo` is the first rule here whose rewrite *is*
+//! mechanical and still cannot be spelled as a [`Fix`]. The edit spans lines
+//! and statements — unwrapping a call whose argument is a multi-line arrow —
+//! and needs text taken from the file rather than a `&'static str`. [`Fix`] is
+//! one line and one constant by design, and widening it is a change to
+//! `--fix`, `--fix-unsafe`, `uf prepare` and the editor's code actions all at
+//! once. It is the change the comment on [`Fix`] anticipates; it is not this
+//! catalogue growing a row.
 //!
 //! # Two fixes that touch the same bytes
 //!

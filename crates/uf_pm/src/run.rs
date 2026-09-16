@@ -217,7 +217,7 @@ pub fn run_operation(
 /// manager uf installed is the one found — and npm, pnpm and Yarn are Node
 /// programs, so the runtime directory beside it in `prefix` is the Node they
 /// start on.
-fn prefixed_path(prefix: &[camino::Utf8PathBuf]) -> Option<std::ffi::OsString> {
+pub(crate) fn prefixed_path(prefix: &[camino::Utf8PathBuf]) -> Option<std::ffi::OsString> {
     if prefix.is_empty() {
         return None;
     }
@@ -284,6 +284,77 @@ pub fn run_operation_with_detection(
     })
 }
 
+/// What a manager printed, and what it exited with.
+///
+/// For the commands whose answer is what the manager *said* rather than what it
+/// did. See [`run_captured_with_detection`].
+#[derive(Debug, Clone)]
+pub struct CapturedRun {
+    /// The manager that ran.
+    pub manager: PackageManager,
+    /// The command it ran, for display. Never shell syntax.
+    pub invocation: Invocation,
+    /// Whether it exited 0.
+    pub succeeded: bool,
+    /// Its standard output, as far as it is text.
+    pub stdout: String,
+    /// Its standard error, as far as it is text.
+    pub stderr: String,
+}
+
+/// Run one operation with its output captured rather than shown, and give the
+/// caller what it printed whether it succeeded or failed.
+///
+/// [`run_operation_with_detection`] lets the manager write straight to the
+/// screen and turns a non-zero exit into [`ManagerRunError::Failed`], which is
+/// what every command that *does* something wants. A check is the other shape:
+/// `uf dedupe --check` asks pnpm and Yarn 2+ a question they answer with an
+/// exit code, and npm one it answers in JSON on stdout while exiting 0 either
+/// way. Neither answer is a failure, and neither is uf's report — so the
+/// manager's own output is held back and the caller prints what it means.
+///
+/// # Errors
+///
+/// [`ManagerRunError::Operand`] and [`ManagerRunError::Unsupported`] as
+/// [`run_operation_with_detection`] gives them, and [`ManagerRunError::Spawn`]
+/// when the manager is not installed. Never [`ManagerRunError::Failed`]: a
+/// non-zero exit is returned as `succeeded: false`.
+pub fn run_captured_with_detection(
+    root: &Utf8Path,
+    detection: &Detection,
+    operation: Operation<'_>,
+    operands: &[String],
+    allow_scripts: bool,
+    path: &[camino::Utf8PathBuf],
+) -> Result<CapturedRun, ManagerRunError> {
+    let (manager, _) = installable(detection);
+    let invocation = invocation_for(root, manager, operation, operands, allow_scripts)?;
+
+    let mut command = Command::new(invocation.program);
+    if let Some(path) = prefixed_path(path) {
+        command.env("PATH", path);
+    }
+    command.envs(invocation.env.iter().copied());
+    let output = command
+        .args(invocation.args.iter().map(AsRef::as_ref))
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|source| ManagerRunError::Spawn {
+            invocation: invocation.to_string(),
+            source,
+            hint: missing_hint(manager),
+        })?;
+
+    Ok(CapturedRun {
+        manager,
+        succeeded: output.status.success(),
+        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        invocation,
+    })
+}
+
 /// What to do about an operation the project's manager does not have.
 ///
 /// One sentence per operation, naming the managers that do have it — the
@@ -300,10 +371,18 @@ fn unsupported_hint(manager: PackageManager, operation: Operation<'_>) -> String
             "pnpm and yarn 2+ can patch a dependency; on the others the ecosystem's answer is \
              `patch-package`, which uf does not install for you"
         }
-        Operation::Dedupe if classic => {
+        Operation::Dedupe { check: true } if classic => {
+            "yarn 1 dedupes the tree on every install, so there is never anything for a check to \
+             find: `uf install --frozen-lockfile` fails when the lockfile is out of date, which \
+             is the check CI wants here"
+        }
+        Operation::Dedupe { .. } if classic => {
             "yarn 1 dedupes the tree on every install, so `uf install` is the dedupe"
         }
-        Operation::Dedupe => {
+        Operation::Dedupe { check: true } => {
+            "npm, pnpm and yarn 2+ can check; bun has no dedupe to check against"
+        }
+        Operation::Dedupe { .. } => {
             "npm, pnpm and yarn 2+ have one; `uf update` re-resolves every range to the newest \
              version it allows, which is what collapses the duplicates bun leaves"
         }
@@ -322,6 +401,22 @@ fn unsupported_hint(manager: PackageManager, operation: Operation<'_>) -> String
         Operation::Link { .. } => {
             "yarn 2+ links by path and keeps no registry of linkable packages: run \
              `uf link <path to the package>` in the project that uses it"
+        }
+        Operation::Unlink {
+            target: LinkTarget::Register,
+        } => {
+            "yarn 2+ keeps no registry of linkable packages, so nothing is registered to remove: \
+             run `uf unlink <name or path>` in the project that links the package"
+        }
+        Operation::Unlink {
+            target: LinkTarget::Directory,
+        } => {
+            "it unlinks by name, and `uf unlink <dir>` gives it the name that directory's \
+             package.json gives"
+        }
+        Operation::Unlink { .. } => {
+            "bun has no `unlink <name>` (it answers \"not implemented yet\"), so `uf unlink` \
+             removes the link from node_modules itself"
         }
         Operation::InstallFrozenProd => {
             "yarn 2+ installs production dependencies with `yarn workspaces focus`, which never \
@@ -414,7 +509,10 @@ fn refuse_scripts(invocation: &mut Invocation, manager: PackageManager, operatio
         // `pnpm patch-commit` does not declare the flag either.
         (
             PackageManager::Pnpm,
-            Operation::Link { .. } | Operation::Remove | Operation::PatchCommit,
+            Operation::Link { .. }
+            | Operation::Unlink { .. }
+            | Operation::Remove
+            | Operation::PatchCommit,
         ) => invocation
             .args
             .push(std::borrow::Cow::Borrowed("--config.ignore-scripts=true")),

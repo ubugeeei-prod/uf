@@ -78,6 +78,10 @@ component RouteErrorView(module: ?ErrorModule, error: RouteError, reset: () => v
     return <DefaultRouteError error={error} reset={reset} />;
   }
   const Boundary = errorComponent(module);
+  // The error module's own export, looked up by route, for the same reason as
+  // the page component in `compose.js`: the same component on every render of
+  // that route, through a lookup the compiler cannot see into.
+  // uf-lint-disable-next-line react-compiler/static-components
   return <Boundary error={error} reset={reset} />;
 }
 
