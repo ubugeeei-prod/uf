@@ -797,21 +797,20 @@ export function renderWithReadableStream(
     onError: options.onError,
     signal: controller.signal,
     nonce: options.nonce ?? undefined,
-  }).then(
-    (stream: ByteSource) =>
-      bodyOf(
-        outgoing(
-          withPayload(
-            assembled(decoded(stream), options.shell, options.transformHead),
-            options.payload,
-            options.nonce,
-          ),
-          options.onStream,
+  }).then((stream: ByteSource) =>
+    bodyOf(
+      outgoing(
+        withPayload(
+          assembled(decoded(stream), options.shell, options.transformHead),
+          options.payload,
+          options.nonce,
         ),
-        () => {
-          controller.abort();
-        },
+        options.onStream,
       ),
+      () => {
+        controller.abort();
+      },
+    ),
   );
 }
 
