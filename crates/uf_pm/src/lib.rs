@@ -15,6 +15,7 @@ pub mod command;
 pub mod confusion;
 pub mod delta;
 pub mod detect;
+pub mod links;
 pub mod manifests;
 pub mod progress;
 pub mod provenance;

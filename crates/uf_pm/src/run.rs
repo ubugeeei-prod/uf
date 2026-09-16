@@ -376,6 +376,19 @@ pub fn failure_hint(manager: PackageManager, operation: Operation<'_>) -> Option
              `yarn plugin import workspace-tools`, then `uf install --prod` again — Yarn 4 \
              includes it",
         ),
+        // pnpm 10 registers a package and links one by name; pnpm 12 answers
+        // both with `ERR_PNPM_LINK_BAD_PARAMS`. Which pnpm a project runs is
+        // not something the table can see either, so uf runs the command and,
+        // when it fails, says what the refusal means and what to run instead.
+        (
+            PackageManager::Pnpm,
+            Operation::Link {
+                target: LinkTarget::Register | LinkTarget::Package,
+            },
+        ) => Some(
+            "pnpm 12 links by path only and keeps no registry of linkable packages: run \
+             `uf link <path to the package>` in the project that uses it",
+        ),
         _ => None,
     }
 }

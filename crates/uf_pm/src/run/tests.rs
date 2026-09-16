@@ -725,13 +725,22 @@ fn only_yarn_2s_update_cannot_be_scoped_to_members() {
     }
 }
 
-/// A Yarn 2 or 3 production install that fails is told about the plugin
-/// `yarn workspaces focus` lives in, and nothing else gets a guess.
+/// A failure gets a guess only where uf knows its usual cause: a Yarn 2 or 3
+/// production install is told about the plugin `yarn workspaces focus` lives
+/// in, and a pnpm link by name, or with nothing named, that pnpm 12 links by
+/// path only. Nothing else gets one.
 #[test]
-fn a_failed_yarn_2_production_install_names_the_plugin_it_needs() {
+fn a_failure_is_explained_only_where_uf_knows_its_usual_cause() {
     for manager in PackageManager::ALL {
         for operation in Operation::ALL {
             let hint = failure_hint(manager, operation);
+            let pnpm_link_without_a_path = manager == PackageManager::Pnpm
+                && matches!(
+                    operation,
+                    Operation::Link {
+                        target: crate::LinkTarget::Register | crate::LinkTarget::Package
+                    }
+                );
             if manager == PackageManager::Yarn(YarnEdition::Berry)
                 && operation == Operation::InstallProd
             {
@@ -740,6 +749,9 @@ fn a_failed_yarn_2_production_install_names_the_plugin_it_needs() {
                     hint.contains("yarn plugin import workspace-tools"),
                     "{hint}"
                 );
+            } else if pnpm_link_without_a_path {
+                let hint = hint.expect("a pnpm link without a path names the form pnpm 12 has");
+                assert!(hint.contains("uf link <path to the package>"), "{hint}");
             } else {
                 assert_eq!(hint, None, "{manager} {operation:?}");
             }

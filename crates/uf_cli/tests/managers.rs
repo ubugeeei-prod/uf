@@ -518,7 +518,13 @@ fn link_a_directory_replaces_the_declared_release_with_a_link() {
                         "node_modules/managers-lib does not lead to {}:\n{stdout}",
                         lib.display()
                     )
-                })
+                })?;
+                // And the report says what happened, rather than that nothing did.
+                ensure(
+                    stdout.contains("linked managers-lib in")
+                        && !stdout.contains("already up to date"),
+                    || format!("the report does not say managers-lib was linked:\n{stdout}"),
+                )
             }
         }
     });
@@ -551,17 +557,30 @@ fn link_by_name_links_the_package_uf_link_registered() {
                 })?;
             }
             Manager::Pnpm12 => {
-                refused(&registered, "link")?;
-                refused(&by_name, "link managers-lib")?;
+                // pnpm refuses both itself, and uf adds what to run instead.
+                for (output, command) in [(&registered, "link"), (&by_name, "link managers-lib")] {
+                    let stderr = refused(output, command)?;
+                    ensure(stderr.contains("uf link <path to the package>"), || {
+                        format!("the refusal does not say what to run instead:\n{stderr}")
+                    })?;
+                    ensure(!stderr.contains(&format!("`uf {command}` again")), || {
+                        format!("the refusal also says to run the refused form again:\n{stderr}")
+                    })?;
+                }
             }
             _ => {
                 succeeded(&registered, "link")?;
-                succeeded(&by_name, "link managers-lib").map_err(|why| {
+                let stdout = succeeded(&by_name, "link managers-lib").map_err(|why| {
                     format!(
                         "{why}\n…after `uf link` in the package printed:\n{}",
                         printed(&registered)
                     )
                 })?;
+                ensure(
+                    stdout.contains("linked managers-lib in")
+                        && !stdout.contains("already up to date"),
+                    || format!("the report does not say managers-lib was linked:\n{stdout}"),
+                )?;
             }
         }
         // Where it was refused, whatever the app declared is still installed —

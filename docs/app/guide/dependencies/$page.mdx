@@ -279,8 +279,12 @@ Yarn 2+ cannot update one member — `yarn up` moves a package everywhere — so
 
 `uf link ../ui` links a package you are developing into the project, and `uf link`
 inside it makes it linkable by name from other projects. Yarn 1 and Bun link by
-name only, Yarn 2+ by path only, and uf refuses the other form with the one to
-use. `uf dedupe` collapses the versions your ranges allow to be one.
+name only, Yarn 2+ and pnpm 12 by path only, and the other form is refused with
+the one to use. What `uf link` reports is read from `node_modules`, because npm,
+Yarn 1 and Bun link without writing the manifest or the lockfile: the report names
+the package and where its link leads, and a manager that exits 0 without linking
+anything is a failure, not `already up to date`. `uf dedupe` collapses the
+versions your ranges allow to be one.
 
 ## Asking about the tree
 
@@ -341,7 +345,7 @@ error: bun has no `search`: npm and pnpm can search the registry; `uf exec --yes
 | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
 | `uf dedupe` | `npm dedupe` | `pnpm dedupe` | refused | `yarn dedupe` | refused |
 | `uf link DIR` | `npm link` | `pnpm link` | refused | `yarn link` | refused |
-| `uf link NAME` | `npm link` | `pnpm link` | `yarn link` | refused | `bun link` |
+| `uf link NAME` | `npm link` | `pnpm link` on pnpm 10; pnpm 12 refuses it | `yarn link` | refused | `bun link` |
 | `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
 | `uf ls` | `npm ls` | `pnpm list` | `yarn list` | `yarn info --all` | `bun pm ls` |
 | `uf audit` | `npm audit` | `pnpm audit` | `yarn audit` | `yarn npm audit` | `bun audit` |

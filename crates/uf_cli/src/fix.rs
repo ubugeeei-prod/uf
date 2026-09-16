@@ -125,6 +125,15 @@
 //! - `a11y/label-has-associated-control`, `a11y/no-static-element-interactions`,
 //!   `markup/no-invalid-nesting` — each asks for markup to be rearranged, not
 //!   for a word to be swapped.
+//! - `a11y/anchor-has-content`, `a11y/heading-has-content`,
+//!   `a11y/iframe-has-title`, `a11y/html-has-lang`, `a11y/media-has-caption` —
+//!   each is missing something only a person has: a link's words, a frame's
+//!   title, the language the page is written in, a captions file. A
+//!   placeholder would silence the rule and keep the defect.
+//! - `a11y/anchor-ambiguous-text`, `a11y/img-redundant-alt` — rewording, and
+//!   the right words depend on what the page is about.
+//! - `a11y/anchor-is-valid` — `href="#"` becomes a destination or the element
+//!   becomes a `<button>`, and which one is the author's call.
 //!
 //! # The rule whose fix is waiting on a shape
 //!
