@@ -17,7 +17,7 @@
 //! the same data — plus the two ARIA 1.3 index-text attributes
 //! (`aria-colindextext`, `aria-rowindextext`) that `a11y/aria-props` already
 //! accepts, which `aria-query` has not caught up with. The generator is
-//! `scratchpad/lint-a11y-aria/gen-table.cjs` in the PR that added it.
+//! `tools/aria/gen-table.cjs`, and its header says how to run it.
 //!
 //! **Not axe-core.** axe-core 4.13 is the other table one could import, and it
 //! is deliberately more permissive than the specification in places: it allows
@@ -669,6 +669,32 @@ mod tests {
         let generic = role("generic").expect("generic is a role");
         assert!(generic.prohibits("aria-label"));
         assert!(generic.prohibits("aria-labelledby"));
+    }
+
+    /// WAI-ARIA 1.2 gives every role the global states and properties, and
+    /// `aria-query` does not spell them out on all of them: `none` carries no
+    /// properties and no superclass, and `doc-pullquote` inherits only from
+    /// `none`. A table built from each role's own properties left those two
+    /// supporting nothing, so `a11y/role-supports-aria-props` reported
+    /// `aria-hidden` on `<div role="none">` — working markup, which is the one
+    /// thing these rules must never do.
+    #[test]
+    fn every_role_takes_the_global_attributes() {
+        for role in table::ROLES {
+            if role.flags.has(Flags::ABSTRACT) {
+                continue;
+            }
+            assert!(
+                role.supports("aria-hidden"),
+                "`{}` takes no `aria-hidden`",
+                role.name
+            );
+            assert!(
+                role.supports("aria-busy"),
+                "`{}` takes no `aria-busy`",
+                role.name
+            );
+        }
     }
 
     #[test]

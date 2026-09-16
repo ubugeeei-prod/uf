@@ -79,9 +79,37 @@ const roleNames = q.roles.keys().slice().sort();
 const isA = (name, ancestor) =>
   (q.roles.get(name).superClass || []).some((chain) => chain.includes(ancestor));
 
+// WAI-ARIA 1.2, "Global States and Properties": every role takes these unless
+// it prohibits them, and `aria-query` hangs them off the abstract `roletype`.
+const GLOBAL = Object.keys(q.roles.get("roletype").props || {});
+
+// What a role takes: its own properties, everything it inherits, and the
+// globals.
+//
+// Most roles inline the whole set, but not all of them do. `none` carries no
+// properties *and* no superclass, and `doc-pullquote` inherits only from
+// `none` — so a mask built from `props` alone left both supporting nothing,
+// and `a11y/role-supports-aria-props` would have rejected `aria-hidden` on
+// `<div role="none">`, which is working markup.
+const supportedProps = (name, seen = new Set()) => {
+  if (seen.has(name)) return [];
+  seen.add(name);
+  const role = q.roles.get(name);
+  if (!role) return [];
+  const inherited = (role.superClass || []).flatMap((chain) =>
+    chain.flatMap((ancestor) => supportedProps(ancestor, seen)),
+  );
+  return [...Object.keys(role.props || {}), ...inherited, ...GLOBAL];
+};
+
 const roleRow = (name) => {
   const role = q.roles.get(name);
-  const supported = Object.keys(role.props || {});
+  const supported = supportedProps(name);
+  // A role an author may write that takes nothing at all is a table bug, not a
+  // fact about ARIA: fail the generation rather than ship it.
+  if (!role.abstract && supported.length === 0) {
+    throw new Error(`role ${name} would support no attribute at all`);
+  }
   const required = Object.keys(role.requiredProps || {});
   const prohibited = role.prohibitedProps || [];
   const flags = [];

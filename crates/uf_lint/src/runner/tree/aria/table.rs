@@ -737,7 +737,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "doc-pullquote",
         flags: Flags::NONE,
-        supported: 0x0,
+        supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
     },
@@ -1003,7 +1003,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "none",
         flags: Flags::NONE,
-        supported: 0x0,
+        supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
     },
