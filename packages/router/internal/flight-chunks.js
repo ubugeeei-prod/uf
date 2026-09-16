@@ -55,9 +55,33 @@ function elementJson(value: FlightChunk): string {
     .replace(/\u2029/g, "\\u2029");
 }
 
-/** The element for one chunk, or the end marker for `null`. */
-export function flightChunkElement(chunk: FlightChunk): string {
-  return `<script type="application/json" ${FLIGHT_CHUNK_ATTRIBUTE}>${elementJson(chunk)}</script>`;
+/**
+ * The element for one chunk, or the end marker for `null`.
+ *
+ * `nonce` is this response's, and it is carried even though the element is
+ * `application/json` and therefore a data block the browser never executes.
+ * Two reasons, and neither is "in case the spec changes". A uf document's
+ * invariant is that every `<script>` in it carries the nonce — that is what
+ * `packages/router/streaming.test.js` pins, and an invariant with an exception
+ * in it is one a reader has to check every new script against. And these are
+ * written as text into a stream rather than rendered by React, so unlike the
+ * payload rows in `./runtime.js` there is no second render on the client to
+ * disagree with; the attribute costs a comparison nobody makes.
+ */
+export function flightChunkElement(chunk: FlightChunk, nonce?: string | null): string {
+  const carried = nonce == null ? "" : ` nonce="${escapeNonce(nonce)}"`;
+  return `<script type="application/json"${carried} ${FLIGHT_CHUNK_ATTRIBUTE}>${elementJson(chunk)}</script>`;
+}
+
+/**
+ * A nonce, as an attribute value.
+ *
+ * uf's own nonces are base64 and hold none of these, so this is about the one a
+ * project supplied: the value reaches a document that a browser parses as
+ * HTML, and a `"` in it would end the attribute and open whatever follows.
+ */
+function escapeNonce(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
 /**
@@ -74,7 +98,7 @@ export type ChunkEncoder = {|
   readonly end: () => string,
 |};
 
-export function createChunkEncoder(): ChunkEncoder {
+export function createChunkEncoder(nonce?: string | null): ChunkEncoder {
   const strict = new TextDecoder("utf-8", { fatal: true });
   let carry: Uint8Array = new Uint8Array(0);
 
@@ -87,17 +111,17 @@ export function createChunkEncoder(): ChunkEncoder {
     }
     const body = joined.subarray(0, complete);
     try {
-      return flightChunkElement(strict.decode(body));
+      return flightChunkElement(strict.decode(body), nonce);
     } catch {
-      return flightChunkElement({ bytes: base64(body) });
+      return flightChunkElement({ bytes: base64(body) }, nonce);
     }
   }
 
   function end(): string {
     const rest = carry;
     carry = new Uint8Array(0);
-    const tail = rest.length === 0 ? "" : flightChunkElement({ bytes: base64(rest) });
-    return `${tail}${flightChunkElement(null)}`;
+    const tail = rest.length === 0 ? "" : flightChunkElement({ bytes: base64(rest) }, nonce);
+    return `${tail}${flightChunkElement(null, nonce)}`;
   }
 
   return { encode, end };

@@ -389,9 +389,17 @@ export function createFetchHandler(
       return await answer(arrived);
     }
     const admitted = admit(app.routing, arrived);
+    // Before the response rather than after it, which is a change of order and
+    // not only of line. A rule whose value names `{uf.nonce}` *mints* this
+    // request's nonce when it is read, and the document that has to carry that
+    // nonce is written inside `answer`. Asking afterwards would put a nonce in
+    // the header that no script in the body had — a policy that blocks the
+    // page it is protecting. The pairs are pure once read, so holding them
+    // across the render costs nothing.
+    const pairs = headersFor(app.routing, arrived);
     const response =
       admitted.kind === "answer" ? admitted.response : await answer(admitted.request);
-    return withHeaders(response, headersFor(app.routing, arrived));
+    return withHeaders(response, pairs);
   };
 }
 
@@ -555,6 +563,18 @@ async function renderForCache(
     noStore("the render set a cookie");
   } else if ((context?.requestStateReads ?? 0) > before) {
     noStore("the render read cookies(), headers() or draftMode()");
+  } else if (context?.nonce != null) {
+    // A nonce is valid for exactly one response. A stored document carrying
+    // one would hand every later visitor a nonce minted for somebody else,
+    // and a nonce two responses share has stopped being a nonce — which is
+    // the promise `docs/security.md` makes in the row this exists for.
+    //
+    // Checked on its own rather than left to the counter above, because the
+    // two ways a request gets a nonce do not both go through it: `nonce()`
+    // counts as a read of request state, and `app.router.headers` substituting
+    // `{uf.nonce}` does not — it is uf reading the project's configuration,
+    // not the application reading its request.
+    noStore("the render carried a CSP nonce");
   }
   return { status, headers, body };
 }

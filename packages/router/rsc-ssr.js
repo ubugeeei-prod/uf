@@ -32,6 +32,8 @@ import { type StreamRecord, streamReporter } from "./internal/inspector.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
 import { RedirectError } from "./internal/routing.js";
 import type { AppProps } from "./internal/runtime.js";
+import { currentNonce } from "@uniflowed/server/host";
+
 import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js";
 import { type DocumentBody, prerenderDocument, renderDocument } from "./internal/stream.js";
 import type { FlightRenderer } from "./rsc.js";
@@ -101,13 +103,19 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     |},
   ): Promise<DocumentBody> {
     const [forHtml, forBrowser] = stream.tee();
+    // Read rather than minted, for the reason `../server.js` gives: a project
+    // that has not asked for a nonce gets `null` and the document it has
+    // always had. Read here rather than passed in because both of this
+    // renderer's callers reach `documentOf`, and a render is one response.
+    const nonce = currentNonce();
     try {
       return await renderDocument(<App url={url} flight={readPayload(forHtml)} />, {
-        shell: shellFor(assets),
+        shell: shellFor(assets, nonce),
         onError: settings.onError,
         transformHead: settings.transformHead,
         onStream: settings.onStream,
         payload: forBrowser,
+        nonce,
       });
     } catch (error) {
       void forBrowser.cancel();

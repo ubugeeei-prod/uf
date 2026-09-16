@@ -70,6 +70,7 @@ export {
   asResponder,
   beginRequest,
   contextFor,
+  currentNonce,
   drainDeferred,
   insideRequest,
   noteRoute,

@@ -63,6 +63,7 @@
 // rewrite renders the destination's, exactly as the document request for the
 // same address would. A payload URL is never redirected for its trailing slash.
 
+import { mintCurrentNonce, newNonce } from "./context.js";
 import { flightDocumentPath, flightPath } from "./flight.js";
 
 /** One entry of `app.router.redirects`. */
@@ -539,7 +540,52 @@ export function headersFor(
       found.push(...rule.pairs);
     }
   }
-  return found;
+  return withNonce(found);
+}
+
+/** The token an `app.router.headers` value writes where the nonce goes. */
+const NONCE_TOKEN = "{uf.nonce}";
+
+/**
+ * `pairs`, with `{uf.nonce}` replaced by this request's nonce.
+ *
+ * The short way to set a nonce policy: one rule in `uf.config.js` says
+ *
+ *     { source: "/:path*", headers: { "content-security-policy":
+ *         "script-src 'nonce-{uf.nonce}' 'strict-dynamic'; object-src 'none'" } }
+ *
+ * and the header and the markup are then the same value read twice rather than
+ * two values generated separately. Reading it here is what *mints* it, which
+ * is what tells the renderer this response's documents carry one — see
+ * `./context.js`'s `nonce` field.
+ *
+ * A rule that names no nonce is returned untouched and costs one `indexOf` per
+ * matching rule, so a project that has never heard of this pays nothing.
+ *
+ * # Outside a request it is still substituted, with a nonce of its own
+ *
+ * A response answered before the request was established — a redirect decided
+ * by `admit`, which `uf start` reaches before `beginRequest` and a Worker
+ * reaches after — has no request nonce to read. The token must not survive
+ * either way: a literal `{uf.nonce}` in a policy names a nonce no script has,
+ * and an empty `'nonce-'` admits nothing; both block every script on the page.
+ *
+ * So a standalone nonce is generated for it. That costs 16 bytes on a response
+ * which, having no document, has no script to admit — and it buys the property
+ * `tests/library/deploy.test.js` checks: **every front door substitutes**.
+ * Dropping the header instead made the doors disagree, because which of them
+ * answers a redirect inside a request is an ordering difference between hosts
+ * rather than a decision about nonces, and a policy that appears on four doors
+ * and not the fifth is the class of drift that file exists to catch.
+ */
+function withNonce(pairs: Array<[string, string]>): $ReadOnlyArray<[string, string]> {
+  if (!pairs.some(([, value]) => value.includes(NONCE_TOKEN))) {
+    return pairs;
+  }
+  const nonce = mintCurrentNonce() ?? newNonce();
+  return pairs.map(([name, value]) =>
+    value.includes(NONCE_TOKEN) ? [name, value.split(NONCE_TOKEN).join(nonce)] : [name, value],
+  );
 }
 
 /**

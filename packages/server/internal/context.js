@@ -88,6 +88,32 @@ export type RequestContext = {
    */
   route: string | null,
   /**
+   * The Content-Security-Policy nonce this response carries, or `null`.
+   *
+   * `null` until something asks, and that is the whole design rather than an
+   * optimisation. A nonce is only worth anything to a response whose policy
+   * names it, and a document that carries one can never be stored in a shared
+   * route cache — a replayed nonce is a nonce reused across two responses,
+   * which is precisely the property `docs/security.md` promises against. So
+   * minting is the act that turns both of those on, and nothing mints by
+   * accident: `../index.js`'s `nonce()` does, on behalf of the application,
+   * and `app.router.headers` does when a rule's value names `{uf.nonce}`.
+   * A project that asks for neither gets the documents it has always had and a
+   * route cache that still works.
+   *
+   * uf generates it and never takes it from the request, for the reason `id`
+   * above is not taken from `X-Request-Id`, and the reason is sharper here: an
+   * inbound header is text the client chose, and a client that picks the nonce
+   * picks the one value that would make a strict policy admit a script it
+   * injected. A deployment whose proxy issues nonces has the value in hand
+   * where it sets the header, and that is where the two have to agree.
+   *
+   * Mutable because it is not known when the request begins — a host
+   * establishes the request long before anything has decided whether this
+   * response has a policy at all.
+   */
+  nonce: string | null,
+  /**
    * Whether this request is rendering draft content.
    *
    * Read from the request's signed `__Host-uf.draft` cookie by [`beginRequest`]
@@ -298,6 +324,11 @@ export function contextFor(request: Request): RequestContext {
     },
     id: newRequestId(),
     route: null,
+    // `null`, and minted by the first thing that asks; see the field. Unlike
+    // `id` above, which everything reads, almost nothing reads this — a
+    // request for a stylesheet, a payload or an action writes no document —
+    // so the lazy value that `id` is not worth being, this is.
+    nonce: null,
     // `false` here and resolved in `beginRequest`, because deciding it means
     // verifying a signature and `crypto.subtle` is asynchronous while this
     // function is not. A caller that builds a context by hand and never runs it
@@ -338,6 +369,77 @@ export function contextFor(request: Request): RequestContext {
  */
 function newRequestId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * This request's nonce, minting one if nothing has yet.
+ *
+ * The one place a nonce comes into being. Everything that wants this request
+ * to carry a policy goes through here, so two askers in one request — a
+ * middleware building the header and the renderer writing the document — get
+ * the same string rather than two, which is the whole point of putting it on
+ * the context instead of generating one where it is needed.
+ */
+export function nonceFor(context: RequestContext): string {
+  return (context.nonce ??= newNonce());
+}
+
+/**
+ * The nonce this request already has, or `null`.
+ *
+ * Deliberately **not** minting, which is what separates it from [`nonceFor`]
+ * and what keeps this feature from costing anything to a project that has not
+ * asked for it. The renderer calls this for every document it writes: with a
+ * nonce in hand it stamps one on every script it emits, and with `null` it
+ * writes exactly the document it wrote before nonces existed. A renderer that
+ * minted instead would put a nonce in every document in every project, and
+ * with it would turn off the route cache everywhere — see the field's own
+ * paragraph for why a nonced document cannot be stored.
+ *
+ * `null` outside a request too, which is a static prerender: `uf build` has no
+ * request, so there is no per-request value to write and the honest answer is
+ * to write none. `docs/security.md` says what a prerendered route has to do
+ * instead.
+ */
+export function currentNonce(): string | null {
+  const context = storage.getStore();
+  return context == null ? null : context.nonce;
+}
+
+/**
+ * This request's nonce, minting one if nothing has, or `null` outside a request.
+ *
+ * [`nonceFor`] reached through the ambient request rather than through a
+ * context somebody is holding, for the one caller that has no context in hand:
+ * `./routing.js`, substituting `{uf.nonce}` into an `app.router.headers` rule.
+ * That substitution is a project asking for a nonce as surely as `nonce()` is,
+ * so it mints — the difference between this and [`currentNonce`] is exactly
+ * the difference between asking for one and writing down the one there is.
+ */
+export function mintCurrentNonce(): string | null {
+  const context = storage.getStore();
+  return context == null ? null : nonceFor(context);
+}
+
+/**
+ * 128 bits, base64, per response.
+ *
+ * The length CSP Level 3 asks for, and `crypto.getRandomValues` rather than
+ * `randomUUID` because a UUID is 122 bits of randomness wearing four fixed
+ * ones and a shape a reader might mistake for an identifier. This is not an
+ * identifier: two responses for the same URL must never share one.
+ *
+ * Built by hand rather than with `Buffer`, because `../edge.js` bundles this
+ * module for a platform that has no such global — the same reason
+ * [`newRequestId`] reaches for Web Crypto instead of `node:crypto`.
+ */
+export function newNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }
 
 /**

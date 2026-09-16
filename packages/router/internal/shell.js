@@ -78,8 +78,8 @@ export function redirectDocument(error: RedirectError): RenderResult {
  * carried two of them, one in each place, and only one was where a browser
  * looks. Hoisting the rendered one leaves the metadata with a single source.
  */
-export function shellFor(assets: RenderAssets): DocumentShell {
-  const head = headTags(assets);
+export function shellFor(assets: RenderAssets, nonce?: string | null): DocumentShell {
+  const head = headTags(assets, nonce);
   return {
     head,
     open: `<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">`,
@@ -88,7 +88,7 @@ export function shellFor(assets: RenderAssets): DocumentShell {
   };
 }
 
-function headTags(assets: RenderAssets): string {
+function headTags(assets: RenderAssets, nonce?: string | null): string {
   let tags = "";
   for (const href of assets.styles) {
     tags += `<link rel="stylesheet" href="${escapeAttribute(href)}">`;
@@ -96,8 +96,16 @@ function headTags(assets: RenderAssets): string {
   for (const href of assets.preloads) {
     tags += `<link rel="modulepreload" href="${escapeAttribute(href)}">`;
   }
+  // The nonce goes on the client entry even though it is `src` rather than
+  // inline, because a policy of `script-src 'nonce-…'` admits *no* script
+  // without one — a nonce policy is not an inline policy with an exception in
+  // it. A project whose policy also names `'self'` pays nothing for the
+  // attribute being here, and one whose policy is `'strict-dynamic'` needs it:
+  // that is the directive under which this script is the root of trust every
+  // chunk it imports inherits from.
+  const carried = nonce == null ? "" : ` nonce="${escapeAttribute(nonce)}"`;
   for (const src of assets.scripts) {
-    tags += `<script type="module" src="${escapeAttribute(src)}"></script>`;
+    tags += `<script type="module" src="${escapeAttribute(src)}"${carried}></script>`;
   }
   return tags;
 }

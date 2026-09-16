@@ -813,6 +813,17 @@ describe("the front doors", () => {
         headers: [
           { source: "/:path*", headers: { "x-served-by": "served-app" } },
           { source: "/api/:rest*", headers: { "cache-control": "no-store" } },
+          // The nonce substitution, asked of every door at once. The value
+          // differs per response by construction, so what is compared is
+          // whether each door substituted *at all*: one that skipped it sends
+          // the literal `{uf.nonce}` — a policy naming a nonce no script has,
+          // which blocks every script on the page — and one that dropped the
+          // rule sends nothing. Both are visible below, and a new adapter that
+          // grew its own copy of `headersFor` would land on one of them.
+          {
+            source: "/:path*",
+            headers: { "content-security-policy": "script-src 'nonce-{uf.nonce}'" },
+          },
         ],
       },
     };
@@ -832,11 +843,22 @@ describe("the front doors", () => {
     // The status, the three headers the rules decide, and the body — which is
     // what a rule changes, and what a door that applied one differently would
     // disagree about.
+    // A nonce is a different 128 bits on every response, so the doors cannot be
+    // compared on its value — only on whether each one produced a nonce at all.
+    // `token` is a door that left `{uf.nonce}` in the header unsubstituted, and
+    // `-` is one that sent no policy; either is a door out of step with the
+    // other four.
+    const nonceShape = (csp: ?string): string => {
+      if (csp == null) return "-";
+      if (csp.includes("{uf.nonce}")) return "token";
+      return /^script-src 'nonce-[A-Za-z0-9+/]{22}=='$/.test(csp) ? "substituted" : `odd(${csp})`;
+    };
+
     const described = (status: number, header: (name: string) => ?string, body: string): string =>
       `${String(status)} location=${header("location") ?? "-"} ` +
       `x-served-by=${header("x-served-by") ?? "-"} cache-control=${
         header("cache-control") === "no-store" ? "no-store" : "-"
-      } ${body.replace(/\s+/g, " ")}`;
+      } csp=${nonceShape(header("content-security-policy"))} ${body.replace(/\s+/g, " ")}`;
 
     const doors = {
       "uf start": async (url: string) => {
@@ -885,14 +907,23 @@ describe("the front doors", () => {
       "/moved/hello/__uf.flight": "308 location=/posts/hello/__uf.flight",
       // A rewrite: the destination renders, at the address that was asked for.
       "/articles/hello":
-        "200 location=- x-served-by=served-app cache-control=- <!doctype html><p>/posts/hello</p>",
+        "200 location=- x-served-by=served-app cache-control=- csp=substituted " +
+        "<!doctype html><p>/posts/hello</p>",
       // A middleware's rewrite, which the host carries on with.
       "/shop/hello":
-        "200 location=- x-served-by=served-app cache-control=- <!doctype html><p>/posts/hello</p>",
-      // A file the build wrote still gets the headers.
-      "/": "200 location=- x-served-by=served-app cache-control=- <!doctype html><p>home</p>",
+        "200 location=- x-served-by=served-app cache-control=- csp=substituted " +
+        "<!doctype html><p>/posts/hello</p>",
+      // A file the build wrote still gets the headers — the nonce substitution
+      // included, even though a prerendered document carries no nonce of its
+      // own. See `docs/security.md`: a policy naming a nonce and a document
+      // written at build time do not go together, and the door is not the
+      // place that can tell.
+      "/":
+        "200 location=- x-served-by=served-app cache-control=- csp=substituted " +
+        "<!doctype html><p>home</p>",
       // And a later rule's header on a handler's answer.
-      "/api/health": '200 location=- x-served-by=served-app cache-control=no-store {"ok":true}',
+      "/api/health":
+        '200 location=- x-served-by=served-app cache-control=no-store csp=substituted {"ok":true}',
     };
 
     for (const [url, expected] of Object.entries(expectations)) {
