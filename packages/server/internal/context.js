@@ -433,7 +433,7 @@ export function mintCurrentNonce(): string | null {
  * module for a platform that has no such global — the same reason
  * [`newRequestId`] reaches for Web Crypto instead of `node:crypto`.
  */
-function newNonce(): string {
+export function newNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16));
   let binary = "";
   for (const byte of bytes) {

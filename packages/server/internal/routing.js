@@ -63,7 +63,7 @@
 // rewrite renders the destination's, exactly as the document request for the
 // same address would. A payload URL is never redirected for its trailing slash.
 
-import { mintCurrentNonce } from "./context.js";
+import { mintCurrentNonce, newNonce } from "./context.js";
 import { flightDocumentPath, flightPath } from "./flight.js";
 
 /** One entry of `app.router.redirects`. */
@@ -562,32 +562,30 @@ const NONCE_TOKEN = "{uf.nonce}";
  * A rule that names no nonce is returned untouched and costs one `indexOf` per
  * matching rule, so a project that has never heard of this pays nothing.
  *
- * # Outside a request the header is dropped rather than half-written
+ * # Outside a request it is still substituted, with a nonce of its own
  *
- * There is no nonce to substitute, and the two alternatives are both worse
- * than saying nothing: the literal `{uf.nonce}` would reach a browser as a
- * policy naming a nonce no script has, and an empty `'nonce-'` is a policy
- * that admits nothing. Either one blocks every script on the page. A dropped
- * header leaves whatever the deployment's own edge sets, which is the
- * behaviour a project had before it wrote the rule.
+ * A response answered before the request was established — a redirect decided
+ * by `admit`, which `uf start` reaches before `beginRequest` and a Worker
+ * reaches after — has no request nonce to read. The token must not survive
+ * either way: a literal `{uf.nonce}` in a policy names a nonce no script has,
+ * and an empty `'nonce-'` admits nothing; both block every script on the page.
+ *
+ * So a standalone nonce is generated for it. That costs 16 bytes on a response
+ * which, having no document, has no script to admit — and it buys the property
+ * `tests/library/deploy.test.js` checks: **every front door substitutes**.
+ * Dropping the header instead made the doors disagree, because which of them
+ * answers a redirect inside a request is an ordering difference between hosts
+ * rather than a decision about nonces, and a policy that appears on four doors
+ * and not the fifth is the class of drift that file exists to catch.
  */
 function withNonce(pairs: Array<[string, string]>): $ReadOnlyArray<[string, string]> {
   if (!pairs.some(([, value]) => value.includes(NONCE_TOKEN))) {
     return pairs;
   }
-  const nonce = mintCurrentNonce();
-  const out: Array<[string, string]> = [];
-  for (const [name, value] of pairs) {
-    if (!value.includes(NONCE_TOKEN)) {
-      out.push([name, value]);
-      continue;
-    }
-    if (nonce == null) {
-      continue;
-    }
-    out.push([name, value.split(NONCE_TOKEN).join(nonce)]);
-  }
-  return out;
+  const nonce = mintCurrentNonce() ?? newNonce();
+  return pairs.map(([name, value]) =>
+    value.includes(NONCE_TOKEN) ? [name, value.split(NONCE_TOKEN).join(nonce)] : [name, value],
+  );
 }
 
 /**
