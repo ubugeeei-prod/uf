@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/lint",
-  "version": "0.0.0-alpha.38",
+  "version": "0.0.0-alpha.39",
   "private": true,
   "description": "Flow declarations for @uniflowed/lint, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,6 +19,6 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.38"
+    "@uniflowed/core": "0.0.0-alpha.39"
   }
 }
