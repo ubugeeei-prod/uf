@@ -871,3 +871,54 @@ fn a_continued_command_does_not_deny_the_line_above_it() {
     report.continued = true;
     assert_eq!(headline(&report), "1 change in the tree");
 }
+
+/// npm exits 0 from `dedupe --dry-run` whatever it finds, so the summary is
+/// the answer. This is npm 11's, for a tree where the root's `^2.0.0` locked
+/// 2.0.0 and something else brought 2.1.2 in beside it.
+#[test]
+fn npms_summary_says_what_a_dedupe_would_collapse() {
+    let found = r#"{
+      "add": [], "added": 0, "audited": 0,
+      "change": [
+        {
+          "from": { "name": "ms", "version": "2.0.0", "path": "/w/node_modules/ms" },
+          "to": { "name": "ms", "version": "2.1.2", "path": "/w/node_modules/ms" }
+        }
+      ],
+      "changed": 1, "funding": 0,
+      "remove": [
+        { "name": "ms", "version": "2.1.2", "path": "/w/node_modules/debug/node_modules/ms" }
+      ],
+      "removed": 1
+    }"#;
+    assert_eq!(
+        npm_would_collapse(found),
+        WouldCollapse::These(vec!["ms 2.0.0 → 2.1.2".to_owned(), "ms 2.1.2".to_owned()])
+    );
+
+    let nothing =
+        r#"{"add":[],"added":0,"audited":0,"change":[],"changed":0,"remove":[],"removed":0}"#;
+    assert_eq!(npm_would_collapse(nothing), WouldCollapse::Nothing);
+
+    // A summary that counts something uf cannot name still counts.
+    assert_eq!(
+        npm_would_collapse(r#"{"removed": 2, "remove": [{}]}"#),
+        WouldCollapse::Something
+    );
+    // And an answer that is not a summary is not an answer.
+    assert_eq!(
+        npm_would_collapse("npm error code E404"),
+        WouldCollapse::Failed
+    );
+}
+
+/// pnpm answers with its exit code and names the packages in a tree above it.
+#[test]
+fn pnpms_check_names_the_packages_it_would_collapse() {
+    let said = "Progress: resolved 2, reused 1, downloaded 0, added 0, done\n\
+         \n ERR_PNPM_DEDUPE_CHECK_ISSUES  Dedupe --check found changes to the lockfile\n\
+         \nImporters\n.\n└── ms 2.0.0 → 2.1.2\n\n\nPackages\n- ms@2.0.0\n\n\
+         Run pnpm dedupe to apply the changes above.\n";
+    assert_eq!(pnpm_named(said), vec!["ms 2.0.0 → 2.1.2".to_owned()]);
+    assert!(pnpm_named("Progress: resolved 1, reused 0\n").is_empty());
+}

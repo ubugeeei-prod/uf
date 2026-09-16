@@ -867,7 +867,15 @@ pub(crate) enum Commands {
     /// tree keeps one: `npm dedupe`, `pnpm dedupe`, `yarn dedupe`. Yarn 1
     /// already does it on every install and bun has no command for it, and uf
     /// says which rather than running something else.
-    Dedupe,
+    Dedupe {
+        /// Report what a dedupe would collapse and change nothing, exiting
+        /// non-zero when there is anything.
+        ///
+        /// For CI: the report names each package and the versions that would
+        /// become one.
+        #[arg(long)]
+        check: bool,
+    },
     /// The package manager underneath: what it is allowed to do, and what it
     /// has been told.
     ///

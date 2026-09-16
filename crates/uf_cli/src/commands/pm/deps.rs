@@ -253,19 +253,280 @@ pub(super) fn update(
 ///
 /// Refused by name on Yarn 1, whose `yarn dedupe` exists only to say `yarn
 /// install` already does it, and on bun, which has none.
-pub(crate) fn dedupe(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+pub(crate) fn dedupe(cwd: &Utf8Path, ui: &mut Ui, check: bool) -> Result<()> {
+    if check {
+        return dedupe_check(cwd, ui);
+    }
     delegate(
         cwd,
         ui,
         &Request {
             heading: "uf dedupe",
-            operation: Operation::Dedupe,
+            operation: Operation::Dedupe { check: false },
             operands: &[],
             retry: "uf dedupe".to_owned(),
             announced: false,
             scope: &Scope::Project,
         },
     )
+}
+
+/// What a dedupe would collapse, as far as the manager's answer says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WouldCollapse {
+    /// Nothing: the tree is already as collapsed as the declared ranges allow.
+    Nothing,
+    /// These packages, read out of the manager's answer.
+    These(Vec<String>),
+    /// Something the manager would collapse but did not name.
+    Something,
+    /// The manager failed rather than answered.
+    Failed,
+}
+
+/// `uf dedupe --check`: what a dedupe would collapse, with nothing changed.
+///
+/// For CI, so the answer is an exit code — non-zero when there is anything —
+/// and the report names the packages rather than leaving the reader to run a
+/// dedupe to find out what it would have done.
+///
+/// The managers answer differently enough that uf holds their output back and
+/// prints one report instead of three: pnpm and Yarn 2+ have a check of their
+/// own and exit non-zero, npm has a dry run that exits 0 whatever it finds and
+/// says what it found in JSON. A manager with no dedupe at all is refused by
+/// name before anything runs, as `uf dedupe` is.
+fn dedupe_check(cwd: &Utf8Path, ui: &mut Ui) -> Result<()> {
+    let started = Instant::now();
+    let resolved = load_config(cwd)?;
+    crate::support::render_deprecations(ui, resolved.config.package_manager_deprecation());
+    let root = resolved.root.clone();
+    let detection =
+        detect_package_manager_with(&root, &DetectionOptions::from_config(&resolved.config));
+    let (manager, substituted) = installable(&detection);
+    let operation = Operation::Dedupe { check: true };
+    // Before the manager is installed: one with no dedupe to check against is
+    // refused without downloading it to find that out. Scripts are allowed
+    // because a check installs nothing for them to run from.
+    uf_pm::invocation_for(&root, manager, operation, &[], true)?;
+    let path = manager_path_for(&resolved, manager, ui)?;
+
+    let project = project_label(&root).to_string();
+    ui.render(|renderer, out| {
+        renderer.banner(out, "uf dedupe --check", Some(&project));
+        renderer.blank(out);
+    });
+
+    let run =
+        uf_pm::run::run_captured_with_detection(&root, &detection, operation, &[], true, &path)
+            .map_err(|error| {
+                failed_hint(
+                    error,
+                    "uf could not ask the manager; fix that and run `uf dedupe --check` again",
+                )
+            })?;
+
+    let found = would_collapse(manager, &run);
+    let manager_label = manager.to_string();
+    let source = chosen_by(&detection.source, substituted);
+    let command = run.invocation.to_string();
+    let elapsed = format_duration(started.elapsed());
+    let named = match &found {
+        WouldCollapse::These(named) => named.clone(),
+        _ => Vec::new(),
+    };
+    // What the manager said, for the two answers uf cannot put in its own
+    // words: showing its output beats paraphrasing an answer uf did not read.
+    let said = match &found {
+        WouldCollapse::Something | WouldCollapse::Failed => manager_said(&run),
+        _ => Vec::new(),
+    };
+    let (status, headline) = match &found {
+        WouldCollapse::Nothing => (
+            Status::Success,
+            format!("nothing to collapse: checked in {elapsed}"),
+        ),
+        WouldCollapse::These(named) => (
+            Status::Warn,
+            format!(
+                "{} package{} would collapse; `uf dedupe` collapses {}",
+                named.len(),
+                if named.len() == 1 { "" } else { "s" },
+                if named.len() == 1 { "it" } else { "them" }
+            ),
+        ),
+        WouldCollapse::Something => (
+            Status::Warn,
+            format!("{manager_label} would collapse something; `uf dedupe` collapses it"),
+        ),
+        WouldCollapse::Failed => (
+            Status::Error,
+            format!("{manager_label} did not answer whether anything would collapse"),
+        ),
+    };
+
+    ui.render(|renderer, out| {
+        renderer.key_values(
+            out,
+            2,
+            &[
+                KeyValue::new("manager", &manager_label),
+                KeyValue::toned("chosen by", &source, Tone::Muted),
+                KeyValue::toned("command", &command, Tone::Path),
+            ],
+        );
+        for (heading, lines) in [("would collapse", &named), ("the manager said", &said)] {
+            if lines.is_empty() {
+                continue;
+            }
+            renderer.blank(out);
+            renderer.heading(out, 2, heading);
+            renderer.blank(out);
+            renderer.bullet_list(
+                out,
+                4,
+                &lines.iter().map(String::as_str).collect::<Vec<_>>(),
+            );
+        }
+        renderer.blank(out);
+        renderer.status(out, status, &headline);
+    });
+
+    match found {
+        WouldCollapse::Nothing => Ok(()),
+        WouldCollapse::Failed => bail!("`{command}` failed rather than answering"),
+        // The exit code is the point of the flag: CI asked a question whose
+        // answer is yes, and nothing was changed on the way to answering it.
+        _ => bail!("the lockfile has duplicates `uf dedupe` would collapse"),
+    }
+}
+
+/// The answer, read the way the manager gave it.
+fn would_collapse(manager: uf_pm::PackageManager, run: &uf_pm::run::CapturedRun) -> WouldCollapse {
+    if matches!(
+        manager,
+        uf_pm::PackageManager::Npm | uf_pm::PackageManager::Uf
+    ) {
+        return npm_would_collapse(&run.stdout);
+    }
+    // pnpm and Yarn 2+ answer with the exit code.
+    if run.succeeded {
+        return WouldCollapse::Nothing;
+    }
+    let said = format!("{}\n{}", run.stdout, run.stderr);
+    if manager == uf_pm::PackageManager::Pnpm {
+        // pnpm exits non-zero when it fails, too, and names this answer.
+        if !said.contains("ERR_PNPM_DEDUPE_CHECK_ISSUES") {
+            return WouldCollapse::Failed;
+        }
+        let named = pnpm_named(&said);
+        return if named.is_empty() {
+            WouldCollapse::Something
+        } else {
+            WouldCollapse::These(named)
+        };
+    }
+    WouldCollapse::Something
+}
+
+/// What npm's `--dry-run --json` summary says a dedupe would do.
+///
+/// npm exits 0 whether or not it would change anything, so the counts are the
+/// answer and the arrays are the names. A removal is the copy npm would take
+/// out; a change is the two sides of a move, `{"from": …, "to": …}`. An entry
+/// uf cannot read still counts, because the counts said it was there.
+fn npm_would_collapse(stdout: &str) -> WouldCollapse {
+    let Some(start) = stdout.find('{') else {
+        return WouldCollapse::Failed;
+    };
+    let Ok(summary) = serde_json::from_str::<Value>(&stdout[start..]) else {
+        return WouldCollapse::Failed;
+    };
+    let counted: u64 = ["added", "removed", "changed"]
+        .iter()
+        .filter_map(|key| summary.get(*key).and_then(Value::as_u64))
+        .sum();
+    if counted == 0 {
+        return WouldCollapse::Nothing;
+    }
+    let mut named = Vec::new();
+    for key in ["remove", "change"] {
+        let Some(entries) = summary.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        named.extend(entries.iter().filter_map(npm_entry));
+    }
+    named.sort();
+    named.dedup();
+    if named.is_empty() {
+        WouldCollapse::Something
+    } else {
+        WouldCollapse::These(named)
+    }
+}
+
+/// One of npm's entries: the package and the version, or the move it describes.
+fn npm_entry(entry: &Value) -> Option<String> {
+    let named = |value: &Value| {
+        value
+            .get("name")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    };
+    let version = |value: &Value| {
+        value
+            .get("version")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+    };
+    if let (Some(from), Some(to)) = (entry.get("from"), entry.get("to")) {
+        let name = named(from).or_else(|| named(to))?;
+        return Some(match (version(from), version(to)) {
+            (Some(was), Some(becomes)) => format!("{name} {was} → {becomes}"),
+            _ => name,
+        });
+    }
+    let name = named(entry)?;
+    Some(match version(entry) {
+        Some(version) => format!("{name} {version}"),
+        None => name,
+    })
+}
+
+/// The packages pnpm's own check named, one line each.
+///
+/// pnpm prints the importers it would change as a tree — `└── ms 2.0.0 → 2.1.2`
+/// — above the packages that change would drop. The tree lines carry both
+/// versions, which is the answer; the rest of what pnpm prints is progress.
+fn pnpm_named(said: &str) -> Vec<String> {
+    let mut named = said
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let named = line
+                .strip_prefix("└── ")
+                .or_else(|| line.strip_prefix("├── "))?;
+            (!named.is_empty()).then(|| named.to_owned())
+        })
+        .collect::<Vec<_>>();
+    named.sort();
+    named.dedup();
+    named
+}
+
+/// What the manager printed, for a report that cannot name the packages itself.
+fn manager_said(run: &uf_pm::run::CapturedRun) -> Vec<String> {
+    let mut lines = Vec::new();
+    for stream in [&run.stdout, &run.stderr] {
+        lines.extend(
+            stream
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty() && !line.starts_with("Progress:"))
+                .map(ToOwned::to_owned),
+        );
+    }
+    lines.truncate(12);
+    lines
 }
 
 /// `uf link [NAME|DIR]`.
