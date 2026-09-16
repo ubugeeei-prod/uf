@@ -276,6 +276,9 @@ describe("a role query and the accessibility tree", () => {
 
   it("leaves out an aria-hidden subtree, which is the page behind a dialog", () => {
     render(
+      // The `role="dialog"` on a `<div>` is the subject of this test, not an
+      // oversight: what is asserted is which element a role query finds.
+      // uf-lint-disable a11y/prefer-tag-over-role
       <div>
         <div aria-hidden="true">
           <button type="button">behind</button>
@@ -285,6 +288,7 @@ describe("a role query and the accessibility tree", () => {
         </div>
       </div>,
     );
+    // uf-lint-enable a11y/prefer-tag-over-role
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["in front"]);
   });
 
@@ -298,6 +302,10 @@ describe("a role query and the accessibility tree", () => {
   });
 
   it("keeps a closed details' summary and leaves out the rest of it", () => {
+    // The `role="img"` on a `<span>` is the subject of this test, not an
+    // oversight: what is asserted is that a role query reaches inside a
+    // `<summary>`.
+    // uf-lint-disable a11y/prefer-tag-over-role
     component Disclosure(open: boolean) {
       return (
         <details open={open}>
@@ -309,6 +317,7 @@ describe("a role query and the accessibility tree", () => {
         </details>
       );
     }
+    // uf-lint-enable a11y/prefer-tag-over-role
     render(<Disclosure open={false} />);
     // The summary is what a closed disclosure renders, so it is the one part
     // still announced — a rule about the ancestor alone would lose it too.
@@ -345,7 +354,7 @@ describe("a role query and the accessibility tree", () => {
     // `a11y/role-has-required-aria-props` is right that ARIA asks a `heading`
     // for a level, and what is asserted here is the level a browser gives one
     // that was written without it.
-    // uf-lint-disable-next-line a11y/role-has-required-aria-props
+    // uf-lint-disable-next-line a11y/role-has-required-aria-props, a11y/prefer-tag-over-role
     render(<div role="heading">titled</div>);
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("titled");
   });

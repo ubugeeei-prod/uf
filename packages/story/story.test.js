@@ -53,7 +53,7 @@ component Counter(step: number) {
   const [count, setCount] = useState(0);
   return (
     <div>
-      <output role="status">{count}</output>
+      <output>{count}</output>
       <button type="button" onClick={() => setCount(count + step)}>
         add
       </button>
@@ -66,7 +66,7 @@ component StuckCounter(step: number) {
   const [count, setCount] = useState(0);
   return (
     <div>
-      <output role="status">{count}</output>
+      <output>{count}</output>
       <button type="button" onClick={() => setCount(count)}>
         add
       </button>
