@@ -119,6 +119,10 @@ const COVERAGE: &[(&str, &str)] = &[
         "dependencies.rs and managers.rs: links on each package manager, or says it cannot",
     ),
     (
+        "unlink",
+        "managers.rs: unlinks on each package manager, or says there is nothing to unlink",
+    ),
+    (
         "catalog",
         "here, and catalog/tests.rs for the table and the disagreements",
     ),

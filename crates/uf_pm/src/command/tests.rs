@@ -465,6 +465,14 @@ fn yarn_editions_disagree_exactly_where_yarn_changed() {
             Operation::Link {
                 target: LinkTarget::Directory,
             },
+            // And they unlink the same way round: Yarn 1 has a registry to
+            // leave, and Berry a path to unlink by.
+            Operation::Unlink {
+                target: LinkTarget::Register,
+            },
+            Operation::Unlink {
+                target: LinkTarget::Directory,
+            },
             Operation::Info,
         ]
     );
@@ -500,6 +508,7 @@ fn only_the_operations_named_here_can_be_missing_from_a_manager() {
                     | Operation::InstallFrozenProd
                     | Operation::Dedupe
                     | Operation::Link { .. }
+                    | Operation::Unlink { .. }
             ) {
                 continue;
             }
@@ -610,6 +619,52 @@ fn every_manager_maps_the_everyday_verbs_or_has_none() {
                 expected,
                 "{manager} {operation:?}"
             );
+        }
+    }
+}
+
+/// `uf unlink`'s three forms, one manager's row at a time, as the command that
+/// manager's users already type or as nothing where it has none. Every form
+/// that exists is told to leave scripts alone: pnpm and Yarn 2+ reinstall when
+/// they unlink.
+#[test]
+fn every_manager_maps_unlink_or_has_none() {
+    let unlink = |target| Operation::Unlink { target };
+    let rows: [(PackageManager, [Option<&str>; 3]); 6] = [
+        (
+            PackageManager::Uf,
+            [Some("uf unlink"), Some("uf unlink"), Some("uf unlink")],
+        ),
+        (
+            PackageManager::Npm,
+            [
+                Some("npm uninstall --global"),
+                Some("npm uninstall --no-save"),
+                None,
+            ],
+        ),
+        (
+            PackageManager::Pnpm,
+            [Some("pnpm remove --global"), Some("pnpm unlink"), None],
+        ),
+        (
+            YARN_CLASSIC,
+            [Some("yarn unlink"), Some("yarn unlink"), None],
+        ),
+        (YARN_BERRY, [None, Some("yarn unlink"), Some("yarn unlink")]),
+        (PackageManager::Bun, [Some("bun unlink"), None, None]),
+    ];
+
+    for (manager, expected) in rows {
+        for (target, expected) in LinkTarget::ALL.into_iter().zip(expected) {
+            assert_eq!(
+                command_for(manager, unlink(target))
+                    .map(|invocation| invocation.to_string())
+                    .as_deref(),
+                expected,
+                "{manager} {target:?}"
+            );
+            assert!(unlink(target).installs_packages(), "{target:?}");
         }
     }
 }

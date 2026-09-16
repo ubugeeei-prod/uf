@@ -32,6 +32,9 @@
 //! | `Link { target: Register }` | `uf link` | `npm link` | `pnpm link` | `yarn link` | — | `bun link` |
 //! | `Link { target: Package }` | `uf link <name>` | `npm link <name>` | `pnpm link <name>` | `yarn link <name>` | — | `bun link <name>` |
 //! | `Link { target: Directory }` | `uf link <dir>` | `npm link <dir>` | `pnpm link <dir>` | — | `yarn link <dir>` | — |
+//! | `Unlink { target: Register }` | `uf unlink` | `npm uninstall --global <name>` | `pnpm remove --global <name>` | `yarn unlink` | — | `bun unlink` |
+//! | `Unlink { target: Package }` | `uf unlink <name>` | `npm uninstall --no-save <name>` | `pnpm unlink <name>` | `yarn unlink <name>` | `yarn unlink <name>` | — |
+//! | `Unlink { target: Directory }` | `uf unlink <dir>` | — | — | — | `yarn unlink <dir>` | — |
 //! | `Info` | `uf info` | `npm view` | `pnpm view` | `yarn info` | `yarn npm info` | `bun info` |
 //!
 //! A dash is a manager with no such command, which [`command_for`] answers with
@@ -228,6 +231,18 @@ pub enum Operation<'a> {
         /// What was named, which is what the managers disagree about.
         target: LinkTarget,
     },
+    /// Undo [`Self::Link`]: take a link out of a project, or stop a package
+    /// being linkable; the caller appends the package's name, or for Yarn 2+
+    /// the path it was linked by.
+    ///
+    /// Every manager but Yarn 2+ unlinks by name, and `uf unlink <dir>` hands
+    /// those the name the directory's manifest gives rather than the path. bun
+    /// has no `unlink <name>` at all — it answers "not implemented yet" — and
+    /// there uf removes the link from `node_modules` itself.
+    Unlink {
+        /// What was named.
+        target: LinkTarget,
+    },
     /// Print a package's metadata from the registry; the caller appends the
     /// package and, optionally, one field of it.
     Info,
@@ -235,7 +250,7 @@ pub enum Operation<'a> {
 
 impl Operation<'_> {
     /// Every operation, with a representative payload, for exhaustive testing.
-    pub const ALL: [Self; 24] = [
+    pub const ALL: [Self; 27] = [
         Self::Install,
         Self::InstallFrozen,
         Self::InstallProd,
@@ -273,6 +288,15 @@ impl Operation<'_> {
         Self::Link {
             target: LinkTarget::Directory,
         },
+        Self::Unlink {
+            target: LinkTarget::Register,
+        },
+        Self::Unlink {
+            target: LinkTarget::Package,
+        },
+        Self::Unlink {
+            target: LinkTarget::Directory,
+        },
         Self::Info,
     ];
 
@@ -301,7 +325,11 @@ impl Operation<'_> {
             // Every manager links by installing: npm reifies the project
             // around the link, and registering a package installs it into the
             // global directory, dependencies and their scripts included.
-            | Self::Link { .. } => true,
+            | Self::Link { .. }
+            // And they unlink by installing again: pnpm and Yarn 2+ reinstall
+            // what the link replaced, and on npm, Yarn 1 and bun the unlink is
+            // followed by the install that puts it back.
+            | Self::Unlink { .. } => true,
             Self::Run { .. }
             | Self::Exec
             | Self::DlxExec
@@ -349,6 +377,15 @@ impl Operation<'_> {
             Self::Link {
                 target: LinkTarget::Directory,
             } => "link <dir>",
+            Self::Unlink {
+                target: LinkTarget::Register,
+            } => "unlink",
+            Self::Unlink {
+                target: LinkTarget::Package,
+            } => "unlink <name>",
+            Self::Unlink {
+                target: LinkTarget::Directory,
+            } => "unlink <dir>",
             Self::Info => "info",
         }
     }
@@ -474,6 +511,7 @@ const fn uf_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::PatchCommit => spec("uf", &["patch", "--commit"]),
         Operation::Dedupe => spec("uf", &["dedupe"]),
         Operation::Link { .. } => spec("uf", &["link"]),
+        Operation::Unlink { .. } => spec("uf", &["unlink"]),
         Operation::Info => spec("uf", &["info"]),
     }
 }
@@ -517,6 +555,21 @@ const fn npm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // One word for all three: nothing registers the package, a name links
         // a registered one, and a path links the directory.
         Operation::Link { .. } => spec("npm", &["link"]),
+        // `npm unlink` is `npm uninstall`, which also takes the package out of
+        // the manifest by default. A link never put it there, so unlinking in a
+        // project removes it from `node_modules` alone; unregistering removes it
+        // from the global directory the link was registered in.
+        Operation::Unlink {
+            target: LinkTarget::Register,
+        } => spec("npm", &["uninstall", "--global"]),
+        Operation::Unlink {
+            target: LinkTarget::Package,
+        } => spec("npm", &["uninstall", "--no-save"]),
+        // npm uninstalls by name, and is given the name a directory's manifest
+        // gives rather than the directory.
+        Operation::Unlink {
+            target: LinkTarget::Directory,
+        } => unsupported(),
         // `npm info` is an alias; `view` is the command's name.
         Operation::Info => spec("npm", &["view"]),
     }
@@ -559,6 +612,18 @@ const fn pnpm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // package globally, `pnpm link <name>` links a registered one, and
         // `pnpm link <dir>` writes `link:<dir>` into the manifest.
         Operation::Link { .. } => spec("pnpm", &["link"]),
+        // pnpm 10 registers a package in its global directory, and that is
+        // what `pnpm remove --global` takes out; `pnpm unlink` removes a link
+        // from the project and reinstalls what it replaced. Both by name.
+        Operation::Unlink {
+            target: LinkTarget::Register,
+        } => spec("pnpm", &["remove", "--global"]),
+        Operation::Unlink {
+            target: LinkTarget::Package,
+        } => spec("pnpm", &["unlink"]),
+        Operation::Unlink {
+            target: LinkTarget::Directory,
+        } => unsupported(),
         // pnpm hands `view` to the npm that Node.js ships beside it.
         Operation::Info => spec("pnpm", &["view"]),
     }
@@ -594,6 +659,14 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         } => spec("yarn", &["link"]),
         // `yarn link` takes a registered name, never a path.
         Operation::Link {
+            target: LinkTarget::Directory,
+        } => unsupported(),
+        // `yarn unlink` in the package unregisters it, and with a name removes
+        // that link from the project. It takes no path either.
+        Operation::Unlink {
+            target: LinkTarget::Register | LinkTarget::Package,
+        } => spec("yarn", &["unlink"]),
+        Operation::Unlink {
             target: LinkTarget::Directory,
         } => unsupported(),
         Operation::Info => spec("yarn", &["info"]),
@@ -645,6 +718,15 @@ const fn yarn_berry_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Link {
             target: LinkTarget::Register | LinkTarget::Package,
         } => unsupported(),
+        // With nothing registered there is nothing to unregister. In a project,
+        // `yarn unlink` takes the path `yarn link` was given, or the package's
+        // name, and removes the resolution.
+        Operation::Unlink {
+            target: LinkTarget::Register,
+        } => unsupported(),
+        Operation::Unlink {
+            target: LinkTarget::Package | LinkTarget::Directory,
+        } => spec("yarn", &["unlink"]),
         Operation::Info => spec("yarn", &["npm", "info"]),
     }
 }
@@ -695,6 +777,14 @@ const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // registered name.
         Operation::Link {
             target: LinkTarget::Directory,
+        } => unsupported(),
+        // `bun unlink` unregisters the package in the current directory, and
+        // that is all it does: `bun unlink <name>` is "not implemented yet".
+        Operation::Unlink {
+            target: LinkTarget::Register,
+        } => spec("bun", &["unlink"]),
+        Operation::Unlink {
+            target: LinkTarget::Package | LinkTarget::Directory,
         } => unsupported(),
         Operation::Info => spec("bun", &["info"]),
     }
