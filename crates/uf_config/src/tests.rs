@@ -1268,7 +1268,10 @@ fn react_compiler_rules_sit_at_the_plugin_s_preset_levels() {
     for (rule, level) in [
         ("react-compiler/capitalized-calls", RuleLevel::Off),
         ("react-compiler/error-boundaries", RuleLevel::Error),
-        ("react-compiler/exhaustive-effect-dependencies", RuleLevel::Off),
+        (
+            "react-compiler/exhaustive-effect-dependencies",
+            RuleLevel::Off,
+        ),
         ("react-compiler/fbt", RuleLevel::Off),
         ("react-compiler/globals", RuleLevel::Error),
         ("react-compiler/hooks", RuleLevel::Error),
@@ -1276,8 +1279,14 @@ fn react_compiler_rules_sit_at_the_plugin_s_preset_levels() {
         ("react-compiler/incompatible-library", RuleLevel::Warn),
         ("react-compiler/invariant", RuleLevel::Off),
         ("react-compiler/memo-dependencies", RuleLevel::Warn),
-        ("react-compiler/no-deriving-state-in-effects", RuleLevel::Off),
-        ("react-compiler/preserve-manual-memoization", RuleLevel::Error),
+        (
+            "react-compiler/no-deriving-state-in-effects",
+            RuleLevel::Off,
+        ),
+        (
+            "react-compiler/preserve-manual-memoization",
+            RuleLevel::Error,
+        ),
         ("react-compiler/purity", RuleLevel::Error),
         ("react-compiler/refs", RuleLevel::Error),
         ("react-compiler/set-state-in-effect", RuleLevel::Error),
