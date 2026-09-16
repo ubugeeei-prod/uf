@@ -262,9 +262,10 @@ fn stages_for(command: &str, resolved: &ResolvedConfig) -> Option<Vec<Stage>> {
         ),
         "dedupe" => dependency_stages(
             resolved,
-            Operation::Dedupe,
+            Operation::Dedupe { check: false },
             "collapses the versions the declared ranges allow to be one, in the lockfile and \
-             node_modules",
+             node_modules; `--check` says what it would collapse, changes nothing, and exits \
+             non-zero when there is anything",
         ),
         "link" => dependency_stages(
             resolved,

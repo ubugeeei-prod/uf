@@ -497,6 +497,54 @@ fn dedupe_is_the_managers_own_or_a_refusal_that_names_it() {
     });
 }
 
+/// `uf dedupe --check` answers without touching the lockfile, on every manager
+/// that has a dedupe, and is refused by name on the two that have none.
+///
+/// The tree here was resolved by the manager a moment ago, so the answer is
+/// "nothing to collapse" — which is the answer CI gets on a healthy project,
+/// and the one that has to be an exit code of 0.
+#[test]
+fn dedupe_check_answers_without_changing_the_lockfile() {
+    each_row(|fixture| {
+        let app = fixture.app();
+        succeeded(
+            &fixture.uf(&app, &["add", "./vendor/tiny"]),
+            "add ./vendor/tiny",
+        )?;
+        let lockfile = app.join(fixture.manager.lockfile());
+        let before = fs::read_to_string(&lockfile).ok();
+
+        let output = fixture.uf(&app, &["dedupe", "--check"]);
+        match fixture.manager {
+            Manager::Yarn1 | Manager::Bun => {
+                let stderr = refused(&output, "dedupe --check")?;
+                ensure(
+                    stderr.contains(&format!("{} has no `dedupe", fixture.manager.label())),
+                    || format!("the refusal does not name the manager:\n{stderr}"),
+                )?;
+            }
+            _ => {
+                let stdout = succeeded(&output, "dedupe --check")?;
+                ensure(stdout.contains("nothing to collapse"), || {
+                    format!(
+                        "a tree the manager just resolved was not reported as deduped:\n{stdout}"
+                    )
+                })?;
+                ensure(
+                    report_row(&stdout, "command").contains("--check")
+                        || report_row(&stdout, "command").contains("--dry-run"),
+                    || format!("uf did not ask the manager to check:\n{stdout}"),
+                )?;
+            }
+        }
+
+        // Whatever it answered, it is a check: the lockfile is untouched.
+        ensure(fs::read_to_string(&lockfile).ok() == before, || {
+            format!("`uf dedupe --check` rewrote {}", lockfile.display())
+        })
+    });
+}
+
 /// `uf link ../lib` puts a link to the checkout where the declared release
 /// was, on the managers that link by path. Yarn 1 and bun link by name only,
 /// and are refused before anything runs.

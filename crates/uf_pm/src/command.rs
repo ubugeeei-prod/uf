@@ -28,7 +28,8 @@
 //! | `DlxExec` | `uf exec` | `npx --yes` | `pnpm dlx` | `npx --yes` | `yarn dlx` | `bunx` |
 //! | `Update` | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
 //! | `Why` | `uf why` | `npm explain` | `pnpm why` | `yarn why` | `yarn why` | `bun why` |
-//! | `Dedupe` | `uf dedupe` | `npm dedupe` | `pnpm dedupe` | — | `yarn dedupe` | — |
+//! | `Dedupe { check: false }` | `uf dedupe` | `npm dedupe` | `pnpm dedupe` | — | `yarn dedupe` | — |
+//! | `Dedupe { check: true }` | `uf dedupe --check` | `npm dedupe --dry-run --json` | `pnpm dedupe --check` | — | `yarn dedupe --check` | — |
 //! | `Link { target: Register }` | `uf link` | `npm link` | `pnpm link` | `yarn link` | — | `bun link` |
 //! | `Link { target: Package }` | `uf link <name>` | `npm link <name>` | `pnpm link <name>` | `yarn link <name>` | — | `bun link <name>` |
 //! | `Link { target: Directory }` | `uf link <dir>` | `npm link <dir>` | `pnpm link <dir>` | — | `yarn link <dir>` | — |
@@ -224,7 +225,16 @@ pub enum Operation<'a> {
     ///
     /// npm, pnpm and Yarn 2+. Yarn 1 answers that `yarn install` already
     /// dedupes, and bun has no command for it.
-    Dedupe,
+    Dedupe {
+        /// Say what a dedupe would collapse, and change nothing.
+        ///
+        /// For CI, where the answer is wanted as an exit code. pnpm and
+        /// Yarn 2+ have a `--check` of their own, which exits non-zero when
+        /// the lockfile would change. npm has none: it is asked for the dry
+        /// run it does have, in JSON, because npm exits 0 either way and the
+        /// answer is in what it prints.
+        check: bool,
+    },
     /// Link a package that is being developed somewhere else into a project,
     /// or make one linkable; the caller appends the name or the path.
     Link {
@@ -250,7 +260,7 @@ pub enum Operation<'a> {
 
 impl Operation<'_> {
     /// Every operation, with a representative payload, for exhaustive testing.
-    pub const ALL: [Self; 27] = [
+    pub const ALL: [Self; 28] = [
         Self::Install,
         Self::InstallFrozen,
         Self::InstallProd,
@@ -278,7 +288,8 @@ impl Operation<'_> {
         Self::Search,
         Self::Patch,
         Self::PatchCommit,
-        Self::Dedupe,
+        Self::Dedupe { check: false },
+        Self::Dedupe { check: true },
         Self::Link {
             target: LinkTarget::Register,
         },
@@ -321,7 +332,7 @@ impl Operation<'_> {
             // whose scripts run against code the project has just edited.
             | Self::PatchCommit
             // A dedupe is an install of a smaller tree.
-            | Self::Dedupe
+            | Self::Dedupe { check: false }
             // Every manager links by installing: npm reifies the project
             // around the link, and registering a package installs it into the
             // global directory, dependencies and their scripts included.
@@ -340,6 +351,9 @@ impl Operation<'_> {
             // `pnpm patch` extracts a copy into a temporary directory and
             // prints the path. Nothing enters `node_modules` until the commit.
             | Self::Patch
+            // A check installs nothing: it asks what a dedupe would
+            // collapse, and every manager that has one leaves the tree alone.
+            | Self::Dedupe { check: true }
             | Self::Info => false,
         }
     }
@@ -367,7 +381,8 @@ impl Operation<'_> {
             Self::Search => "search",
             Self::Patch => "patch",
             Self::PatchCommit => "patch-commit",
-            Self::Dedupe => "dedupe",
+            Self::Dedupe { check: false } => "dedupe",
+            Self::Dedupe { check: true } => "dedupe --check",
             Self::Link {
                 target: LinkTarget::Register,
             } => "link",
@@ -509,7 +524,8 @@ const fn uf_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => spec("uf", &["search"]),
         Operation::Patch => spec("uf", &["patch"]),
         Operation::PatchCommit => spec("uf", &["patch", "--commit"]),
-        Operation::Dedupe => spec("uf", &["dedupe"]),
+        Operation::Dedupe { check: false } => spec("uf", &["dedupe"]),
+        Operation::Dedupe { check: true } => spec("uf", &["dedupe", "--check"]),
         Operation::Link { .. } => spec("uf", &["link"]),
         Operation::Unlink { .. } => spec("uf", &["unlink"]),
         Operation::Info => spec("uf", &["info"]),
@@ -551,7 +567,11 @@ const fn npm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // ecosystem's answer and it is not npm's, so uf refuses rather than
         // reaching for a package the project has not installed.
         Operation::Patch | Operation::PatchCommit => unsupported(),
-        Operation::Dedupe => spec("npm", &["dedupe"]),
+        Operation::Dedupe { check: false } => spec("npm", &["dedupe"]),
+        // npm has no `--check`. `--dry-run` changes nothing and exits 0
+        // whatever it finds, so uf asks for the summary in JSON and reads
+        // the answer out of it.
+        Operation::Dedupe { check: true } => spec("npm", &["dedupe", "--dry-run", "--json"]),
         // One word for all three: nothing registers the package, a name links
         // a registered one, and a path links the directory.
         Operation::Link { .. } => spec("npm", &["link"]),
@@ -607,7 +627,8 @@ const fn pnpm_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => spec("pnpm", &["search"]),
         Operation::Patch => spec("pnpm", &["patch"]),
         Operation::PatchCommit => spec("pnpm", &["patch-commit"]),
-        Operation::Dedupe => spec("pnpm", &["dedupe"]),
+        Operation::Dedupe { check: false } => spec("pnpm", &["dedupe"]),
+        Operation::Dedupe { check: true } => spec("pnpm", &["dedupe", "--check"]),
         // pnpm 10 spells the three the way npm does: `pnpm link` registers the
         // package globally, `pnpm link <name>` links a registered one, and
         // `pnpm link <dir>` writes `link:<dir>` into the manifest.
@@ -652,8 +673,9 @@ const fn yarn_classic_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // `yarn patch` is Berry's; Yarn 1 never had one.
         Operation::Patch | Operation::PatchCommit => unsupported(),
         // `yarn dedupe` exists only to say "The dedupe command isn't necessary.
-        // `yarn install` will already dedupe." — and to exit 1 saying it.
-        Operation::Dedupe => unsupported(),
+        // `yarn install` will already dedupe." — and to exit 1 saying it. There
+        // is nothing to check either, for the same reason.
+        Operation::Dedupe { .. } => unsupported(),
         Operation::Link {
             target: LinkTarget::Register | LinkTarget::Package,
         } => spec("yarn", &["link"]),
@@ -709,7 +731,8 @@ const fn yarn_berry_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         Operation::Search => unsupported(),
         Operation::Patch => spec("yarn", &["patch"]),
         Operation::PatchCommit => spec("yarn", &["patch-commit"]),
-        Operation::Dedupe => spec("yarn", &["dedupe"]),
+        Operation::Dedupe { check: false } => spec("yarn", &["dedupe"]),
+        Operation::Dedupe { check: true } => spec("yarn", &["dedupe", "--check"]),
         // Berry links by path, into `resolutions`, and keeps no registry of
         // linkable packages for a name to be looked up in.
         Operation::Link {
@@ -768,8 +791,8 @@ const fn bun_spec(operation: Operation<'_>) -> Option<CommandSpec> {
         // from pnpm's and yarn's — uf will not present three incompatible
         // things under one name.
         Operation::Patch | Operation::PatchCommit => unsupported(),
-        // Nor a dedupe, in any version.
-        Operation::Dedupe => unsupported(),
+        // Nor a dedupe, in any version, and so nothing to check.
+        Operation::Dedupe { .. } => unsupported(),
         Operation::Link {
             target: LinkTarget::Register | LinkTarget::Package,
         } => spec("bun", &["link"]),

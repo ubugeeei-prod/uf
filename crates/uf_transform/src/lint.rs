@@ -15,7 +15,8 @@
 //!    plugin's `validate*` flags, and the compiler's default `compilationMode`,
 //!    `infer`. So a plain `function useThing()` or `function Card()` that calls
 //!    a hook or returns JSX is checked, and so is every `component` and `hook`
-//!    declaration.
+//!    declaration. The one validation the plugin ships switched off and lets a
+//!    project switch on is a [`LintSwitches`] field.
 //! 2. **Which modules** — [`may_contain_react_code`], the plugin's own test of
 //!    a module's top-level statements. A module it rejects is not compiled.
 //! 3. **Which events, and where** — every `CompileError` event is a finding,
@@ -53,6 +54,19 @@ use crate::compiler::{lint_plugin_options, reported_at, teach_facade_provenance}
 /// reported a finding already.
 const FLOW_SUPPRESSION_CODES: [&str; 2] = ["react-rule-hook", "react-rule-unsafe-ref"];
 
+/// The validations `eslint-plugin-react-hooks` ships switched off and lets a
+/// project switch on through its rule options.
+///
+/// uf's rules stand in for those options: `uf_lint` sets a switch when the
+/// rule that reports what the validation finds is on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LintSwitches {
+    /// Check effect dependency arrays for missing and extra values
+    /// (`validateExhaustiveEffectDependencies: "all"`), which the compiler
+    /// reports as [`ErrorCategory::EffectExhaustiveDependencies`].
+    pub effect_dependencies: bool,
+}
+
 /// How many modules [`cached`] remembers.
 ///
 /// A module's findings are kept against its path and its exact text, so they
@@ -64,9 +78,10 @@ const FLOW_SUPPRESSION_CODES: [&str; 2] = ["react-rule-hook", "react-rule-unsafe
 /// the next time each is asked about.
 const CACHED_MODULES: usize = 512;
 
-/// What [`lint`] reported for one module, and the text it reported it for.
+/// What [`lint`] reported for one module, and the question it answered.
 struct Remembered {
     source: Box<str>,
+    switches: LintSwitches,
     found: Box<[LintDiagnostic]>,
 }
 
@@ -75,23 +90,23 @@ static REMEMBERED: LazyLock<Mutex<uf_infra::FxHashMap<Box<str>, Remembered>>> =
     LazyLock::new(Mutex::default);
 
 /// What [`lint`] reported for the module at `filename` the last time it was
-/// asked about it with exactly this text, if it was.
+/// asked about it with exactly this text and these switches, if it was.
 ///
-/// The options [`lint`] runs the compiler with depend on the path and nothing
-/// else, and the tree it is handed is a function of the text, so the two are
-/// the whole of the question. A caller that gets an answer here skips building
-/// that tree at all, which is most of the cost. The answer is a copy: a
-/// module's findings are a handful of short strings, and copying them costs
-/// nothing next to the compile they stand in for.
+/// The options [`lint`] runs the compiler with depend on the path and the
+/// switches and nothing else, and the tree it is handed is a function of the
+/// text, so the three are the whole of the question. A caller that gets an
+/// answer here skips building that tree at all, which is most of the cost.
+/// The answer is a copy: a module's findings are a handful of short strings,
+/// and copying them costs nothing next to the compile they stand in for.
 #[must_use]
-pub fn cached(filename: &str, source: &str) -> Option<Vec<LintDiagnostic>> {
+pub fn cached(filename: &str, source: &str, switches: LintSwitches) -> Option<Vec<LintDiagnostic>> {
     let table = REMEMBERED.lock().unwrap_or_else(PoisonError::into_inner);
     let entry = table.get(filename)?;
-    (*entry.source == *source).then(|| entry.found.to_vec())
+    (*entry.source == *source && entry.switches == switches).then(|| entry.found.to_vec())
 }
 
 /// Keep what [`lint`] found for [`cached`] to answer with.
-fn remember(filename: &str, source: &str, found: &[LintDiagnostic]) {
+fn remember(filename: &str, source: &str, switches: LintSwitches, found: &[LintDiagnostic]) {
     let mut table = REMEMBERED.lock().unwrap_or_else(PoisonError::into_inner);
     if table.len() >= CACHED_MODULES && !table.contains_key(filename) {
         table.clear();
@@ -100,6 +115,7 @@ fn remember(filename: &str, source: &str, found: &[LintDiagnostic]) {
         filename.into(),
         Remembered {
             source: source.into(),
+            switches,
             found: found.into(),
         },
     );
@@ -201,9 +217,10 @@ fn is_component_or_hook_name(name: &str) -> bool {
 /// `eslint-plugin-react-hooks` would report it.
 ///
 /// `file` is the module's Babel tree ([`crate::babel_ast`]), `scope` is
-/// [`crate::scope::analyze`] of that tree, and `filename` is the module's path.
-/// Call [`may_contain_react_code`] first: a module it rejects is one the
-/// plugin never compiles.
+/// [`crate::scope::analyze`] of that tree, `filename` is the module's path, and
+/// `switches` are the validations the project turned on beyond the plugin's
+/// defaults. Call [`may_contain_react_code`] first: a module it rejects is one
+/// the plugin never compiles.
 ///
 /// # Errors
 ///
@@ -220,13 +237,14 @@ pub fn lint(
     mut scope: ScopeInfo,
     source: &str,
     filename: &str,
+    switches: LintSwitches,
 ) -> Result<Vec<LintDiagnostic>, TransformError> {
     profile_span!("lint::lint");
     teach_facade_provenance(&mut scope);
     let ast = File::deserialize(file).map_err(|error| {
         TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
     })?;
-    let options = lint_plugin_options(source, filename)?;
+    let options = lint_plugin_options(source, filename, switches)?;
     // A fatal result still carries the events logged before it, and the
     // plugin reports those too: its logger collects them as they happen.
     let events = match compile_program(ast, scope, options) {
@@ -272,7 +290,7 @@ pub fn lint(
             column,
         });
     }
-    remember(filename, source, &found);
+    remember(filename, source, switches, &found);
     Ok(found)
 }
 
@@ -368,16 +386,20 @@ mod tests {
     use super::*;
     use crate::{babel_ast, scope};
 
-    /// `source`'s findings, as `(category, line, column)`, with the messages
-    /// kept alongside for the tests that read them.
+    /// `source`'s findings with the plugin's default switches.
     fn linted(source: &str) -> Vec<LintDiagnostic> {
+        linted_with(source, "app/page.js", LintSwitches::default())
+    }
+
+    fn linted_with(source: &str, path: &str, switches: LintSwitches) -> Vec<LintDiagnostic> {
         on_parse_stack(|| {
             let (file, _) = babel_ast(source).expect("the module parses and lowers");
             let info = scope::analyze(&file);
-            lint(&file, info, source, "app/page.js").expect("the compiler answers")
+            lint(&file, info, source, path, switches).expect("the compiler answers")
         })
     }
 
+    /// `source`'s findings, as `(category, line, column)`.
     fn found(source: &str) -> Vec<(ErrorCategory, u32, u32)> {
         linted(source)
             .into_iter()
@@ -409,7 +431,8 @@ mod tests {
     fn the_options_are_the_eslint_plugins() {
         use react_compiler::entrypoint::CompilerOutputMode;
 
-        let options = lint_plugin_options("", "app/page.js").expect("options");
+        let options =
+            lint_plugin_options("", "app/page.js", LintSwitches::default()).expect("options");
         assert_eq!(
             CompilerOutputMode::from_opts(&options),
             CompilerOutputMode::Lint
@@ -435,15 +458,30 @@ mod tests {
         assert!(environment.validate_no_derived_computations_in_effects);
         assert!(!environment.enable_use_keyed_state);
         assert!(!environment.enable_verbose_no_set_state_in_effect);
-        assert_eq!(
-            serde_json::to_value(environment.validate_exhaustive_effect_dependencies)
-                .expect("serializes"),
-            "off"
-        );
+        let effect_dependencies = |options: &react_compiler::entrypoint::PluginOptions| {
+            serde_json::to_value(options.environment.validate_exhaustive_effect_dependencies)
+                .expect("serializes")
+        };
+        assert_eq!(effect_dependencies(&options), "off");
+
+        // The one switch, turned on the way the plugin's rule options turn it on.
+        let switched = lint_plugin_options(
+            "",
+            "app/page.js",
+            LintSwitches {
+                effect_dependencies: true,
+            },
+        )
+        .expect("options");
+        assert_eq!(effect_dependencies(&switched), "all");
 
         // The plugin's `sources` default: a dependency is never compiled.
-        let dependency =
-            lint_plugin_options("", "node_modules/some-package/index.js").expect("options");
+        let dependency = lint_plugin_options(
+            "",
+            "node_modules/some-package/index.js",
+            LintSwitches::default(),
+        )
+        .expect("options");
         assert!(!dependency.should_compile);
     }
 
@@ -515,6 +553,27 @@ mod tests {
         }
     }
 
+    /// The plugin ships effect dependency checking switched off, and so does
+    /// uf: the compiler reports a missing dependency only once it is asked to.
+    #[test]
+    fn effect_dependencies_are_checked_only_when_switched_on() {
+        let source = "import {useEffect} from 'react';\nexport component Logger(id: string, value: string) {\n  useEffect(() => {\n    console.log(id, value);\n  }, [id]);\n  return null;\n}\n";
+        let effect_findings = |switches: LintSwitches| {
+            linted_with(source, "app/effect-dependencies.js", switches)
+                .into_iter()
+                .filter(|finding| finding.category == ErrorCategory::EffectExhaustiveDependencies)
+                .map(|finding| (finding.line, finding.column))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(effect_findings(LintSwitches::default()), []);
+        assert_eq!(
+            effect_findings(LintSwitches {
+                effect_dependencies: true
+            }),
+            [(4, 20)]
+        );
+    }
+
     /// `@uniflowed/react` is React re-exported, and the compiler has to be
     /// told, or a ref from it is an ordinary value.
     #[test]
@@ -560,19 +619,23 @@ mod tests {
     fn a_module_asked_about_again_with_the_same_text_is_answered_from_memory() {
         let path = "app/remembered-by-this-test-only.js";
         let source = "import {useState} from 'react';\nexport component Toggle(flag: boolean) {\n  if (flag) {\n    const [on] = useState(false);\n  }\n  return null;\n}\n";
-        assert!(cached(path, source).is_none());
+        let plain = LintSwitches::default();
+        assert!(cached(path, source, plain).is_none());
 
-        let first = on_parse_stack(|| {
-            let (file, _) = babel_ast(source).expect("the module parses and lowers");
-            let info = scope::analyze(&file);
-            lint(&file, info, source, path).expect("the compiler answers")
-        });
+        let first = linted_with(source, path, plain);
         assert_eq!(first.len(), 1, "{first:#?}");
 
-        assert_eq!(cached(path, source).as_deref(), Some(first.as_slice()));
-        // A different text or a different path is a different question.
-        assert!(cached(path, &format!("{source}\n")).is_none());
-        assert!(cached("app/never-linted-by-this-test.js", source).is_none());
+        assert_eq!(
+            cached(path, source, plain).as_deref(),
+            Some(first.as_slice())
+        );
+        // A different text, path or switch is a different question.
+        assert!(cached(path, &format!("{source}\n"), plain).is_none());
+        assert!(cached("app/never-linted-by-this-test.js", source, plain).is_none());
+        let switched = LintSwitches {
+            effect_dependencies: true,
+        };
+        assert!(cached(path, source, switched).is_none());
     }
 
     #[test]

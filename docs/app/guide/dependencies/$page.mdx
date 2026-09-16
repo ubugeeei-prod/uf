@@ -287,7 +287,9 @@ anything is a failure, not `already up to date`. `uf unlink` undoes either
 direction. It takes a link out of the project and installs what the manifest
 declares in its place, or removes what `uf link` registered. When there is
 nothing to unlink, it says what it found and exits 0. `uf dedupe` collapses the
-versions your ranges allow to be one.
+versions your ranges allow to be one, and `uf dedupe --check` names what it
+would collapse, changes nothing, and exits non-zero when there is anything —
+which is the form for CI.
 
 ## Asking about the tree
 
@@ -347,6 +349,7 @@ error: bun has no `search`: npm and pnpm can search the registry; `uf exec --yes
 | `uf remove` | `npm uninstall` | `pnpm remove` | `yarn remove` | `yarn remove` | `bun remove` |
 | `uf update` | `npm update` | `pnpm update` | `yarn upgrade` | `yarn up` | `bun update` |
 | `uf dedupe` | `npm dedupe` | `pnpm dedupe` | refused | `yarn dedupe` | refused |
+| `uf dedupe --check` | `npm dedupe --dry-run --json` | `pnpm dedupe --check` | refused | `yarn dedupe --check` | refused |
 | `uf link DIR` | `npm link` | `pnpm link` | refused | `yarn link` | refused |
 | `uf link NAME` | `npm link` | `pnpm link` on pnpm 10; pnpm 12 refuses it | `yarn link` | refused | `bun link` |
 | `uf unlink NAME` | `npm uninstall --no-save` | `pnpm unlink` | `yarn unlink` | `yarn unlink` | uf removes the link |

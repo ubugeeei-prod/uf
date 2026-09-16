@@ -515,7 +515,7 @@ fn run(cli: Cli, target: Option<&str>, ui: &mut Ui) -> Result<()> {
         Commands::Patch { target, commit } => commands::pm::patch(&cwd, ui, &target, commit),
         Commands::Link { target } => commands::pm::link(&cwd, ui, target.as_deref()),
         Commands::Unlink { target } => commands::pm::unlink(&cwd, ui, target.as_deref()),
-        Commands::Dedupe => commands::pm::dedupe(&cwd, ui),
+        Commands::Dedupe { check } => commands::pm::dedupe(&cwd, ui, check),
         Commands::Catalog { command } => match command {
             None => commands::pm::catalog(&cwd, ui),
             Some(cli::CatalogCommand::Set {
