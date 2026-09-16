@@ -101,6 +101,16 @@ describe("queries", () => {
     expect(screen.getByRole("button").textContent).toBe("Save");
   });
 
+  it("finds a bare <output> by the status role it already has", () => {
+    // `<output>`'s implicit role is `status`, and unconditionally so — it is
+    // the one element ARIA maps to that role, with no attribute to qualify it.
+    // That is the same mapping `a11y/no-redundant-roles` reads when it calls
+    // `<output role="status">` a repetition, so a query that missed it made
+    // dropping the attribute look like it had broken the markup.
+    render(<output>2</output>);
+    expect(screen.getByRole("status").textContent).toBe("2");
+  });
+
   it("tells a column header and a row header apart by their scope", () => {
     render(
       <table>
