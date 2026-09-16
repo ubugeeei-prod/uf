@@ -41,6 +41,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "an `a` needs a real `href`; an action belongs on a `button`",
     },
     RuleDescriptor {
+        id: "a11y/aria-activedescendant-has-tabindex",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`aria-activedescendant` needs an element that can take focus",
+    },
+    RuleDescriptor {
         id: "a11y/aria-props",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
@@ -67,6 +74,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "the elements ARIA reserves take no `role` and no `aria-*`",
+    },
+    RuleDescriptor {
+        id: "a11y/click-events-have-key-events",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an element with a `role` and an `onClick` needs a key handler too",
     },
     RuleDescriptor {
         id: "a11y/heading-has-content",
@@ -104,6 +118,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`alt` text does not call the image an image, photo or picture",
     },
     RuleDescriptor {
+        id: "a11y/interactive-supports-focus",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a widget role has to be reachable by keyboard",
+    },
+    RuleDescriptor {
         id: "a11y/label-has-associated-control",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
@@ -116,6 +137,27 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "`audio` and `video` need a captions `track`",
+    },
+    RuleDescriptor {
+        id: "a11y/mouse-events-have-key-events",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`onMouseOver` and `onMouseOut` need `onFocus` and `onBlur` beside them",
+    },
+    RuleDescriptor {
+        id: "a11y/no-aria-hidden-on-focusable",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`aria-hidden` does not belong on an element that takes focus",
+    },
+    RuleDescriptor {
+        id: "a11y/no-noninteractive-tabindex",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "a `tabIndex` belongs on a control, not on what is only read",
     },
     RuleDescriptor {
         id: "a11y/no-redundant-roles",
@@ -151,6 +193,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "an element carries only the `aria-*` its role takes",
+    },
+    RuleDescriptor {
+        id: "a11y/tabindex-no-positive",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a `tabIndex` above zero reorders the whole page",
     },
     RuleDescriptor {
         id: "markup/no-invalid-nesting",
