@@ -35,6 +35,25 @@ export default defineConfig({
     },
   },
 
+  // Three of the React Compiler's rules sit at `warn` here, and only here. The
+  // shipped defaults in `crates/uf_config/src/lint.rs` keep the levels
+  // `eslint-plugin-react-hooks` gives them, so nothing is weakened for anyone
+  // using uf. What is true is that uf's own packages break them 120 times, 112
+  // of those in `packages/ui`, and the rules are right to say so:
+  // `packages/hooks/lifecycle.js` returns `previous.current` during render, and
+  // `packages/ui/alert-dialog.js` writes `describedBy.current += 1` while
+  // rendering. Suppressing 120 sites would bury the fixes behind the
+  // suppressions, so the findings stay visible as warnings until the code is
+  // fixed, package by package, and each rule goes back to its shipped level as
+  // its package is cleaned. ubugeeei-prod/uf#1157.
+  lint: {
+    rules: {
+      "react-compiler/refs": "warn",
+      "react-compiler/immutability": "warn",
+      "react-compiler/set-state-in-effect": "warn",
+    },
+  },
+
   // What no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test` and
   // `uf doc` all read this one list, which is why it is here rather than under
   // `lint`, where it used to be and where it only ever looked like one
@@ -230,6 +249,16 @@ export default defineConfig({
     // belongs at `error` in `crates/uf_config/src/lint.rs`; a warning nobody
     // intends to act on belongs at `off` with the argument written on its row.
     //
+    // Two more kinds of warning stand beside those four now that the React
+    // Compiler's own diagnostics are uf's React rules.
+    // `react-compiler/memo-dependencies` is `warn` in the shipped table,
+    // because it stands in for ESLint's `exhaustive-deps` and the compiler
+    // reports it on code that works. `react-compiler/refs`, `immutability` and
+    // `set-state-in-effect` are `error` everywhere except here: this
+    // repository holds them at `warn` in its own `lint.rules` above, with the
+    // argument written there, until uf's packages stop breaking them.
+    // ubugeeei-prod/uf#1157 is where that gets fixed and each one goes back.
+    //
     // The condition rather than a count, deliberately. This paragraph used to
     // say "14 warnings over 322 files"; the file count was wrong within a
     // fortnight and would be wrong again the next time anybody added a file,
@@ -259,6 +288,17 @@ export default defineConfig({
     //     escapes a text child.
     //   * `fetch/no-global-override`, once, in the package whose entire job is
     //     to intercept `fetch`.
+    //   * `react-compiler/static-components`, six times, in the router,
+    //     wherever it renders a component it looked up from a route or slot
+    //     module: the page (`pageComponent`), a loading fallback
+    //     (`loadingComponent`), a layout (`layoutComponent`) and an error
+    //     boundary (`errorComponent`). Each helper hands back that module's
+    //     own export as it is, so it is the same component on every render of
+    //     the same route; the compiler cannot see through the lookup and reads
+    //     it as a component created during render. Five are
+    //     `uf-lint-disable-next-line`. `RenderedPage`'s is the block form,
+    //     because its finding is on a JSX child and a `//` comment cannot
+    //     stand between JSX children without becoming text.
     //
     // The two `flow/unclear-type` suppressions that had a fix somebody could go
     // and do are gone rather than counted: `fireEvent`'s proxy (#401), and

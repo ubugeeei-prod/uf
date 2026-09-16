@@ -192,11 +192,19 @@ pub(crate) fn plugin_options(
 /// * `shouldCompile` is the plugin's default `sources` filter: nothing under
 ///   `node_modules`.
 /// * The environment is the plugin's, flag for flag, with its three
-///   experiment switches at the values its build ships with.
+///   experiment switches at the values its build ships with — except effect
+///   dependency checking when [`LintSwitches`](crate::lint::LintSwitches) turns
+///   it on, which is what the plugin's rule options do.
 pub(crate) fn lint_plugin_options(
     source: &str,
     filename: &str,
+    switches: crate::lint::LintSwitches,
 ) -> Result<PluginOptions, TransformError> {
+    let effect_dependencies = if switches.effect_dependencies {
+        "all"
+    } else {
+        "off"
+    };
     options_for(
         filename,
         source,
@@ -220,7 +228,7 @@ pub(crate) fn lint_plugin_options(
                 "validateNoDerivedComputationsInEffects": true,
                 "enableUseKeyedState": false,
                 "enableVerboseNoSetStateInEffect": false,
-                "validateExhaustiveEffectDependencies": "off",
+                "validateExhaustiveEffectDependencies": effect_dependencies,
             },
         },
     )

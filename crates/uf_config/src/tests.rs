@@ -1253,6 +1253,69 @@ fn naming_one_lint_rule_keeps_the_rest_of_uf_s_table() {
     }
 }
 
+/// Every `react-compiler/*` rule sits at its `eslint-plugin-react-hooks` level.
+///
+/// The levels are not uf's opinion, and this pins them: they are the ones that
+/// plugin's `recommended-latest` preset gives each compiler category, so a
+/// project arriving from the plugin keeps the findings it had. The two that
+/// differ say why in `DEFAULT_LINT_RULES` — the plugin answers those two
+/// questions a second time with its classic `rules-of-hooks` and
+/// `exhaustive-deps` rules, and uf has only the compiler's answer.
+#[test]
+fn react_compiler_rules_sit_at_the_plugin_s_preset_levels() {
+    let defaults = UniflowedConfig::default();
+
+    for (rule, level) in [
+        ("react-compiler/capitalized-calls", RuleLevel::Off),
+        ("react-compiler/error-boundaries", RuleLevel::Error),
+        (
+            "react-compiler/exhaustive-effect-dependencies",
+            RuleLevel::Off,
+        ),
+        ("react-compiler/fbt", RuleLevel::Off),
+        ("react-compiler/globals", RuleLevel::Error),
+        ("react-compiler/hooks", RuleLevel::Error),
+        ("react-compiler/immutability", RuleLevel::Error),
+        ("react-compiler/incompatible-library", RuleLevel::Warn),
+        ("react-compiler/invariant", RuleLevel::Off),
+        ("react-compiler/memo-dependencies", RuleLevel::Warn),
+        (
+            "react-compiler/no-deriving-state-in-effects",
+            RuleLevel::Off,
+        ),
+        (
+            "react-compiler/preserve-manual-memoization",
+            RuleLevel::Error,
+        ),
+        ("react-compiler/purity", RuleLevel::Error),
+        ("react-compiler/refs", RuleLevel::Error),
+        ("react-compiler/set-state-in-effect", RuleLevel::Error),
+        ("react-compiler/set-state-in-render", RuleLevel::Error),
+        ("react-compiler/static-components", RuleLevel::Error),
+        ("react-compiler/syntax", RuleLevel::Off),
+        ("react-compiler/todo", RuleLevel::Off),
+        ("react-compiler/unsupported-syntax", RuleLevel::Warn),
+        ("react-compiler/use-memo", RuleLevel::Error),
+        ("react-compiler/void-use-memo", RuleLevel::Error),
+    ] {
+        assert_eq!(
+            defaults.lint.rules.get(rule).copied(),
+            Some(level),
+            "{rule} is not at the level the plugin's preset gives its category"
+        );
+    }
+
+    // And the table holds no other one: a category that gained a rule without a
+    // default would be off for every project, and nobody would be told.
+    let compiler_rules = defaults
+        .lint
+        .rules
+        .keys()
+        .filter(|id| id.starts_with("react-compiler/"))
+        .count();
+    assert_eq!(compiler_rules, 22);
+}
+
 /// Switching a rule off is still spelled `"off"`, and still works.
 #[test]
 fn a_rule_set_to_off_is_off_and_its_neighbours_are_not() {

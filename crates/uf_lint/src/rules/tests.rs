@@ -67,6 +67,31 @@ fn deprecated_alias_points_at_flow_unclear_type() {
     );
 }
 
+/// The React rules uf used to write itself now spell the compiler's rules.
+///
+/// Each of these ids was a rule with an implementation in `uf_lint`. Keeping
+/// them working is the whole migration path for a project that named one in
+/// `uf.config.js` or in a `uf-lint-disable` comment, so the mapping is pinned
+/// rather than left to the alias table being edited correctly.
+#[test]
+fn deprecated_aliases_point_at_the_compiler_s_rules() {
+    for (alias, canonical) in [
+        ("react/hooks-rules", "react-compiler/hooks"),
+        (
+            "react/no-derived-state-effect",
+            "react-compiler/no-deriving-state-in-effects",
+        ),
+        ("react/no-render-side-effects", "react-compiler/purity"),
+    ] {
+        assert_eq!(canonical_rule_id(alias), Some(canonical), "{alias}");
+        assert_eq!(
+            deprecated_aliases_for(canonical).collect::<Vec<_>>(),
+            vec![alias],
+            "{canonical}"
+        );
+    }
+}
+
 #[test]
 fn every_deprecated_alias_resolves_to_a_real_rule() {
     for (alias, target) in DEPRECATED_ALIASES.entries() {
