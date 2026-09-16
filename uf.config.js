@@ -259,6 +259,14 @@ export default defineConfig({
     //     escapes a text child.
     //   * `fetch/no-global-override`, once, in the package whose entire job is
     //     to intercept `fetch`.
+    //   * `react-compiler/static-components`, three times, in the router, for
+    //     the page component a route or slot module exports. `pageComponent`
+    //     hands back that module's own `default` or `Page` as it is, so it is
+    //     the same component on every render of the same route; the compiler
+    //     cannot see through the lookup and reads it as a component created
+    //     during render. Two are `uf-lint-disable-next-line`. `RenderedPage`'s
+    //     is the block form, because its finding is on a JSX child and a `//`
+    //     comment cannot stand between JSX children without becoming text.
     //
     // The two `flow/unclear-type` suppressions that had a fix somebody could go
     // and do are gone rather than counted: `fireEvent`'s proxy (#401), and

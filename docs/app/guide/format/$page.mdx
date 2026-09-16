@@ -163,15 +163,53 @@ not checks uf wrote. `uf lint` runs the compiler `uf build` runs —
 named for its category. The message is the compiler's; uf adds the code frame
 and `uf-lint-disable`.
 
-| Rule | Compiler category | What the compiler reports |
-| --- | --- | --- |
-| `react-compiler/hooks` | `Hooks` | a hook called conditionally, in a loop, after an early return, or inside a function expression |
-| `react-compiler/purity` | `Purity` | a known-impure function, such as `Date.now()` or `Math.random()`, called during render |
-| `react-compiler/globals` | `Globals` | a variable declared outside the component or hook, reassigned during render |
+| Rule | Compiler category | Level | What the compiler reports |
+| --- | --- | --- | --- |
+| `react-compiler/capitalized-calls` | `CapitalizedCalls` | `off` | a capitalized function called instead of rendered with JSX |
+| `react-compiler/error-boundaries` | `ErrorBoundaries` | `error` | JSX built inside `try`/`catch` instead of under an error boundary |
+| `react-compiler/exhaustive-effect-dependencies` | `EffectExhaustiveDependencies` | `off` | an effect's dependency array missing or adding a value |
+| `react-compiler/fbt` | `FBT` | `off` | Meta's `fbt` internationalization library |
+| `react-compiler/globals` | `Globals` | `error` | a variable from outside a component or hook changed during render |
+| `react-compiler/hooks` | `Hooks` | `error` | the Rules of Hooks |
+| `react-compiler/immutability` | `Immutability` | `error` | props, state or another value React treats as immutable, mutated |
+| `react-compiler/incompatible-library` | `IncompatibleLibrary` | `warn` | an API known to break memoization |
+| `react-compiler/invariant` | `Invariant` | `off` | an internal assumption of the compiler that did not hold |
+| `react-compiler/memo-dependencies` | `MemoDependencies` | `warn` | a `useMemo` or `useCallback` dependency array missing or adding a value |
+| `react-compiler/no-deriving-state-in-effects` | `EffectDerivationsOfState` | `off` | a value derived from props or state, computed in an effect |
+| `react-compiler/preserve-manual-memoization` | `PreserveManualMemo` | `error` | a `useMemo` or `useCallback` the compiler cannot preserve |
+| `react-compiler/purity` | `Purity` | `error` | a known-impure function called during render |
+| `react-compiler/refs` | `Refs` | `error` | a ref read or written during render |
+| `react-compiler/set-state-in-effect` | `EffectSetState` | `error` | `setState` called synchronously in an effect |
+| `react-compiler/set-state-in-render` | `RenderSetState` | `error` | `setState` called during render |
+| `react-compiler/static-components` | `StaticComponents` | `error` | a component created during render |
+| `react-compiler/syntax` | `Syntax` | `off` | code the compiler rejects as invalid syntax |
+| `react-compiler/todo` | `Todo` | `off` | code the compiler does not compile yet |
+| `react-compiler/unsupported-syntax` | `UnsupportedSyntax` | `warn` | syntax the compiler does not support |
+| `react-compiler/use-memo` | `UseMemo` | `error` | a `useMemo` callback that is async, a generator, or takes parameters |
+| `react-compiler/void-use-memo` | `VoidUseMemo` | `error` | a `useMemo` callback that returns nothing |
 
-All three are `error` by default. They run whether or not
-`app.builtins.reactCompiler.enabled` is on, because they report the rules of
-React rather than what the build memoized.
+Every level is the one `eslint-plugin-react-hooks`' `recommended-latest` preset
+gives that category, so a project arriving from the plugin keeps the findings it
+had. Two differ: `hooks` and `memo-dependencies` are on although the preset
+leaves those compiler rules off, because the plugin answers both questions a
+second time with its classic `rules-of-hooks` (`error`) and `exhaustive-deps`
+(`warn`) rules, and uf has only the compiler's answer.
+`exhaustive-effect-dependencies` is `off` because the plugin ships that
+validation switched off — turning the rule on turns the validation on.
+
+They run whether or not `app.builtins.reactCompiler.enabled` is on, because they
+report the rules of React rather than what the build memoized.
+
+**Four of the compiler's categories have no rule**, because no module can
+produce one under the options `uf lint` gives the compiler: `EffectDependencies`
+(no validation in this compiler reports it), `Gating` (only for a malformed
+`use memo if(…)` directive, which the compiler reads only under
+`dynamicGating`), `Config` (only for a module type configuration that
+contradicts itself, which needs `moduleTypeProvider`) and `Suppression` (the
+compiler looks for ESLint's suppression comments only while hook usage or
+exhaustive memoization dependencies go unvalidated, and both are validated, and
+for Flow's only under `flowSuppressions`, which is `false`). A category a newer
+compiler adds does not compile until somebody decides where it goes.
 
 **Which functions are checked.** The compiler checks the functions it would
 compile in `infer` mode, the mode `eslint-plugin-react-hooks` uses: every
@@ -191,15 +229,16 @@ is not compiled by the plugin, and not by `uf lint`.
 `$FlowFixMe[react-rule-unsafe-ref]` comment on the line above a finding removes
 it, as it does in ESLint: Flow has already reported the same thing.
 
-#### Migrating from `react/hooks-rules` and `react/no-render-side-effects`
+#### Migrating from uf's own React rules
 
-Those two rules were checks uf wrote itself, and they are gone. Their ids still
+Those rules were checks uf wrote itself, and they are gone. Their ids still
 work, in `uf.config.js` and in `uf-lint-disable` comments, as deprecated
 spellings of the compiler's rules:
 
 | Old id | Now means |
 | --- | --- |
 | `react/hooks-rules` | `react-compiler/hooks` |
+| `react/no-derived-state-effect` | `react-compiler/no-deriving-state-in-effects` |
 | `react/no-render-side-effects` | `react-compiler/purity` |
 
 Rename them when you next touch the line. What changed underneath:
@@ -216,6 +255,13 @@ Rename them when you next touch the line. What changed underneath:
   `document` during render is not reported** by these rules.
 - **The messages are the compiler's**, so a CI log or a script that matched the
   old wording needs the new one.
+- **`react/no-derived-state-effect` now names a rule the preset leaves `off`.**
+  It asked whether state was derived from props or state in an effect, which is
+  the compiler's `EffectDerivationsOfState` question and so its
+  `react-compiler/no-deriving-state-in-effects` rule. Writing state in an effect
+  at all is a different question, `react-compiler/set-state-in-effect`, and that
+  rule is `error`. A level set on the old id reaches neither of the other two:
+  set `react-compiler/set-state-in-effect` by name to change what it reports.
 
 ### What a lint run tells you
 
@@ -245,9 +291,9 @@ quietly disappearing.
 {
   "command": "uf lint",
   "stages": [
-    { "name": "uf rules", "provider": "Rust", "detail": "64 rules configured" },
+    { "name": "uf rules", "provider": "Rust", "detail": "90 rules configured" },
     { "name": "Flow's own lints", "provider": "OfficialFlowRust" },
-    { "name": "React Compiler", "provider": "OfficialRust", "detail": "3 `react-compiler/*` rules, in the compiler's lint mode" }
+    { "name": "React Compiler", "provider": "OfficialRust", "detail": "15 `react-compiler/*` rules, in the compiler's lint mode" }
   ]
 }
 ```
@@ -452,8 +498,6 @@ running it.
 
 #### eslint-plugin-react-hooks
 
-| ESLint | uf |
-| --- | --- |
 The plugin's compiler rules and uf's `react-compiler/*` rules are the same
 compiler's categories under the same names; see [React rules come from the
 React Compiler](#react-rules-come-from-the-react-compiler).
@@ -465,10 +509,18 @@ React Compiler](#react-rules-come-from-the-react-compiler).
 | `purity` | `react-compiler/purity` |
 | `globals` | `react-compiler/globals` |
 | `component-hook-factories` | `flow/nested-component` and `flow/nested-hook` |
-| `static-components` | `flow/nested-component` |
-| `set-state-in-effect` | Partly `react/no-derived-state-effect`, which covers state derived from props or state; the rest is not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
+| `static-components` | `react-compiler/static-components`, with `flow/nested-component` |
+| `set-state-in-effect` | `react-compiler/set-state-in-effect`, with `react-compiler/no-deriving-state-in-effects` for the narrower question of state derived from props or state — `off`, as the preset leaves it |
+| `exhaustive-deps` | `react-compiler/memo-dependencies` for `useMemo` and `useCallback`; `react-compiler/exhaustive-effect-dependencies` for effects — `off`, as the preset leaves it |
+| `set-state-in-render` | `react-compiler/set-state-in-render` |
+| `refs` | `react-compiler/refs` |
+| `immutability` | `react-compiler/immutability` |
+| `error-boundaries` | `react-compiler/error-boundaries` |
+| `incompatible-library` | `react-compiler/incompatible-library` |
+| `preserve-manual-memoization` | `react-compiler/preserve-manual-memoization` |
+| `unsupported-syntax` | `react-compiler/unsupported-syntax`, with `security/no-eval` for `eval` |
+| `use-memo` | `react-compiler/use-memo`, and `react-compiler/void-use-memo` for a callback that returns nothing |
 | `config`, `gating` | Not needed — they check a Babel setup of the React Compiler, and uf runs the compiler itself |
-| `exhaustive-deps`, `set-state-in-render`, `refs`, `immutability`, `error-boundaries`, `incompatible-library`, `preserve-manual-memoization`, `unsupported-syntax`, `use-memo` | Not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
 
 #### eslint-plugin-jsx-a11y
 
