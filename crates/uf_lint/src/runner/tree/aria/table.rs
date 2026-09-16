@@ -394,7 +394,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "cell",
         flags: Flags::CONTEXTUAL,
-        supported: 0x2a842eb2bd22,
+        supported: 0x3a842eb2bf22,
         required: 0x0,
         prohibited: 0x0,
     },
@@ -415,7 +415,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "columnheader",
         flags: Flags::WIDGET.union(Flags::CONTEXTUAL),
-        supported: 0x16bc42fffbd22,
+        supported: 0x17bc42fffbf22,
         required: 0x0,
         prohibited: 0x0,
     },
@@ -842,7 +842,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "gridcell",
         flags: Flags::WIDGET.union(Flags::CONTEXTUAL),
-        supported: 0x6bc42fffbd22,
+        supported: 0x7bc42fffbf22,
         required: 0x0,
         prohibited: 0x0,
     },
@@ -1080,7 +1080,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "row",
         flags: Flags::WIDGET.union(Flags::CONTEXTUAL),
-        supported: 0xca943ebbb923,
+        supported: 0xda943ebbbb23,
         required: 0x0,
         prohibited: 0x0,
     },
@@ -1094,7 +1094,7 @@ pub(super) static ROLES: &[Role] = &[
     Role {
         name: "rowheader",
         flags: Flags::WIDGET.union(Flags::CONTEXTUAL),
-        supported: 0x16bc42fffbd22,
+        supported: 0x17bc42fffbf22,
         required: 0x0,
         prohibited: 0x0,
     },

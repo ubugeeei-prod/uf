@@ -24,10 +24,14 @@ const version = require("aria-query/package.json").version;
 // two index-text names are the rest of that 1.3 set, and `a11y/aria-props`
 // already accepts them, so the table has to know them too or a rule would
 // report an attribute the sibling rule calls real. Both are plain strings.
+//
+// `mirrors` is the 1.2 attribute each one is the text form of, and it is what
+// puts them into a role's mask: aria-query knows which roles take
+// `aria-colindex`, and `aria-colindextext` is supported by exactly those.
 // https://w3c.github.io/aria/#aria-colindextext
 const EXTRA = {
-  "aria-colindextext": { type: "string" },
-  "aria-rowindextext": { type: "string" },
+  "aria-colindextext": { type: "string", mirrors: "aria-colindex" },
+  "aria-rowindextext": { type: "string", mirrors: "aria-rowindex" },
 };
 
 const fromAriaQuery = Object.fromEntries(q.aria.keys().map((name) => [name, q.aria.get(name)]));
@@ -102,13 +106,41 @@ const supportedProps = (name, seen = new Set()) => {
   return [...Object.keys(role.props || {}), ...inherited, ...GLOBAL];
 };
 
+// The `EXTRA` names, for the roles that take the attribute each one is the
+// text form of.
+//
+// `supportedProps` reads `aria-query`, which stops at 1.2 and so has never
+// heard of them; a mask built from it alone left them unsupported for every
+// role. `a11y/role-supports-aria-props` is an `error`, so it rejected
+// `<td role="cell" aria-colindextext="Q1">` — valid markup, and a false
+// positive is the worst way for a lint rule to be wrong.
+const withExtras = (supported) => {
+  const set = new Set(supported);
+  for (const [name, spec] of Object.entries(EXTRA)) {
+    if (spec.mirrors && set.has(spec.mirrors)) set.add(name);
+  }
+  return [...set];
+};
+
 const roleRow = (name) => {
   const role = q.roles.get(name);
-  const supported = supportedProps(name);
+  const supported = withExtras(supportedProps(name));
   // A role an author may write that takes nothing at all is a table bug, not a
   // fact about ARIA: fail the generation rather than ship it.
   if (!role.abstract && supported.length === 0) {
     throw new Error(`role ${name} would support no attribute at all`);
+  }
+  // The text form of an index goes wherever the index goes — `cell`,
+  // `columnheader`, `gridcell`, `row` and `rowheader` take both — and a role
+  // holding one without the other is the bug this table shipped with.
+  //
+  // Asserted against the list the mask is built from, not against `withExtras`
+  // called a second time: a check that re-derives its own answer passes even
+  // when the emitted row is wrong, which is how this escaped review once.
+  for (const [extra, spec] of Object.entries(EXTRA)) {
+    if (spec.mirrors && supported.includes(spec.mirrors) && !supported.includes(extra)) {
+      throw new Error(`role ${name} takes ${spec.mirrors} but would not support ${extra}`);
+    }
   }
   const required = Object.keys(role.requiredProps || {});
   const prohibited = role.prohibitedProps || [];

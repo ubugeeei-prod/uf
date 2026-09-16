@@ -216,6 +216,22 @@ fn role_supports_aria_props_accepts_the_documented_pass() {
 }
 
 #[test]
+fn role_supports_aria_props_takes_the_index_text_attributes() {
+    accepts(
+        "a11y/role-supports-aria-props",
+        &[
+            // ARIA 1.3's text forms of `aria-colindex` and `aria-rowindex`,
+            // supported by exactly the roles the indices are. `aria-query`
+            // stops at 1.2 and carries neither name, which left both out of
+            // every mask and had this rule reporting working table markup.
+            r#"<td role="cell" aria-colindextext="Q1" aria-colindex="4" />"#,
+            r#"<div role="row" aria-rowindextext="Third quarter" />"#,
+            r#"<div role="gridcell" aria-rowindextext="Total" />"#,
+        ],
+    );
+}
+
+#[test]
 fn role_supports_aria_props_reads_the_role_html_already_gave_the_element() {
     reports(
         "a11y/role-supports-aria-props",

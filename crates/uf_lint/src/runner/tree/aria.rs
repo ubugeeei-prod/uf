@@ -697,6 +697,38 @@ mod tests {
         }
     }
 
+    /// ARIA 1.3's index-text attributes go wherever the 1.2 index they are the
+    /// text form of goes: a role that takes `aria-colindex` takes
+    /// `aria-colindextext` too. `aria-query` stops at 1.2 and carries neither,
+    /// so a mask built from it alone left all five of these roles without
+    /// them, and `a11y/role-supports-aria-props` — an `error` — reported
+    /// `<td role="cell" aria-colindextext="Q1">`, which is valid markup.
+    ///
+    /// The generator merges them in and refuses to emit a table that does not.
+    /// This is the half that fails in CI, where the generator does not run.
+    #[test]
+    fn the_index_text_attributes_go_where_their_index_goes() {
+        for name in ["cell", "columnheader", "gridcell", "row", "rowheader"] {
+            let found = role(name).expect("a role in the table");
+            assert!(
+                found.supports("aria-colindex"),
+                "`{name}` takes no `aria-colindex`"
+            );
+            assert!(
+                found.supports("aria-colindextext"),
+                "`{name}` takes no `aria-colindextext`"
+            );
+            assert!(
+                found.supports("aria-rowindex"),
+                "`{name}` takes no `aria-rowindex`"
+            );
+            assert!(
+                found.supports("aria-rowindextext"),
+                "`{name}` takes no `aria-rowindextext`"
+            );
+        }
+    }
+
     #[test]
     fn a_role_name_is_case_insensitive() {
         assert!(role("BUTTON").is_some());
