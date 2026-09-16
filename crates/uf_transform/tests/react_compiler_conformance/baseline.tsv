@@ -920,7 +920,7 @@ nested-function-discovery-if-test-expr.js	pass	pass
 nested-function-discovery-while-test-expr.js	pass	pass	
 nested-function-shadowed-identifiers.js	pass	pass	
 nested-function-with-param-as-captured-dep.ts	pass	pass	
-nested-optional-chains.ts	code-mismatch	printer	print.rs parenthesises a chain's own spine, and the parentheses end the chain: it prints ((x)?.push(9)).vals where Babel prints x?.push(9).vals, which short-circuits differently. The tree the compiler reads is Babel's now (proven: the ?. the conversion was dropping is present, and the two outputs differ only in parentheses)
+nested-optional-chains.ts	pass	pass	
 nested-optional-member-expr.js	pass	pass	
 nested-scopes-begin-same-instr-valueblock.ts	pass	pass	
 nested-scopes-hook-call.js	pass	pass	
@@ -1164,7 +1164,7 @@ propagate-scope-deps-hir-fork/iife-return-modified-later-phi.js	pass	pass
 propagate-scope-deps-hir-fork/infer-component-props-non-null.tsx	pass	pass	
 propagate-scope-deps-hir-fork/infer-non-null-destructure.ts	pass	pass	
 propagate-scope-deps-hir-fork/infer-sequential-optional-chain-nonnull.ts	pass	pass	
-propagate-scope-deps-hir-fork/nested-optional-chains.ts	code-mismatch	printer	print.rs parenthesises a chain's own spine, and the parentheses end the chain: it prints ((x)?.push(9)).vals where Babel prints x?.push(9).vals, which short-circuits differently. The tree the compiler reads is Babel's now (proven: the ?. the conversion was dropping is present, and the two outputs differ only in parentheses)
+propagate-scope-deps-hir-fork/nested-optional-chains.ts	pass	pass	
 propagate-scope-deps-hir-fork/object-mutated-in-consequent-alternate-both-return.js	pass	pass	
 propagate-scope-deps-hir-fork/optional-member-expression-as-memo-dep.js	pass	pass	
 propagate-scope-deps-hir-fork/optional-member-expression-inverted-optionals-parallel-paths.js	pass	pass	
@@ -1415,7 +1415,7 @@ repro-returned-inner-fn-reassigns-context.js	pass	pass
 repro-scope-missing-mutable-range.js	pass	pass	
 repro-separate-memoization-due-to-callback-capturing.js	pass	pass	
 repro-separate-scopes-for-divs.js	pass	pass	
-repro-slow-validate-preserve-memo.ts	code-mismatch	printer	print.rs parenthesises a chain's own spine, and the parentheses end the chain: it prints ((Builder.makeBuilder(!isNull))?.push(9)).vals where Babel prints Builder.makeBuilder(!isNull)?.push(9).vals, which short-circuits differently. The tree the compiler reads is Babel's now (proven: the ?. the conversion was dropping is present, and the two outputs differ only in parentheses)
+repro-slow-validate-preserve-memo.ts	pass	pass	
 repro-stale-closure-forward-reference.js	pass	pass	
 repro-undefined-expression-of-jsxexpressioncontainer.js	pass	pass	
 repro-unmerged-fbt-call-merge-overlapping-reactive-scopes.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
