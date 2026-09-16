@@ -7,6 +7,7 @@
 
 mod a11y_aria;
 mod a11y_content;
+mod a11y_tags;
 mod catalogue;
 mod driver;
 mod fetch;

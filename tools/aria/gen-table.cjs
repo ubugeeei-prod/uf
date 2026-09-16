@@ -10,8 +10,9 @@
 //   NODE_PATH=. node tools/aria/gen-table.cjs \
 //     > crates/uf_lint/src/runner/tree/aria/table.rs
 //
-// `--role-elements` also emits the role-to-element table, which only the rules
-// that suggest a tag in place of a role read.
+// `--role-elements` also emits the role-to-element table, and `--reserved` the
+// elements ARIA reserves; only the rules that read a role against an element
+// need either.
 const q = require("aria-query");
 const version = require("aria-query/package.json").version;
 
@@ -237,6 +238,22 @@ if (withRoleElements) {
   out.push(`/// The HTML elements that already are each role.`);
   out.push(`pub(super) static ROLE_ELEMENTS: &[(&str, &[Tag])] = &[`);
   for (const entry of roleElements) out.push(tagRow(entry));
+  out.push(`];`);
+  out.push(``);
+}
+
+if (process.argv.includes("--reserved")) {
+  const reserved = [];
+  for (const [name, spec] of q.dom.entries()) {
+    if (spec && spec.reserved) reserved.push(name);
+  }
+  reserved.sort();
+  out.push(`/// The HTML elements ARIA reserves.`);
+  out.push(`///`);
+  out.push(`/// None of them is rendered, so none of them is in the accessibility tree`);
+  out.push(`/// for a role or an \`aria-*\` to say anything about.`);
+  out.push(`pub(super) static RESERVED_ELEMENTS: &[&str] = &[`);
+  for (const name of reserved) out.push(`    ${JSON.stringify(name)},`);
   out.push(`];`);
   out.push(``);
 }

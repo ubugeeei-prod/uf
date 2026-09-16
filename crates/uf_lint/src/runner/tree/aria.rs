@@ -141,6 +141,21 @@ impl Role {
     pub(super) fn required(&self) -> impl Iterator<Item = &'static str> {
         names(self.required)
     }
+
+    /// Whether this role is part of a widget somebody has to make work: it is
+    /// one, it manages one, or it only exists inside one.
+    ///
+    /// This is the line `a11y/prefer-tag-over-role` draws. A landmark or a
+    /// piece of document structure is a tag away; a widget is a component
+    /// away, and telling somebody to write `<select>` instead of the combobox
+    /// they have built is not advice they can take.
+    pub(super) fn is_widget(&self) -> bool {
+        self.flags.has(
+            Flags::WIDGET
+                .union(Flags::COMPOSITE)
+                .union(Flags::CONTEXTUAL),
+        )
+    }
 }
 
 /// An attribute an element must carry to have the role beside it.
@@ -164,6 +179,34 @@ pub(super) struct Implicit {
     /// those.
     pub(super) placed: bool,
     pub(super) role: &'static str,
+}
+
+/// An attribute in an HTML element's description.
+pub(super) struct Attr {
+    pub(super) name: &'static str,
+    pub(super) value: Option<&'static str>,
+}
+
+/// An HTML element that already is some role.
+pub(super) struct Tag {
+    pub(super) name: &'static str,
+    pub(super) attributes: &'static [Attr],
+}
+
+impl Tag {
+    /// How the element is written, for a diagnostic: `<nav>`, `<input
+    /// type="checkbox">`.
+    pub(super) fn spelled(&self) -> String {
+        let mut spelled = format!("<{}", self.name);
+        for attribute in self.attributes {
+            match attribute.value {
+                Some(value) => spelled.push_str(&format!(" {}=\"{value}\"", attribute.name)),
+                None => spelled.push_str(&format!(" {}", attribute.name)),
+            }
+        }
+        spelled.push('>');
+        spelled
+    }
 }
 
 /// The role an element has, as far as the source settles it.
@@ -239,6 +282,19 @@ fn exact_role(name: &str) -> Option<&'static Role> {
         .binary_search_by(|candidate| candidate.name.cmp(name))
         .ok()
         .map(|at| &table::ROLES[at])
+}
+
+/// The HTML elements that already are `role`, or [`None`] when none does.
+pub(super) fn elements_for(role: &str) -> Option<&'static [Tag]> {
+    table::ROLE_ELEMENTS
+        .iter()
+        .find(|(name, _)| *name == role)
+        .map(|(_, tags)| *tags)
+}
+
+/// Whether ARIA reserves `element`, in which case nothing it is given is read.
+pub(super) fn is_reserved(element: &str) -> bool {
+    table::RESERVED_ELEMENTS.contains(&element)
 }
 
 /// The role the `role` attribute names, when it names one.
@@ -620,6 +676,36 @@ mod tests {
         assert!(role("BUTTON").is_some());
         assert!(role("Checkbox").is_some());
         assert!(role("datepicker").is_none());
+    }
+
+    #[test]
+    fn an_element_that_is_already_a_role_is_named() {
+        let tags = elements_for("navigation").expect("navigation has an element");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].spelled(), "<nav>");
+
+        let tags = elements_for("checkbox").expect("checkbox has an element");
+        assert_eq!(tags[0].spelled(), "<input type=\"checkbox\">");
+
+        assert!(elements_for("tooltip").is_none());
+    }
+
+    #[test]
+    fn the_reserved_elements_are_the_ones_nothing_announces() {
+        assert!(is_reserved("meta"));
+        assert!(is_reserved("script"));
+        assert!(is_reserved("title"));
+        assert!(!is_reserved("div"));
+        assert!(!is_reserved("span"));
+    }
+
+    #[test]
+    fn a_widget_role_is_told_from_a_structural_one() {
+        assert!(role("checkbox").expect("checkbox").is_widget());
+        assert!(role("listbox").expect("listbox").is_widget());
+        assert!(role("listitem").expect("listitem").is_widget());
+        assert!(!role("navigation").expect("navigation").is_widget());
+        assert!(!role("heading").expect("heading").is_widget());
     }
 
     #[test]

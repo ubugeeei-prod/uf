@@ -84,6 +84,7 @@
 mod aria;
 mod content;
 mod roles;
+mod tags;
 mod value;
 
 use uf_config::UniflowedConfig;
@@ -149,8 +150,8 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
     if !wants_jsx && !wants_hot {
         return None;
     }
-    let looks_for_undefined =
-        (levels.content.any() || levels.roles.any()) && scan.file.source.contains("undefined");
+    let looks_for_undefined = (levels.content.any() || levels.roles.any() || levels.tags.any())
+        && scan.file.source.contains("undefined");
     Some(TreeWork {
         levels,
         wants_hot,
@@ -200,6 +201,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
         alt_text: levels.alt_text.is_some(),
         content: levels.content,
         roles: levels.roles,
+        tags: levels.tags,
         scope: value::Scope::of(parsed, work.looks_for_undefined),
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
@@ -265,6 +267,8 @@ struct Levels {
     content: content::Levels,
     /// The rules that read the ARIA table.
     roles: roles::Levels,
+    /// The rules that weigh a role against the element it was put on.
+    tags: tags::Levels,
     aria_props: Option<Severity>,
     heading_order: Option<Severity>,
     label_control: Option<Severity>,
@@ -279,6 +283,7 @@ impl Levels {
             alt_text: severity(config, ALT_TEXT),
             content: content::Levels::for_config(config),
             roles: roles::Levels::for_config(config),
+            tags: tags::Levels::for_config(config),
             aria_props: severity(config, ARIA_PROPS),
             heading_order: severity(config, HEADING_ORDER),
             label_control: severity(config, LABEL_CONTROL),
@@ -297,6 +302,7 @@ impl Levels {
         self.alt_text.is_some()
             || self.content.any()
             || self.roles.any()
+            || self.tags.any()
             || self.aria_props.is_some()
             || self.heading_order.is_some()
             || self.label_control.is_some()
@@ -313,7 +319,11 @@ impl Levels {
             STATIC_INTERACTIONS => self.static_interactions,
             INVALID_NESTING => self.invalid_nesting,
             HOT_OPTIONAL_CHAINING => self.hot_optional_chaining,
-            _ => self.content.of(rule).or_else(|| self.roles.of(rule)),
+            _ => self
+                .content
+                .of(rule)
+                .or_else(|| self.roles.of(rule))
+                .or_else(|| self.tags.of(rule)),
         }
     }
 }
@@ -347,6 +357,8 @@ struct Tree<'a> {
     content: content::Levels,
     /// Levels for the rules in [`roles`], copied for the same reason.
     roles: roles::Levels,
+    /// Levels for the rules in [`tags`], copied for the same reason.
+    tags: tags::Levels,
     /// How attribute values are read in this module.
     scope: value::Scope,
     aria_props: bool,
@@ -403,6 +415,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
             roles::check(self, tag, opening);
         }
         if let Some(name) = tag {
+            if self.tags.any() {
+                tags::check(self, name, opening);
+            }
             if self.alt_text {
                 self.check_alt_text(name, opening);
             }

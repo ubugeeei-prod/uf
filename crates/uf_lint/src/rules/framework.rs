@@ -62,6 +62,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "a `role` must be a real, non-abstract ARIA role",
     },
     RuleDescriptor {
+        id: "a11y/aria-unsupported-elements",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the elements ARIA reserves take no `role` and no `aria-*`",
+    },
+    RuleDescriptor {
         id: "a11y/heading-has-content",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
@@ -111,11 +118,25 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`audio` and `video` need a captions `track`",
     },
     RuleDescriptor {
+        id: "a11y/no-redundant-roles",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a `role` the element already has says nothing twice",
+    },
+    RuleDescriptor {
         id: "a11y/no-static-element-interactions",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "an `onClick` needs an element a keyboard can reach",
+    },
+    RuleDescriptor {
+        id: "a11y/prefer-tag-over-role",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "an element that is the role beats a `role` that says it",
     },
     RuleDescriptor {
         id: "a11y/role-has-required-aria-props",

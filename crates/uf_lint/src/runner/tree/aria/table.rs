@@ -8,7 +8,7 @@
 //!
 //! [aria]: https://www.w3.org/TR/wai-aria-1.2/
 
-use super::{Flags, Implicit, Kind, Required, Role, Spec};
+use super::{Attr, Flags, Implicit, Kind, Required, Role, Spec, Tag};
 
 /// Every ARIA attribute, sorted by name. The index of a name in this table
 /// is its bit in a role's attribute masks.
@@ -2270,4 +2270,863 @@ pub(super) static IMPLICIT_ROLES: &[Implicit] = &[
         placed: false,
         role: "list",
     },
+];
+
+/// The HTML elements that already are each role.
+pub(super) static ROLE_ELEMENTS: &[(&str, &[Tag])] = &[
+    (
+        "article",
+        &[Tag {
+            name: "article",
+            attributes: &[],
+        }],
+    ),
+    (
+        "banner",
+        &[Tag {
+            name: "header",
+            attributes: &[],
+        }],
+    ),
+    (
+        "blockquote",
+        &[Tag {
+            name: "blockquote",
+            attributes: &[],
+        }],
+    ),
+    (
+        "button",
+        &[
+            Tag {
+                name: "input",
+                attributes: &[Attr {
+                    name: "type",
+                    value: Some("button"),
+                }],
+            },
+            Tag {
+                name: "input",
+                attributes: &[Attr {
+                    name: "type",
+                    value: Some("image"),
+                }],
+            },
+            Tag {
+                name: "input",
+                attributes: &[Attr {
+                    name: "type",
+                    value: Some("reset"),
+                }],
+            },
+            Tag {
+                name: "input",
+                attributes: &[Attr {
+                    name: "type",
+                    value: Some("submit"),
+                }],
+            },
+            Tag {
+                name: "button",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "caption",
+        &[Tag {
+            name: "caption",
+            attributes: &[],
+        }],
+    ),
+    (
+        "cell",
+        &[Tag {
+            name: "td",
+            attributes: &[],
+        }],
+    ),
+    (
+        "checkbox",
+        &[Tag {
+            name: "input",
+            attributes: &[Attr {
+                name: "type",
+                value: Some("checkbox"),
+            }],
+        }],
+    ),
+    (
+        "code",
+        &[Tag {
+            name: "code",
+            attributes: &[],
+        }],
+    ),
+    (
+        "columnheader",
+        &[
+            Tag {
+                name: "th",
+                attributes: &[],
+            },
+            Tag {
+                name: "th",
+                attributes: &[Attr {
+                    name: "scope",
+                    value: Some("col"),
+                }],
+            },
+            Tag {
+                name: "th",
+                attributes: &[Attr {
+                    name: "scope",
+                    value: Some("colgroup"),
+                }],
+            },
+        ],
+    ),
+    (
+        "combobox",
+        &[
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("email"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("search"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("tel"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("text"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("url"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("url"),
+                    },
+                ],
+            },
+            Tag {
+                name: "select",
+                attributes: &[
+                    Attr {
+                        name: "multiple",
+                        value: None,
+                    },
+                    Attr {
+                        name: "size",
+                        value: None,
+                    },
+                ],
+            },
+        ],
+    ),
+    (
+        "complementary",
+        &[
+            Tag {
+                name: "aside",
+                attributes: &[],
+            },
+            Tag {
+                name: "aside",
+                attributes: &[Attr {
+                    name: "aria-label",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "aside",
+                attributes: &[Attr {
+                    name: "aria-labelledby",
+                    value: None,
+                }],
+            },
+        ],
+    ),
+    (
+        "contentinfo",
+        &[Tag {
+            name: "footer",
+            attributes: &[],
+        }],
+    ),
+    (
+        "definition",
+        &[Tag {
+            name: "dd",
+            attributes: &[],
+        }],
+    ),
+    (
+        "deletion",
+        &[Tag {
+            name: "del",
+            attributes: &[],
+        }],
+    ),
+    (
+        "dialog",
+        &[Tag {
+            name: "dialog",
+            attributes: &[],
+        }],
+    ),
+    (
+        "document",
+        &[Tag {
+            name: "html",
+            attributes: &[],
+        }],
+    ),
+    (
+        "emphasis",
+        &[Tag {
+            name: "em",
+            attributes: &[],
+        }],
+    ),
+    (
+        "figure",
+        &[Tag {
+            name: "figure",
+            attributes: &[],
+        }],
+    ),
+    (
+        "form",
+        &[
+            Tag {
+                name: "form",
+                attributes: &[Attr {
+                    name: "aria-label",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "form",
+                attributes: &[Attr {
+                    name: "aria-labelledby",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "form",
+                attributes: &[Attr {
+                    name: "name",
+                    value: None,
+                }],
+            },
+        ],
+    ),
+    (
+        "generic",
+        &[
+            Tag {
+                name: "a",
+                attributes: &[],
+            },
+            Tag {
+                name: "area",
+                attributes: &[],
+            },
+            Tag {
+                name: "aside",
+                attributes: &[],
+            },
+            Tag {
+                name: "b",
+                attributes: &[],
+            },
+            Tag {
+                name: "bdo",
+                attributes: &[],
+            },
+            Tag {
+                name: "body",
+                attributes: &[],
+            },
+            Tag {
+                name: "data",
+                attributes: &[],
+            },
+            Tag {
+                name: "div",
+                attributes: &[],
+            },
+            Tag {
+                name: "footer",
+                attributes: &[],
+            },
+            Tag {
+                name: "header",
+                attributes: &[],
+            },
+            Tag {
+                name: "hgroup",
+                attributes: &[],
+            },
+            Tag {
+                name: "i",
+                attributes: &[],
+            },
+            Tag {
+                name: "pre",
+                attributes: &[],
+            },
+            Tag {
+                name: "q",
+                attributes: &[],
+            },
+            Tag {
+                name: "samp",
+                attributes: &[],
+            },
+            Tag {
+                name: "section",
+                attributes: &[],
+            },
+            Tag {
+                name: "small",
+                attributes: &[],
+            },
+            Tag {
+                name: "span",
+                attributes: &[],
+            },
+            Tag {
+                name: "u",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "gridcell",
+        &[Tag {
+            name: "td",
+            attributes: &[],
+        }],
+    ),
+    (
+        "group",
+        &[
+            Tag {
+                name: "details",
+                attributes: &[],
+            },
+            Tag {
+                name: "fieldset",
+                attributes: &[],
+            },
+            Tag {
+                name: "optgroup",
+                attributes: &[],
+            },
+            Tag {
+                name: "address",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "heading",
+        &[
+            Tag {
+                name: "h1",
+                attributes: &[],
+            },
+            Tag {
+                name: "h2",
+                attributes: &[],
+            },
+            Tag {
+                name: "h3",
+                attributes: &[],
+            },
+            Tag {
+                name: "h4",
+                attributes: &[],
+            },
+            Tag {
+                name: "h5",
+                attributes: &[],
+            },
+            Tag {
+                name: "h6",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "img",
+        &[
+            Tag {
+                name: "img",
+                attributes: &[Attr {
+                    name: "alt",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "img",
+                attributes: &[Attr {
+                    name: "alt",
+                    value: None,
+                }],
+            },
+        ],
+    ),
+    (
+        "insertion",
+        &[Tag {
+            name: "ins",
+            attributes: &[],
+        }],
+    ),
+    (
+        "link",
+        &[
+            Tag {
+                name: "a",
+                attributes: &[Attr {
+                    name: "href",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "area",
+                attributes: &[Attr {
+                    name: "href",
+                    value: None,
+                }],
+            },
+        ],
+    ),
+    (
+        "list",
+        &[
+            Tag {
+                name: "menu",
+                attributes: &[],
+            },
+            Tag {
+                name: "ol",
+                attributes: &[],
+            },
+            Tag {
+                name: "ul",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "listbox",
+        &[
+            Tag {
+                name: "select",
+                attributes: &[Attr {
+                    name: "size",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "select",
+                attributes: &[Attr {
+                    name: "multiple",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "datalist",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "listitem",
+        &[Tag {
+            name: "li",
+            attributes: &[],
+        }],
+    ),
+    (
+        "main",
+        &[Tag {
+            name: "main",
+            attributes: &[],
+        }],
+    ),
+    (
+        "mark",
+        &[Tag {
+            name: "mark",
+            attributes: &[],
+        }],
+    ),
+    (
+        "math",
+        &[Tag {
+            name: "math",
+            attributes: &[],
+        }],
+    ),
+    (
+        "meter",
+        &[Tag {
+            name: "meter",
+            attributes: &[],
+        }],
+    ),
+    (
+        "navigation",
+        &[Tag {
+            name: "nav",
+            attributes: &[],
+        }],
+    ),
+    (
+        "option",
+        &[Tag {
+            name: "option",
+            attributes: &[],
+        }],
+    ),
+    (
+        "paragraph",
+        &[Tag {
+            name: "p",
+            attributes: &[],
+        }],
+    ),
+    (
+        "presentation",
+        &[Tag {
+            name: "img",
+            attributes: &[Attr {
+                name: "alt",
+                value: Some(""),
+            }],
+        }],
+    ),
+    (
+        "progressbar",
+        &[Tag {
+            name: "progress",
+            attributes: &[],
+        }],
+    ),
+    (
+        "radio",
+        &[Tag {
+            name: "input",
+            attributes: &[Attr {
+                name: "type",
+                value: Some("radio"),
+            }],
+        }],
+    ),
+    (
+        "region",
+        &[
+            Tag {
+                name: "section",
+                attributes: &[Attr {
+                    name: "aria-label",
+                    value: None,
+                }],
+            },
+            Tag {
+                name: "section",
+                attributes: &[Attr {
+                    name: "aria-labelledby",
+                    value: None,
+                }],
+            },
+        ],
+    ),
+    (
+        "row",
+        &[Tag {
+            name: "tr",
+            attributes: &[],
+        }],
+    ),
+    (
+        "rowgroup",
+        &[
+            Tag {
+                name: "tbody",
+                attributes: &[],
+            },
+            Tag {
+                name: "tfoot",
+                attributes: &[],
+            },
+            Tag {
+                name: "thead",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "rowheader",
+        &[
+            Tag {
+                name: "th",
+                attributes: &[Attr {
+                    name: "scope",
+                    value: Some("row"),
+                }],
+            },
+            Tag {
+                name: "th",
+                attributes: &[Attr {
+                    name: "scope",
+                    value: Some("rowgroup"),
+                }],
+            },
+        ],
+    ),
+    (
+        "searchbox",
+        &[Tag {
+            name: "input",
+            attributes: &[
+                Attr {
+                    name: "list",
+                    value: None,
+                },
+                Attr {
+                    name: "type",
+                    value: Some("search"),
+                },
+            ],
+        }],
+    ),
+    (
+        "separator",
+        &[Tag {
+            name: "hr",
+            attributes: &[],
+        }],
+    ),
+    (
+        "slider",
+        &[Tag {
+            name: "input",
+            attributes: &[Attr {
+                name: "type",
+                value: Some("range"),
+            }],
+        }],
+    ),
+    (
+        "spinbutton",
+        &[Tag {
+            name: "input",
+            attributes: &[Attr {
+                name: "type",
+                value: Some("number"),
+            }],
+        }],
+    ),
+    (
+        "status",
+        &[Tag {
+            name: "output",
+            attributes: &[],
+        }],
+    ),
+    (
+        "strong",
+        &[Tag {
+            name: "strong",
+            attributes: &[],
+        }],
+    ),
+    (
+        "subscript",
+        &[Tag {
+            name: "sub",
+            attributes: &[],
+        }],
+    ),
+    (
+        "superscript",
+        &[Tag {
+            name: "sup",
+            attributes: &[],
+        }],
+    ),
+    (
+        "table",
+        &[Tag {
+            name: "table",
+            attributes: &[],
+        }],
+    ),
+    (
+        "term",
+        &[
+            Tag {
+                name: "dfn",
+                attributes: &[],
+            },
+            Tag {
+                name: "dt",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "textbox",
+        &[
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "type",
+                        value: None,
+                    },
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("email"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("tel"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("text"),
+                    },
+                ],
+            },
+            Tag {
+                name: "input",
+                attributes: &[
+                    Attr {
+                        name: "list",
+                        value: None,
+                    },
+                    Attr {
+                        name: "type",
+                        value: Some("url"),
+                    },
+                ],
+            },
+            Tag {
+                name: "textarea",
+                attributes: &[],
+            },
+        ],
+    ),
+    (
+        "time",
+        &[Tag {
+            name: "time",
+            attributes: &[],
+        }],
+    ),
+];
+
+/// The HTML elements ARIA reserves.
+///
+/// None of them is rendered, so none of them is in the accessibility tree
+/// for a role or an `aria-*` to say anything about.
+pub(super) static RESERVED_ELEMENTS: &[&str] = &[
+    "base", "col", "colgroup", "head", "html", "link", "meta", "noembed", "noscript", "param",
+    "picture", "script", "source", "style", "title", "track",
 ];
