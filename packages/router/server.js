@@ -44,6 +44,8 @@ import {
 } from "./internal/runtime.js";
 
 import { type StreamDiagnostic, streamReporter } from "./internal/inspector.js";
+import { currentNonce } from "@uniflowed/server/host";
+
 import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js";
 
 /** Asset URLs to reference from the document. */
@@ -357,6 +359,11 @@ export function createRenderer(options: {|
     // browser was actually sent rather than the one that was abandoned.
     const send = settings?.onStream;
     const onStream = send == null ? undefined : streamReporter(url, send);
+    // Read rather than minted: a project that has not asked for a nonce gets
+    // `null` and the document it has always had. Read once for both renders
+    // below, so the error document a failed shell falls back to carries the
+    // same nonce as the policy already on the response.
+    const nonce = currentNonce();
 
     // React reports an exception to `onError` *and*, if it was in the shell, to
     // `onShellError` — so forwarding both would tell the host about one failure
@@ -377,10 +384,11 @@ export function createRenderer(options: {|
     let body: DocumentBody;
     try {
       body = await renderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(assets),
+        shell: shellFor(assets, nonce),
         onError,
         transformHead: settings?.transformHead,
         onStream,
+        nonce,
       });
       streaming = true;
       // Recovered before the shell was ready: a `<Suspense>` boundary whose
@@ -409,10 +417,11 @@ export function createRenderer(options: {|
       // where somebody can fix it.
       streaming = true;
       body = await renderDocument(<App url={url} initial={resolved} />, {
-        shell: shellFor(assets),
+        shell: shellFor(assets, nonce),
         onError,
         transformHead: settings?.transformHead,
         onStream,
+        nonce,
       });
     }
 

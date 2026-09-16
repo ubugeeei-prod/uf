@@ -14,7 +14,7 @@
 // error that classification exists to produce.
 
 import type { CookieStore, DraftMode, HeaderStore, RequestContext } from "./internal/context.js";
-import { currentContext } from "./internal/context.js";
+import { currentContext, nonceFor } from "./internal/context.js";
 import { DraftModeError } from "./internal/draft.js";
 import type { LogFields, Logger } from "./internal/log.js";
 import { processLogger } from "./log.js";
@@ -96,6 +96,46 @@ export function headers(): HeaderStore {
  */
 export function cookies(): CookieStore {
   return require$VaryingContext("cookies").cookies;
+}
+
+/**
+ * This response's Content-Security-Policy nonce.
+ *
+ * The string to put in the policy *and* on any inline `<script>` the
+ * application writes itself, so that the two cannot disagree: they are the
+ * same value read twice rather than two values generated separately. uf puts
+ * it on every script it emits for this response without being asked.
+ *
+ * # Asking for it is what turns it on
+ *
+ * A request has no nonce until something calls this, and that is deliberate.
+ * A nonce is worth nothing to a response whose policy does not name one, and a
+ * document that carries one can never be served from a shared route cache —
+ * so a project that never calls this gets the documents it has always had and
+ * a cache that still works. `app.router.headers` calls it on the project's
+ * behalf when a rule's value names `{uf.nonce}`, which is the short way to set
+ * the header and the markup from one place.
+ *
+ * # It counts as reading request state
+ *
+ * For the reason `requestId()` does, and with more force. A nonce is valid for
+ * exactly one response; a route cache that stored a document carrying one
+ * would hand every later visitor a nonce minted for somebody else, and a nonce
+ * two responses share is a nonce that has stopped being a nonce. So a render
+ * that read this is never stored, which is the promise `docs/security.md`
+ * makes in the row this binding exists for.
+ *
+ * # Where it does not exist
+ *
+ * A static prerender has no request and therefore no nonce, and this throws
+ * there rather than inventing one — `uf build` writes a file, and a
+ * per-request value written into a file is a value that is wrong for every
+ * request after the first. A prerendered route under a nonce policy needs
+ * hashes instead; `docs/security.md` says so and `infra/cloudflare/workers/docs.js`
+ * is a worked example.
+ */
+export function nonce(): string {
+  return nonceFor(require$VaryingContext("nonce"));
 }
 
 /**

@@ -302,6 +302,7 @@ pub fn builtin_modules() -> Vec<NativeModule> {
                 "draftMode",
                 "headers",
                 "logger",
+                "nonce",
                 "requestId",
             ],
         ),
