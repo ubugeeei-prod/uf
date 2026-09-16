@@ -24,10 +24,14 @@ after the test suite, so a token scoped to the publish step can no longer be
 mistaken for coverage. And how faithfully uf feeds that compiler is now measured
 rather than asserted: with #1172, 1,731 of the official compiler's 1,809
 fixtures reproduce its expected output, up from 1,420, with no fixture
-regressing.
+regressing. Alongside that, `uf lint` gains an ARIA table and seven rules that
+read it (#1159) — the table is generated from `aria-query` 5.3.2, the same
+encoding of WAI-ARIA 1.2 that `eslint-plugin-jsx-a11y` reads, rather than
+transcribed by hand.
 
 ### Added
 
+- **lint**: the ARIA table, and seven rules that read it (#1159)
 - **lint**: jsx-key, no-array-index-key and four more JSX rules from eslint-plugin-react (#1151)
 
 ### Fixed
