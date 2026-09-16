@@ -11,7 +11,10 @@
 //! The panic threshold is `none`: a function the compiler cannot handle is
 //! left as written and reported as a diagnostic, never a failed build.
 
-use react_compiler::entrypoint::{CompileResult, PluginOptions, compile_program};
+use react_compiler::entrypoint::{
+    BindingRenameInfo, CompileResult, CompilerErrorInfo, LoggerEvent, PluginOptions,
+    compile_program,
+};
 use react_compiler_ast::File;
 use react_compiler_ast::scope::ScopeInfo;
 use serde::{Deserialize, Serialize};
@@ -89,22 +92,18 @@ pub struct CompilerDiagnostic {
 /// a fatal error.
 pub fn compile(
     file: Value,
-    mut scope: ScopeInfo,
+    scope: ScopeInfo,
     source: &str,
     options: &TransformOptions,
 ) -> Result<(Value, Vec<CompilerDiagnostic>, usize), TransformError> {
-    teach_facade_provenance(&mut scope);
-    let ast: File = serde_json::from_value(file.clone()).map_err(|error| {
-        TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
-    })?;
     // Built from the tree as it goes in, because that is the tree the events
     // point back into: the compiler may hand back a rewritten AST, and the
     // functions it rewrote are the ones it did not report on anyway.
     let names = function_names(&file);
     let plugin_options = plugin_options(source, options)?;
 
-    match compile_program(ast, scope, plugin_options) {
-        CompileResult::Success { ast, events, .. } => {
+    match compile_with_options(&file, scope, plugin_options)? {
+        Compiled::Ran { ast, events, .. } => {
             let events: Vec<Value> = events
                 .iter()
                 .map(|event| serde_json::to_value(event).unwrap_or(Value::Null))
@@ -127,7 +126,7 @@ pub fn compile(
             };
             Ok((rewritten, diagnostics, compiled))
         }
-        CompileResult::Error { error, .. } => {
+        Compiled::Fatal { error, .. } => {
             let mut message = error.reason.clone();
             if let Some(description) = &error.description {
                 message.push_str(": ");
@@ -136,6 +135,87 @@ pub fn compile(
             Err(TransformError::Compiler(message))
         }
     }
+}
+
+/// What the official compiler did with one module.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "`Ran` carries the compiled `File` inline and is what almost every compile \
+              returns; `Fatal` is the rare one, so the usual value is not the one paying \
+              for the other. One of these is moved per module compiled, against a compile \
+              that has just walked the whole tree — and boxing the AST would put an \
+              allocation on the path `uf_lint`'s allocation budget measures, to save a \
+              move nobody can find."
+)]
+pub enum Compiled {
+    /// The compiler ran. `ast` is `None` when it rewrote nothing.
+    Ran {
+        /// The rewritten module, when the compiler replaced anything.
+        ast: Option<File>,
+        /// Everything the compiler logged, in the order it logged it.
+        events: Vec<LoggerEvent>,
+        /// Bindings the compiler renamed while lowering, for the caller to
+        /// apply back to the tree it handed in. The compiler hands these back
+        /// rather than applying them itself whenever it replaced no function —
+        /// in lint mode, or when a rename is all that changed — because the
+        /// tree they belong to is the caller's.
+        renames: Vec<BindingRenameInfo>,
+    },
+    /// The compiler asked for this module to be fatal, with the events it
+    /// logged before deciding that: a caller that reports findings reports
+    /// those, because the logger collected them as they happened.
+    Fatal {
+        /// Why the compiler gave up.
+        error: CompilerErrorInfo,
+        /// Everything logged before it did.
+        events: Vec<LoggerEvent>,
+    },
+}
+
+/// Run the official React Compiler over `file` with `options`.
+///
+/// The one entry every compile in uf goes through — `uf build`, `uf lint`, the
+/// redundant-memoization question and the conformance test — so that what the
+/// compiler is given, and what it hands back, cannot drift between them. Before
+/// this each caller deserialized the tree and called `compile_program` itself,
+/// and they had already drifted: two taught the compiler that
+/// `@uniflowed/react` is React and the third did not, so the linter could call
+/// a memoization redundant that the build kept.
+///
+/// What a caller *does* with the result stays its own: the build fails on
+/// [`Compiled::Fatal`], the linter reports the events logged before it, and the
+/// memo question reads it as "nothing compiled, so nothing is redundant".
+///
+/// # Errors
+///
+/// [`TransformError::Internal`] when the tree does not deserialize into the
+/// compiler's AST — a bug in uf rather than in the module.
+///
+/// # Call this from a thread with `uf_flow::PARSE_STACK_BYTES` of stack
+///
+/// The compiler recurses through the tree, and so does dropping it.
+pub fn compile_with_options(
+    file: &Value,
+    mut scope: ScopeInfo,
+    options: PluginOptions,
+) -> Result<Compiled, TransformError> {
+    teach_facade_provenance(&mut scope);
+    let ast = File::deserialize(file).map_err(|error| {
+        TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
+    })?;
+    Ok(match compile_program(ast, scope, options) {
+        CompileResult::Success {
+            ast,
+            events,
+            renames,
+            ..
+        } => Compiled::Ran {
+            ast,
+            events,
+            renames,
+        },
+        CompileResult::Error { error, events, .. } => Compiled::Fatal { error, events },
+    })
 }
 
 /// Teach the compiler that `@uniflowed/react` is React.
