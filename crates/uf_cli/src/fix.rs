@@ -134,6 +134,18 @@
 //!   the right words depend on what the page is about.
 //! - `a11y/anchor-is-valid` — `href="#"` becomes a destination or the element
 //!   becomes a `<button>`, and which one is the author's call.
+//! - `a11y/aria-role`, `a11y/aria-proptypes`,
+//!   `a11y/role-has-required-aria-props`, `a11y/role-supports-aria-props` —
+//!   each is a claim about what the element *is*, and every repair is a
+//!   decision: which role was meant, what the state should say, whether the
+//!   attribute or the role is the one to go. A rule that guessed would be
+//!   writing the claim rather than checking it.
+//! - `a11y/aria-unsupported-elements`, `a11y/no-redundant-roles`,
+//!   `a11y/prefer-tag-over-role` — the first two would be fixed by deleting an
+//!   attribute and the third by renaming an element, and neither is a synonym
+//!   rewrite: a deletion takes away something somebody wrote on purpose often
+//!   enough to matter, and swapping `<div role="navigation">` for `<nav>`
+//!   moves every style and handler attached to that tag.
 //!
 //! # The rule whose fix is waiting on a shape
 //!

@@ -9,7 +9,7 @@ use super::*;
 
 /// Each markup in `cases` draws exactly one finding from `rule`.
 #[track_caller]
-fn reports(rule: &str, cases: &[&str]) -> Vec<Diagnostic> {
+pub(super) fn reports(rule: &str, cases: &[&str]) -> Vec<Diagnostic> {
     let mut found = Vec::new();
     for markup in cases {
         let diagnostics = lint_js(rule, &component(markup));
@@ -25,7 +25,7 @@ fn reports(rule: &str, cases: &[&str]) -> Vec<Diagnostic> {
 
 /// No markup in `cases` draws a finding from `rule`.
 #[track_caller]
-fn accepts(rule: &str, cases: &[&str]) {
+pub(super) fn accepts(rule: &str, cases: &[&str]) {
     for markup in cases {
         let diagnostics = lint_js(rule, &component(markup));
         assert!(

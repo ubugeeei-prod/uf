@@ -101,6 +101,16 @@ describe("queries", () => {
     expect(screen.getByRole("button").textContent).toBe("Save");
   });
 
+  it("finds a bare <output> by the status role it already has", () => {
+    // `<output>`'s implicit role is `status`, and unconditionally so — it is
+    // the one element ARIA maps to that role, with no attribute to qualify it.
+    // That is the same mapping `a11y/no-redundant-roles` reads when it calls
+    // `<output role="status">` a repetition, so a query that missed it made
+    // dropping the attribute look like it had broken the markup.
+    render(<output>2</output>);
+    expect(screen.getByRole("status").textContent).toBe("2");
+  });
+
   it("tells a column header and a row header apart by their scope", () => {
     render(
       <table>
@@ -276,6 +286,9 @@ describe("a role query and the accessibility tree", () => {
 
   it("leaves out an aria-hidden subtree, which is the page behind a dialog", () => {
     render(
+      // The `role="dialog"` on a `<div>` is the subject of this test, not an
+      // oversight: what is asserted is which element a role query finds.
+      // uf-lint-disable a11y/prefer-tag-over-role
       <div>
         <div aria-hidden="true">
           <button type="button">behind</button>
@@ -285,6 +298,7 @@ describe("a role query and the accessibility tree", () => {
         </div>
       </div>,
     );
+    // uf-lint-enable a11y/prefer-tag-over-role
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["in front"]);
   });
 
@@ -298,6 +312,10 @@ describe("a role query and the accessibility tree", () => {
   });
 
   it("keeps a closed details' summary and leaves out the rest of it", () => {
+    // The `role="img"` on a `<span>` is the subject of this test, not an
+    // oversight: what is asserted is that a role query reaches inside a
+    // `<summary>`.
+    // uf-lint-disable a11y/prefer-tag-over-role
     component Disclosure(open: boolean) {
       return (
         <details open={open}>
@@ -309,6 +327,7 @@ describe("a role query and the accessibility tree", () => {
         </details>
       );
     }
+    // uf-lint-enable a11y/prefer-tag-over-role
     render(<Disclosure open={false} />);
     // The summary is what a closed disclosure renders, so it is the one part
     // still announced — a rule about the ancestor alone would lose it too.
@@ -341,6 +360,11 @@ describe("a role query and the accessibility tree", () => {
   });
 
   it("reads a role=heading with no aria-level as level two, as a browser does", () => {
+    // The missing `aria-level` is the subject of this test, not an oversight:
+    // `a11y/role-has-required-aria-props` is right that ARIA asks a `heading`
+    // for a level, and what is asserted here is the level a browser gives one
+    // that was written without it.
+    // uf-lint-disable-next-line a11y/role-has-required-aria-props, a11y/prefer-tag-over-role
     render(<div role="heading">titled</div>);
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("titled");
   });
@@ -555,6 +579,11 @@ describe("a role query and aria-current", () => {
 
   it("takes a token ARIA does not define as true, the way a browser does", () => {
     render(
+      // The typo is the subject of this test, not an oversight:
+      // `a11y/aria-proptypes` is right that `pge` is not a value `aria-current`
+      // takes, and what is asserted here is what a browser does with one that
+      // was written anyway.
+      // uf-lint-disable-next-line a11y/aria-proptypes
       <a aria-current="pge" href="/a">
         a
       </a>,

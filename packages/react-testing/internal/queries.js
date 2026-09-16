@@ -454,6 +454,7 @@ const IMPLICIT_ROLES: { readonly [string]: string } = {
   nav: "navigation",
   ol: "list",
   option: "option",
+  output: "status",
   progress: "progressbar",
   section: "region",
   select: "combobox",

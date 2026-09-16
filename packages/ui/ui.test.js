@@ -9348,6 +9348,11 @@ describe("the escape hatch, exercised", () => {
 
   it("puts the part's own semantics on top of the caller's props", async () => {
     const theirs = fn();
+    // The redundant `role="link"` on an `<a href>` below is the subject of this
+    // test, not an oversight: what is asserted is that the part's own
+    // `role="menuitem"` survives a caller's role written before the spread.
+    // `a11y/no-redundant-roles` is right about that markup in isolation.
+    // uf-lint-disable a11y/no-redundant-roles
     render(
       <Menu.Root defaultOpen>
         <Menu.Trigger>File</Menu.Trigger>
@@ -9358,6 +9363,7 @@ describe("the escape hatch, exercised", () => {
         </Menu.Body>
       </Menu.Root>,
     );
+    // uf-lint-enable a11y/no-redundant-roles
     // The caller wrote `role="link"` *before* the spread, so the part's
     // `role="menuitem"` is what survives — the same rule
     // `internal/merge-props.js` states for a caller's props on a part's own

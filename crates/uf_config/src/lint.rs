@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 96] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 103] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -228,6 +228,16 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 96] = [
     // the browser, not reported by React and not read by anything: the control
     // is unlabelled and there is no symptom at all.
     ("a11y/aria-props", RuleLevel::Error),
+    // The same silence one level down: a browser handed `aria-hidden="yes"`
+    // drops the attribute, and the element it was written to hide is read out.
+    ("a11y/aria-proptypes", RuleLevel::Error),
+    // A `role` ARIA does not define leaves the element with whatever role HTML
+    // gave it — usually none — and nothing anywhere says so.
+    ("a11y/aria-role", RuleLevel::Error),
+    // `<meta>`, `<script>`, `<title>` and the rest are never rendered, so they
+    // are not in the accessibility tree for a role or an `aria-*` to say
+    // anything about: whatever was meant is said nowhere.
+    ("a11y/aria-unsupported-elements", RuleLevel::Error),
     // An empty heading is still a heading: a reader jumping by heading lands
     // on it and hears nothing.
     ("a11y/heading-has-content", RuleLevel::Error),
@@ -250,10 +260,29 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 96] = [
     // Media with no captions shuts out whoever cannot hear it, but whether it
     // has speech to caption is something only the media knows, so `warn`.
     ("a11y/media-has-caption", RuleLevel::Warn),
+    // A role the element already has is a second place to keep the same fact
+    // correct, and it stops being correct as soon as the markup changes.
+    // `<nav role="navigation">` is exempt: w3 recommends it for assistive
+    // technology that predates the HTML5 elements.
+    ("a11y/no-redundant-roles", RuleLevel::Error),
     // A handler only a mouse can reach is a feature a keyboard user does not
     // have. Reported only where neither a `role` nor a key handler is present,
     // which is where nobody has considered the keyboard at all.
     ("a11y/no-static-element-interactions", RuleLevel::Error),
+    // `warn`, and the only rule here the plugin does not put in `recommended`
+    // either: `<div role="navigation">` announces exactly what `<nav>` does, so
+    // this is about markup that will keep working rather than a defect. uf
+    // reports it only where the tag is a real drop-in — never for a widget
+    // role, because a `<select>` is not the combobox somebody has built.
+    ("a11y/prefer-tag-over-role", RuleLevel::Warn),
+    // A role is a promise about what the element is, and the state it is
+    // announced by is the other half of it: `role="checkbox"` with no
+    // `aria-checked` is a checkbox a screen reader cannot read.
+    ("a11y/role-has-required-aria-props", RuleLevel::Error),
+    // An `aria-*` the role does not take is inert — the accessibility tree has
+    // nowhere to put it — and the state the author described is never
+    // announced.
+    ("a11y/role-supports-aria-props", RuleLevel::Error),
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),
