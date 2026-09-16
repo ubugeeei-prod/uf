@@ -217,7 +217,7 @@ pub fn run_operation(
 /// manager uf installed is the one found — and npm, pnpm and Yarn are Node
 /// programs, so the runtime directory beside it in `prefix` is the Node they
 /// start on.
-fn prefixed_path(prefix: &[camino::Utf8PathBuf]) -> Option<std::ffi::OsString> {
+pub(crate) fn prefixed_path(prefix: &[camino::Utf8PathBuf]) -> Option<std::ffi::OsString> {
     if prefix.is_empty() {
         return None;
     }
@@ -323,6 +323,22 @@ fn unsupported_hint(manager: PackageManager, operation: Operation<'_>) -> String
             "yarn 2+ links by path and keeps no registry of linkable packages: run \
              `uf link <path to the package>` in the project that uses it"
         }
+        Operation::Unlink {
+            target: LinkTarget::Register,
+        } => {
+            "yarn 2+ keeps no registry of linkable packages, so nothing is registered to remove: \
+             run `uf unlink <name or path>` in the project that links the package"
+        }
+        Operation::Unlink {
+            target: LinkTarget::Directory,
+        } => {
+            "it unlinks by name, and `uf unlink <dir>` gives it the name that directory's \
+             package.json gives"
+        }
+        Operation::Unlink { .. } => {
+            "bun has no `unlink <name>` (it answers \"not implemented yet\"), so `uf unlink` \
+             removes the link from node_modules itself"
+        }
         Operation::InstallFrozenProd => {
             "yarn 2+ installs production dependencies with `yarn workspaces focus`, which never \
              writes the lockfile and so cannot refuse a stale one; run `uf install \
@@ -414,7 +430,10 @@ fn refuse_scripts(invocation: &mut Invocation, manager: PackageManager, operatio
         // `pnpm patch-commit` does not declare the flag either.
         (
             PackageManager::Pnpm,
-            Operation::Link { .. } | Operation::Remove | Operation::PatchCommit,
+            Operation::Link { .. }
+            | Operation::Unlink { .. }
+            | Operation::Remove
+            | Operation::PatchCommit,
         ) => invocation
             .args
             .push(std::borrow::Cow::Borrowed("--config.ignore-scripts=true")),
