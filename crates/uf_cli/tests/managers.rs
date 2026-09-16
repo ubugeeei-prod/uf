@@ -247,8 +247,17 @@ impl Fixture {
     /// link as a relative path worked out from `XDG_DATA_HOME` as it was
     /// given. A link written from the `/var` spelling resolves one directory
     /// too high, and `yarn link NAME` then finds nothing registered.
+    ///
+    /// Under a UUID, because npm masks one wherever it prints it: with the
+    /// fixture's `npm_config_prefix` under this directory, `npm root --global`
+    /// answers `…/***/home/npm-global/lib/node_modules`, and uf has to put the
+    /// segment back to find what `uf link` registered. A temporary directory
+    /// alone never holds a UUID, so nothing here met npm's real answer before
+    /// (ubugeeei-prod/uf#976).
     fn root(&self) -> PathBuf {
-        fs::canonicalize(self.dir.path()).unwrap()
+        fs::canonicalize(self.dir.path())
+            .unwrap()
+            .join("6d0b7f14-9c2a-4e35-8b7d-1f4a6c8e23b9")
     }
 
     fn app(&self) -> PathBuf {

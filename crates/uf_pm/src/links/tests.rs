@@ -432,3 +432,48 @@ fn a_link_override_is_taken_out_only_where_pnpm_wrote_it_the_way_pnpm_writes() {
         assert_eq!(fs::read_to_string(&file).unwrap(), untouched);
     }
 }
+
+/// npm masks a UUID wherever it prints one, `npm root --global` included, so
+/// the directory it names is looked up before uf reads it.
+#[test]
+fn a_masked_answer_from_npm_is_put_back_from_the_filesystem() {
+    let (_dir, root) = project();
+    let registry = root.join("8c1d5f02-4a6b-4c3e-9f70-2b8e1a4d6c59/npm-global/lib/node_modules");
+    fs::create_dir_all(&registry).unwrap();
+
+    assert_eq!(
+        unmasked(&root.join("***/npm-global/lib/node_modules")),
+        Some(registry.clone()),
+        "the masked segment names the one directory the rest of the path fits"
+    );
+    assert_eq!(
+        unmasked(&registry),
+        Some(registry),
+        "an answer with nothing masked in it is the answer"
+    );
+    let never = root.join("npm-global/lib/node_modules");
+    assert_eq!(
+        unmasked(&never),
+        Some(never),
+        "a global directory npm has never had to create is still the answer"
+    );
+}
+
+/// A mask uf cannot put back is no answer at all: `uf unlink` removes what it
+/// finds in this directory, so a guess is worse than saying it cannot find it.
+#[test]
+fn a_mask_that_two_directories_fit_is_no_answer_and_neither_is_one_nothing_fits() {
+    let (_dir, root) = project();
+    for uuid in [
+        "8c1d5f02-4a6b-4c3e-9f70-2b8e1a4d6c59",
+        "b71e0a93-2d4c-4e8f-8a15-6c9d3f0b2e47",
+    ] {
+        fs::create_dir_all(root.join(uuid).join("npm-global/lib/node_modules")).unwrap();
+    }
+
+    assert_eq!(
+        unmasked(&root.join("***/npm-global/lib/node_modules")),
+        None
+    );
+    assert_eq!(unmasked(&root.join("***/nowhere/node_modules")), None);
+}

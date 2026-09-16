@@ -1824,7 +1824,14 @@ dependency scripts stay refused, as they do for `uf link`.
 - **pnpm 12 writes a dependency when it links a package the project does not declare.** `uf unlink` removes pnpm's override, then warns that the package is still linked, because `package.json` now declares it as `link:…`. `uf remove` takes that out.
 
 Each manager's registry is found the way that manager finds it:
-- npm: `npm root --global`.
+- npm: `npm root --global`, with whatever npm masked in the answer put back.
+  npm redacts its own output, and a UUID counts: a global directory under one
+  is printed as `…/***/lib/node_modules` by `npm root --global`, by
+  `npm prefix --global`, by `--json` and by `--parseable` alike, and npm 11
+  refuses `npm config get prefix` as a protected option. uf puts a masked
+  segment back as the one directory of its parent that the rest of the path
+  fits. Where none fits, or more than one, uf says it cannot find the registry
+  rather than guess at a directory it would then remove something from.
 - pnpm: `PNPM_HOME`.
 - Yarn 1: `XDG_DATA_HOME`, or `~/.config/yarn/link`.
 - bun: `BUN_INSTALL`.

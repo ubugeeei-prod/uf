@@ -230,6 +230,9 @@ impl GlobalDirs {
 }
 
 /// `npm root --global`, asked in the project, or `None` when npm cannot say.
+///
+/// What npm prints is masked before uf reads it, so the answer is put back
+/// together by [`unmasked`] before it is used as a path.
 fn npm_global_root(root: &Utf8Path, path: &[Utf8PathBuf]) -> Option<Utf8PathBuf> {
     let mut command = Command::new("npm");
     if let Some(path) = crate::run::prefixed_path(path) {
@@ -247,7 +250,65 @@ fn npm_global_root(root: &Utf8Path, path: &[Utf8PathBuf]) -> Option<Utf8PathBuf>
     }
     let printed = String::from_utf8(output.stdout).ok()?;
     let printed = printed.trim();
-    (!printed.is_empty()).then(|| Utf8PathBuf::from(printed))
+    if printed.is_empty() {
+        return None;
+    }
+    unmasked(Utf8Path::new(printed))
+}
+
+/// What npm prints in place of anything in its output it takes for a secret.
+const MASKED: &str = "***";
+
+/// `printed` with every segment npm masked put back from the filesystem.
+///
+/// npm redacts its own output, and a UUID counts: a global directory under
+/// `/var/folders/…/a8f1c2e4-…/lib/node_modules` is printed with `***` where
+/// that segment was, by `npm root --global`, by `npm prefix --global`, by
+/// `--json` and by `--parseable` alike. npm 11 answers `npm config get prefix`
+/// with "the prefix option is protected", so there is no channel to ask again
+/// on; the path uf was given is simply not the path on disk, and a directory
+/// nobody can read is read as nothing registered (ubugeeei-prod/uf#976).
+///
+/// A masked segment is put back as the one entry of its parent directory that
+/// makes the rest of the path exist. Nothing that fits, or more than one, is
+/// no answer: uf removes things from this directory, so a guess is worse than
+/// saying it cannot find it. An answer with no mask in it is returned as
+/// printed, existing or not — a global directory npm has never had to create
+/// holds no registration either way.
+fn unmasked(printed: &Utf8Path) -> Option<Utf8PathBuf> {
+    let segments = printed
+        .components()
+        .map(|segment| segment.as_str())
+        .collect::<Vec<_>>();
+    if !segments.contains(&MASKED) {
+        return Some(printed.to_owned());
+    }
+    put_back(Utf8PathBuf::new(), &segments)
+}
+
+/// `base` joined with `segments`, looking up each masked one, or `None` when
+/// the path that makes is not one directory.
+fn put_back(base: Utf8PathBuf, segments: &[&str]) -> Option<Utf8PathBuf> {
+    let Some((segment, rest)) = segments.split_first() else {
+        return base.is_dir().then_some(base);
+    };
+    if *segment != MASKED {
+        return put_back(base.join(segment), rest);
+    }
+    let mut found = None;
+    for entry in base.read_dir_utf8().ok()?.filter_map(Result::ok) {
+        if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        let Some(fits) = put_back(entry.into_path(), rest) else {
+            continue;
+        };
+        if found.is_some() {
+            return None;
+        }
+        found = Some(fits);
+    }
+    found
 }
 
 /// Where `manager` keeps a package registered as `name`: one place for npm,
