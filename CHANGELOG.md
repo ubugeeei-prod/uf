@@ -1,5 +1,56 @@
 # Changelog
 
+## uf@0.0.0-alpha.39
+
+_2026-09-16_
+
+This is the release alpha.38 was supposed to be. alpha.38 was tagged and its
+GitHub release built, but the publish job failed before it reached npm, so not
+one of its thirteen changes ever reached a user; alpha.39 carries all of them
+plus everything since. The headline is unchanged because it has still never
+shipped: uf no longer carries a React Compiler of its own. The hand-written
+validator is deleted, and every React rule `uf lint` reports is now a diagnostic
+from the official `react_compiler` crate, with each remaining category exposed
+as a rule at its preset's level (#1147, #1158). Read the breaking note in
+alpha.38's section below before upgrading: a project that set
+`react/no-derived-state-effect` to `off` was silencing uf's own check, and the
+rule that replaces it, `react-compiler/set-state-in-effect`, does not inherit
+that setting — it reports at `error` until you say otherwise. Two changes
+underneath make the compiler path honest rather than merely present: #1166 gives
+every compile in uf a single entry, which fixed `react/no-redundant-memo`
+compiling without the `@uniflowed/react` provenance the build uses, and #1170
+repairs the publish gate that swallowed alpha.38 — the registry setup now runs
+after the test suite, so a token scoped to the publish step can no longer be
+mistaken for coverage. And how faithfully uf feeds that compiler is now measured
+rather than asserted: with #1172, 1,731 of the official compiler's 1,809
+fixtures reproduce its expected output, up from 1,420, with no fixture
+regressing. Alongside that, `uf lint` gains an ARIA table and seven rules that
+read it (#1159) — the table is generated from `aria-query` 5.3.2, the same
+encoding of WAI-ARIA 1.2 that `eslint-plugin-jsx-a11y` reads, rather than
+transcribed by hand. Finally, uf now mints a fresh CSP nonce for every request
+and puts it on every inline script it writes, exposed as `nonce()` and as
+`{uf.nonce}` inside `app.router.headers` so the header and the markup agree by
+construction (#1168); a project that never asks for one gets byte-identical
+documents. One caveat is worth reading before you turn a strict policy on: a
+*prerendered* route is served from a file while the header mints a new nonce per
+request, so uf's own client entry is refused and the page never hydrates —
+server-rendered routes on the same deployment are unaffected. That gap is #1171.
+
+### Added
+
+- **server**: a per-request CSP nonce on every inline script uf writes (#1168)
+- **lint**: the ARIA table, and seven rules that read it (#1159)
+- **lint**: jsx-key, no-array-index-key and four more JSX rules from eslint-plugin-react (#1151)
+
+### Fixed
+
+- **transform**: give the compiler the positions and the name Babel gives it (#1172)
+- **ci**: run the publish gate's suite before the registry is configured (#1170)
+
+### Internal
+
+- **transform**: one entry for every React Compiler run (#1166)
+
 ## uf@0.0.0-alpha.38
 
 _2026-09-16_
