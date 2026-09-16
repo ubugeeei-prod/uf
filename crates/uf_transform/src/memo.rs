@@ -40,13 +40,12 @@
 //! `useMemo` or `useCallback` at all, and [`redundant_memoization`] returns
 //! early — before the compiler runs — when the tree holds neither.
 
-use react_compiler::entrypoint::{CompileResult, LoggerEvent, compile_program};
-use react_compiler_ast::File;
+use react_compiler::entrypoint::LoggerEvent;
 use react_compiler_ast::scope::ScopeInfo;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::compiler::plugin_options;
+use crate::compiler::{Compiled, compile_with_options, plugin_options};
 use crate::{TransformError, TransformOptions, scope};
 
 /// The two calls a developer writes to memoize by hand.
@@ -128,17 +127,14 @@ fn redundant_memoization_with(
         return Ok(Vec::new());
     }
 
-    let ast = File::deserialize(file).map_err(|error| {
-        TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
-    })?;
     let plugin = plugin_options(source, options)?;
     let scope = scope();
 
-    let (compiled, events) = match compile_program(ast, scope, plugin) {
-        CompileResult::Success { ast, events, .. } => (ast, events),
+    let (compiled, events) = match compile_with_options(file, scope, plugin)? {
+        Compiled::Ran { ast, events, .. } => (ast, events),
         // The compiler asked for this one to be fatal. Nothing was compiled,
         // so nothing is redundant — and the build reports it, not the linter.
-        CompileResult::Error { .. } => return Ok(Vec::new()),
+        Compiled::Fatal { .. } => return Ok(Vec::new()),
     };
 
     let succeeded: Vec<CompiledFunction> = events.iter().filter_map(compiled_function).collect();

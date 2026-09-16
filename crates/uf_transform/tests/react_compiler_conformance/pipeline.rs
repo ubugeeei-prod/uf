@@ -12,10 +12,10 @@
 //!
 //! Each stage's refusal is kept apart, because each names a different owner.
 
-use react_compiler::entrypoint::{CompileResult, PluginOptions, compile_program};
-use react_compiler_ast::File;
+use react_compiler::entrypoint::PluginOptions;
 use serde_json::Value;
 use uf_transform::TransformError;
+use uf_transform::compiler::{Compiled as Outcome, compile_with_options};
 use uf_transform::print::{PrintOptions, print};
 
 use crate::pragma;
@@ -63,11 +63,15 @@ pub fn compile(source: &str, first_line: &str, filename: &str) -> Result<Compile
         serde_json::from_value(options).map_err(|error| Refused::Options(error.to_string()))?;
 
     let scope = uf_transform::scope::analyze(&file);
-    let ast: File =
-        serde_json::from_value(file.clone()).map_err(|error| Refused::Schema(error.to_string()))?;
 
-    match compile_program(ast, scope, options) {
-        CompileResult::Success { ast, events, .. } => {
+    // Through `uf_transform`'s one compile entry, so that what this measures is
+    // what `uf build` and `uf lint` run rather than a second arrangement of the
+    // same calls, which could drift from them and report conformance for a
+    // pipeline nobody ships.
+    match compile_with_options(&file, scope, options)
+        .map_err(|error| Refused::Schema(error.to_string()))?
+    {
+        Outcome::Ran { ast, events, .. } => {
             let events = events_as_json(&events);
             let compiled = match ast {
                 Some(ast) => serde_json::to_value(ast)
@@ -81,7 +85,7 @@ pub fn compile(source: &str, first_line: &str, filename: &str) -> Result<Compile
                 events,
             })
         }
-        CompileResult::Error { error, .. } => Ok(Compiled::Thrown {
+        Outcome::Fatal { error, .. } => Ok(Compiled::Thrown {
             // `BabelPlugin.ts`: the raw message when there is one, else the
             // pre-formatted one.
             message: error
