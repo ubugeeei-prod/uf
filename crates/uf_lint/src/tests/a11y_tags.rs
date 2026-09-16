@@ -182,3 +182,164 @@ fn prefer_tag_over_role_leaves_an_element_that_is_wired_up_alone() {
         ],
     );
 }
+
+// --- a11y/no-interactive-element-to-noninteractive-role ---------------------
+
+#[test]
+fn interactive_to_noninteractive_reports_the_documented_failure() {
+    reports(
+        "a11y/no-interactive-element-to-noninteractive-role",
+        &[
+            r#"<button role="presentation">Save</button>"#,
+            r#"<a href="/x" role="article">Home</a>"#,
+        ],
+    );
+}
+
+#[test]
+fn interactive_to_noninteractive_accepts_the_documented_pass() {
+    accepts(
+        "a11y/no-interactive-element-to-noninteractive-role",
+        &[
+            // A widget role on a control is not this rule's question.
+            r#"<button role="menuitem">Save</button>"#,
+            // Not a control to begin with.
+            r#"<div role="presentation" />"#,
+            r#"<button>Save</button>"#,
+        ],
+    );
+}
+
+// --- a11y/no-noninteractive-element-to-interactive-role ---------------------
+
+#[test]
+fn noninteractive_to_interactive_reports_the_documented_failure() {
+    reports(
+        "a11y/no-noninteractive-element-to-interactive-role",
+        &[
+            r#"<ul role="button">Save</ul>"#,
+            r#"<h1 role="textbox">Title</h1>"#,
+        ],
+    );
+}
+
+#[test]
+fn noninteractive_to_interactive_accepts_the_documented_pass() {
+    accepts(
+        "a11y/no-noninteractive-element-to-interactive-role",
+        &[
+            // A `<div>` has no semantics of its own, and giving one a widget
+            // role is how every custom control is built.
+            r#"<div role="button" tabIndex={0} />"#,
+            // The role is not a widget.
+            r#"<ul role="list" />"#,
+            // Already a control.
+            r#"<button role="menuitem">Save</button>"#,
+        ],
+    );
+}
+
+// --- a11y/no-noninteractive-element-interactions ----------------------------
+
+#[test]
+fn noninteractive_element_interactions_reports_the_documented_failure() {
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[
+            r#"<article onClick={open} onKeyDown={open}>Open</article>"#,
+            r#"<div role="article" onClick={open} onKeyDown={open}>Open</div>"#,
+        ],
+    );
+}
+
+#[test]
+fn noninteractive_element_interactions_accepts_the_documented_pass() {
+    accepts(
+        "a11y/no-noninteractive-element-interactions",
+        &[
+            // No key handler: that markup belongs to one of the other two
+            // rules. See `the_interaction_rules_divide_the_markup_three_ways`.
+            r#"<article onClick={open}>Open</article>"#,
+            // A `<div>` has no role of its own to contradict.
+            r#"<div onClick={open} onKeyDown={open}>Open</div>"#,
+            // Already a control.
+            r#"<button onClick={open} onKeyDown={open}>Open</button>"#,
+            // A spread may carry a role in.
+            r#"<article onClick={open} onKeyDown={open} {...rest}>Open</article>"#,
+        ],
+    );
+}
+
+// --- the three-way division of one defect -----------------------------------
+
+/// Three rules split one question, and exactly one answers any given markup.
+///
+/// * no `role` at all — `a11y/no-static-element-interactions`;
+/// * a `role` and no key handler — `a11y/click-events-have-key-events`;
+/// * a non-interactive role with the keyboard already wired up — this batch's
+///   `a11y/no-noninteractive-element-interactions`.
+///
+/// A change that makes two of them fire on one markup, or none of them fire on
+/// any of these three, fails here rather than in somebody's editor.
+#[test]
+fn the_interaction_rules_divide_the_markup_three_ways() {
+    // The case that actually exercises the boundary: an element whose own
+    // role is settled and non-interactive, so all three rules are in scope
+    // and only the shipped one may speak. A `<div>` tests far less here — it
+    // is `generic`, which this batch's rule excludes for its own reasons, so
+    // it would stay silent even if the division broke.
+    let semantic_without_keys = r#"<article onClick={open}>Open</article>"#;
+    reports(
+        "a11y/no-static-element-interactions",
+        &[semantic_without_keys],
+    );
+    accepts(
+        "a11y/click-events-have-key-events",
+        &[semantic_without_keys],
+    );
+    accepts(
+        "a11y/no-noninteractive-element-interactions",
+        &[semantic_without_keys],
+    );
+
+    let no_role = r#"<div onClick={open}>Open</div>"#;
+    reports("a11y/no-static-element-interactions", &[no_role]);
+    accepts("a11y/click-events-have-key-events", &[no_role]);
+    accepts("a11y/no-noninteractive-element-interactions", &[no_role]);
+
+    let role_without_keys = r#"<div role="button" tabIndex={0} onClick={open}>Open</div>"#;
+    reports("a11y/click-events-have-key-events", &[role_without_keys]);
+    accepts("a11y/no-static-element-interactions", &[role_without_keys]);
+    accepts(
+        "a11y/no-noninteractive-element-interactions",
+        &[role_without_keys],
+    );
+
+    let semantic_with_keys = r#"<article onClick={open} onKeyDown={open}>Open</article>"#;
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[semantic_with_keys],
+    );
+    accepts("a11y/no-static-element-interactions", &[semantic_with_keys]);
+    accepts("a11y/click-events-have-key-events", &[semantic_with_keys]);
+}
+
+/// A role that depends on where the element sits is not guessed at.
+///
+/// `<li>` is a `listitem` only inside a list and `<td>` a `cell` only inside a
+/// table, so `implicit_role` answers `Unsettled` and these rules say nothing.
+/// That is a deliberate narrowing against the plugin, which reports on the tag
+/// alone — and it is why `a11y/no-static-element-interactions` was left to go
+/// on covering the element with no role, rather than being narrowed to the
+/// ones whose role is settled.
+#[test]
+fn a_role_that_depends_on_placement_is_not_guessed() {
+    accepts(
+        "a11y/no-noninteractive-element-to-interactive-role",
+        &[r#"<li role="button">Save</li>"#],
+    );
+    accepts(
+        "a11y/no-noninteractive-element-interactions",
+        &[r#"<li onClick={open} onKeyDown={open}>Open</li>"#],
+    );
+}

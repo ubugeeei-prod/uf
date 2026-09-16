@@ -655,3 +655,72 @@ fn anchor_is_valid_leaves_what_it_cannot_see_alone() {
         ],
     );
 }
+
+// --- a11y/control-has-associated-label --------------------------------------
+
+#[test]
+fn control_has_associated_label_reports_the_documented_failure() {
+    reports(
+        "a11y/control-has-associated-label",
+        &["<button />", "<input />", "<select />"],
+    );
+}
+
+#[test]
+fn control_has_associated_label_accepts_the_documented_pass() {
+    accepts(
+        "a11y/control-has-associated-label",
+        &[
+            // Named by its content, or by itself.
+            "<button>Save</button>",
+            r#"<button aria-label="Save" />"#,
+            r#"<button title="Save" />"#,
+            // An `id` is something a `<label htmlFor>` beside it can point at,
+            // and that label is not in this module to see.
+            r#"<input id="email" />"#,
+            // `value` is what a submit button announces.
+            r#"<input type="submit" value="Save" />"#,
+            // Not rendered, so not a control to name.
+            r#"<input type="hidden" />"#,
+            // Hidden from assistive technology on purpose.
+            r#"<button aria-hidden="true" />"#,
+            // A spread may be carrying the name in.
+            "<input {...props} />",
+            // A component decides its own markup.
+            "<Field />",
+        ],
+    );
+}
+
+/// A `<label>` around the control is a name, and it is found by walking the
+/// elements this rule is already inside.
+#[test]
+fn control_has_associated_label_sees_the_label_it_is_wrapped_in() {
+    accepts(
+        "a11y/control-has-associated-label",
+        &["<label>Email<input /></label>"],
+    );
+}
+
+/// Three rules ask what an element is announced as, and each owns its own
+/// elements: no markup is reported by two of them.
+///
+/// `a11y/anchor-has-content` owns `<a>`, `a11y/alt-text` owns the elements
+/// that carry an image, and `a11y/control-has-associated-label` owns the
+/// remaining controls. A change that lets two of them claim one element fails
+/// here.
+#[test]
+fn the_naming_rules_divide_the_elements_between_them() {
+    let anchor = r#"<a href="/x" />"#;
+    reports("a11y/anchor-has-content", &[anchor]);
+    accepts("a11y/control-has-associated-label", &[anchor]);
+
+    let image = r#"<input type="image" />"#;
+    reports("a11y/alt-text", &[image]);
+    accepts("a11y/control-has-associated-label", &[image]);
+
+    let control = "<input />";
+    reports("a11y/control-has-associated-label", &[control]);
+    accepts("a11y/anchor-has-content", &[control]);
+    accepts("a11y/alt-text", &[control]);
+}

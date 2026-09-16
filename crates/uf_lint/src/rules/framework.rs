@@ -83,6 +83,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "an element with a `role` and an `onClick` needs a key handler too",
     },
     RuleDescriptor {
+        id: "a11y/control-has-associated-label",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "a control needs a name a screen reader can announce",
+    },
+    RuleDescriptor {
         id: "a11y/heading-has-content",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
@@ -151,6 +158,27 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "`aria-hidden` does not belong on an element that takes focus",
+    },
+    RuleDescriptor {
+        id: "a11y/no-interactive-element-to-noninteractive-role",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a control keeps its behaviour, so it must keep its announcement",
+    },
+    RuleDescriptor {
+        id: "a11y/no-noninteractive-element-interactions",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "handlers belong on something announced as a control",
+    },
+    RuleDescriptor {
+        id: "a11y/no-noninteractive-element-to-interactive-role",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an element with its own semantics is not a control to relabel",
     },
     RuleDescriptor {
         id: "a11y/no-noninteractive-tabindex",
