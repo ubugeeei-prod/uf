@@ -39,8 +39,7 @@ use flow_parser::ast::pattern::Pattern;
 use flow_parser::ast::statement::export_default_declaration::Declaration;
 use flow_parser::ast::statement::{Statement, StatementInner};
 use flow_parser::loc::Loc;
-use react_compiler::entrypoint::{CompileResult, LoggerEvent, compile_program};
-use react_compiler_ast::File;
+use react_compiler::entrypoint::LoggerEvent;
 use react_compiler_ast::scope::ScopeInfo;
 pub use react_compiler_diagnostics::ErrorCategory;
 use serde::Deserialize;
@@ -48,7 +47,7 @@ use serde_json::Value;
 use uf_profiler::profile_span;
 
 use crate::TransformError;
-use crate::compiler::{lint_plugin_options, reported_at, teach_facade_provenance};
+use crate::compiler::{Compiled, compile_with_options, lint_plugin_options, reported_at};
 
 /// The Flow suppression codes `eslint-plugin-react-hooks` treats as Flow having
 /// reported a finding already.
@@ -234,21 +233,17 @@ fn is_component_or_hook_name(name: &str) -> bool {
 /// The compiler recurses through the tree, and so does dropping it.
 pub fn lint(
     file: &Value,
-    mut scope: ScopeInfo,
+    scope: ScopeInfo,
     source: &str,
     filename: &str,
     switches: LintSwitches,
 ) -> Result<Vec<LintDiagnostic>, TransformError> {
     profile_span!("lint::lint");
-    teach_facade_provenance(&mut scope);
-    let ast = File::deserialize(file).map_err(|error| {
-        TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
-    })?;
     let options = lint_plugin_options(source, filename, switches)?;
     // A fatal result still carries the events logged before it, and the
     // plugin reports those too: its logger collects them as they happen.
-    let events = match compile_program(ast, scope, options) {
-        CompileResult::Success { events, .. } | CompileResult::Error { events, .. } => events,
+    let events = match compile_with_options(file, scope, options)? {
+        Compiled::Ran { events, .. } | Compiled::Fatal { events, .. } => events,
     };
 
     let suppressed = flow_suppression_lines(file);
