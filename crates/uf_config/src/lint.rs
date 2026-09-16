@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 72] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -213,17 +213,43 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     // the alternative, and the fix is mechanical: the words the image carries,
     // or `alt=""` when it carries none.
     ("a11y/alt-text", RuleLevel::Error),
+    // "Click here" says nothing in a screen reader's list of links, which is
+    // how people using one skim a page. `warn`, because the sentence around a
+    // link may still carry its purpose (WCAG 2.4.4 allows that) and a linter
+    // cannot read the paragraph a component ends up in.
+    ("a11y/anchor-ambiguous-text", RuleLevel::Warn),
+    // A link with nothing to announce is read as "link" and nothing more, so
+    // one cannot be told from the next.
+    ("a11y/anchor-has-content", RuleLevel::Error),
+    // An `<a>` without a destination is not a link: no keyboard reaches it,
+    // and `href="#"` or `javascript:` is a button without a button's keys.
+    ("a11y/anchor-is-valid", RuleLevel::Error),
     // The quietest bug on this list. A misspelled `aria-*` is not rejected by
     // the browser, not reported by React and not read by anything: the control
     // is unlabelled and there is no symptom at all.
     ("a11y/aria-props", RuleLevel::Error),
+    // An empty heading is still a heading: a reader jumping by heading lands
+    // on it and hears nothing.
+    ("a11y/heading-has-content", RuleLevel::Error),
     // Style, and a claim about a document uf cannot see the whole of: a `<h1>`
     // in a layout and a `<h3>` in a card are only a skip if the one renders
     // inside the other. `warn`, and compared within one function body.
     ("a11y/heading-order", RuleLevel::Warn),
+    // Without `lang` a screen reader reads the page in the user's own
+    // language, whatever it is written in. WCAG 3.1.1, level A.
+    ("a11y/html-has-lang", RuleLevel::Error),
+    // A frame is announced by its title; without one a reader has to enter it
+    // to find out what it holds.
+    ("a11y/iframe-has-title", RuleLevel::Error),
+    // A screen reader already says "image", so alt text that says it again is
+    // wording rather than a defect.
+    ("a11y/img-redundant-alt", RuleLevel::Warn),
     // A label attached to nothing leaves its field with no accessible name and
     // makes the label itself dead to a click. Both are defects, not opinions.
     ("a11y/label-has-associated-control", RuleLevel::Error),
+    // Media with no captions shuts out whoever cannot hear it, but whether it
+    // has speech to caption is something only the media knows, so `warn`.
+    ("a11y/media-has-caption", RuleLevel::Warn),
     // A handler only a mouse can reach is a feature a keyboard user does not
     // have. Reported only where neither a `role` nor a key handler is present,
     // which is where nobody has considered the keyboard at all.
@@ -231,11 +257,17 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),
+    // The official React Compiler's diagnostics, at the levels
+    // `eslint-plugin-react-hooks` gives the same categories. `hooks` is `error`
+    // although the plugin leaves its compiler rule off, because the plugin
+    // answers the question with its separate `rules-of-hooks` rule at `error`
+    // and uf has no second rule for it.
+    ("react-compiler/globals", RuleLevel::Error),
+    ("react-compiler/hooks", RuleLevel::Error),
+    ("react-compiler/purity", RuleLevel::Error),
     // Style preferences during the migration to Flow component/hook syntax.
     ("react/component-syntax", RuleLevel::Warn),
     ("react/hook-syntax", RuleLevel::Warn),
-    // Breaking the rules of hooks corrupts React's hook state.
-    ("react/hooks-rules", RuleLevel::Error),
     // Framework routes are wired by name; `warn` while the scaffold migrates.
     ("react/no-default-export-component", RuleLevel::Warn),
     // An effect whose whole body writes state computed from its own
@@ -255,8 +287,6 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 63] = [
     // false, because then the hand-written one is the only memoization there
     // is.
     ("react/no-redundant-memo", RuleLevel::Warn),
-    // Non-idempotent render breaks streaming SSR and hydration.
-    ("react/no-render-side-effects", RuleLevel::Error),
     // Platform branches are a preference, not a correctness problem.
     ("react-native/platform-split", RuleLevel::Warn),
     // Leaking a secret into a client bundle is unrecoverable.

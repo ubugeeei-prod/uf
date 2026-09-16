@@ -5,6 +5,7 @@
 //! is what keeps a fixture written for one rule from being scored by another rule
 //! that happens to fire on the same line.
 
+mod a11y_content;
 mod catalogue;
 mod driver;
 mod fetch;
@@ -15,6 +16,7 @@ mod flow_type;
 mod input;
 mod package;
 mod react;
+mod react_compiler;
 mod react_native;
 mod react_tree;
 mod router;

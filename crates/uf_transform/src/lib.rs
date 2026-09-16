@@ -78,6 +78,7 @@ pub mod babel;
 pub mod compiler;
 pub mod emit;
 pub mod estree;
+pub mod lint;
 pub mod lower;
 pub mod memo;
 pub mod print;
@@ -88,7 +89,8 @@ use thiserror::Error;
 
 pub use crate::compiler::{CompilerDiagnostic, ReactCompilerMode};
 pub use crate::estree::MAX_SOURCE_BYTES;
-pub use crate::memo::{RedundantMemo, redundant_memoization};
+pub use crate::lint::{ErrorCategory, LintDiagnostic, may_contain_react_code};
+pub use crate::memo::{RedundantMemo, redundant_memoization, redundant_memoization_in_scope};
 
 /// How one module is transformed.
 #[derive(Debug, Clone, PartialEq, Eq)]

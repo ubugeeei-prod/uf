@@ -318,7 +318,7 @@ gigabyte.
 
 | Pinned source | What it is | What uf does today |
 | --- | --- | --- |
-| `upstream/react` — `compiler/crates` | The React Compiler's official Rust port: `react_compiler_validation`, `react_compiler_hir`, `react_compiler_inference` and nine more. | `uf_react_compiler` implements the *syntax-mode* checks itself, over Flow's AST. It is honest about being a subset — see its module docs for the three checks it leaves out rather than approximates — but `@uniflowed/react-compiler` already advertises `implementation: "official-rust"`, and this is the source that makes that true. |
+| `upstream/react` — `compiler/crates` | The React Compiler's official Rust port: `react_compiler_validation`, `react_compiler_hir`, `react_compiler_inference` and nine more. | uf depends on the crates published from this source (`react_compiler` 0.1.0 on crates.io). `uf_transform` compiles with it for `uf build`, `uf dev` and `uf test`, and runs it in lint mode for `uf lint`, whose `react-compiler/*` rules are its diagnostics. uf has no React Compiler checks of its own. |
 | `upstream/relay` — `compiler/crates` | Relay's compiler, in Rust: `graphql-syntax`, `graphql-ir`, `relay-transforms`, and 44 others. | `@uniflowed/relay` re-exports the JavaScript Relay runtime and shells out to the published `relay-compiler`. Artifact generation is the hot path the redundancy guide says must be native. |
 | `upstream/react-native` — `packages/react-native-codegen`, `packages/react-native/Libraries` | React Native's codegen and its Flow-typed JavaScript libraries. | `@uniflowed/react-native` re-exports the React Native JavaScript runtime as a peer package. The codegen and Libraries pins remain the source for native bindings and Flow surface work that belongs in uf itself. |
 

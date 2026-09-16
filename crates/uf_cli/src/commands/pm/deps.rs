@@ -1300,14 +1300,18 @@ pub(super) fn delegate(cwd: &Utf8Path, ui: &mut Ui, request: &Request<'_>) -> Re
                 .as_ref()
                 .map(|label| format!(" in {label}"))
                 .unwrap_or_default();
-            let mut what_to_do = format!(
-                "the manager printed why above{place}; fix that and run `{}` again",
-                request.retry
-            );
-            if let Some(hint) = uf_pm::run::failure_hint(manager, request.operation) {
-                what_to_do.push_str("\n\n  ");
-                what_to_do.push_str(hint);
-            }
+            // A hint says what to run instead, so the command that failed is
+            // not offered again beside it: on pnpm 12, `uf link <name>` is
+            // the refused form itself.
+            let what_to_do =
+                if let Some(hint) = uf_pm::run::failure_hint(manager, request.operation) {
+                    format!("the manager printed why above{place}\n\n  {hint}")
+                } else {
+                    format!(
+                        "the manager printed why above{place}; fix that and run `{}` again",
+                        request.retry
+                    )
+                };
             failed_hint(error, &what_to_do)
         })?;
         commands.push(match &target.label {
@@ -1532,8 +1536,11 @@ fn link_report(
         });
     }
     // Yarn 2+ records a link in `resolutions`, and a resolution only resolves
-    // a package something already depends on.
+    // a package something already depends on. So a recorded link explains an
+    // empty `node_modules/<name>` and nothing else: an installed package or a
+    // broken link beside a resolution is a link that did not take.
     if manager == uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry)
+        && matches!(state, Some(LinkState::Absent))
         && let Some(resolution) = resolution
     {
         return Ok(LinkReport {

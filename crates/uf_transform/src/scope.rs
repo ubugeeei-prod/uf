@@ -138,6 +138,15 @@ impl Analyzer {
         self.scopes[scope.0 as usize]
             .bindings
             .insert(name.to_owned(), id);
+        // The declaring identifier is one of the binding's references too.
+        // `babel-plugin-react-compiler-rust`'s `scope.ts` maps it ("Map the
+        // binding identifier itself"), and the compiler depends on the entry:
+        // `find_context_identifiers` recognizes declaration sites by it, and
+        // without it a variable reassigned inside a closure is lowered as a
+        // local at its declaration and as a context variable everywhere else.
+        if let Some(node_id) = node_id(identifier) {
+            self.ref_node_id_to_binding.insert(node_id, id);
+        }
     }
 
     fn resolve(&self, mut scope: ScopeId, name: &str) -> Option<BindingId> {
@@ -889,6 +898,17 @@ mod tests {
             !info.ref_node_id_to_binding.contains_key(&m),
             "a global resolves to nothing"
         );
+    }
+
+    #[test]
+    fn a_declaring_identifier_is_recorded_as_a_reference_to_its_binding() {
+        let (file, info) = analyzed("function f() { let y = {}; const g = () => { y = 1; }; }\n");
+        let declarator = &file["program"]["body"][0]["body"]["body"][0]["declarations"][0];
+        let declared = node_id(&declarator["id"]).unwrap();
+        let binding = info.ref_node_id_to_binding[&declared];
+        let data = &info.bindings[binding.0 as usize];
+        assert_eq!(data.name, "y");
+        assert_eq!(data.declaration_node_id, Some(declared));
     }
 
     #[test]

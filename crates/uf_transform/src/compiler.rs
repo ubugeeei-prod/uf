@@ -93,17 +93,7 @@ pub fn compile(
     source: &str,
     options: &TransformOptions,
 ) -> Result<(Value, Vec<CompilerDiagnostic>, usize), TransformError> {
-    // The facade re-exports the application's React unchanged. Teach the
-    // compiler that provenance so refs and state retain their built-in
-    // semantics. Only analysis metadata changes; emitted imports stay owned
-    // by the application, including when both spellings occur in one file.
-    for binding in &mut scope.bindings {
-        if let Some(import) = &mut binding.import
-            && import.source == "@uniflowed/react"
-        {
-            import.source = "react".to_owned();
-        }
-    }
+    teach_facade_provenance(&mut scope);
     let ast: File = serde_json::from_value(file.clone()).map_err(|error| {
         TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
     })?;
@@ -148,7 +138,25 @@ pub fn compile(
     }
 }
 
-/// The options uf drives the official compiler with, for every caller.
+/// Teach the compiler that `@uniflowed/react` is React.
+///
+/// The facade re-exports the application's React unchanged, so refs and state
+/// imported through it have React's built-in semantics, and the compiler only
+/// knows that from an import's source. Only analysis metadata changes: emitted
+/// imports stay the application's, including when both spellings occur in one
+/// file. Every caller that hands the compiler a module does this, so `uf build`
+/// and `uf lint` read the same imports the same way.
+pub(crate) fn teach_facade_provenance(scope: &mut ScopeInfo) {
+    for binding in &mut scope.bindings {
+        if let Some(import) = &mut binding.import
+            && import.source == "@uniflowed/react"
+        {
+            import.source = "react".to_owned();
+        }
+    }
+}
+
+/// The options uf compiles a module with.
 ///
 /// One function rather than one per entry point: `uf build` and the
 /// redundant-memoization question in [`crate::memo`] must ask the compiler the
@@ -157,21 +165,88 @@ pub(crate) fn plugin_options(
     source: &str,
     options: &TransformOptions,
 ) -> Result<PluginOptions, TransformError> {
-    serde_json::from_value(node! {
-        "shouldCompile": true,
+    options_for(
+        &options.filename,
+        source,
+        node! {
+            "shouldCompile": true,
+            "isDev": options.development,
+            "compilationMode": options.react_compiler.as_str(),
+            "flowSuppressions": true,
+            "environment": node!{},
+        },
+    )
+}
+
+/// The options `uf lint` runs the compiler with: the ones
+/// `eslint-plugin-react-hooks` 7.1.1 passes, from its `RunReactCompiler`
+/// module, so that `uf lint` asks the compiler exactly what the compiler's own
+/// lint integration asks it.
+///
+/// * `outputMode: "lint"` — validate and report, and apply nothing.
+/// * `compilationMode` is left at the compiler's default, `infer`: functions
+///   named like components or hooks that call hooks or return JSX are checked
+///   as well as `component` and `hook` declarations.
+/// * `flowSuppressions: false` — the plugin reads Flow suppressions itself
+///   (see [`crate::lint`]) rather than having the compiler skip a function.
+/// * `shouldCompile` is the plugin's default `sources` filter: nothing under
+///   `node_modules`.
+/// * The environment is the plugin's, flag for flag, with its three
+///   experiment switches at the values its build ships with.
+pub(crate) fn lint_plugin_options(
+    source: &str,
+    filename: &str,
+) -> Result<PluginOptions, TransformError> {
+    options_for(
+        filename,
+        source,
+        node! {
+            "shouldCompile": !filename.contains("node_modules"),
+            "isDev": false,
+            "compilationMode": "infer",
+            "outputMode": "lint",
+            "flowSuppressions": false,
+            "environment": node! {
+                "validateRefAccessDuringRender": true,
+                "validateNoSetStateInRender": true,
+                "validateNoSetStateInEffects": true,
+                "validateNoJSXInTryStatements": true,
+                "validateNoImpureFunctionsInRender": true,
+                "validateStaticComponents": true,
+                "validateNoFreezingKnownMutableFunctions": true,
+                "validateNoVoidUseMemo": true,
+                "validateNoCapitalizedCalls": Value::Array(Vec::new()),
+                "validateHooksUsage": true,
+                "validateNoDerivedComputationsInEffects": true,
+                "enableUseKeyedState": false,
+                "enableVerboseNoSetStateInEffect": false,
+                "validateExhaustiveEffectDependencies": "off",
+            },
+        },
+    )
+}
+
+/// The options every caller shares, with `specific` laid over them.
+fn options_for(
+    filename: &str,
+    source: &str,
+    specific: Value,
+) -> Result<PluginOptions, TransformError> {
+    let mut options = node! {
         "enableReanimated": false,
-        "isDev": options.development,
-        "filename": options.filename.clone(),
-        "compilationMode": options.react_compiler.as_str(),
+        "filename": filename,
         "panicThreshold": "none",
         "target": "19",
         "noEmit": false,
-        "flowSuppressions": true,
         "ignoreUseNoForget": false,
-        "environment": node!{},
         "__sourceCode": source,
+    };
+    if let (Value::Object(options), Value::Object(specific)) = (&mut options, specific) {
+        options.extend(specific);
+    }
+    serde_json::from_value(options).map_err(|error| {
+        TransformError::Internal(format!("React Compiler options rejected: {error}"))
     })
-    .map_err(|error| TransformError::Internal(format!("React Compiler options rejected: {error}")))
 }
 
 /// A diagnostic from a logger event that is not a success.
@@ -241,7 +316,7 @@ fn diagnostic(event: &Value, names: &FunctionNames) -> Option<CompilerDiagnostic
 /// than a second site for it, and carry `"loc": null` anyway. `detail.loc` is
 /// still read after it, so a future compiler that populates the field is
 /// believed rather than ignored.
-fn reported_at(event: &Value) -> Option<(u32, u32)> {
+pub(crate) fn reported_at(event: &Value) -> Option<(u32, u32)> {
     let detail = event.get("detail")?;
     detail
         .get("details")

@@ -3786,7 +3786,6 @@ dependencies = [
  "uf_flow",
  "uf_infra",
  "uf_profiler",
- "uf_react_compiler",
  "uf_router",
  "uf_transform",
 ]
@@ -3858,23 +3857,6 @@ dependencies = [
  "thiserror",
  "uf_config",
  "walkdir",
-]
-
-[[package]]
-name = "uf_react_compiler"
-version = "0.0.0-alpha.37"
-dependencies = [
- "compact_str",
- "criterion",
- "react_compiler",
- "react_compiler_ast",
- "serde",
- "serde_json",
- "smallvec",
- "thiserror",
- "uf_infra",
- "uf_plugin",
- "uf_rsc",
 ]
 
 [[package]]
@@ -4019,6 +4001,7 @@ dependencies = [
  "oxc_transformer",
  "react_compiler",
  "react_compiler_ast",
+ "react_compiler_diagnostics",
  "rustc-hash",
  "serde",
  "serde_json",

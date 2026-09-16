@@ -42,6 +42,7 @@
 
 use react_compiler::entrypoint::{CompileResult, LoggerEvent, compile_program};
 use react_compiler_ast::File;
+use react_compiler_ast::scope::ScopeInfo;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -95,16 +96,43 @@ pub fn redundant_memoization(
     source: &str,
     options: &TransformOptions,
 ) -> Result<Vec<RedundantMemo>, TransformError> {
+    redundant_memoization_with(file, || scope::analyze(file), source, options)
+}
+
+/// [`redundant_memoization`] for a caller that already holds the module's
+/// scope information.
+///
+/// `uf lint` is that caller: its `react-compiler/*` rules hand the same tree to
+/// the compiler, and analysing its scopes once serves both.
+///
+/// # Errors
+///
+/// As [`redundant_memoization`].
+pub fn redundant_memoization_in_scope(
+    file: &Value,
+    scope: &ScopeInfo,
+    source: &str,
+    options: &TransformOptions,
+) -> Result<Vec<RedundantMemo>, TransformError> {
+    redundant_memoization_with(file, || scope.clone(), source, options)
+}
+
+fn redundant_memoization_with(
+    file: &Value,
+    scope: impl FnOnce() -> ScopeInfo,
+    source: &str,
+    options: &TransformOptions,
+) -> Result<Vec<RedundantMemo>, TransformError> {
     let written = manual_memo_calls(file);
     if written.is_empty() {
         return Ok(Vec::new());
     }
 
-    let ast: File = serde_json::from_value(file.clone()).map_err(|error| {
+    let ast = File::deserialize(file).map_err(|error| {
         TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
     })?;
     let plugin = plugin_options(source, options)?;
-    let scope = scope::analyze(file);
+    let scope = scope();
 
     let (compiled, events) = match compile_program(ast, scope, plugin) {
         CompileResult::Success { ast, events, .. } => (ast, events),

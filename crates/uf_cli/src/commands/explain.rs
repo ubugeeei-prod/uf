@@ -1810,6 +1810,25 @@ fn lint_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
             detail: format!("built-ins: {:?}", resolved.config.lint.flow.builtins),
         },
     ];
+    // The `react-compiler/*` rules are the official React Compiler's
+    // diagnostics, not uf's work, so the run says whose they are.
+    let compiler_rules = uf_lint::rules()
+        .iter()
+        .filter(|descriptor| descriptor.category == uf_lint::RuleCategory::ReactCompiler)
+        .filter(|descriptor| uf_lint::rule_level(&resolved.config, descriptor.id).is_enabled())
+        .count();
+    if compiler_rules > 0 {
+        stages.push(Stage {
+            name: "React Compiler",
+            provider: format!(
+                "{:?}",
+                resolved.config.app.builtins.react_compiler.implementation
+            ),
+            detail: format!(
+                "{compiler_rules} `react-compiler/*` rules, in the compiler's lint mode"
+            ),
+        });
+    }
     // The one stage uf does not write, so the one a slow or failing run most
     // needs named. Absent when no project rule is on, which is also when the
     // run starts no worker for it.

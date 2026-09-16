@@ -133,8 +133,9 @@ not be in the run at all — uf does not format Markdown.
 
 <div className="command"><code>uf lint</code></div>
 
-Runs uf's rules and Flow's own lints together and prints one list. `--json`
-emits the report machine-readably.
+Runs uf's rules, Flow's own lints and the official React Compiler's
+diagnostics together and prints one list. `--json` emits the report
+machine-readably.
 
 Flow's built-in lints — `sketchy-null`, `unclear-type`, `deprecated-type`,
 `unnecessary-optional-chain` and the rest — are configured in `uf.config.js`
@@ -151,6 +152,70 @@ command that fixes its findings, and what it checks. The level is read from
 rather than "is it on by default", and `--json` prints the same list for a
 script. Read it rather than a list on this page — a rule name or a count written
 into a guide goes stale the day a rule is added, and the command cannot.
+
+### React rules come from the React Compiler
+
+The `react-compiler/*` rules are the official React Compiler's own diagnostics,
+not checks uf wrote. `uf lint` runs the compiler `uf build` runs —
+[`react_compiler`](https://crates.io/crates/react_compiler), published from
+`facebook/react` — in the compiler's lint mode, with the options
+`eslint-plugin-react-hooks` gives it, and files each diagnostic under the rule
+named for its category. The message is the compiler's; uf adds the code frame
+and `uf-lint-disable`.
+
+| Rule | Compiler category | What the compiler reports |
+| --- | --- | --- |
+| `react-compiler/hooks` | `Hooks` | a hook called conditionally, in a loop, after an early return, or inside a function expression |
+| `react-compiler/purity` | `Purity` | a known-impure function, such as `Date.now()` or `Math.random()`, called during render |
+| `react-compiler/globals` | `Globals` | a variable declared outside the component or hook, reassigned during render |
+
+All three are `error` by default. They run whether or not
+`app.builtins.reactCompiler.enabled` is on, because they report the rules of
+React rather than what the build memoized.
+
+**Which functions are checked.** The compiler checks the functions it would
+compile in `infer` mode, the mode `eslint-plugin-react-hooks` uses: every
+`component` and `hook` declaration, a function named like a component (`Card`)
+or a hook (`useCard`) that calls a hook or returns JSX, and a function passed to
+`memo` or `forwardRef`. A hook called anywhere else — at the top of a module, or
+in `function helper()` — is not reported, because that function is not a
+component or a hook.
+
+**Which files are checked.** The files `eslint-plugin-react-hooks` hands to the
+compiler: ones with a top-level `component` or `hook` declaration, a top-level
+function or `const` named like a component or a hook, or an `export default` of
+a function. A file whose only component is `export const Card = memo(() => …)`
+is not compiled by the plugin, and not by `uf lint`.
+
+**Flow suppressions.** A `$FlowFixMe[react-rule-hook]` or
+`$FlowFixMe[react-rule-unsafe-ref]` comment on the line above a finding removes
+it, as it does in ESLint: Flow has already reported the same thing.
+
+#### Migrating from `react/hooks-rules` and `react/no-render-side-effects`
+
+Those two rules were checks uf wrote itself, and they are gone. Their ids still
+work, in `uf.config.js` and in `uf-lint-disable` comments, as deprecated
+spellings of the compiler's rules:
+
+| Old id | Now means |
+| --- | --- |
+| `react/hooks-rules` | `react-compiler/hooks` |
+| `react/no-render-side-effects` | `react-compiler/purity` |
+
+Rename them when you next touch the line. What changed underneath:
+
+- **A hook called outside a component or a hook is no longer reported**, for the
+  reason above.
+- **A method named like a hook on a value that can change is reported.**
+  `api.useThing()` on a prop may be a different function next render, and the
+  compiler requires a hook to be the same function every time. Call the hook
+  directly, or rename a method that is not one.
+- **Reassigning a module variable during render is `react-compiler/globals`.** A
+  level set on `react/no-render-side-effects` does not reach it; set it by name.
+- **Reading `ref.current`, calling `console.*`, or reaching for `window` or
+  `document` during render is not reported** by these rules.
+- **The messages are the compiler's**, so a CI log or a script that matched the
+  old wording needs the new one.
 
 ### What a lint run tells you
 
@@ -180,8 +245,9 @@ quietly disappearing.
 {
   "command": "uf lint",
   "stages": [
-    { "name": "uf rules", "provider": "Rust", "detail": "63 rules configured" },
-    { "name": "Flow's own lints", "provider": "OfficialFlowRust" }
+    { "name": "uf rules", "provider": "Rust", "detail": "64 rules configured" },
+    { "name": "Flow's own lints", "provider": "OfficialFlowRust" },
+    { "name": "React Compiler", "provider": "OfficialRust", "detail": "3 `react-compiler/*` rules, in the compiler's lint mode" }
   ]
 }
 ```
@@ -388,13 +454,21 @@ running it.
 
 | ESLint | uf |
 | --- | --- |
-| `rules-of-hooks` | `react/hooks-rules`, with `flow/nested-hook` |
+The plugin's compiler rules and uf's `react-compiler/*` rules are the same
+compiler's categories under the same names; see [React rules come from the
+React Compiler](#react-rules-come-from-the-react-compiler).
+
+| ESLint | uf |
+| --- | --- |
+| `rules-of-hooks` | `react-compiler/hooks`, with `flow/nested-hook` — the compiler's Rules of Hooks, which report inside components and hooks only; a hook called in a plain function is not reported |
+| `hooks` | `react-compiler/hooks` |
+| `purity` | `react-compiler/purity` |
+| `globals` | `react-compiler/globals` |
 | `component-hook-factories` | `flow/nested-component` and `flow/nested-hook` |
 | `static-components` | `flow/nested-component` |
-| `purity` | `react/no-render-side-effects` |
 | `set-state-in-effect` | Partly `react/no-derived-state-effect`, which covers state derived from props or state; the rest is not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
 | `config`, `gating` | Not needed — they check a Babel setup of the React Compiler, and uf runs the compiler itself |
-| `exhaustive-deps`, `set-state-in-render`, `refs`, `immutability`, `globals`, `error-boundaries`, `incompatible-library`, `preserve-manual-memoization`, `unsupported-syntax`, `use-memo` | Not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
+| `exhaustive-deps`, `set-state-in-render`, `refs`, `immutability`, `error-boundaries`, `incompatible-library`, `preserve-manual-memoization`, `unsupported-syntax`, `use-memo` | Not yet — [#1063](https://github.com/ubugeeei-prod/uf/issues/1063) |
 
 #### eslint-plugin-jsx-a11y
 
@@ -404,11 +478,36 @@ plugin.
 | ESLint | uf |
 | --- | --- |
 | `alt-text` | `a11y/alt-text` |
+| `anchor-ambiguous-text` | `a11y/anchor-ambiguous-text` |
+| `anchor-has-content` | `a11y/anchor-has-content` |
+| `anchor-is-valid` | `a11y/anchor-is-valid` |
 | `aria-props` | `a11y/aria-props` |
+| `heading-has-content` | `a11y/heading-has-content` |
+| `html-has-lang` | `a11y/html-has-lang` |
+| `iframe-has-title` | `a11y/iframe-has-title` |
+| `img-redundant-alt` | `a11y/img-redundant-alt` |
 | `label-has-associated-control`, `label-has-for` | `a11y/label-has-associated-control` |
+| `media-has-caption` | `a11y/media-has-caption` |
 | `no-static-element-interactions` | `a11y/no-static-element-interactions` |
 | `accessible-emoji`, `no-onchange` | Not needed — deprecated in the plugin itself |
-| `anchor-ambiguous-text`, `anchor-has-content`, `anchor-is-valid`, `aria-activedescendant-has-tabindex`, `aria-proptypes`, `aria-role`, `aria-unsupported-elements`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `heading-has-content`, `html-has-lang`, `iframe-has-title`, `img-redundant-alt`, `interactive-supports-focus`, `lang`, `media-has-caption`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `no-redundant-roles`, `prefer-tag-over-role`, `role-has-required-aria-props`, `role-supports-aria-props`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+| `aria-activedescendant-has-tabindex`, `aria-proptypes`, `aria-role`, `aria-unsupported-elements`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `interactive-supports-focus`, `lang`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `no-redundant-roles`, `prefer-tag-over-role`, `role-has-required-aria-props`, `role-supports-aria-props`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+
+Where an `a11y/*` rule answers differently from the plugin, it is on purpose
+and always in the same direction: a rule that cannot see what it is asking
+about says nothing. An element that spreads props (`<iframe {...props} />`,
+`<video {...props} />`) may be passing the attribute through, and a component
+or an expression renders something the file does not show, so neither is
+reported. The rules that ask whether an element has a name look inside host
+elements instead of counting any child as content, so an icon link with no
+title is reported:
+
+```jsx
+// a11y/anchor-has-content: nothing inside this <a> can be announced
+<a href="/"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9" /></svg></a>
+
+// named, so not reported
+<a href="/" aria-label="Home"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9" /></svg></a>
+```
 
 #### eslint-plugin-import
 

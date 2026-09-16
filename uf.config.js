@@ -270,13 +270,12 @@ export default defineConfig({
     // naming a rule that exists.
     //
     // The numbers were wrong here twice, which is its own lesson: this said
-    // 315 errors and named `flow/react-intrinsic-overlap` (89) and
-    // `react/hooks-rules` (86) as the largest groups when both reported
-    // nothing — the first is one of sixteen rules that need type inference uf
-    // does not implement yet, so it is skipped rather than passing — and then
-    // 153 errors including eight in `packages/test`'s fake timers, which #237
-    // had already fixed by teaching the compiler that a `useX` name is a hook
-    // only where the module says React. ubugeeei-prod/uf#225 has the count
+    // 315 errors and named `flow/react-intrinsic-overlap` (89) and uf's
+    // former hand-written hooks rule (86) as the largest groups when both
+    // reported nothing — the first is one of sixteen rules that need type
+    // inference uf does not implement yet, so it is skipped rather than
+    // passing — and then 153 errors including eight in `packages/test`'s fake
+    // timers, which #237 had already fixed. ubugeeei-prod/uf#225 has the count
     // this replaces.
     "check:lib": {
       command: "./target/release/uf lint",
@@ -317,6 +316,24 @@ export default defineConfig({
     "fmt:corpus": {
       command: "cargo test -p uf_fmt --test upstream_corpus -- --nocapture",
       dependsOn: ["corpus:sync"],
+    },
+
+    // uf's compile path, over the React Compiler's own fixtures.
+    //
+    // `crates/uf_transform/tests/react_compiler_conformance` runs each fixture
+    // in facebook/react's compiler corpus through the Flow parser, `babel.rs`,
+    // `scope.rs`, the official `react_compiler` crate and `print.rs`, and
+    // compares the result with the `.expect.md` snapshot that
+    // `babel-plugin-react-compiler` wrote. `baseline.tsv` beside the test is
+    // the floor: a fixture whose result changes fails the test.
+    //
+    // In `ci` through `rust:test`, which the Test job runs after syncing the
+    // fixtures (about 3 MB, pinned in `tools/react-compiler/pin.txt`). This
+    // task is the same run with its report printed.
+    "react-compiler:sync": "tools/react-compiler/sync.sh",
+    "react-compiler:conformance": {
+      command: "cargo test -p uf_transform --test react_compiler_conformance -- --nocapture",
+      dependsOn: ["react-compiler:sync"],
     },
 
     // The documentation site, built by the framework it documents. The script

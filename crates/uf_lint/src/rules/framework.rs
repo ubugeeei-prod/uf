@@ -20,11 +20,39 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`img`, `area` and `input type=\"image\"` need an `alt`",
     },
     RuleDescriptor {
+        id: "a11y/anchor-ambiguous-text",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "link text says where the link goes, not \"click here\"",
+    },
+    RuleDescriptor {
+        id: "a11y/anchor-has-content",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `a` needs text or a label a screen reader can announce",
+    },
+    RuleDescriptor {
+        id: "a11y/anchor-is-valid",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `a` needs a real `href`; an action belongs on a `button`",
+    },
+    RuleDescriptor {
         id: "a11y/aria-props",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "an `aria-*` attribute must be one ARIA defines",
+    },
+    RuleDescriptor {
+        id: "a11y/heading-has-content",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a heading needs text or a label a screen reader can announce",
     },
     RuleDescriptor {
         id: "a11y/heading-order",
@@ -34,11 +62,39 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "heading levels go down one at a time",
     },
     RuleDescriptor {
+        id: "a11y/html-has-lang",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`html` needs a `lang`",
+    },
+    RuleDescriptor {
+        id: "a11y/iframe-has-title",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `iframe` needs a `title` that says what it holds",
+    },
+    RuleDescriptor {
+        id: "a11y/img-redundant-alt",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "`alt` text does not call the image an image, photo or picture",
+    },
+    RuleDescriptor {
         id: "a11y/label-has-associated-control",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "a `label` must name a control, by `htmlFor` or by holding it",
+    },
+    RuleDescriptor {
+        id: "a11y/media-has-caption",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "`audio` and `video` need a captions `track`",
     },
     RuleDescriptor {
         id: "a11y/no-static-element-interactions",
@@ -96,6 +152,32 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         requirement: SourceText,
         description: "`uf-lint-disable` comments must name a rule this linter knows",
     },
+    // The official React Compiler's categories, each at the level
+    // `eslint-plugin-react-hooks` gives it. `hooks` is `error` although the
+    // plugin leaves its compiler rule off: the plugin ships a separate
+    // `rules-of-hooks` rule at `error` for the same question, and uf has no such
+    // second rule — the compiler's is the answer.
+    RuleDescriptor {
+        id: "react-compiler/globals",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `Globals` diagnostics: a variable from outside a component or hook changed during render",
+    },
+    RuleDescriptor {
+        id: "react-compiler/hooks",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `Hooks` diagnostics: the Rules of Hooks",
+    },
+    RuleDescriptor {
+        id: "react-compiler/purity",
+        category: RuleCategory::ReactCompiler,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the React Compiler's `Purity` diagnostics: a known-impure function called during render",
+    },
     RuleDescriptor {
         id: "react/component-syntax",
         category: RuleCategory::React,
@@ -109,13 +191,6 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "declare React hooks with Flow `hook` syntax",
-    },
-    RuleDescriptor {
-        id: "react/hooks-rules",
-        category: RuleCategory::React,
-        default_level: RuleLevel::Error,
-        requirement: SourceText,
-        description: "call hooks only at the top level of a component, hook, or `useX` function",
     },
     RuleDescriptor {
         id: "react/no-derived-state-effect",
@@ -141,13 +216,6 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "drop a `useMemo`/`useCallback` the React Compiler already did",
-    },
-    RuleDescriptor {
-        id: "react/no-render-side-effects",
-        category: RuleCategory::React,
-        default_level: RuleLevel::Error,
-        requirement: SourceText,
-        description: "keep render idempotent; no clocks, randomness, or storage reads",
     },
     RuleDescriptor {
         id: "react-native/platform-split",
