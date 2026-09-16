@@ -32,8 +32,24 @@ pub fn to_babel(mut program: Value, source: &str) -> Result<Value, TransformErro
     let mut file = wrap_file(program);
     let lines = LineTable::new(source);
     let mut next_id = 0u32;
-    finalize(&mut file, &mut next_id, &lines);
+    finalize(&mut file, &mut next_id, &lines, !declares_flow(source));
     Ok(file)
+}
+
+/// Whether the module's first line declares Flow, which is how the React
+/// Compiler's own fixtures decide the same thing (`parseLanguage` in
+/// `snap/src/compiler.ts` reads the first line and nothing else).
+///
+/// It stands for which parser would have read the module. A Flow module is
+/// `hermes-parser`'s — the parser `babel.rs` is a port of the Babel conversion
+/// of — and everything else is `@babel/parser`'s. The two differ in what they
+/// put on a `loc`, which [`finalize`] and
+/// [`compiler::stamp_source_filename`](crate::compiler) both have to respect.
+fn declares_flow(source: &str) -> bool {
+    source
+        .find('\n')
+        .map_or(source, |end| &source[..end])
+        .contains("@flow")
 }
 
 /// Where each line starts, in UTF-16 code units.
@@ -580,14 +596,19 @@ const SKIPPED: [&str; 4] = ["type", "loc", "range", "extra"];
 ///
 /// The keys are all present already, so every write is an assignment into a
 /// slot rather than an insert: no key is allocated and no map is grown.
-fn overwrite_position(object: &mut Map<String, Value>, start: (u32, u32), end: (u32, u32)) -> bool {
+fn overwrite_position(
+    object: &mut Map<String, Value>,
+    start: (u32, u32, u32),
+    end: (u32, u32, u32),
+    with_index: bool,
+) -> bool {
     let Some(loc) = object.get_mut("loc").and_then(Value::as_object_mut) else {
         return false;
     };
     // Babel's `loc` has no `source`, and the translator's does.
     loc.remove("source");
     let mut written = 0;
-    for (key, (line, column)) in [("start", start), ("end", end)] {
+    for (key, (line, column, index)) in [("start", start), ("end", end)] {
         let Some(point) = loc.get_mut(key).and_then(Value::as_object_mut) else {
             continue;
         };
@@ -602,6 +623,17 @@ fn overwrite_position(object: &mut Map<String, Value>, start: (u32, u32), end: (
         }
         if let Some(slot) = point.get_mut("column") {
             *slot = Value::from(column);
+        }
+        // Babel's own third field: the offset the point sits at. The compiler
+        // reads `loc.start.index` and `loc.end.index` for the locations it
+        // logs and for the fixes it offers — a suggestion is a range, and it
+        // has none without these. `hermes-parser` writes no `index`, so a Flow
+        // module gets none either, or the compiler offers a fix on a module
+        // whose own snapshots have none. The translator writes no `index` in
+        // either case, so this is an insert where the other two are
+        // assignments.
+        if with_index {
+            point.insert("index".to_owned(), Value::from(index));
         }
         written += 1;
     }
@@ -632,7 +664,7 @@ impl Final {
 
 /// Assign node ids and Babel's `start`/`end`, and tidy the fields Babel
 /// omits, throughout the file.
-fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
+fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable, with_index: bool) {
     let Some(object) = node.as_object_mut() else {
         return;
     };
@@ -657,8 +689,10 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
         offsets = pair[0].as_u64().zip(pair[1].as_u64());
     }
     if let Some((start, end)) = offsets {
-        let (start_line, start_column) = lines.position(u32::try_from(start).unwrap_or(u32::MAX));
-        let (end_line, end_column) = lines.position(u32::try_from(end).unwrap_or(u32::MAX));
+        let start_index = u32::try_from(start).unwrap_or(u32::MAX);
+        let end_index = u32::try_from(end).unwrap_or(u32::MAX);
+        let (start_line, start_column) = lines.position(start_index);
+        let (end_line, end_column) = lines.position(end_index);
         // Written into the `loc` the translator already attached, when there
         // is one. Its columns count code points where everything downstream
         // counts UTF-16 units, so the numbers are wrong — but the shape is
@@ -666,14 +700,19 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
         // building a replacement cost three maps and six keys, on every node
         // of every module. `estree::parse` asks for `include_locs`, so there
         // is one to write into almost always. See ubugeeei-prod/uf#668.
-        if !overwrite_position(object, (start_line, start_column), (end_line, end_column)) {
-            object.insert(
-                "loc".to_owned(),
-                node! {
-                    "start": node!{ "line": start_line, "column": start_column },
-                    "end": node!{ "line": end_line, "column": end_column },
-                },
-            );
+        if !overwrite_position(
+            object,
+            (start_line, start_column, start_index),
+            (end_line, end_column, end_index),
+            with_index,
+        ) {
+            let mut start = node! { "line": start_line, "column": start_column };
+            let mut end = node! { "line": end_line, "column": end_column };
+            if with_index {
+                start["index"] = Value::from(start_index);
+                end["index"] = Value::from(end_index);
+            }
+            object.insert("loc".to_owned(), node! { "start": start, "end": end });
         }
     } else if let Some(loc) = object.get_mut("loc").and_then(Value::as_object_mut) {
         loc.remove("source");
@@ -716,10 +755,10 @@ fn finalize(node: &mut Value, next_id: &mut u32, lines: &LineTable) {
         match child {
             Value::Array(items) => {
                 for item in items {
-                    finalize(item, next_id, lines);
+                    finalize(item, next_id, lines, with_index);
                 }
             }
-            Value::Object(_) => finalize(child, next_id, lines),
+            Value::Object(_) => finalize(child, next_id, lines, with_index),
             _ => {}
         }
     }
@@ -856,6 +895,34 @@ mod tests {
             function["body"]["body"][0]["argument"]["callee"]["type"],
             "Import"
         );
+    }
+
+    #[test]
+    fn every_position_carries_the_offset_it_is_at() {
+        // Babel's `loc` points carry an `index` beside the line and column,
+        // and the compiler reads those two for the code frame it prints under
+        // a diagnostic. They are the same offsets `start` and `end` hold.
+        let file = babel("const a = 1;\n");
+        let declaration = &file["program"]["body"][0];
+        assert_eq!(declaration["loc"]["start"]["index"], 0);
+        assert_eq!(declaration["loc"]["end"]["index"], 12);
+        assert_eq!(declaration["start"], declaration["loc"]["start"]["index"]);
+        assert_eq!(declaration["end"], declaration["loc"]["end"]["index"]);
+    }
+
+    #[test]
+    fn a_flow_module_carries_no_offsets() {
+        // `hermes-parser` reads a Flow module and writes no `index`, and the
+        // compiler offers a fix only where it has a range to offer it over.
+        // Giving one here made it suggest dependencies on a module whose own
+        // snapshot has no such suggestion.
+        let file = babel("// @flow\nconst a = 1;\n");
+        let declaration = &file["program"]["body"][0];
+        assert_eq!(declaration["loc"]["start"]["line"], 2);
+        assert!(declaration["loc"]["start"].get("index").is_none());
+        assert!(declaration["loc"]["end"].get("index").is_none());
+        // The offsets themselves are still there, where Babel keeps them too.
+        assert_eq!(declaration["start"], 9);
     }
 
     #[test]
