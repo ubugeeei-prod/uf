@@ -539,23 +539,30 @@ plugin.
 | `anchor-ambiguous-text` | `a11y/anchor-ambiguous-text` |
 | `anchor-has-content` | `a11y/anchor-has-content` |
 | `anchor-is-valid` | `a11y/anchor-is-valid` |
+| `aria-activedescendant-has-tabindex` | `a11y/aria-activedescendant-has-tabindex` |
 | `aria-props` | `a11y/aria-props` |
 | `aria-proptypes` | `a11y/aria-proptypes` |
 | `aria-role` | `a11y/aria-role` |
 | `aria-unsupported-elements` | `a11y/aria-unsupported-elements` |
+| `click-events-have-key-events` | `a11y/click-events-have-key-events` (the element that has a `role`; the element with none is `a11y/no-static-element-interactions`) |
 | `heading-has-content` | `a11y/heading-has-content` |
 | `html-has-lang` | `a11y/html-has-lang` |
 | `iframe-has-title` | `a11y/iframe-has-title` |
 | `img-redundant-alt` | `a11y/img-redundant-alt` |
+| `interactive-supports-focus` | `a11y/interactive-supports-focus` |
 | `label-has-associated-control`, `label-has-for` | `a11y/label-has-associated-control` |
 | `media-has-caption` | `a11y/media-has-caption` |
+| `mouse-events-have-key-events` | `a11y/mouse-events-have-key-events` |
+| `no-aria-hidden-on-focusable` | `a11y/no-aria-hidden-on-focusable` |
+| `no-noninteractive-tabindex` | `a11y/no-noninteractive-tabindex` (warn; a scrollable region is given `tabIndex={0}` on purpose) |
 | `no-redundant-roles` | `a11y/no-redundant-roles` |
 | `no-static-element-interactions` | `a11y/no-static-element-interactions` |
 | `prefer-tag-over-role` | `a11y/prefer-tag-over-role` (warn; the roles a tag really replaces) |
 | `role-has-required-aria-props` | `a11y/role-has-required-aria-props` |
 | `role-supports-aria-props` | `a11y/role-supports-aria-props` |
+| `tabindex-no-positive` | `a11y/tabindex-no-positive` |
 | `accessible-emoji`, `no-onchange` | Not needed — deprecated in the plugin itself |
-| `aria-activedescendant-has-tabindex`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `interactive-supports-focus`, `lang`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+| `autocomplete-valid`, `control-has-associated-label`, `lang`, `no-access-key`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `scope` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
 
 Where an `a11y/*` rule answers differently from the plugin, it is on purpose
 and always in the same direction: a rule that cannot see what it is asking

@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 103] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 110] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -224,6 +224,10 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 103] = [
     // An `<a>` without a destination is not a link: no keyboard reaches it,
     // and `href="#"` or `javascript:` is a button without a button's keys.
     ("a11y/anchor-is-valid", RuleLevel::Error),
+    // `aria-activedescendant` names the element focus is standing in for, so
+    // an element that cannot take focus never gets to say it: the attribute is
+    // inert and the option it points at is announced to nobody.
+    ("a11y/aria-activedescendant-has-tabindex", RuleLevel::Error),
     // The quietest bug on this list. A misspelled `aria-*` is not rejected by
     // the browser, not reported by React and not read by anything: the control
     // is unlabelled and there is no symptom at all.
@@ -238,6 +242,11 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 103] = [
     // are not in the accessibility tree for a role or an `aria-*` to say
     // anything about: whatever was meant is said nowhere.
     ("a11y/aria-unsupported-elements", RuleLevel::Error),
+    // The other half of `a11y/no-static-element-interactions`: this one takes
+    // the element that *has* a `role`, where somebody has said what it is and
+    // a keyboard still cannot work it, so the missing handler is the whole of
+    // the advice. Exactly one of the two answers any given markup.
+    ("a11y/click-events-have-key-events", RuleLevel::Error),
     // An empty heading is still a heading: a reader jumping by heading lands
     // on it and hears nothing.
     ("a11y/heading-has-content", RuleLevel::Error),
@@ -254,12 +263,30 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 103] = [
     // A screen reader already says "image", so alt text that says it again is
     // wording rather than a defect.
     ("a11y/img-redundant-alt", RuleLevel::Warn),
+    // A widget role promises the element behaves like the control it names,
+    // and the first thing every control needs is to be reachable: a handler a
+    // keyboard never arrives at is a feature it does not have.
+    ("a11y/interactive-supports-focus", RuleLevel::Error),
     // A label attached to nothing leaves its field with no accessible name and
     // makes the label itself dead to a click. Both are defects, not opinions.
     ("a11y/label-has-associated-control", RuleLevel::Error),
     // Media with no captions shuts out whoever cannot hear it, but whether it
     // has speech to caption is something only the media knows, so `warn`.
     ("a11y/media-has-caption", RuleLevel::Warn),
+    // `onMouseOver` and `onMouseOut` fire for a pointer and nothing else, so a
+    // tooltip built on them never opens for somebody tabbing through.
+    // `onFocus` and `onBlur` are the same two moments for a keyboard.
+    ("a11y/mouse-events-have-key-events", RuleLevel::Error),
+    // Hidden from assistive technology and still in the tab order is the worst
+    // of both: focus lands on an element a screen reader has nothing to say
+    // about, and the reader is told nothing about where they are.
+    ("a11y/no-aria-hidden-on-focusable", RuleLevel::Error),
+    // Every tab stop that is not a control puts the controls further away.
+    // `warn` rather than `error`: a scrollable region is given `tabIndex={0}`
+    // deliberately, so that a keyboard can scroll it, and that is guidance
+    // rather than a defect. A negative `tabIndex` is never reported at all —
+    // it is script-only focus, which is how a dialog takes focus when it opens.
+    ("a11y/no-noninteractive-tabindex", RuleLevel::Warn),
     // A role the element already has is a second place to keep the same fact
     // correct, and it stops being correct as soon as the markup changes.
     // `<nav role="navigation">` is exempt: w3 recommends it for assistive
@@ -283,6 +310,11 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 103] = [
     // nowhere to put it — and the state the author described is never
     // announced.
     ("a11y/role-supports-aria-props", RuleLevel::Error),
+    // A positive `tabIndex` does not move an element one place forward, it
+    // moves it ahead of everything the document orders itself, and every other
+    // positive value on the page joins the same queue: the tab order and the
+    // reading order stop agreeing, and they disagree more with each one added.
+    ("a11y/tabindex-no-positive", RuleLevel::Error),
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),

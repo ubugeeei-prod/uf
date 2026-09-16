@@ -83,6 +83,7 @@
 
 mod aria;
 mod content;
+mod interaction;
 mod roles;
 mod tags;
 mod value;
@@ -202,6 +203,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
         content: levels.content,
         roles: levels.roles,
         tags: levels.tags,
+        interaction: levels.interaction,
         scope: value::Scope::of(parsed, work.looks_for_undefined),
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
@@ -269,6 +271,8 @@ struct Levels {
     roles: roles::Levels,
     /// The rules that weigh a role against the element it was put on.
     tags: tags::Levels,
+    /// The rules that ask whether a pointer is the only way in.
+    interaction: interaction::Levels,
     aria_props: Option<Severity>,
     heading_order: Option<Severity>,
     label_control: Option<Severity>,
@@ -284,6 +288,7 @@ impl Levels {
             content: content::Levels::for_config(config),
             roles: roles::Levels::for_config(config),
             tags: tags::Levels::for_config(config),
+            interaction: interaction::Levels::for_config(config),
             aria_props: severity(config, ARIA_PROPS),
             heading_order: severity(config, HEADING_ORDER),
             label_control: severity(config, LABEL_CONTROL),
@@ -303,6 +308,7 @@ impl Levels {
             || self.content.any()
             || self.roles.any()
             || self.tags.any()
+            || self.interaction.any()
             || self.aria_props.is_some()
             || self.heading_order.is_some()
             || self.label_control.is_some()
@@ -323,7 +329,8 @@ impl Levels {
                 .content
                 .of(rule)
                 .or_else(|| self.roles.of(rule))
-                .or_else(|| self.tags.of(rule)),
+                .or_else(|| self.tags.of(rule))
+                .or_else(|| self.interaction.of(rule)),
         }
     }
 }
@@ -359,6 +366,8 @@ struct Tree<'a> {
     roles: roles::Levels,
     /// Levels for the rules in [`tags`], copied for the same reason.
     tags: tags::Levels,
+    /// Levels for the rules in [`interaction`], copied for the same reason.
+    interaction: interaction::Levels,
     /// How attribute values are read in this module.
     scope: value::Scope,
     aria_props: bool,
@@ -423,6 +432,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
             }
             if self.content.any() {
                 content::check(self, name, element);
+            }
+            if self.interaction.any() {
+                interaction::check(self, name, opening);
             }
             if self.static_interactions {
                 self.check_static_interactions(name, opening);
