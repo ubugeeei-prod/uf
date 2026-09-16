@@ -83,12 +83,18 @@ fn aria_role_says_an_abstract_role_is_abstract() {
 
 #[test]
 fn aria_proptypes_reports_the_documented_failure() {
-    reports("a11y/aria-proptypes", &[r#"<span aria-hidden="yes">foo</span>"#]);
+    reports(
+        "a11y/aria-proptypes",
+        &[r#"<span aria-hidden="yes">foo</span>"#],
+    );
 }
 
 #[test]
 fn aria_proptypes_accepts_the_documented_pass() {
-    accepts("a11y/aria-proptypes", &[r#"<span aria-hidden="true">foo</span>"#]);
+    accepts(
+        "a11y/aria-proptypes",
+        &[r#"<span aria-hidden="true">foo</span>"#],
+    );
 }
 
 #[test]
@@ -130,7 +136,10 @@ fn aria_proptypes_checks_each_kind_of_value() {
 fn aria_proptypes_reads_a_value_on_a_component() {
     // A component that takes an `aria-*` prop is taking it to put on a DOM
     // node, and a value of the wrong type is as inert one level up.
-    reports("a11y/aria-proptypes", &[r#"<Toggle aria-checked="maybe" />"#]);
+    reports(
+        "a11y/aria-proptypes",
+        &[r#"<Toggle aria-checked="maybe" />"#],
+    );
 }
 
 // --- a11y/role-has-required-aria-props --------------------------------------
@@ -274,6 +283,9 @@ fn role_supports_aria_props_stays_off_components() {
     // it may be putting it on any element at all.
     accepts(
         "a11y/role-supports-aria-props",
-        &[r#"<Toggle aria-checked="true" />"#, r#"<Card aria-label="Card" />"#],
+        &[
+            r#"<Toggle aria-checked="true" />"#,
+            r#"<Card aria-label="Card" />"#,
+        ],
     );
 }

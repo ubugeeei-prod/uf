@@ -253,11 +253,7 @@ fn aria_proptypes(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
 /// type="checkbox" role="switch">` is the pattern for a switch: the role
 /// renames the control and the native checkbox keeps answering for
 /// `aria-checked`, so nothing is missing.
-fn role_has_required_aria_props(
-    tree: &mut Tree<'_>,
-    host: &str,
-    opening: &jsx::Opening<Loc, Loc>,
-) {
+fn role_has_required_aria_props(tree: &mut Tree<'_>, host: &str, opening: &jsx::Opening<Loc, Loc>) {
     let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
         return;
     };

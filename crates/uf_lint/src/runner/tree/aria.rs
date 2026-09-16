@@ -141,7 +141,6 @@ impl Role {
     pub(super) fn required(&self) -> impl Iterator<Item = &'static str> {
         names(self.required)
     }
-
 }
 
 /// An attribute an element must carry to have the role beside it.
@@ -216,9 +215,9 @@ fn bit(name: &str) -> Option<u64> {
 
 /// The names a mask holds, in the table's order.
 fn names(mask: u64) -> impl Iterator<Item = &'static str> {
-    (0..table::ATTRIBUTES.len()).filter_map(move |at| {
-        (mask >> at & 1 == 1).then(|| table::ATTRIBUTES[at].name)
-    })
+    (0..table::ATTRIBUTES.len())
+        .filter(move |at| mask >> at & 1 == 1)
+        .map(|at| table::ATTRIBUTES[at].name)
 }
 
 /// The ARIA role called `name`, however it is cased.
@@ -246,10 +245,10 @@ fn exact_role(name: &str) -> Option<&'static Role> {
 ///
 /// ARIA lets an author write a list — `role="doc-subtitle heading"` — and the
 /// browser takes the first role it knows, so that is the one uf reads.
-pub(super) fn written_role<'a>(
+pub(super) fn written_role(
     scope: Scope,
-    opening: &'a jsx::Opening<Loc, Loc>,
-) -> Option<(&'a jsx::Attribute<Loc, Loc>, Written)> {
+    opening: &jsx::Opening<Loc, Loc>,
+) -> Option<(&jsx::Attribute<Loc, Loc>, Written)> {
     let written = attribute(opening, "role")?;
     let value = match scope.value(written) {
         Value::Text(text) => text,
@@ -323,11 +322,7 @@ pub(super) fn implicit_role(
 
 /// Whether the element was written the way this mapping asks, or [`None`] when
 /// the source does not say.
-fn matches(
-    scope: Scope,
-    entry: &Implicit,
-    opening: &jsx::Opening<Loc, Loc>,
-) -> Option<bool> {
+fn matches(scope: Scope, entry: &Implicit, opening: &jsx::Opening<Loc, Loc>) -> Option<bool> {
     for required in entry.attributes {
         let written = attribute(opening, required.name);
         let Some(written) = written else {
@@ -421,7 +416,10 @@ pub(super) fn value_fits(spec: &Spec, value: Value<'_>) -> bool {
 }
 
 fn is_token(spec: &Spec, tokens: &[&str], token: &str) -> bool {
-    if tokens.iter().any(|candidate| candidate.eq_ignore_ascii_case(token)) {
+    if tokens
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(token))
+    {
         return true;
     }
     if spec.boolean_spelling && matches!(token, "true" | "false") {
@@ -469,7 +467,10 @@ pub(super) fn wanted(spec: &Spec) -> String {
 /// is near, and the diagnostic then just says the name is not an ARIA
 /// attribute, which is still the whole of what is wrong with it.
 pub(super) fn nearest_aria_attribute(name: &str) -> Option<&'static str> {
-    nearest(&name.to_lowercase(), table::ATTRIBUTES.iter().map(|spec| spec.name))
+    nearest(
+        &name.to_lowercase(),
+        table::ATTRIBUTES.iter().map(|spec| spec.name),
+    )
 }
 
 /// The role `name` was probably meant to be, by the same measure.
@@ -483,10 +484,7 @@ pub(super) fn nearest_role(name: &str) -> Option<&'static str> {
     )
 }
 
-fn nearest(
-    name: &str,
-    candidates: impl Iterator<Item = &'static str>,
-) -> Option<&'static str> {
+fn nearest(name: &str, candidates: impl Iterator<Item = &'static str>) -> Option<&'static str> {
     candidates
         .filter_map(|candidate| {
             let distance = edit_distance(name, candidate, 2)?;
@@ -560,8 +558,16 @@ mod tests {
 
     #[test]
     fn the_attribute_table_is_sorted_for_binary_search() {
-        assert!(table::ATTRIBUTES.windows(2).all(|pair| pair[0].name < pair[1].name));
-        assert!(table::ROLES.windows(2).all(|pair| pair[0].name < pair[1].name));
+        assert!(
+            table::ATTRIBUTES
+                .windows(2)
+                .all(|pair| pair[0].name < pair[1].name)
+        );
+        assert!(
+            table::ROLES
+                .windows(2)
+                .all(|pair| pair[0].name < pair[1].name)
+        );
     }
 
     #[test]
@@ -620,8 +626,18 @@ mod tests {
     fn abstract_roles_are_marked() {
         assert!(role("range").expect("range").flags.has(Flags::ABSTRACT));
         assert!(!role("button").expect("button").flags.has(Flags::ABSTRACT));
-        assert!(role("listbox").expect("listbox").flags.has(Flags::COMPOSITE));
-        assert!(role("listitem").expect("listitem").flags.has(Flags::CONTEXTUAL));
+        assert!(
+            role("listbox")
+                .expect("listbox")
+                .flags
+                .has(Flags::COMPOSITE)
+        );
+        assert!(
+            role("listitem")
+                .expect("listitem")
+                .flags
+                .has(Flags::CONTEXTUAL)
+        );
     }
 
     #[test]
@@ -654,5 +670,4 @@ mod tests {
         assert!(value_fits(hidden, Value::Unknown));
         assert!(value_fits(hidden, Value::Nullish));
     }
-
 }
