@@ -156,7 +156,7 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
     })
 }
 
-fn has_code_jsx_marker(scan: &FileScan<'_>) -> bool {
+pub(super) fn has_code_jsx_marker(scan: &FileScan<'_>) -> bool {
     let source = &scan.file.source;
     if !source.contains("</") && !source.contains("/>") {
         return false;
@@ -829,7 +829,7 @@ fn is_import_meta_hot(expression: &ast::expression::Expression<Loc, Loc>) -> boo
 /// name (`<svg:use>`, which uf does not serve). The test is React's own: a
 /// name that starts with a lowercase letter is an HTML tag and anything else
 /// is a value in scope.
-fn host_name(name: &jsx::Name<Loc, Loc>) -> Option<&str> {
+pub(super) fn host_name(name: &jsx::Name<Loc, Loc>) -> Option<&str> {
     let jsx::Name::Identifier(identifier) = name else {
         return None;
     };
@@ -839,7 +839,7 @@ fn host_name(name: &jsx::Name<Loc, Loc>) -> Option<&str> {
 }
 
 /// The attribute called `wanted`, when the element has one.
-fn attribute<'a>(
+pub(super) fn attribute<'a>(
     opening: &'a jsx::Opening<Loc, Loc>,
     wanted: &str,
 ) -> Option<&'a jsx::Attribute<Loc, Loc>> {
@@ -863,7 +863,7 @@ fn string_attribute<'a>(opening: &'a jsx::Opening<Loc, Loc>, wanted: &str) -> Op
 }
 
 /// Whether the element carries a `{...spread}`.
-fn has_spread(opening: &jsx::Opening<Loc, Loc>) -> bool {
+pub(super) fn has_spread(opening: &jsx::Opening<Loc, Loc>) -> bool {
     opening
         .attributes
         .iter()

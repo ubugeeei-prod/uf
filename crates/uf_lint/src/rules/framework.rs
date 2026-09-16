@@ -327,6 +327,46 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         requirement: SourceText,
         description: "declare React hooks with Flow `hook` syntax",
     },
+    RuleDescriptor {
+        id: "react/jsx-key",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an element built in an array or by `map` needs a `key`",
+    },
+    RuleDescriptor {
+        id: "react/jsx-no-comment-textnodes",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`//` and `/*` between JSX tags are text on the page, not comments",
+    },
+    RuleDescriptor {
+        id: "react/jsx-no-duplicate-props",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "give each prop once; a repeated one silently replaces the first",
+    },
+    // `warn`: an index is the wrong key only for a list that reorders, filters
+    // or grows at the front, and a list that does none of those is correct code.
+    RuleDescriptor {
+        id: "react/no-array-index-key",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "key a list item by what it is, not by where it stands",
+    },
+    // `warn`: a `children` prop renders exactly what nesting would, and the one
+    // shape that loses content — the prop and nested children together — is
+    // the one the message calls out.
+    RuleDescriptor {
+        id: "react/no-children-prop",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "write `children` between the tags, not as a prop",
+    },
     // `warn`, not `error`, for the same reason as `react/component-syntax`: this
     // is a convention the ecosystem (and uf's own `uf create app` scaffold) is
     // still migrating to, and a linter must not fail a freshly created project.
@@ -344,6 +384,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "drop a `useMemo`/`useCallback` the React Compiler already did",
+    },
+    RuleDescriptor {
+        id: "react/void-dom-elements-no-children",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "void elements such as `img` and `br` take no children",
     },
     RuleDescriptor {
         id: "react-native/platform-split",
