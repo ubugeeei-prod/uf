@@ -294,6 +294,120 @@ YAML
 expect 0 "the fixtures are synced before the suite"
 rm "$work/crates/uf_transform/tests/react_compiler_conformance/main.rs"
 
+echo "a suite job under a publishing registry with no token is refused"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace --profile ci
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
+YAML
+expect 1 "the token defined for the publish step is not in scope for the suite"
+names "NODE_AUTH_TOKEN"
+names "crates/uf_cli/tests/managers.rs"
+
+echo "a token on the step that runs the suite is enough"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace --profile ci
+        env:
+          NODE_AUTH_TOKEN: dummy
+YAML
+expect 0 "a value of any kind is all Yarn 1 wants"
+
+echo "the registry configured after the suite is enough"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace --profile ci
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - run: npm publish
+YAML
+expect 0 "the suite ran before there was an .npmrc to expand"
+
+echo "a job-level token covers the suite step"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    env:
+      NODE_AUTH_TOKEN: dummy
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace --profile ci
+YAML
+expect 0 "the job defines it for every step"
+
+echo "a registry in a job that runs no suite is not this check's business"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+      - run: npm install @uniflowed/react@1.0.0
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: cargo test --workspace
+YAML
+expect 0 "nothing in that job starts a package manager"
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures case(s) failed" >&2
   exit 1

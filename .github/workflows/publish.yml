@@ -52,10 +52,30 @@ jobs:
         with:
           cache-on-failure: true
           key: publish-${{ inputs.version || github.ref_name }}-${{ runner.os }}-${{ runner.arch }}
+      # Node, and deliberately without `registry-url:`. That input writes an
+      # `.npmrc` holding `_authToken=${NODE_AUTH_TOKEN}` and points every npm
+      # client at it for the rest of the job — and Yarn 1 expands environment
+      # variables in npm config eagerly, on every command, so while that
+      # variable is unset it exits on `Failed to replace env in config` before
+      # doing anything at all. This job defines the token for no step, because
+      # it publishes with an OIDC id-token and there is no npm token here to
+      # define it from.
+      #
+      # `uf@0.0.0-alpha.38` was tagged and all seven Yarn 1 rows of
+      # `crates/uf_cli/tests/managers.rs` failed right here, in the gate,
+      # before a package was sent: a tag, a GitHub release, and nothing on npm.
+      # `ci.yml`'s `Test` job runs the same suite and has always passed,
+      # because it configures no publishing registry.
+      #
+      # So the registry is configured below instead, after the suite and
+      # immediately before the publish that needs it. That leaves this gate
+      # running the suite in the environment `ci.yml` runs it in, which is the
+      # environment a contributor's machine has — rather than one that is
+      # unique to this job, and that only this job can fail in.
+      # `tools/ci/workspace-suite-runtimes.sh` refuses the other order.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
       # The suite drives the docs site through the real `@uniflowed/vite`, and
       # those tests now fail rather than skip when the workspace is not
@@ -102,6 +122,18 @@ jobs:
       - name: Make Chromium usable on the publish runner
         run: tools/ci/browser-wrapper.sh
       - run: cargo test --workspace --profile ci
+      # The gate is past, so now the registry, for the publish below: the
+      # `.npmrc` naming registry.npmjs.org that `npm publish` reads when it
+      # exchanges this job's OIDC id-token. It is the same step this job always
+      # ran, moved to where publishing happens. Nothing above this line wants
+      # it — `npm ci` and `tools/ci/install-package-managers.sh` read public
+      # packages from the default registry, which is this one — and the suite
+      # must not have it. Node is installed already; this writes the `.npmrc`.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
       # Only the packages in `tools/release/published-packages.txt`, which is
       # the OIDC publish closure this workflow is allowed to send.
       #
