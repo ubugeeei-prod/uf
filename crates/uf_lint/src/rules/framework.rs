@@ -48,6 +48,20 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "an `aria-*` attribute must be one ARIA defines",
     },
     RuleDescriptor {
+        id: "a11y/aria-proptypes",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `aria-*` value must be one its attribute takes",
+    },
+    RuleDescriptor {
+        id: "a11y/aria-role",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a `role` must be a real, non-abstract ARIA role",
+    },
+    RuleDescriptor {
         id: "a11y/heading-has-content",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
@@ -102,6 +116,20 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "an `onClick` needs an element a keyboard can reach",
+    },
+    RuleDescriptor {
+        id: "a11y/role-has-required-aria-props",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a role must be given the `aria-*` state it is announced by",
+    },
+    RuleDescriptor {
+        id: "a11y/role-supports-aria-props",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an element carries only the `aria-*` its role takes",
     },
     RuleDescriptor {
         id: "markup/no-invalid-nesting",

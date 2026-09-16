@@ -134,6 +134,12 @@
 //!   the right words depend on what the page is about.
 //! - `a11y/anchor-is-valid` — `href="#"` becomes a destination or the element
 //!   becomes a `<button>`, and which one is the author's call.
+//! - `a11y/aria-role`, `a11y/aria-proptypes`,
+//!   `a11y/role-has-required-aria-props`, `a11y/role-supports-aria-props` —
+//!   each is a claim about what the element *is*, and every repair is a
+//!   decision: which role was meant, what the state should say, whether the
+//!   attribute or the role is the one to go. A rule that guessed would be
+//!   writing the claim rather than checking it.
 //!
 //! # The two rules whose fix is waiting on a shape
 //!

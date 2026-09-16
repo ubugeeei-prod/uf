@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 72] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 76] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -228,6 +228,12 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 72] = [
     // the browser, not reported by React and not read by anything: the control
     // is unlabelled and there is no symptom at all.
     ("a11y/aria-props", RuleLevel::Error),
+    // The same silence one level down: a browser handed `aria-hidden="yes"`
+    // drops the attribute, and the element it was written to hide is read out.
+    ("a11y/aria-proptypes", RuleLevel::Error),
+    // A `role` ARIA does not define leaves the element with whatever role HTML
+    // gave it — usually none — and nothing anywhere says so.
+    ("a11y/aria-role", RuleLevel::Error),
     // An empty heading is still a heading: a reader jumping by heading lands
     // on it and hears nothing.
     ("a11y/heading-has-content", RuleLevel::Error),
@@ -254,6 +260,14 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 72] = [
     // have. Reported only where neither a `role` nor a key handler is present,
     // which is where nobody has considered the keyboard at all.
     ("a11y/no-static-element-interactions", RuleLevel::Error),
+    // A role is a promise about what the element is, and the state it is
+    // announced by is the other half of it: `role="checkbox"` with no
+    // `aria-checked` is a checkbox a screen reader cannot read.
+    ("a11y/role-has-required-aria-props", RuleLevel::Error),
+    // An `aria-*` the role does not take is inert — the accessibility tree has
+    // nowhere to put it — and the state the author described is never
+    // announced.
+    ("a11y/role-supports-aria-props", RuleLevel::Error),
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),

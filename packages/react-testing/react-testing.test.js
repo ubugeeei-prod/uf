@@ -341,6 +341,11 @@ describe("a role query and the accessibility tree", () => {
   });
 
   it("reads a role=heading with no aria-level as level two, as a browser does", () => {
+    // The missing `aria-level` is the subject of this test, not an oversight:
+    // `a11y/role-has-required-aria-props` is right that ARIA asks a `heading`
+    // for a level, and what is asserted here is the level a browser gives one
+    // that was written without it.
+    // uf-lint-disable-next-line a11y/role-has-required-aria-props
     render(<div role="heading">titled</div>);
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("titled");
   });
@@ -555,6 +560,11 @@ describe("a role query and aria-current", () => {
 
   it("takes a token ARIA does not define as true, the way a browser does", () => {
     render(
+      // The typo is the subject of this test, not an oversight:
+      // `a11y/aria-proptypes` is right that `pge` is not a value `aria-current`
+      // takes, and what is asserted here is what a browser does with one that
+      // was written anyway.
+      // uf-lint-disable-next-line a11y/aria-proptypes
       <a aria-current="pge" href="/a">
         a
       </a>,
