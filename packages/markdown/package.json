@@ -1,6 +1,6 @@
 {
   "name": "@uniflowed/markdown",
-  "version": "0.0.0-alpha.37",
+  "version": "0.0.0-alpha.38",
   "private": true,
   "description": "Flow declarations for @uniflowed/markdown, part of the Unified Toolchain for Flow.",
   "type": "module",
@@ -19,7 +19,7 @@
     "!*.test.js"
   ],
   "dependencies": {
-    "@uniflowed/core": "0.0.0-alpha.37",
-    "@uniflowed/react": "0.0.0-alpha.37"
+    "@uniflowed/core": "0.0.0-alpha.38",
+    "@uniflowed/react": "0.0.0-alpha.38"
   }
 }

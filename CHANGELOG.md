@@ -1,5 +1,68 @@
 # Changelog
 
+## uf@0.0.0-alpha.38
+
+_2026-09-16_
+
+Thirteen changes, and the largest is what uf stopped doing. `uf lint`'s React
+rules used to be decided by a validator uf wrote itself — some 4,700 lines that
+answered, in its own way, the questions the React Compiler answers. It is gone
+(#1147), and the rules are now the official compiler's own diagnostics, run with
+the options `eslint-plugin-react-hooks` uses and skipping only what that plugin
+skips. #1158 finishes the job: every remaining diagnostic category is a rule at
+the preset's level, and `react/no-derived-state-effect` is a deprecated alias of
+the compiler's `react-compiler/no-deriving-state-in-effects` rather than uf's own
+check. **Breaking:** a project that set `react/no-derived-state-effect` to `off`
+was silencing uf's rule, and the compiler reports state written in an effect
+through `react-compiler/set-state-in-effect` at `error`, which that setting does
+not reach — set that rule to `off` to keep the old silence, or fix what it says.
+Three compiler rules also stand at `warn` in uf's own repository until its
+packages are fixed; the shipped levels are unchanged.
+
+Saying uf runs the official compiler is only worth as much as the input it hands
+it. #1149 added a conformance run over the compiler's own 1,809 fixtures,
+compared against what `babel-plugin-react-compiler` produced for each, held by a
+baseline that fails when any fixture's result changes; #1149, #1154 and #1155
+then fixed three ways uf's Babel-shaped AST differed from Babel's — a declaring
+identifier that was never recorded as a reference to its binding, optional chains
+nested inside another chain arriving as a different program, and the brackets the
+printer wrote around them. 1,420 of 1,809 fixtures now match, up from 1,291.
+
+Elsewhere: `uf unlink` undoes `uf link` on every manager (#1156), `uf dedupe
+--check` says what a dedupe would collapse without changing anything (#1160), and
+`uf link` says what it linked and fails when nothing was — it had been reporting
+a package as unregistered because npm redacts a UUID in its own output (#1146).
+The router keeps what a navigation fetched for `app.rendering.staleTime`, so a
+revisit costs 4 ms instead of 302 (#1135). Eight accessibility rules arrived for
+the names of links, headings, frames and media (#1142), Vite's dependency cache
+now stays inside the project it belongs to (#1145), and CI runs uf against real
+pnpm, Yarn 1, Yarn 4 and bun (#1143).
+
+### Breaking
+
+- **lint**: the rest of the React Compiler's categories as rules, and react/no-derived-state-effect onto the compiler (#1158)
+- **lint**: report the official React Compiler's diagnostics, and delete uf's validator (#1147)
+
+### Added
+
+- **pm**: uf dedupe --check says what a dedupe would collapse (#1160)
+- **pm**: uf unlink undoes uf link on every manager (#1156)
+- **lint**: a11y rules for the names of links, headings, frames and media (#1142)
+- **router**: keep what a navigation fetched for app.rendering.staleTime (#1135)
+
+### Fixed
+
+- **transform**: keep the links of one optional chain out of brackets (#1155)
+- **transform**: convert the optional chains nested inside another chain (#1154)
+- **transform**: give the React Compiler each declaring identifier's binding, and check uf against its fixtures (#1149)
+- **pm**: uf link says what it linked, and fails when nothing was (#1146)
+- **vite**: keep Vite's dependency cache inside the project (#1145)
+
+### Internal
+
+- **pm**: run uf against real pnpm, Yarn 1, Yarn 4 and bun (#1143)
+- **release**: name #1136 in uf@0.0.0-alpha.37 (#1139)
+
 ## uf@0.0.0-alpha.37
 
 _2026-09-15_
