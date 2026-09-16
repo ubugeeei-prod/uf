@@ -128,6 +128,35 @@ fn jsx_key_reports_the_same_literal_key_twice_in_one_array() {
 }
 
 #[test]
+fn jsx_key_leaves_one_key_on_the_two_branches_of_a_slot_alone() {
+    // A conditional builds one slot of the array, and only one of its branches
+    // ever fills it, so the `key` the two share is one key.
+    let diagnostics = lint_js(
+        KEY,
+        &page("[items[0].id === \"\" ? <b key=\"a\" /> : <i key=\"a\" />, <u key=\"b\" />]"),
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+}
+
+#[test]
+fn jsx_key_reports_a_key_that_a_later_slot_takes_again() {
+    // The same conditional, and the slot after it takes the key both branches
+    // carry: whichever branch renders, two elements answer to `"a"`.
+    let diagnostics = lint_js(
+        KEY,
+        &page("[items[0].id === \"\" ? <b key=\"a\" /> : <i key=\"a\" />, <u key=\"a\" />]"),
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(
+        diagnostics[0].message.contains("twice"),
+        "{}",
+        diagnostics[0].message
+    );
+}
+
+#[test]
 fn jsx_key_accepts_every_list_that_is_keyed_or_cannot_be_seen() {
     for markup in [
         "[<b key=\"first\" />, <i key=\"second\" />]",
@@ -243,14 +272,18 @@ fn array_index_key_leaves_a_prop_called_index_alone() {
 
 #[test]
 fn array_index_key_still_reports_an_empty_control() {
-    // An `<input>` keeps what was typed into it, so an index key hands one
-    // item's text to another even when the element holds nothing else.
-    let diagnostics = lint_js(
-        INDEX_KEY,
-        &page("<form>{items.map((item, index) => <input key={index} name={item.id} />)}</form>"),
-    );
-
-    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    // A control keeps something the element around it does not, so an index key
+    // hands one item's to another even where the element holds nothing else: an
+    // `<input>` keeps what was typed into it, and a `<button>` — the empty
+    // element a row of dots or a grid of swatches is built from — keeps the
+    // browser's focus.
+    for markup in [
+        "<form>{items.map((item, index) => <input key={index} name={item.id} />)}</form>",
+        "<div>{items.map((item, index) => <button key={index} onClick={() => pick(item)} />)}</div>",
+    ] {
+        let diagnostics = lint_js(INDEX_KEY, &page(markup));
+        assert_eq!(diagnostics.len(), 1, "{markup}: {diagnostics:?}");
+    }
 }
 
 // --- react/jsx-no-duplicate-props -------------------------------------------

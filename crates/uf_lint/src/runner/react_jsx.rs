@@ -39,6 +39,10 @@
 //!   no state for a key to carry. `react/no-array-index-key` reports neither.
 //! * Text inside `<code>` and `<pre>` is meant to be read, slashes and all.
 //!
+//! * The branches of one conditional are one slot of an array, and only one of
+//!   them ever fills it, so the `key` they share is one key rather than a
+//!   duplicate.
+//!
 //! Two shapes the plugin passes over are reported, because each is the same
 //! defect as the rule's own: a `<>` fragment in a list cannot take a key at
 //! all, and two elements with one literal `key` in one array are one element
@@ -497,8 +501,18 @@ impl<'ast> Walk<'ast> {
 
     /// Every element an array literal holds, and every literal `key` it holds
     /// twice.
+    ///
+    /// A key is compared only with the keys of the slots *before* its own. One
+    /// slot builds more than one element when a conditional writes it, and
+    /// those branches exclude each other: in
+    /// `[flag ? <A key="x" /> : <B key="x" />]` one element reaches the array,
+    /// so the shared `"x"` is the same key on the same slot rather than two
+    /// elements React cannot tell apart.
     fn check_array_keys(&mut self, array: &'ast ast::expression::Array<Loc, Loc>) {
         let mut keys: Vec<&'ast str> = Vec::new();
+        // Held across slots so the keys of one slot are added only once it is
+        // finished, and its own branches are never compared with each other.
+        let mut slot: Vec<&'ast str> = Vec::new();
         for element in array.elements.iter() {
             let ast::expression::ArrayElement::Expression(expression) = element else {
                 continue;
@@ -520,10 +534,11 @@ impl<'ast> Walk<'ast> {
                              give each element a key of its own"
                         ),
                     );
-                } else {
-                    keys.push(key);
+                } else if !slot.contains(&key) {
+                    slot.push(key);
                 }
             }
+            keys.append(&mut slot);
         }
     }
 
@@ -1022,9 +1037,15 @@ fn holds_no_state(tag: &str) -> bool {
 }
 
 /// Host elements that keep state of their own between renders.
+///
+/// `button` is one of them for the focus it holds: it is the empty host
+/// element a list is most likely to be built out of — a row of dots, a grid of
+/// swatches — and the browser keeps focus on the node rather than on whatever
+/// the node stood for, so a keyboard user who reorders the list is left
+/// focused on another item's button.
 static STATEFUL_ELEMENTS: phf::Set<&'static str> = phf::phf_set! {
-    "audio", "canvas", "details", "dialog", "embed", "iframe", "input", "object", "select",
-    "textarea", "video",
+    "audio", "button", "canvas", "details", "dialog", "embed", "iframe", "input", "object",
+    "select", "textarea", "video",
 };
 
 /// `React.createElement`, `React.cloneElement`, or either imported bare.
