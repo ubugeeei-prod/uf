@@ -1236,14 +1236,24 @@ impl Printer {
             }
             Some("MemberExpression" | "OptionalMemberExpression") => {
                 let object = &node["object"];
+                let object_in_chain = matches!(
+                    node_type(object),
+                    Some("OptionalMemberExpression" | "OptionalCallExpression")
+                );
+                // A plain member on an optional object is where the chain ends,
+                // and Babel writes that end with the brackets that make it.
                 let bracket = matches!(node_type(object), Some("NumericLiteral"))
-                    || (node_type(node) == Some("MemberExpression")
-                        && matches!(
-                            node_type(object),
-                            Some("OptionalMemberExpression" | "OptionalCallExpression")
-                        ));
+                    || (node_type(node) == Some("MemberExpression") && object_in_chain);
                 if bracket {
                     self.bracketed(object)?;
+                } else if object_in_chain {
+                    // Both links belong to one chain, and brackets would end
+                    // it: `(a?.b()).c` reads the property of the short-circuit
+                    // value, where `a?.b().c` short-circuits past it. Asking
+                    // for `Member` — what a member outside a chain asks of its
+                    // object — would bracket an `OptionalCallExpression`,
+                    // which binds looser, and quietly write the first.
+                    self.expression(object, Prec::LeftHandSide)?;
                 } else {
                     self.expression(object, Prec::Member)?;
                 }
@@ -1647,6 +1657,34 @@ mod tests {
             outcome.is_ok(),
             "printed code does not parse: {outcome:?}\n{code}"
         );
+    }
+
+    #[test]
+    fn the_links_of_one_chain_are_not_bracketed_apart() {
+        // `(a?.b()).c` reads a property of the short-circuit value, where
+        // `a?.b().c` short-circuits past it: the brackets are a different
+        // program, not a longer spelling of this one.
+        let code = printed("a?.b().c;\n");
+        assert!(code.contains("a?.b().c"), "{code}");
+        reparses(&code);
+    }
+
+    #[test]
+    fn a_chain_the_author_ended_with_brackets_keeps_them() {
+        let code = printed("(a?.b).c;\n");
+        assert!(code.contains("(a?.b).c"), "{code}");
+        reparses(&code);
+    }
+
+    #[test]
+    fn a_chain_written_inside_an_argument_prints_its_own_links() {
+        let code = printed("f?.g('8', h.i(!j)?.k(9).l)?.m;\n");
+        // The brackets that matter are the ones between the links: this prints
+        // the call in object position as `(h.i(!j))`, which parses to the same
+        // tree, where `?.k(9).l` broken apart by brackets would not.
+        assert!(code.contains("?.k(9).l"), "{code}");
+        assert!(code.contains(")?.m"), "{code}");
+        reparses(&code);
     }
 
     fn printed_with(source: &str, options: PrintOptions) -> String {
