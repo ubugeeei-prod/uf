@@ -430,6 +430,10 @@ component SlotView(slot: ResolvedSlot, pathname: string, searchParams: SearchPar
         continue;
       }
       const Fallback = loadingComponent(boundary.module);
+      // The same lookup as `Page` above: `loadingComponent` hands back the
+      // boundary module's own export as it is, so this is the same component
+      // on every render of that boundary.
+      // uf-lint-disable-next-line react-compiler/static-components
       element = <Suspense fallback={<Fallback />}>{element}</Suspense>;
     }
     const errorBoundary = slot.errorBoundary;
@@ -444,6 +448,9 @@ component SlotView(slot: ResolvedSlot, pathname: string, searchParams: SearchPar
     if (depth > 0) {
       const Layout = layoutComponent(slot.layouts[depth - 1]);
       element = (
+        // The layout module's own export, looked up by depth, for the same
+        // reason as `Page` above.
+        // uf-lint-disable-next-line react-compiler/static-components
         <Layout {...slotsAt(slot.slots, depth, { pathname, searchParams })} params={slot.params}>
           {element}
         </Layout>
