@@ -1712,7 +1712,7 @@ second word narrows it to one field, `uf info react version`, which Yarn 2+ is
 handed as `--fields version`. With no package, `uf info` prints uf's own
 version, host and paths, as it always has.
 
-### uf dedupe
+### uf dedupe [--check]
 
 Collapses the versions the declared ranges allow to be one, and reports the tree
 it leaves: `npm dedupe`, `pnpm dedupe`, `yarn dedupe` on Yarn 2+, each with
@@ -1722,6 +1722,31 @@ Yarn 1's `yarn dedupe` exists only to say it is unnecessary — `yarn install`
 already dedupes — and bun has none. On those two uf refuses by name and says what
 to run instead: `uf install` on Yarn 1, and `uf update` on bun, which resolves
 every range to its newest match again.
+
+`--check` answers the same question without changing anything, for CI:
+
+```
+uf dedupe --check   # 0: nothing to collapse; 1: the report names what would
+```
+
+| | npm | pnpm | Yarn 1 | Yarn 2+ | Bun |
+| --- | --- | --- | --- | --- | --- |
+| `uf dedupe --check` | `npm dedupe --dry-run --json` | `pnpm dedupe --check` | refused | `yarn dedupe --check` | refused |
+
+The managers disagree about how to answer, so uf holds their output back and
+prints its own report instead of three different ones:
+
+- **pnpm and Yarn 2+** have a check of their own, and exit non-zero when the
+  lockfile would change.
+- **npm** has none. `npm dedupe --dry-run` changes nothing, but it exits 0
+  whatever it finds, so uf asks for the summary in JSON and reads the answer
+  out of it.
+
+Where uf can read the packages and the versions that would become one out of
+that answer, the report names them, one line each. Where a manager says only
+that there is something, uf says that, and prints what the manager printed
+rather than inventing a list. Nothing is installed either way, so the check is
+safe to run against a tree CI has already built.
 
 ### uf link [NAME|DIR]
 

@@ -341,6 +341,9 @@ fn only_the_operations_that_install_can_run_scripts() {
                 // `pnpm patch` extracts into a temporary directory; the commit
                 // is the half that installs.
                 | Operation::Patch
+                // A check asks what a dedupe would collapse and installs
+                // nothing. The dedupe itself is an install of a smaller tree.
+                | Operation::Dedupe { check: true }
                 // A registry read.
                 | Operation::Info
         );
@@ -453,8 +456,10 @@ fn yarn_editions_disagree_exactly_where_yarn_changed() {
             // `yarn patch` is Berry's, and Yarn 1 never had one.
             Operation::Patch,
             Operation::PatchCommit,
-            // Yarn 1's `dedupe` only says it is unnecessary.
-            Operation::Dedupe,
+            // Yarn 1's `dedupe` only says it is unnecessary, so there
+            // is nothing to check against either.
+            Operation::Dedupe { check: false },
+            Operation::Dedupe { check: true },
             // Yarn 1 links by name, Berry by path.
             Operation::Link {
                 target: LinkTarget::Register,
@@ -506,7 +511,7 @@ fn only_the_operations_named_here_can_be_missing_from_a_manager() {
                     | Operation::Patch
                     | Operation::PatchCommit
                     | Operation::InstallFrozenProd
-                    | Operation::Dedupe
+                    | Operation::Dedupe { .. }
                     | Operation::Link { .. }
                     | Operation::Unlink { .. }
             ) {
@@ -605,7 +610,7 @@ fn every_manager_maps_the_everyday_verbs_or_has_none() {
         let operations = [
             Operation::InstallProd,
             Operation::InstallFrozenProd,
-            Operation::Dedupe,
+            Operation::Dedupe { check: false },
             link(LinkTarget::Register),
             link(LinkTarget::Package),
             link(LinkTarget::Directory),
@@ -697,7 +702,7 @@ fn the_everyday_verbs_that_install_are_the_ones_that_can_run_scripts() {
     for operation in [
         Operation::InstallProd,
         Operation::InstallFrozenProd,
-        Operation::Dedupe,
+        Operation::Dedupe { check: false },
         Operation::Link {
             target: LinkTarget::Register,
         },
