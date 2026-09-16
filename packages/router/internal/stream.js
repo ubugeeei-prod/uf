@@ -667,6 +667,23 @@ export type RenderOptions = {|
    * [`interleaved`], which says where it may and may not go.
    */
   readonly payload?: ReadableStream<Uint8Array>,
+  /**
+   * This response's Content-Security-Policy nonce, or absent for none.
+   *
+   * Absent is what every render had before nonces existed and what every
+   * render still has in a project that has not asked for one, so a document
+   * written without it is byte-for-byte the document uf has always written.
+   *
+   * Present, it reaches three places, and it has to reach all three or the
+   * page is broken rather than merely unprotected: React's own option, which
+   * nonces every inline script React emits — the runtime that reveals a
+   * `<Suspense>` boundary, and the bootstrap; `shell.open`/`shell.body`, which
+   * carry the client entry; and the payload chunk elements, which
+   * [`interleaved`] writes as text.
+   *
+   * `prerenderDocument` is deliberately never given one. See its own paragraph.
+   */
+  readonly nonce?: string | null,
 |};
 
 /**
@@ -706,6 +723,7 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
                 withPayload(
                   assembled(queue.chunks(), options.shell, options.transformHead),
                   options.payload,
+                  options.nonce,
                 ),
                 options.onStream,
               ),
@@ -717,6 +735,11 @@ export function renderDocument(node: React.Node, options: RenderOptions): Promis
           reject(error);
         },
         onError: options.onError,
+        // Every inline script React writes for this document, from one option:
+        // the streaming runtime that reveals a boundary and patches a segment,
+        // and the bootstrap. uf nonces the scripts it writes itself; these are
+        // React's, and there is no other way to reach them.
+        nonce: options.nonce ?? undefined,
       });
       return;
     }
@@ -744,6 +767,7 @@ type ReadableStreamRenderer = (
   settings: {|
     readonly onError: (error: mixed) => void,
     readonly signal: AbortSignal,
+    readonly nonce?: string,
   |},
 ) => Promise<ByteSource>;
 
@@ -769,13 +793,18 @@ export function renderWithReadableStream(
   options: RenderOptions,
 ): Promise<DocumentBody> {
   const controller = new AbortController();
-  return render(node, { onError: options.onError, signal: controller.signal }).then(
+  return render(node, {
+    onError: options.onError,
+    signal: controller.signal,
+    nonce: options.nonce ?? undefined,
+  }).then(
     (stream: ByteSource) =>
       bodyOf(
         outgoing(
           withPayload(
             assembled(decoded(stream), options.shell, options.transformHead),
             options.payload,
+            options.nonce,
           ),
           options.onStream,
         ),
@@ -843,8 +872,9 @@ export async function prerenderDocument(node: React.Node, options: RenderOptions
 function withPayload(
   chunks: AsyncGenerator<string, void, void>,
   payload: ?ReadableStream<Uint8Array>,
+  nonce?: string | null,
 ): AsyncGenerator<string, void, void> {
-  return payload == null ? chunks : interleaved(chunks, payload);
+  return payload == null ? chunks : interleaved(chunks, payload, nonce);
 }
 
 /**
@@ -892,8 +922,9 @@ function withPayload(
 async function* interleaved(
   chunks: AsyncGenerator<string, void, void>,
   payload: ReadableStream<Uint8Array>,
+  nonce?: string | null,
 ): AsyncGenerator<string, void, void> {
-  const encoder = createChunkEncoder();
+  const encoder = createChunkEncoder(nonce);
   const reader = payload.getReader();
   let written = "";
   let ended = false;

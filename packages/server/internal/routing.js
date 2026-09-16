@@ -63,6 +63,7 @@
 // rewrite renders the destination's, exactly as the document request for the
 // same address would. A payload URL is never redirected for its trailing slash.
 
+import { mintCurrentNonce } from "./context.js";
 import { flightDocumentPath, flightPath } from "./flight.js";
 
 /** One entry of `app.router.redirects`. */
@@ -539,7 +540,54 @@ export function headersFor(
       found.push(...rule.pairs);
     }
   }
-  return found;
+  return withNonce(found);
+}
+
+/** The token an `app.router.headers` value writes where the nonce goes. */
+const NONCE_TOKEN = "{uf.nonce}";
+
+/**
+ * `pairs`, with `{uf.nonce}` replaced by this request's nonce.
+ *
+ * The short way to set a nonce policy: one rule in `uf.config.js` says
+ *
+ *     { source: "/:path*", headers: { "content-security-policy":
+ *         "script-src 'nonce-{uf.nonce}' 'strict-dynamic'; object-src 'none'" } }
+ *
+ * and the header and the markup are then the same value read twice rather than
+ * two values generated separately. Reading it here is what *mints* it, which
+ * is what tells the renderer this response's documents carry one — see
+ * `./context.js`'s `nonce` field.
+ *
+ * A rule that names no nonce is returned untouched and costs one `indexOf` per
+ * matching rule, so a project that has never heard of this pays nothing.
+ *
+ * # Outside a request the header is dropped rather than half-written
+ *
+ * There is no nonce to substitute, and the two alternatives are both worse
+ * than saying nothing: the literal `{uf.nonce}` would reach a browser as a
+ * policy naming a nonce no script has, and an empty `'nonce-'` is a policy
+ * that admits nothing. Either one blocks every script on the page. A dropped
+ * header leaves whatever the deployment's own edge sets, which is the
+ * behaviour a project had before it wrote the rule.
+ */
+function withNonce(pairs: Array<[string, string]>): $ReadOnlyArray<[string, string]> {
+  if (!pairs.some(([, value]) => value.includes(NONCE_TOKEN))) {
+    return pairs;
+  }
+  const nonce = mintCurrentNonce();
+  const out: Array<[string, string]> = [];
+  for (const [name, value] of pairs) {
+    if (!value.includes(NONCE_TOKEN)) {
+      out.push([name, value]);
+      continue;
+    }
+    if (nonce == null) {
+      continue;
+    }
+    out.push([name, value.split(NONCE_TOKEN).join(nonce)]);
+  }
+  return out;
 }
 
 /**
