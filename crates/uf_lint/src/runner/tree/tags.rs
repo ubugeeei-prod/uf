@@ -41,7 +41,7 @@ use uf_flow::ast::jsx;
 
 use super::aria::{self, Implied, Written};
 use super::value::Value;
-use super::{INTERACTIVE_ELEMENTS, KEY_HANDLERS, Tree, attribute, has_spread};
+use super::{INTERACTIVE_ELEMENTS, KEY_HANDLERS, Tree, attribute, has_handler, has_spread};
 use crate::{Severity, severity};
 
 /// `a11y/aria-unsupported-elements`.
@@ -182,21 +182,6 @@ fn settled_role(
         Implied::Certain(role) => Some(role),
         Implied::Unsettled | Implied::None => None,
     }
-}
-
-/// Whether the element answers a pointer or a key.
-fn has_handler(opening: &jsx::Opening<Loc, Loc>) -> bool {
-    opening.attributes.iter().any(|attribute| {
-        let jsx::OpeningAttribute::Attribute(attribute) = attribute else {
-            return false;
-        };
-        let jsx::attribute::Name::Identifier(name) = &attribute.name else {
-            return false;
-        };
-        (*name.name)
-            .strip_prefix("on")
-            .is_some_and(|rest| rest.starts_with(|first: char| first.is_ascii_uppercase()))
-    })
 }
 
 // --- a11y/aria-unsupported-elements -----------------------------------------

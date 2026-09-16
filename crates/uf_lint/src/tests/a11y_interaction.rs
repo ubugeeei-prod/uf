@@ -218,3 +218,37 @@ fn the_click_handler_rules_divide_the_markup_between_them() {
     reports("a11y/click-events-have-key-events", &[with_role]);
     accepts("a11y/no-static-element-interactions", &[with_role]);
 }
+
+// --- the pair that must not send anybody in a circle ------------------------
+
+/// `a11y/no-noninteractive-tabindex` and
+/// `a11y/no-noninteractive-element-interactions` must agree about one element.
+///
+/// A named, focusable container that answers the arrow keys is a legitimate
+/// pattern — uf's own clips example is one, with real buttons beside it
+/// running the same handler. The interactions rule stays silent because a
+/// keyboard can reach it, and this rule has to stay silent because there is
+/// something to do at the stop.
+///
+/// If it did not, the two would contradict each other: obeying this one by
+/// dropping the `tabIndex` makes the handlers unreachable and brings the other
+/// one back, and nothing the author writes satisfies both. Two rules that send
+/// somebody in a circle are worse than either being absent, so this is pinned
+/// rather than described.
+#[test]
+fn the_focusable_container_rules_do_not_contradict_each_other() {
+    let region = r#"<div role="region" tabIndex={0} aria-label="Clips" onKeyDown={move}>x</div>"#;
+    accepts("a11y/no-noninteractive-tabindex", &[region]);
+    accepts("a11y/no-noninteractive-element-interactions", &[region]);
+
+    // Each still answers the markup it is for: a tab stop with nothing to do
+    // at it, and handlers on something a keyboard cannot reach.
+    reports(
+        "a11y/no-noninteractive-tabindex",
+        &[r#"<div role="region" tabIndex={0} aria-label="Clips">x</div>"#],
+    );
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[r#"<div role="region" aria-label="Clips" onKeyDown={move}>x</div>"#],
+    );
+}

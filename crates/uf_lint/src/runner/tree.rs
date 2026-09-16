@@ -909,6 +909,28 @@ pub(super) fn has_spread(opening: &jsx::Opening<Loc, Loc>) -> bool {
         .any(|attribute| matches!(attribute, jsx::OpeningAttribute::SpreadAttribute(_)))
 }
 
+/// Whether the element answers a pointer or a key.
+///
+/// Here rather than in one of the rule modules because two of them ask it and
+/// they must not answer it differently: `tags` asks whether handlers sit on
+/// something that is not a control, and `interaction` asks whether a tab stop
+/// has anything to do at it. Those are the same question about the same
+/// attributes, and a second copy is how the two would drift into telling one
+/// author opposite things.
+pub(super) fn has_handler(opening: &jsx::Opening<Loc, Loc>) -> bool {
+    opening.attributes.iter().any(|attribute| {
+        let jsx::OpeningAttribute::Attribute(attribute) = attribute else {
+            return false;
+        };
+        let jsx::attribute::Name::Identifier(name) = &attribute.name else {
+            return false;
+        };
+        (*name.name)
+            .strip_prefix("on")
+            .is_some_and(|rest| rest.starts_with(|first: char| first.is_ascii_uppercase()))
+    })
+}
+
 /// The level of `<h1>` … `<h6>`.
 fn heading_level(name: &str) -> Option<u8> {
     let level = name.strip_prefix('h')?;

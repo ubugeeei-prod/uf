@@ -42,7 +42,7 @@ use uf_flow::Loc;
 use uf_flow::ast::jsx;
 
 use super::value::Value;
-use super::{INTERACTIVE_ELEMENTS, KEY_HANDLERS, Tree, aria, attribute, has_spread};
+use super::{INTERACTIVE_ELEMENTS, KEY_HANDLERS, Tree, aria, attribute, has_handler, has_spread};
 use crate::{Severity, severity};
 
 /// `a11y/aria-activedescendant-has-tabindex`.
@@ -382,6 +382,18 @@ fn no_noninteractive_tabindex(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
         return;
     };
     if index < 0.0 || INTERACTIVE_ELEMENTS.contains(name) {
+        return;
+    }
+    // A stop with something to do at it. An element that answers a pointer or
+    // a key has a reason to be reachable, and this rule would otherwise be
+    // asserting the absence of exactly what the markup has.
+    //
+    // It would also contradict `a11y/no-noninteractive-element-interactions`,
+    // which stays silent on such an element *because* it is focusable: drop
+    // the `tabIndex` this rule would ask for and the handlers become
+    // unreachable, so that rule reports them. Nothing the author writes would
+    // satisfy both, which is the one thing a pair of rules must never do.
+    if has_handler(opening) {
         return;
     }
     // A written role decides it: a widget role is a control somebody is
