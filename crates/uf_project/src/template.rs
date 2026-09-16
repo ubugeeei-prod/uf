@@ -511,14 +511,20 @@ export component Counter(initial: number) {
 fn app_counter_hook() -> String {
     r#""use client";
 // @flow
-import { useCallback, useState } from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
 
 /// A hook declaration. Flow refuses a call to this from anywhere that is not a
 /// component or another hook, so the rules of hooks are a type error rather
 /// than a lint rule you have to remember to install.
+///
+/// `increment` is written plainly rather than wrapped in `useCallback`. The
+/// React Compiler memoizes it already, so a hand-written dependency array here
+/// would be a second one to keep correct — which is what
+/// `react/no-redundant-memo` reports, and a starter template is the last place
+/// to teach the habit.
 export hook useCounter(initial: number): [number, () => void] {
   const [count, setCount] = useState(initial);
-  const increment = useCallback(() => setCount((value) => value + 1), []);
+  const increment = () => setCount((value) => value + 1);
   return [count, increment];
 }
 "#
