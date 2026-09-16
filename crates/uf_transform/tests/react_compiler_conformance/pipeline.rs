@@ -68,7 +68,18 @@ pub fn compile(source: &str, first_line: &str, filename: &str) -> Result<Compile
     // what `uf build` and `uf lint` run rather than a second arrangement of the
     // same calls, which could drift from them and report conformance for a
     // pipeline nobody ships.
-    match compile_with_options(&file, scope, options)
+    // What the parser was told the module is called, which upstream's two
+    // parsers answer differently: `@babel/parser` reads a TypeScript fixture
+    // and sets `sourceFilename`, `hermes-parser` reads a Flow one and sets
+    // none. `pragma::filename` already carries that split — a TypeScript
+    // fixture is compiled as `/<stem>.ts` and a Flow one as `/<stem>` — and
+    // the snapshots agree: 288 head a diagnostic with `<stem>.ts:line:column`
+    // and not one heads it with a `.js` name.
+    let source_filename = filename
+        .ends_with(".ts")
+        .then(|| filename.trim_start_matches('/'));
+
+    match compile_with_options(&file, scope, options, source_filename)
         .map_err(|error| Refused::Schema(error.to_string()))?
     {
         Outcome::Ran { ast, events, .. } => {

@@ -242,7 +242,7 @@ pub fn lint(
     let options = lint_plugin_options(source, filename, switches)?;
     // A fatal result still carries the events logged before it, and the
     // plugin reports those too: its logger collects them as they happen.
-    let events = match compile_with_options(file, scope, options)? {
+    let events = match compile_with_options(file, scope, options, None)? {
         Compiled::Ran { events, .. } | Compiled::Fatal { events, .. } => events,
     };
 

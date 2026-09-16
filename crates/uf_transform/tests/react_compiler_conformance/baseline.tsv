@@ -282,173 +282,173 @@ early-return-no-declarations-reassignments-dependencies.js	pass	pass
 early-return-within-reactive-scope.js	pass	pass	
 early-return.js	pass	pass	
 ecma/error.reserved-words.ts	error-mismatch	syntax	a TypeScript this parameter: Babel makes it a parameter named this, which the compiler refuses, and the Flow parser reads a this annotation, which uf erases
-effect-derived-computations/derived-state-conditionally-in-effect.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-effect-derived-computations/derived-state-from-default-props.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-effect-derived-computations/derived-state-from-local-state-in-effect.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-effect-derived-computations/derived-state-from-prop-local-state-and-component-scope.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+effect-derived-computations/derived-state-conditionally-in-effect.js	pass	pass	
+effect-derived-computations/derived-state-from-default-props.js	pass	pass	
+effect-derived-computations/derived-state-from-local-state-in-effect.js	pass	pass	
+effect-derived-computations/derived-state-from-prop-local-state-and-component-scope.js	pass	pass	
 effect-derived-computations/derived-state-from-prop-setter-call-outside-effect-no-error.js	pass	pass	
 effect-derived-computations/derived-state-from-prop-setter-ternary.js	pass	pass	
 effect-derived-computations/derived-state-from-prop-setter-used-outside-effect-no-error.js	pass	pass	
-effect-derived-computations/derived-state-from-prop-with-side-effect.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+effect-derived-computations/derived-state-from-prop-with-side-effect.js	pass	pass	
 effect-derived-computations/derived-state-from-ref-and-state-no-error.js	pass	pass	
-effect-derived-computations/effect-contains-local-function-call.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+effect-derived-computations/effect-contains-local-function-call.js	pass	pass	
 effect-derived-computations/effect-contains-prop-function-call-no-error.js	pass	pass	
-effect-derived-computations/effect-used-in-dep-array-still-errors.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+effect-derived-computations/effect-used-in-dep-array-still-errors.js	pass	pass	
 effect-derived-computations/effect-with-cleanup-function-depending-on-derived-computation-value.js	pass	pass	
 effect-derived-computations/effect-with-global-function-call-no-error.js	pass	pass	
 effect-derived-computations/from-props-setstate-in-effect-no-error.js	pass	pass	
-effect-derived-computations/function-expression-mutation-edge-case.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-effect-derived-computations/invalid-derived-computation-in-effect.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-effect-derived-computations/invalid-derived-state-from-computed-props.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-effect-derived-computations/invalid-derived-state-from-destructured-props.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+effect-derived-computations/function-expression-mutation-edge-case.js	pass	pass	
+effect-derived-computations/invalid-derived-computation-in-effect.js	pass	pass	
+effect-derived-computations/invalid-derived-state-from-computed-props.js	pass	pass	
+effect-derived-computations/invalid-derived-state-from-destructured-props.js	pass	pass	
 effect-derived-computations/ref-conditional-in-effect-no-error.js	pass	pass	
-effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+effect-derived-computations/usestate-derived-from-prop-no-show-in-data-flow-tree.js	pass	pass	
 empty-catch-statement.ts	pass	pass	
 empty-eslint-suppressions-config.js	pass	pass	
-error._todo.computed-lval-in-destructure.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.assign-global-in-component-tag-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.assign-global-in-jsx-children.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.assign-ref-in-effect-hint.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bailout-on-flow-suppression.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bailout-on-suppression-of-custom-rule.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error._todo.computed-lval-in-destructure.js	pass	pass	
+error.assign-global-in-component-tag-function.js	pass	pass	
+error.assign-global-in-jsx-children.js	pass	pass	
+error.assign-ref-in-effect-hint.js	pass	pass	
+error.bailout-on-flow-suppression.js	pass	pass	
+error.bailout-on-suppression-of-custom-rule.js	pass	pass	
 error.bug-context-variable-catch-in-lambda.js	pass	pass	
-error.bug-hir_loc_diff_2.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bug-hir_structural_diff.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bug-infer-mutation-aliasing-effects.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.bug-hir_loc_diff_2.js	pass	pass	
+error.bug-hir_structural_diff.js	pass	pass	
+error.bug-infer-mutation-aliasing-effects.js	pass	pass	
 error.bug-infer-mutation-aliasing-function-shadows-own-name.js	pass	pass	
-error.bug-invariant-codegen-methodcall.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bug-invariant-couldnt-find-binding-for-decl.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bug-invariant-expected-consistent-destructuring.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.bug-invariant-local-or-context-references.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.bug-invariant-codegen-methodcall.js	pass	pass	
+error.bug-invariant-couldnt-find-binding-for-decl.js	pass	pass	
+error.bug-invariant-expected-consistent-destructuring.js	pass	pass	
+error.bug-invariant-local-or-context-references.js	pass	pass	
 error.bug-invariant-unnamed-temporary.js	pass	pass	
-error.bug-transitive-freeze-nested-function-captures.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.call-args-destructuring-asignment-complex.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.capitalized-function-call-aliased.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.capitalized-function-call.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.capitalized-method-call.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.capture-ref-for-mutation.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.conditional-hook-unknown-hook-react-namespace.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.conditional-hooks-as-method-call.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.context-variable-only-chained-assign.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.declare-reassign-variable-in-function-declaration.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.default-param-accesses-local.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.dont-hoist-inline-reference.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.fault-tolerance-reports-multiple-errors.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.function-expression-references-variable-its-assigned-to.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.bug-transitive-freeze-nested-function-captures.js	pass	pass	
+error.call-args-destructuring-asignment-complex.js	pass	pass	
+error.capitalized-function-call-aliased.js	pass	pass	
+error.capitalized-function-call.js	pass	pass	
+error.capitalized-method-call.js	pass	pass	
+error.capture-ref-for-mutation.tsx	pass	pass	
+error.conditional-hook-unknown-hook-react-namespace.js	pass	pass	
+error.conditional-hooks-as-method-call.js	pass	pass	
+error.context-variable-only-chained-assign.js	pass	pass	
+error.declare-reassign-variable-in-function-declaration.js	pass	pass	
+error.default-param-accesses-local.js	pass	pass	
+error.dont-hoist-inline-reference.js	pass	pass	
+error.fault-tolerance-reports-multiple-errors.js	pass	pass	
+error.function-expression-references-variable-its-assigned-to.js	pass	pass	
 error.handle-unexpected-exception-pipeline.ts	pass	pass	
-error.hoist-optional-member-expression-with-conditional-optional.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.hoist-optional-member-expression-with-conditional.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.hoisting-simple-function-declaration.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.hook-call-freezes-captured-identifier.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.hook-call-freezes-captured-memberexpr.jsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.hook-property-load-local-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.hook-ref-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-ReactUseMemo-async-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-access-ref-during-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-access-ref-in-reducer-init.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-access-ref-in-reducer.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-access-ref-in-render-mutate-object-with-ref-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-access-ref-in-state-initializer.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-aliased-ref-in-callback-invoked-during-render-.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-array-push-frozen.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.hoist-optional-member-expression-with-conditional-optional.js	pass	pass	
+error.hoist-optional-member-expression-with-conditional.js	pass	pass	
+error.hoisting-simple-function-declaration.js	pass	pass	
+error.hook-call-freezes-captured-identifier.tsx	pass	pass	
+error.hook-call-freezes-captured-memberexpr.jsx	pass	pass	
+error.hook-property-load-local-hook.js	pass	pass	
+error.hook-ref-value.js	pass	pass	
+error.invalid-ReactUseMemo-async-callback.js	pass	pass	
+error.invalid-access-ref-during-render.js	pass	pass	
+error.invalid-access-ref-in-reducer-init.js	pass	pass	
+error.invalid-access-ref-in-reducer.js	pass	pass	
+error.invalid-access-ref-in-render-mutate-object-with-ref-function.js	pass	pass	
+error.invalid-access-ref-in-state-initializer.js	pass	pass	
+error.invalid-aliased-ref-in-callback-invoked-during-render-.js	pass	pass	
+error.invalid-array-push-frozen.js	pass	pass	
 error.invalid-assign-current-inferred-ref-during-render.js	pass	pass	
-error.invalid-assign-hook-to-local.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.invalid-assign-hook-to-local.js	pass	pass	
 error.invalid-assing-to-ref-current-in-render.js	pass	pass	
-error.invalid-computed-store-to-frozen-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-conditional-call-aliased-hook-import.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-conditional-call-aliased-react-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-conditional-call-non-hook-imported-as-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-conditional-setState-in-useMemo.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-delete-computed-property-of-frozen-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-delete-property-of-frozen-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-derived-computation-in-effect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-destructure-assignment-to-global.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-destructure-to-local-global-variables.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-disallow-mutating-ref-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-disallow-mutating-refs-in-render-transitive.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-eval-unsupported.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-function-expression-mutates-immutable-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-global-reassignment-indirect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-hoisting-setstate.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-hook-function-argument-mutates-local-variable.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-impure-functions-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-jsx-captures-context-variable.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-known-incompatible-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-known-incompatible-hook-return-property.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-known-incompatible-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-after-aliased-freeze.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-after-freeze.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-context-in-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-context.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-global-in-render-helper-phi-return-prop.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-global-in-render-helper-prop.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-phi-which-could-be-frozen.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-props-in-effect-fixpoint.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutate-props-via-for-of-iterator.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutation-in-closure.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-mutation-of-possible-props-phi-indirect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-nested-function-reassign-local-variable-in-effect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-non-imported-reanimated-shared-value-writes.jsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-numeric-literal-computed-property-assignment.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-pass-hook-as-call-arg.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-pass-hook-as-prop.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-pass-mutable-function-as-prop.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-pass-ref-to-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-prop-mutation-indirect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-property-store-to-frozen-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-props-mutation-in-effect-indirect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-read-ref-prop-in-render-destructure.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-read-ref-prop-in-render-property-load.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-const.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-local-in-hook-return-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-local-variable-in-async-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-local-variable-in-effect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-local-variable-in-hook-argument.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-local-variable-in-jsx-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-local-variable-in-multiple-async-callbacks.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-reassign-variable-in-usememo.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.invalid-computed-store-to-frozen-value.js	pass	pass	
+error.invalid-conditional-call-aliased-hook-import.js	pass	pass	
+error.invalid-conditional-call-aliased-react-hook.js	pass	pass	
+error.invalid-conditional-call-non-hook-imported-as-hook.js	pass	pass	
+error.invalid-conditional-setState-in-useMemo.js	pass	pass	
+error.invalid-delete-computed-property-of-frozen-value.js	pass	pass	
+error.invalid-delete-property-of-frozen-value.js	pass	pass	
+error.invalid-derived-computation-in-effect.js	pass	pass	
+error.invalid-destructure-assignment-to-global.js	pass	pass	
+error.invalid-destructure-to-local-global-variables.js	pass	pass	
+error.invalid-disallow-mutating-ref-in-render.js	pass	pass	
+error.invalid-disallow-mutating-refs-in-render-transitive.js	pass	pass	
+error.invalid-eval-unsupported.js	pass	pass	
+error.invalid-function-expression-mutates-immutable-value.js	pass	pass	
+error.invalid-global-reassignment-indirect.js	pass	pass	
+error.invalid-hoisting-setstate.js	pass	pass	
+error.invalid-hook-function-argument-mutates-local-variable.js	pass	pass	
+error.invalid-impure-functions-in-render.js	pass	pass	
+error.invalid-jsx-captures-context-variable.js	pass	pass	
+error.invalid-known-incompatible-function.js	pass	pass	
+error.invalid-known-incompatible-hook-return-property.js	pass	pass	
+error.invalid-known-incompatible-hook.js	pass	pass	
+error.invalid-mutate-after-aliased-freeze.js	pass	pass	
+error.invalid-mutate-after-freeze.js	pass	pass	
+error.invalid-mutate-context-in-callback.js	pass	pass	
+error.invalid-mutate-context.js	pass	pass	
+error.invalid-mutate-global-in-render-helper-phi-return-prop.js	pass	pass	
+error.invalid-mutate-global-in-render-helper-prop.js	pass	pass	
+error.invalid-mutate-phi-which-could-be-frozen.js	pass	pass	
+error.invalid-mutate-props-in-effect-fixpoint.js	pass	pass	
+error.invalid-mutate-props-via-for-of-iterator.js	pass	pass	
+error.invalid-mutation-in-closure.js	pass	pass	
+error.invalid-mutation-of-possible-props-phi-indirect.js	pass	pass	
+error.invalid-nested-function-reassign-local-variable-in-effect.js	pass	pass	
+error.invalid-non-imported-reanimated-shared-value-writes.jsx	pass	pass	
+error.invalid-numeric-literal-computed-property-assignment.js	pass	pass	
+error.invalid-optional-member-expression-as-memo-dep-non-optional-in-body.js	pass	pass	
+error.invalid-pass-hook-as-call-arg.js	pass	pass	
+error.invalid-pass-hook-as-prop.js	pass	pass	
+error.invalid-pass-mutable-function-as-prop.js	pass	pass	
+error.invalid-pass-ref-to-function.js	pass	pass	
+error.invalid-prop-mutation-indirect.js	pass	pass	
+error.invalid-property-store-to-frozen-value.js	pass	pass	
+error.invalid-props-mutation-in-effect-indirect.js	pass	pass	
+error.invalid-read-ref-prop-in-render-destructure.js	pass	pass	
+error.invalid-read-ref-prop-in-render-property-load.js	pass	pass	
+error.invalid-reassign-const.js	pass	pass	
+error.invalid-reassign-local-in-hook-return-value.js	pass	pass	
+error.invalid-reassign-local-variable-in-async-callback.js	pass	pass	
+error.invalid-reassign-local-variable-in-effect.js	pass	pass	
+error.invalid-reassign-local-variable-in-hook-argument.js	pass	pass	
+error.invalid-reassign-local-variable-in-jsx-callback.js	pass	pass	
+error.invalid-reassign-local-variable-in-multiple-async-callbacks.tsx	pass	pass	
+error.invalid-reassign-variable-in-usememo.js	pass	pass	
 error.invalid-ref-access-render-unary.js	pass	pass	
-error.invalid-ref-in-callback-invoked-during-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.invalid-ref-in-callback-invoked-during-render.js	pass	pass	
 error.invalid-ref-initialization-unary-not.js	pass	pass	
-error.invalid-ref-value-as-props.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-return-mutable-function-from-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-set-and-read-ref-during-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-set-and-read-ref-nested-property-during-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-setState-in-render-unbound-state.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-setState-in-useMemo-indirect-useCallback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-setState-in-useMemo.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-setstate-unconditional-with-keyed-state.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-sketchy-code-use-forget.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-ternary-with-hook-values.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-type-provider-hook-name-not-typed-as-hook-namespace.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-type-provider-hook-name-not-typed-as-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-type-provider-hooklike-module-default-not-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-type-provider-nonhook-name-typed-as-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.invalid-ref-value-as-props.js	pass	pass	
+error.invalid-return-mutable-function-from-hook.js	pass	pass	
+error.invalid-set-and-read-ref-during-render.js	pass	pass	
+error.invalid-set-and-read-ref-nested-property-during-render.js	pass	pass	
+error.invalid-setState-in-render-unbound-state.js	pass	pass	
+error.invalid-setState-in-useMemo-indirect-useCallback.js	pass	pass	
+error.invalid-setState-in-useMemo.js	pass	pass	
+error.invalid-setstate-unconditional-with-keyed-state.js	pass	pass	
+error.invalid-sketchy-code-use-forget.js	pass	pass	
+error.invalid-ternary-with-hook-values.js	pass	pass	
+error.invalid-type-provider-hook-name-not-typed-as-hook-namespace.js	pass	pass	
+error.invalid-type-provider-hook-name-not-typed-as-hook.js	pass	pass	
+error.invalid-type-provider-hooklike-module-default-not-hook.js	pass	pass	
+error.invalid-type-provider-nonhook-name-typed-as-hook.js	pass	pass	
 error.invalid-uncalled-function-capturing-mutable-values-memoizes-with-captures-values.js	pass	pass	
-error.invalid-unclosed-eslint-suppression.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-unconditional-set-state-hook-return-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-unconditional-set-state-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-unconditional-set-state-prop-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-use-ref-added-to-dep-without-type-info.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-useMemo-async-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-useMemo-callback-args.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-write-but-dont-read-ref-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.invalid-write-ref-prop-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.modify-state-2.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.modify-state.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.modify-useReducer-state.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.mutable-range-shared-inner-outer-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.mutate-function-property.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.mutate-global-increment-op-invalid-react.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.mutate-hook-argument.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.mutate-property-from-global.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.mutate-props.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.not-useEffect-external-mutate.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.propertyload-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.reassign-global-fn-arg.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.reassignment-to-global-indirect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.reassignment-to-global.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.invalid-unclosed-eslint-suppression.js	pass	pass	
+error.invalid-unconditional-set-state-hook-return-in-render.js	pass	pass	
+error.invalid-unconditional-set-state-in-render.js	pass	pass	
+error.invalid-unconditional-set-state-prop-in-render.js	pass	pass	
+error.invalid-use-ref-added-to-dep-without-type-info.js	pass	pass	
+error.invalid-useMemo-async-callback.js	pass	pass	
+error.invalid-useMemo-callback-args.js	pass	pass	
+error.invalid-write-but-dont-read-ref-in-render.js	pass	pass	
+error.invalid-write-ref-prop-in-render.js	pass	pass	
+error.modify-state-2.js	pass	pass	
+error.modify-state.js	pass	pass	
+error.modify-useReducer-state.js	pass	pass	
+error.mutable-range-shared-inner-outer-function.js	pass	pass	
+error.mutate-function-property.js	pass	pass	
+error.mutate-global-increment-op-invalid-react.js	pass	pass	
+error.mutate-hook-argument.js	pass	pass	
+error.mutate-property-from-global.js	pass	pass	
+error.mutate-props.js	pass	pass	
+error.not-useEffect-external-mutate.js	pass	pass	
+error.propertyload-hook.js	pass	pass	
+error.reassign-global-fn-arg.js	pass	pass	
+error.reassignment-to-global-indirect.js	pass	pass	
+error.reassignment-to-global.js	pass	pass	
 error.ref-initialization-arbitrary.js	pass	pass	
 error.ref-initialization-call-2.js	pass	pass	
 error.ref-initialization-call.js	pass	pass	
@@ -457,22 +457,22 @@ error.ref-initialization-nonif.js	pass	pass
 error.ref-initialization-other.js	pass	pass	
 error.ref-initialization-post-access-2.js	pass	pass	
 error.ref-initialization-post-access.js	pass	pass	
-error.ref-like-name-not-Ref.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.ref-like-name-not-a-ref.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.ref-optional.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.sketchy-code-rules-of-hooks.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.store-property-in-global.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-allow-assigning-to-inferred-ref-prop-in-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.ref-like-name-not-Ref.js	pass	pass	
+error.ref-like-name-not-a-ref.js	pass	pass	
+error.ref-optional.js	pass	pass	
+error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-later-mutation.js	pass	pass	
+error.repro-preserve-memoization-inner-destructured-value-mistaken-as-dependency-mutated-dep.js	pass	pass	
+error.sketchy-code-rules-of-hooks.js	pass	pass	
+error.store-property-in-global.js	pass	pass	
+error.todo-allow-assigning-to-inferred-ref-prop-in-callback.js	pass	pass	
 error.todo-await-using-declaration.js	unparsed	syntax	an await using declaration (explicit resource management), which the Flow parser does not read
-error.todo-for-await-loops.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-for-in-loop-with-context-variable-iterator.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-for-loop-with-context-variable-iterator.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-for-of-loop-with-context-variable-iterator.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-function-expression-references-later-variable-declaration.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-functiondecl-hoisting.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-handle-update-context-identifiers.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.todo-for-await-loops.js	pass	pass	
+error.todo-for-in-loop-with-context-variable-iterator.js	pass	pass	
+error.todo-for-loop-with-context-variable-iterator.js	pass	pass	
+error.todo-for-of-loop-with-context-variable-iterator.js	pass	pass	
+error.todo-function-expression-references-later-variable-declaration.js	pass	pass	
+error.todo-functiondecl-hoisting.tsx	pass	pass	
+error.todo-handle-update-context-identifiers.js	pass	pass	
 error.todo-hir_fn_type_mismatch.js	expected-error-got-code	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-hir_fn_type_mismatch_1.js	expected-error-got-code	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-hir_fn_type_mismatch_2.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
@@ -480,26 +480,26 @@ error.todo-hir_jsxtext_nbsp.js	expected-error-got-code	syntax	the snapshot is a 
 error.todo-hir_loc_diff_1.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-hir_silent_rust_fail.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-hir_unsupported_node_format.js	error-mismatch	conversion	babel.rs builds the import() callee with no location, so the compiler's error has no code frame (proven by babel.rs import_expression)
-error.todo-hoist-function-decls.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-hoisted-function-in-unreachable-code.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-hoisting-simple-var-declaration.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-hook-call-spreads-mutable-iterator.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-invalid-jsx-in-catch-in-outer-try-with-finally.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-invalid-jsx-in-try-with-finally.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-kitchensink.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-missing-source-locations.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-nested-method-calls-lower-property-load-into-temporary.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-new-target-meta-property.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-object-expression-get-syntax.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-object-expression-set-syntax.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.todo-hoist-function-decls.js	pass	pass	
+error.todo-hoisted-function-in-unreachable-code.js	pass	pass	
+error.todo-hoisting-simple-var-declaration.js	pass	pass	
+error.todo-hook-call-spreads-mutable-iterator.js	pass	pass	
+error.todo-invalid-jsx-in-catch-in-outer-try-with-finally.js	pass	pass	
+error.todo-invalid-jsx-in-try-with-finally.js	pass	pass	
+error.todo-kitchensink.js	pass	pass	
+error.todo-missing-source-locations.js	pass	pass	
+error.todo-nested-method-calls-lower-property-load-into-temporary.js	pass	pass	
+error.todo-new-target-meta-property.js	pass	pass	
+error.todo-object-expression-get-syntax.js	pass	pass	
+error.todo-object-expression-set-syntax.js	pass	pass	
 error.todo-pattern2_type_to_object.js	expected-error-got-code	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-pattern3_type_to_poly.js	expected-error-got-code	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
-error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-reassign-const.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.todo-preserve-memo-deps-mixed-optional-nonoptional-property-chain.js	pass	pass	
+error.todo-reassign-const.js	pass	pass	
 error.todo-repro-missed-memoization-from-capture-in-invoked-function-inferred-as-mutation.js	pass	pass	
 error.todo-repro-missed-memoization-from-inferred-mutation-in-logger.js	pass	pass	
-error.todo-repro-named-function-with-shadowed-local-same-name.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.todo-repro-named-function-with-shadowed-local-same-name.js	pass	pass	
+error.todo-repro-unmemoized-callback-captured-in-context-variable.tsx	pass	pass	
 error.todo-round2_float_precision.js	expected-error-got-code	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-round2_fn_type_component_to_other.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-round2_id_numbering.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
@@ -507,25 +507,25 @@ error.todo-round2_identifier_diff.js	error-mismatch	syntax	the snapshot is a Bab
 error.todo-round2_severity_diff.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-rust-as-expression-assignment-target.tsx	unparsed	syntax	a TypeScript as expression used as an assignment target, which the Flow parser rejects
 error.todo-update-expression-context-variable-via-type-annotation.js	expected-error-got-code	conversion	uf erases types before compiling, and the only use of id inside a lambda is a function type's parameter name, which upstream scope.ts maps and which makes id a context variable (argued)
-error.todo-useCallback-set-ref-nested-property-ref-modified-later-preserve-memoization.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.todo-useCallback-set-ref-nested-property-ref-modified-later-preserve-memoization.js	pass	pass	
 error.todo-using-declaration.js	unparsed	syntax	a using declaration (explicit resource management), which the Flow parser does not read
-error.todo-valid-functiondecl-hoisting.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.todo.try-catch-with-throw.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.todo-valid-functiondecl-hoisting.tsx	pass	pass	
+error.todo.try-catch-with-throw.js	pass	pass	
 error.typescript-this-param-in-compiled-function.ts	error-mismatch	syntax	a TypeScript this parameter: Babel makes it a parameter named this, which the compiler refuses, and the Flow parser reads a this annotation, which uf erases
-error.unconditional-set-state-in-render-after-loop-break.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.unconditional-set-state-in-render-after-loop.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.unconditional-set-state-in-render-with-loop-throw.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.unconditional-set-state-lambda.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.unconditional-set-state-nested-function-expressions.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.update-global-should-bailout.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.useCallback-accesses-ref-mutated-later-via-function-preserve-memoization.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.useCallback-set-ref-nested-property-dont-preserve-memoization.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.useMemo-callback-generator.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.useMemo-non-literal-depslist.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.validate-blocklisted-imports.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.validate-mutate-ref-arg-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.validate-object-entries-mutation.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-error.validate-object-values-mutation.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+error.unconditional-set-state-in-render-after-loop-break.js	pass	pass	
+error.unconditional-set-state-in-render-after-loop.js	pass	pass	
+error.unconditional-set-state-in-render-with-loop-throw.js	pass	pass	
+error.unconditional-set-state-lambda.js	pass	pass	
+error.unconditional-set-state-nested-function-expressions.js	pass	pass	
+error.update-global-should-bailout.tsx	pass	pass	
+error.useCallback-accesses-ref-mutated-later-via-function-preserve-memoization.js	pass	pass	
+error.useCallback-set-ref-nested-property-dont-preserve-memoization.js	pass	pass	
+error.useMemo-callback-generator.js	pass	pass	
+error.useMemo-non-literal-depslist.ts	pass	pass	
+error.validate-blocklisted-imports.ts	pass	pass	
+error.validate-mutate-ref-arg-in-render.js	pass	pass	
+error.validate-object-entries-mutation.js	pass	pass	
+error.validate-object-values-mutation.js	pass	pass	
 escape-analysis-destructured-rest-element.js	pass	pass	
 escape-analysis-jsx-child.js	pass	pass	
 escape-analysis-logical.js	pass	pass	
@@ -539,17 +539,17 @@ escape-analysis-not-switch-test.js	pass	pass
 evaluation-order-mutate-call-after-dependency-load.ts	pass	pass	
 evaluation-order-mutate-store-after-dependency-load.ts	pass	pass	
 exhaustive-deps/compile-files-with-exhaustive-deps-violation-in-effects.js	pass	pass	
-exhaustive-deps/error.exhaustive-deps-effect-events.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-dep-on-ref-current-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-exhaustive-deps-disallow-unused-stable-types.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-exhaustive-deps.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-exhaustive-effect-deps-extra-only.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-exhaustive-effect-deps.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-missing-nonreactive-dep-inner-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-missing-nonreactive-dep-unmemoized.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.invalid-missing-nonreactive-dep.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-exhaustive-deps/error.sketchy-code-exhaustive-deps.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+exhaustive-deps/error.exhaustive-deps-effect-events.js	pass	pass	
+exhaustive-deps/error.invalid-dep-on-ref-current-value.js	pass	pass	
+exhaustive-deps/error.invalid-exhaustive-deps-disallow-unused-stable-types.js	pass	pass	
+exhaustive-deps/error.invalid-exhaustive-deps.js	pass	pass	
+exhaustive-deps/error.invalid-exhaustive-effect-deps-extra-only.js	pass	pass	
+exhaustive-deps/error.invalid-exhaustive-effect-deps-missing-only.js	pass	pass	
+exhaustive-deps/error.invalid-exhaustive-effect-deps.js	pass	pass	
+exhaustive-deps/error.invalid-missing-nonreactive-dep-inner-function.js	pass	pass	
+exhaustive-deps/error.invalid-missing-nonreactive-dep-unmemoized.js	pass	pass	
+exhaustive-deps/error.invalid-missing-nonreactive-dep.js	pass	pass	
+exhaustive-deps/error.sketchy-code-exhaustive-deps.js	pass	pass	
 exhaustive-deps/exhaustive-deps-allow-constant-folded-values.js	pass	pass	
 exhaustive-deps/exhaustive-deps-allow-nonreactive-stable-types-as-extra-deps.js	pass	pass	
 exhaustive-deps/exhaustive-deps-effect-events.js	pass	pass	
@@ -561,19 +561,19 @@ extend-scopes-if.js	pass	pass
 fast-refresh-dont-refresh-const-changes-prod.js	pass	pass	
 fast-refresh-refresh-on-const-changes-dev.js	pass	pass	
 fast-refresh-reloading.js	pass	pass	
-fault-tolerance/error.try-finally-and-mutation-of-props.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fault-tolerance/error.try-finally-and-ref-access.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fault-tolerance/error.try-finally-ref-access-and-mutation.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fault-tolerance/error.var-declaration-and-mutation-of-props.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fault-tolerance/error.var-declaration-and-ref-access.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+fault-tolerance/error.try-finally-and-mutation-of-props.js	pass	pass	
+fault-tolerance/error.try-finally-and-ref-access.js	pass	pass	
+fault-tolerance/error.try-finally-ref-access-and-mutation.js	pass	pass	
+fault-tolerance/error.var-declaration-and-mutation-of-props.js	pass	pass	
+fault-tolerance/error.var-declaration-and-ref-access.js	pass	pass	
 fbt-scope-range-identifier-sync.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
 fbt/bug-fbt-plural-multiple-function-calls.ts	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
 fbt/bug-fbt-plural-multiple-mixed-call-tag.tsx	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
-fbt/error.todo-fbt-as-local.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fbt/error.todo-fbt-plural-in-expression-container.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fbt/error.todo-fbt-unknown-enum-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fbt/error.todo-locally-require-fbt.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-fbt/error.todo-multiple-fbt-plural.tsx	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+fbt/error.todo-fbt-as-local.js	pass	pass	
+fbt/error.todo-fbt-plural-in-expression-container.js	pass	pass	
+fbt/error.todo-fbt-unknown-enum-value.js	pass	pass	
+fbt/error.todo-locally-require-fbt.js	pass	pass	
+fbt/error.todo-multiple-fbt-plural.tsx	pass	pass	
 fbt/fbs-params.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
 fbt/fbt-call-complex-param-value.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
 fbt/fbt-call.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
@@ -660,7 +660,7 @@ gating/dynamic-gating-enabled.js	pass	pass
 gating/dynamic-gating-invalid-identifier-nopanic.js	pass	pass	
 gating/dynamic-gating-invalid-multiple.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
 gating/dynamic-gating-noemit.js	pass	pass	
-gating/error.dynamic-gating-invalid-identifier.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+gating/error.dynamic-gating-invalid-identifier.js	pass	pass	
 gating/gating-access-function-name-in-component.js	pass	pass	
 gating/gating-nonreferenced-identifier-collision.js	pass	pass	
 gating/gating-preserves-function-properties.tsx	pass	pass	
@@ -798,20 +798,20 @@ inner-memo-value-not-promoted-to-outer-scope-dynamic.js	pass	pass
 inner-memo-value-not-promoted-to-outer-scope-static.js	pass	pass	
 interdependent-across-if.js	pass	pass	
 interdependent.js	pass	pass	
-invalid-jsx-in-catch-in-outer-try-with-catch.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-jsx-in-try-with-catch.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+invalid-jsx-in-catch-in-outer-try-with-catch.js	pass	pass	
+invalid-jsx-in-try-with-catch.js	pass	pass	
 invalid-jsx-lowercase-localvar.jsx	pass	pass	
 invalid-set-state-in-effect-verbose-derived-event.js	pass	pass	
 invalid-set-state-in-effect-verbose-force-update.js	pass	pass	
 invalid-set-state-in-effect-verbose-non-local-derived.js	pass	pass	
-invalid-setState-in-useEffect-namespace.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-setState-in-useEffect-new-expression-default-param.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-setState-in-useEffect-transitive.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-setState-in-useEffect-via-useEffectEvent.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-setState-in-useEffect.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-unused-usememo.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-useMemo-no-return-value.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-invalid-useMemo-return-empty.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+invalid-setState-in-useEffect-namespace.js	pass	pass	
+invalid-setState-in-useEffect-new-expression-default-param.js	pass	pass	
+invalid-setState-in-useEffect-transitive.js	pass	pass	
+invalid-setState-in-useEffect-via-useEffectEvent.js	pass	pass	
+invalid-setState-in-useEffect.js	pass	pass	
+invalid-unused-usememo.js	pass	pass	
+invalid-useMemo-no-return-value.js	pass	pass	
+invalid-useMemo-return-empty.js	pass	pass	
 inverted-if-else.js	pass	pass	
 inverted-if.js	pass	pass	
 issue852.js	pass	pass	
@@ -938,16 +938,16 @@ new-mutability/capturing-function-alias-computed-load-2-iife.js	pass	pass
 new-mutability/capturing-function-alias-computed-load-3-iife.js	pass	pass	
 new-mutability/capturing-function-alias-computed-load-4-iife.js	pass	pass	
 new-mutability/capturing-function-alias-computed-load-iife.js	pass	pass	
-new-mutability/error.invalid-impure-functions-in-render.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.invalid-reassign-local-variable-in-jsx-callback.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+new-mutability/error.invalid-impure-functions-in-render.js	pass	pass	
+new-mutability/error.invalid-reassign-local-variable-in-jsx-callback.js	pass	pass	
 new-mutability/error.invalid-referencing-frozen-hoisted-storecontext-const.js	pass	pass	
-new-mutability/error.invalid-useCallback-captures-reassigned-context.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.mutate-frozen-value.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.mutate-hook-argument.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.not-useEffect-external-mutate.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.reassignment-to-global-indirect.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.reassignment-to-global.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-new-mutability/error.todo-repro-named-function-with-shadowed-local-same-name.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+new-mutability/error.invalid-useCallback-captures-reassigned-context.js	pass	pass	
+new-mutability/error.mutate-frozen-value.js	pass	pass	
+new-mutability/error.mutate-hook-argument.js	pass	pass	
+new-mutability/error.not-useEffect-external-mutate.js	pass	pass	
+new-mutability/error.reassignment-to-global-indirect.js	pass	pass	
+new-mutability/error.reassignment-to-global.js	pass	pass	
+new-mutability/error.todo-repro-named-function-with-shadowed-local-same-name.js	pass	pass	
 new-mutability/iife-return-modified-later-phi.js	pass	pass	
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections-2.js	pass	pass	
 new-mutability/mutate-through-boxing-unboxing-function-call-indirections.js	pass	pass	
@@ -1084,27 +1084,27 @@ preserve-jsxtext-stringliteral-distinction.js	pass	pass
 preserve-memo-deps-conditional-property-chain-less-precise-deps.js	pass	pass	
 preserve-memo-deps-conditional-property-chain.js	pass	pass	
 preserve-memo-deps-optional-property-chain.js	pass	pass	
-preserve-memo-validation/error.false-positive-useMemo-dropped-infer-always-invalidating.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.false-positive-useMemo-infer-mutate-deps.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.false-positive-useMemo-overlap-scopes.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.hoist-useCallback-conditional-access-own-scope.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.hoist-useCallback-infer-conditional-value-block.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.invalid-useCallback-captures-reassigned-context.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.maybe-mutable-ref-not-preserved.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.preserve-use-memo-ref-missing-reactive.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.todo-useCallback-captures-invalidating-value.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useCallback-aliased-var.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useCallback-conditional-access-noAlloc.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useCallback-infer-less-specific-conditional-access.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useCallback-property-call-dep.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useMemo-aliased-var.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useMemo-infer-less-specific-conditional-access.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useMemo-infer-less-specific-conditional-value-block.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useMemo-property-call-chained-object.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useMemo-property-call-dep.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-preserve-memo-validation/error.useMemo-unrelated-mutation-in-depslist.ts	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+preserve-memo-validation/error.false-positive-useMemo-dropped-infer-always-invalidating.ts	pass	pass	
+preserve-memo-validation/error.false-positive-useMemo-infer-mutate-deps.ts	pass	pass	
+preserve-memo-validation/error.false-positive-useMemo-overlap-scopes.ts	pass	pass	
+preserve-memo-validation/error.hoist-useCallback-conditional-access-own-scope.ts	pass	pass	
+preserve-memo-validation/error.hoist-useCallback-infer-conditional-value-block.ts	pass	pass	
+preserve-memo-validation/error.invalid-useCallback-captures-reassigned-context.ts	pass	pass	
+preserve-memo-validation/error.maybe-mutable-ref-not-preserved.ts	pass	pass	
+preserve-memo-validation/error.preserve-use-memo-ref-missing-reactive.ts	pass	pass	
+preserve-memo-validation/error.todo-useCallback-captures-invalidating-value.ts	pass	pass	
+preserve-memo-validation/error.useCallback-aliased-var.ts	pass	pass	
+preserve-memo-validation/error.useCallback-conditional-access-noAlloc.ts	pass	pass	
+preserve-memo-validation/error.useCallback-infer-less-specific-conditional-access.ts	pass	pass	
+preserve-memo-validation/error.useCallback-property-call-dep.ts	pass	pass	
+preserve-memo-validation/error.useMemo-aliased-var.ts	pass	pass	
+preserve-memo-validation/error.useMemo-infer-less-specific-conditional-access.ts	pass	pass	
+preserve-memo-validation/error.useMemo-infer-less-specific-conditional-value-block.ts	pass	pass	
+preserve-memo-validation/error.useMemo-property-call-chained-object.ts	pass	pass	
+preserve-memo-validation/error.useMemo-property-call-dep.ts	pass	pass	
+preserve-memo-validation/error.useMemo-unrelated-mutation-in-depslist.ts	pass	pass	
 preserve-memo-validation/error.useMemo-with-refs.flow.js	pass	pass	
-preserve-memo-validation/error.validate-useMemo-named-function.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+preserve-memo-validation/error.validate-useMemo-named-function.js	pass	pass	
 preserve-memo-validation/maybe-invalid-useMemo-no-memoblock-sideeffect.ts	pass	pass	
 preserve-memo-validation/preserve-use-callback-stable-built-ins.ts	pass	pass	
 preserve-memo-validation/preserve-use-memo-ref-missing-ok.ts	pass	pass	
@@ -1158,8 +1158,8 @@ propagate-scope-deps-hir-fork/conditional-early-return.js	pass	pass
 propagate-scope-deps-hir-fork/conditional-on-mutable.js	pass	pass	
 propagate-scope-deps-hir-fork/early-return-nested-early-return-within-reactive-scope.js	pass	pass	
 propagate-scope-deps-hir-fork/early-return-within-reactive-scope.js	pass	pass	
-propagate-scope-deps-hir-fork/error.todo-optional-member-expression-with-conditional-optional.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-propagate-scope-deps-hir-fork/error.todo-optional-member-expression-with-conditional.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+propagate-scope-deps-hir-fork/error.todo-optional-member-expression-with-conditional-optional.js	pass	pass	
+propagate-scope-deps-hir-fork/error.todo-optional-member-expression-with-conditional.js	pass	pass	
 propagate-scope-deps-hir-fork/iife-return-modified-later-phi.js	pass	pass	
 propagate-scope-deps-hir-fork/infer-component-props-non-null.tsx	pass	pass	
 propagate-scope-deps-hir-fork/infer-non-null-destructure.ts	pass	pass	
@@ -1438,47 +1438,47 @@ round3_effect_read_vs_capture_v2.js	pass	pass
 round3_outlined_naming.js	pass	pass	
 rules-of-hooks/allow-locals-named-like-hooks.js	pass	pass	
 rules-of-hooks/allow-props-named-like-hooks.js	pass	pass	
-rules-of-hooks/error.bail.rules-of-hooks-3d692676194b.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.bail.rules-of-hooks-8503ca76d6f8.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-call-phi-possibly-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-conditionally-call-local-named-like-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-conditionally-call-prop-named-like-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-conditionally-methodcall-hooklike-property-of-local.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-condtionally-call-hooklike-property-of-local.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-after-early-return.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-as-conditional-test.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-as-prop.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-for.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-from-hook-return.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-from-property-of-other-hook.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-if-alternate.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-if-consequent.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-in-nested-function-expression-object-expression.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-in-nested-object-method.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-optional-methodcall.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-optional-property.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-optionalcall.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-hook-reassigned-in-conditional.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-1b9527f967f3.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-2aabd222fc6a.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-49d341e5d68f.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-79128a755612.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-9718e30b856c.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-9bf17c174134.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-b4dcda3d60ed.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-c906cace44e9.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-d740d54e9c21.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-d85c144bdf40.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-ea7c2fb545a9.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-f3d6c5e9c83d.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid-rules-of-hooks-f69800950ff0.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-0a1dbff27ba0.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-0de1224ce64b.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-449a37146a83.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-76a74b4666e9.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-d842d36db450.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/error.invalid.invalid-rules-of-hooks-d952b82c2597.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+rules-of-hooks/error.bail.rules-of-hooks-3d692676194b.js	pass	pass	
+rules-of-hooks/error.bail.rules-of-hooks-8503ca76d6f8.js	pass	pass	
+rules-of-hooks/error.invalid-call-phi-possibly-hook.js	pass	pass	
+rules-of-hooks/error.invalid-conditionally-call-local-named-like-hook.js	pass	pass	
+rules-of-hooks/error.invalid-conditionally-call-prop-named-like-hook.js	pass	pass	
+rules-of-hooks/error.invalid-conditionally-methodcall-hooklike-property-of-local.js	pass	pass	
+rules-of-hooks/error.invalid-condtionally-call-hooklike-property-of-local.js	pass	pass	
+rules-of-hooks/error.invalid-dynamic-hook-via-hooklike-local.js	pass	pass	
+rules-of-hooks/error.invalid-hook-after-early-return.js	pass	pass	
+rules-of-hooks/error.invalid-hook-as-conditional-test.js	pass	pass	
+rules-of-hooks/error.invalid-hook-as-prop.js	pass	pass	
+rules-of-hooks/error.invalid-hook-for.js	pass	pass	
+rules-of-hooks/error.invalid-hook-from-hook-return.js	pass	pass	
+rules-of-hooks/error.invalid-hook-from-property-of-other-hook.js	pass	pass	
+rules-of-hooks/error.invalid-hook-if-alternate.js	pass	pass	
+rules-of-hooks/error.invalid-hook-if-consequent.js	pass	pass	
+rules-of-hooks/error.invalid-hook-in-nested-function-expression-object-expression.js	pass	pass	
+rules-of-hooks/error.invalid-hook-in-nested-object-method.js	pass	pass	
+rules-of-hooks/error.invalid-hook-optional-methodcall.js	pass	pass	
+rules-of-hooks/error.invalid-hook-optional-property.js	pass	pass	
+rules-of-hooks/error.invalid-hook-optionalcall.js	pass	pass	
+rules-of-hooks/error.invalid-hook-reassigned-in-conditional.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-1b9527f967f3.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-2aabd222fc6a.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-49d341e5d68f.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-79128a755612.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-9718e30b856c.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-9bf17c174134.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-b4dcda3d60ed.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-c906cace44e9.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-d740d54e9c21.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-d85c144bdf40.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-ea7c2fb545a9.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-f3d6c5e9c83d.js	pass	pass	
+rules-of-hooks/error.invalid-rules-of-hooks-f69800950ff0.js	pass	pass	
+rules-of-hooks/error.invalid.invalid-rules-of-hooks-0a1dbff27ba0.js	pass	pass	
+rules-of-hooks/error.invalid.invalid-rules-of-hooks-0de1224ce64b.js	pass	pass	
+rules-of-hooks/error.invalid.invalid-rules-of-hooks-449a37146a83.js	pass	pass	
+rules-of-hooks/error.invalid.invalid-rules-of-hooks-76a74b4666e9.js	pass	pass	
+rules-of-hooks/error.invalid.invalid-rules-of-hooks-d842d36db450.js	pass	pass	
+rules-of-hooks/error.invalid.invalid-rules-of-hooks-d952b82c2597.js	pass	pass	
 rules-of-hooks/rules-of-hooks-0592bd574811.js	pass	pass	
 rules-of-hooks/rules-of-hooks-0e2214abc294.js	pass	pass	
 rules-of-hooks/rules-of-hooks-1ff6c3fbbc94.js	pass	pass	
@@ -1511,12 +1511,12 @@ rules-of-hooks/todo.bail.rules-of-hooks-6949b255e7eb.js	pass	pass
 rules-of-hooks/todo.bail.rules-of-hooks-e0a5db3ae21e.js	pass	pass	
 rules-of-hooks/todo.bail.rules-of-hooks-e9f9bac89f8f.js	pass	pass	
 rules-of-hooks/todo.bail.rules-of-hooks-fadd52c1e460.js	pass	pass	
-rules-of-hooks/todo.error.invalid-rules-of-hooks-368024110a58.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/todo.error.invalid-rules-of-hooks-8566f9a360e2.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/todo.error.invalid-rules-of-hooks-a0058f0b446d.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/todo.error.rules-of-hooks-27c18dc8dad2.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/todo.error.rules-of-hooks-d0935abedc42.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-rules-of-hooks/todo.error.rules-of-hooks-e29c874aa913.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+rules-of-hooks/todo.error.invalid-rules-of-hooks-368024110a58.js	pass	pass	
+rules-of-hooks/todo.error.invalid-rules-of-hooks-8566f9a360e2.js	pass	pass	
+rules-of-hooks/todo.error.invalid-rules-of-hooks-a0058f0b446d.js	pass	pass	
+rules-of-hooks/todo.error.rules-of-hooks-27c18dc8dad2.js	pass	pass	
+rules-of-hooks/todo.error.rules-of-hooks-d0935abedc42.js	pass	pass	
+rules-of-hooks/todo.error.rules-of-hooks-e29c874aa913.js	pass	pass	
 rules-of-hooks/todo.invalid.invalid-rules-of-hooks-191029ac48c8.js	pass	pass	
 rules-of-hooks/todo.invalid.invalid-rules-of-hooks-206e2811c87c.js	pass	pass	
 rules-of-hooks/todo.invalid.invalid-rules-of-hooks-28a7111f56a7.js	pass	pass	
@@ -1605,11 +1605,11 @@ ssr/ssr-infer-event-handlers-from-setState.js	pass	pass
 ssr/ssr-infer-event-handlers-from-startTransition.js	pass	pass	
 ssr/ssr-use-reducer-initializer.js	pass	pass	
 ssr/ssr-use-reducer.js	pass	pass	
-static-components/invalid-conditionally-assigned-dynamically-constructed-component-in-render.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-static-components/invalid-dynamically-construct-component-in-render.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-static-components/invalid-dynamically-constructed-component-function.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-static-components/invalid-dynamically-constructed-component-method-call.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
-static-components/invalid-dynamically-constructed-component-new.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+static-components/invalid-conditionally-assigned-dynamically-constructed-component-in-render.js	pass	pass	
+static-components/invalid-dynamically-construct-component-in-render.js	pass	pass	
+static-components/invalid-dynamically-constructed-component-function.js	pass	pass	
+static-components/invalid-dynamically-constructed-component-method-call.js	pass	pass	
+static-components/invalid-dynamically-constructed-component-new.js	pass	pass	
 store-via-call.js	pass	pass	
 store-via-new.js	pass	pass	
 switch-global-propertyload-case-test.js	pass	pass	
@@ -1641,7 +1641,7 @@ todo-pattern1b_type_to_primitive.js	pass	pass
 todo-round2_unicode_string.js	pass	pass	
 todo-round3_outlined_naming.js	pass	pass	
 todo-round3_promote_used_temps.js	pass	pass	
-todo.error.object-pattern-computed-key.js	error-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+todo.error.object-pattern-computed-key.js	pass	pass	
 todo.memoize-loops-that-produce-memoizeable-values.js	pass	pass	
 todo.unnecessary-lambda-memoization.js	pass	pass	
 transitive-alias-fields.js	pass	pass	

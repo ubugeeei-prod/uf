@@ -102,7 +102,9 @@ pub fn compile(
     let names = function_names(&file);
     let plugin_options = plugin_options(source, options)?;
 
-    match compile_with_options(&file, scope, plugin_options)? {
+    // No source filename: uf's front end is the Flow parser, and the Babel
+    // shape `babel.rs` builds is `hermes-parser`'s, which sets none.
+    match compile_with_options(&file, scope, plugin_options, None)? {
         Compiled::Ran { ast, events, .. } => {
             let events: Vec<Value> = events
                 .iter()
@@ -186,6 +188,13 @@ pub enum Compiled {
 /// [`Compiled::Fatal`], the linter reports the events logged before it, and the
 /// memo question reads it as "nothing compiled, so nothing is redundant".
 ///
+/// `source_filename` is what the *parser* was told the module is called, which
+/// the crate keeps apart from `options.filename` — "this is the filename stored
+/// on AST node `loc.filename` fields, which may differ from `filename`". Babel
+/// sets it from its `sourceFilename` option and `hermes-parser` sets none, so
+/// uf's Flow front end passes `None` and only a caller standing in for Babel
+/// passes a name. [`stamp_source_filename`] says what it buys.
+///
 /// # Errors
 ///
 /// [`TransformError::Internal`] when the tree does not deserialize into the
@@ -198,11 +207,13 @@ pub fn compile_with_options(
     file: &Value,
     mut scope: ScopeInfo,
     options: PluginOptions,
+    source_filename: Option<&str>,
 ) -> Result<Compiled, TransformError> {
     teach_facade_provenance(&mut scope);
-    let ast = File::deserialize(file).map_err(|error| {
+    let mut ast = File::deserialize(file).map_err(|error| {
         TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
     })?;
+    stamp_source_filename(&mut ast, source_filename);
     Ok(match compile_program(ast, scope, options) {
         CompileResult::Success {
             ast,
@@ -216,6 +227,47 @@ pub fn compile_with_options(
         },
         CompileResult::Error { error, events, .. } => Compiled::Fatal { error, events },
     })
+}
+
+/// Tell the compiler which file its diagnostics are about.
+///
+/// Babel's parser stamps `sourceFilename` onto the `loc` of every node it
+/// builds. The compiler reads it once — `program.base.loc.filename`, falling
+/// back to the first statement's — and carries it through
+/// `set_source_filename` into the code frames it formats and the locations it
+/// logs. Without a name there, a diagnostic arrives with no frame under it at
+/// all: the line, the caret and the source excerpt are simply absent.
+///
+/// It goes on the `File` and the `Program` and nowhere else, because those are
+/// the two the compiler reads. A name on every node would cost a key per node
+/// and buy nothing.
+///
+/// Whether there is a name to stamp is the caller's answer and not this
+/// function's guess, because it is a fact about the parser that read the
+/// module. `@babel/parser` sets `sourceFilename` and `hermes-parser` does not,
+/// and the compiler's own fixtures show the difference plainly: 288 snapshots
+/// head a diagnostic with `<stem>.ts:line:column` — the TypeScript fixtures,
+/// which upstream parses with Babel — and not one heads it with a `.js` name.
+/// uf's front end is the Flow parser, which `babel.rs` is a port of
+/// `hermes-parser` for, so uf passes `None` and the conformance test passes a
+/// name only where upstream's Babel would have.
+fn stamp_source_filename(ast: &mut File, filename: Option<&str>) {
+    let Some(filename) = filename else {
+        return;
+    };
+    // The bare name rather than the path: that is what the parser's option
+    // means and what the crate's own comment says the field holds.
+    let bare = filename
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(filename)
+        .to_owned();
+    if let Some(loc) = ast.base.loc.as_mut() {
+        loc.filename = Some(bare.clone());
+    }
+    if let Some(loc) = ast.program.base.loc.as_mut() {
+        loc.filename = Some(bare);
+    }
 }
 
 /// Teach the compiler that `@uniflowed/react` is React.

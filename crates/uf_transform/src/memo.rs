@@ -130,7 +130,7 @@ fn redundant_memoization_with(
     let plugin = plugin_options(source, options)?;
     let scope = scope();
 
-    let (compiled, events) = match compile_with_options(file, scope, plugin)? {
+    let (compiled, events) = match compile_with_options(file, scope, plugin, None)? {
         Compiled::Ran { ast, events, .. } => (ast, events),
         // The compiler asked for this one to be fatal. Nothing was compiled,
         // so nothing is redundant — and the build reports it, not the linter.
