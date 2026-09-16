@@ -1396,15 +1396,17 @@ component RenderedPage(data: mixed) {
   // The route module's own export, looked up by route: `pageComponent` hands
   // back its `default` or `Page` as it is, so this is the same component on
   // every render of the same route. The React Compiler cannot see through the
-  // lookup and reports a component created during render.
-  // uf-lint-disable-next-line react-compiler/static-components
-  const page = <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />;
+  // lookup and reports a component created during render. The block form,
+  // because the finding is on a JSX child and a `//` comment cannot stand
+  // between JSX children without becoming text.
+  // uf-lint-disable react-compiler/static-components
   return (
     <>
-      {page}
+      <Page params={resolved.params} searchParams={resolved.searchParams} data={data} />
       {payloadElements(data)}
     </>
   );
+  // uf-lint-enable react-compiler/static-components
 }
 
 /**
