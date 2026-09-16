@@ -379,9 +379,17 @@ fn the_accessibility_rules_have_no_mechanical_answer() {
     // person has; see the module documentation for the argument per rule.
     for rule in [
         "a11y/alt-text",
+        "a11y/anchor-ambiguous-text",
+        "a11y/anchor-has-content",
+        "a11y/anchor-is-valid",
         "a11y/aria-props",
+        "a11y/heading-has-content",
         "a11y/heading-order",
+        "a11y/html-has-lang",
+        "a11y/iframe-has-title",
+        "a11y/img-redundant-alt",
         "a11y/label-has-associated-control",
+        "a11y/media-has-caption",
         "a11y/no-static-element-interactions",
         "markup/no-invalid-nesting",
     ] {

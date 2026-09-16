@@ -245,7 +245,7 @@ quietly disappearing.
 {
   "command": "uf lint",
   "stages": [
-    { "name": "uf rules", "provider": "Rust", "detail": "70 rules configured" },
+    { "name": "uf rules", "provider": "Rust", "detail": "78 rules configured" },
     { "name": "Flow's own lints", "provider": "OfficialFlowRust" },
     { "name": "React Compiler", "provider": "OfficialRust", "detail": "3 `react-compiler/*` rules, in the compiler's lint mode" }
   ]
@@ -484,11 +484,36 @@ plugin.
 | ESLint | uf |
 | --- | --- |
 | `alt-text` | `a11y/alt-text` |
+| `anchor-ambiguous-text` | `a11y/anchor-ambiguous-text` |
+| `anchor-has-content` | `a11y/anchor-has-content` |
+| `anchor-is-valid` | `a11y/anchor-is-valid` |
 | `aria-props` | `a11y/aria-props` |
+| `heading-has-content` | `a11y/heading-has-content` |
+| `html-has-lang` | `a11y/html-has-lang` |
+| `iframe-has-title` | `a11y/iframe-has-title` |
+| `img-redundant-alt` | `a11y/img-redundant-alt` |
 | `label-has-associated-control`, `label-has-for` | `a11y/label-has-associated-control` |
+| `media-has-caption` | `a11y/media-has-caption` |
 | `no-static-element-interactions` | `a11y/no-static-element-interactions` |
 | `accessible-emoji`, `no-onchange` | Not needed — deprecated in the plugin itself |
-| `anchor-ambiguous-text`, `anchor-has-content`, `anchor-is-valid`, `aria-activedescendant-has-tabindex`, `aria-proptypes`, `aria-role`, `aria-unsupported-elements`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `heading-has-content`, `html-has-lang`, `iframe-has-title`, `img-redundant-alt`, `interactive-supports-focus`, `lang`, `media-has-caption`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `no-redundant-roles`, `prefer-tag-over-role`, `role-has-required-aria-props`, `role-supports-aria-props`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+| `aria-activedescendant-has-tabindex`, `aria-proptypes`, `aria-role`, `aria-unsupported-elements`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `interactive-supports-focus`, `lang`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `no-redundant-roles`, `prefer-tag-over-role`, `role-has-required-aria-props`, `role-supports-aria-props`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+
+Where an `a11y/*` rule answers differently from the plugin, it is on purpose
+and always in the same direction: a rule that cannot see what it is asking
+about says nothing. An element that spreads props (`<iframe {...props} />`,
+`<video {...props} />`) may be passing the attribute through, and a component
+or an expression renders something the file does not show, so neither is
+reported. The rules that ask whether an element has a name look inside host
+elements instead of counting any child as content, so an icon link with no
+title is reported:
+
+```jsx
+// a11y/anchor-has-content: nothing inside this <a> can be announced
+<a href="/"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9" /></svg></a>
+
+// named, so not reported
+<a href="/" aria-label="Home"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9" /></svg></a>
+```
 
 #### eslint-plugin-import
 
