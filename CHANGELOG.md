@@ -27,10 +27,18 @@ fixtures reproduce its expected output, up from 1,420, with no fixture
 regressing. Alongside that, `uf lint` gains an ARIA table and seven rules that
 read it (#1159) — the table is generated from `aria-query` 5.3.2, the same
 encoding of WAI-ARIA 1.2 that `eslint-plugin-jsx-a11y` reads, rather than
-transcribed by hand.
+transcribed by hand. Finally, uf now mints a fresh CSP nonce for every request
+and puts it on every inline script it writes, exposed as `nonce()` and as
+`{uf.nonce}` inside `app.router.headers` so the header and the markup agree by
+construction (#1168); a project that never asks for one gets byte-identical
+documents. One caveat is worth reading before you turn a strict policy on: a
+*prerendered* route is served from a file while the header mints a new nonce per
+request, so uf's own client entry is refused and the page never hydrates —
+server-rendered routes on the same deployment are unaffected. That gap is #1171.
 
 ### Added
 
+- **server**: a per-request CSP nonce on every inline script uf writes (#1168)
 - **lint**: the ARIA table, and seven rules that read it (#1159)
 - **lint**: jsx-key, no-array-index-key and four more JSX rules from eslint-plugin-react (#1151)
 
