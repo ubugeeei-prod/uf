@@ -393,11 +393,25 @@ fn export_namespace(node: &mut Value) -> Value {
 /// A member or call inside the chain that is itself not optional but sits on
 /// an optional one still becomes `Optional*` with `optional: false`, which is
 /// how Babel marks "part of the chain" — short-circuiting has to cover it.
+///
+/// The chain is the spine of `object` and `callee` links. Everything hanging
+/// off that spine — a computed property, an argument — is a separate
+/// expression, and a chain written there is a chain of its own, which the
+/// parser leaves bare rather than wrapping in a `ChainExpression` of its own.
+/// [`nested`] converts those.
 fn chain(node: Value) -> Value {
     match node_type(&node) {
         Some("MemberExpression") => {
             let mut node = node;
             let object = chain(take(&mut node, "object"));
+            let computed = bool_field(&node, "computed");
+            // A property that is not computed is the name after the dot, which
+            // holds no expression and so no chain.
+            let property = if computed {
+                nested(take(&mut node, "property"))
+            } else {
+                take(&mut node, "property")
+            };
             let optional = bool_field(&node, "optional");
             let inner_optional = matches!(
                 node_type(&object),
@@ -405,21 +419,20 @@ fn chain(node: Value) -> Value {
             );
             if !optional && !inner_optional {
                 node["object"] = object;
+                node["property"] = property;
                 return node;
             }
             let mut out = base(&node, "OptionalMemberExpression");
             out.insert("object".to_owned(), object);
-            out.insert("property".to_owned(), take(&mut node, "property"));
-            out.insert(
-                "computed".to_owned(),
-                Value::Bool(bool_field(&node, "computed")),
-            );
+            out.insert("property".to_owned(), property);
+            out.insert("computed".to_owned(), Value::Bool(computed));
             out.insert("optional".to_owned(), Value::Bool(optional));
             Value::Object(out)
         }
         Some("CallExpression") => {
             let mut node = node;
             let callee = chain(take(&mut node, "callee"));
+            let arguments = nested(take(&mut node, "arguments"));
             let optional = bool_field(&node, "optional");
             let inner_optional = matches!(
                 node_type(&callee),
@@ -427,15 +440,66 @@ fn chain(node: Value) -> Value {
             );
             if !optional && !inner_optional {
                 node["callee"] = callee;
+                node["arguments"] = arguments;
                 return node;
             }
             let mut out = base(&node, "OptionalCallExpression");
             out.insert("callee".to_owned(), callee);
             out.insert("optional".to_owned(), Value::Bool(optional));
-            out.insert("arguments".to_owned(), take(&mut node, "arguments"));
+            out.insert("arguments".to_owned(), arguments);
             Value::Object(out)
         }
         _ => node,
+    }
+}
+
+/// Convert the chains written inside an expression that is off a chain's spine.
+///
+/// The parser wraps a chain in a `ChainExpression` only at its outermost node,
+/// and a chain inside another chain's computed property or arguments is not
+/// that node, so no wrapper marks it: `a?.[b?.c]` is one `ChainExpression`
+/// around a member whose property is a bare `MemberExpression` carrying
+/// `optional: true`. Without this the inner `?.` would reach the compiler as a
+/// plain member — [`finalize`] drops `optional` from those — and the compiler
+/// would read `a?.[b.c]`, which is a different program.
+fn nested(value: Value) -> Value {
+    if value.is_object() && starts_a_chain(&value) {
+        // `chain` converts this one's spine and comes back here for whatever
+        // hangs off it, so there is nothing left to walk below.
+        return chain(value);
+    }
+    match value {
+        Value::Array(items) => Value::Array(items.into_iter().map(nested).collect()),
+        Value::Object(mut map) => {
+            for (key, child) in &mut map {
+                if SKIPPED.contains(&key.as_str()) {
+                    continue;
+                }
+                *child = nested(std::mem::take(child));
+            }
+            Value::Object(map)
+        }
+        other => other,
+    }
+}
+
+/// Whether this node is the outermost node of an optional chain: one `?.`
+/// anywhere along its spine of `object` and `callee` links makes the whole
+/// spine one chain, and short-circuiting covers all of it.
+fn starts_a_chain(node: &Value) -> bool {
+    let mut current = node;
+    loop {
+        let link = match node_type(current) {
+            Some("MemberExpression") => "object",
+            Some("CallExpression") => "callee",
+            // Anything else ends the spine — including the `Optional*` nodes a
+            // chain already converted, which are nobody's to convert twice.
+            _ => return false,
+        };
+        if bool_field(current, "optional") {
+            return true;
+        }
+        current = &current[link];
     }
 }
 
@@ -505,7 +569,7 @@ fn comment(node: &Value) -> Value {
     Value::Object(out)
 }
 
-/// The keys `finalize` never descends into.
+/// The keys [`finalize`] and [`nested`] never descend into.
 const SKIPPED: [&str; 4] = ["type", "loc", "range", "extra"];
 
 /// Overwrite an existing `loc` with a recomputed start and end.
@@ -720,6 +784,58 @@ mod tests {
         assert_eq!(expression["callee"]["type"], "OptionalMemberExpression");
         assert_eq!(expression["callee"]["optional"], false);
         assert_eq!(expression["callee"]["object"]["optional"], true);
+    }
+
+    #[test]
+    fn a_chain_in_a_computed_property_is_a_chain_of_its_own() {
+        // The parser wraps only the outermost member in a `ChainExpression`,
+        // so `b?.c` arrives bare and nothing but this marks it optional.
+        let file = babel("a?.[b?.c];\n");
+        let expression = &file["program"]["body"][0]["expression"];
+        assert_eq!(expression["type"], "OptionalMemberExpression");
+        assert_eq!(expression["optional"], true);
+        assert_eq!(expression["property"]["type"], "OptionalMemberExpression");
+        assert_eq!(expression["property"]["optional"], true);
+    }
+
+    #[test]
+    fn a_chain_in_an_argument_is_a_chain_of_its_own() {
+        let file = babel("a?.b(c?.d, {e: f?.g});\n");
+        let expression = &file["program"]["body"][0]["expression"];
+        assert_eq!(expression["type"], "OptionalCallExpression");
+        let arguments = expression["arguments"].as_array().unwrap();
+        assert_eq!(arguments[0]["type"], "OptionalMemberExpression");
+        assert_eq!(arguments[0]["optional"], true);
+        // Reached through an object literal, which is not a chain itself.
+        let value = &arguments[1]["properties"][0]["value"];
+        assert_eq!(value["type"], "OptionalMemberExpression");
+        assert_eq!(value["optional"], true);
+    }
+
+    #[test]
+    fn chains_nest_to_any_depth_in_a_property() {
+        let file = babel("x.y?.[p.a?.[p.b?.[p.c]]];\n");
+        let outer = &file["program"]["body"][0]["expression"];
+        let middle = &outer["property"];
+        let inner = &middle["property"];
+        assert_eq!(outer["type"], "OptionalMemberExpression");
+        assert_eq!(middle["type"], "OptionalMemberExpression");
+        assert_eq!(inner["type"], "OptionalMemberExpression");
+        for node in [outer, middle, inner] {
+            assert_eq!(node["optional"], true);
+            // The spine below each `?.` is not optional and stays plain.
+            assert_eq!(node["object"]["type"], "MemberExpression");
+        }
+    }
+
+    #[test]
+    fn a_member_off_the_spine_that_is_not_optional_stays_plain() {
+        let file = babel("a?.b(c.d);\n");
+        let expression = &file["program"]["body"][0]["expression"];
+        assert_eq!(expression["type"], "OptionalCallExpression");
+        assert_eq!(expression["arguments"][0]["type"], "MemberExpression");
+        // Babel keeps no `optional` on a plain member; `finalize` removes it.
+        assert!(expression["arguments"][0].get("optional").is_none());
     }
 
     #[test]
