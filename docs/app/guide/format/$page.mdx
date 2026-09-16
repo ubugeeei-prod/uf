@@ -540,15 +540,22 @@ plugin.
 | `anchor-has-content` | `a11y/anchor-has-content` |
 | `anchor-is-valid` | `a11y/anchor-is-valid` |
 | `aria-props` | `a11y/aria-props` |
+| `aria-proptypes` | `a11y/aria-proptypes` |
+| `aria-role` | `a11y/aria-role` |
+| `aria-unsupported-elements` | `a11y/aria-unsupported-elements` |
 | `heading-has-content` | `a11y/heading-has-content` |
 | `html-has-lang` | `a11y/html-has-lang` |
 | `iframe-has-title` | `a11y/iframe-has-title` |
 | `img-redundant-alt` | `a11y/img-redundant-alt` |
 | `label-has-associated-control`, `label-has-for` | `a11y/label-has-associated-control` |
 | `media-has-caption` | `a11y/media-has-caption` |
+| `no-redundant-roles` | `a11y/no-redundant-roles` |
 | `no-static-element-interactions` | `a11y/no-static-element-interactions` |
+| `prefer-tag-over-role` | `a11y/prefer-tag-over-role` (warn; the roles a tag really replaces) |
+| `role-has-required-aria-props` | `a11y/role-has-required-aria-props` |
+| `role-supports-aria-props` | `a11y/role-supports-aria-props` |
 | `accessible-emoji`, `no-onchange` | Not needed — deprecated in the plugin itself |
-| `aria-activedescendant-has-tabindex`, `aria-proptypes`, `aria-role`, `aria-unsupported-elements`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `interactive-supports-focus`, `lang`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `no-redundant-roles`, `prefer-tag-over-role`, `role-has-required-aria-props`, `role-supports-aria-props`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
+| `aria-activedescendant-has-tabindex`, `autocomplete-valid`, `click-events-have-key-events`, `control-has-associated-label`, `interactive-supports-focus`, `lang`, `mouse-events-have-key-events`, `no-access-key`, `no-aria-hidden-on-focusable`, `no-autofocus`, `no-distracting-elements`, `no-interactive-element-to-noninteractive-role`, `no-noninteractive-element-interactions`, `no-noninteractive-element-to-interactive-role`, `no-noninteractive-tabindex`, `scope`, `tabindex-no-positive` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
 
 Where an `a11y/*` rule answers differently from the plugin, it is on purpose
 and always in the same direction: a rule that cannot see what it is asking
@@ -565,6 +572,31 @@ title is reported:
 
 // named, so not reported
 <a href="/" aria-label="Home"><svg viewBox="0 0 24 24"><path d="M3 12l9-9 9 9" /></svg></a>
+```
+
+The rules that read roles and `aria-*` attributes — `a11y/aria-props`,
+`a11y/aria-proptypes`, `a11y/aria-role`, `a11y/role-has-required-aria-props`
+and `a11y/role-supports-aria-props` — share one table, generated from
+[`aria-query`](https://www.npmjs.com/package/aria-query), which is the encoding
+of [WAI-ARIA 1.2](https://www.w3.org/TR/wai-aria-1.2/) the ESLint plugin itself
+reads. Where axe-core's table is more permissive than the specification, uf
+follows the specification: axe allows `aria-required` on `radio`, ARIA 1.2 does
+not give `radio` that attribute, and the plugin's own documentation lists it as
+a failure.
+
+One difference is uf's own. ARIA 1.2 makes `generic` — the role of a plain
+`<div>` or `<span>` — *name-prohibited*, so `aria-label` on one is discarded and
+the element ends up with no name at all. The plugin does not report this,
+because its table of implicit roles has no entry for `div`;
+`a11y/role-supports-aria-props` does:
+
+```jsx
+// a11y/role-supports-aria-props: this name is discarded, not announced
+<div aria-label="Close" />
+
+// named, because the role takes a name
+<div role="group" aria-label="Filters" />
+<section aria-label="Timeline posts" />
 ```
 
 #### eslint-plugin-import

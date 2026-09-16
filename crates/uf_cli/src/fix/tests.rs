@@ -383,6 +383,9 @@ fn the_accessibility_rules_have_no_mechanical_answer() {
         "a11y/anchor-has-content",
         "a11y/anchor-is-valid",
         "a11y/aria-props",
+        "a11y/aria-proptypes",
+        "a11y/aria-role",
+        "a11y/aria-unsupported-elements",
         "a11y/heading-has-content",
         "a11y/heading-order",
         "a11y/html-has-lang",
@@ -390,7 +393,11 @@ fn the_accessibility_rules_have_no_mechanical_answer() {
         "a11y/img-redundant-alt",
         "a11y/label-has-associated-control",
         "a11y/media-has-caption",
+        "a11y/no-redundant-roles",
         "a11y/no-static-element-interactions",
+        "a11y/prefer-tag-over-role",
+        "a11y/role-has-required-aria-props",
+        "a11y/role-supports-aria-props",
         "markup/no-invalid-nesting",
     ] {
         assert!(

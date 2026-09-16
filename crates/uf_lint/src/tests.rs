@@ -5,7 +5,9 @@
 //! is what keeps a fixture written for one rule from being scored by another rule
 //! that happens to fire on the same line.
 
+mod a11y_aria;
 mod a11y_content;
+mod a11y_tags;
 mod catalogue;
 mod driver;
 mod fetch;
