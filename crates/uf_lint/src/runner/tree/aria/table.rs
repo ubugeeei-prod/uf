@@ -341,6 +341,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "alertdialog",
@@ -348,6 +349,14 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2846eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "alert",
+            "dialog",
+            "roletype",
+            "section",
+            "structure",
+            "window",
+        ],
     },
     Role {
         name: "application",
@@ -355,6 +364,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "article",
@@ -362,6 +372,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x82942eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["document", "roletype", "structure"],
     },
     Role {
         name: "banner",
@@ -369,6 +380,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "blockquote",
@@ -376,6 +388,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "button",
@@ -383,6 +396,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2a42efbb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "roletype", "widget"],
     },
     Role {
         name: "caption",
@@ -390,6 +404,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "cell",
@@ -397,6 +412,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3a842eb2bf22,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "checkbox",
@@ -404,6 +420,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3c42fbfb862,
         required: 0x40,
         prohibited: 0x0,
+        ancestors: &["input", "roletype", "widget"],
     },
     Role {
         name: "code",
@@ -411,6 +428,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "columnheader",
@@ -418,6 +436,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x17bc42fffbf22,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "cell",
+            "gridcell",
+            "roletype",
+            "section",
+            "sectionhead",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "combobox",
@@ -425,6 +452,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3c42fffb827,
         required: 0x80800,
         prohibited: 0x0,
+        ancestors: &["input", "roletype", "widget"],
     },
     Role {
         name: "command",
@@ -432,6 +460,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "widget"],
     },
     Role {
         name: "complementary",
@@ -439,6 +468,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "composite",
@@ -446,6 +476,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "widget"],
     },
     Role {
         name: "contentinfo",
@@ -453,6 +484,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "definition",
@@ -460,6 +492,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "deletion",
@@ -467,6 +500,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "dialog",
@@ -474,6 +508,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2846eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "window"],
     },
     Role {
         name: "directory",
@@ -481,6 +516,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["list", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-abstract",
@@ -488,6 +524,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-acknowledgments",
@@ -495,6 +532,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-afterword",
@@ -502,6 +540,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-appendix",
@@ -509,6 +548,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-backlink",
@@ -516,6 +556,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "link", "roletype", "widget"],
     },
     Role {
         name: "doc-biblioentry",
@@ -523,6 +564,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x82943fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["listitem", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-bibliography",
@@ -530,6 +572,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-biblioref",
@@ -537,6 +580,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "link", "roletype", "widget"],
     },
     Role {
         name: "doc-chapter",
@@ -544,6 +588,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-colophon",
@@ -551,6 +596,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-conclusion",
@@ -558,6 +604,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-cover",
@@ -565,6 +612,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["img", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-credit",
@@ -572,6 +620,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-credits",
@@ -579,6 +628,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-dedication",
@@ -586,6 +636,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-endnote",
@@ -593,6 +644,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x82943fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["listitem", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-endnotes",
@@ -600,6 +652,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-epigraph",
@@ -607,6 +660,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-epilogue",
@@ -614,6 +668,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-errata",
@@ -621,6 +676,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-example",
@@ -628,6 +684,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-footnote",
@@ -635,6 +692,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-foreword",
@@ -642,6 +700,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-glossary",
@@ -649,6 +708,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-glossref",
@@ -656,6 +716,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "link", "roletype", "widget"],
     },
     Role {
         name: "doc-index",
@@ -663,6 +724,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "navigation", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-introduction",
@@ -670,6 +732,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-noteref",
@@ -677,6 +740,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "link", "roletype", "widget"],
     },
     Role {
         name: "doc-notice",
@@ -684,6 +748,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["note", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-pagebreak",
@@ -691,6 +756,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e02862fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "separator", "structure"],
     },
     Role {
         name: "doc-pagefooter",
@@ -698,6 +764,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842ff7f83a,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-pageheader",
@@ -705,6 +772,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842ff7f83a,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-pagelist",
@@ -712,6 +780,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "navigation", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-part",
@@ -719,6 +788,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-preface",
@@ -726,6 +796,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-prologue",
@@ -733,6 +804,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-pullquote",
@@ -740,6 +812,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["none"],
     },
     Role {
         name: "doc-qna",
@@ -747,6 +820,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "doc-subtitle",
@@ -754,6 +828,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "sectionhead", "structure"],
     },
     Role {
         name: "doc-tip",
@@ -761,6 +836,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["note", "roletype", "section", "structure"],
     },
     Role {
         name: "doc-toc",
@@ -768,6 +844,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "navigation", "roletype", "section", "structure"],
     },
     Role {
         name: "document",
@@ -775,6 +852,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "emphasis",
@@ -782,6 +860,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "feed",
@@ -789,6 +868,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["list", "roletype", "section", "structure"],
     },
     Role {
         name: "figure",
@@ -796,6 +876,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "form",
@@ -803,6 +884,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "generic",
@@ -810,6 +892,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "graphics-document",
@@ -817,6 +900,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["document", "roletype", "structure"],
     },
     Role {
         name: "graphics-object",
@@ -824,6 +908,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["group", "roletype", "section", "structure"],
     },
     Role {
         name: "graphics-symbol",
@@ -831,6 +916,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842fffb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["img", "roletype", "section", "structure"],
     },
     Role {
         name: "grid",
@@ -838,6 +924,14 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x6c52eb3b8a3,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "roletype",
+            "section",
+            "structure",
+            "table",
+            "widget",
+        ],
     },
     Role {
         name: "gridcell",
@@ -845,6 +939,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x7bc42fffbf22,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["cell", "roletype", "section", "structure", "widget"],
     },
     Role {
         name: "group",
@@ -852,6 +947,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "heading",
@@ -859,6 +955,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2843eb2b822,
         required: 0x10000000,
         prohibited: 0x0,
+        ancestors: &["roletype", "sectionhead", "structure"],
     },
     Role {
         name: "img",
@@ -866,6 +963,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "input",
@@ -873,6 +971,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb3b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "widget"],
     },
     Role {
         name: "insertion",
@@ -880,6 +979,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "landmark",
@@ -887,6 +987,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "link",
@@ -894,6 +995,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842efbb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "roletype", "widget"],
     },
     Role {
         name: "list",
@@ -901,6 +1003,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "listbox",
@@ -908,6 +1011,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3c72fbfb823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "group",
+            "roletype",
+            "section",
+            "select",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "listitem",
@@ -915,6 +1027,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x82943eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "log",
@@ -922,6 +1035,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "main",
@@ -929,6 +1043,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "mark",
@@ -936,6 +1051,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2f83a,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "marquee",
@@ -943,6 +1059,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "math",
@@ -950,6 +1067,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "menu",
@@ -957,6 +1075,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2862eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "group",
+            "roletype",
+            "section",
+            "select",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "menubar",
@@ -964,6 +1091,16 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2862eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "group",
+            "menu",
+            "roletype",
+            "section",
+            "select",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "menuitem",
@@ -971,6 +1108,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x82942efbb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["command", "roletype", "widget"],
     },
     Role {
         name: "menuitemcheckbox",
@@ -978,6 +1116,9 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x83d42fffb862,
         required: 0x40,
         prohibited: 0x0,
+        ancestors: &[
+            "checkbox", "command", "input", "menuitem", "roletype", "widget",
+        ],
     },
     Role {
         name: "menuitemradio",
@@ -985,6 +1126,16 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x83d42fffb862,
         required: 0x40,
         prohibited: 0x0,
+        ancestors: &[
+            "checkbox",
+            "command",
+            "input",
+            "menuitem",
+            "menuitemcheckbox",
+            "radio",
+            "roletype",
+            "widget",
+        ],
     },
     Role {
         name: "meter",
@@ -992,6 +1143,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e02842eb2b822,
         required: 0x8000000000000,
         prohibited: 0x0,
+        ancestors: &["range", "roletype", "structure"],
     },
     Role {
         name: "navigation",
@@ -999,6 +1151,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "none",
@@ -1006,6 +1159,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[],
     },
     Role {
         name: "note",
@@ -1013,6 +1167,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "option",
@@ -1020,6 +1175,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0xc2942eb3b862,
         required: 0x400000000000,
         prohibited: 0x0,
+        ancestors: &["input", "roletype", "widget"],
     },
     Role {
         name: "paragraph",
@@ -1027,6 +1183,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "presentation",
@@ -1034,6 +1191,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "progressbar",
@@ -1041,6 +1199,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e02842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["range", "roletype", "structure", "widget"],
     },
     Role {
         name: "radio",
@@ -1048,6 +1207,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x82942eb3b862,
         required: 0x40,
         prohibited: 0x0,
+        ancestors: &["input", "roletype", "widget"],
     },
     Role {
         name: "radiogroup",
@@ -1055,6 +1215,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3c62fb7b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "group",
+            "roletype",
+            "section",
+            "select",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "range",
@@ -1062,6 +1231,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0xe02842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "region",
@@ -1069,6 +1239,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "roletype",
@@ -1076,6 +1247,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[],
     },
     Role {
         name: "row",
@@ -1083,6 +1255,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0xda943ebbbb23,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["group", "roletype", "section", "structure", "widget"],
     },
     Role {
         name: "rowgroup",
@@ -1090,6 +1263,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "rowheader",
@@ -1097,6 +1271,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x17bc42fffbf22,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "cell",
+            "gridcell",
+            "roletype",
+            "section",
+            "sectionhead",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "scrollbar",
@@ -1104,6 +1287,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e02862eb3b822,
         required: 0x8000000000800,
         prohibited: 0x0,
+        ancestors: &["range", "roletype", "structure", "widget"],
     },
     Role {
         name: "search",
@@ -1111,6 +1295,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["landmark", "roletype", "section", "structure"],
     },
     Role {
         name: "searchbox",
@@ -1118,6 +1303,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3ccaff7b827,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["input", "roletype", "textbox", "widget"],
     },
     Role {
         name: "section",
@@ -1125,6 +1311,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "sectionhead",
@@ -1132,6 +1319,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "select",
@@ -1139,6 +1327,14 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2862eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "group",
+            "roletype",
+            "section",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "separator",
@@ -1146,6 +1342,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e02862eb3b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "structure"],
     },
     Role {
         name: "slider",
@@ -1153,6 +1350,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e02c62ff7b822,
         required: 0x8000000000000,
         prohibited: 0x0,
+        ancestors: &["input", "range", "roletype", "structure", "widget"],
     },
     Role {
         name: "spinbutton",
@@ -1160,6 +1358,14 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x1e03c42fb7b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "input",
+            "range",
+            "roletype",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "status",
@@ -1167,6 +1373,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "strong",
@@ -1174,6 +1381,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "structure",
@@ -1181,6 +1389,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype"],
     },
     Role {
         name: "subscript",
@@ -1188,6 +1397,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "superscript",
@@ -1195,6 +1405,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0xc000000,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "switch",
@@ -1202,6 +1413,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3c42fbfb862,
         required: 0x40,
         prohibited: 0x0,
+        ancestors: &["checkbox", "input", "roletype", "widget"],
     },
     Role {
         name: "tab",
@@ -1209,6 +1421,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0xc2942efbb822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "sectionhead", "structure", "widget"],
     },
     Role {
         name: "table",
@@ -1216,6 +1429,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x6842eb2b8a2,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "tablist",
@@ -1223,6 +1437,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2873eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["composite", "roletype", "widget"],
     },
     Role {
         name: "tabpanel",
@@ -1230,6 +1445,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "term",
@@ -1237,6 +1453,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "textbox",
@@ -1244,6 +1461,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3ccaff7b827,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["input", "roletype", "widget"],
     },
     Role {
         name: "time",
@@ -1251,6 +1469,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "timer",
@@ -1258,6 +1477,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "status", "structure"],
     },
     Role {
         name: "toolbar",
@@ -1265,6 +1485,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2862eb3b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["group", "roletype", "section", "structure"],
     },
     Role {
         name: "tooltip",
@@ -1272,6 +1493,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype", "section", "structure"],
     },
     Role {
         name: "tree",
@@ -1279,6 +1501,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x3872fb7b823,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "group",
+            "roletype",
+            "section",
+            "select",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "treegrid",
@@ -1286,6 +1517,18 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x7c72fb7b8a3,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &[
+            "composite",
+            "grid",
+            "group",
+            "roletype",
+            "section",
+            "select",
+            "structure",
+            "table",
+            "tree",
+            "widget",
+        ],
     },
     Role {
         name: "treeitem",
@@ -1293,6 +1536,15 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0xc2943efbb862,
         required: 0x400000000000,
         prohibited: 0x0,
+        ancestors: &[
+            "input",
+            "listitem",
+            "option",
+            "roletype",
+            "section",
+            "structure",
+            "widget",
+        ],
     },
     Role {
         name: "widget",
@@ -1300,6 +1552,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2842eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype"],
     },
     Role {
         name: "window",
@@ -1307,6 +1560,7 @@ pub(super) static ROLES: &[Role] = &[
         supported: 0x2846eb2b822,
         required: 0x0,
         prohibited: 0x0,
+        ancestors: &["roletype"],
     },
 ];
 

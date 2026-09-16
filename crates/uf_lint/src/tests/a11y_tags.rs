@@ -239,6 +239,33 @@ fn noninteractive_to_interactive_accepts_the_documented_pass() {
     );
 }
 
+/// A role the element is already a kind of says something sharper about it,
+/// not something else.
+///
+/// `grid` is a kind of `table` in ARIA's taxonomy, so `<table role="grid">` is
+/// how a keyboard-navigable grid is built — the pattern in uf's own date
+/// picker — and reporting it would be reporting working markup. The widget
+/// flag cannot draw this line: `button` and `grid` are both widgets, and only
+/// one of them disagrees with the element under it.
+#[test]
+fn noninteractive_to_interactive_accepts_a_role_the_element_is_a_kind_of() {
+    accepts(
+        "a11y/no-noninteractive-element-to-interactive-role",
+        &[r#"<table role="grid"><tbody><tr><td>1</td></tr></tbody></table>"#],
+    );
+    // The roles that are *not* a kind of the element they were put on are
+    // still reported: `listbox`, `menu` and `tree` descend from `select` and
+    // `group`, never from `list`.
+    reports(
+        "a11y/no-noninteractive-element-to-interactive-role",
+        &[
+            r#"<ul role="listbox">Save</ul>"#,
+            r#"<ul role="menu">Save</ul>"#,
+            r#"<ul role="button">Save</ul>"#,
+        ],
+    );
+}
+
 // --- a11y/no-noninteractive-element-interactions ----------------------------
 
 #[test]
@@ -267,6 +294,39 @@ fn noninteractive_element_interactions_accepts_the_documented_pass() {
             // A spread may carry a role in.
             r#"<article onClick={open} onKeyDown={open} {...rest}>Open</article>"#,
         ],
+    );
+}
+
+/// An element a keyboard can reach is not what this rule is about.
+///
+/// A named, focusable container that answers the arrow keys is the documented
+/// way to build a scrollable or navigable region — it is the same pattern that
+/// makes `a11y/no-noninteractive-tabindex` a `warn` — and the complaint here,
+/// that the handlers sit where nothing can get to them, is simply untrue of
+/// it. Whether such an element is *announced* as a control belongs to
+/// `a11y/no-noninteractive-element-to-interactive-role`.
+#[test]
+fn noninteractive_element_interactions_leaves_a_focusable_container_alone() {
+    accepts(
+        "a11y/no-noninteractive-element-interactions",
+        &[
+            r#"<div role="region" tabIndex={0} aria-label="Clips" onKeyDown={move}>x</div>"#,
+            r#"<article tabIndex={0} onClick={open} onKeyDown={open}>Open</article>"#,
+        ],
+    );
+    // Without the tab stop the same markup is unreachable, and reported.
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[
+            r#"<div role="region" aria-label="Clips" onKeyDown={move}>x</div>"#,
+            r#"<article onClick={open} onKeyDown={open}>Open</article>"#,
+        ],
+    );
+    // A negative `tabIndex` is script-only focus, never a tab stop, so it does
+    // not make the handlers reachable either.
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[r#"<article tabIndex={-1} onClick={open} onKeyDown={open}>Open</article>"#],
     );
 }
 

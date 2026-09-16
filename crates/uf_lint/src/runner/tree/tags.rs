@@ -422,6 +422,15 @@ fn noninteractive_to_interactive(
     if implicit.is_widget() || NOT_ADVICE.contains(implicit.name) {
         return;
     }
+    // A role the element's own role is an ancestor of says something sharper
+    // about it rather than something else: `grid` is a kind of `table`, so
+    // `<table role="grid">` is how a keyboard-navigable grid is built and not
+    // a contradiction to report. Asked of ARIA's taxonomy in the generated
+    // table, because the widget flag cannot tell the two apart — `button` and
+    // `grid` are both widgets, and only one of them disagrees with its host.
+    if role.inherits_from(implicit.name) {
+        return;
+    }
     tree.report(
         &written.loc,
         NONINTERACTIVE_TO_INTERACTIVE,
@@ -456,6 +465,19 @@ fn noninteractive_element_interactions(
     opening: &jsx::Opening<Loc, Loc>,
 ) {
     if INTERACTIVE_ELEMENTS.contains(host) || has_spread(opening) || !has_handler(opening) {
+        return;
+    }
+    // An element a keyboard can reach is not the defect this rule names. The
+    // complaint is that handlers sit where nothing can get to them, and a
+    // `tabIndex` of zero or more answers it: a named, focusable region that
+    // handles arrow keys is the documented way to build a scrollable or
+    // navigable container, and reporting it would be reporting working
+    // markup. Whether such an element is *announced* as a control is
+    // `a11y/no-noninteractive-element-to-interactive-role`'s question.
+    //
+    // `focusable` is `interaction`'s, shared rather than restated, so that
+    // "can a keyboard reach this" has one answer across the crate.
+    if super::interaction::focusable(tree, host, opening) {
         return;
     }
     // Without a key handler this is one of the other two rules' markup. See

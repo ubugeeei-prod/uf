@@ -152,7 +152,7 @@ pub(super) fn check(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc,
 }
 
 /// The `tabIndex` written on this element, when the source settles it.
-fn tab_index(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> Option<f64> {
+pub(super) fn tab_index(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> Option<f64> {
     let written = attribute(opening, "tabIndex")?;
     match tree.scope.value(written) {
         Value::Number(index) => Some(index),
@@ -165,7 +165,7 @@ fn tab_index(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> Option<f64> {
 /// The elements HTML focuses on its own, and anything given a `tabIndex` of
 /// zero or more. A negative `tabIndex` is script-only focus — reachable by
 /// `.focus()`, never by <kbd>Tab</kbd> — which is why it does not count here.
-fn focusable(tree: &Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) -> bool {
+pub(super) fn focusable(tree: &Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) -> bool {
     match tab_index(tree, opening) {
         Some(index) => index >= 0.0,
         None => INTERACTIVE_ELEMENTS.contains(name),
