@@ -275,7 +275,12 @@ export component SidebarItem(
   ...rest: Rest
 ) {
   const sidebar = useSidebar("Sidebar.Item");
+  // This removes the caller's ref from rest props; it does not read a ref value.
+  // uf-lint-disable-next-line react-compiler/refs
   const passed = withoutComposed(rest, ["ref"]);
+  // The forwarded ref is passed through to whichever entry wrapper renders.
+  // uf-lint-disable-next-line react-compiler/refs
+  const forwardedRef = rest.ref;
   const mine: Rest = {
     "aria-label": sidebar.collapsed ? label : undefined,
     children,
@@ -293,7 +298,9 @@ export component SidebarItem(
   };
 
   if (!sidebar.collapsed) {
-    return entry({ ref: rest.ref });
+    // The forwarded ref is passed through to the rendered entry.
+    // uf-lint-disable-next-line react-compiler/refs
+    return entry({ ref: forwardedRef });
   }
 
   // The icon's name, shown. A reader who can see the rail and not read minds
@@ -301,7 +308,7 @@ export component SidebarItem(
   // the mechanism that already satisfies WCAG 1.4.13 in this package.
   return (
     <TooltipRoot>
-      <TooltipTrigger ref={rest.ref} render={(props: Rest) => entry(props)} />
+      <TooltipTrigger ref={forwardedRef} render={(props: Rest) => entry(props)} />
       <TooltipBody
         {...forwarded(tooltipProps ?? {})}
         side={sidebar.side === "left" ? "right" : "left"}
