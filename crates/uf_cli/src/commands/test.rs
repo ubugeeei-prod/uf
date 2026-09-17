@@ -1223,7 +1223,11 @@ pub(crate) fn runner_plan() -> NativeTestRunnerPlan {
 
 /// Resolve the concrete application runtime a test run targets.
 pub(crate) fn test_application_target(config: &UniflowedConfig) -> TestApplicationTarget {
-    match config.test.native_runner().application_target {
+    let target = config
+        .test
+        .target
+        .unwrap_or_else(|| config.test.native_runner().application_target);
+    match target {
         NativeTestApplicationTarget::Web => TestApplicationTarget::Web,
         NativeTestApplicationTarget::ReactNative => TestApplicationTarget::ReactNative,
         NativeTestApplicationTarget::Auto => match config.app.framework {
@@ -1237,10 +1241,10 @@ fn refuse_unsupported_test_target(target: TestApplicationTarget) -> Result<()> {
     match target {
         TestApplicationTarget::Web => Ok(()),
         TestApplicationTarget::ReactNative => bail!(
-            "`uf test` resolved `test.runner.applicationTarget` to `react-native`, but the \
+            "`uf test` resolved `test.target` to `react-native`, but the \
              runner has no React Native renderer or host config yet. It refuses here instead \
-             of running the suite on the web document shim. Set `test.runner.applicationTarget` \
-             to `web` only for tests that intentionally target a document."
+             of running the suite on the web document shim. Set `test.target` to `web` only for \
+             tests that intentionally target a document."
         ),
     }
 }
@@ -1379,8 +1383,8 @@ mod tests {
         );
     }
 
-    /// `test.runner` written as the object, which is where `applicationTarget`
-    /// is still spelled until ubugeeei-prod/uf#953 gives it a key of its own.
+    /// `test.runner` written as the object, where `applicationTarget` is kept
+    /// as a legacy fallback for configs that have not moved to `test.target`.
     fn runner_object(target: NativeTestApplicationTarget) -> uf_config::TestRunnerConfig {
         let mut runner = uf_config::NativeTestRunnerConfig::default();
         runner.application_target = target;
@@ -1388,7 +1392,24 @@ mod tests {
     }
 
     #[test]
-    fn explicit_test_application_target_wins_over_the_framework() {
+    fn test_target_wins_over_the_framework_and_the_legacy_object() {
+        let mut config = UniflowedConfig::default();
+        config.app.framework = FrameworkPreset::ReactNative;
+        config.test.target = Some(NativeTestApplicationTarget::Web);
+        config.test.runner = Some(runner_object(NativeTestApplicationTarget::ReactNative));
+
+        assert_eq!(test_application_target(&config), TestApplicationTarget::Web);
+
+        config.test.target = Some(NativeTestApplicationTarget::ReactNative);
+
+        assert_eq!(
+            test_application_target(&config),
+            TestApplicationTarget::ReactNative
+        );
+    }
+
+    #[test]
+    fn legacy_runner_object_target_still_answers_when_test_target_is_absent() {
         let mut config = UniflowedConfig::default();
         config.app.framework = FrameworkPreset::ReactNative;
         config.test.runner = Some(runner_object(NativeTestApplicationTarget::Web));
@@ -1399,6 +1420,19 @@ mod tests {
         assert_eq!(
             test_application_target(&config),
             TestApplicationTarget::ReactNative
+        );
+    }
+
+    #[test]
+    fn unsupported_react_native_target_names_test_target() {
+        let message = refuse_unsupported_test_target(TestApplicationTarget::ReactNative)
+            .unwrap_err()
+            .to_string();
+
+        assert!(message.contains("test.target"), "{message}");
+        assert!(
+            !message.contains("test.runner.applicationTarget"),
+            "{message}"
         );
     }
 

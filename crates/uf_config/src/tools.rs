@@ -578,7 +578,8 @@ pub enum TestRunnerConfig {
     /// The object form, which describes uf's own runner field by field.
     ///
     /// **Deprecated.** It still parses and `applicationTarget` in it is still
-    /// read; `uf test` says once which spelling replaces it. See
+    /// read when `test.target` is absent; `uf test` says once which spelling
+    /// replaces it. See
     /// [`UniflowedConfig::test_runner_deprecation`].
     Object(NativeTestRunnerConfig),
 }
@@ -619,7 +620,8 @@ impl crate::TestConfig {
     /// The native runner's settings: the object form when a project still
     /// writes it, and uf's defaults otherwise.
     ///
-    /// `applicationTarget` is the one field in it any command reads.
+    /// `applicationTarget` is read only as the legacy fallback for
+    /// `test.target`.
     #[must_use]
     pub fn native_runner(&self) -> &NativeTestRunnerConfig {
         match &self.runner {
@@ -1299,7 +1301,7 @@ impl UniflowedConfig {
 
     /// The sentence for a project still writing `test.runner` as an object.
     ///
-    /// Two sentences, because the object has one field a command reads.
+    /// Two sentences, because the object had one field a command reads.
     /// `applicationTarget` is inferred from `app.framework` when it is `auto`,
     /// so a project whose object says what the inference would say loses
     /// nothing by writing `runner: "uf"`. A project whose object overrides the
@@ -1318,15 +1320,16 @@ impl UniflowedConfig {
         if target == NativeTestApplicationTarget::Auto || target == inferred {
             return Some(
                 "test.runner as an object describes uf's own runner, which is `runner: \"uf\"` \
-                 and the default — `applicationTarget` follows `app.framework` — so the object \
+                 and the default — `test.target` follows `app.framework` — so the object \
                  can go"
                     .to_owned(),
             );
         }
         Some(format!(
             "test.runner as an object is deprecated in favour of `runner: \"uf\"`, and this one \
-             sets `applicationTarget: \"{}\"`, which has no other spelling yet — keep the object \
-             until ubugeeei-prod/uf#{TEST_TARGET_ISSUE} gives it one",
+             sets `applicationTarget: \"{}\"` — write `test.target: \"{}\"` beside `runner: \"uf\"` \
+             to keep that override",
+            target_name(target),
             target_name(target)
         ))
     }
@@ -1346,10 +1349,6 @@ impl UniflowedConfig {
         .collect()
     }
 }
-
-/// The issue that gives `test.runner.applicationTarget` a spelling outside the
-/// object form.
-const TEST_TARGET_ISSUE: u32 = 953;
 
 fn target_name(target: NativeTestApplicationTarget) -> &'static str {
     match target {

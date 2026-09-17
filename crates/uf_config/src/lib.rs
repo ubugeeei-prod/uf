@@ -1356,6 +1356,10 @@ pub struct TestConfig {
     /// [`ConfigError::TestRuntimeContradictsRunner`] for the one combination
     /// that is refused.
     pub runtime: Option<Written<RuntimeSpec>>,
+    /// Which application host `uf test` targets. `None` preserves the legacy
+    /// `test.runner.applicationTarget` fallback until the object form goes
+    /// away.
+    pub target: Option<NativeTestApplicationTarget>,
     /// What runs the suite: `"uf"` or `"bun[@version]"` — or, deprecated, the
     /// object that described uf's own runner field by field.
     ///
@@ -1371,6 +1375,7 @@ impl Default for TestConfig {
         Self {
             module: CompactString::const_new("@uniflowed/test"),
             runtime: None,
+            target: None,
             runner: None,
             react_testing_library_native: true,
             coverage: CoverageConfig::default(),

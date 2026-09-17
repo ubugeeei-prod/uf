@@ -558,10 +558,10 @@ fn the_object_form_of_test_runner_still_answers() {
     assert!(message.contains("test.runner"), "{message}");
 }
 
-/// An object whose `applicationTarget` overrides the inference is doing
-/// something, and its deprecation does not tell it to stop.
+/// An object whose `applicationTarget` overrides the inference now names the
+/// top-level spelling that keeps the same target.
 #[test]
-fn an_object_that_overrides_the_inferred_target_is_told_to_stay() {
+fn an_object_that_overrides_the_inferred_target_is_told_to_write_test_target() {
     let config = loaded(
         r#"{ app: { framework: "react-native" }, test: { runner: { applicationTarget: "web" } } }"#,
     );
@@ -570,11 +570,11 @@ fn an_object_that_overrides_the_inferred_target_is_told_to_stay() {
         deprecation.contains(r#"applicationTarget: "web""#),
         "{deprecation}"
     );
-    assert!(deprecation.contains("keep the object"), "{deprecation}");
     assert!(
-        deprecation.contains("ubugeeei-prod/uf#953"),
+        deprecation.contains(r#"test.target: "web""#),
         "{deprecation}"
     );
+    assert!(deprecation.contains(r#"runner: "uf""#), "{deprecation}");
 }
 
 /// `env.toolchain` is told the lines to write, and a pin that disagrees with

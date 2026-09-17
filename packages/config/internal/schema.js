@@ -988,12 +988,21 @@ export type UniflowedConfig = {
      */
     readonly runtime?: RuntimeSpec,
     /**
+     * Which application host `uf test` targets.
+     *
+     * `"auto"` follows `app.framework`: React Native projects target
+     * `"react-native"`, and every other project targets `"web"`. Write
+     * `"web"` in a React Native project only for tests that intentionally
+     * target a document.
+     */
+    readonly target?: "auto" | "web" | "react-native",
+    /**
      * What runs the suite: `"uf"`, the default, or `"bun[@version]"`. See
      * `TestRunnerSpec`.
      *
      * The object is the old description of uf's own runner, field by field,
      * and is **deprecated**: it still parses, and `applicationTarget` in it is
-     * still read. ubugeeei-prod/uf#953 is where that one field goes next.
+     * still read when `target` is absent.
      */
     readonly runner?:
       | TestRunnerSpec

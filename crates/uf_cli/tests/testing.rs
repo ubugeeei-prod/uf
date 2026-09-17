@@ -1954,7 +1954,7 @@ fn a_react_native_project_refuses_the_web_document_test_runner() {
         !output.status.success(),
         "React Native tests must not fall through to the web runner:\n{stdout}\n{stderr}"
     );
-    assert!(stderr.contains("applicationTarget"), "{stderr}");
+    assert!(stderr.contains("test.target"), "{stderr}");
     assert!(stderr.contains("react-native"), "{stderr}");
     assert!(stderr.contains("document shim"), "{stderr}");
 }
