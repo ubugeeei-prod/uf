@@ -68,7 +68,7 @@ type HoverCardState = {|
   readonly openDelay: number,
   readonly closeDelay: number,
   /** Whether `Escape` has dismissed it; see `tooltip.js`, which shares the rule. */
-  readonly dismissed: { current: boolean },
+  readonly dismissedRef: { current: boolean },
 |};
 
 const HoverCardContext: React.Context<HoverCardState | null> = createContext(null);
@@ -99,14 +99,14 @@ export component HoverCardRoot(
   const base = useId();
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const dismissed = useRef(false);
+  const dismissedRef = useRef(false);
   const intent = useHoverIntent(setOpen);
 
   const state = useMemo(
     () => ({
       base,
       closeDelay,
-      dismissed,
+      dismissedRef,
       intent,
       open: isOpen,
       openDelay,
@@ -129,36 +129,36 @@ export component HoverCardRoot(
  */
 export component HoverCardTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const card = useHoverCard("HoverCard.Trigger");
-  const { closeDelay, dismissed, intent, openDelay, triggerRef } = card;
+  const { closeDelay, dismissedRef, intent, openDelay, triggerRef } = card;
   useFocusableTrigger(triggerRef, "HoverCard.Trigger");
 
   // A press focuses the trigger, and a card opening under the reader's own
   // click would cover what they just went to. See `tooltip.js`.
-  const pressed = useRef(false);
+  const pressedRef = useRef(false);
 
   useEventListener(triggerRef, "pointerenter", (event: $FlowFixMe) => {
-    if (event.pointerType === "touch" || dismissed.current) {
+    if (event.pointerType === "touch" || dismissedRef.current) {
       return;
     }
     intent.openAfter(openDelay);
   });
   useEventListener(triggerRef, "pointerleave", () => {
-    dismissed.current = false;
+    dismissedRef.current = false;
     intent.closeAfter(closeDelay);
   });
   useEventListener(triggerRef, "pointerdown", () => {
-    pressed.current = true;
+    pressedRef.current = true;
     intent.cancel();
   });
   useEventListener(triggerRef, "focusin", () => {
-    if (pressed.current) {
-      pressed.current = false;
+    if (pressedRef.current) {
+      pressedRef.current = false;
       return;
     }
     // The focus a dismissed card hands *back* to this trigger must not reopen
     // it, which is the whole reason the flag exists: without it `Escape` closes
     // the card, focus returns here, and the card comes straight back.
-    if (dismissed.current) {
+    if (dismissedRef.current) {
       return;
     }
     // A reader who tabbed here has said what they want; only the pointer is
@@ -166,8 +166,8 @@ export component HoverCardTrigger(children?: React.Node, render?: RenderProp, ..
     intent.openAfter(0);
   });
   useEventListener(triggerRef, "focusout", () => {
-    pressed.current = false;
-    dismissed.current = false;
+    pressedRef.current = false;
+    dismissedRef.current = false;
     // `closeAfter` rather than a close, and this is where the delay earns its
     // keep a second time: `Tab` from the trigger *into* the card is a leave
     // followed immediately by an arrival, and the card's own `focusin` calls
@@ -214,16 +214,16 @@ export component HoverCardBody(
   ...rest: Rest
 ) {
   const card = useHoverCard("HoverCard.Body");
-  const { closeDelay, intent, open, triggerRef } = card;
+  const { closeDelay, dismissedRef, intent, open, triggerRef } = card;
   const bodyRef = useRef<HTMLElement | null>(null);
   // Whether the reader is *in* the card, as opposed to over it. It decides one
   // thing and it cannot be asked afterwards: a card closed while it held focus
   // has to hand focus back, and by the time the effect below is cleaned up the
   // element is gone from the document and `activeElement` has already fallen to
   // `<body>` — so the answer is kept while it is still true.
-  const held = useRef(false);
+  const heldRef = useRef(false);
   const close = useStableCallback(() => {
-    card.dismissed.current = true;
+    dismissedRef.current = true;
     intent.cancel();
     card.setOpen(false);
   });
@@ -252,11 +252,11 @@ export component HoverCardBody(
     const stay = () => intent.cancel();
     const go = () => intent.closeAfter(closeDelay);
     const arrived = () => {
-      held.current = true;
+      heldRef.current = true;
       stay();
     };
     const gone = () => {
-      held.current = false;
+      heldRef.current = false;
       go();
     };
     body.addEventListener("pointerenter", stay);
@@ -291,8 +291,8 @@ export component HoverCardBody(
     if (open) {
       return;
     }
-    if (held.current) {
-      held.current = false;
+    if (heldRef.current) {
+      heldRef.current = false;
       triggerRef.current?.focus?.();
     }
   }, [open, triggerRef]);
@@ -301,8 +301,8 @@ export component HoverCardBody(
   // the reader is inside it leaves focus on a node that is gone.
   useEffect(
     () => () => {
-      if (held.current) {
-        held.current = false;
+      if (heldRef.current) {
+        heldRef.current = false;
         triggerRef.current?.focus?.();
       }
     },

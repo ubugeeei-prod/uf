@@ -126,7 +126,7 @@ type TooltipState = {|
    * cannot be closed. It is cleared when the reader leaves the trigger, so
    * coming back opens it again.
    */
-  readonly dismissed: { current: boolean },
+  readonly dismissedRef: { current: boolean },
 |};
 
 const TooltipContext: React.Context<TooltipState | null> = createContext(null);
@@ -180,7 +180,7 @@ export component TooltipRoot(
   const scope = useContext(TooltipScopeContext);
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const dismissed = useRef(false);
+  const dismissedRef = useRef(false);
   const intent = useHoverIntent(setOpen);
   const own = openDelay ?? scope?.delayDuration ?? DEFAULT_OPEN_DELAY;
   const group = scope?.group;
@@ -217,7 +217,7 @@ export component TooltipRoot(
     () => ({
       base,
       closeDelay,
-      dismissed,
+      dismissedRef,
       intent,
       open: isOpen,
       openDelay: () => group?.delayFor(own) ?? own,
@@ -245,19 +245,19 @@ export component TooltipRoot(
  */
 export component TooltipTrigger(children?: React.Node, render?: RenderProp, ...rest: Rest) {
   const tooltip = useTooltip("Tooltip.Trigger");
-  const { closeDelay, dismissed, intent, openDelay, setOpen, triggerRef } = tooltip;
+  const { closeDelay, dismissedRef, intent, openDelay, setOpen, triggerRef } = tooltip;
   useFocusableTrigger(triggerRef, "Tooltip.Trigger");
 
   // Whether the pointer put focus here. A click focuses the button, and
   // reopening the tooltip the click just dismissed would put it back over the
   // thing the reader pressed — so a focus that arrived with a press opens
   // nothing, and the next one, which is the keyboard's, does.
-  const pressed = useRef(false);
+  const pressedRef = useRef(false);
 
   useEventListener(triggerRef, "pointerenter", (event: $FlowFixMe) => {
     // A tap is not a hover. See the module header: opening here is what eats
     // the tap the control was there to receive.
-    if (event.pointerType === "touch" || dismissed.current) {
+    if (event.pointerType === "touch" || dismissedRef.current) {
       return;
     }
     intent.openAfter(openDelay());
@@ -265,28 +265,28 @@ export component TooltipTrigger(children?: React.Node, render?: RenderProp, ...r
   useEventListener(triggerRef, "pointerleave", () => {
     // Leaving is what makes a dismissal stop applying: coming back is a fresh
     // gesture and deserves a fresh answer.
-    dismissed.current = false;
+    dismissedRef.current = false;
     intent.closeAfter(closeDelay);
   });
   useEventListener(triggerRef, "pointerdown", () => {
-    pressed.current = true;
+    pressedRef.current = true;
     intent.cancel();
     setOpen(false);
   });
   useEventListener(triggerRef, "focusin", () => {
-    if (pressed.current) {
-      pressed.current = false;
+    if (pressedRef.current) {
+      pressedRef.current = false;
       return;
     }
-    if (dismissed.current) {
+    if (dismissedRef.current) {
       return;
     }
     // No delay: the reader has already said what they want by arriving here.
     intent.openAfter(0);
   });
   useEventListener(triggerRef, "focusout", () => {
-    pressed.current = false;
-    dismissed.current = false;
+    pressedRef.current = false;
+    dismissedRef.current = false;
     intent.closeAfter(0);
   });
 
@@ -332,14 +332,14 @@ export component TooltipBody(
   ...rest: Rest
 ) {
   const tooltip = useTooltip("Tooltip.Body");
-  const { closeDelay, intent, open, triggerRef } = tooltip;
+  const { closeDelay, dismissedRef, intent, open, triggerRef } = tooltip;
   const bodyRef = useRef<HTMLElement | null>(null);
   const close = useStableCallback(() => {
     // `Escape` dismisses it *and* keeps it dismissed while the reader is still
     // on the trigger. Without the flag the pointer that is still resting there
     // — or, for a hover card, the focus it hands back — reopens it at once,
     // and the key does nothing a reader can see.
-    tooltip.dismissed.current = true;
+    dismissedRef.current = true;
     intent.cancel();
     tooltip.setOpen(false);
   });
