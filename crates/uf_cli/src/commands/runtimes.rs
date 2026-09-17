@@ -88,6 +88,8 @@ pub(crate) struct Runtime {
     /// The directory to put in front of `PATH` for everything the command
     /// starts, when the runtime is one uf installed.
     pub(crate) path: Option<Utf8PathBuf>,
+    /// The key that named this runtime, when a project declared one.
+    pub(crate) source: Option<RuntimeSource>,
 }
 
 impl Runtime {
@@ -101,6 +103,18 @@ impl Runtime {
             None => env,
         }
     }
+}
+
+/// The declaration a resolved runtime came from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RuntimeSource {
+    /// The config key that named it: `runtime`, `build.runtime` or
+    /// `test.runtime`.
+    pub(crate) key: String,
+    /// The spec as it was written, such as `node@26` or `bun`.
+    pub(crate) spec: String,
+    /// The exact release the spec resolved to, when it named one.
+    pub(crate) release: Option<String>,
 }
 
 /// The runtime `role` names for this project, installed if it has to be.
@@ -135,6 +149,7 @@ pub(crate) fn resolve_with(
         return Ok(Runtime {
             host: resolve_host(config)?,
             path: None,
+            source: None,
         });
     };
     let key = declared.source.key().unwrap_or("runtime");
@@ -153,6 +168,11 @@ pub(crate) fn resolve_with(
         return Ok(Runtime {
             host: Host { kind, program },
             path: None,
+            source: Some(RuntimeSource {
+                key: key.to_owned(),
+                spec: spec.to_string(),
+                release: None,
+            }),
         });
     }
 
@@ -163,13 +183,18 @@ pub(crate) fn resolve_with(
         tool,
         version: &spec.version,
     };
-    let bin = store_tool(resolved, &wanted, false, notify, releases)?;
+    let stored = store_tool(resolved, &wanted, false, notify, releases)?;
     Ok(Runtime {
         host: Host {
             kind,
-            program: bin.join(name),
+            program: stored.bin.join(name),
         },
-        path: Some(bin),
+        path: Some(stored.bin),
+        source: Some(RuntimeSource {
+            key: key.to_owned(),
+            spec: spec.to_string(),
+            release: Some(stored.release),
+        }),
     })
 }
 
@@ -219,7 +244,7 @@ pub(crate) fn manager_path_with(
             tool: uf_env::toolchain::tool_for_manager(spec.name),
             version: &spec.version,
         };
-        path.push(store_tool(resolved, &wanted, frozen, notify, releases)?);
+        path.push(store_tool(resolved, &wanted, frozen, notify, releases)?.bin);
     }
     if let Some(declared) = Role::Runtime.declared(config)
         && declared.spec.version != ToolVersion::OnPath
@@ -230,7 +255,7 @@ pub(crate) fn manager_path_with(
             tool: uf_env::toolchain::tool_for_runtime(declared.spec.name),
             version: &declared.spec.version,
         };
-        path.push(store_tool(resolved, &wanted, frozen, notify, releases)?);
+        path.push(store_tool(resolved, &wanted, frozen, notify, releases)?.bin);
     }
     Ok(path)
 }
@@ -247,6 +272,12 @@ struct Wanted<'a> {
     version: &'a ToolVersion,
 }
 
+/// A release installed and linked into a project environment.
+struct StoredTool {
+    bin: Utf8PathBuf,
+    release: String,
+}
+
 /// The release `wanted` names — locked, installed and linked — as the
 /// directory its links are in.
 ///
@@ -259,7 +290,7 @@ fn store_tool(
     frozen: bool,
     notify: &mut dyn FnMut(&str),
     releases: &dyn Releases,
-) -> Result<Utf8PathBuf> {
+) -> Result<StoredTool> {
     let config = &resolved.config;
     let Wanted {
         key,
@@ -322,7 +353,10 @@ fn store_tool(
     // Held for this project, so `uf env gc` does not collect a tool a command
     // is using just because `uf env install` was never run here.
     uf_env::Roots::discover()?.add(&resolved.root, &[pin.slug()])?;
-    Ok(bin)
+    Ok(StoredTool {
+        bin,
+        release: release.to_owned(),
+    })
 }
 
 /// What [`resolve`] would start for a role, read rather than done.

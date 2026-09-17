@@ -6454,6 +6454,118 @@ fn a_project_that_pins_node_compiles_on_node() {
     );
 }
 
+/// `runtime` names the release that goes inside the standalone binary.
+///
+/// `build.runtime` still decides which host runs the builder. The executable
+/// `--compile` writes is the server `uf start` would have run, so it has to
+/// embed `runtime` instead, with the release from the store first on PATH for
+/// the SEA step itself. The route below returns the runtime the binary is
+/// actually running on; using the current Node's exact release keeps the test
+/// local while still proving that the store release is the one selected.
+#[test]
+fn a_runtime_release_in_the_store_is_the_one_the_standalone_binary_runs() {
+    if !fixture_ready() || !node_sea_ready() || !loopback_ready() {
+        return;
+    }
+    let (version, _) = node_version().expect("node_sea_ready found Node");
+    let release = version.trim_start_matches('v');
+    let project = Project::new(&minimal_app());
+    project.write(
+        "app/api/runtime/$route.js",
+        "// @flow\n\nexport function GET(): Response {\n  return new Response(process.versions.node);\n}\n",
+    );
+    project.write(
+        "uf.config.js",
+        &config_with(&format!(
+            "  runtime: \"node@{release}\",\n  \
+             app: {{ runtime: {{ capabilityJsHost: {{ default: \"bun\", autoDetect: false }} }} }},\n",
+        )),
+    );
+    let (tools, marks) = support::store_with_marked_node(release);
+
+    let explained = support::uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["explain", "build"])
+        .output()
+        .unwrap();
+    assert!(explained.status.success());
+    let plan = String::from_utf8(explained.stdout).unwrap();
+    assert!(plan.contains("standalone runtime"), "{plan}");
+    assert!(plan.contains(&format!("node {release}")), "{plan}");
+    assert!(
+        plan.contains(&format!("`runtime` names exactly {release}")),
+        "{plan}"
+    );
+
+    let output = support::uf_with_tools(tools.path())
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["build", "--compile"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.status.success(), "{said}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(
+        standalone_value(&stdout, "runtime"),
+        format!("node {release}")
+    );
+    assert_eq!(standalone_value(&stdout, "runtime key"), "runtime");
+    let marked = fs::read_to_string(&marks).unwrap_or_default();
+    assert!(
+        marked.contains("--build-sea"),
+        "the SEA build did not run through the store's node:\n{marked}\n{said}"
+    );
+
+    let empty = tempfile::tempdir().unwrap();
+    let binary = empty.path().join("compiled");
+    fs::copy(compiled_binary(project.path()), &binary).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let mut refused = Vec::new();
+    for attempt in 1..=PORT_ATTEMPTS {
+        let port = free_port();
+        let said = Mutex::new(String::new());
+        let served = std::thread::scope(|scope| {
+            let mut command = Command::new(&binary);
+            command
+                .current_dir(empty.path())
+                .args(["--port", &port.to_string()]);
+            let mut server = Server::spawn(command, scope, &said);
+            if let Some(body) = wait_for_http(port, "/api/runtime", Duration::from_secs(60)) {
+                assert!(
+                    body.contains(release),
+                    "the binary did not run the release `runtime` named:\n{body}\n{}",
+                    server.evidence(&said)
+                );
+                return true;
+            }
+            refused.push(format!(
+                "attempt {attempt} on port {port}: {}",
+                server.evidence(&said)
+            ));
+            false
+        });
+        if served {
+            return;
+        }
+    }
+
+    panic!(
+        "the compiled binary never answered /api/runtime, on {PORT_ATTEMPTS} different ports\n{}",
+        refused.join("\n\n")
+    );
+}
+
 /// A Node too old for `--build-sea` is told the version, not shown a failure.
 ///
 /// The floor is real and is not a preference: before 25.5 the procedure needs

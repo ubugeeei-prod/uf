@@ -1272,6 +1272,7 @@ fn build_stages(resolved: &ResolvedConfig) -> Vec<Stage> {
                 .to_string(),
         },
         prerender_stage(resolved),
+        standalone_stage(resolved),
         adapter_stage(resolved),
     ]
 }
@@ -1387,6 +1388,53 @@ fn prerender_stage(resolved: &ResolvedConfig) -> Stage {
             None => "@uniflowed/router".to_string(),
         },
         detail,
+    }
+}
+
+/// Which runtime `uf build --compile` embeds in the standalone executable.
+///
+/// The builder still runs on [`runtimes::Role::Build`]. The compiled file is
+/// what `uf start` would have run, so its embedded runtime is
+/// [`runtimes::Role::Runtime`] when the project declared one, and only falls
+/// back to `app.runtime.capabilityJsHost` for projects that have no `runtime`
+/// key at all.
+fn standalone_stage(resolved: &ResolvedConfig) -> Stage {
+    match runtimes::describe(resolved, runtimes::Role::Runtime) {
+        Some(described) => Stage {
+            name: "standalone runtime",
+            provider: described.provider,
+            detail: format!(
+                "`uf build --compile` embeds this runtime in the executable; {}",
+                described.detail
+            ),
+        },
+        None => {
+            let hosts = &resolved.config.app.runtime.capability_js_host;
+            let fallbacks = hosts
+                .hosts
+                .iter()
+                .copied()
+                .filter(|host| *host != hosts.default)
+                .map(uf_config::CapabilityJsHost::as_str)
+                .collect::<Vec<_>>();
+            let detail = if hosts.auto_detect && !fallbacks.is_empty() {
+                format!(
+                    "`uf build --compile` has no `runtime` key to embed, so it falls back to \
+                     `app.runtime.capabilityJsHost.default`, then {} when that host cannot build \
+                     the binary",
+                    fallbacks.join(" then ")
+                )
+            } else {
+                "`uf build --compile` has no `runtime` key to embed, so it falls back to \
+                 `app.runtime.capabilityJsHost.default` with no host inference"
+                    .to_string()
+            };
+            Stage {
+                name: "standalone runtime",
+                provider: hosts.default.as_str().to_string(),
+                detail,
+            }
+        }
     }
 }
 

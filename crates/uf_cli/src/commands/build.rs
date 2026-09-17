@@ -298,17 +298,17 @@ pub(crate) fn build(
     progress.tick("resolving the JavaScript host");
     // The progress line is finished before anything is said, or the sentence
     // would be written onto the end of the spinner's line.
-    let runtime = runtimes::resolve(&resolved, runtimes::Role::Build, &mut |message| {
+    let build_runtime = runtimes::resolve(&resolved, runtimes::Role::Build, &mut |message| {
         progress.finish();
         ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
     })?;
-    let host = runtime.host.clone();
+    let host = build_runtime.host.clone();
     let builder = builder::resolve(&root, &resolved.config)?;
     // `production` unless the project or the command line said another mode,
     // which is what selects `.env.production` over `.env.development` — the
     // half of ubugeeei-prod/uf#259 that made a build and a dev server disagree
     // about the same variable.
-    let env = runtime.environment(project_env(&resolved, requested_mode, PRODUCTION)?);
+    let env = build_runtime.environment(project_env(&resolved, requested_mode, PRODUCTION)?);
 
     // Asked for before anything is built. `--compile` on a machine with no
     // usable backend fails either way; failing now costs the user nothing, and
@@ -323,7 +323,24 @@ pub(crate) fn build(
     // infer a host should not stop over that.
     let runtimes = if standalone {
         timer.measure("runtime", || {
-            compile::runtimes(&root, &resolved.config, requested_target)
+            let declared_runtime = if resolved.config.runtime_tool().is_some() {
+                Some(runtimes::resolve(
+                    &resolved,
+                    runtimes::Role::Runtime,
+                    &mut |message| {
+                        progress.finish();
+                        ui.render_err(|renderer, out| renderer.status(out, Status::Info, message));
+                    },
+                )?)
+            } else {
+                None
+            };
+            compile::runtimes(
+                &root,
+                &resolved.config,
+                requested_target,
+                declared_runtime.as_ref(),
+            )
         })?
     } else {
         Vec::new()
@@ -863,6 +880,11 @@ pub(crate) fn build(
         (
             relative_to(&resolved.root, &compiled.binary),
             compiled.runtime.label(),
+            compiled
+                .runtime
+                .source
+                .as_ref()
+                .map(|source| source.key.clone()),
             compiled.runtime.target.map(|target| target.triple),
             ByteSize::from_bytes(compiled.bytes).to_string(),
             compiled.embedded.files.to_string(),
@@ -959,12 +981,16 @@ pub(crate) fn build(
             renderer.blank(out);
         }
 
-        if let Some((path, runtime, target, bytes, files, embedded, fetched)) = &binary {
+        if let Some((path, runtime, runtime_key, target, bytes, files, embedded, fetched)) = &binary
+        {
             renderer.heading(out, 2, "standalone");
             let mut rows = vec![
                 KeyValue::toned("binary", path, Tone::Path),
                 KeyValue::toned("runtime", runtime, Tone::Muted),
             ];
+            if let Some(runtime_key) = runtime_key {
+                rows.push(KeyValue::toned("runtime key", runtime_key, Tone::Muted));
+            }
             // Only when `--target` was asked for. A row naming this machine on
             // every ordinary `--compile` is a row that reports no finding,
             // which is the same rule the guards table and the split count
