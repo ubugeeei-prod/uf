@@ -144,10 +144,7 @@ fn redundant_memoization_with(
         return Ok(Vec::new());
     };
 
-    let output = serde_json::to_value(compiled).map_err(|error| {
-        TransformError::Internal(format!("compiled AST could not be serialized: {error}"))
-    })?;
-    let kept = manual_memo_calls(&output);
+    let kept = manual_memo_calls(&compiled);
 
     Ok(written
         .into_iter()
