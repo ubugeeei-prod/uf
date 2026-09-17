@@ -346,6 +346,8 @@ export hook useFirstItem(
       false,
       set.skipDisabled,
     );
+    // The first item is only knowable after the caller's items are in the DOM.
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setFirst(landing?.id ?? null);
   });
 
