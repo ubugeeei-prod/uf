@@ -291,10 +291,13 @@ jobs:
           name: uf-ci
           path: target/release
       - run: chmod +x target/release/uf
+      # The hydration check opens the built site in Chromium. Use the same
+      # wrapper as the browser tests so CI's sandbox constraints are named in
+      # one place.
+      - run: tools/ci/browser-wrapper.sh
       # `docs:verify` rather than `docs:build`: it builds the site and then
-      # runs four checks over that one build, in one task graph, because
-      # `uf run` takes one task and `docs:build` is always run — four
-      # invocations would build the site four times.
+      # runs the checks over that one build, in one task graph, because
+      # `uf run` takes one task and `docs:build` is always run.
       #
       # `docs:links` is the reason this is not `docs:build` any more. A page
       # that moves takes every link to its old name with it, and each page

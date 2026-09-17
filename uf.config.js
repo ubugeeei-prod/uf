@@ -505,14 +505,23 @@ export default defineConfig({
       dependsOn: ["docs:build"],
     },
 
+    // Hydration is the browser half of the built documentation contract. Link
+    // and CSP checks can read the output directory, but #1113 was a page that
+    // existed, linked and loaded, then tripped React during hydration only at a
+    // narrow viewport. This serves the built site locally and loads every HTML
+    // route in headless Chrome at both the narrow repro width and desktop.
+    "docs:hydration": {
+      command: "tools/ci/docs-hydration.sh",
+      dependsOn: ["docs:build"],
+    },
+
     // The `Docs build` job, in one command.
     //
-    // `uf run` takes one task, and three of the five checks below read the
-    // site off disk — `docs:links`, `security:scan` and `docs:csp`, each of
-    // which names `docs:build` as a dependency. Run separately that is three
-    // builds of the same site, because `docs:build` declares no `inputs` and
-    // is always run. One invocation is one graph and `docs:build` is one node
-    // in it. Same shape as `ci` itself, for the same reason.
+    // `uf run` takes one task, and the checks below share the same built site.
+    // Run separately, any one that names `docs:build` as a dependency would
+    // build that site again, because `docs:build` declares no `inputs` and is
+    // always run. One invocation is one graph and `docs:build` is one node in
+    // it. Same shape as `ci` itself, for the same reason.
     "docs:verify": {
       command: "echo 'the site builds, and everything in it resolves'",
       dependsOn: [
@@ -522,6 +531,7 @@ export default defineConfig({
         "security:scan",
         "security:scan:test",
         "docs:csp",
+        "docs:hydration",
       ],
     },
 
@@ -1049,11 +1059,10 @@ export default defineConfig({
         "ci:runtimes:test",
         "ci:conflict-markers",
         "ci:conflict-markers:test",
-        // `docs:verify` rather than the five checks under it, because that is
+        // `docs:verify` rather than the checks under it, because that is
         // what the `Docs build` job runs and this list is the whole of
-        // `uf run` in `.github/workflows/`. It reaches `docs:links`,
-        // `docs:links:test`, `security:scan`, `security:scan:test` and
-        // `docs:csp`, and builds the site once for all of them.
+        // `uf run` in `.github/workflows/`. It reaches the output, security
+        // and browser docs checks, and builds the site once for all of them.
         "docs:verify",
         // Not `docs:links:external`. It is the same check with the network
         // turned on, and an external host that is slow or rate limiting would
