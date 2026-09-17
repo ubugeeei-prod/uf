@@ -201,6 +201,8 @@ export component ToggleGroupRoot(
       // dozen commands on the way to the one the reader wanted.
       moveOnKey(event, group, toggleSet(orientation));
     }),
+    // React calls callback refs during commit; keyboard handlers read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       rootRef.current = element;
     }),

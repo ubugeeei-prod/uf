@@ -157,6 +157,8 @@ export component CollapsibleContent(children: React.Node, render?: RenderProp, .
     children,
     hidden: !collapsible.open,
     id: collapsible.contentId,
+    // React calls callback refs during commit; this node is only read by effects.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       contentRef.current = element;
     }),
