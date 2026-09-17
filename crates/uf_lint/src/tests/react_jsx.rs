@@ -1,7 +1,8 @@
 //! The JSX rules `eslint-plugin-react` users know: `react/jsx-key`,
 //! `react/no-array-index-key`, `react/jsx-no-duplicate-props`,
-//! `react/no-children-prop`, `react/void-dom-elements-no-children` and
-//! `react/jsx-no-comment-textnodes`.
+//! `react/no-children-prop`, `react/void-dom-elements-no-children`,
+//! `react/jsx-no-comment-textnodes`, `react/no-unescaped-entities`,
+//! `react/no-this-in-sfc` and `react/no-unused-prop-types`.
 //!
 //! Each rule is tested from both sides, and the second side is the longer one:
 //! the examples the plugin's own documentation gives, written as Flow, and then
@@ -16,6 +17,47 @@ const CHILDREN: &str = "react/no-children-prop";
 const VOID: &str = "react/void-dom-elements-no-children";
 const COMMENT: &str = "react/jsx-no-comment-textnodes";
 const UNESCAPED: &str = "react/no-unescaped-entities";
+const THIS_IN_SFC: &str = "react/no-this-in-sfc";
+const UNUSED_PROPS: &str = "react/no-unused-prop-types";
+
+/// The `this` expressions `react/no-this-in-sfc` leaves alone, each because it
+/// has a `this` of its own.
+const THIS_IN_SFC_QUIET: [&str; 5] = [
+    // A nested `function` brings its own `this`, and what that one names is
+    // its caller's business rather than this rule's.
+    "component Page() {\n  function handler() {\n    return this.value;\n  }\n  return <button onClick={handler} />;\n}\n",
+    // So does a method,
+    "component Page() {\n  const helpers = { read() { return this.value; } };\n  return <p>{helpers.read()}</p>;\n}\n",
+    // and so does a class body.
+    "component Page() {\n  class Store {\n    read() {\n      return this.value;\n    }\n  }\n  return <p>{new Store().read()}</p>;\n}\n",
+    // A plain function beside the component is not a component.
+    "component Page() {\n  return <p>ok</p>;\n}\n\nfunction helper() {\n  return this.value;\n}\n",
+    // And a component with no `this` has nothing to report.
+    "component Page(title: string) {\n  return <p>{title}</p>;\n}\n",
+];
+
+/// `data as info`, read through the binding the `as` introduces.
+const UNUSED_PROPS_RENAMED_READ: &str =
+    "component Page(data as info: string) {\n  return <p>{info}</p>;\n}\n";
+
+/// The components `react/no-unused-prop-types` leaves alone, each with the way
+/// its props are read.
+const UNUSED_PROPS_QUIET: [&str; 7] = [
+    // Both props read between the tags.
+    "component Page(title: string, subtitle: string) {\n  return <h1>{title}<small>{subtitle}</small></h1>;\n}\n",
+    // A prop holding a component, read only as an element name.
+    "component Page(Icon: React.ComponentType<{}>) {\n  return <Icon />;\n}\n",
+    // And one read as the base of a member element name.
+    "component Page(Icons: { Chevron: React.ComponentType<{}> }) {\n  return <Icons.Chevron />;\n}\n",
+    // Object shorthand is a read of the value, not just a key.
+    "component Page(title: string) {\n  const meta = { title };\n  return <p>{JSON.stringify(meta)}</p>;\n}\n",
+    // A prop taken apart by a pattern is read by being taken apart.
+    "component Page(data as { id }: Item) {\n  return <p>{id}</p>;\n}\n",
+    "component Page(data as { id }: Item) {\n  return <p>ok</p>;\n}\n",
+    // A local of the same name shadows the prop, and the body still holds a
+    // read of that name; the rule stays quiet rather than guess.
+    "component Page(title: string, items: Array<Item>) {\n  return <ul>{items.map((title) => <li key={title}>{title}</li>)}</ul>;\n}\n",
+];
 
 /// A Flow module with React in scope and a list item type to map over.
 fn module(body: &str) -> String {
@@ -583,7 +625,158 @@ fn the_two_text_rules_divide_the_text_between_them() {
     assert!(lint_js(UNESCAPED, &page(commented)).is_empty());
 }
 
+// --- react/no-this-in-sfc ----------------------------------------------------
+
+#[test]
+fn this_in_sfc_reports_this_in_a_component_body() {
+    let diagnostics = lint_js(
+        THIS_IN_SFC,
+        &module("component Page() {\n  return <p>{this.props.title}</p>;\n}\n"),
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert_eq!(diagnostics[0].line, 7, "{diagnostics:?}");
+    assert!(
+        diagnostics[0].message.contains("names nothing"),
+        "{}",
+        diagnostics[0].message
+    );
+    assert!(
+        diagnostics[0].message.contains("`component`"),
+        "{}",
+        diagnostics[0].message
+    );
+}
+
+#[test]
+fn this_in_sfc_follows_an_arrow_which_keeps_the_this_around_it() {
+    // The arrow has no `this` of its own, so this one is still the
+    // component's — which is the whole reason the rule reads bindings rather
+    // than the shape the `this` is written in.
+    let diagnostics = lint_js(
+        THIS_IN_SFC,
+        &module("component Page() {\n  return <button onClick={() => this.handle()} />;\n}\n"),
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+}
+
+#[test]
+fn this_in_sfc_reports_this_in_a_hook() {
+    let diagnostics = lint_js(
+        THIS_IN_SFC,
+        &module("hook useTitle(): string {\n  return this.title;\n}\n"),
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(
+        diagnostics[0].message.contains("`hook`"),
+        "{}",
+        diagnostics[0].message
+    );
+}
+
+#[test]
+fn this_in_sfc_leaves_every_this_that_has_one_of_its_own_alone() {
+    for body in THIS_IN_SFC_QUIET {
+        let diagnostics = lint_js(THIS_IN_SFC, &module(body));
+        assert!(diagnostics.is_empty(), "{body}: {diagnostics:?}");
+    }
+}
+
+// --- react/no-unused-prop-types ----------------------------------------------
+
+#[test]
+fn unused_prop_types_reports_a_prop_the_body_never_reads() {
+    let diagnostics = lint_js(
+        UNUSED_PROPS,
+        &module(
+            "component Page(title: string, subtitle: string) {\n  return <h1>{title}</h1>;\n}\n",
+        ),
+    );
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(
+        diagnostics[0].message.contains("`subtitle`"),
+        "{}",
+        diagnostics[0].message
+    );
+    assert!(
+        diagnostics[0].message.contains("`<Page>`"),
+        "{}",
+        diagnostics[0].message
+    );
+}
+
+#[test]
+fn unused_prop_types_follows_the_binding_and_not_the_declared_name() {
+    // `data as info` declares `data` and binds `info`. Reading `info` is
+    // reading the prop; reading `data` is reading something else entirely,
+    // and a rule that matched on the spelling would have them backwards.
+    let read = lint_js(UNUSED_PROPS, &module(UNUSED_PROPS_RENAMED_READ));
+    assert!(read.is_empty(), "{read:?}");
+
+    let unread = lint_js(
+        UNUSED_PROPS,
+        &module("component Page(data as info: string) {\n  return <p>{data}</p>;\n}\n"),
+    );
+    assert_eq!(unread.len(), 1, "{unread:?}");
+    assert!(
+        unread[0].message.contains("`data`") && unread[0].message.contains("`info`"),
+        "{}",
+        unread[0].message
+    );
+}
+
+#[test]
+fn unused_prop_types_does_not_count_a_name_that_is_only_written() {
+    // A name after a `.`, and a key in an object literal, are not reads of
+    // anything in scope — the one place an identifier stands for a value is an
+    // expression, and that is the only place this rule counts.
+    for body in [
+        "component Page(title: string, item: Item) {\n  return <p>{item.title}</p>;\n}\n",
+        "component Page(title: string, item: Item) {\n  return <p>{JSON.stringify({ title: item.id })}</p>;\n}\n",
+    ] {
+        let diagnostics = lint_js(UNUSED_PROPS, &module(body));
+        assert_eq!(diagnostics.len(), 1, "{body}: {diagnostics:?}");
+        assert!(
+            diagnostics[0].message.contains("`title`"),
+            "{body}: {}",
+            diagnostics[0].message
+        );
+    }
+}
+
+#[test]
+fn unused_prop_types_accepts_every_way_a_prop_is_actually_read() {
+    for body in UNUSED_PROPS_QUIET
+        .iter()
+        .chain(std::iter::once(&UNUSED_PROPS_RENAMED_READ))
+    {
+        let diagnostics = lint_js(UNUSED_PROPS, &module(body));
+        assert!(diagnostics.is_empty(), "{body}: {diagnostics:?}");
+    }
+}
+
 // --- shared -----------------------------------------------------------------
+
+#[test]
+fn every_fixture_the_declaration_rules_stay_quiet_on_parses() {
+    // A fixture the parser refuses is one `flow/syntax` owns and `module_tree`
+    // drops before any rule sees it — so a test asserting *no* diagnostic
+    // would pass while asserting nothing at all. Every quiet fixture is
+    // checked here for that reason. The fixtures asserted to report need no
+    // such guard: the diagnostic is itself proof the rule read them.
+    for body in THIS_IN_SFC_QUIET
+        .iter()
+        .chain(UNUSED_PROPS_QUIET.iter())
+        .chain(std::iter::once(&UNUSED_PROPS_RENAMED_READ))
+    {
+        let source = module(body);
+        let syntax = lint_js("flow/syntax", &source);
+        assert!(syntax.is_empty(), "{body}: {syntax:?}");
+    }
+}
 
 #[test]
 fn a_module_that_does_not_parse_reports_nothing_here() {

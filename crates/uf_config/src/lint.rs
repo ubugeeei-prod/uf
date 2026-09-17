@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 130] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 132] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -477,12 +477,24 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 130] = [
     // exactly as written, and `don't` is the false positive this rule is best
     // known for.
     ("react/no-unescaped-entities", RuleLevel::Warn),
+    // `this` inside a `component` or `hook` declaration names nothing: the body
+    // is called as a plain function, so `this` is `undefined` and reading a
+    // prop off it throws. The declaration says what it is, so this is a defect
+    // rather than a suspicion.
+    ("react/no-this-in-sfc", RuleLevel::Error),
     // The HTML spelling of an attribute React spells differently — `class` for
     // `className`, a lowercase `onclick` for `onClick`. Reported only where the
     // correct spelling is known and can be named, never for an attribute uf has
     // simply not heard of: the platform keeps growing, and a stale table would
     // report markup that had become correct.
     ("react/no-unknown-property", RuleLevel::Error),
+    // `off`, as in `eslint-plugin-react`'s own preset, which leaves this rule
+    // out of `recommended`. A prop nothing reads is dead weight rather than a
+    // defect, and where it belongs to a component other code calls, dropping
+    // it is an API decision rather than a lint fix: uf's own `RouterProvider`
+    // takes a `url` only to hand it to `ModuleRouter`, which has not read one
+    // since #1037. A project that wants the hygiene turns this on.
+    ("react/no-unused-prop-types", RuleLevel::Off),
     // React throws on a `style` that is not an object, so this is a crash the
     // module can see rather than a matter of taste.
     ("react/style-prop-object", RuleLevel::Error),

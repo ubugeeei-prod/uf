@@ -508,9 +508,10 @@ running it.
 | `style-prop-object` | `react/style-prop-object` |
 | `no-namespace` | `react/no-namespace` |
 | `no-unescaped-entities` | `react/no-unescaped-entities`, which reports `>` and `}` — the two that are usually the wreckage of a mistyped tag or a stray brace — and leaves `'` and `"` alone, because they render exactly as written and `don't` is the false positive this rule is known for. Text inside `<code>` and `<pre>` is meant as written, so it is not read |
+| `no-this-in-sfc` | `react/no-this-in-sfc`, answered for the `component` and `hook` declarations uf's syntax gives it, where `this` provably names nothing. It follows an arrow function, which keeps the `this` around it, and leaves a nested `function`, a method and a class alone, because each of those has a `this` of its own |
+| `no-unused-prop-types` | `react/no-unused-prop-types`, which reports a prop a `component` declares and its body never reads, resolved through the binding the parameter introduces rather than the name it is spelled with — so a prop renamed with `as` is followed to its local name. A prop destructured into parts is left alone, and so is a name the body reads anywhere, because a shadowed read is still a read. **Off by default**, as in the plugin's own preset: a prop nothing reads is dead weight rather than a defect, and dropping one from a component other code calls is an API decision rather than a lint fix |
 | `button-has-type` | `react/button-has-type` |
 | `checked-requires-onchange-or-readonly` | `react/checked-requires-onchange-or-readonly`, which stays silent when the companion is written in its HTML spelling (`readonly`, `onchange`) — that is `react/no-unknown-property`'s finding, so one line draws one diagnostic |
-| `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062), waiting on the binding resolution in [#1161](https://github.com/ubugeeei-prod/uf/issues/1161) |
 
 #### eslint-plugin-react-hooks
 
