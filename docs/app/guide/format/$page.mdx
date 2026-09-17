@@ -544,6 +544,7 @@ plugin.
 | `aria-proptypes` | `a11y/aria-proptypes` |
 | `aria-role` | `a11y/aria-role` |
 | `aria-unsupported-elements` | `a11y/aria-unsupported-elements` |
+| `autocomplete-valid` | `a11y/autocomplete-valid` (the token a browser would not know; the order of the optional `section-*`, grouping and recipient parts is not policed) |
 | `click-events-have-key-events` | `a11y/click-events-have-key-events` (the element that has a `role`; the element with none is `a11y/no-static-element-interactions`) |
 | `control-has-associated-label` | `a11y/control-has-associated-label` (warn; only where no `id`, no `<label>` around it and no name of its own, since the label is usually a sibling) |
 | `heading-has-content` | `a11y/heading-has-content` |
@@ -552,9 +553,13 @@ plugin.
 | `img-redundant-alt` | `a11y/img-redundant-alt` |
 | `interactive-supports-focus` | `a11y/interactive-supports-focus` |
 | `label-has-associated-control`, `label-has-for` | `a11y/label-has-associated-control` |
+| `lang` | `a11y/lang` (the `<html lang>` that is not a language tag; the missing or empty one is `a11y/html-has-lang`. A shape check rather than a registry lookup, so `en_US` is reported and a well-formed but unregistered subtag is left alone) |
 | `media-has-caption` | `a11y/media-has-caption` |
 | `mouse-events-have-key-events` | `a11y/mouse-events-have-key-events` |
+| `no-access-key` | `a11y/no-access-key` |
 | `no-aria-hidden-on-focusable` | `a11y/no-aria-hidden-on-focusable` |
+| `no-autofocus` | `a11y/no-autofocus` |
+| `no-distracting-elements` | `a11y/no-distracting-elements` |
 | `no-interactive-element-to-noninteractive-role` | `a11y/no-interactive-element-to-noninteractive-role` |
 | `no-noninteractive-element-interactions` | `a11y/no-noninteractive-element-interactions` (the non-interactive role that has a key handler; see the two rules it divides the question with) |
 | `no-noninteractive-element-to-interactive-role` | `a11y/no-noninteractive-element-to-interactive-role` |
@@ -564,9 +569,9 @@ plugin.
 | `prefer-tag-over-role` | `a11y/prefer-tag-over-role` (warn; the roles a tag really replaces) |
 | `role-has-required-aria-props` | `a11y/role-has-required-aria-props` |
 | `role-supports-aria-props` | `a11y/role-supports-aria-props` |
+| `scope` | `a11y/scope` |
 | `tabindex-no-positive` | `a11y/tabindex-no-positive` |
 | `accessible-emoji`, `no-onchange` | Not needed — deprecated in the plugin itself |
-| `autocomplete-valid`, `lang`, `no-access-key`, `no-autofocus`, `no-distracting-elements`, `scope` | Not yet — [#1064](https://github.com/ubugeeei-prod/uf/issues/1064) |
 
 Where an `a11y/*` rule answers differently from the plugin, it is on purpose
 and always in the same direction: a rule that cannot see what it is asking

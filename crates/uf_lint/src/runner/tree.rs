@@ -82,6 +82,7 @@
 //! finishes in under a second.
 
 mod aria;
+mod attributes;
 mod content;
 mod interaction;
 mod roles;
@@ -200,6 +201,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
     let mut tree = Tree {
         hot: work.wants_hot,
         alt_text: levels.alt_text.is_some(),
+        attributes: levels.attributes,
         content: levels.content,
         roles: levels.roles,
         tags: levels.tags,
@@ -265,6 +267,8 @@ pub(super) fn report(
 /// Configured severity for each rule this runner owns.
 struct Levels {
     alt_text: Option<Severity>,
+    /// The rules that answer from one attribute, or from the tag itself.
+    attributes: attributes::Levels,
     /// The rules that ask whether an element has something to say.
     content: content::Levels,
     /// The rules that read the ARIA table.
@@ -285,6 +289,7 @@ impl Levels {
     fn for_config(config: &UniflowedConfig) -> Self {
         Self {
             alt_text: severity(config, ALT_TEXT),
+            attributes: attributes::Levels::for_config(config),
             content: content::Levels::for_config(config),
             roles: roles::Levels::for_config(config),
             tags: tags::Levels::for_config(config),
@@ -305,6 +310,7 @@ impl Levels {
     /// Whether any rule that reads JSX is on.
     fn any_jsx(&self) -> bool {
         self.alt_text.is_some()
+            || self.attributes.any()
             || self.content.any()
             || self.roles.any()
             || self.tags.any()
@@ -330,7 +336,8 @@ impl Levels {
                 .of(rule)
                 .or_else(|| self.roles.of(rule))
                 .or_else(|| self.tags.of(rule))
-                .or_else(|| self.interaction.of(rule)),
+                .or_else(|| self.interaction.of(rule))
+                .or_else(|| self.attributes.of(rule)),
         }
     }
 }
@@ -360,6 +367,8 @@ enum Ancestor<'a> {
 struct Tree<'a> {
     hot: bool,
     alt_text: bool,
+    /// Levels for the rules in [`attributes`], copied for the same reason.
+    attributes: attributes::Levels,
     /// Levels for the rules in [`content`], copied so each check can ask.
     content: content::Levels,
     /// Levels for the rules in [`roles`], copied for the same reason.
@@ -435,6 +444,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
             }
             if self.interaction.any() {
                 interaction::check(self, name, opening);
+            }
+            if self.attributes.any() {
+                attributes::check(self, name, opening);
             }
             if self.static_interactions {
                 self.check_static_interactions(name, opening);
