@@ -388,7 +388,9 @@ reached is the whole set.
 
 The encoders in `uf` are pure Rust — no C library, no native toolchain, nothing
 to install. That has a price, and it is worth stating plainly rather than
-letting you discover it in a Lighthouse report:
+letting you discover it in a Lighthouse report. The same decisions are recorded
+as refusals in [What uf does not do](/guide/scope); [#997](https://github.com/ubugeeei-prod/uf/issues/997)
+is the issue that stopped treating them as open-ended gaps:
 
 - **No AVIF.** It needs an AV1 encoder. A pure-Rust one exists and is not
   bundled: it is around eighty more crates compiled under a whole-program-LTO
