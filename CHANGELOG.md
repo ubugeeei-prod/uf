@@ -1,5 +1,61 @@
 # Changelog
 
+## uf@0.0.0-alpha.40
+
+_2026-09-17_
+
+Two things in this release change what uf can be trusted with. A uf library now
+publishes TypeScript declarations, so the people who install a Flow library —
+most of whom write TypeScript — stop seeing `any` (#1200). The translation
+refuses rather than widens: twenty Flow constructs with no TypeScript meaning
+are named in the build report and emitted as `unknown`, and the refused name
+survives, so a consumer's build stops instead of quietly accepting something the
+compiler never checked. An `opaque type` is published as a branded type, because
+nominality is what `opaque` means from outside the module. And `uf build
+--adapter bun` now declares the Bun a deployment needs (#1181): React's own
+published server build carries a construct Bun could not parse before 1.4.2, so
+a deployment onto an older Bun died at start-up with a syntax error and nothing
+said why. CI now runs the adapter test on the declared minimum as well as the
+newest, because a floor no job exercises is a floor nobody has checked.
+
+`uf lint` answers the whole of `eslint-plugin-jsx-a11y` — 32 rules of 32 — with
+the last six reading one attribute each (#1188), four weighing a role against
+the element it was put on (#1178), and seven about focus and the keyboard
+(#1176). Three `security/*` rules join them (#1197): a `javascript:` URL in a
+prop, a `target="_blank"` without `noreferrer`, and an `iframe` with no
+`sandbox`. Alongside those, five overlays stopped closing on the touch that
+starts a page scroll (#1193) — a `pointerdown` alone is no longer read as a
+press that landed outside, so scrolling with a menu open leaves it open.
+
+Two corrections to what uf said about itself. `uf build` now reports a
+prerendered document served under a header rule that mints a per-request nonce
+(#1179): the document carries no nonce at all, so its own client entry can never
+be admitted and the page never hydrates. And `uf test` was re-measured on one
+machine over twenty-five interleaved rounds: it is about 2.2 times slower than
+`bun test` and about ten times faster than Vitest, where the guide had claimed
+three and nine. The remaining difference is the fixed cost of starting a
+JavaScript host — Node needs roughly fifteen milliseconds before uf runs a line,
+and Bun pays none of it because its runner is in the engine — so no optimisation
+was written for it.
+
+### Added
+
+- **build**: TypeScript declarations for a Flow library (#1200)
+- **lint**: three security rules about a dangerous attribute value (#1197)
+- **lint**: six a11y rules that read one attribute (#1188)
+- **lint**: four a11y rules that weigh a role against its element (#1178)
+- **build**: say when a prerendered route is served under a {uf.nonce} policy (#1179)
+- **lint**: seven a11y rules about focus and the keyboard (#1176)
+
+### Fixed
+
+- **ui**: an overlay is dismissed by the gesture that ends outside it (#1193)
+- **deploy**: declare the Bun a `--adapter bun` deployment needs (#1181)
+
+### Documentation
+
+- **testing**: re-measure against Bun and Vitest, and ship the suite behind it (#1198)
+
 ## uf@0.0.0-alpha.39
 
 _2026-09-16_
