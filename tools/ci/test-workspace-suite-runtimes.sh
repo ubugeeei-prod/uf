@@ -59,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
@@ -75,6 +77,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
@@ -92,6 +96,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: cargo test --workspace
@@ -109,6 +115,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - run: ./target/release/uf run rust:test
 YAML
 expect 1 "rust:test is the same command"
@@ -139,6 +147,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
@@ -161,6 +171,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
@@ -178,6 +190,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
@@ -207,6 +221,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -217,6 +233,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v1.x
@@ -237,6 +255,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -247,6 +267,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
@@ -267,6 +289,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
@@ -286,6 +310,8 @@ jobs:
     steps:
       - run: tools/react-compiler/sync.sh
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
@@ -303,6 +329,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
         with:
@@ -328,6 +356,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
         with:
@@ -349,6 +379,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
         with:
@@ -374,6 +406,8 @@ jobs:
       NODE_AUTH_TOKEN: dummy
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
         with:
@@ -401,12 +435,87 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v7
       - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
       - run: cargo test --workspace
 YAML
 expect 0 "nothing in that job starts a package manager"
+
+# The Bun version rules. `latest` is not a defect anybody can see in a diff —
+# it is a runtime that changes under you — and it is how ubugeeei-prod/uf#1048
+# stayed green: the Bun adapter wrote a bundle no Bun before 1.4.2 could parse
+# while all three suite jobs installed the newest one.
+echo "a suite job that installs an unpinned Bun is refused"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: tools/react-compiler/sync.sh
+      - run: cargo test --workspace
+YAML
+expect 1 "setup-bun with no bun-version installs the newest"
+names "not a version"
+
+echo "a suite job that pins Bun to latest is refused"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: tools/react-compiler/sync.sh
+      - run: cargo test --workspace
+YAML
+expect 1 "latest is a different runtime on different days"
+names "not a version"
+
+echo "two jobs that install different Bun versions are refused, naming both"
+plant <<'YAML'
+name: Pipeline
+on: [push]
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: tools/react-compiler/sync.sh
+      - run: cargo test --workspace
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v7
+      - run: tools/ci/install-package-managers.sh "$RUNNER_TEMP/managers"
+      - run: tools/react-compiler/sync.sh
+      - run: cargo test --workspace
+YAML
+expect 1 "one Bun in one job and another in the next is the Deno mistake again"
+names "different Bun versions"
 
 if [ "$failures" -ne 0 ]; then
   echo "$failures case(s) failed" >&2

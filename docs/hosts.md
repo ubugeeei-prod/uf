@@ -25,6 +25,10 @@ without naming the test that starts the runtime.
 | Container | planned | — | none expressible | — |
 | `uf` (self-hosted) | planned | — | — | — |
 
+One row carries a version floor: **a `uf build --adapter bun` deployment needs
+Bun 1.4.2 or newer**, for the reason [Bun](#bun) gives. Nothing else here has
+one, and running *on* Bun as a host does not.
+
 "Checked by" is the column that matters. Node, Bun and Deno are marked
 implemented because a test in this repository starts the binary, runs a Flow
 project through it and watches the process finish. Bun's row said "implemented"
@@ -121,6 +125,31 @@ Its permission model is `--permission` with `--allow-fs-read` and
 for what uf does about that.
 
 ## Bun
+
+**A deployment built with `uf build --adapter bun` needs Bun 1.4.2 or newer.**
+That is the floor `uf_runtime::BUN_MINIMUM` declares, the generated `server.js`
+refuses anything older by name, and `.github/workflows/ci.yml` runs the Bun
+adapter test on exactly that version as well as on the newest Bun — a floor no
+job runs is a floor nobody knows is right.
+
+The floor is about a parser, not a feature. React's published server build
+contains a labelled statement in `else` position — `else a: if (…)`, in every
+`react-dom-server*.production` file, the `bun`-conditioned one included — and
+Bun's engine refuses it before 1.4.2 with
+`SyntaxError: Cannot find scope for the label 'a'`. So an older Bun cannot
+parse `handler.js` at all and the process dies at start-up, before it answers
+anything.
+
+It is not uf's syntax to lower, which is why this is a declared minimum rather
+than a change to what uf emits: Node runs the identical bundle, the construct
+has been legal JavaScript since ES1, uf's own transform emits none of it, and
+asking for React's `bun` export condition resolves to a build that carries it
+too. See ubugeeei-prod/uf#1048.
+
+Running on Bun *as a host* — `uf dev`, `uf test`, the preload below — is not
+affected and has no floor. Note also that the `node` adapter's output contains
+the same construct, because it is the same React: a `--adapter node` directory
+started with `bun server.js` fails the same way, and the fix is the same Bun.
 
 `bun --preload @uniflowed/host/bun-preload app.js`, which is the same transform
 reached through Bun's plugin API. The filter is

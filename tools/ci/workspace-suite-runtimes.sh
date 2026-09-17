@@ -89,8 +89,11 @@ scan() {
       # that run no suite at all.
       /^ *#/ { next }
       # `deno-version:` too, because installing a runtime is half the rule; the
-      # other half is installing the one the suite needs.
-      /run:|uses:|deno-version:/ { body = body " " $0 }
+      # other half is installing the one the suite needs. `bun-version:` for
+      # the same reason, and it was added the day a Bun adapter shipped output
+      # that no Bun before 1.4.2 could parse while all three jobs installed
+      # `latest` — see ubugeeei-prod/uf#1048.
+      /run:|uses:|deno-version:|bun-version:/ { body = body " " $0 }
       END { if (job != "") printf "%s\t%s\n", job, body }
     ' "$workflow" | while IFS="$TAB" read -r job body; do
       case "$body" in
@@ -114,6 +117,12 @@ scan() {
         *"denoland/setup-deno"*)
           version=$(printf '%s\n' "$body" | sed -n 's/.*deno-version:[[:space:]]*\([^[:space:]]*\).*/\1/p')
           echo "DENO $workflow $job ${version:-default}"
+          ;;
+      esac
+      case "$body" in
+        *"oven-sh/setup-bun"*)
+          version=$(printf '%s\n' "$body" | sed -n 's/.*bun-version:[[:space:]]*\([^[:space:]]*\).*/\1/p')
+          echo "BUN $workflow $job ${version:-default}"
           ;;
       esac
     done
@@ -220,6 +229,38 @@ if [ "$(printf '%s\n' "$deno_versions" | grep -c .)" -gt 1 ]; then
   done
   echo >&2
   echo "jobs running the workspace suite install different Deno versions" >&2
+  exit 1
+fi
+
+# And the same for Bun, with one extra rule: the version has to be a version.
+#
+# `bun-version: latest` is how ubugeeei-prod/uf#1048 stayed invisible. The Bun
+# adapter wrote a `handler.js` that no Bun before 1.4.2 could parse — React's
+# server build carries a labelled statement Bun's engine refused until then —
+# and every job that installed Bun installed `latest`, so the suite only ever
+# met a Bun new enough to hide it. A moving runtime is not a tested runtime:
+# it is a different one on different days, and the day it changes is not a day
+# anybody chose.
+bun_versions=$(echo "$findings" | grep '^BUN ' | awk '{print $4}' | sort -u)
+if [ "$(printf '%s\n' "$bun_versions" | grep -c .)" -gt 1 ]; then
+  echo >&2
+  echo "$findings" | grep '^BUN ' | while read -r _ workflow job version; do
+    echo "$workflow: '$job' installs Bun $version." >&2
+  done
+  echo >&2
+  echo "jobs running the workspace suite install different Bun versions" >&2
+  exit 1
+fi
+moving=$(echo "$findings" | grep '^BUN ' | awk '$4 == "latest" || $4 == "default" { print }')
+if [ -n "$moving" ]; then
+  echo >&2
+  echo "$moving" | while read -r _ workflow job version; do
+    echo "$workflow: '$job' installs Bun '$version', which is not a version." >&2
+  done
+  echo >&2
+  echo "  A suite that only ever meets the newest Bun cannot see a defect that needs an" >&2
+  echo "  older one; that is how ubugeeei-prod/uf#1048 passed CI while failing on Bun 1.3.13." >&2
+  echo "  Pin an explicit release, and let the 'Bun adapter' job be the one that moves." >&2
   exit 1
 fi
 

@@ -87,6 +87,27 @@ pub struct HostSupport {
     pub tracking_issue: Option<u32>,
 }
 
+/// The oldest Bun that runs what `uf build --adapter bun` writes.
+///
+/// A floor, not a preference, and it is about a *parser* rather than a
+/// feature. React's published server build contains a labelled statement in
+/// `else` position — `else a: if (…)`, in every `react-dom-server*.production`
+/// file including the `bun` one — and Bun's engine refuses it before this
+/// release with `Cannot find scope for the label 'a'`. So the bundle uf writes
+/// cannot be parsed there at all, and the process dies before it serves
+/// anything.
+///
+/// It is not uf's syntax to lower. Node runs the identical bundle, the
+/// construct is ordinary ES that has been legal since ES1, uf's own transform
+/// emits none of it, and asking for React's `bun` export condition resolves to
+/// a build that carries it too. What is left is to say which Bun a Bun
+/// deployment needs, which is what this is. See ubugeeei-prod/uf#1048.
+///
+/// `packages/vite/driver.js` holds the same number for the generated entry,
+/// and `crates/uf_cli/tests/vite.rs` reads it back out of a built artefact so
+/// the two cannot drift.
+pub const BUN_MINIMUM: &str = "1.4.2";
+
 /// Every host, in the order they are documented.
 ///
 /// The order is "what a person is most likely to be running", not the enum's:
@@ -203,6 +224,22 @@ impl HostSupport {
     /// Every [`RuntimeHost`] has one — [`crate::tests`] is what keeps that
     /// true when a variant is added — so this cannot fail and does not return
     /// an `Option` a caller would have to invent an answer for.
+    /// The oldest release of this host that runs what uf builds for it.
+    ///
+    /// `None` is the ordinary answer and means uf has met no version of this
+    /// host it cannot serve — not that every version works, which is a claim
+    /// nobody has checked. A `Some` is a floor uf enforces, and the thing that
+    /// makes it honest is that a test starts *that* version: see
+    /// [`BUN_MINIMUM`], and the job `.github/workflows/ci.yml` runs on it.
+    #[must_use]
+    pub const fn minimum_version(&self) -> Option<&'static str> {
+        match self.host {
+            RuntimeHost::Bun => Some(BUN_MINIMUM),
+            _ => None,
+        }
+    }
+
+    /// The row for one host.
     #[must_use]
     pub fn for_host(host: RuntimeHost) -> &'static Self {
         HOSTS
