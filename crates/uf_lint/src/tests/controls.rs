@@ -40,6 +40,26 @@ fn button_has_type_accepts_the_documented_passes() {
     );
 }
 
+/// JSX applies props in written order, so a spread hides only what it could
+/// still win. A `type` written after one is settled where it stands, and the
+/// rule reads it rather than skipping the element for carrying a spread.
+#[test]
+fn button_has_type_reads_an_attribute_the_spread_cannot_reach() {
+    reports(
+        "react/button-has-type",
+        &[r#"<button {...props} type="huge">Save</button>"#],
+    );
+    accepts(
+        "react/button-has-type",
+        &[
+            // The spread comes after, so it may still replace `type`.
+            r#"<button type="button" {...props}>Save</button>"#,
+            // Never written here, and a spread may be supplying it.
+            "<button {...props}>Save</button>",
+        ],
+    );
+}
+
 // --- react/checked-requires-onchange-or-readonly ----------------------------
 
 #[test]

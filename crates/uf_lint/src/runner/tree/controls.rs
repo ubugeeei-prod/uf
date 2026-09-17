@@ -7,11 +7,23 @@
 //! `<input checked>` with nothing to change it is a control the reader cannot
 //! move. Neither looks wrong in the markup, which is why a linter has to say it.
 //!
-//! # A spread may be carrying the companion
+//! # A spread is gated per prop, not per element
 //!
-//! Both rules look for an attribute's **absence**, so an element with a
-//! `{...spread}` is a question this module does not answer — the same gate
-//! [`super::interaction`] uses, and for the same reason.
+//! Both rules look for an attribute's **absence**, and a `{...spread}` may be
+//! supplying it — but only where the spread could still win. JSX applies props
+//! in written order, so `<button {...props} type="huge">` settles `type` right
+//! there and no spread can reach it, while `<button type="button" {...props}>`
+//! leaves it open. Each rule therefore asks [`spread_may_set`] about its own
+//! decisive props rather than skipping every element that carries a spread:
+//! "what cannot be seen is not reported" is the principle, and a blanket gate
+//! over-applies it, staying silent where the answer is written down.
+//!
+//! For `react/checked-requires-onchange-or-readonly` the two gates come to the
+//! same thing, which is worth writing down rather than leaving to be
+//! rediscovered: that rule fires precisely when `onChange` and `readOnly` are
+//! *absent*, and an absent prop plus any spread means the spread may be
+//! supplying it. The per-prop gate is still what is written, because it says
+//! which props the silence is about.
 //!
 //! # The companion written with its HTML spelling
 //!
@@ -26,8 +38,8 @@ use uf_config::UniflowedConfig;
 use uf_flow::Loc;
 use uf_flow::ast::jsx;
 
-use super::value::Value;
-use super::{Tree, attribute, has_spread};
+use super::value::{Value, spread_may_set};
+use super::{Tree, attribute};
 use crate::{Severity, severity};
 
 /// `react/button-has-type`.
@@ -67,11 +79,8 @@ impl Levels {
 
 /// Run every rule in this module that is on against one host element.
 pub(super) fn check(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
-    // See the module documentation: both rules ask what is *not* on the
-    // element, and a spread may be supplying it.
-    if has_spread(opening) {
-        return;
-    }
+    // Each rule gates on its own decisive props; see the module documentation
+    // for why this is not one gate over the whole element.
     let levels = tree.controls;
     if levels.button_has_type.is_some() {
         button_has_type(tree, name, opening);
@@ -99,6 +108,11 @@ const BUTTON_TYPES: [&str; 3] = ["submit", "reset", "button"];
 /// guidance rather than a defect wherever it appears.
 fn button_has_type(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
     if name != "button" {
+        return;
+    }
+    // Only a spread that could still win hides the answer: a `type` written
+    // after one is settled where it stands.
+    if spread_may_set(opening, "type") {
         return;
     }
     let Some(written) = attribute(opening, "type") else {
@@ -146,6 +160,15 @@ fn button_has_type(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, 
 /// the DOM owns that value and a click moves it.
 fn checked_requires(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
     if name != "input" {
+        return;
+    }
+    // The three props this rule decides on. A spread that could still set any
+    // of them takes the answer away: one could turn the input uncontrolled, and
+    // either of the others could be the companion the rule is looking for.
+    if spread_may_set(opening, "checked")
+        || spread_may_set(opening, "onChange")
+        || spread_may_set(opening, "readOnly")
+    {
         return;
     }
     let scope = tree.scope;

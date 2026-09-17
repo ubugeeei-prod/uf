@@ -1042,29 +1042,34 @@ impl<'ast> Walk<'ast> {
     /// Text inside `<code>` and `<pre>` is not read, for the reason
     /// [`Walk::check_comment_text`] does not read it: there it is meant as
     /// written.
+    ///
+    /// **Every offending character is reported, not just the first.** Stopping
+    /// at the first one would drip-feed: the reader escapes it, runs again, and
+    /// is handed a second finding on the same line. One pass over a text child
+    /// should say everything there is to say about it.
     fn check_unescaped_entities(&mut self, children: &'ast [jsx::Child<Loc, Loc>]) {
         for child in children {
             let jsx::Child::Text { loc, inner } = child else {
                 continue;
             };
-            let Some((at, found)) = inner
+            let offenders = inner
                 .raw
                 .char_indices()
-                .find(|(_, character)| matches!(character, '>' | '}'))
-            else {
-                continue;
-            };
-            let (line, column) = offset_position(loc, &inner.raw, at);
-            let escape = if found == '>' { "&gt;" } else { "{'}'}" };
-            self.found.push(Finding {
-                rule: UNESCAPED_ENTITIES,
-                line,
-                column,
-                message: format!(
-                    "`{found}` in JSX text renders as itself, and is usually what a mistyped tag \
-                     or a dropped brace left behind; write `{escape}` if it is meant to be read"
-                ),
-            });
+                .filter(|(_, character)| matches!(character, '>' | '}'));
+            for (at, found) in offenders {
+                let (line, column) = offset_position(loc, &inner.raw, at);
+                let escape = if found == '>' { "&gt;" } else { "{'}'}" };
+                self.found.push(Finding {
+                    rule: UNESCAPED_ENTITIES,
+                    line,
+                    column,
+                    message: format!(
+                        "`{found}` in JSX text renders as itself, and is usually what a mistyped \
+                         tag or a dropped brace left behind; write `{escape}` if it is meant to \
+                         be read"
+                    ),
+                });
+            }
         }
     }
 

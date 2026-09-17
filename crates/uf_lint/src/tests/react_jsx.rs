@@ -536,6 +536,17 @@ fn unescaped_entities_names_the_escape_to_write() {
     assert!(diagnostics[0].message.contains("&gt;"), "{diagnostics:?}");
 }
 
+/// One pass over a text child says everything there is to say about it.
+///
+/// Stopping at the first offender would drip-feed: escape it, run again, and a
+/// second finding appears on the same line.
+#[test]
+fn unescaped_entities_reports_every_offending_character() {
+    let diagnostics = lint_js(UNESCAPED, &page("<p>a > b } c</p>"));
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+}
+
 #[test]
 fn unescaped_entities_leaves_prose_and_escaped_text_alone() {
     for markup in [
