@@ -176,6 +176,7 @@ fn zero_config_defaults_to_flow_react_app_stack() {
     assert_eq!(config.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!config.task_runner.allow_package_scripts);
     assert_eq!(config.test.module, "@uniflowed/test");
+    assert_eq!(config.test.target, None);
     assert_eq!(config.test.runner, None);
     assert_eq!(
         config.test.native_runner().application_target,
@@ -345,6 +346,7 @@ fn extracts_vite_style_define_config_object() {
             allowPackageScripts: false,
           },
           test: {
+            target: "react-native",
             runner: {
               applicationTarget: "react-native",
               runtime: "capability-js-host",
@@ -392,6 +394,10 @@ fn extracts_vite_style_define_config_object() {
     assert_eq!(parsed.tasks["storybook"].command(), "vite --host 0.0.0.0");
     assert_eq!(parsed.task_runner.engine, TaskRunnerEngine::ViteTask);
     assert!(!parsed.task_runner.allow_package_scripts);
+    assert_eq!(
+        parsed.test.target,
+        Some(NativeTestApplicationTarget::ReactNative)
+    );
     assert_eq!(
         parsed.test.native_runner().application_target,
         NativeTestApplicationTarget::ReactNative
