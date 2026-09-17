@@ -67,8 +67,6 @@ describe("DatePicker", () => {
     const { container } = render(<Example />);
     await expect(container).toHaveNoAxeViolations();
     await userEvent.click(html(screen.getByRole("button", { name: "Choose a date" })));
-    // `empty-table-header` is left out until ubugeeei-prod/uf#1084: the calendar's
-    // weekday headings hide their only text behind an `aria-label`.
-    await expect(container).toHaveNoAxeViolations({ disabledRules: ["empty-table-header"] });
+    await expect(container).toHaveNoAxeViolations();
   });
 });
