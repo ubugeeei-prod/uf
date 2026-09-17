@@ -227,6 +227,8 @@ export component AlertDialogDescription(children: React.Node, render?: RenderPro
   const describedBy = alert.describedBy;
 
   useEffect(() => {
+    // This mount counter is a ref because it is read by Dialog.Body after commit.
+    // uf-lint-disable-next-line react-compiler/immutability
     describedBy.current += 1;
     return () => {
       describedBy.current -= 1;

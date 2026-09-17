@@ -138,7 +138,7 @@ type CalendarState = {|
    * November — a cell that is rendered for the first time by the same update
    * that asked for it, so nothing could have focused it when the key arrived.
    */
-  readonly pendingFocus: { current: string | null },
+  readonly pendingFocusRef: { current: string | null },
   readonly select: (date: PlainDate) => void,
   readonly selected: PlainDate | null,
   readonly today: PlainDate,
@@ -190,7 +190,7 @@ export component CalendarRoot(
   ...rest: Rest
 ) {
   const base = useId();
-  const pendingFocus = useRef<string | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
   // One is always allocated, because a hook may not be called conditionally;
   // the caller's is used when there is one.
   const ownDayRef = useRef<HTMLElement | null>(null);
@@ -238,7 +238,7 @@ export component CalendarRoot(
     if (viaKeyboard) {
       // Only for the keyboard. A press already put focus on the cell it landed
       // on, and asking for it again would fight a caller who moved it.
-      pendingFocus.current = date.toString();
+      pendingFocusRef.current = date.toString();
     }
     // Compared rather than assigned, because `Calendar.Day` reports the focus
     // that this very call produced: a key moves the tab stop, the effect focuses
@@ -286,7 +286,7 @@ export component CalendarRoot(
       isDisabled,
       locale,
       moveFocus,
-      pendingFocus,
+      pendingFocusRef,
       select,
       selected,
       today: currentDate,
@@ -336,7 +336,7 @@ export component CalendarRoot(
 export component CalendarMonth(children?: (date: PlainDate) => renders CalendarDay, ...rest: Rest) {
   const calendar = useCalendar("Calendar.Month");
   const gridRef = useRef<HTMLElement | null>(null);
-  const { focused, moveFocus, pendingFocus, weekStartsOn } = calendar;
+  const { focused, focusedDayRef, moveFocus, pendingFocusRef, weekStartsOn } = calendar;
 
   const weeks = useMemo(
     () => weeksOf(focused.year, focused.month, weekStartsOn),
@@ -355,15 +355,15 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
     }
     const at = focused.toString();
     const cell: HTMLElement | null = (grid.querySelector(`[data-date="${at}"]`): $FlowFixMe);
-    calendar.focusedDayRef.current = cell;
+    focusedDayRef.current = cell;
     // Only when a key asked for it, and only once the render it asked for has
     // happened: `ArrowRight` off the end of October sets this to the 1st of
     // November, and the cell exists for the first time in the commit this
     // effect belongs to.
-    if (pendingFocus.current !== at) {
+    if (pendingFocusRef.current !== at) {
       return;
     }
-    pendingFocus.current = null;
+    pendingFocusRef.current = null;
     cell?.focus();
   });
 
