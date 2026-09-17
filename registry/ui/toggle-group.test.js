@@ -57,12 +57,6 @@ describe("ToggleGroup", () => {
   it("has no accessibility violations", async () => {
     render(<Example />);
     await expect(screen.getByRole("radiogroup", { name: "Alignment" })).toHaveNoAxeViolations();
-    // `aria-allowed-attr` is off for the multiple-mode group alone: the part
-    // writes `aria-orientation` on `role="group"`, which ARIA does not allow,
-    // and that is `@uniflowed/ui`'s to fix, ubugeeei-prod/uf#1046. Every other
-    // rule still runs over it.
-    await expect(screen.getByRole("group", { name: "Formatting" })).toHaveNoAxeViolations({
-      disabledRules: ["aria-allowed-attr"],
-    });
+    await expect(screen.getByRole("group", { name: "Formatting" })).toHaveNoAxeViolations();
   });
 });

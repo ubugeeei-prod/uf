@@ -170,11 +170,10 @@ export component PaginationNext(
  * say, correctly, that `disabled` might not be a boolean. Handing the bag over
  * as one value keeps it a bag until it reaches the element it was always for.
  *
- * `disabled` drops the `href` rather than adding an attribute, because there
- * is no such thing as a disabled link: an `<a>` with no `href` is not in the
- * tab order and is not announced as a link, which is exactly what "there is no
- * previous page" means. `aria-disabled` is there too, so a reader who reaches
- * it another way is told why it does nothing.
+ * `disabled` drops the `href` and keeps the link role. That is the ARIA shape
+ * for "this page direction exists, but cannot be taken now": it is out of the
+ * tab order because there is no `href`, still named as Previous or Next, and
+ * announced as disabled rather than as a silent generic element.
  */
 component PageLink(
   rest: Rest,
@@ -190,10 +189,11 @@ component PageLink(
     "aria-disabled": disabled ? "true" : undefined,
     "aria-label": label,
     children,
+    role: disabled ? "link" : undefined,
   });
 
   if (render != null) {
-    return <li>{render(withProps(props, { role: disabled ? undefined : "link" }))}</li>;
+    return <li>{render(withProps(props, { role: "link" }))}</li>;
   }
 
   return (

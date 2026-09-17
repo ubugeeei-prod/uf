@@ -1365,6 +1365,46 @@ describe("Sidebar", () => {
     // end of it.
     expect(trigger).toHaveFocus();
   });
+
+  it("hands props to the narrow sheet panel", () => {
+    answerMediaQueries(true);
+    render(
+      <Sidebar.Root>
+        <Sidebar.Trigger>Menu</Sidebar.Trigger>
+        <Sidebar.Body
+          label="Main"
+          sheetProps={{ className: "sidebar-panel", "data-testid": "sidebar-panel" }}
+        >
+          <Sidebar.Item label="Settings">Settings</Sidebar.Item>
+        </Sidebar.Body>
+      </Sidebar.Root>,
+    );
+    const panel = screen.getByTestId("sidebar-panel");
+    expect(panel).toHaveAttribute("class", "sidebar-panel");
+    expect(panel).toHaveAttribute("role", "dialog");
+    expect(within(panel).getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+  });
+
+  it("hands props to a collapsed item's tooltip", () => {
+    render(
+      <Sidebar.Root defaultOpen={false}>
+        <Sidebar.Trigger>Menu</Sidebar.Trigger>
+        <Sidebar.Body label="Main">
+          <Sidebar.Item
+            label="Settings"
+            tooltipProps={{ className: "sidebar-tip", "data-testid": "sidebar-tip" }}
+          >
+            Settings
+          </Sidebar.Item>
+        </Sidebar.Body>
+      </Sidebar.Root>,
+    );
+    act(() => screen.getByRole("button", { name: "Settings" }).focus());
+    const tooltip = screen.getByTestId("sidebar-tip");
+    expect(tooltip).toHaveAttribute("class", "sidebar-tip");
+    expect(tooltip).toHaveAttribute("role", "tooltip");
+    expect(tooltip.textContent).toBe("Settings");
+  });
 });
 
 describe("Menu", () => {
@@ -2121,7 +2161,9 @@ describe("Menubar", () => {
     expect(file).toHaveAttribute("aria-expanded", "false");
     expect(file).not.toHaveAttribute("aria-controls");
     await userEvent.click(file);
+    const menu = screen.getByRole("menu", { name: "File" });
     expect(screen.getByRole("menuitem", { name: "File" })).toHaveAttribute("aria-expanded", "true");
+    expect(file.getAttribute("aria-controls")).toBe(menu.getAttribute("id"));
     expect(danglingReferences()).toEqual([]);
   });
 
@@ -6136,6 +6178,8 @@ describe("Table", () => {
     // document before the first sort or it announces nothing at all.
     const status = screen.getByRole("status");
     expect(status).toBeInTheDocument();
+    expect(status.style.position).toBe("absolute");
+    expect(status.style.clipPath).toBe("inset(50%)");
     expect(status.textContent).toBe("");
     await userEvent.click(screen.getByRole("button", { name: "Name" }));
     expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");
@@ -6326,12 +6370,14 @@ describe("Pagination", () => {
     expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
   });
 
-  it("is not a link at all when there is nowhere to go", () => {
+  it("keeps an unavailable direction named and disabled", () => {
     render(<Example page={1} />);
-    // There is no such thing as a disabled link: an `<a>` with no `href` is
-    // out of the tab order and is not announced as a link, which is exactly
-    // what "there is no previous page" means.
-    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    // No `href`, so it is out of the tab order and cannot navigate; `role`,
+    // name and disabled state stay, so it is still announced as the unavailable
+    // direction rather than as an unnamed generic element.
+    const previous = screen.getByRole("link", { name: "Previous page" });
+    expect(previous).toHaveAttribute("aria-disabled", "true");
+    expect(previous).not.toHaveAttribute("href");
     expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
   });
 
@@ -6403,7 +6449,10 @@ describe("Pagination", () => {
     expect(screen.getByTestId("pages")).toHaveAttribute("role", "list");
     expect(screen.getByRole("link", { current: "page" }).textContent).toBe("4");
     expect(screen.getByRole("link", { name: "Next page" })).toHaveAttribute("data-testid", "next");
-    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    expect(screen.getByRole("link", { name: "Previous page" })).toHaveAttribute(
+      "data-testid",
+      "previous",
+    );
     expect(screen.getByTestId("previous")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByTestId("previous")).not.toHaveAttribute("href");
     expect(screen.getByRole("status").textContent).toBe("Page 4 of 25.");
@@ -7425,7 +7474,8 @@ describe("ToggleGroup", () => {
         <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
       </ToggleGroup.Root>,
     );
-    expect(screen.getByRole("group")).toHaveAttribute("aria-orientation", "horizontal");
+    expect(screen.getByRole("group")).not.toHaveAttribute("aria-orientation");
+    await expect(screen.getByRole("group")).toHaveNoAxeViolations();
     expect(screen.queryByRole("radiogroup")).toBe(null);
     await userEvent.click(screen.getByRole("button", { name: "Bold" }));
     await userEvent.click(screen.getByRole("button", { name: "Italic" }));

@@ -7,12 +7,13 @@
 
 import * as React from "@uniflowed/react";
 import { afterEach, describe, expect, it } from "@uniflowed/test";
-import { cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
+import { act, cleanup, render, screen, userEvent } from "@uniflowed/react-testing";
 
 import { Example } from "./sidebar.example.js";
 
 afterEach(() => {
   cleanup();
+  answerMediaQueries(null);
 });
 
 /** The element a query found, as the element `userEvent` clicks. See #1017. */
@@ -21,6 +22,20 @@ function html(element: Element): HTMLElement {
     return element;
   }
   throw new Error(`expected an HTML element, and found <${element.tagName.toLowerCase()}>`);
+}
+
+/** Answer every media query the same way, or stop answering them at all. */
+function answerMediaQueries(matches: boolean | null): void {
+  const host: $FlowFixMe = window;
+  host.matchMedia =
+    matches == null
+      ? undefined
+      : (query: string) => ({
+          matches,
+          media: query,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+        });
 }
 
 describe("Sidebar", () => {
@@ -56,6 +71,19 @@ describe("Sidebar", () => {
     expect(
       screen.getByRole("button", { name: "Toggle sidebar" }).getAttribute("class"),
     ).not.toBeNull();
+  });
+
+  it("dresses the narrow panel and a collapsed tooltip", async () => {
+    answerMediaQueries(true);
+    render(<Example />);
+    expect(screen.getByRole("dialog", { name: "Main" }).getAttribute("class")).not.toBeNull();
+
+    cleanup();
+    answerMediaQueries(null);
+    render(<Example />);
+    await userEvent.click(html(screen.getByRole("button", { name: "Toggle sidebar" })));
+    act(() => html(screen.getByRole("button", { name: "Projects" })).focus());
+    expect(screen.getByRole("tooltip").getAttribute("class")).not.toBeNull();
   });
 
   it("has no accessibility violations, open or collapsed", async () => {
