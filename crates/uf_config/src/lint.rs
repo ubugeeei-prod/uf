@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 120] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 123] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -472,6 +472,25 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 120] = [
     // XSS and arbitrary code execution: never a warning.
     ("security/no-dangerously-set-inner-html", RuleLevel::Error),
     ("security/no-eval", RuleLevel::Error),
+    // A `javascript:` URL is the same class by another route: the browser turns
+    // the string into code, with everything the page can do.
+    ("security/no-script-url", RuleLevel::Error),
+    // The half of this defect everyone knows is already closed — browsers give
+    // `target="_blank"` a null `window.opener` on their own now — and what is
+    // left is the `Referer` header going out, telling wherever the link leads
+    // the full URL the reader came from. `error` with the rest of the
+    // namespace: the fix is one exact token, `rel="noreferrer"`, and a project
+    // that means to send a referrer says so on the line or in this table,
+    // rather than every such link passing unnoticed everywhere.
+    ("security/no-target-blank", RuleLevel::Error),
+    // Where uf departs from eslint-plugin-react, which leaves its own version
+    // of this rule out of `recommended`: an unsandboxed frame runs with
+    // everything a document gets, and with the whole of this page when it is
+    // served from this origin. uf's security namespace does not warn —
+    // `uf_lint`'s `security_rules_are_errors_by_default` pins that — so a
+    // first-party embed needing no bounds is a decision a project records,
+    // rather than a default that lets every frame through unasked.
+    ("security/iframe-has-sandbox", RuleLevel::Error),
 ];
 
 impl Default for LintConfig {

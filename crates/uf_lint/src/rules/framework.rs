@@ -624,6 +624,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "do not monkey-patch global `fetch`",
     },
     RuleDescriptor {
+        id: "security/iframe-has-sandbox",
+        category: RuleCategory::Security,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an `iframe` needs a `sandbox` to bound what the page inside it may do",
+    },
+    RuleDescriptor {
         id: "security/no-dangerously-set-inner-html",
         category: RuleCategory::Security,
         default_level: RuleLevel::Error,
@@ -636,5 +643,19 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "never turn strings into code via `eval`, `new Function`, or timer strings",
+    },
+    RuleDescriptor {
+        id: "security/no-script-url",
+        category: RuleCategory::Security,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a `javascript:` URL is a program in a prop the browser navigates to",
+    },
+    RuleDescriptor {
+        id: "security/no-target-blank",
+        category: RuleCategory::Security,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`target=\"_blank\"` carries the page's URL on unless `rel` stops it",
     },
 ];
