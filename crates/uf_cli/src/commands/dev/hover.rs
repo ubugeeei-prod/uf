@@ -183,6 +183,7 @@ fn catalogue_entry(descriptor: &RuleDescriptor, said: Option<&str>) -> String {
         RuleCategory::Server => "server/client boundary rule",
         RuleCategory::Router => "router rule",
         RuleCategory::Package => "`package.json` rule",
+        RuleCategory::Import => "static import rule",
         RuleCategory::Fetch => "`@uniflowed/fetch` rule",
         RuleCategory::Vite => "`@uniflowed/vite` rule",
         RuleCategory::Security => "security rule",

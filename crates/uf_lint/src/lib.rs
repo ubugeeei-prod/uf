@@ -39,10 +39,10 @@ use crate::runner::{
     run_fetch_no_global_override, run_flow_ambiguous_object_type, run_flow_deprecated_type,
     run_flow_export_renamed_default, run_flow_internal_type, run_flow_mixed_import_and_require,
     run_flow_non_const_var_export, run_flow_unclear_type, run_flow_unnecessary_optional_chain,
-    run_flow_unsafe_getters_setters, run_flow_unsafe_object_assign, run_module_tree_rules,
-    run_no_npm_script_invocation, run_no_tabs, run_no_trailing_whitespace,
-    run_package_no_npm_scripts, run_react_component_syntax, run_react_hook_syntax,
-    run_react_native_platform_split, run_react_no_default_export_component,
+    run_flow_unsafe_getters_setters, run_flow_unsafe_object_assign, run_import_no_absolute_path,
+    run_import_no_duplicates, run_module_tree_rules, run_no_npm_script_invocation, run_no_tabs,
+    run_no_trailing_whitespace, run_package_no_npm_scripts, run_react_component_syntax,
+    run_react_hook_syntax, run_react_native_platform_split, run_react_no_default_export_component,
     run_router_reserved_files, run_router_unsupported_segment,
     run_security_no_dangerously_set_inner_html, run_security_no_eval, run_server_no_client_secret,
     run_server_no_server_only_import_in_client, run_server_use_client_directive_position,
@@ -236,6 +236,8 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_flow_mixed_import_and_require(&scan, config, &mut diagnostics);
     run_flow_non_const_var_export(&scan, config, &mut diagnostics);
     run_flow_export_renamed_default(&scan, config, &mut diagnostics);
+    run_import_no_absolute_path(&scan, config, &mut diagnostics);
+    run_import_no_duplicates(&scan, config, &mut diagnostics);
 
     run_react_component_syntax(&scan, config, &mut diagnostics);
     run_react_hook_syntax(&scan, config, &mut diagnostics);

@@ -20,7 +20,7 @@
 
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 import {
   Suspense,
   createContext,
@@ -28,6 +28,7 @@ import {
   use,
   useContext,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -625,7 +626,7 @@ component ModuleRouter(url: string, initial: ResolvedRoute, children: React.Node
   // whether a navigation is intercepted is a question about the page it starts
   // on — and `show` writes both in the same breath, so the two cannot disagree
   // about what was last committed.
-  const shown = React.useRef<ResolvedRoute>(initial);
+  const shown = useRef<ResolvedRoute>(initial);
   const show = (next: ResolvedRoute) => {
     shown.current = next;
     setResolved(next);
@@ -1675,7 +1676,7 @@ export component Link(
   ...rest: { readonly [string]: mixed }
 ) {
   const { router, navigation } = useRouterState();
-  const prefetched = React.useRef(false);
+  const prefetched = useRef(false);
   const drives = navigation === "client";
 
   const doPrefetch = () => {

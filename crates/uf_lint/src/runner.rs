@@ -10,6 +10,7 @@ mod flow_expression;
 mod flow_module;
 mod flow_syntax;
 mod flow_type;
+mod imports;
 mod module_tree;
 mod package;
 mod react;
@@ -37,6 +38,7 @@ pub(crate) use flow_type::{
     run_flow_ambiguous_object_type, run_flow_deprecated_type, run_flow_internal_type,
     run_flow_unclear_type,
 };
+pub(crate) use imports::{run_import_no_absolute_path, run_import_no_duplicates};
 pub(crate) use module_tree::run_module_tree_rules;
 pub(crate) use package::run_package_no_npm_scripts;
 pub(crate) use react::{
