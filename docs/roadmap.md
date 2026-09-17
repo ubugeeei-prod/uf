@@ -207,8 +207,10 @@ in `uf`.
 - Keep scheduling, bounds and reporting in Rust, with JavaScript execution
   delegated to Capability JS Hosts. **Done.**
 - Target faster-than-Bun-Test and faster-than-Vitest execution for Flow-heavy
-  suites. Vitest is beaten by about 9x; Bun's runner is still about 3x faster,
-  and closing that needs a worker pool that survives between runs.
+  suites. Vitest is beaten by about 10x; Bun's runner is still about 2.2x
+  faster, and what is left of that is worker start-up rather than transforms or
+  discovery — closing it needs a worker pool that survives between runs, or a
+  worker whose imports are pre-bundled.
 - Implement JavaScript execution backend. **Done.**
 - Add React DOM and React Native renderers.
 - Add terminal renderers and snapshots through `@uniflowed/tui`. **Done**: an
