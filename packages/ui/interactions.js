@@ -107,6 +107,27 @@
 // "a press outside closes it" is a promise a component makes to a reader who
 // pressed something else, not to the thing they pressed.
 //
+// # A press outside
+//
+// `useInteractOutside` is the other half of a press, and the one an overlay
+// asks for: not "was this element pressed?" but "did the reader press
+// somewhere else?". A `pointerdown` alone cannot answer it. On a touchscreen
+// that event is the first of *every* touch, the one that scrolls the page
+// included; the browser cancels that pointer as the scroll begins and never
+// sends a click, so an overlay that dismissed on `pointerdown` had already
+// gone by the time the reader's finger moved. It is wrong for a mouse in two
+// smaller ways as well: a press that starts outside and is released inside
+// dismissed, and so did the right button, which is asking for a context menu
+// beside an overlay rather than asking for it to go away.
+//
+// So an outside interaction is a whole gesture: a `pointerdown` *and* the
+// release that ends the same pointer, both outside, from the primary button,
+// with the target still in the document. A gesture the browser cancels has no
+// end and dismisses nothing. The listeners are the document's and in the
+// capture phase, so a component that stops the event inside the page cannot
+// hide a press from the overlay above it — "a press outside closes it" is a
+// promise made to the reader who pressed something else.
+//
 // # Hover
 //
 // `useHover` is a mouse's and a pen's. A finger has no hover, so a touch
@@ -1132,6 +1153,145 @@ export hook usePress(options?: PressOptions): PressResult {
   );
 
   return { isPressed, pressProps };
+}
+
+// ---------------------------------------------------------------------------
+// useInteractOutside
+// ---------------------------------------------------------------------------
+
+/** A ref to an element a press may land in without being "outside". */
+export type InteractOutsideRef = { readonly current: HTMLElement | null, ... };
+
+/** What `useInteractOutside` is told. */
+export type InteractOutsideOptions = {|
+  /** Hear nothing: what an overlay that is closed asks for. */
+  readonly isDisabled?: boolean,
+  /** A whole gesture began and ended outside every ref. */
+  readonly onInteractOutside: (event: Event) => mixed,
+  /**
+   * The elements that are not "outside".
+   *
+   * The overlay, and whatever opens it: a trigger sits outside the overlay's
+   * own box and is not "outside" for this purpose, because dismissing there
+   * and then letting the trigger's own click reopen makes a press on it a
+   * no-op that flickers.
+   *
+   * Read when an event arrives rather than when the listener is attached, so a
+   * ref that is still null on the commit that opened the overlay is not a
+   * listener that quietly never worked.
+   */
+  readonly refs: $ReadOnlyArray<InteractOutsideRef>,
+|};
+
+/** A pointer that went down outside and has not ended anywhere yet. */
+type OutsideGesture = {| readonly pointerId: number |};
+
+/**
+ * Whether `node` is still in the document.
+ *
+ * A press whose target left the page between going down and coming up did not
+ * end outside anything: it ended on something that is no longer there, and the
+ * reader was most likely pressing what replaced it.
+ */
+function isStillInDocument(document: mixed, node: mixed): boolean {
+  const root: $FlowFixMe = document;
+  const element: $FlowFixMe = root?.documentElement;
+  return element != null && contains(element, node);
+}
+
+/**
+ * A press that began *and* ended outside an element: what dismisses an overlay.
+ *
+ *     useInteractOutside({
+ *       isDisabled: !open,
+ *       onInteractOutside: close,
+ *       refs: [bodyRef, triggerRef],
+ *     });
+ *
+ * The module header says what a bare `pointerdown` gets wrong and why this
+ * waits for the end of the gesture. One hook rather than a copy in each
+ * overlay, because a copy is how the answers drift apart: the case that a
+ * scroll must not dismiss is one rule, not five.
+ */
+export hook useInteractOutside(options: InteractOutsideOptions): void {
+  const gesture = useRef<OutsideGesture | null>(null);
+  const isDisabled = options.isDisabled === true;
+
+  const isOutside = useStableCallback((target: mixed): boolean => {
+    for (const ref of options.refs) {
+      const element: $FlowFixMe = ref.current;
+      if (element != null && contains(element, target)) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const dismiss = useStableCallback((event: Event) => {
+    options.onInteractOutside(event);
+  });
+
+  useEffect(() => {
+    if (isDisabled) {
+      gesture.current = null;
+      return;
+    }
+    const host: $FlowFixMe = globalThis;
+    const document = host.document;
+    if (document == null) {
+      return;
+    }
+
+    // Only the primary button begins one. A right click is asking for a
+    // context menu beside the overlay, not for the overlay to go away.
+    const onPointerDown = (event: $FlowFixMe) => {
+      gesture.current =
+        event.button === 0 && isOutside(event.target) ? { pointerId: event.pointerId ?? 0 } : null;
+    };
+
+    // The release that ends the gesture this began. A click is accepted as
+    // that end as well, for a host where the release never arrives — and it
+    // cannot dismiss twice, because the first end takes the gesture with it.
+    const end = (event: $FlowFixMe, samePointer: boolean) => {
+      const began = gesture.current;
+      if (began == null || (samePointer && (event.pointerId ?? 0) !== began.pointerId)) {
+        return;
+      }
+      gesture.current = null;
+      if (
+        event.button !== 0 ||
+        !isOutside(event.target) ||
+        !isStillInDocument(document, event.target)
+      ) {
+        return;
+      }
+      dismiss(event);
+    };
+
+    const onPointerUp = (event: $FlowFixMe) => end(event, true);
+    const onClick = (event: $FlowFixMe) => end(event, false);
+
+    // A gesture the browser took back — the scroll this hook exists for — ends
+    // nowhere, and dismisses nothing.
+    const onPointerCancel = (event: $FlowFixMe) => {
+      const began = gesture.current;
+      if (began != null && (event.pointerId ?? 0) === began.pointerId) {
+        gesture.current = null;
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("pointercancel", onPointerCancel, true);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      gesture.current = null;
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup", onPointerUp, true);
+      document.removeEventListener("pointercancel", onPointerCancel, true);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [isDisabled, isOutside, dismiss]);
 }
 
 // ---------------------------------------------------------------------------
