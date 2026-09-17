@@ -149,6 +149,11 @@ export type MisuseCheck = {
   readonly atLeast: number,
 };
 
+export type CleanCheck = {
+  readonly fixture: string,
+  readonly alongside: $ReadOnlyArray<string>,
+};
+
 /**
  * Hold one `tests/type-tests` fixture to its own `// expect:` markers.
  *
@@ -228,5 +233,38 @@ export function everyMisuseIsReported(check: MisuseCheck): void {
   const unexpected = [...reported.keys()]
     .filter((line) => !wanted.has(line))
     .map((line) => `${fixture}:${String(line)} ${String(reported.get(line))}`);
+  expect(unexpected).toEqual([]);
+}
+
+/** Hold a fixture that must type-check cleanly to that promise. */
+export function noDiagnosticsAreReported(check: CleanCheck): void {
+  const { fixture, alongside } = check;
+  const paths = ["tests/type-tests", ...alongside];
+  const argv = ["check", ...paths, "--json"];
+  const run = spawnSync(ufBinary, argv, {
+    cwd: repositoryRoot,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (run.stdout === "") {
+    throw new Error(
+      `\`uf ${argv.join(" ")}\` in ${repositoryRoot} printed nothing: ` +
+        `status ${String(run.status)}, stderr ${JSON.stringify(run.stderr)}`,
+    );
+  }
+  const report: CheckReport = JSON.parse(run.stdout);
+  expect(report.typeCheck.status).toBe("checked");
+  expect(report.typeCheck.filesChecked).toBeGreaterThan(0);
+
+  const unexpected = [];
+  for (const diagnostic of report.typeCheck.diagnostics) {
+    if (diagnostic.primary.path.endsWith(fixture)) {
+      unexpected.push(
+        `${fixture}:${String(diagnostic.primary.start.line)} ${diagnostic.message
+          .map((span) => span.text)
+          .join("")}`,
+      );
+    }
+  }
   expect(unexpected).toEqual([]);
 }
