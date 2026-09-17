@@ -251,6 +251,93 @@ pub fn bun_ready() -> bool {
     false
 }
 
+/// The `bun` on PATH, as it spells itself and as three numbers.
+///
+/// [`node_version`]'s counterpart, and for the same two reasons: the numbers
+/// are what a comparison needs and the string is what a skipped test prints.
+pub fn bun_version() -> Option<(String, (u64, u64, u64))> {
+    let output = std::process::Command::new("bun")
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    let numbers: Vec<u64> = version
+        .trim_start_matches('v')
+        .split(['.', '-'])
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    Some((
+        version,
+        (
+            numbers.first().copied().unwrap_or_default(),
+            numbers.get(1).copied().unwrap_or_default(),
+            numbers.get(2).copied().unwrap_or_default(),
+        ),
+    ))
+}
+
+/// Whether the `bun` on PATH can run what `uf build --adapter bun` writes.
+///
+/// A second question from [`bun_ready`], and the two must not be merged.
+/// Running *on* Bun — `tests/bun_host.rs`, `uf build --compile` — works on any
+/// Bun uf has met, and that is what [`bun_ready`] guards. This guards the
+/// deployment artefact, which has a floor: React's server build carries a
+/// labelled statement Bun's engine refused before
+/// [`uf_runtime::BUN_MINIMUM`], so on an older Bun the directory cannot be
+/// parsed and `uf build --adapter bun` refuses to write it in the first place.
+///
+/// The same shape as `tests/deno_host.rs`'s 2.8 gate, and the same policy: a
+/// machine below the floor may opt out with `UF_ALLOW_FIXTURE_SKIP=1`, and CI
+/// sets nothing, so the `Bun adapter` job — which installs exactly
+/// [`uf_runtime::BUN_MINIMUM`] — can never skip it. See ubugeeei-prod/uf#1048.
+pub fn bun_adapter_ready() -> bool {
+    let floor = bun_minimum_parts();
+    match bun_version() {
+        Some((_, numbers)) if numbers >= floor => return true,
+        Some((spelled, _)) => {
+            assert!(
+                std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+                "this test needs Bun {} or newer — the `bun` on PATH is {spelled}, which cannot \
+                 parse what `uf build --adapter bun` writes",
+                uf_runtime::BUN_MINIMUM
+            );
+            eprintln!(
+                "skipping: the Bun on PATH is {spelled}, older than the {} this adapter needs",
+                uf_runtime::BUN_MINIMUM
+            );
+        }
+        None => {
+            assert!(
+                std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+                "this test needs `bun` on PATH and there is none, so it would prove nothing"
+            );
+            eprintln!("skipping: `bun` is not on PATH");
+        }
+    }
+    false
+}
+
+/// [`uf_runtime::BUN_MINIMUM`] as three numbers.
+///
+/// Panics on a floor that is not three numbers, which is the same thing
+/// `crates/uf_runtime/src/tests.rs` asserts — a floor nothing can compare
+/// against would silently let every one of these tests through.
+fn bun_minimum_parts() -> (u64, u64, u64) {
+    let numbers: Vec<u64> = uf_runtime::BUN_MINIMUM
+        .split('.')
+        .filter_map(|part| part.parse().ok())
+        .collect();
+    assert_eq!(
+        numbers.len(),
+        3,
+        "`uf_runtime::BUN_MINIMUM` is not three numbers"
+    );
+    (numbers[0], numbers[1], numbers[2])
+}
+
 /// The Node `crates/uf_cli/src/commands/compile.rs` refuses anything below.
 pub const NODE_SEA_FLOOR: (u64, u64, u64) = (25, 5, 0);
 

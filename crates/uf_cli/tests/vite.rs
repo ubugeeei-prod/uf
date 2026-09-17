@@ -49,8 +49,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use support::{
-    NODE_SEA_FLOOR, Project, assert_plain, bun_ready, deno_ready, node_sea_ready, node_version, uf,
-    uf_path,
+    NODE_SEA_FLOOR, Project, assert_plain, bun_adapter_ready, bun_ready, deno_ready,
+    node_sea_ready, node_version, uf, uf_path,
 };
 
 /// The repository's `docs/` directory.
@@ -3647,7 +3647,42 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
         // `node:http` server — see ubugeeei-prod/uf#391.
         "bun" => {
             assert!(deployed.join("server.js").is_file());
-            let bundled = fs::read_to_string(deployed.join("handler.js")).unwrap();
+            // The floor, read out of the artefact and compared against the one
+            // `uf_runtime` declares, so the number in `packages/vite/driver.js`
+            // and the number in Rust cannot drift apart. See
+            // ubugeeei-prod/uf#1048.
+            let server = fs::read_to_string(deployed.join("server.js")).unwrap();
+            assert!(
+                server.contains(uf_runtime::BUN_MINIMUM),
+                "the `bun` entry must name the Bun it needs ({}):\n{server}",
+                uf_runtime::BUN_MINIMUM
+            );
+            // And it has to be able to *say* so. A static import of the handler
+            // is linked before this file runs a statement, so the check would
+            // never be reached and Bun's own parse error would be the only
+            // thing a person saw.
+            assert!(
+                server.contains("await import(\"./handler.js\")"),
+                "the `bun` entry must reach the handler dynamically, or its version check runs \
+                 after the parse it exists to prevent:\n{server}"
+            );
+            // The whole artefact, not `handler.js` alone — the same shape the
+            // `deno` arm below reads, and now for the same reason. The entry
+            // reaches the handler through `await import()` so that the version
+            // check above can run before the parse, and a dynamic import is a
+            // chunk boundary: `@uniflowed/server/bun` stopped being folded into
+            // `handler.js` and became `chunks/bun-*.js`. Reading only
+            // `handler.js` therefore found no `Bun.serve` at all and failed on
+            // every Bun, which is what #1181's first run caught. What this
+            // asserts is unchanged — the artefact uses Bun's server and Bun's
+            // file — and only where it looks for it has moved.
+            let handler = fs::read_to_string(deployed.join("handler.js")).unwrap();
+            let chunks = fs::read_dir(deployed.join("chunks"))
+                .unwrap()
+                .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let bundled = format!("{server}\n{handler}\n{chunks}");
             for expected in ["Bun.serve", "Bun.file"] {
                 assert!(
                     bundled.contains(expected),
@@ -3903,7 +3938,13 @@ fn the_node_adapter_writes_a_directory_that_serves_from_an_empty_one() {
 /// absent: an adapter for a runtime nobody ran it on is an adapter nobody has.
 #[test]
 fn the_bun_adapter_writes_a_directory_bun_serves_from_an_empty_one() {
-    if !fixture_ready() || !bun_ready() {
+    // `bun_adapter_ready` rather than `bun_ready`: this test starts the
+    // *artefact*, which has a floor that running on Bun does not — see
+    // ubugeeei-prod/uf#1048 and `support::bun_adapter_ready`. On a Bun below
+    // it, `uf build --adapter bun` refuses before writing anything, so the
+    // older gate would have turned a real refusal into a failed assertion
+    // about a directory that was never meant to exist.
+    if !fixture_ready() || !bun_adapter_ready() {
         return;
     }
     let _served = served_lock();
