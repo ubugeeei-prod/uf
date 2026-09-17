@@ -347,6 +347,8 @@ export component AccordionContent(children: React.Node, render?: RenderProp, ...
     children,
     hidden: !item.open,
     id: item.contentId,
+    // React calls callback refs during commit; this node is only read by effects.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       contentRef.current = element;
     }),

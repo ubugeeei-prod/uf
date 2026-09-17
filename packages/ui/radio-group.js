@@ -208,6 +208,8 @@ export component RadioGroupRoot(
         select(next.getAttribute("data-value") ?? "");
       }
     }),
+    // React calls callback refs during commit; keyboard handlers read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       rootRef.current = element;
     }),
