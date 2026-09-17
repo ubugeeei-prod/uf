@@ -182,6 +182,65 @@ fn a_package_that_ships_typescript_declarations_and_no_flow_is_typed_from_them()
     );
 }
 
+/// pnpm exposes `node_modules/facade` as a symlink into its store, while
+/// dependencies of `facade` sit beside its real directory in that store. A
+/// declaration re-export has to resolve from the real directory, or the export
+/// disappears and the footer claims a complete translation anyway.
+#[cfg(unix)]
+#[test]
+fn a_pnpm_style_declaration_re_export_resolves_from_the_store_location() {
+    let dir = tempfile::tempdir().unwrap();
+    let modules = dir.path().join("node_modules");
+    let store = modules.join(".store/facade@1.0.0/node_modules");
+    let facade = store.join("facade");
+    let engine = store.join("engine");
+    let src = dir.path().join("src");
+    fs::create_dir_all(&facade).unwrap();
+    fs::create_dir_all(&engine).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    std::os::unix::fs::symlink(
+        ".store/facade@1.0.0/node_modules/facade",
+        modules.join("facade"),
+    )
+    .expect("the pnpm-style public package link is made");
+    fs::write(
+        facade.join("package.json"),
+        r#"{ "name": "facade", "version": "1.0.0", "types": "./index.d.ts" }"#,
+    )
+    .unwrap();
+    fs::write(facade.join("index.d.ts"), "export * from \"engine\";\n").unwrap();
+    fs::write(
+        engine.join("package.json"),
+        r#"{ "name": "engine", "version": "1.0.0", "types": "./index.d.ts" }"#,
+    )
+    .unwrap();
+    fs::write(
+        engine.join("index.d.ts"),
+        "export declare const launcher: { open(): void };\n",
+    )
+    .unwrap();
+    fs::write(
+        src.join("app.js"),
+        "// @flow\nimport { launcher } from \"facade\";\n\
+         export function open(): void {\n  launcher.open();\n}\n",
+    )
+    .unwrap();
+
+    let value = check_json(dir.path());
+
+    assert_eq!(value["errors"], serde_json::json!(0), "{value:#}");
+    assert_eq!(value["typeCheck"]["diagnostics"], serde_json::json!([]));
+    assert_eq!(value["typeCheck"]["untypedModules"], serde_json::json!([]));
+    let mut translated: Vec<&str> = value["typeCheck"]["translatedPackages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|package| package["name"].as_str())
+        .collect();
+    translated.sort_unstable();
+    assert_eq!(translated, ["engine", "facade"]);
+}
+
 /// A package with no declarations of its own is typed from its `@types`
 /// package, and the footer names it once, with where its types came from and
 /// how much of it is `any`.
