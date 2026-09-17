@@ -127,6 +127,8 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import { useInteractOutside } from "./interactions.js";
+
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import { useAnchor } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
@@ -496,33 +498,18 @@ export component ComboboxList(
     }
   });
 
-  // Keyed on `combobox.open`, and that is load-bearing. This component is
-  // mounted the whole time and only *renders* while the list is open, so keyed
-  // on the stable callbacks alone the effect ran once — on the first commit,
-  // when `listRef.current` was still null — and never again. The listener was
-  // never attached, and a press outside the combobox closed nothing.
-  useEffect(() => {
-    const list = listRef.current;
-    if (list == null) {
-      return;
-    }
-    const document = list.ownerDocument;
-    const onOutsidePress = (event: Event) => {
-      const target: $FlowFixMe = event.target;
-      if (target == null || list.contains(target)) {
-        return;
-      }
-      // The field is not "outside": pressing it is how a reader gets back to
-      // typing, and closing on it would fight the input's own handlers.
-      const input = inputRef.current;
-      if (input != null && input.contains(target)) {
-        return;
-      }
-      close();
-    };
-    document.addEventListener("pointerdown", onOutsidePress, true);
-    return () => document.removeEventListener("pointerdown", onOutsidePress, true);
-  }, [combobox.open, close, listRef, inputRef]);
+  // The field is not "outside": pressing it is how a reader gets back to
+  // typing, and closing on it would fight the input's own handlers.
+  //
+  // The refs are read when a press arrives rather than when the listener is
+  // attached. This component is mounted the whole time and only *renders*
+  // while the list is open, and the listener that was attached on the first
+  // commit — when `listRef.current` was still null — closed nothing at all.
+  useInteractOutside({
+    isDisabled: !combobox.open,
+    onInteractOutside: () => close(),
+    refs: [listRef, inputRef],
+  });
 
   if (!combobox.open) {
     return null;

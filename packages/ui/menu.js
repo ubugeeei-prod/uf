@@ -106,6 +106,8 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import { useInteractOutside } from "./interactions.js";
+
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import { useAnchor } from "./internal/anchor.js";
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
@@ -337,30 +339,7 @@ export component MenuBody(
       setActiveId(landing.id);
     }
 
-    const onOutsidePress = (event: Event) => {
-      const target: $FlowFixMe = event.target;
-      if (target == null || body.contains(target)) {
-        return;
-      }
-      // The trigger is outside the menu and is not "outside" for this purpose:
-      // closing here and letting the trigger's own click reopen made a press on
-      // the trigger a no-op that flickered.
-      if (trigger != null && trigger.contains(target)) {
-        return;
-      }
-      dismissed.current = true;
-      closeAll();
-    };
-    // Only the outermost menu listens. A submenu closes with the tree, and two
-    // listeners would each answer the same press.
-    if (isRoot) {
-      document.addEventListener("pointerdown", onOutsidePress, true);
-    }
-
     return () => {
-      if (isRoot) {
-        document.removeEventListener("pointerdown", onOutsidePress, true);
-      }
       if (dismissed.current) {
         dismissed.current = false;
         return;
@@ -373,7 +352,18 @@ export component MenuBody(
         trigger?.focus?.();
       }
     };
-  }, [menu.open, isRoot, triggerRef, pendingFocus, closeAll]);
+  }, [menu.open, triggerRef, pendingFocus]);
+
+  // Only the outermost menu listens. A submenu closes with the tree, and two
+  // of these would each answer the same press.
+  useInteractOutside({
+    isDisabled: !menu.open || !isRoot,
+    onInteractOutside: () => {
+      dismissed.current = true;
+      closeAll();
+    },
+    refs: [bodyRef, triggerRef],
+  });
 
   const list = useMemo(() => ({ activeId, setActiveId }), [activeId]);
 

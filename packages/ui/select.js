@@ -146,6 +146,8 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import { useInteractOutside } from "./interactions.js";
+
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import { useAnchor } from "./internal/anchor.js";
 import type { Rest } from "./internal/merge-props.js";
@@ -691,32 +693,16 @@ export component SelectList(
     }
   });
 
-  // Keyed on `select.open`, which is load-bearing: this component is mounted
-  // the whole time and only *renders* while the list is open, so keyed on the
-  // stable callbacks alone the effect would run once, on the commit where
-  // `listRef.current` was still null, and never attach the listener at all.
-  useEffect(() => {
-    const list = listRef.current;
-    if (list == null) {
-      return;
-    }
-    const document = list.ownerDocument;
-    const onOutsidePress = (event: Event) => {
-      const target: $FlowFixMe = event.target;
-      if (target == null || list.contains(target)) {
-        return;
-      }
-      // The trigger is not "outside": closing here and letting its own click
-      // reopen the list makes a press on the trigger a no-op that flickers.
-      const trigger = triggerRef.current;
-      if (trigger != null && trigger.contains(target)) {
-        return;
-      }
-      close();
-    };
-    document.addEventListener("pointerdown", onOutsidePress, true);
-    return () => document.removeEventListener("pointerdown", onOutsidePress, true);
-  }, [select.open, close, listRef, triggerRef]);
+  // The refs are read when a press arrives rather than when the listener is
+  // attached, which is what makes `select.open` the only thing this depends on:
+  // this component is mounted the whole time and only *renders* while the list
+  // is open, and a listener attached on the commit where `listRef.current` was
+  // still null used to be one that never worked.
+  useInteractOutside({
+    isDisabled: !select.open,
+    onInteractOutside: () => close(),
+    refs: [listRef, triggerRef],
+  });
 
   if (!select.open) {
     return null;
