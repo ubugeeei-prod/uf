@@ -67,6 +67,7 @@ was written for it.
 
 ### Documentation
 
+- **assets**: the codecs and font work uf does not do are recorded as refusals rather than gaps — AVIF, lossy WebP, WOFF2 for a subsetted face, and text subsetting (#1199)
 - **testing**: re-measure against Bun and Vitest, and ship the suite behind it (#1198)
 - **release**: hand-installed `@uniflowed/*` packages are documented with the `@alpha` tag, held there by a test that rejects untagged install examples (#1180)
 
