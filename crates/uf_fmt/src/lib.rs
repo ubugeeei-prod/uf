@@ -47,6 +47,8 @@ mod flow;
 pub mod graphql;
 
 use std::borrow::Cow;
+use std::cell::RefCell;
+use std::sync::mpsc;
 
 use thiserror::Error;
 use uf_config::FmtConfig;
@@ -64,6 +66,20 @@ pub const MAX_INDENT_WIDTH: u8 = 16;
 
 /// Byte order mark, which is preserved verbatim at the head of a file.
 const BOM: &str = "\u{feff}";
+
+thread_local! {
+    static FORMAT_WORKER: RefCell<Option<FormatWorker>> = const { RefCell::new(None) };
+}
+
+struct FormatWorker {
+    jobs: mpsc::Sender<FormatJob>,
+}
+
+struct FormatJob {
+    source: String,
+    config: FmtConfig,
+    reply: mpsc::SyncSender<Result<String, FlowFormatError>>,
+}
 
 /// The outcome of formatting one source file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -117,19 +133,7 @@ pub fn format_source(source: &str, config: &FmtConfig) -> Result<FormatResult, F
     let (bom, body) = split_bom(source);
     let normalized = normalize_line_endings(body);
 
-    // The parser and the printer both recurse once per level of nesting,
-    // and the parser's frames are large, so the work runs on a thread with
-    // the stack `uf_flow` documents for its nesting ceiling. The
-    // reservation is virtual; only the pages touched cost anything.
-    let printed = std::thread::scope(|scope| -> Result<String, FormatError> {
-        let worker = std::thread::Builder::new()
-            .name("uf-fmt".into())
-            .stack_size(uf_flow::PARSE_STACK_BYTES)
-            .spawn_scoped(scope, || flow::format(&normalized, config))
-            .map_err(|_| FormatError::Thread)?;
-        let result = worker.join().map_err(|_| FormatError::Thread)?;
-        result.map_err(FormatError::Flow)
-    })?;
+    let printed = format_on_worker(normalized.into_owned(), config.clone())?;
 
     let mut output = String::with_capacity(bom.len() + printed.len() + 1);
     output.push_str(bom);
@@ -139,6 +143,63 @@ pub fn format_source(source: &str, config: &FmtConfig) -> Result<FormatResult, F
         changed: output != source,
         output,
     })
+}
+
+fn format_on_worker(source: String, config: FmtConfig) -> Result<String, FormatError> {
+    FORMAT_WORKER.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let (reply, result) = mpsc::sync_channel(1);
+        let mut job = FormatJob {
+            source,
+            config,
+            reply,
+        };
+
+        loop {
+            if slot.is_none() {
+                *slot = Some(FormatWorker::spawn()?);
+            }
+            let sent = slot.as_ref().expect("worker was installed").jobs.send(job);
+            match sent {
+                Ok(()) => break,
+                Err(error) => {
+                    job = error.0;
+                    *slot = None;
+                }
+            }
+        }
+
+        match result.recv() {
+            Ok(result) => result.map_err(FormatError::Flow),
+            Err(_) => {
+                *slot = None;
+                Err(FormatError::Thread)
+            }
+        }
+    })
+}
+
+impl FormatWorker {
+    fn spawn() -> Result<Self, FormatError> {
+        let (jobs, receiver) = mpsc::channel::<FormatJob>();
+        // The parser and the printer both recurse once per level of nesting,
+        // and the parser's frames are large, so the work runs on a thread with
+        // the stack `uf_flow` documents for its nesting ceiling. The reservation
+        // is virtual; only the pages touched cost anything. Reusing one worker
+        // per caller thread avoids mapping and unmapping that 128 MiB stack for
+        // every `format_source` call.
+        std::thread::Builder::new()
+            .name("uf-fmt".into())
+            .stack_size(uf_flow::PARSE_STACK_BYTES)
+            .spawn(move || {
+                while let Ok(job) = receiver.recv() {
+                    let result = flow::format(&job.source, &job.config);
+                    let _ = job.reply.send(result);
+                }
+            })
+            .map_err(|_| FormatError::Thread)?;
+        Ok(Self { jobs })
+    }
 }
 
 /// Split a leading byte order mark off the source.
