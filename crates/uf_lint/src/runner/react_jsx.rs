@@ -10,6 +10,10 @@
 //!   void elements hold nothing.
 //! * `react/jsx-no-comment-textnodes` — `//` and `/*` between tags are text.
 //! * `react/no-unescaped-entities` — a `>` or a `}` left in that text.
+//! * `react/no-this-in-sfc` — `this` inside a `component` or a `hook` names
+//!   nothing, because Flow calls both as plain functions.
+//! * `react/no-unused-prop-types` — a prop a `component` declares is read by
+//!   its body.
 //!
 //! Every one of them asks how nodes relate: which callback an element is
 //! returned from, which parameter a key names, what an element holds. So, like
@@ -43,6 +47,17 @@
 //! * The branches of one conditional are one slot of an array, and only one of
 //!   them ever fills it, so the `key` they share is one key rather than a
 //!   duplicate.
+//!
+//! * `this` is read through the binding it actually has rather than the shape
+//!   it is written in. An arrow keeps the `this` around it, so one written
+//!   inside a `component` is reported; a nested `function`, a method and a
+//!   class each have a `this` of their own, so none of them is.
+//! * A prop is read through the binding its parameter introduces, which `as`
+//!   can rename, rather than through the name it is declared under. A prop
+//!   taken apart by a destructuring pattern is read by being taken apart, and
+//!   a name the body reads anywhere counts as read even where a local of the
+//!   same name shadows the prop — `react/no-unused-prop-types` stays quiet
+//!   rather than guess which of the two a reader meant.
 //!
 //! Two shapes the plugin passes over are reported, because each is the same
 //! defect as the rule's own: a `<>` fragment in a list cannot take a key at
@@ -87,6 +102,12 @@ const COMMENT_TEXT: &str = "react/jsx-no-comment-textnodes";
 /// `react/no-unescaped-entities`.
 const UNESCAPED_ENTITIES: &str = "react/no-unescaped-entities";
 
+/// `react/no-this-in-sfc`.
+const THIS_IN_SFC: &str = "react/no-this-in-sfc";
+
+/// `react/no-unused-prop-types`.
+const UNUSED_PROP_TYPES: &str = "react/no-unused-prop-types";
+
 /// Host elements that may hold neither children nor `dangerouslySetInnerHTML`.
 ///
 /// React's own list, which is the list it throws for.
@@ -117,8 +138,26 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Js
     }
     let wants = has_code_jsx_marker(scan)
         || (levels.comment_text.is_some() && has_comment_after_a_tag(scan))
-        || (levels.reads_element_calls() && has_code_element_call(scan));
+        || (levels.reads_element_calls() && has_code_element_call(scan))
+        || (levels.reads_declarations()
+            && (scan.facts.declares_component || has_code_hook_declaration(scan)));
     wants.then_some(JsxWork { levels })
+}
+
+/// Whether the code declares a `hook`.
+///
+/// `FileScan` already answers the same question for `component`, and
+/// `react/no-this-in-sfc` reads both: a module whose only declaration is a
+/// `hook` would otherwise never be read.
+fn has_code_hook_declaration(scan: &FileScan<'_>) -> bool {
+    if !scan.file.source.contains("hook ") {
+        return false;
+    }
+    scan.lines.iter().any(|line| {
+        let code = line.code();
+        code.match_indices("hook ")
+            .any(|(at, _)| !line.in_string(at))
+    })
 }
 
 /// Whether a line's code ends at a tag and what the scanner took for a
@@ -179,9 +218,14 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &JsxWork) -> Vec<Finding> {
         void_children: levels.void_children.is_some(),
         comment_text: levels.comment_text.is_some(),
         unescaped_entities: levels.unescaped_entities.is_some(),
+        this_in_sfc: levels.this_in_sfc.is_some(),
+        unused_prop_types: levels.unused_prop_types.is_some(),
         params: Vec::new(),
         bindings: Vec::new(),
         pending_iteration: None,
+        this_binding: ThisBinding::Own,
+        pending_arrow: false,
+        props: Vec::new(),
         literal: 0,
         found: Vec::new(),
     };
@@ -240,6 +284,8 @@ struct Levels {
     void_children: Option<Severity>,
     comment_text: Option<Severity>,
     unescaped_entities: Option<Severity>,
+    this_in_sfc: Option<Severity>,
+    unused_prop_types: Option<Severity>,
 }
 
 impl Levels {
@@ -252,6 +298,8 @@ impl Levels {
             void_children: severity(config, VOID_CHILDREN),
             comment_text: severity(config, COMMENT_TEXT),
             unescaped_entities: severity(config, UNESCAPED_ENTITIES),
+            this_in_sfc: severity(config, THIS_IN_SFC),
+            unused_prop_types: severity(config, UNUSED_PROP_TYPES),
         }
     }
 
@@ -263,11 +311,21 @@ impl Levels {
             && self.void_children.is_none()
             && self.comment_text.is_none()
             && self.unescaped_entities.is_none()
+            && self.this_in_sfc.is_none()
+            && self.unused_prop_types.is_none()
     }
 
     /// Whether a rule that also reads `createElement` and `cloneElement` is on.
     fn reads_element_calls(&self) -> bool {
         self.index_key.is_some() || self.children_prop.is_some() || self.void_children.is_some()
+    }
+
+    /// Whether a rule that reads `component` and `hook` declarations is on.
+    ///
+    /// Neither of these needs JSX to have anything to say — a `component` whose
+    /// body is one `this` holds none — so they bring a gate of their own.
+    fn reads_declarations(&self) -> bool {
+        self.this_in_sfc.is_some() || self.unused_prop_types.is_some()
     }
 
     fn of(&self, rule: &str) -> Option<Severity> {
@@ -279,6 +337,8 @@ impl Levels {
             VOID_CHILDREN => self.void_children,
             COMMENT_TEXT => self.comment_text,
             UNESCAPED_ENTITIES => self.unescaped_entities,
+            THIS_IN_SFC => self.this_in_sfc,
+            UNUSED_PROP_TYPES => self.unused_prop_types,
             _ => None,
         }
     }
@@ -320,6 +380,30 @@ enum Binding {
     ReactChildren,
 }
 
+/// What `this` names where the walk is standing.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ThisBinding {
+    /// A function, a method, an accessor or a class body, each of which has a
+    /// `this` of its own — and the module itself, where a `this` is the
+    /// module's business rather than React's.
+    Own,
+    /// The body of a `component` or a `hook`, named by the word it is declared
+    /// with. Flow calls both as plain functions, so `this` is `undefined` and
+    /// names nothing.
+    Meaningless(&'static str),
+}
+
+/// One prop a `component` declares, and whether its body has read it.
+struct PropParam<'ast> {
+    /// The prop as a caller writes it.
+    written: &'ast str,
+    /// The binding the body reads it through, which `as` can rename.
+    local: &'ast str,
+    /// Where the parameter is written.
+    loc: &'ast Loc,
+    read: bool,
+}
+
 /// The walk: one pass over the tree, carrying what the rules need to know.
 struct Walk<'ast> {
     jsx_key: bool,
@@ -329,6 +413,8 @@ struct Walk<'ast> {
     void_children: bool,
     comment_text: bool,
     unescaped_entities: bool,
+    this_in_sfc: bool,
+    unused_prop_types: bool,
     /// Parameters of the functions the walk is inside, innermost last, each
     /// with what it is to the iteration that calls its function.
     params: Vec<(&'ast str, Param)>,
@@ -336,6 +422,14 @@ struct Walk<'ast> {
     bindings: Vec<(&'ast str, Binding)>,
     /// The iteration whose callback is the function about to be entered.
     pending_iteration: Option<Iteration>,
+    /// What `this` names where the walk is standing.
+    this_binding: ThisBinding,
+    /// Set by [`AstVisitor::arrow_function`] so that the function it opens
+    /// keeps the `this` around it rather than taking one of its own.
+    pending_arrow: bool,
+    /// The props of the `component` declarations the walk is inside, innermost
+    /// last.
+    props: Vec<Vec<PropParam<'ast>>>,
     /// How many `<code>` and `<pre>` elements enclose the node being visited.
     literal: u32,
     found: Vec<Finding>,
@@ -415,9 +509,26 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
         Ok(())
     }
 
-    /// Every function, which is where parameters come into scope.
+    /// Every function, which is where parameters come into scope — and, for
+    /// every function but an arrow, where a new `this` does.
     fn function_(&mut self, loc: &'ast Loc, function: &'ast Function) -> Result<(), ()> {
         let iteration = self.pending_iteration.take();
+        // An arrow has no `this` of its own and keeps the one around it, which
+        // is why a `this` written inside a callback in a `component` is still
+        // the component's. Every other function — a declaration, an
+        // expression, a method, an accessor — brings its own, and what that
+        // one names is its caller's business rather than this rule's. A `hook`
+        // is the exception: Flow calls one as a plain function too, so its
+        // `this` names nothing either.
+        let arrow = std::mem::take(&mut self.pending_arrow);
+        let outer_this = self.this_binding;
+        if !arrow {
+            self.this_binding = if matches!(function.effect_, ast::function::Effect::Hook) {
+                ThisBinding::Meaningless("hook")
+            } else {
+                ThisBinding::Own
+            };
+        }
         let outer = self.params.len();
         let outer_bindings = self.bindings.len();
         for (position, param) in function.params.params.iter().enumerate() {
@@ -437,6 +548,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
         let walked = ast_visitor::function_default(self, loc, function);
         self.params.truncate(outer);
         self.bindings.truncate(outer_bindings);
+        self.this_binding = outer_this;
         walked
     }
 
@@ -513,6 +625,11 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
     ) -> Result<(), ()> {
         let opening = &element.opening_element;
         let tag = host_name(&opening.name);
+        // The element's name is walked here rather than by the default, so a
+        // prop rendered as `<Icon />` is a prop the body reads.
+        if self.unused_prop_types {
+            self.mark_jsx_name(&opening.name);
+        }
         if self.duplicate_props {
             self.check_duplicate_props(opening);
         }
@@ -556,6 +673,106 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
         let walked = self.children(&element.children.1);
         self.literal = outer;
         walked
+    }
+
+    /// A `component` declaration: what `this` names inside one, and the props
+    /// its body is asked to read.
+    ///
+    /// Its parameters are bound by [`AstVisitor::pattern_identifier`], the way
+    /// every binding here is, and truncated on the way out — a `component` is
+    /// neither a function nor a block, so nothing else would close the scope
+    /// its props open.
+    fn component_declaration(
+        &mut self,
+        loc: &'ast Loc,
+        component: &'ast ast::statement::ComponentDeclaration<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let outer_this = self.this_binding;
+        let outer_bindings = self.bindings.len();
+        self.this_binding = ThisBinding::Meaningless("component");
+        // A `component` with no body is a signature, and a signature reads
+        // nothing; there is no prop to call unread.
+        let tracked = self.unused_prop_types && component.body.is_some();
+        if tracked {
+            self.props.push(declared_props(&component.params));
+        }
+        let walked = ast_visitor::component_declaration_default(self, loc, component);
+        if tracked && let Some(props) = self.props.pop() {
+            self.report_unused_props(&component.id.name, props);
+        }
+        self.bindings.truncate(outer_bindings);
+        self.this_binding = outer_this;
+        walked
+    }
+
+    /// An arrow keeps the `this` around it, so the function it opens must not
+    /// take one of its own.
+    fn arrow_function(&mut self, loc: &'ast Loc, function: &'ast Function) -> Result<(), ()> {
+        self.pending_arrow = true;
+        let walked = ast_visitor::arrow_function_default(self, loc, function);
+        // Cleared by `function_`, which the default reaches; cleared again
+        // here so that a shape which never reaches it leaves nothing set for
+        // the next function along.
+        self.pending_arrow = false;
+        walked
+    }
+
+    /// A class body has a `this` of its own, whatever encloses it.
+    fn class_declaration(
+        &mut self,
+        loc: &'ast Loc,
+        class: &'ast ast::class::Class<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let outer = self.this_binding;
+        self.this_binding = ThisBinding::Own;
+        let walked = ast_visitor::class_declaration_default(self, loc, class);
+        self.this_binding = outer;
+        walked
+    }
+
+    /// As [`AstVisitor::class_declaration`], for a class written as a value.
+    fn class_expression(
+        &mut self,
+        loc: &'ast Loc,
+        class: &'ast ast::class::Class<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let outer = self.this_binding;
+        self.this_binding = ThisBinding::Own;
+        let walked = ast_visitor::class_expression_default(self, loc, class);
+        self.this_binding = outer;
+        walked
+    }
+
+    /// `react/no-this-in-sfc`.
+    fn this_expression(
+        &mut self,
+        loc: &'ast Loc,
+        this: &'ast ast::expression::This<Loc>,
+    ) -> Result<(), ()> {
+        if self.this_in_sfc
+            && let ThisBinding::Meaningless(kind) = self.this_binding
+        {
+            self.report(loc, THIS_IN_SFC, this_message(kind));
+        }
+        ast_visitor::this_expression_default(self, loc, this)
+    }
+
+    /// Where a name is **read**, which is what `react/no-unused-prop-types`
+    /// counts.
+    ///
+    /// This is the one place an identifier stands for a value. The many other
+    /// places one is written — the property after a `.`, a key in an object
+    /// literal, a JSX attribute's name, the prop name a `component` declares,
+    /// the binding a pattern introduces — reach the visitor by paths of their
+    /// own and never come through here, so none of them is mistaken for a
+    /// read.
+    fn expression(&mut self, expression: &'ast Expression) -> Result<(), ()> {
+        if self.unused_prop_types
+            && let ExpressionInner::Identifier { inner, .. } = &**expression
+        {
+            self.mark_read(&inner.name);
+        }
+        ast_visitor::expression_default(self, expression)
     }
 
     fn jsx_fragment(
@@ -636,6 +853,70 @@ impl<'ast> Walk<'ast> {
                 }
             }
             _ => {}
+        }
+    }
+
+    // --- react/no-unused-prop-types -----------------------------------------
+
+    /// Mark the prop that `name` reads, in every `component` the walk is
+    /// inside.
+    ///
+    /// By name rather than by which declaration the name resolves to. Where a
+    /// local shadows a prop, the body still holds a read of that name, and a
+    /// rule that reported the prop anyway would be calling a line dead on the
+    /// strength of a scope the reader can see and it is guessing at. Silence
+    /// is the safer of the two mistakes.
+    fn mark_read(&mut self, name: &str) {
+        for scope in &mut self.props {
+            for prop in scope.iter_mut() {
+                if prop.local == name {
+                    prop.read = true;
+                }
+            }
+        }
+    }
+
+    /// The value a JSX name reads, when it names one.
+    ///
+    /// `<Icon />` reads `Icon` and `<Icons.Chevron />` reads `Icons`, which is
+    /// how a prop holding a component is used. `<div>` names a host element
+    /// and reads nothing, and neither does `<svg:use>`.
+    fn mark_jsx_name(&mut self, name: &'ast jsx::Name<Loc, Loc>) {
+        match name {
+            jsx::Name::Identifier(identifier) => {
+                if host_name(name).is_none() {
+                    self.mark_read(&identifier.name);
+                }
+            }
+            jsx::Name::MemberExpression(member) => {
+                let mut object = &member.object;
+                loop {
+                    match object {
+                        jsx::member_expression::Object::Identifier(identifier) => {
+                            self.mark_read(&identifier.name);
+                            return;
+                        }
+                        jsx::member_expression::Object::MemberExpression(inner) => {
+                            object = &inner.object;
+                        }
+                    }
+                }
+            }
+            jsx::Name::NamespacedName(_) => {}
+        }
+    }
+
+    /// Every prop of one `component` that its body never read.
+    fn report_unused_props(&mut self, component: &str, props: Vec<PropParam<'ast>>) {
+        for prop in props {
+            if prop.read {
+                continue;
+            }
+            self.report(
+                prop.loc,
+                UNUSED_PROP_TYPES,
+                unused_message(component, &prop),
+            );
         }
     }
 
@@ -1500,6 +1781,63 @@ fn member_name(member: &jsx::MemberExpression<Loc, Loc>) -> String {
         jsx::member_expression::Object::MemberExpression(inner) => member_name(inner),
     };
     format!("{object}.{}", &*member.property.name)
+}
+
+/// The props a `component` declares, each with the binding its body reads it
+/// through.
+///
+/// `component Row(label: string)` declares `label` and binds `label`;
+/// `component Row(data as info: string)` declares `data` and binds `info`, and
+/// it is the binding a read has to match. A parameter whose local side is a
+/// destructuring pattern is left out altogether: taking a prop apart is
+/// reading it, so there is nothing there to report.
+fn declared_props<'ast>(
+    params: &'ast ast::statement::component_params::Params<Loc, Loc>,
+) -> Vec<PropParam<'ast>> {
+    params
+        .params
+        .iter()
+        .filter_map(|param| {
+            let ast::pattern::Pattern::Identifier { inner, .. } = &param.local else {
+                return None;
+            };
+            let written = match &param.name {
+                ast::statement::component_params::ParamName::Identifier(identifier) => {
+                    &*identifier.name
+                }
+                ast::statement::component_params::ParamName::StringLiteral((_, literal)) => {
+                    &*literal.value
+                }
+            };
+            Some(PropParam {
+                written,
+                local: &inner.name.name,
+                loc: &param.loc,
+                read: false,
+            })
+        })
+        .collect()
+}
+
+fn this_message(kind: &str) -> String {
+    format!(
+        "`this` names nothing inside a `{kind}`: Flow calls one as a plain function, so `this` is \
+         `undefined` here and reading anything off it throws; take the value from a parameter, or \
+         from the scope around the declaration"
+    )
+}
+
+fn unused_message(component: &str, prop: &PropParam<'_>) -> String {
+    let read_as = if prop.written == prop.local {
+        String::new()
+    } else {
+        format!(", bound as `{}`,", prop.local)
+    };
+    format!(
+        "`<{component}>` declares the prop `{}`{read_as} and never reads it, so every caller is \
+         asked for a value that goes nowhere; read it, or drop it from the parameter list",
+        prop.written
+    )
 }
 
 fn index_message(index: &str) -> String {

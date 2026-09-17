@@ -581,6 +581,15 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         requirement: SourceText,
         description: "React has no way to render a namespaced element name",
     },
+    // A `component` or `hook` declaration is called as a plain function, so
+    // `this` in one is `undefined` and reading a prop off it throws.
+    RuleDescriptor {
+        id: "react/no-this-in-sfc",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`this` names nothing inside a `component` or `hook`",
+    },
     RuleDescriptor {
         id: "react/no-unescaped-entities",
         category: RuleCategory::React,
@@ -594,6 +603,16 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "write the prop React spells, not the HTML attribute name",
+    },
+    // `off`, as in the plugin's own preset: a prop nothing reads is dead weight
+    // rather than a defect, and dropping one from a component other code calls
+    // is an API decision rather than a lint fix.
+    RuleDescriptor {
+        id: "react/no-unused-prop-types",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "a prop a `component` declares should be read by its body",
     },
     RuleDescriptor {
         id: "react/style-prop-object",
