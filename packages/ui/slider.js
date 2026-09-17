@@ -247,6 +247,8 @@ export component SliderTrack(children: React.Node, render?: RenderProp, ...rest:
 
   const props = withProps(passed, {
     children,
+    // Pointer handlers keep the active thumb in a ref between events.
+    // uf-lint-disable-next-line react-compiler/refs
     onPointerDown: composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
       if (slider.disabled) {
         return;
@@ -257,16 +259,20 @@ export component SliderTrack(children: React.Node, render?: RenderProp, ...rest:
       event.currentTarget?.setPointerCapture?.(event.pointerId);
       moveTo(event, null);
     }),
+    // uf-lint-disable-next-line react-compiler/refs
     onPointerMove: composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
       if (dragging.current != null) {
         moveTo(event, dragging.current);
       }
     }),
+    // uf-lint-disable-next-line react-compiler/refs
     onPointerUp: composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
       dragging.current = null;
       event.currentTarget?.releasePointerCapture?.(event.pointerId);
     }),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      // React calls callback refs during commit; pointer handlers read the track later.
+      // uf-lint-disable-next-line react-compiler/immutability
       slider.trackRef.current = element;
     }),
   });
