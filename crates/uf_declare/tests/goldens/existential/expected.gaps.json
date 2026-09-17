@@ -1,0 +1,14 @@
+[
+  {
+    "declaration": "Anything",
+    "construct": "existential-type",
+    "reason": "`*` asks Flow to infer a type argument, and TypeScript has nothing that asks for inference in a type position, so it is published as `unknown`",
+    "line": 3
+  },
+  {
+    "declaration": "Inferred",
+    "construct": "existential-type",
+    "reason": "`*` asks Flow to infer a type argument, and TypeScript has nothing that asks for inference in a type position, so it is published as `unknown`",
+    "line": 5
+  }
+]

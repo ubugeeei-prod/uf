@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Loose",
+    "construct": "inexact-tuple",
+    "reason": "an inexact tuple accepts extra elements, and a TypeScript tuple does not, so it is published as a tuple of exactly the elements written",
+    "line": 9
+  }
+]

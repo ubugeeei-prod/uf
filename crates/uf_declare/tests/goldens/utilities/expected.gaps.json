@@ -1,0 +1,32 @@
+[
+  {
+    "declaration": "Sealed",
+    "construct": "exact-object",
+    "reason": "`$Exact<…>` asks for an object type that rejects extra properties, which TypeScript cannot express, so the type inside it is published as written",
+    "line": 13
+  },
+  {
+    "declaration": "Difference",
+    "construct": "flow-utility",
+    "reason": "`$Diff` has no TypeScript equivalent that reduces the same way, so it is published as `unknown`",
+    "line": 15
+  },
+  {
+    "declaration": "Loosened",
+    "construct": "flow-utility",
+    "reason": "`$Shape` has no TypeScript equivalent that reduces the same way, so it is published as `unknown`",
+    "line": 17
+  },
+  {
+    "declaration": "Constructor",
+    "construct": "flow-utility",
+    "reason": "`Class` has no TypeScript equivalent that reduces the same way, so it is published as `unknown`",
+    "line": 19
+  },
+  {
+    "declaration": "Mapper",
+    "construct": "flow-utility",
+    "reason": "`$ObjMap` has no TypeScript equivalent that reduces the same way, so it is published as `unknown`",
+    "line": 23
+  }
+]

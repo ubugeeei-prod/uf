@@ -86,6 +86,7 @@ use uf_bundle::{
     BudgetMetric, BundleReport, ReportOptions, build_report, collect_assets, write_report,
 };
 use uf_config::{LibraryPlan, ResolvedConfig};
+use uf_declare::Gap;
 use uf_term::{Cell, Column, KeyValue, PhaseTimer, Status, Table, Tone, Tree, format_duration};
 
 use crate::commands::builder;
@@ -202,6 +203,15 @@ pub(crate) fn build(
         Ok((report, path))
     })?;
 
+    // Written after the bundle is measured and before the manifest is
+    // checked. *After*, because a declaration file is not JavaScript anybody
+    // downloads and has no business in a size report about what a consumer
+    // pays to load; *before*, because `exports` names the declarations too and
+    // `unresolved_exports` is about to look for them.
+    progress.tick("translating the exported types");
+    let declarations =
+        timer.measure("declarations", || write_declarations(&root, &out_dir, plan))?;
+
     // What a consumer will resolve, checked against what the build wrote. A
     // library whose `exports` names a file under the output directory that
     // this build did not produce is a package that installs and cannot be
@@ -223,6 +233,27 @@ pub(crate) fn build(
         "entries": plan.entries(),
         "formats": plan.formats().iter().map(|format| format.as_str()).collect::<Vec<_>>(),
         "external": external,
+        // The gaps in full, with their reasons. The summary names each
+        // untranslatable declaration so a reader sees it without asking; the
+        // sentence saying what the consumer gets instead is long enough that
+        // a terminal is the wrong place for all of them at once, and a file a
+        // tool can read is the right one.
+        "declarations": {
+            "enabled": plan.declarations(),
+            "files": declarations
+                .files
+                .iter()
+                .map(|path| relative_to(&root, path))
+                .collect::<Vec<_>>(),
+            "gaps": declarations.gaps.iter().map(|(module, gap)| json!({
+                "module": module,
+                "line": gap.line,
+                "declaration": gap.declaration,
+                "construct": gap.construct.as_str(),
+                "keepsTheType": gap.construct.keeps_the_type(),
+                "reason": gap.reason,
+            })).collect::<Vec<_>>(),
+        },
         "modules": size.assets.iter().map(|asset| json!({
             "path": asset.path,
             "bytes": asset.size.raw.bytes(),
@@ -260,6 +291,11 @@ pub(crate) fn build(
     let raw = size.total.raw.to_string();
     let gzip = size.total.gzip.to_string();
     let largest = largest_rows(&size, size_report);
+    let declaration_count = declarations.files.len().to_string();
+    let gap_count = declarations.gaps.len().to_string();
+    let gap_rows = gap_rows(&declarations);
+    let gap_summary = gap_summary(&declarations);
+    let missing_types = missing_types_condition(&root, &declarations);
 
     let mut outputs = vec![
         relative_to(&root, &build_manifest),
@@ -267,6 +303,9 @@ pub(crate) fn build(
     ];
     for asset in &size.assets {
         outputs.push(format!("{}/{}", resolved.config.build.out_dir, asset.path));
+    }
+    for written in &declarations.files {
+        outputs.push(relative_to(&root, written));
     }
     outputs.sort();
     outputs.dedup();
@@ -323,6 +362,39 @@ pub(crate) fn build(
         }
         renderer.blank(out);
 
+        // The second acceptance item of ubugeeei-prod/uf#969, and the one that
+        // keeps the first honest: a `.d.ts` in which everything became `any`
+        // type-checks perfectly and is worthless. Naming what could not be
+        // translated is what lets an author tell the two apart.
+        if declarations.enabled {
+            renderer.heading(out, 2, "declarations");
+            renderer.key_values(
+                out,
+                4,
+                &[
+                    KeyValue::toned("files", &declaration_count, Tone::Number),
+                    KeyValue::toned("gaps", &gap_count, Tone::Number),
+                ],
+            );
+            if !gap_rows.is_empty() {
+                renderer.blank(out);
+                let mut table = Table::new(vec![
+                    Column::left("where"),
+                    Column::left("export"),
+                    Column::left("construct"),
+                ]);
+                for (where_, export, construct) in &gap_rows {
+                    table.push(vec![
+                        Cell::toned(where_, Tone::Path),
+                        Cell::new(export),
+                        Cell::toned(construct, Tone::Accent),
+                    ]);
+                }
+                renderer.table(out, 4, &table);
+            }
+            renderer.blank(out);
+        }
+
         renderer.heading(out, 2, "output");
         renderer.tree(
             out,
@@ -337,6 +409,8 @@ pub(crate) fn build(
         let deprecation = resolved.config.builder_module_deprecation();
         for warning in warnings
             .iter()
+            .chain(&gap_summary)
+            .chain(&missing_types)
             .chain(&unresolved)
             .chain(&unpublished)
             .chain(&deprecation)
@@ -677,6 +751,156 @@ fn collect_targets(value: &serde_json::Value, into: &mut Vec<String>) {
             }
         }
         _ => {}
+    }
+}
+
+/// Longest list of gaps the summary prints before it stops naming them.
+const GAPS_SHOWN: usize = 20;
+
+/// What a library build wrote for its TypeScript consumers.
+#[derive(Default)]
+struct Declarations {
+    /// Whether this build was asked for declarations at all.
+    enabled: bool,
+    /// The declaration files written, in the order they were written.
+    files: Vec<Utf8PathBuf>,
+    /// Every gap, with the module it was found in.
+    gaps: Vec<(String, Gap)>,
+}
+
+/// Translate the library's exported Flow types and write them beside the
+/// JavaScript.
+///
+/// Only `.d.ts`. A `.d.cts` twin for the CommonJS build was the other
+/// candidate and it is deliberately not written: the specifiers inside it
+/// would still name the ES build's file names, so it would be a file that
+/// resolves to the wrong module — and it buys nothing, because the `"types"`
+/// condition is read for `require` and `import` alike.
+fn write_declarations(
+    root: &Utf8Path,
+    out_dir: &Utf8Path,
+    plan: &LibraryPlan,
+) -> Result<Declarations> {
+    if !plan.declarations() {
+        return Ok(Declarations::default());
+    }
+    let entries: Vec<&str> = plan
+        .entries()
+        .iter()
+        .map(compact_str::CompactString::as_str)
+        .collect();
+    let mut read = |path: &str| fs::read_to_string(root.join(path)).ok();
+    let translation = uf_declare::translate(&entries, &mut read);
+
+    let mut declarations = Declarations {
+        enabled: true,
+        ..Declarations::default()
+    };
+    for module in &translation.modules {
+        for gap in &module.gaps {
+            declarations
+                .gaps
+                .push((module.path.to_string(), gap.clone()));
+        }
+        // A module that did not parse has no declarations, and writing an
+        // empty file for it would tell every consumer it exports nothing.
+        let Some(text) = &module.text else {
+            continue;
+        };
+        let path = out_dir.join(module.declaration.as_str());
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("failed to create {parent}"))?;
+        }
+        fs::write(&path, text).with_context(|| format!("failed to write {path}"))?;
+        declarations.files.push(path);
+    }
+    Ok(declarations)
+}
+
+/// The rows the summary lists, capped.
+fn gap_rows(declarations: &Declarations) -> Vec<(String, String, String)> {
+    declarations
+        .gaps
+        .iter()
+        .take(GAPS_SHOWN)
+        .map(|(module, gap)| {
+            (
+                format!("{module}:{}", gap.line),
+                gap.declaration.to_string(),
+                gap.construct.as_str().to_string(),
+            )
+        })
+        .collect()
+}
+
+/// The headline over the list: how many declarations lost something, and how
+/// many lost their type entirely.
+///
+/// Two counts rather than one, because they are not the same news. An exact
+/// object type still publishes every member it has and still rejects a
+/// misspelled one; a `$Diff<A, B>` publishes `unknown`, and a consumer of that
+/// export gets no checking at all.
+fn gap_summary(declarations: &Declarations) -> Vec<String> {
+    if declarations.gaps.is_empty() {
+        return Vec::new();
+    }
+    let refusals = declarations
+        .gaps
+        .iter()
+        .filter(|(_, gap)| !gap.construct.keeps_the_type())
+        .count();
+    let mut message = format!(
+        "{} could not be translated to TypeScript exactly",
+        plural(declarations.gaps.len(), "declaration"),
+    );
+    if refusals > 0 {
+        message.push_str(&format!(", {refusals} of them published as `unknown`",));
+    }
+    if declarations.gaps.len() > GAPS_SHOWN {
+        message.push_str("; the full list with reasons is in uf-build-manifest.json");
+    }
+    vec![message]
+}
+
+/// Whether a TypeScript consumer will ever find what this build wrote.
+///
+/// The other half of the `exports` contract, and the one nothing else checks.
+/// A library can translate its types perfectly, write them to `dist/`, publish
+/// them in the tarball — and still be `any` to everybody who installs it,
+/// because TypeScript looks for a `"types"` condition and there is none. The
+/// build succeeds either way, which is exactly why it has to say so.
+fn missing_types_condition(root: &Utf8Path, declarations: &Declarations) -> Vec<String> {
+    if !declarations.enabled || declarations.files.is_empty() {
+        return Vec::new();
+    }
+    let Ok(text) = fs::read_to_string(root.join("package.json")) else {
+        return Vec::new();
+    };
+    let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    // A manifest with no `exports` at all resolves by `main`/`types`, which is
+    // a different shape this check has no claim over.
+    let Some(exports) = manifest.get("exports") else {
+        return Vec::new();
+    };
+    if manifest.get("types").is_some() || has_condition(exports, "types") {
+        return Vec::new();
+    }
+    vec![String::from(
+        "package.json exports no `types` condition, so a TypeScript consumer will not find the \
+         declarations this build wrote: add `\"types\": \"./dist/index.d.ts\"` before `\"default\"`",
+    )]
+}
+
+/// Whether `name` appears as a condition anywhere in an `exports` tree.
+fn has_condition(value: &serde_json::Value, name: &str) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .any(|(key, nested)| key == name || has_condition(nested, name)),
+        serde_json::Value::Array(items) => items.iter().any(|item| has_condition(item, name)),
+        _ => false,
     }
 }
 
