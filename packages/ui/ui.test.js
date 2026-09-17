@@ -6326,12 +6326,14 @@ describe("Pagination", () => {
     expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
   });
 
-  it("is not a link at all when there is nowhere to go", () => {
+  it("keeps an unavailable direction named and disabled", () => {
     render(<Example page={1} />);
-    // There is no such thing as a disabled link: an `<a>` with no `href` is
-    // out of the tab order and is not announced as a link, which is exactly
-    // what "there is no previous page" means.
-    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    // No `href`, so it is out of the tab order and cannot navigate; `role`,
+    // name and disabled state stay, so it is still announced as the unavailable
+    // direction rather than as an unnamed generic element.
+    const previous = screen.getByRole("link", { name: "Previous page" });
+    expect(previous).toHaveAttribute("aria-disabled", "true");
+    expect(previous).not.toHaveAttribute("href");
     expect(screen.getByRole("link", { name: "Next page" })).toBeInTheDocument();
   });
 
@@ -6403,7 +6405,10 @@ describe("Pagination", () => {
     expect(screen.getByTestId("pages")).toHaveAttribute("role", "list");
     expect(screen.getByRole("link", { current: "page" }).textContent).toBe("4");
     expect(screen.getByRole("link", { name: "Next page" })).toHaveAttribute("data-testid", "next");
-    expect(screen.queryByRole("link", { name: "Previous page" })).toBe(null);
+    expect(screen.getByRole("link", { name: "Previous page" })).toHaveAttribute(
+      "data-testid",
+      "previous",
+    );
     expect(screen.getByTestId("previous")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByTestId("previous")).not.toHaveAttribute("href");
     expect(screen.getByRole("status").textContent).toBe("Page 4 of 25.");
