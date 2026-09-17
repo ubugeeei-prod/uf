@@ -204,6 +204,257 @@ const CONFIG: &str = "// @flow\nimport { defineConfig } from \"@uniflowed/config
 const YARNRC: &str = "nodeLinker: node-modules\nenableGlobalCache: false\n\
                       enableTelemetry: false\nenableImmutableInstalls: false\n";
 
+/// A pnpm 12 lockfile whose root accepts `ms@^2.0.0`, while the lock still
+/// holds `ms@2.0.0` beside the `ms@2.1.2` that `debug` already brought in.
+///
+/// The first document is pnpm 12's package-manager lock entry. Keeping it makes
+/// `pnpm dedupe --check` answer from the lockfile alone instead of refreshing
+/// the whole resolution as a stale lockfile.
+const PNPM12_DUPLICATE_LOCK: &str = r#"---
+lockfileVersion: '9.0'
+
+importers:
+
+  .:
+    configDependencies: {}
+    packageManagerDependencies:
+      pnpm:
+        specifier: 12.4.2
+        version: 12.4.2
+
+packages:
+
+  '@pnpm/exe.android-arm64@12.4.2':
+    resolution: {integrity: sha512-E255MbcQ0V1577M2BV0ajWuP7KmTPYA0jqZnk3rK6Lq3kTvZWulMMb7iqRmnLsQbyWTkMEB2CfyM70loVDA8xg==}
+    cpu: [arm64]
+    os: [android]
+
+  '@pnpm/exe.android-x64@12.4.2':
+    resolution: {integrity: sha512-J1pSeCUwuKxMG70ZzpWn8JzElxiEa8NN/3N0SlZRtU2xbztChaJCKF3HaBNIj9yPfeofWzJo/lwNvDDjraQuZw==}
+    cpu: [x64]
+    os: [android]
+
+  '@pnpm/exe.darwin-arm64@12.4.2':
+    resolution: {integrity: sha512-A0WDo8iErfZBXgrLseQxw8i8Y9ctUpOEl/Uu+cubnTzpD8tT9ykIB548L8YTM2WD4OS+ZOHSxy8aGZcvKq8PaQ==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@pnpm/exe.darwin-x64@12.4.2':
+    resolution: {integrity: sha512-MSgJdovBWHcb5DEOvfPH9yNi/T5O1Xa4ess+E1ESGo/5yuty7S4JoiIjami+fsNXfnoQMlwsMUqYU4zAvBcNCw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@pnpm/exe.freebsd-x64@12.4.2':
+    resolution: {integrity: sha512-h2YumlQSNvgbRPv+RXwABohX65f9bOBZn+jMIt7bFDISZPCzQ+Nvpt6Awbp4ip5PwQgYxbu5iREJ1fHE39Fm8A==}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@pnpm/exe.linux-arm64-musl@12.4.2':
+    resolution: {integrity: sha512-LwSEtSEDTv6S51YLs3YvSkPyun/QmfMic1UGICUkPWFu6ByP43RdMlkKvmVkfGhAYCpnxO057vrmyJqtfZrPCA==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-arm64@12.4.2':
+    resolution: {integrity: sha512-2dSiDXyhx+RTHsewxex8f/jVjqQXWJ2oow4kCVHEWdZKeBpgMxvZ6fHkTAUBJXgqhbKIDHvuNlZBP7gJfUWL5A==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-ppc64@12.4.2':
+    resolution: {integrity: sha512-8Itc+jQk+MTz04LS9D1RcH+VctAWmzM4l1cJQ+Sx7pAJNo7EKHdRMbC0Tok1jyQ7eEHNJZD5EleYneZqWfZM+g==}
+    cpu: [ppc64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-riscv64@12.4.2':
+    resolution: {integrity: sha512-hleOeqhTVpH+z9RVMGnxvU4ZnrkBUClWjCbHD9u6kwyqhGSpevoU1wTGish+CBRhmIgMAy9pAfFpqhbAKOKNfw==}
+    cpu: [riscv64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-s390x@12.4.2':
+    resolution: {integrity: sha512-LAsQRRdP9aToENR6dtcIJ9l+e1zMYOX0tQcLGpRyLPVBQcYRLlvAPcmDshsiIHQjp05SDa9FI0czX1ZQ1a7a/A==}
+    cpu: [s390x]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.linux-x64-musl@12.4.2':
+    resolution: {integrity: sha512-kzfzH2/0BWdTABK14Yj5a1xsdkTEQUp2eXEPNakaD9jKL025lq3hyaKHIz/gIZaPDMe/1bFFK/En4ztFlbBJxw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@pnpm/exe.linux-x64@12.4.2':
+    resolution: {integrity: sha512-/pbt0UVTa8NMDhzOWLQRfZ6G9ROKXlJPZtx845BqyWfc7hCrWXhTLBd70yO2y8+E+IWN3oHM1s/JsIQNGk1yvg==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@pnpm/exe.win32-arm64@12.4.2':
+    resolution: {integrity: sha512-PsW19e4dAUNpZ0cS9flaxFuAmpt2dKlH/Vvi8TZ4qyJjjQzue/CEsWm+6wKVP4CJ7IT8RdL4qh+soOPWIgF2Zw==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@pnpm/exe.win32-x64@12.4.2':
+    resolution: {integrity: sha512-+xGoeE0g55ztWvl8i5QqdmNfW3nIrTVcoQrNshEOwxthm9Ag48oXton3uxOA3/SANyz5AXexEjj2KO20NnOrEw==}
+    cpu: [x64]
+    os: [win32]
+
+  pnpm@12.4.2:
+    resolution: {integrity: sha512-CK3GYTGAJ1x8ntraOdzwjJxhrU5+rzMKTzRh8QKw+QdCNFTRF/mOctR/7wYWBwZE17/8lzpqV/UJCm18NosHyQ==}
+    engines: {node: '>=18.*'}
+    hasBin: true
+
+snapshots:
+
+  '@pnpm/exe.android-arm64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.android-x64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.darwin-arm64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.darwin-x64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.freebsd-x64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-arm64-musl@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-arm64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-ppc64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-riscv64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-s390x@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-x64-musl@12.4.2':
+    optional: true
+
+  '@pnpm/exe.linux-x64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.win32-arm64@12.4.2':
+    optional: true
+
+  '@pnpm/exe.win32-x64@12.4.2':
+    optional: true
+
+  pnpm@12.4.2:
+    optionalDependencies:
+      '@pnpm/exe.android-arm64': 12.4.2
+      '@pnpm/exe.android-x64': 12.4.2
+      '@pnpm/exe.darwin-arm64': 12.4.2
+      '@pnpm/exe.darwin-x64': 12.4.2
+      '@pnpm/exe.freebsd-x64': 12.4.2
+      '@pnpm/exe.linux-arm64': 12.4.2
+      '@pnpm/exe.linux-arm64-musl': 12.4.2
+      '@pnpm/exe.linux-ppc64': 12.4.2
+      '@pnpm/exe.linux-riscv64': 12.4.2
+      '@pnpm/exe.linux-s390x': 12.4.2
+      '@pnpm/exe.linux-x64': 12.4.2
+      '@pnpm/exe.linux-x64-musl': 12.4.2
+      '@pnpm/exe.win32-arm64': 12.4.2
+      '@pnpm/exe.win32-x64': 12.4.2
+
+---
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      debug:
+        specifier: 4.3.4
+        version: 4.3.4
+      ms:
+        specifier: 2.0.0
+        version: 2.0.0
+
+packages:
+
+  debug@4.3.4:
+    resolution: {integrity: sha512-PRWFHuSU3eDtQJPvnNY7Jcket1j0t5OuOsFzPPzsekD52Zl8qUfFIPEiswXqIvHWGVHOgX+7G/vCNNhehwxfkQ==}
+    engines: {node: '>=6.0'}
+    peerDependencies:
+      supports-color: '*'
+    peerDependenciesMeta:
+      supports-color:
+        optional: true
+
+  ms@2.0.0:
+    resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
+
+  ms@2.1.2:
+    resolution: {integrity: sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w==}
+
+snapshots:
+
+  debug@4.3.4:
+    dependencies:
+      ms: 2.1.2
+
+  ms@2.0.0: {}
+
+  ms@2.1.2: {}
+"#;
+
+/// A Yarn 4 lockfile whose `middle` dependency still resolves `ms@^2.0.0` to
+/// `2.0.0`, while the root has already locked `ms@2.1.2`.
+const YARN4_DUPLICATE_LOCK: &str = r#"# This file is generated by running "yarn install" inside your project.
+# Manual changes might be lost - proceed with caution!
+
+__metadata:
+  version: 10
+  cacheKey: 10c0
+
+"middle@file:packages/middle::locator=probe%40workspace%3A.":
+  version: 1.0.0
+  resolution: "middle@file:packages/middle#packages/middle::hash=ada2b9&locator=probe%40workspace%3A."
+  dependencies:
+    ms: "npm:^2.0.0"
+  checksum: 10c0/10b7405db67122e4d85e161aa69b87efe3b6dfdd5776946c0dc526c961a65f29aa502b100c6f463b260312d11b364f6faab41d595b47570628404bc5bb11fe6a
+  languageName: node
+  linkType: hard
+
+"ms@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "ms@npm:2.0.0"
+  checksum: 10c0/f8fda810b39fd7255bbdc451c46286e549794fcc700dc9cd1d25658bbc4dc2563a5de6fe7c60f798a16a60c6ceb53f033cb353f493f0cf63e5199b702943159d
+  languageName: node
+  linkType: hard
+
+"ms@npm:2.1.2":
+  version: 2.1.2
+  resolution: "ms@npm:2.1.2"
+  checksum: 10c0/a437714e2f90dbf881b5191d35a6db792efbca5badf112f87b9e1c712aace4b4b9b742dd6537f3edf90fd6f684de897cec230abde57e87883766712ddda297cc
+  languageName: node
+  linkType: hard
+
+"probe@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "probe@workspace:."
+  dependencies:
+    middle: "file:packages/middle"
+    ms: "npm:2.1.2"
+  languageName: unknown
+  linkType: soft
+"#;
+
 /// Two projects for one manager, and a home for that manager.
 ///
 /// ```text
@@ -543,6 +794,101 @@ fn dedupe_check_answers_without_changing_the_lockfile() {
             format!("`uf dedupe --check` rewrote {}", lockfile.display())
         })
     });
+}
+
+fn write_dedupe_duplicate(fixture: &Fixture) -> bool {
+    let app = fixture.app();
+    match fixture.manager {
+        Manager::Pnpm12 => {
+            fs::write(
+                app.join("package.json"),
+                format!(
+                    "{{\n  \"name\": \"managers-app\",\n  \"version\": \"1.0.0\",\n  \
+                     \"packageManager\": \"{}\",\n  \"dependencies\": {{\n    \
+                     \"debug\": \"4.3.4\",\n    \"ms\": \"^2.0.0\"\n  }}\n}}\n",
+                    fixture.manager.pin()
+                ),
+            )
+            .unwrap();
+            fs::write(app.join("pnpm-lock.yaml"), PNPM12_DUPLICATE_LOCK).unwrap();
+            true
+        }
+        Manager::Yarn4 => {
+            fs::write(
+                app.join("package.json"),
+                format!(
+                    "{{\n  \"name\": \"probe\",\n  \"version\": \"1.0.0\",\n  \
+                     \"packageManager\": \"{}\",\n  \"dependencies\": {{\n    \
+                     \"middle\": \"file:packages/middle\",\n    \
+                     \"ms\": \"2.1.2\"\n  }}\n}}\n",
+                    fixture.manager.pin()
+                ),
+            )
+            .unwrap();
+            fs::create_dir_all(app.join("packages/middle")).unwrap();
+            fs::write(
+                app.join("packages/middle/package.json"),
+                "{\"name\":\"middle\",\"version\":\"1.0.0\",\"dependencies\":{\"ms\":\"^2.0.0\"}}\n",
+            )
+            .unwrap();
+            fs::write(app.join("yarn.lock"), YARN4_DUPLICATE_LOCK).unwrap();
+            true
+        }
+        _ => false,
+    }
+}
+
+/// `uf dedupe --check` sees the manager's non-zero duplicate answer through
+/// the rows that were previously clean-only: pnpm 12 names the package it would
+/// collapse, while Yarn 2+ keeps the list in its own output.
+#[test]
+fn dedupe_check_reports_duplicates_from_pnpm_12_and_yarn_berry() {
+    let mut failures = Vec::new();
+    for row in rows() {
+        let fixture = Fixture::new(row);
+        if !write_dedupe_duplicate(&fixture) {
+            continue;
+        }
+        let app = fixture.app();
+        let lockfile = app.join(fixture.manager.lockfile());
+        let before = fs::read_to_string(&lockfile).unwrap();
+
+        let output = fixture.uf(&app, &["dedupe", "--check"]);
+        let all = printed(&output);
+        if output.status.success() {
+            failures.push(format!(
+                "── {} ──\n`uf dedupe --check` succeeded where duplicates were present:\n{all}",
+                fixture.manager.name()
+            ));
+            continue;
+        }
+        let result = (|| {
+            ensure(all.contains("would collapse"), || {
+                format!("the duplicate report did not say something would collapse:\n{all}")
+            })?;
+            ensure(all.contains("the lockfile has duplicates"), || {
+                format!("the failing exit did not name the duplicate lockfile:\n{all}")
+            })?;
+            ensure(fs::read_to_string(&lockfile).unwrap() == before, || {
+                format!("`uf dedupe --check` rewrote {}", lockfile.display())
+            })?;
+            match fixture.manager {
+                Manager::Pnpm12 => ensure(all.contains("ms 2.0.0"), || {
+                    format!("pnpm 12's named answer was not reported:\n{all}")
+                }),
+                Manager::Yarn4 => ensure(
+                    all.contains("the manager said")
+                        && all.contains("ms@npm:^2.0.0 can be deduped"),
+                    || format!("Yarn 2+'s manager output was not preserved:\n{all}"),
+                ),
+                _ => Ok(()),
+            }
+        })();
+        if let Err(why) = result {
+            failures.push(format!("── {} ──\n{why}", fixture.manager.name()));
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n\n"));
 }
 
 /// `uf link ../lib` puts a link to the checkout where the declared release
