@@ -156,6 +156,30 @@ export function textOf(element: Element): string {
   return normalize(element.textContent ?? "");
 }
 
+/** Text that contributes to a name from content. */
+function contentNameText(element: Element): string {
+  const parts = [];
+  collectContentNameText(element, parts);
+  return normalize(parts.join(""));
+}
+
+function collectContentNameText(node: Node, parts: Array<string>): void {
+  if (node instanceof Element) {
+    if (node.hasAttribute("hidden") || node.getAttribute("aria-hidden") === "true") {
+      return;
+    }
+  }
+
+  if (node.nodeType === 3) {
+    parts.push(node.textContent ?? "");
+    return;
+  }
+
+  for (const child of Array.from(node.childNodes)) {
+    collectContentNameText(child, parts);
+  }
+}
+
 function candidates(root: Element, selector: string): Array<Element> {
   return Array.from(root.querySelectorAll(selector));
 }
@@ -703,7 +727,7 @@ export function accessibleName(element: Element): string {
   }
 
   if (NAME_FROM_CONTENT.has(roleOf(element) ?? "")) {
-    const content = textOf(element);
+    const content = contentNameText(element);
     if (content !== "") {
       return content;
     }
