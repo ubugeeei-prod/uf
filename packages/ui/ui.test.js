@@ -244,6 +244,67 @@ function replaceValue(field: HTMLElement, value: string): void {
   fireEvent.input(field, { data: value });
 }
 
+/**
+ * A mouse's pointer with its primary button down, as a browser reports one.
+ *
+ * The same shapes `interactions.test.js` writes out, because what the overlays
+ * below promise is `useInteractOutside`'s promise, and these are the events it
+ * reads: which button was used, and whether the gesture ended at all.
+ */
+const MOUSE = {
+  button: 0,
+  buttons: 1,
+  height: 1,
+  isPrimary: true,
+  pointerId: 1,
+  pointerType: "mouse",
+  pressure: 0.5,
+  width: 1,
+};
+
+/** The same mouse, released. */
+const MOUSE_UP = { ...MOUSE, buttons: 0, pressure: 0 };
+
+/** A finger on a touchscreen: a contact area, and its own pointer id. */
+const TOUCH = {
+  button: 0,
+  buttons: 1,
+  height: 22,
+  isPrimary: true,
+  pointerId: 7,
+  pointerType: "touch",
+  pressure: 0.5,
+  width: 22,
+};
+
+/** The same finger, lifted. */
+const TOUCH_UP = { ...TOUCH, buttons: 0, pressure: 0 };
+
+/**
+ * The touch a reader puts on the page to scroll it, and that the browser takes back.
+ *
+ * `pointerdown` is the first event of every touch, this one included; the
+ * scroll is what makes the browser send `pointercancel` rather than a release.
+ * A gesture cancelled this way never ended anywhere, so it dismisses nothing.
+ */
+function touchScroll(target: Element): void {
+  fireEvent.pointerDown(target, TOUCH);
+  fireEvent.pointerCancel(target, TOUCH_UP);
+}
+
+/** A press that begins on one element and is let go of over another. */
+function pressFromTo(from: Element, to: Element): void {
+  fireEvent.pointerDown(from, MOUSE);
+  fireEvent.pointerUp(to, MOUSE_UP);
+  fireEvent.click(to, { button: 0, detail: 1 });
+}
+
+/** A right-button press: the button that asks for a context menu and presses nothing. */
+function rightPress(target: Element): void {
+  fireEvent.pointerDown(target, { ...MOUSE, button: 2, buttons: 2 });
+  fireEvent.pointerUp(target, { ...MOUSE_UP, button: 2 });
+}
+
 describe("Field", () => {
   component EmailField(invalid: boolean) {
     return (
@@ -1046,6 +1107,9 @@ describe("Dialog", () => {
     render(<Example />);
     await userEvent.click(screen.getByRole("button", { name: "Open" }));
     fireEvent.pointerDown(bodyOf());
+    // The release is what dismisses, rather than the press on its own; the
+    // block about the four gestures below says why.
+    fireEvent.pointerUp(bodyOf());
     expect(screen.queryByRole("dialog")).toBe(null);
   });
 
@@ -1164,7 +1228,10 @@ describe("Alert dialog", () => {
 
   it("does not close an alert dialog on a press outside it", async () => {
     await open();
+    // A whole gesture, press and release, so that this says the alert dialog
+    // declined a dismissal rather than that no dismissal was asked for.
     fireEvent.pointerDown(bodyOf());
+    fireEvent.pointerUp(bodyOf());
     // The inverse of `Dialog`'s "closes on a press outside it", and the two
     // together are what say the behaviour is a choice. A confirmation that
     // disappears when the reader clicks slightly beside it has given no
@@ -1528,6 +1595,7 @@ describe("Menu", () => {
     const trigger = screen.getByRole("button", { name: "File" });
     await userEvent.click(trigger);
     fireEvent.pointerDown(bodyOf());
+    fireEvent.pointerUp(bodyOf());
     expect(screen.queryByRole("menu")).toBe(null);
     // The reader pressed somewhere else on purpose; taking focus back to the
     // trigger would undo the thing they just did.
@@ -2511,6 +2579,7 @@ describe("Combobox", () => {
     render(<Example />);
     await userEvent.type(screen.getByRole("combobox"), "a");
     fireEvent.pointerDown(bodyOf());
+    fireEvent.pointerUp(bodyOf());
     expect(screen.queryByRole("listbox")).toBe(null);
   });
 
@@ -2926,6 +2995,7 @@ describe("Select", () => {
     render(<Example />);
     await openFromTheKeyboard();
     fireEvent.pointerDown(bodyOf());
+    fireEvent.pointerUp(bodyOf());
     expect(screen.queryByRole("listbox")).toBe(null);
   });
 
@@ -4149,6 +4219,321 @@ describe("Popover", () => {
     expect(screen.queryByRole("dialog")).toBe(null);
     expect(trigger).toHaveFocus();
     expect(danglingReferences()).toEqual([]);
+  });
+});
+
+describe("the gesture that dismisses an overlay, and the three that do not", () => {
+  // Five overlays used to decide that a press had landed outside them from
+  // `pointerdown` alone. On a touchscreen that is the first event of *every*
+  // touch, including the one a reader puts on the page to scroll it: the
+  // browser cancels that pointer as the scroll begins and never sends a click,
+  // but the overlay had already closed. ubugeeei-prod/uf#1024.
+  //
+  // `useInteractOutside` is what they share instead, and a dismissal is now a
+  // `pointerdown` *and* the release that ends the same gesture, both outside,
+  // from the primary button. The four cases below are that rule in full, and
+  // each is written for all five because there is one answer now rather than
+  // five copies of one — a case that passes for `Menu` and was never asked of
+  // `Select` is how the copies drifted apart in the first place.
+
+  component MenuExample() {
+    return (
+      <Menu.Root>
+        <Menu.Trigger>File</Menu.Trigger>
+        <Menu.Body>
+          <Menu.Item>Open</Menu.Item>
+        </Menu.Body>
+      </Menu.Root>
+    );
+  }
+
+  component SelectExample() {
+    return (
+      <Select.Root>
+        <Select.Label>Country</Select.Label>
+        <Select.Trigger>
+          <Select.Value placeholder="Choose one" />
+        </Select.Trigger>
+        <Select.List>
+          <Select.Option value="FR">France</Select.Option>
+        </Select.List>
+      </Select.Root>
+    );
+  }
+
+  component ComboboxExample() {
+    const [query, setQuery] = useState("");
+    const shown = ["Apple", "Apricot"].filter((each) =>
+      each.toLowerCase().startsWith(query.toLowerCase()),
+    );
+    return (
+      <Combobox.Root inputValue={query} onInputValueChange={setQuery}>
+        <Combobox.Label>Fruit</Combobox.Label>
+        <Combobox.Input />
+        <Combobox.List>
+          {shown.map((each) => (
+            <Combobox.Option key={each} value={each}>
+              {each}
+            </Combobox.Option>
+          ))}
+        </Combobox.List>
+      </Combobox.Root>
+    );
+  }
+
+  component PopoverExample() {
+    return (
+      <Popover.Root>
+        <Popover.Trigger>Filters</Popover.Trigger>
+        <Popover.Body>
+          <button type="button">Only mine</button>
+        </Popover.Body>
+      </Popover.Root>
+    );
+  }
+
+  component DialogExample() {
+    return (
+      <Dialog.Root>
+        <Dialog.Trigger>Open</Dialog.Trigger>
+        <Dialog.Body>
+          <Dialog.Title>Are you sure?</Dialog.Title>
+          <button type="button">Confirm</button>
+        </Dialog.Body>
+      </Dialog.Root>
+    );
+  }
+
+  // Each of these renders one overlay inside a landmark, opens it the way a
+  // reader does, and answers what was rendered so that the audit at the end can
+  // read the tree the overlay is actually in. The `<main>` and its heading are
+  // there for the reason the audited block below gives: the rule set includes
+  // the page-level rules, and a fragment audited on its own is reported for
+  // having no landmark — a fact about the fragment, not about the component.
+
+  /** Open the menu, the way a reader does. */
+  const openMenu = async (): Promise<HTMLElement> => {
+    const { container } = render(
+      <main>
+        <h1>Files</h1>
+        <MenuExample />
+      </main>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "File" }));
+    return container;
+  };
+
+  /** Open the select's list from the keyboard, which is where most of its cases start. */
+  const openSelect = async (): Promise<HTMLElement> => {
+    const { container } = render(
+      <main>
+        <h1>Files</h1>
+        <SelectExample />
+      </main>,
+    );
+    screen.getByRole("combobox").focus();
+    await userEvent.keyboard("{ArrowDown}");
+    return container;
+  };
+
+  /** Open the combobox's list the only way it opens: by typing. */
+  const openCombobox = async (): Promise<HTMLElement> => {
+    const { container } = render(
+      <main>
+        <h1>Files</h1>
+        <ComboboxExample />
+      </main>,
+    );
+    await userEvent.type(screen.getByRole("combobox"), "a");
+    return container;
+  };
+
+  const openPopover = async (): Promise<HTMLElement> => {
+    const { container } = render(
+      <main>
+        <h1>Files</h1>
+        <PopoverExample />
+      </main>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Filters" }));
+    return container;
+  };
+
+  const openDialog = async (): Promise<HTMLElement> => {
+    const { container } = render(
+      <main>
+        <h1>Files</h1>
+        <DialogExample />
+      </main>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Open" }));
+    return container;
+  };
+
+  describe("Menu", () => {
+    it("stays open when the touch that starts a scroll is cancelled", async () => {
+      await openMenu();
+      touchScroll(bodyOf());
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+
+    it("closes on the release that ends a press outside, and not before", async () => {
+      await openMenu();
+      fireEvent.pointerDown(bodyOf(), MOUSE);
+      // A press nobody has let go of yet has dismissed nothing: the reader may
+      // still drag back into the menu, and the browser may still cancel it.
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+      fireEvent.pointerUp(bodyOf(), MOUSE_UP);
+      fireEvent.click(bodyOf(), { button: 0, detail: 1 });
+      expect(screen.queryByRole("menu")).toBe(null);
+    });
+
+    it("stays open for a press that starts outside and is let go of inside", async () => {
+      await openMenu();
+      pressFromTo(bodyOf(), screen.getByRole("menu"));
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+
+    it("stays open for a right-button press outside", async () => {
+      await openMenu();
+      rightPress(bodyOf());
+      expect(screen.getByRole("menu")).toBeInTheDocument();
+    });
+  });
+
+  describe("Select", () => {
+    it("stays open when the touch that starts a scroll is cancelled", async () => {
+      await openSelect();
+      touchScroll(bodyOf());
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+
+    it("closes on the release that ends a press outside, and not before", async () => {
+      await openSelect();
+      fireEvent.pointerDown(bodyOf(), MOUSE);
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      fireEvent.pointerUp(bodyOf(), MOUSE_UP);
+      fireEvent.click(bodyOf(), { button: 0, detail: 1 });
+      expect(screen.queryByRole("listbox")).toBe(null);
+    });
+
+    it("stays open for a press that starts outside and is let go of inside", async () => {
+      await openSelect();
+      pressFromTo(bodyOf(), screen.getByRole("listbox"));
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+
+    it("stays open for a right-button press outside", async () => {
+      await openSelect();
+      rightPress(bodyOf());
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+  });
+
+  describe("Combobox", () => {
+    it("stays open when the touch that starts a scroll is cancelled", async () => {
+      await openCombobox();
+      touchScroll(bodyOf());
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+
+    it("closes on the release that ends a press outside, and not before", async () => {
+      await openCombobox();
+      fireEvent.pointerDown(bodyOf(), MOUSE);
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+      fireEvent.pointerUp(bodyOf(), MOUSE_UP);
+      fireEvent.click(bodyOf(), { button: 0, detail: 1 });
+      expect(screen.queryByRole("listbox")).toBe(null);
+    });
+
+    it("stays open for a press that starts outside and is let go of inside", async () => {
+      await openCombobox();
+      pressFromTo(bodyOf(), screen.getByRole("listbox"));
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+
+    it("stays open for a right-button press outside", async () => {
+      await openCombobox();
+      rightPress(bodyOf());
+      expect(screen.getByRole("listbox")).toBeInTheDocument();
+    });
+  });
+
+  describe("Popover", () => {
+    it("stays open when the touch that starts a scroll is cancelled", async () => {
+      await openPopover();
+      touchScroll(bodyOf());
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("closes on the release that ends a press outside, and not before", async () => {
+      await openPopover();
+      fireEvent.pointerDown(bodyOf(), MOUSE);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      fireEvent.pointerUp(bodyOf(), MOUSE_UP);
+      fireEvent.click(bodyOf(), { button: 0, detail: 1 });
+      expect(screen.queryByRole("dialog")).toBe(null);
+    });
+
+    it("stays open for a press that starts outside and is let go of inside", async () => {
+      await openPopover();
+      pressFromTo(bodyOf(), screen.getByRole("dialog"));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("stays open for a right-button press outside", async () => {
+      await openPopover();
+      rightPress(bodyOf());
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  describe("Dialog", () => {
+    it("stays open when the touch that starts a scroll is cancelled", async () => {
+      await openDialog();
+      touchScroll(bodyOf());
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("closes on the release that ends a press outside, and not before", async () => {
+      await openDialog();
+      fireEvent.pointerDown(bodyOf(), MOUSE);
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      fireEvent.pointerUp(bodyOf(), MOUSE_UP);
+      fireEvent.click(bodyOf(), { button: 0, detail: 1 });
+      expect(screen.queryByRole("dialog")).toBe(null);
+    });
+
+    it("stays open for a press that starts outside and is let go of inside", async () => {
+      await openDialog();
+      pressFromTo(bodyOf(), screen.getByRole("dialog"));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    it("stays open for a right-button press outside", async () => {
+      await openDialog();
+      rightPress(bodyOf());
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  it("leaves an engine nothing to report while each one is open", async () => {
+    // One at a time, and each in its own render: opening a second overlay is a
+    // press outside the first, which is the very thing these cases are about.
+    // Inside a `<main>` with a heading for the reason the audited block below
+    // gives — the rule set includes the page-level rules.
+    const overlays: $ReadOnlyArray<() => Promise<HTMLElement>> = [
+      openMenu,
+      openSelect,
+      openCombobox,
+      openPopover,
+      openDialog,
+    ];
+    for (const openOne of overlays) {
+      const container = await openOne();
+      await expect(container).toHaveNoAxeViolations();
+      cleanup();
+    }
   });
 });
 

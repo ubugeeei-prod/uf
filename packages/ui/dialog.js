@@ -78,6 +78,8 @@ import {
 import { useScrollLock } from "@uniflowed/hooks/browser";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import { useInteractOutside } from "./interactions.js";
+
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
   composeHandlers,
@@ -261,29 +263,6 @@ export component DialogBody(
 
     const restorePage = concealOutside(body);
 
-    const onOutsidePress = (event: Event) => {
-      const target: $FlowFixMe = event.target;
-      if (target == null || body.contains(target)) {
-        return;
-      }
-      // The trigger is outside the dialog and is not "outside" for this
-      // purpose: closing here and letting the trigger's own click reopen made
-      // a press on the trigger a no-op that flickered.
-      if (trigger != null && trigger.contains(target)) {
-        return;
-      }
-      // A confirmation declines to close here, and `Escape` still does. See
-      // the module header: there is a difference between a dialog the reader
-      // dismissed and one that went away while they were reaching for it.
-      if (!dismissable()) {
-        return;
-      }
-      close();
-    };
-    // Capture, so a press is seen even where something below it stops the
-    // event — a menu inside the dialog, for instance.
-    document.addEventListener("pointerdown", onOutsidePress, true);
-
     // Where the caller said, then the first thing worth acting on, then the
     // dialog itself when it holds nothing focusable — so focus is inside it
     // whichever of the three answers.
@@ -297,14 +276,26 @@ export component DialogBody(
     target.focus();
 
     return () => {
-      document.removeEventListener("pointerdown", onOutsidePress, true);
       // Order matters: the page comes back before focus is restored, because
       // the trigger is one of the elements that was made `inert` and an inert
       // element cannot take focus.
       restorePage();
       opener?.focus?.();
     };
-  }, [dialog.open, dialog.triggerRef, close, dismissable, initialFocus]);
+  }, [dialog.open, dialog.triggerRef, initialFocus]);
+
+  // A confirmation declines to close here, and `Escape` still does. See the
+  // module header: there is a difference between a dialog the reader dismissed
+  // and one that went away while they were reaching for it.
+  useInteractOutside({
+    isDisabled: !dialog.open,
+    onInteractOutside: () => {
+      if (dismissable()) {
+        close();
+      }
+    },
+    refs: [bodyRef, dialog.triggerRef],
+  });
 
   if (!dialog.open) {
     return null;
