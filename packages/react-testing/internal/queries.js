@@ -431,39 +431,83 @@ function cssEscape(value: string): string {
   return value.replace(/([^\w-])/g, "\\$1");
 }
 
-/** Roles a tag has without being told. */
-const IMPLICIT_ROLES: { readonly [string]: string } = {
-  a: "link",
+/**
+ * Position-independent, zero-attribute implicit roles from uf_lint's generated
+ * HTML-AAM table.
+ *
+ * Keep this to the entries that need no attribute and no ancestor answer.
+ * Attribute-sensitive entries (`a[href]`, named `section`, `input[type]`) and
+ * entries a DOM can settle from parents (`header`, `li`, `td`) are handled in
+ * `roleOf` before this fallback. The test suite parses
+ * `crates/uf_lint/src/runner/tree/aria/table.rs` and checks this runtime view
+ * against every generated entry that is not position-dependent.
+ */
+const STATIC_IMPLICIT_ROLES: { readonly [string]: string } = {
+  a: "generic",
+  address: "group",
+  area: "generic",
   article: "article",
-  aside: "complementary",
+  aside: "generic",
+  b: "generic",
+  bdo: "generic",
+  blockquote: "blockquote",
+  body: "generic",
   button: "button",
+  caption: "caption",
+  code: "code",
+  data: "generic",
+  datalist: "listbox",
+  dd: "definition",
+  del: "deletion",
+  details: "group",
+  dfn: "term",
   dialog: "dialog",
-  footer: "contentinfo",
-  form: "form",
+  div: "generic",
+  dt: "term",
+  em: "emphasis",
+  fieldset: "group",
+  figure: "figure",
   h1: "heading",
   h2: "heading",
   h3: "heading",
   h4: "heading",
   h5: "heading",
   h6: "heading",
-  header: "banner",
+  hgroup: "generic",
   hr: "separator",
+  html: "document",
+  i: "generic",
   img: "img",
-  li: "listitem",
+  ins: "insertion",
   main: "main",
+  mark: "mark",
+  math: "math",
+  menu: "list",
+  meter: "meter",
   nav: "navigation",
   ol: "list",
+  optgroup: "group",
   option: "option",
   output: "status",
+  p: "paragraph",
+  pre: "generic",
   progress: "progressbar",
-  section: "region",
-  select: "combobox",
+  q: "generic",
+  samp: "generic",
+  section: "generic",
+  small: "generic",
+  span: "generic",
+  strong: "strong",
+  sub: "subscript",
+  sup: "superscript",
   table: "table",
   tbody: "rowgroup",
-  td: "cell",
   textarea: "textbox",
-  th: "columnheader",
+  tfoot: "rowgroup",
+  thead: "rowgroup",
+  time: "time",
   tr: "row",
+  u: "generic",
   ul: "list",
 };
 
@@ -491,13 +535,51 @@ export function roleOf(element: Element): string | null {
     return explicit.trim().split(/\s+/)[0];
   }
   const tag = element.tagName.toLowerCase();
+  if (tag === "a" || tag === "area") {
+    return element.getAttribute("href") == null ? "generic" : "link";
+  }
+  if (tag === "aside") {
+    return scopedToBody(element) ? "complementary" : "generic";
+  }
+  if (tag === "footer") {
+    return scopedToBody(element) ? "contentinfo" : "generic";
+  }
+  if (tag === "form") {
+    return hasNonEmptyAttribute(element, "aria-label") ||
+      hasNonEmptyAttribute(element, "aria-labelledby") ||
+      hasNonEmptyAttribute(element, "name")
+      ? "form"
+      : null;
+  }
+  if (tag === "header") {
+    return scopedToBody(element) ? "banner" : "generic";
+  }
   if (tag === "input") {
     const type = (element.getAttribute("type") ?? "text").toLowerCase();
+    if (
+      element.getAttribute("list") != null &&
+      (type === "email" || type === "search" || type === "tel" || type === "text" || type === "url")
+    ) {
+      return "combobox";
+    }
     return INPUT_ROLES[type] ?? "textbox";
   }
-  if (tag === "a" && element.getAttribute("href") == null) {
-    // A link without a destination is not a link.
-    return "generic";
+  if (tag === "li") {
+    return parentTag(element, ["ol", "ul", "menu"]) == null ? null : "listitem";
+  }
+  if (tag === "section") {
+    return hasNonEmptyAttribute(element, "aria-label") ||
+      hasNonEmptyAttribute(element, "aria-labelledby")
+      ? "region"
+      : "generic";
+  }
+  if (tag === "select") {
+    return element.getAttribute("multiple") != null || element.getAttribute("size") != null
+      ? "listbox"
+      : "combobox";
+  }
+  if (tag === "td") {
+    return parentTag(element, ["tr"]) == null ? null : "cell";
   }
   if (tag === "th") {
     // A `<th>` is a `columnheader` or a `rowheader` depending on what it
@@ -508,8 +590,31 @@ export function roleOf(element: Element): string | null {
     const scope = (element.getAttribute("scope") ?? "").toLowerCase();
     return scope === "row" || scope === "rowgroup" ? "rowheader" : "columnheader";
   }
-  return IMPLICIT_ROLES[tag] ?? null;
+  return STATIC_IMPLICIT_ROLES[tag] ?? null;
 }
+
+function hasNonEmptyAttribute(element: Element, name: string): boolean {
+  const value = element.getAttribute(name);
+  return value != null && value !== "";
+}
+
+function parentTag(element: Element, names: $ReadOnlyArray<string>): Element | null {
+  const parent = element.parentElement;
+  return parent != null && names.includes(parent.tagName.toLowerCase()) ? parent : null;
+}
+
+function scopedToBody(element: Element): boolean {
+  let parent = element.parentElement;
+  while (parent != null && parent.tagName.toLowerCase() !== "body") {
+    if (SECTIONING_ANCESTORS.has(parent.tagName.toLowerCase())) {
+      return false;
+    }
+    parent = parent.parentElement;
+  }
+  return parent != null;
+}
+
+const SECTIONING_ANCESTORS: Set<string> = new Set(["article", "aside", "main", "nav", "section"]);
 
 /**
  * The name a screen reader would announce.

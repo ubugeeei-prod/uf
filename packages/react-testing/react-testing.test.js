@@ -18,6 +18,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  roleOf,
   screen,
   userEvent,
   waitFor,
@@ -39,6 +40,138 @@ component Counter() {
         increment
       </button>
     </div>
+  );
+}
+
+type GeneratedRequirement = {|
+  readonly name: string,
+  readonly value: string | null,
+  readonly set: boolean,
+  readonly unset: boolean,
+|};
+
+type GeneratedImplicitRole = {|
+  readonly element: string,
+  readonly attributes: $ReadOnlyArray<GeneratedRequirement>,
+  readonly placed: boolean,
+  readonly role: string,
+|};
+
+function generatedImplicitRoles(): $ReadOnlyArray<GeneratedImplicitRole> {
+  const table = fs.readFileSync(
+    path.join(repository, "crates/uf_lint/src/runner/tree/aria/table.rs"),
+    "utf8",
+  );
+  const start = table.indexOf("pub(super) static IMPLICIT_ROLES");
+  if (start === -1) {
+    throw new Error("the generated ARIA table has no implicit role section");
+  }
+  const roles = [];
+  const entryPattern = /Implicit \{([\s\S]*?)\n    \},/g;
+  const requiredPattern =
+    /Required \{\s*name: "([^"]+)",\s*value: (None|Some\("([^"]*)"\)),\s*set: (true|false),\s*unset: (true|false),\s*\}/g;
+  const implicitTable = table.slice(start);
+  while (true) {
+    const entryMatch = entryPattern.exec(implicitTable);
+    if (entryMatch == null) {
+      break;
+    }
+    const source = entryMatch[1];
+    const element = quotedField(source, "element");
+    const role = quotedField(source, "role");
+    const placed = booleanField(source, "placed");
+    const attributes = [];
+    while (true) {
+      const requiredMatch = requiredPattern.exec(source);
+      if (requiredMatch == null) {
+        break;
+      }
+      attributes.push({
+        name: requiredMatch[1],
+        value: requiredMatch[2] === "None" ? null : requiredMatch[3],
+        set: requiredMatch[4] === "true",
+        unset: requiredMatch[5] === "true",
+      });
+    }
+    roles.push({ element, attributes, placed, role });
+  }
+  return roles;
+}
+
+function quotedField(source: string, name: string): string {
+  const match = new RegExp(`${name}: "([^"]+)"`).exec(source);
+  if (match == null) {
+    throw new Error(`missing ${name} in generated implicit role row`);
+  }
+  return match[1];
+}
+
+function booleanField(source: string, name: string): boolean {
+  const match = new RegExp(`${name}: (true|false)`).exec(source);
+  if (match == null) {
+    throw new Error(`missing ${name} in generated implicit role row`);
+  }
+  return match[1] === "true";
+}
+
+function elementFrom(entry: GeneratedImplicitRole): Element {
+  const element = document.createElement(entry.element);
+  for (const attribute of entry.attributes) {
+    if (attribute.unset) {
+      continue;
+    }
+    element.setAttribute(attribute.name, attribute.value ?? "x");
+  }
+  return element;
+}
+
+function generatedRoleOf(
+  element: Element,
+  entries: $ReadOnlyArray<GeneratedImplicitRole>,
+): string | null {
+  const tag = element.tagName.toLowerCase();
+  for (const entry of entries) {
+    if (entry.placed || entry.element !== tag) {
+      continue;
+    }
+    if (generatedEntryMatches(element, entry)) {
+      return entry.role;
+    }
+  }
+  return null;
+}
+
+function generatedEntryMatches(element: Element, entry: GeneratedImplicitRole): boolean {
+  for (const required of entry.attributes) {
+    const value = element.getAttribute(required.name);
+    if (required.unset) {
+      if (value != null) {
+        return false;
+      }
+      continue;
+    }
+    if (value == null) {
+      return false;
+    }
+    const requiredValue = required.value;
+    if (requiredValue != null && value.toLowerCase() !== requiredValue.toLowerCase()) {
+      return false;
+    }
+    if (requiredValue == null && !required.set) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function generatedEntryCannotMatch(entry: GeneratedImplicitRole): boolean {
+  // `Required { value: None, set: false, unset: false }` is how the generated
+  // Rust table currently spells boolean attribute presence on `select[size]`
+  // and `select[multiple]`, but `aria::matches` treats that combination as not
+  // settled. The DOM runtime can answer those from actual attributes, and the
+  // select cases above pin that deliberate difference.
+  return entry.attributes.some(
+    (attribute) => attribute.value == null && !attribute.set && !attribute.unset,
   );
 }
 
@@ -134,6 +267,67 @@ describe("queries", () => {
     // rather than "1815".
     expect(screen.getAllByRole("columnheader").length).toBe(2);
     expect(screen.getByRole("rowheader").textContent).toBe("Ada Lovelace");
+  });
+
+  it("keeps position-independent implicit roles aligned with the generated ARIA table", () => {
+    render(<div />);
+    const generated = generatedImplicitRoles();
+    const misses = [];
+
+    for (const entry of generated) {
+      if (entry.placed || generatedEntryCannotMatch(entry)) {
+        continue;
+      }
+      const element = elementFrom(entry);
+      const expected = generatedRoleOf(element, generated);
+      const actual = roleOf(element);
+      if (actual !== expected) {
+        misses.push({ element: entry.element, attributes: entry.attributes, expected, actual });
+      }
+    }
+
+    expect(misses).toEqual([]);
+  });
+
+  it("settles position-dependent implicit roles from the DOM tree", () => {
+    render(<div />);
+    const pageHeader = document.createElement("header");
+    const body = document.body;
+    if (body == null) {
+      throw new Error("render did not install a document body");
+    }
+    body.appendChild(pageHeader);
+    try {
+      expect(roleOf(pageHeader)).toBe("banner");
+    } finally {
+      pageHeader.remove();
+    }
+
+    const { container } = render(
+      <main>
+        <section>
+          <header>Local</header>
+        </section>
+        <ul>
+          <li>One</li>
+        </ul>
+        <table>
+          <tbody>
+            <tr>
+              <td>Cell</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>,
+    );
+
+    expect(roleOf(elementIn(container, "section > header"))).toBe("generic");
+    expect(roleOf(elementIn(container, "li"))).toBe("listitem");
+    expect(roleOf(elementIn(container, "td"))).toBe("cell");
+    expect(roleOf(document.createElement("select"))).toBe("combobox");
+    const multiple = document.createElement("select");
+    multiple.setAttribute("multiple", "");
+    expect(roleOf(multiple)).toBe("listbox");
   });
 
   it("finds by role and accessible name together", () => {
