@@ -102,8 +102,8 @@ type DrawerState = {|
    * child's effect runs before its parent's, so `Drawer.Body` can ask about
    * both on the commit that mounted them, and nothing renders either number.
    */
-  readonly closes: { current: number },
-  readonly handles: { current: number },
+  readonly closeCountRef: { current: number },
+  readonly handleCountRef: { current: number },
 |};
 
 const DrawerContext: React.Context<DrawerState | null> = createContext(null);
@@ -146,15 +146,15 @@ export component DrawerRoot(
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
   const [snapIndex, setSnapIndex] = useControlled(snapPoint, defaultSnapPoint, onSnapPointChange);
   const bodyRef = useRef<HTMLElement | null>(null);
-  const closes = useRef(0);
-  const handles = useRef(0);
+  const closeCountRef = useRef(0);
+  const handleCountRef = useRef(0);
 
   const state = useMemo(
     () => ({
       bodyRef,
       close: () => setOpen(false),
-      closes,
-      handles,
+      closeCountRef,
+      handleCountRef,
       setSnapIndex,
       side,
       snapIndex,
@@ -243,10 +243,10 @@ export component DrawerBody(children: React.Node, render?: RenderProp, ...rest: 
  */
 component RequireCloseForTheDrag() {
   const drawer = useDrawer("Drawer.Body");
-  const { closes, handles } = drawer;
+  const { closeCountRef, handleCountRef } = drawer;
 
   useEffect(() => {
-    if (handles.current > 0 && closes.current === 0) {
+    if (handleCountRef.current > 0 && closeCountRef.current === 0) {
       throw new Error(
         "Drawer.Body has a Drawer.Handle and no Drawer.Close: WCAG 2.2 SC 2.5.7 " +
           "requires anything achievable by dragging to be achievable without a " +
@@ -254,7 +254,7 @@ component RequireCloseForTheDrag() {
           "replacement for one.",
       );
     }
-  }, [closes, handles]);
+  }, [closeCountRef, handleCountRef]);
 
   return null;
 }
@@ -303,14 +303,19 @@ export component DrawerDescription(children: React.Node, render?: RenderProp, ..
  */
 export component DrawerClose(children: React.Node, render?: RenderProp, ...rest: Rest) {
   const drawer = useDrawer("Drawer.Close");
-  const closes = drawer.closes;
+  const closeCountRef = drawer.closeCountRef;
 
-  useEffect(() => {
-    closes.current += 1;
-    return () => {
-      closes.current -= 1;
-    };
-  }, [closes]);
+  useEffect(
+    () => {
+      closeCountRef.current += 1;
+      return () => {
+        closeCountRef.current -= 1;
+      };
+    },
+    // The context ref object is stable; the effect registers this part's mount.
+    // uf-lint-disable-next-line react-compiler/refs
+    [closeCountRef],
+  );
 
   return (
     <SheetClose {...forwarded(rest)} render={render}>
@@ -337,7 +342,7 @@ export component DrawerHandle(
   ...rest: Rest
 ) {
   const drawer = useDrawer("Drawer.Handle");
-  const { bodyRef, close, handles, setSnapIndex, side, snapIndex, snapPoints } = drawer;
+  const { bodyRef, close, handleCountRef, setSnapIndex, side, snapIndex, snapPoints } = drawer;
   const passed = withoutComposed(rest, [
     "onKeyDown",
     "onPointerDown",
@@ -354,12 +359,17 @@ export component DrawerHandle(
   // So `Drawer.Body` knows there is a drag to provide an alternative to. A
   // drawer with no handle has no gesture, and requiring a close button of one
   // would be this component inventing a rule WCAG did not write.
-  useEffect(() => {
-    handles.current += 1;
-    return () => {
-      handles.current -= 1;
-    };
-  }, [handles]);
+  useEffect(
+    () => {
+      handleCountRef.current += 1;
+      return () => {
+        handleCountRef.current -= 1;
+      };
+    },
+    // The context ref object is stable; the effect registers this part's mount.
+    // uf-lint-disable-next-line react-compiler/refs
+    [handleCountRef],
+  );
 
   /** Move by one snap point, or close when there is no smaller one. */
   const step = (towardsOpen: boolean) => {
@@ -420,6 +430,8 @@ export component DrawerHandle(
         step(false);
       }
     }),
+    // Pointer handlers keep drag coordinates in refs between events.
+    // uf-lint-disable-next-line react-compiler/refs
     onPointerDown: composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
       dragFrom.current = vertical ? event.clientY : event.clientX;
       setDragging(true);
@@ -427,6 +439,7 @@ export component DrawerHandle(
       // immediately: the handle moves with the drawer.
       event.currentTarget?.setPointerCapture?.(event.pointerId);
     }),
+    // uf-lint-disable-next-line react-compiler/refs
     onPointerMove: composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
       const body = bodyRef.current;
       if (dragFrom.current == null || body == null) {
@@ -436,6 +449,7 @@ export component DrawerHandle(
       // otherwise lift it off the edge it is attached to.
       body.style.setProperty("--uf-drawer-drag", `${String(Math.max(0, travelled(event)))}px`);
     }),
+    // uf-lint-disable-next-line react-compiler/refs
     onPointerUp: composeHandlers(rest.onPointerUp, (event: $FlowFixMe) => {
       const body = bodyRef.current;
       const moved = travelled(event);
