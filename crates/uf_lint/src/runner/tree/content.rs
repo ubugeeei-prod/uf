@@ -43,6 +43,9 @@ const ANCHOR_HAS_CONTENT: &str = "a11y/anchor-has-content";
 /// `a11y/anchor-is-valid`.
 const ANCHOR_IS_VALID: &str = "a11y/anchor-is-valid";
 
+/// `a11y/control-has-associated-label`.
+const CONTROL_HAS_LABEL: &str = "a11y/control-has-associated-label";
+
 /// `a11y/heading-has-content`.
 const HEADING_HAS_CONTENT: &str = "a11y/heading-has-content";
 
@@ -64,6 +67,7 @@ pub(super) struct Levels {
     anchor_ambiguous_text: Option<Severity>,
     anchor_has_content: Option<Severity>,
     anchor_is_valid: Option<Severity>,
+    control_has_label: Option<Severity>,
     heading_has_content: Option<Severity>,
     html_has_lang: Option<Severity>,
     iframe_has_title: Option<Severity>,
@@ -77,6 +81,7 @@ impl Levels {
             anchor_ambiguous_text: severity(config, ANCHOR_AMBIGUOUS_TEXT),
             anchor_has_content: severity(config, ANCHOR_HAS_CONTENT),
             anchor_is_valid: severity(config, ANCHOR_IS_VALID),
+            control_has_label: severity(config, CONTROL_HAS_LABEL),
             heading_has_content: severity(config, HEADING_HAS_CONTENT),
             html_has_lang: severity(config, HTML_HAS_LANG),
             iframe_has_title: severity(config, IFRAME_HAS_TITLE),
@@ -91,6 +96,7 @@ impl Levels {
             self.anchor_ambiguous_text,
             self.anchor_has_content,
             self.anchor_is_valid,
+            self.control_has_label,
             self.heading_has_content,
             self.html_has_lang,
             self.iframe_has_title,
@@ -106,6 +112,7 @@ impl Levels {
             ANCHOR_AMBIGUOUS_TEXT => self.anchor_ambiguous_text,
             ANCHOR_HAS_CONTENT => self.anchor_has_content,
             ANCHOR_IS_VALID => self.anchor_is_valid,
+            CONTROL_HAS_LABEL => self.control_has_label,
             HEADING_HAS_CONTENT => self.heading_has_content,
             HTML_HAS_LANG => self.html_has_lang,
             IFRAME_HAS_TITLE => self.iframe_has_title,
@@ -120,6 +127,9 @@ impl Levels {
 pub(super) fn check(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<Loc, Loc>) {
     let levels = tree.content;
     let opening = &element.opening_element;
+    if levels.control_has_label.is_some() {
+        control_has_associated_label(tree, name, element);
+    }
     match name {
         "a" => {
             if levels.anchor_is_valid.is_some() {
@@ -325,6 +335,104 @@ fn anchor_has_content(tree: &mut Tree<'_>, element: &jsx::Element<Loc, Loc>) {
         &element.opening_element.loc,
         ANCHOR_HAS_CONTENT,
         message.to_owned(),
+    );
+}
+
+// --- a11y/control-has-associated-label -------------------------------------
+
+/// The controls this rule asks about.
+///
+/// `<a>` is `a11y/anchor-has-content`, and `<img>`, `<area>` and
+/// `<input type="image">` are `a11y/alt-text`. Each of those already owns the
+/// question "what is this announced as" for its own element, so leaving them
+/// out is what keeps one piece of markup from being reported twice.
+///
+/// `<input type="hidden">` is not rendered and so is not a control to name.
+fn is_named_control(name: &str, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    match name {
+        "button" | "select" | "textarea" => true,
+        "input" => !matches!(string_attribute(opening, "type"), Some("image" | "hidden")),
+        _ => false,
+    }
+}
+
+/// Whether this control is named by something its own kind supplies.
+///
+/// A submit or a reset button is announced by the user agent's own label —
+/// "Submit", "Reset" — when no `value` overrides it, so there is no markup to
+/// ask anybody for and the missing `value` is not a defect. `type="button"`
+/// has no such default: its name is the `value` and nothing else, so an absent
+/// or empty one leaves it announced as "button" and nothing more.
+///
+/// A `placeholder` is deliberately **not** counted. It is a hint, not a name:
+/// screen readers do not announce it by default, it is rendered at reduced
+/// contrast, and it disappears the moment anything is typed. A field whose
+/// only text is a placeholder is exactly the field this rule is for, and
+/// exactly what its advice — a `<label>`, an `aria-label`, or an `id` for one
+/// to point at — asks somebody to add.
+fn native_name(scope: Scope, name: &str, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    if name != "input" {
+        return false;
+    }
+    match string_attribute(opening, "type") {
+        Some("submit" | "reset") => true,
+        Some("button") => match attribute(opening, "value").map(|value| scope.value(value)) {
+            Some(Value::Text(text)) => !text.trim().is_empty(),
+            Some(Value::Number(_)) => true,
+            // A value this module does not hold may well be a name.
+            Some(Value::Unknown) => true,
+            Some(Value::Bool(_) | Value::Nullish) | None => false,
+        },
+        _ => false,
+    }
+}
+
+/// A control with nothing to announce it by.
+///
+/// A `<button />` with no name is read as "button" and nothing else, and a
+/// form of them cannot be told apart.
+///
+/// **Reported only for the shape that is certainly wrong.** The label that
+/// names a control is usually a `<label htmlFor>` *beside* it, which this
+/// module cannot see, so anything that leaves room for one is left alone: an
+/// `id` for a label to point at, a `<label>` wrapped around it, a name of its
+/// own, a name its own kind supplies ([`native_name`]), or — for the one
+/// element whose content is its label — content. What is left is the control
+/// that nothing anywhere could be naming.
+fn control_has_associated_label(tree: &mut Tree<'_>, name: &str, element: &jsx::Element<Loc, Loc>) {
+    let opening = &element.opening_element;
+    if !is_named_control(name, opening)
+        || has_spread(opening)
+        || tree.scope.aria_hidden(opening) != Some(false)
+    {
+        return;
+    }
+    if attribute(opening, "id").is_some()
+        || own_name(tree.scope, opening) != Content::Nothing
+        || native_name(tree.scope, name, opening)
+    {
+        return;
+    }
+    // Content names the control only where the control is named by its
+    // content. A `<button>`'s children are its label; a `<textarea>`'s are its
+    // *value* — HTML gives a textarea no `value` attribute and takes the
+    // initial one from between the tags — and a `<select>`'s are its options.
+    // Counting those as a label is how an unnamed field goes unreported.
+    if name == "button" && children_content(tree.scope, &element.children.1) != Content::Nothing {
+        return;
+    }
+    if tree.nearest_host(|host| host == "label").is_some() {
+        return;
+    }
+
+    tree.report(
+        &opening.loc,
+        CONTROL_HAS_LABEL,
+        format!(
+            "this `<{name}>` has no name and no `id` for a `<label>` to point at, so a screen \
+             reader announces only what kind of control it is; give it an `aria-label`, put the \
+             words inside it, or give it an `id` and point a `<label htmlFor>` at that"
+        ),
     );
 }
 

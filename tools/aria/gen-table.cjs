@@ -83,6 +83,32 @@ const roleNames = q.roles.keys().slice().sort();
 const isA = (name, ancestor) =>
   (q.roles.get(name).superClass || []).some((chain) => chain.includes(ancestor));
 
+// Every role `name` is a kind of, flattened out of aria-query's superclass
+// chains. ARIA's taxonomy is what tells a specialisation apart from a
+// contradiction: `grid` is a kind of `table`, so `<table role="grid">` says
+// something sharper about the element rather than something else, while
+// `button` is no kind of `list` and `<ul role="button">` is two claims that
+// disagree. A rule cannot draw that line from the widget flag alone.
+const ancestorsOf = (name) =>
+  [...new Set((q.roles.get(name).superClass || []).flat())]
+    .filter((ancestor) => ancestor !== name)
+    .sort();
+
+// The relation the table exists to answer, checked on the two roles whose
+// answers must differ. Asserted through `ancestorsOf` itself rather than a
+// second walk of `superClass`, so a check that agrees with itself while the
+// emitted row is wrong is not what this is.
+if (!ancestorsOf("grid").includes("table")) {
+  throw new Error(
+    'grid must inherit from table, or `<table role="grid">` reads as a contradiction',
+  );
+}
+if (ancestorsOf("button").includes("list")) {
+  throw new Error(
+    'button must not inherit from list, or `<ul role="button">` stops being reported',
+  );
+}
+
 // WAI-ARIA 1.2, "Global States and Properties": every role takes these unless
 // it prohibits them, and `aria-query` hangs them off the abstract `roletype`.
 const GLOBAL = Object.keys(q.roles.get("roletype").props || {});
@@ -156,6 +182,9 @@ const roleRow = (name) => {
         supported: ${mask(supported)},
         required: ${mask(required)},
         prohibited: ${mask(prohibited)},
+        ancestors: &[${ancestorsOf(name)
+          .map((ancestor) => JSON.stringify(ancestor))
+          .join(", ")}],
     },`;
 };
 

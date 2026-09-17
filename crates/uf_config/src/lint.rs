@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 110] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 114] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -247,6 +247,12 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 110] = [
     // a keyboard still cannot work it, so the missing handler is the whole of
     // the advice. Exactly one of the two answers any given markup.
     ("a11y/click-events-have-key-events", RuleLevel::Error),
+    // A control with no name is announced as "button" and nothing else, so a
+    // form of them cannot be told apart. `warn`, and reported only for the
+    // shape that is certainly wrong — no `id` for a `<label htmlFor>` to point
+    // at, no `<label>` around it, and no name of its own — because the label
+    // that names a control is usually a sibling this rule cannot see.
+    ("a11y/control-has-associated-label", RuleLevel::Warn),
     // An empty heading is still a heading: a reader jumping by heading lands
     // on it and hears nothing.
     ("a11y/heading-has-content", RuleLevel::Error),
@@ -281,6 +287,29 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 110] = [
     // of both: focus lands on an element a screen reader has nothing to say
     // about, and the reader is told nothing about where they are.
     ("a11y/no-aria-hidden-on-focusable", RuleLevel::Error),
+    // A `<button role="presentation">` still focuses, still fires and still
+    // sits in the tab order: the role removes the announcement and none of the
+    // behaviour, leaving a control nobody is told about.
+    (
+        "a11y/no-interactive-element-to-noninteractive-role",
+        RuleLevel::Error,
+    ),
+    // The third share of the question `a11y/no-static-element-interactions`
+    // and `a11y/click-events-have-key-events` divide: a non-interactive role
+    // that has a key handler, where somebody has wired up the keyboard and the
+    // element still is not a control, so the advice is the semantics and not
+    // another handler.
+    (
+        "a11y/no-noninteractive-element-interactions",
+        RuleLevel::Error,
+    ),
+    // `<ul role="button">` keeps a list's structure while claiming to be a
+    // control. A `<div>` is not reported: it has no semantics of its own, and
+    // giving one a widget role is how every custom control is built.
+    (
+        "a11y/no-noninteractive-element-to-interactive-role",
+        RuleLevel::Error,
+    ),
     // Every tab stop that is not a control puts the controls further away.
     // `warn` rather than `error`: a scrollable region is given `tabIndex={0}`
     // deliberately, so that a keyboard can scroll it, and that is guidance

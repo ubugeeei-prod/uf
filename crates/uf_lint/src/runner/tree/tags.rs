@@ -39,13 +39,22 @@ use uf_config::UniflowedConfig;
 use uf_flow::Loc;
 use uf_flow::ast::jsx;
 
-use super::Tree;
 use super::aria::{self, Implied, Written};
 use super::value::Value;
+use super::{Tree, has_handler, has_key_handler, has_spread, is_interactive};
 use crate::{Severity, severity};
 
 /// `a11y/aria-unsupported-elements`.
 const ARIA_UNSUPPORTED: &str = "a11y/aria-unsupported-elements";
+
+/// `a11y/no-interactive-element-to-noninteractive-role`.
+const INTERACTIVE_TO_NONINTERACTIVE: &str = "a11y/no-interactive-element-to-noninteractive-role";
+
+/// `a11y/no-noninteractive-element-interactions`.
+const NONINTERACTIVE_INTERACTIONS: &str = "a11y/no-noninteractive-element-interactions";
+
+/// `a11y/no-noninteractive-element-to-interactive-role`.
+const NONINTERACTIVE_TO_INTERACTIVE: &str = "a11y/no-noninteractive-element-to-interactive-role";
 
 /// `a11y/no-redundant-roles`.
 const NO_REDUNDANT_ROLES: &str = "a11y/no-redundant-roles";
@@ -82,6 +91,9 @@ static NOT_ADVICE: phf::Set<&'static str> = phf::phf_set! {
 #[derive(Clone, Copy)]
 pub(super) struct Levels {
     aria_unsupported: Option<Severity>,
+    interactive_to_noninteractive: Option<Severity>,
+    noninteractive_interactions: Option<Severity>,
+    noninteractive_to_interactive: Option<Severity>,
     no_redundant_roles: Option<Severity>,
     prefer_tag_over_role: Option<Severity>,
 }
@@ -90,6 +102,9 @@ impl Levels {
     pub(super) fn for_config(config: &UniflowedConfig) -> Self {
         Self {
             aria_unsupported: severity(config, ARIA_UNSUPPORTED),
+            interactive_to_noninteractive: severity(config, INTERACTIVE_TO_NONINTERACTIVE),
+            noninteractive_interactions: severity(config, NONINTERACTIVE_INTERACTIONS),
+            noninteractive_to_interactive: severity(config, NONINTERACTIVE_TO_INTERACTIVE),
             no_redundant_roles: severity(config, NO_REDUNDANT_ROLES),
             prefer_tag_over_role: severity(config, PREFER_TAG_OVER_ROLE),
         }
@@ -99,6 +114,9 @@ impl Levels {
     pub(super) fn any(&self) -> bool {
         [
             self.aria_unsupported,
+            self.interactive_to_noninteractive,
+            self.noninteractive_interactions,
+            self.noninteractive_to_interactive,
             self.no_redundant_roles,
             self.prefer_tag_over_role,
         ]
@@ -109,6 +127,9 @@ impl Levels {
     pub(super) fn of(&self, rule: &str) -> Option<Severity> {
         match rule {
             ARIA_UNSUPPORTED => self.aria_unsupported,
+            INTERACTIVE_TO_NONINTERACTIVE => self.interactive_to_noninteractive,
+            NONINTERACTIVE_INTERACTIONS => self.noninteractive_interactions,
+            NONINTERACTIVE_TO_INTERACTIVE => self.noninteractive_to_interactive,
             NO_REDUNDANT_ROLES => self.no_redundant_roles,
             PREFER_TAG_OVER_ROLE => self.prefer_tag_over_role,
             _ => None,
@@ -130,6 +151,36 @@ pub(super) fn check(tree: &mut Tree<'_>, host: &str, opening: &jsx::Opening<Loc,
     }
     if levels.prefer_tag_over_role.is_some() {
         prefer_tag_over_role(tree, host, opening);
+    }
+    if levels.interactive_to_noninteractive.is_some() {
+        interactive_to_noninteractive(tree, host, opening);
+    }
+    if levels.noninteractive_to_interactive.is_some() {
+        noninteractive_to_interactive(tree, host, opening);
+    }
+    if levels.noninteractive_interactions.is_some() {
+        noninteractive_element_interactions(tree, host, opening);
+    }
+}
+
+/// The role this element carries, as far as the source settles it: the one
+/// written on it, or the one HTML gives it.
+///
+/// [`Implied::Unsettled`] is a role that depends on where the element sits —
+/// `<li>` is a `listitem` only inside a list, `<td>` a `cell` only inside a
+/// table — and the answer is [`None`] rather than a guess. That is a real
+/// narrowing against the plugin, which reports those on the tag alone.
+fn settled_role(
+    tree: &Tree<'_>,
+    host: &str,
+    opening: &jsx::Opening<Loc, Loc>,
+) -> Option<&'static aria::Role> {
+    if let Some((_, Written::Role(role))) = aria::written_role(tree.scope, opening) {
+        return Some(role);
+    }
+    match aria::implicit_role(tree.scope, host, opening) {
+        Implied::Certain(role) => Some(role),
+        Implied::Unsettled | Implied::None => None,
     }
 }
 
@@ -292,6 +343,156 @@ fn takes_focus_or_events(opening: &jsx::Opening<Loc, Loc>) -> bool {
                 .strip_prefix("on")
                 .is_some_and(|rest| rest.starts_with(|first: char| first.is_ascii_uppercase()))
     })
+}
+
+// --- a11y/no-interactive-element-to-noninteractive-role ---------------------
+
+/// A control told it is not one.
+///
+/// `<button role="presentation">` still focuses, still fires its handler and
+/// still sits in the tab order; the only thing the role changes is that a
+/// screen reader stops calling it a button. The element becomes a control
+/// nobody is told about, which is worse than either half on its own.
+fn interactive_to_noninteractive(
+    tree: &mut Tree<'_>,
+    host: &str,
+    opening: &jsx::Opening<Loc, Loc>,
+) {
+    // A `{...spread}` may be carrying the very attribute that decides whether
+    // this is a control at all — an `<a>` is a link only with an `href`. This
+    // is the one rule here that *reports* when the answer is "interactive", so
+    // an answer the source does not settle must not be read as a yes.
+    if has_spread(opening) || !is_interactive(tree.scope, host, opening) {
+        return;
+    }
+    let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
+        return;
+    };
+    if role.is_widget() {
+        return;
+    }
+    tree.report(
+        &written.loc,
+        INTERACTIVE_TO_NONINTERACTIVE,
+        format!(
+            "`<{host}>` is a control a keyboard reaches and `role=\"{role}\"` is not, so it keeps \
+             the behaviour and loses the announcement: focus lands on something a screen reader \
+             calls {role}; drop the role, or use an element that is one",
+            role = role.name,
+        ),
+    );
+}
+
+// --- a11y/no-noninteractive-element-to-interactive-role ---------------------
+
+/// Semantics of one kind given a role of the other.
+///
+/// `<ul role="button">` keeps a list's structure — a screen reader still walks
+/// it as items — while claiming to be a control that Enter works. A `<div>` is
+/// not reported: it has no role of its own, and giving one a widget role is
+/// how every custom control is built.
+fn noninteractive_to_interactive(
+    tree: &mut Tree<'_>,
+    host: &str,
+    opening: &jsx::Opening<Loc, Loc>,
+) {
+    if is_interactive(tree.scope, host, opening) {
+        return;
+    }
+    let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
+        return;
+    };
+    if !role.is_widget() {
+        return;
+    }
+    let Implied::Certain(implicit) = aria::implicit_role(tree.scope, host, opening) else {
+        return;
+    };
+    if implicit.is_widget() || NOT_ADVICE.contains(implicit.name) {
+        return;
+    }
+    // A role the element's own role is an ancestor of says something sharper
+    // about it rather than something else: `grid` is a kind of `table`, so
+    // `<table role="grid">` is how a keyboard-navigable grid is built and not
+    // a contradiction to report. Asked of ARIA's taxonomy in the generated
+    // table, because the widget flag cannot tell the two apart — `button` and
+    // `grid` are both widgets, and only one of them disagrees with its host.
+    if role.inherits_from(implicit.name) {
+        return;
+    }
+    tree.report(
+        &written.loc,
+        NONINTERACTIVE_TO_INTERACTIVE,
+        format!(
+            "`<{host}>` already has the role `{implicit}` and `role=\"{role}\"` says it is a \
+             control, so a screen reader is told one thing and the markup does another; build the \
+             control out of an element that has no semantics of its own, or use the element whose \
+             own role is `{role}`",
+            implicit = implicit.name,
+            role = role.name,
+        ),
+    );
+}
+
+// --- a11y/no-noninteractive-element-interactions ----------------------------
+
+/// Handlers on something that is not a control at all.
+///
+/// The third and last share of a question uf splits three ways, and the line
+/// is drawn so exactly one rule answers any markup:
+///
+/// * no `role` at all — `a11y/no-static-element-interactions`, where nobody
+///   has said what the element is;
+/// * a `role` and no key handler — `a11y/click-events-have-key-events`, where
+///   the missing handler is the whole of the advice;
+/// * a non-interactive role **and** a key handler — this one. Somebody has
+///   wired up the keyboard and the element still is not a control, so the
+///   advice is not another handler but that these semantics are wrong.
+fn noninteractive_element_interactions(
+    tree: &mut Tree<'_>,
+    host: &str,
+    opening: &jsx::Opening<Loc, Loc>,
+) {
+    if is_interactive(tree.scope, host, opening)
+        || has_spread(opening)
+        || !has_handler(tree.scope, opening)
+    {
+        return;
+    }
+    // An element a keyboard can reach is not the defect this rule names. The
+    // complaint is that handlers sit where nothing can get to them, and a
+    // `tabIndex` of zero or more answers it: a named, focusable region that
+    // handles arrow keys is the documented way to build a scrollable or
+    // navigable container, and reporting it would be reporting working
+    // markup. Whether such an element is *announced* as a control is
+    // `a11y/no-noninteractive-element-to-interactive-role`'s question.
+    //
+    // `focusable` is `interaction`'s, shared rather than restated, so that
+    // "can a keyboard reach this" has one answer across the crate.
+    if super::interaction::focusable(tree, host, opening) {
+        return;
+    }
+    // Without a key handler this is one of the other two rules' markup. See
+    // the doc comment: the split exists so that nothing is reported twice.
+    if !has_key_handler(tree.scope, opening) {
+        return;
+    }
+    let Some(role) = settled_role(tree, host, opening) else {
+        return;
+    };
+    if role.is_widget() || NOT_ADVICE.contains(role.name) {
+        return;
+    }
+    tree.report(
+        &opening.loc,
+        NONINTERACTIVE_INTERACTIONS,
+        format!(
+            "`<{host}>` has the role `{role}` and is not a control, so handlers on it are \
+             reachable but never announced as anything to act on; move them to a `<button>`, or \
+             give the element a role that says what it does",
+            role = role.name,
+        ),
+    );
 }
 
 /// `<nav>`, or `<ul>`, `<ol> or `<menu>`.

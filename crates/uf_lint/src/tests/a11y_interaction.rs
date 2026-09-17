@@ -218,3 +218,74 @@ fn the_click_handler_rules_divide_the_markup_between_them() {
     reports("a11y/click-events-have-key-events", &[with_role]);
     accepts("a11y/no-static-element-interactions", &[with_role]);
 }
+
+// --- the pair that must not send anybody in a circle ------------------------
+
+/// `a11y/no-noninteractive-tabindex` and
+/// `a11y/no-noninteractive-element-interactions` must agree about one element.
+///
+/// A named, focusable container that answers the arrow keys is a legitimate
+/// pattern — uf's own clips example is one, with real buttons beside it
+/// running the same handler. The interactions rule stays silent because a
+/// keyboard can reach it, and this rule has to stay silent because there is
+/// something to do at the stop.
+///
+/// If it did not, the two would contradict each other: obeying this one by
+/// dropping the `tabIndex` makes the handlers unreachable and brings the other
+/// one back, and nothing the author writes satisfies both. Two rules that send
+/// somebody in a circle are worse than either being absent, so this is pinned
+/// rather than described.
+#[test]
+fn the_focusable_container_rules_do_not_contradict_each_other() {
+    let region = r#"<div role="region" tabIndex={0} aria-label="Clips" onKeyDown={move}>x</div>"#;
+    accepts("a11y/no-noninteractive-tabindex", &[region]);
+    accepts("a11y/no-noninteractive-element-interactions", &[region]);
+
+    // Each still answers the markup it is for: a tab stop with nothing to do
+    // at it, and handlers on something a keyboard cannot reach.
+    reports(
+        "a11y/no-noninteractive-tabindex",
+        &[r#"<div role="region" tabIndex={0} aria-label="Clips">x</div>"#],
+    );
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[r#"<div role="region" aria-label="Clips" onKeyDown={move}>x</div>"#],
+    );
+}
+
+/// The pair stays non-contradictory when the handler is statically nothing.
+///
+/// `onKeyDown={null}` installs no listener, so there is nothing to do at the
+/// stop and this rule reports it — while the interactions rule stays silent,
+/// because there are no handlers to be unreachable. The two move together
+/// because they ask one shared question; if they ever stopped, obeying one
+/// would bring the other back.
+#[test]
+fn a_nullish_handler_gives_a_tab_stop_nothing_to_do() {
+    let nullish = r#"<article tabIndex={0} onKeyDown={null}>x</article>"#;
+    reports("a11y/no-noninteractive-tabindex", &[nullish]);
+    accepts("a11y/no-noninteractive-element-interactions", &[nullish]);
+
+    // A handler that is really installed still answers for the stop.
+    let wired = r#"<article tabIndex={0} onKeyDown={move}>x</article>"#;
+    accepts("a11y/no-noninteractive-tabindex", &[wired]);
+    accepts("a11y/no-noninteractive-element-interactions", &[wired]);
+}
+
+/// An `<a>` with no `href` is not a control, so a tab stop on one is a stop
+/// with nothing to do at it.
+///
+/// Whether the anchor is a link is asked of the generated ARIA table — with an
+/// `href` it is a `link`, without one it is `generic` — which is what keeps
+/// this rule and the two role rules from disagreeing about one anchor.
+#[test]
+fn an_anchor_that_is_not_a_link_is_not_a_control() {
+    reports(
+        "a11y/no-noninteractive-tabindex",
+        &[r#"<a tabIndex={0}>Docs</a>"#],
+    );
+    accepts(
+        "a11y/no-noninteractive-tabindex",
+        &[r#"<a href="/docs" tabIndex={0}>Docs</a>"#],
+    );
+}

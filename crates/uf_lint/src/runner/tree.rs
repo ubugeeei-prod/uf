@@ -635,13 +635,11 @@ impl<'ast> Tree<'ast> {
     /// **Deliberately silent** on an element with `{...props}`, which may be
     /// spreading either of them in.
     fn check_static_interactions(&mut self, name: &str, opening: &'ast jsx::Opening<Loc, Loc>) {
-        if INTERACTIVE_ELEMENTS.contains(name)
+        if is_interactive(self.scope, name, opening)
             || has_spread(opening)
-            || attribute(opening, "onClick").is_none()
+            || handler(self.scope, opening, "onClick").is_none()
             || attribute(opening, "role").is_some()
-            || KEY_HANDLERS
-                .iter()
-                .any(|handler| attribute(opening, handler).is_some())
+            || has_key_handler(self.scope, opening)
         {
             return;
         }
@@ -907,6 +905,88 @@ pub(super) fn has_spread(opening: &jsx::Opening<Loc, Loc>) -> bool {
         .attributes
         .iter()
         .any(|attribute| matches!(attribute, jsx::OpeningAttribute::SpreadAttribute(_)))
+}
+
+/// Whether the element answers a pointer or a key.
+///
+/// Here rather than in one of the rule modules because two of them ask it and
+/// they must not answer it differently: `tags` asks whether handlers sit on
+/// something that is not a control, and `interaction` asks whether a tab stop
+/// has anything to do at it. Those are the same question about the same
+/// attributes, and a second copy is how the two would drift into telling one
+/// author opposite things.
+///
+/// A handler the source settles as nothing — `onClick={null}` — is not one:
+/// React installs no listener for it, so an element carrying only those
+/// answers neither a pointer nor a key. Asked here rather than at each call so
+/// that "is this wired up" has one answer; see
+/// [`interaction::no_noninteractive_tabindex`], which stays silent *because*
+/// this is true and would contradict `tags`' rule if the two ever disagreed.
+fn has_handler(scope: value::Scope, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    opening.attributes.iter().any(|attribute| {
+        let jsx::OpeningAttribute::Attribute(written) = attribute else {
+            return false;
+        };
+        let jsx::attribute::Name::Identifier(name) = &written.name else {
+            return false;
+        };
+        (*name.name)
+            .strip_prefix("on")
+            .is_some_and(|rest| rest.starts_with(|first: char| first.is_ascii_uppercase()))
+            && scope.value(written) != value::Value::Nullish
+    })
+}
+
+/// The handler written as `name`, when the source does not settle it as
+/// nothing. `onClick={null}` renders no listener, so it is not a handler and
+/// the element carrying it is not wired up.
+fn handler<'a>(
+    scope: value::Scope,
+    opening: &'a jsx::Opening<Loc, Loc>,
+    name: &str,
+) -> Option<&'a jsx::Attribute<Loc, Loc>> {
+    let written = attribute(opening, name)?;
+    (scope.value(written) != value::Value::Nullish).then_some(written)
+}
+
+/// Whether the element answers a key press, `onKeyDown={null}` excluded for the
+/// reason [`has_handler`] gives.
+fn has_key_handler(scope: value::Scope, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    KEY_HANDLERS
+        .iter()
+        .any(|name| handler(scope, opening, name).is_some())
+}
+
+/// Whether a pointer and a keyboard both already reach this element.
+///
+/// [`INTERACTIVE_ELEMENTS`] answers it for the elements HTML settles by name
+/// alone. `<a>` and `<area>` it cannot: both are a control only with an
+/// `href`, and that is a *role* question, so it is asked of the generated ARIA
+/// table — `a[href]` is a `link` and a bare `<a>` is `generic`, which is the
+/// same fact HTML-AAM states and not a second copy of it kept here.
+///
+/// The rest of the set stays a set on purpose. "Does a keyboard reach this" is
+/// not the question HTML-AAM answers: `<details>` is a control and its role is
+/// `group`, `<video>` and `<iframe>` are controls with no implicit role at
+/// all, and a bare `<input>` or `<select>` has a role that depends on where it
+/// sits. Deciding this by `Role::is_widget` would drop nine of the sixteen.
+fn is_interactive(scope: value::Scope, name: &str, opening: &jsx::Opening<Loc, Loc>) -> bool {
+    if !INTERACTIVE_ELEMENTS.contains(name) {
+        return false;
+    }
+    match name {
+        "a" | "area" => match aria::implicit_role(scope, name, opening) {
+            aria::Implied::Certain(role) => role.is_widget(),
+            // A `{...spread}` that may carry the `href`, or one this module
+            // does not hold, leaves it unsettled. Answered as a control, which
+            // is "say nothing" for the rules that return on an interactive
+            // element. The one rule that instead *reports* on one —
+            // `tags::interactive_to_noninteractive` — guards against the
+            // spread itself rather than reading the guess as a yes.
+            aria::Implied::Unsettled | aria::Implied::None => true,
+        },
+        _ => true,
+    }
 }
 
 /// The level of `<h1>` … `<h6>`.

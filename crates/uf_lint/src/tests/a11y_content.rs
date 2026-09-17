@@ -655,3 +655,138 @@ fn anchor_is_valid_leaves_what_it_cannot_see_alone() {
         ],
     );
 }
+
+// --- a11y/control-has-associated-label --------------------------------------
+
+#[test]
+fn control_has_associated_label_reports_the_documented_failure() {
+    reports(
+        "a11y/control-has-associated-label",
+        &["<button />", "<input />", "<select />"],
+    );
+}
+
+#[test]
+fn control_has_associated_label_accepts_the_documented_pass() {
+    accepts(
+        "a11y/control-has-associated-label",
+        &[
+            // Named by its content, or by itself.
+            "<button>Save</button>",
+            r#"<button aria-label="Save" />"#,
+            r#"<button title="Save" />"#,
+            // An `id` is something a `<label htmlFor>` beside it can point at,
+            // and that label is not in this module to see.
+            r#"<input id="email" />"#,
+            // `value` is what a submit button announces.
+            r#"<input type="submit" value="Save" />"#,
+            // Not rendered, so not a control to name.
+            r#"<input type="hidden" />"#,
+            // Hidden from assistive technology on purpose.
+            r#"<button aria-hidden="true" />"#,
+            // A spread may be carrying the name in.
+            "<input {...props} />",
+            // A component decides its own markup.
+            "<Field />",
+        ],
+    );
+}
+
+/// A `<label>` around the control is a name, and it is found by walking the
+/// elements this rule is already inside.
+#[test]
+fn control_has_associated_label_sees_the_label_it_is_wrapped_in() {
+    accepts(
+        "a11y/control-has-associated-label",
+        &["<label>Email<input /></label>"],
+    );
+}
+
+/// A control the browser names by itself is not one to ask markup for.
+///
+/// `<input type="submit">` and `<input type="reset">` are announced by the
+/// user agent's own label — "Submit", "Reset" — when no `value` overrides it,
+/// so nothing is missing from them. `type="button"` has no such default: the
+/// `value` is its whole name, and an absent or empty one names nothing.
+#[test]
+fn control_has_associated_label_accepts_the_name_a_control_type_supplies() {
+    accepts(
+        "a11y/control-has-associated-label",
+        &[
+            r#"<input type="submit" />"#,
+            r#"<input type="reset" />"#,
+            r#"<input type="submit" value="Send" />"#,
+            r#"<input type="button" value="Send" />"#,
+            // A value this module does not hold may well be a name.
+            "<input type=\"button\" value={label} />",
+        ],
+    );
+    reports(
+        "a11y/control-has-associated-label",
+        &[
+            r#"<input type="button" />"#,
+            r#"<input type="button" value="" />"#,
+        ],
+    );
+}
+
+/// A `placeholder` is a hint, not a name.
+///
+/// Screen readers do not announce it by default, it is drawn at reduced
+/// contrast, and it disappears the moment anything is typed. A field whose
+/// only words are a placeholder is exactly the field this rule is for, and a
+/// `<label>` is exactly what its advice asks for.
+#[test]
+fn control_has_associated_label_does_not_take_a_placeholder_for_a_label() {
+    reports(
+        "a11y/control-has-associated-label",
+        &[
+            r#"<input placeholder="Email" />"#,
+            r#"<textarea placeholder="Comment" />"#,
+        ],
+    );
+}
+
+/// What is between a `<textarea>`'s tags is its value, not its label.
+///
+/// HTML gives a textarea no `value` attribute and takes the initial value from
+/// its content, and a `<select>`'s children are its options. Counting either
+/// as a name is how an unnamed field goes unreported. A `<button>`'s content
+/// *is* its label, and still counts.
+#[test]
+fn control_has_associated_label_reads_control_content_as_a_value() {
+    reports(
+        "a11y/control-has-associated-label",
+        &[
+            "<textarea>Write something here</textarea>",
+            "<select><option>One</option></select>",
+        ],
+    );
+    accepts(
+        "a11y/control-has-associated-label",
+        &["<button>Save</button>"],
+    );
+}
+
+/// Three rules ask what an element is announced as, and each owns its own
+/// elements: no markup is reported by two of them.
+///
+/// `a11y/anchor-has-content` owns `<a>`, `a11y/alt-text` owns the elements
+/// that carry an image, and `a11y/control-has-associated-label` owns the
+/// remaining controls. A change that lets two of them claim one element fails
+/// here.
+#[test]
+fn the_naming_rules_divide_the_elements_between_them() {
+    let anchor = r#"<a href="/x" />"#;
+    reports("a11y/anchor-has-content", &[anchor]);
+    accepts("a11y/control-has-associated-label", &[anchor]);
+
+    let image = r#"<input type="image" />"#;
+    reports("a11y/alt-text", &[image]);
+    accepts("a11y/control-has-associated-label", &[image]);
+
+    let control = "<input />";
+    reports("a11y/control-has-associated-label", &[control]);
+    accepts("a11y/anchor-has-content", &[control]);
+    accepts("a11y/alt-text", &[control]);
+}

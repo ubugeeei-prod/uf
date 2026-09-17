@@ -124,6 +124,12 @@ pub(super) struct Role {
     /// The attributes the role is forbidden — `generic` and the other
     /// name-prohibited roles take no `aria-label`.
     prohibited: u64,
+    /// Every role this one is a kind of, from ARIA's own taxonomy.
+    ///
+    /// Names rather than a mask: there are 139 roles and no room in a `u64`,
+    /// and the question asked of it — is this role a kind of that one — is a
+    /// membership test over a handful of entries.
+    ancestors: &'static [&'static str],
 }
 
 impl Role {
@@ -140,6 +146,18 @@ impl Role {
     /// The attributes this role cannot do without.
     pub(super) fn required(&self) -> impl Iterator<Item = &'static str> {
         names(self.required)
+    }
+
+    /// Whether this role is a kind of `ancestor`.
+    ///
+    /// ARIA's taxonomy is what separates saying something sharper about an
+    /// element from contradicting it. `grid` is a kind of `table`, so
+    /// `<table role="grid">` specialises the role the element already has;
+    /// `button` is no kind of `list`, so `<ul role="button">` is two claims
+    /// that disagree. The widget flag cannot tell those apart, because both
+    /// roles are widgets.
+    pub(super) fn inherits_from(&self, ancestor: &str) -> bool {
+        self.ancestors.contains(&ancestor)
     }
 
     /// Whether this role is part of a widget somebody has to make work: it is
