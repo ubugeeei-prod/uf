@@ -44,7 +44,7 @@ production-server row still belongs to Next.js.
 
 | What uf loses | To | By how much |
 | --- | --- | --- |
-| Test throughput | `bun test` | 0.20 s against **0.06 s** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
+| Test throughput | `bun test` | 125 ms against **58 ms** on 50 files, 1,000 tests, 2,000 assertions ([Testing](/guide/testing)) |
 | Deployment maturity | Next.js | seven adapters and `--compile` are implemented, and CI starts the generated Cloudflare Worker under Wrangler's local runtime, but no server adapter has been deployed in anger; `serverless` buffers streamed documents, and every hosted target still needs real-world proof ([#956](https://github.com/ubugeeei-prod/uf/issues/956), [Commands](/reference/cli#uf-build---adapter-target)) |
 | Server Components | Next.js | routes render through React's own Flight payload, so a Server Component never reaches the browser; a server function passed to a client component as a prop, an inline `"use server"` closure and native form progressive enhancement are not here, and under Server Components an intercepted URL is an ordinary navigation ([#1038](https://github.com/ubugeeei-prod/uf/issues/1038), [Server Components](/guide/server-components#the-current-contract)) |
 | The typed ecosystem | everything | a package with no Flow libdef is `any` ([Flow and TypeScript](/guide/typescript)) |
@@ -167,20 +167,21 @@ Bun and uf overlap less than the feature lists suggest: Bun is a runtime that
 brings a package manager, a bundler and a test runner; uf is a toolchain that
 runs *on* a runtime — Bun included.
 
-**Where Bun wins, measured.** `bun test` runs the same suite in 0.06 s against
-`uf test`'s 0.20 s warm and 0.30 s cold, on 50 files, 1,000 tests and 2,000
-assertions, best of five on an 8-core M-series Mac. That is about three times
-faster, and the reason is structural: Bun runs everything in one process with
-the runner written into the engine, while uf spawns a worker per core, gives
-each worker one file at a time, and pays the start-up. Both runners have
+**Where Bun wins, measured.** `bun test` runs the same suite in 58 ms against
+`uf test`'s 125 ms warm and 429 ms cold, on 50 files, 1,000 tests and 2,000
+assertions, the median of 25 interleaved rounds on an 8-core Apple M3. That is
+about 2.2 times faster, and the reason is structural: Bun runs everything in
+one process with the runner written into the engine, while uf starts worker
+processes, gives each worker one file at a time, and pays the start-up once per
+worker. Both runners have
 snapshots, coverage and a JUnit reporter —
 [Bun's](https://bun.com/docs/cli/test), and `uf test -u`, `--coverage` and
 `--reporter junit` — with one difference that matters on this comparison:
 `uf test`'s coverage is Node-only, so a suite run on Bun measures nothing
 ([Testing](/guide/testing#coverage)).
 
-**Where uf wins the same comparison.** `uf test` is about nine times faster
-than `vitest run` on that suite (1.96 s), it runs on Node.js as well as Bun,
+**Where uf wins the same comparison.** `uf test` is about ten times faster
+than `vitest run` on that suite (1,310 ms), it runs on Node.js as well as Bun,
 and it runs Flow — `bun test` has no `component` or `hook` syntax at all.
 
 **Package management.** uf does not implement one. `uf install`, `uf add`,

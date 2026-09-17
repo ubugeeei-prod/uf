@@ -1269,25 +1269,54 @@ that already relies on Bun's own matchers or behaviour.
 
 ## Where it stands
 
-50 files, 1,000 tests, 2,000 assertions, on an 8-core M-series Mac, best of
-five, each runner on its own idiomatic input:
+50 files, 1,000 tests, 2,000 assertions, each runner on its own idiomatic copy
+of the same suite. Apple M3, 8 cores (4 performance + 4 efficiency), Node
+26.8.1, Bun 1.3.13, Vitest 5.0.1, and uf in a release build. 25 timed rounds
+with the four runs alternating in a rotating order, 3 warm-up rounds discarded,
+on a machine shared with other work — so read the ratios, not the milliseconds:
 
-| Runner | Time |
-| --- | --- |
-| `bun test` | 0.06 s |
-| `uf test`, warm transform cache | 0.20 s |
-| `uf test`, cold | 0.30 s |
-| `vitest run` | 1.96 s |
+| Runner | Wall, median (p25–p75) | Best | CPU |
+| --- | --- | --- | --- |
+| `bun test` | 58 ms (56–60) | 50 ms | 70 ms |
+| `uf test`, warm transform cache | 125 ms (119–128) | 105 ms | 360 ms |
+| `uf test`, cold | 429 ms (407–440) | 354 ms | 1,650 ms |
+| `vitest run` | 1,310 ms (1,275–1,326) | 1,107 ms | 6,750 ms |
 
-About nine times faster than Vitest. About **three times slower than Bun**,
-which is the bar uf is aiming at and does not clear yet.
+About **ten times faster than Vitest**, and about **2.2 times slower than
+Bun** — the bar uf aims at, and does not clear yet.
 
-The gap is process start-up and inter-process messaging. Bun runs everything in
-one process with the runner built into the engine; uf spawns a worker per core
-and each one loads the test API before it can do anything. That is also why
-`-j 4` beats `-j 8` on this suite — past a point, another worker costs more to
-start than the work it takes. Closing the gap needs a worker pool that survives
-between runs and a pre-bundled worker. Neither exists yet.
+Reproduce it. `uf run bench:testing` writes the three copies; the three
+commands are yours to run, because Vitest is not a dependency of this
+repository and Bun is not a dependency of anything:
+
+```sh
+$ uf run bench:testing /tmp/uf-bench-testing
+$ cd /tmp/uf-bench-testing/uf     && uf test   # twice: the first run fills the cache
+$ cd /tmp/uf-bench-testing/bun    && bun test
+$ cd /tmp/uf-bench-testing/vitest && vitest run
+```
+
+Every run has to report 1,000 passed, 0 failed and **0 skipped**. A suite that
+got quicker by running less of itself is the easiest way to get this table
+wrong, and `bun test` prints the `expect()` count, so the 2,000 is checked
+rather than claimed.
+
+**Where the remaining time goes.** Not transforms, and not discovery. With the
+cache warm a worker reads its modules back instead of compiling them, and uf's
+entire front half — config, scan, discovery and scheduling, all before any
+worker exists — is about 7 ms of the 125. What is left is worker start-up, and
+it is paid once per worker: Node reaches the first line of a program in about
+15 ms, the Flow loader adds about 5 ms, and `@uniflowed/test`'s own module
+graph adds 8 to 25 ms, so a worker is 30–55 ms old before it can run its first
+case. Each of the 50 files then costs about 1 ms. uf measures that start-up
+itself and records it as `workerStartMicros` — 49 ms on this machine — and
+sizes the pool from it, which is why a warm run of this suite starts two
+workers rather than eight. Bun pays none of this: its runner is in the engine,
+so its 50 ms is mostly the work itself. The difference shows far more starkly
+in CPU than on the wall clock — 360 ms against 70 ms — because a start-up is
+paid per worker, while the wall clock hides it behind whichever cores were
+free. Closing what is left means a worker that is already running when the run
+begins, or one whose imports are already bundled; neither exists yet.
 
 ## Not there yet
 

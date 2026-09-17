@@ -600,6 +600,24 @@ export default defineConfig({
       dependsOn: ["build"],
     },
 
+    // The suite `guide/testing`'s "Where it stands" table is measured on,
+    // written out in three idiomatic copies — uf's in Flow against
+    // `@uniflowed/test`, Bun's and Vitest's in plain JavaScript against
+    // `bun:test` and `vitest`. ubugeeei-prod/uf#944 asked for ratios anybody
+    // could reproduce, and the files behind them were nowhere in the tree.
+    //
+    // It generates and measures nothing: Vitest is not a dependency here and
+    // Bun is not a dependency of anything, so the three commands belong to
+    // whoever runs them, against versions they state. The guide lists them.
+    // `tools/bench/testing/suite.js` says what the files are and why.
+    //
+    //   uf run bench:testing /tmp/uf-bench-testing
+    "bench:testing": {
+      command:
+        "UF_PROJECT_ROOT=. UF_BINARY=./target/release/uf node --import @uniflowed/host/register tools/bench/testing/suite.js",
+      dependsOn: ["build"],
+    },
+
     // --- Release --------------------------------------------------------
     //
     // Each is a step the release workflow runs, named so it can be run by
