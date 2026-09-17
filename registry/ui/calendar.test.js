@@ -62,8 +62,6 @@ describe("Calendar", () => {
 
   it("has no accessibility violations", async () => {
     const { container } = render(<Example />);
-    // `empty-table-header` is left out until ubugeeei-prod/uf#1084: the part's
-    // weekday headings hide their only text behind an `aria-label`.
-    await expect(container).toHaveNoAxeViolations({ disabledRules: ["empty-table-header"] });
+    await expect(container).toHaveNoAxeViolations();
   });
 });
