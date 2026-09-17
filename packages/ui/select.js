@@ -192,7 +192,7 @@ type SelectState = {|
   /** The id of the option `aria-activedescendant` names, if any. */
   readonly activeId: string | null,
   readonly setActiveId: (id: string | null) => void,
-  readonly pendingLanding: { current: Landing | null },
+  readonly pendingLandingRef: { current: Landing | null },
   readonly triggerRef: { current: HTMLElement | null },
   readonly listRef: { current: HTMLElement | null },
   /**
@@ -270,7 +270,7 @@ export component SelectRoot(
   const [activeId, setActiveId] = useState<string | null>(null);
   const [labels, setLabels] = useState<{ readonly [string]: string }>({});
   const [labelled, setLabelled] = useState(false);
-  const pendingLanding = useRef<Landing | null>(null);
+  const pendingLandingRef = useRef<Landing | null>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLElement | null>(null);
   const typeahead = useTypeahead();
@@ -313,7 +313,7 @@ export component SelectRoot(
       choose,
       activeId,
       setActiveId,
-      pendingLanding,
+      pendingLandingRef,
       triggerRef,
       listRef,
       labels,
@@ -415,7 +415,9 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
   /** Move the cursor within an open list, or open with an instruction. */
   const move = (end: Movement, preferSelected: boolean) => {
     if (!select.open) {
-      select.pendingLanding.current = { kind: "end", end, preferSelected };
+      // This is an instruction for the list after the opening commit.
+      // uf-lint-disable-next-line react-compiler/immutability
+      select.pendingLandingRef.current = { kind: "end", end, preferSelected };
       select.setOpen(true);
       return;
     }
@@ -458,7 +460,9 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
           select.setActiveId(null);
           return;
         }
-        select.pendingLanding.current = { kind: "end", end: "first", preferSelected: true };
+        // This is an instruction for the list after the opening commit.
+        // uf-lint-disable-next-line react-compiler/immutability
+        select.pendingLandingRef.current = { kind: "end", end: "first", preferSelected: true };
         select.setOpen(true);
       })}
       onKeyDown={composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
@@ -500,7 +504,9 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
           // again as a click.
           event.preventDefault();
           if (!select.open) {
-            select.pendingLanding.current = { kind: "end", end: "first", preferSelected: true };
+            // This is an instruction for the list after the opening commit.
+            // uf-lint-disable-next-line react-compiler/immutability
+            select.pendingLandingRef.current = { kind: "end", end: "first", preferSelected: true };
             select.setOpen(true);
             return;
           }
@@ -544,7 +550,8 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
           event.preventDefault();
           // The options are not in the document yet, so the keystroke travels
           // to the commit that renders them.
-          select.pendingLanding.current = { kind: "typed", key: event.key };
+          // uf-lint-disable-next-line react-compiler/immutability
+          select.pendingLandingRef.current = { kind: "typed", key: event.key };
           select.setOpen(true);
           return;
         }
@@ -560,6 +567,8 @@ export component SelectTrigger(children: React.Node, ...rest: Rest) {
         }
       })}
       ref={composeRefs(rest.ref, (element) => {
+        // React calls callback refs during commit; the list reads the trigger later.
+        // uf-lint-disable-next-line react-compiler/immutability
         select.triggerRef.current = element;
       })}
       role="combobox"
@@ -628,7 +637,8 @@ export component SelectList(
   ...rest: Rest
 ) {
   const select = useSelect("Select.List");
-  const { activeId, listRef, pendingLanding, setActiveId, triggerRef, typeahead, value } = select;
+  const { activeId, listRef, pendingLandingRef, setActiveId, triggerRef, typeahead, value } =
+    select;
   const close = useStableCallback(() => {
     select.setOpen(false);
     select.setActiveId(null);
@@ -656,6 +666,8 @@ export component SelectList(
   // render — a change to `children` that no dependency list can describe. Every
   // write is guarded by a comparison, so it settles after one extra pass rather
   // than looping.
+  // This effect measures caller-rendered options after commit.
+  // uf-lint-disable-next-line react-compiler/immutability
   useEffect(() => {
     const list = listRef.current;
     if (list == null) {
@@ -663,9 +675,10 @@ export component SelectList(
     }
     const items = itemsOf(list, OPTION_SELECTOR, LISTBOX_SELECTOR);
 
-    const wanted = pendingLanding.current;
+    const wanted = pendingLandingRef.current;
     if (wanted != null) {
-      pendingLanding.current = null;
+      // uf-lint-disable-next-line react-compiler/immutability
+      pendingLandingRef.current = null;
       // An `if` rather than a `match` on `wanted.kind`, because matching on a
       // property does not refine the object that property came from: inside
       // `match (wanted.kind)` both arms still see the whole union, and `uf
