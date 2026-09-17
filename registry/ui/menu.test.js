@@ -41,11 +41,8 @@ describe("Menu", () => {
 
   it("hides a row's drawn shortcut, and says its keys with aria-keyshortcuts", async () => {
     await opened();
-    // Found by `aria-keyshortcuts` rather than by name until #1059: the query
-    // counts the hidden shortcut into the row's name, and a screen reader does not.
-    const row = screen
-      .getAllByRole("menuitem")
-      .find((each) => each.getAttribute("aria-keyshortcuts") === "Control+N");
+    const row = screen.getByRole("menuitem", { name: "New file" });
+    expect(row).toHaveAttribute("aria-keyshortcuts", "Control+N");
     expect(row?.textContent).toContain("New file");
     expect(row?.querySelector('[aria-hidden="true"]')?.textContent).toBe("Ctrl N");
   });
