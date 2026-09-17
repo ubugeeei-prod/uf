@@ -26,7 +26,7 @@ without naming the test that starts the runtime.
 | `uf` (self-hosted) | planned | — | — | — |
 
 One row carries a version floor: **a `uf build --adapter bun` deployment needs
-Bun 1.4.2 or newer**, for the reason [Bun](#bun) gives. Nothing else here has
+Bun 1.3.14 or newer**, for the reason [Bun](#bun) gives. Nothing else here has
 one, and running *on* Bun as a host does not.
 
 "Checked by" is the column that matters. Node, Bun and Deno are marked
@@ -126,7 +126,7 @@ for what uf does about that.
 
 ## Bun
 
-**A deployment built with `uf build --adapter bun` needs Bun 1.4.2 or newer.**
+**A deployment built with `uf build --adapter bun` needs Bun 1.3.14 or newer.**
 That is the floor `uf_runtime::BUN_MINIMUM` declares, the generated `server.js`
 refuses anything older by name, and `.github/workflows/ci.yml` runs the Bun
 adapter test on exactly that version as well as on the newest Bun — a floor no
@@ -135,10 +135,13 @@ job runs is a floor nobody knows is right.
 The floor is about a parser, not a feature. React's published server build
 contains a labelled statement in `else` position — `else a: if (…)`, in every
 `react-dom-server*.production` file, the `bun`-conditioned one included — and
-Bun's engine refuses it before 1.4.2 with
+Bun's engine refuses it before 1.3.14 with
 `SyntaxError: Cannot find scope for the label 'a'`. So an older Bun cannot
 parse `handler.js` at all and the process dies at start-up, before it answers
 anything.
+
+Bun 1.3.13 is the last known bad release for that generated `handler.js`; Bun
+1.3.14 imports it and serves the adapter output.
 
 It is not uf's syntax to lower, which is why this is a declared minimum rather
 than a change to what uf emits: Node runs the identical bundle, the construct
