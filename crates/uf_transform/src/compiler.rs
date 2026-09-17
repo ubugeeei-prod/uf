@@ -16,7 +16,7 @@ use react_compiler::entrypoint::{
     compile_program,
 };
 use react_compiler_ast::File;
-use react_compiler_ast::scope::ScopeInfo;
+use react_compiler_ast::scope::{BindingId, ScopeInfo};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uf_infra::FxHashMap;
@@ -118,14 +118,7 @@ pub fn compile(
                 .iter()
                 .filter_map(|event| diagnostic(event, &names))
                 .collect();
-            let rewritten = match ast {
-                Some(ast) => serde_json::to_value(ast).map_err(|error| {
-                    TransformError::Internal(format!(
-                        "compiled AST could not be serialized: {error}"
-                    ))
-                })?,
-                None => file,
-            };
+            let rewritten = ast.unwrap_or(file);
             Ok((rewritten, diagnostics, compiled))
         }
         Compiled::Fatal { error, .. } => {
@@ -150,17 +143,17 @@ pub fn compile(
               move nobody can find."
 )]
 pub enum Compiled {
-    /// The compiler ran. `ast` is `None` when it rewrote nothing.
+    /// The compiler ran. `ast` is `None` when it rewrote nothing and handed
+    /// back no binding renames.
     Ran {
-        /// The rewritten module, when the compiler replaced anything.
-        ast: Option<File>,
+        /// The rewritten module, when the compiler replaced anything or handed
+        /// back binding renames to apply.
+        ast: Option<Value>,
         /// Everything the compiler logged, in the order it logged it.
         events: Vec<LoggerEvent>,
-        /// Bindings the compiler renamed while lowering, for the caller to
-        /// apply back to the tree it handed in. The compiler hands these back
-        /// rather than applying them itself whenever it replaced no function —
-        /// in lint mode, or when a rename is all that changed — because the
-        /// tree they belong to is the caller's.
+        /// Bindings the compiler renamed while lowering. The rewritten AST
+        /// above has already had these applied; the list stays available for
+        /// callers that need to inspect what the compiler changed.
         renames: Vec<BindingRenameInfo>,
     },
     /// The compiler asked for this module to be fatal, with the events it
@@ -209,6 +202,7 @@ pub fn compile_with_options(
     options: PluginOptions,
     source_filename: Option<&str>,
 ) -> Result<Compiled, TransformError> {
+    let renamer = BindingRenamer::new(&scope);
     teach_facade_provenance(&mut scope);
     let mut ast = File::deserialize(file).map_err(|error| {
         TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
@@ -220,13 +214,184 @@ pub fn compile_with_options(
             events,
             renames,
             ..
-        } => Compiled::Ran {
-            ast,
-            events,
-            renames,
-        },
+        } => {
+            let ast = rewritten_ast(file, ast, &renamer, &renames)?;
+            Compiled::Ran {
+                ast,
+                events,
+                renames,
+            }
+        }
         CompileResult::Error { error, events, .. } => Compiled::Fatal { error, events },
     })
+}
+
+fn rewritten_ast(
+    original: &Value,
+    ast: Option<File>,
+    renamer: &BindingRenamer,
+    renames: &[BindingRenameInfo],
+) -> Result<Option<Value>, TransformError> {
+    match ast {
+        Some(ast) => {
+            let mut ast = serde_json::to_value(ast).map_err(|error| {
+                TransformError::Internal(format!("compiled AST could not be serialized: {error}"))
+            })?;
+            renamer.apply(&mut ast, renames);
+            Ok(Some(ast))
+        }
+        None if renames.is_empty() => Ok(None),
+        None => {
+            let mut ast = original.clone();
+            renamer.apply(&mut ast, renames);
+            Ok(Some(ast))
+        }
+    }
+}
+
+struct BindingRenamer {
+    declarations: FxHashMap<(String, u32), BindingId>,
+    references: FxHashMap<u32, BindingId>,
+}
+
+impl BindingRenamer {
+    fn new(scope: &ScopeInfo) -> Self {
+        let declarations = scope
+            .bindings
+            .iter()
+            .filter_map(|binding| {
+                let start = binding.declaration_start?;
+                Some(((binding.name.clone(), start), binding.id))
+            })
+            .collect();
+        let references = scope
+            .ref_node_id_to_binding
+            .iter()
+            .map(|(node, binding)| (*node, *binding))
+            .collect();
+        Self {
+            declarations,
+            references,
+        }
+    }
+
+    fn apply(&self, ast: &mut Value, renames: &[BindingRenameInfo]) {
+        let targets = self.targets(renames);
+        if targets.is_empty() {
+            return;
+        }
+        apply_binding_renames(ast, &self.references, &targets, false);
+    }
+
+    fn targets(&self, renames: &[BindingRenameInfo]) -> FxHashMap<BindingId, String> {
+        renames
+            .iter()
+            .filter_map(|rename| {
+                let binding = self
+                    .declarations
+                    .get(&(rename.original.clone(), rename.declaration_start))?;
+                Some((*binding, rename.renamed.clone()))
+            })
+            .collect()
+    }
+}
+
+fn apply_binding_renames(
+    value: &mut Value,
+    references: &FxHashMap<u32, BindingId>,
+    targets: &FxHashMap<BindingId, String>,
+    is_property_key: bool,
+) {
+    match value {
+        Value::Object(map) => {
+            let kind = map
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
+            if !is_property_key
+                && matches!(kind.as_str(), "Identifier" | "JSXIdentifier")
+                && let Some(node_id) = node_id(map)
+                && let Some(binding) = references.get(&node_id)
+                && let Some(renamed) = targets.get(binding)
+            {
+                map.insert("name".to_owned(), Value::String(renamed.clone()));
+            }
+
+            let computed = map
+                .get("computed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            for (key, child) in map.iter_mut() {
+                let child_is_property_key = key == "key"
+                    && !computed
+                    && matches!(
+                        kind.as_str(),
+                        "ObjectProperty"
+                            | "ObjectMethod"
+                            | "ClassProperty"
+                            | "ClassMethod"
+                            | "ClassPrivateProperty"
+                            | "ClassPrivateMethod"
+                            | "ObjectTypeProperty"
+                            | "ObjectTypeIndexer"
+                    );
+                apply_binding_renames(child, references, targets, child_is_property_key);
+            }
+
+            if kind == "ObjectProperty" {
+                expand_renamed_shorthand(map);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                apply_binding_renames(item, references, targets, false);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn node_id(map: &serde_json::Map<String, Value>) -> Option<u32> {
+    map.get("_nodeId")
+        .and_then(Value::as_u64)
+        .and_then(|id| u32::try_from(id).ok())
+}
+
+fn expand_renamed_shorthand(map: &mut serde_json::Map<String, Value>) {
+    if !map
+        .get("shorthand")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || map
+            .get("computed")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    {
+        return;
+    }
+    let changed = map
+        .get("key")
+        .and_then(identifier_name)
+        .zip(map.get("value").and_then(pattern_binding_name))
+        .is_some_and(|(key, value)| key != value);
+    if changed {
+        map.insert("shorthand".to_owned(), Value::Bool(false));
+    }
+}
+
+fn pattern_binding_name(value: &Value) -> Option<&str> {
+    match value.get("type").and_then(Value::as_str) {
+        Some("Identifier") => identifier_name(value),
+        Some("AssignmentPattern") => value.get("left").and_then(identifier_name),
+        _ => None,
+    }
+}
+
+fn identifier_name(value: &Value) -> Option<&str> {
+    (value.get("type").and_then(Value::as_str) == Some("Identifier"))
+        .then(|| value.get("name").and_then(Value::as_str))
+        .flatten()
 }
 
 /// Tell the compiler which file its diagnostics are about.
@@ -592,6 +757,14 @@ mod tests {
     use crate::{lower, scope};
     use serde_json::json;
 
+    fn babel(source: &str) -> (Value, ScopeInfo) {
+        let mut program = parse(source).unwrap();
+        lower::lower(&mut program, source).unwrap();
+        let file = crate::babel::to_babel(program, source).unwrap();
+        let info = scope::analyze(&file);
+        (file, info)
+    }
+
     fn compiled(source: &str, mode: ReactCompilerMode) -> (Value, Vec<CompilerDiagnostic>, usize) {
         // Like the transform service and formatter test helper, give these
         // recursive AST passes their own stack. Debug builds of structural
@@ -615,6 +788,84 @@ mod tests {
                 .join()
                 .expect("compiler test completes")
         })
+    }
+
+    fn renamed(source: &str, original: &str, renamed: &str, declaration_start: usize) -> Value {
+        let (mut file, info) = babel(source);
+        assert!(
+            info.bindings.iter().any(|binding| {
+                binding.name == original
+                    && binding.declaration_start == Some(u32::try_from(declaration_start).unwrap())
+            }),
+            "no binding named {original} at {declaration_start}"
+        );
+        BindingRenamer::new(&info).apply(
+            &mut file,
+            &[BindingRenameInfo {
+                original: original.to_owned(),
+                renamed: renamed.to_owned(),
+                declaration_start: u32::try_from(declaration_start).unwrap(),
+            }],
+        );
+        file
+    }
+
+    #[test]
+    fn compiler_renames_only_the_binding_declared_at_the_reported_start() {
+        let source = "\
+function outer(value) {
+  const before = value;
+  function inner(value) {
+    return value + before;
+  }
+  return value;
+}
+";
+        let start = source.find("function inner(value)").unwrap() + "function inner(".len();
+        let file = renamed(source, "value", "value_0", start);
+        let outer = &file["program"]["body"][0];
+        let inner = &outer["body"]["body"][1];
+
+        assert_eq!(
+            outer["body"]["body"][0]["declarations"][0]["init"]["name"],
+            "value"
+        );
+        assert_eq!(outer["body"]["body"][2]["argument"]["name"], "value");
+        assert_eq!(inner["params"][0]["name"], "value_0");
+        assert_eq!(
+            inner["body"]["body"][0]["argument"]["left"]["name"],
+            "value_0"
+        );
+        assert_eq!(
+            inner["body"]["body"][0]["argument"]["right"]["name"],
+            "before"
+        );
+    }
+
+    #[test]
+    fn compiler_renames_expand_object_expression_shorthand() {
+        let source = "function inner(value) { return { value }; }\n";
+        let start = source.find("value) {").unwrap();
+        let file = renamed(source, "value", "value_0", start);
+        let property = &file["program"]["body"][0]["body"]["body"][0]["argument"]["properties"][0];
+
+        assert_eq!(property["key"]["name"], "value");
+        assert_eq!(property["value"]["name"], "value_0");
+        assert_eq!(property["shorthand"], false);
+    }
+
+    #[test]
+    fn compiler_renames_expand_object_pattern_shorthand() {
+        let source = "function inner(object) { const { value } = object; return value; }\n";
+        let start = source.find("{ value").unwrap() + "{ ".len();
+        let file = renamed(source, "value", "value_0", start);
+        let function = &file["program"]["body"][0];
+        let property = &function["body"]["body"][0]["declarations"][0]["id"]["properties"][0];
+
+        assert_eq!(property["key"]["name"], "value");
+        assert_eq!(property["value"]["name"], "value_0");
+        assert_eq!(property["shorthand"], false);
+        assert_eq!(function["body"]["body"][1]["argument"]["name"], "value_0");
     }
 
     #[test]

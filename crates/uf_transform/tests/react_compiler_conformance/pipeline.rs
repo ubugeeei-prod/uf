@@ -84,11 +84,7 @@ pub fn compile(source: &str, first_line: &str, filename: &str) -> Result<Compile
     {
         Outcome::Ran { ast, events, .. } => {
             let events = events_as_json(&events);
-            let compiled = match ast {
-                Some(ast) => serde_json::to_value(ast)
-                    .map_err(|error| Refused::Schema(format!("compiled AST: {error}")))?,
-                None => file,
-            };
+            let compiled = ast.unwrap_or(file);
             let printed = print(&compiled, PrintOptions::default())
                 .map_err(|error| Refused::Print(error.to_string()))?;
             Ok(Compiled::Code {

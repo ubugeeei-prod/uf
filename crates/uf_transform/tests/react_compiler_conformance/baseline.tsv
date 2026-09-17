@@ -506,7 +506,7 @@ error.todo-round2_id_numbering.js	error-mismatch	syntax	the snapshot is a Babel 
 error.todo-round2_identifier_diff.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-round2_severity_diff.js	error-mismatch	syntax	the snapshot is a Babel parse error: Babel's TypeScript parser rejects the input and the Flow parser accepts it (proven by the message)
 error.todo-rust-as-expression-assignment-target.tsx	unparsed	syntax	a TypeScript as expression used as an assignment target, which the Flow parser rejects
-error.todo-update-expression-context-variable-via-type-annotation.js	expected-error-got-code	conversion	uf erases types before compiling, and the only use of id inside a lambda is a function type's parameter name, which upstream scope.ts maps and which makes id a context variable (argued)
+error.todo-update-expression-context-variable-via-type-annotation.js	expected-error-got-code	conversion	uf erases Flow function type parameters before scope analysis, while the fixture's only nested id before erasure is type-only and upstream's scope maps it as a lambda capture
 error.todo-useCallback-set-ref-nested-property-ref-modified-later-preserve-memoization.js	pass	pass	
 error.todo-using-declaration.js	unparsed	syntax	a using declaration (explicit resource management), which the Flow parser does not read
 error.todo-valid-functiondecl-hoisting.tsx	pass	pass	
@@ -606,7 +606,7 @@ fbt/repro-macro-property-not-handled.tsx	code-mismatch	snapshot	the snapshot als
 fbt/repro-separately-memoized-fbt-param.js	code-mismatch	snapshot	the snapshot also holds babel-plugin-fbt, babel-plugin-fbt-runtime or babel-plugin-idx output, which snap/src/compiler.ts runs after the compiler in the same transform (proven by the runner's plugin list and this fixture's fbt or idx use)
 flag-enable-emit-hook-guards.ts	pass	pass	
 flatten-scopes-with-methodcall-hook.js	pass	pass	
-flow-enum-inline.js	code-mismatch	conversion	uf lowers the Flow enum to $$ufEnum code before the compiler runs, where hermes-parser leaves an EnumDeclaration (proven by the output)
+flow-enum-inline.js	code-mismatch	conversion	uf lowers the Flow enum to $$ufEnum before the compiler runs (lower/enums.rs), while the pinned snapshot keeps the EnumDeclaration through compilation
 flow-reserved-word-as-identifier.flow.js	pass	pass	
 fn-name-no-leak-to-nested-arrow.js	pass	pass	
 for-empty-update-with-continue.js	pass	pass	
@@ -651,14 +651,14 @@ function-expression-with-store-to-parameter.js	pass	pass
 function-param-assignment-pattern.js	pass	pass	
 gating/arrow-function-expr-gating-test.js	pass	pass	
 gating/codegen-instrument-forget-gating-test.js	pass	pass	
-gating/component-syntax-ref-gating.flow.js	code-mismatch	conversion	uf's component lowering never wraps a ref prop in forwardRef, by design for React 19 (lower/components.rs), and hermes-parser's TransformComponentSyntax does (proven by the output)
+gating/component-syntax-ref-gating.flow.js	code-mismatch	conversion	uf's React 19 component lowering treats ref as an ordinary prop and never emits forwardRef (lower/components.rs), while the pinned snapshot wraps Foo with React.forwardRef
 gating/conflicting-gating-fn.js	pass	pass	
 gating/dynamic-gating-annotation.js	pass	pass	
-gating/dynamic-gating-bailout-nopanic.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+gating/dynamic-gating-bailout-nopanic.js	logs-mismatch	conversion	Babel supplies loc.start.index/end.index and a source filename for logger locations, and the crate serializes both (program.rs to_logger_loc/diag_loc_to_logger_loc); uf's Babel-shaped tree lacks the index fields
 gating/dynamic-gating-disabled.js	pass	pass	
 gating/dynamic-gating-enabled.js	pass	pass	
 gating/dynamic-gating-invalid-identifier-nopanic.js	pass	pass	
-gating/dynamic-gating-invalid-multiple.js	logs-mismatch	conversion	babel.rs sets neither loc.filename nor loc.start.index and loc.end.index, which Babel sets and the crate reads for code frames and logger locations; adding both passes this fixture (proven by experiment)
+gating/dynamic-gating-invalid-multiple.js	logs-mismatch	conversion	Babel supplies loc.start.index/end.index and a source filename for logger locations, and the crate serializes both (program.rs to_logger_loc/diag_loc_to_logger_loc); uf's Babel-shaped tree lacks the index fields
 gating/dynamic-gating-noemit.js	pass	pass	
 gating/error.dynamic-gating-invalid-identifier.js	pass	pass	
 gating/gating-access-function-name-in-component.js	pass	pass	
@@ -875,7 +875,7 @@ match-expr-captured-var.flow.js	pass	pass
 match-expr-jsx-spread.flow.js	pass	pass	
 match-expr-multi-gen-bindings.flow.js	pass	pass	
 match-expr-outlined-jsx.flow.js	pass	pass	
-match-expression-with-tuple-and-early-return.js	code-mismatch	conversion	uf's match lowering throws a string concatenation where the pinned hermes-parser throws a call (proven by the output)
+match-expression-with-tuple-and-early-return.js	code-mismatch	conversion	uf lowers match to its documented generated tests and string-concatenating throw (lower/matches.rs), while the pinned snapshot keeps hermes-parser's call-shaped throw
 match-stmt-self-ref-const.flow.js	pass	pass	
 maybe-mutate-object-in-callback.js	pass	pass	
 mege-consecutive-scopes-dont-merge-with-different-deps.js	pass	pass	
@@ -1627,7 +1627,7 @@ temporary-at-start-of-value-block.js	pass	pass
 temporary-property-load-accessed-outside-scope.js	pass	pass	
 ternary-assignment-expression.js	pass	pass	
 ternary-expression.js	pass	pass	
-timers.js	code-mismatch	compiler	argued: uf hands the crate the JSX text as written (value equals raw), the crate's trim_jsx_text keeps the space before {time}, and the snapshot has none; the difference is the crate's or the snapshot's Prettier pass
+timers.js	code-mismatch	compiler	the crate lowers JSXText from the raw value and trim_jsx_text preserves the space before {time} (react_compiler_lowering build_hir.rs), while the pinned snapshot's printed JSX removes it
 todo-function-expression-captures-value-later-frozen.js	pass	pass	
 todo-global-load-cached.tsx	pass	pass	
 todo-global-property-load-cached.tsx	pass	pass	
@@ -1794,8 +1794,8 @@ using-declaration-bailout-sibling-compiles.js	unparsed	syntax	a using declaratio
 valid-set-state-in-useEffect-from-ref.js	pass	pass	
 valid-setState-in-effect-from-ref-arithmetic.js	pass	pass	
 valid-setState-in-effect-from-ref-array-index.js	pass	pass	
-valid-setState-in-effect-from-ref-function-call.js	code-mismatch	scope	the compiler's binding renames are not applied: the Babel shim renames them with scope.rename(), and uf drops CompileResult renames; applying them passes this fixture (proven by experiment)
-valid-setState-in-useEffect-controlled-by-ref-value.js	code-mismatch	scope	the compiler's binding renames are not applied: the Babel shim renames them with scope.rename(), and uf drops CompileResult renames; applying them passes this fixture (proven by experiment)
+valid-setState-in-effect-from-ref-function-call.js	pass	pass	compiler binding renames applied
+valid-setState-in-useEffect-controlled-by-ref-value.js	pass	pass	compiler binding renames applied
 valid-setState-in-useEffect-listener-transitive.js	pass	pass	
 valid-setState-in-useEffect-listener.js	pass	pass	
 valid-setState-in-useEffect-via-useEffectEvent-listener.js	pass	pass	
