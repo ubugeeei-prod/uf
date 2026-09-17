@@ -279,6 +279,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "nest elements the HTML parser will leave where you wrote them",
     },
     RuleDescriptor {
+        id: "markup/no-invalid-rel",
+        category: RuleCategory::Markup,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "a `rel` keyword has to be one this element takes",
+    },
+    RuleDescriptor {
         id: "vite/hot-needs-optional-chaining",
         category: RuleCategory::Vite,
         default_level: RuleLevel::Error,
@@ -552,6 +559,27 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Warn,
         requirement: SourceText,
         description: "drop a `useMemo`/`useCallback` the React Compiler already did",
+    },
+    RuleDescriptor {
+        id: "react/no-namespace",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "React has no way to render a namespaced element name",
+    },
+    RuleDescriptor {
+        id: "react/no-unknown-property",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "write the prop React spells, not the HTML attribute name",
+    },
+    RuleDescriptor {
+        id: "react/style-prop-object",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`style` takes an object; React throws on anything else",
     },
     RuleDescriptor {
         id: "react/void-dom-elements-no-children",

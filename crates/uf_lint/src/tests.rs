@@ -10,6 +10,7 @@ mod a11y_attributes;
 mod a11y_content;
 mod a11y_interaction;
 mod a11y_tags;
+mod attribute_shape;
 mod catalogue;
 mod driver;
 mod fetch;

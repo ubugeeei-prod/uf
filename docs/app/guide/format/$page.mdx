@@ -503,7 +503,11 @@ running it.
 | `jsx-no-script-url` | `security/no-script-url`, for every prop the browser navigates to except `href` on an `<a>` — that pair is `a11y/anchor-is-valid`, which already reports it |
 | `jsx-no-target-blank` | `security/no-target-blank`, which asks for `rel="noreferrer"` alone: `target="_blank"` already gives the opened page a null `window.opener`, so `noopener` adds nothing and the `Referer` header is what is left to stop |
 | `iframe-missing-sandbox` | `security/iframe-has-sandbox`, which asks only whether the frame is sandboxed — `allow-scripts allow-same-origin` defeats a sandbox only when the framed document is same-origin, which the markup does not say |
-| `no-unknown-property`, `no-invalid-html-attribute`, `no-unescaped-entities`, `button-has-type`, `checked-requires-onchange-or-readonly`, `style-prop-object`, `no-namespace`, `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062) |
+| `no-unknown-property` | `react/no-unknown-property`, which reports an attribute written with its HTML spelling and names the prop React spells instead — uf keeps no table of every DOM property, so an attribute it has not heard of is left alone rather than reported as unknown |
+| `no-invalid-html-attribute` | `markup/no-invalid-rel` — the plugin implements `rel` and so does uf, reporting a keyword that belongs to another element and the spellings the HTML standard calls non-conforming; an unrecognised keyword is left alone, because the registries `rel` draws on are open |
+| `style-prop-object` | `react/style-prop-object` |
+| `no-namespace` | `react/no-namespace` |
+| `no-unescaped-entities`, `button-has-type`, `checked-requires-onchange-or-readonly`, `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062) |
 
 #### eslint-plugin-react-hooks
 
