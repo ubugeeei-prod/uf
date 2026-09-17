@@ -210,20 +210,33 @@ pub fn repo_root() -> std::path::PathBuf {
 
 /// Whether tests that execute JavaScript can run here.
 ///
-/// They need Node on PATH and the workspace installed, and they say so when
-/// they skip: a silently reduced suite is how a runner starts lying.
+/// They need Node on PATH and the workspace installed, and they fail rather
+/// than returning quietly unless `UF_ALLOW_FIXTURE_SKIP=1` says this machine
+/// genuinely cannot run them. A silently reduced suite is how a runner starts
+/// lying, and CI sets no opt-out, so it can never skip these by accident.
 pub fn host_ready() -> bool {
-    let node = std::process::Command::new("node")
+    let mut missing = Vec::new();
+    if !std::process::Command::new("node")
         .arg("--version")
         .output()
-        .is_ok_and(|output| output.status.success());
-    let installed = repo_root()
-        .join("node_modules/@uniflowed/test/worker.js")
-        .is_file();
-    if !node || !installed {
-        eprintln!("skipping: `uf test` needs `node` on PATH and `npm ci` at the workspace root");
+        .is_ok_and(|output| output.status.success())
+    {
+        missing.push("`node` is not on PATH".to_owned());
     }
-    node && installed
+    let worker = repo_root().join("node_modules/@uniflowed/test/worker.js");
+    if !worker.is_file() {
+        missing.push(format!("{} does not exist; run `npm ci`", worker.display()));
+    }
+    if missing.is_empty() {
+        return true;
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "`uf test` cannot run here, so this test would prove nothing: {}",
+        missing.join("; ")
+    );
+    eprintln!("skipping: {}", missing.join("; "));
+    false
 }
 
 /// Whether a test that runs Bun can run here: `bun` on PATH.

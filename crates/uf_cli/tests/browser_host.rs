@@ -16,11 +16,12 @@
 //! checked in CI.
 //!
 //! The **run** needs a browser and says so when it steps aside, in the shape
-//! [`support::host_ready`] already uses: a silently reduced suite is how a
-//! runner starts lying. What it asserts is not "some tests passed" — it is that
-//! a component was measured, which is the only thing browser mode is for. A
-//! `getBoundingClientRect().width` of three hundred cannot come from happy-dom,
-//! which answers zero for every element it has ever been shown.
+//! [`support::host_ready`] uses with the explicit fixture-skip opt-out: a
+//! silently reduced suite is how a runner starts lying. What it asserts is not
+//! "some tests passed" — it is that a component was measured, which is the
+//! only thing browser mode is for. A `getBoundingClientRect().width` of three
+//! hundred cannot come from happy-dom, which answers zero for every element it
+//! has ever been shown.
 
 mod support;
 
@@ -62,6 +63,7 @@ it("is measured by a real layout engine", () => {
 /// skip says "no browser" rather than leaving a refusal to be read as a
 /// failure. `UF_BROWSER` is honoured for the same reason it is honoured there.
 fn browser_ready() -> bool {
+    let mut missing = Vec::new();
     let named = std::env::var("UF_BROWSER").ok();
     let found = uf_test::find_browser(
         named.as_deref(),
@@ -69,17 +71,26 @@ fn browser_ready() -> bool {
         &camino::Utf8Path::is_file,
     );
     if found.is_err() {
-        eprintln!(
-            "skipping: `uf test --browser` needs a browser installed, or UF_BROWSER set to one"
+        missing.push(
+            "`uf test --browser` needs a browser installed, or UF_BROWSER set to one".to_owned(),
         );
     }
     let installed = repo_root()
         .join("node_modules/@uniflowed/test/browser-worker.js")
         .is_file();
     if !installed {
-        eprintln!("skipping: `uf test --browser` needs `npm ci` at the workspace root");
+        missing.push("`uf test --browser` needs `npm ci` at the workspace root".to_owned());
     }
-    found.is_ok() && installed
+    if missing.is_empty() {
+        return true;
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "`uf test --browser` cannot run here, so this test would prove nothing: {}",
+        missing.join("; ")
+    );
+    eprintln!("skipping: {}", missing.join("; "));
+    false
 }
 
 /// A `PATH` lookup, which the crate under test takes as an argument.
