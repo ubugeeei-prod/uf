@@ -10,12 +10,10 @@
 //!
 //! # Which runtime is embedded, and who decides
 //!
-//! The project does, through `app.runtime.capabilityJsHost` — the same setting
-//! that decides which host `uf dev`, `uf test` and `uf build` themselves run
-//! on. Until ubugeeei-prod/uf#312 this one flag ignored it and required Bun,
-//! so a project that pins Node was told to install a second runtime to compile
-//! at all. [`runtime`] now walks the project's accepted hosts in the order
-//! [`super::vite::resolve_host`] walks them and returns the first that has a
+//! The project does, through `runtime` — the same setting `uf start` uses for
+//! the server a build emitted. A project that has not declared one keeps the
+//! old answer: `app.runtime.capabilityJsHost`, walked in the order
+//! [`super::vite::resolve_host`] walks it, and the first host that has a
 //! backend here and can be used:
 //!
 //! | host | backend | cross-compiles | what it needs |
@@ -87,6 +85,7 @@ use uf_rsc::RSC_MANIFEST_ENV;
 use uf_runtime::{RuntimeHost, ToolchainAccess};
 use uf_term::Status;
 
+use crate::commands::runtimes as tool_runtimes;
 use crate::commands::vite::{
     Driver, Event, LinkContext, LogLevel, find_program, render_error, render_log,
 };
@@ -340,6 +339,8 @@ pub(crate) struct Runtime {
     pub(crate) version: String,
     /// The platform the binary is for, when one was asked for.
     pub(crate) target: Option<Target>,
+    /// The key and release this runtime came from, when `runtime` declared it.
+    pub(crate) source: Option<tool_runtimes::RuntimeSource>,
     /// Where a downloaded runtime is cached, when the target needs one.
     cache: Option<Utf8PathBuf>,
     /// Whether that runtime is already in the cache.
@@ -357,7 +358,15 @@ pub(crate) struct Runtime {
 impl Runtime {
     /// The runtime and its version, as the build summary prints them.
     pub(crate) fn label(&self) -> String {
-        format!("{} {}", self.backend.name(), self.version)
+        format!("{} {}", self.backend.name(), self.release_label())
+    }
+
+    /// The release a summary should print.
+    pub(crate) fn release_label(&self) -> &str {
+        self.source
+            .as_ref()
+            .and_then(|source| source.release.as_deref())
+            .unwrap_or(&self.version)
     }
 
     /// Whether producing this binary has to reach the network.
@@ -460,27 +469,48 @@ fn program_version(program: &Utf8Path, argument: &str) -> Option<String> {
 ///
 /// # The order the hosts are tried in
 ///
-/// The project's `capabilityJsHost.default` first, then — only when
-/// `autoDetect` is on — the rest of the accepted set, which is exactly what
-/// [`super::vite::resolve_host`] does for every other command. A project that
-/// pins one host and cannot compile on it is told so rather than handed a
-/// binary running a runtime it did not choose, and a project that accepts
-/// several gets the first that works, with the summary naming it.
+/// When the project declares `runtime`, there is no walk: the resolved runtime
+/// is the one the binary embeds, just as it is the one `uf start` would run.
+/// That matters for versioned specs because resolving the runtime also locks
+/// and installs the release in the store before the SEA step asks for it.
+///
+/// With no `runtime` key, this keeps the old inference: the project's
+/// `capabilityJsHost.default` first, then — only when `autoDetect` is on — the
+/// rest of the accepted set, which is exactly what [`super::vite::resolve_host`]
+/// does for the builder host.
 ///
 /// `--target` narrows the same walk rather than steering around it. A backend
 /// that cannot produce the requested machine is not a usable backend for
 /// *this* build, so it is skipped with a reason exactly as a missing program
-/// is — which means a project on the default configuration (`node`, with
-/// `autoDetect` on) can cross-compile through Bun, and the summary names the
-/// runtime that went in. A project that pinned its host with `autoDetect:
-/// false` has one candidate and gets the reason as the refusal, which is the
-/// right answer for a project that said it wanted no inference.
+/// is — which means an undeclared-runtime project on the default configuration
+/// (`node`, with `autoDetect` on) can cross-compile through Bun, and the
+/// summary names the runtime that went in. A project that declared `runtime`,
+/// or pinned its legacy host with `autoDetect: false`, has one candidate and
+/// gets the reason as the refusal.
 pub(crate) fn runtimes(
     root: &Utf8Path,
     config: &UniflowedConfig,
     requested_target: Option<&str>,
+    declared_runtime: Option<&tool_runtimes::Runtime>,
 ) -> Result<Vec<Runtime>> {
     let target = requested_target.map(parse_target).transpose()?;
+    if let Some(declared_runtime) = declared_runtime {
+        let source = declared_runtime.source.clone();
+        let (backend, program, version) = backend_for_program(
+            declared_runtime.host.kind,
+            declared_runtime.host.program.clone(),
+        )
+        .map_err(|refusal| declared_runtime_refusal(source.as_ref(), &refusal))?;
+        if let Some(refusal) = refuse_target(backend, target) {
+            bail!("{}", declared_runtime_refusal(source.as_ref(), &refusal));
+        }
+        let runtime =
+            finish(root, config, backend, program, version, target, source).map_err(|error| {
+                declared_runtime_refusal(declared_runtime.source.as_ref(), &format!("{error:?}"))
+            })?;
+        return Ok(vec![runtime]);
+    }
+
     let hosts = &config.app.runtime.capability_js_host;
     let mut candidates = vec![hosts.default];
     if hosts.auto_detect {
@@ -499,7 +529,7 @@ pub(crate) fn runtimes(
         match backend_for(kind) {
             Ok((backend, program, version)) => match refuse_target(backend, target) {
                 Some(refusal) => refusals.push(refusal),
-                None => match finish(root, config, backend, program, version, target) {
+                None => match finish(root, config, backend, program, version, target, None) {
                     Ok(runtime) => usable.push(runtime),
                     // A permission set this backend cannot enforce makes it
                     // unusable *for this project*, which is the same kind of
@@ -547,21 +577,55 @@ pub(crate) fn runtimes(
     )
 }
 
+fn declared_runtime_refusal(
+    source: Option<&tool_runtimes::RuntimeSource>,
+    refusal: &str,
+) -> anyhow::Error {
+    let declared = source.map_or_else(
+        || "`runtime` resolved no declaration".to_owned(),
+        |source| format!("{} is `{}`", source.key, source.spec),
+    );
+    anyhow::anyhow!(
+        "`uf build --compile` embeds the application runtime; {declared}, and that runtime \
+         cannot build this binary here.\n  {refusal}"
+    )
+}
+
 /// The backend for one accepted host, or the sentence saying why not.
 fn backend_for(kind: CapabilityJsHost) -> Result<(Backend, Utf8PathBuf, String), String> {
     match kind {
         CapabilityJsHost::Bun => match find_program("bun") {
-            Some(program) => {
-                let version = program_version(&program, "--version")
-                    .unwrap_or_else(|| String::from("unknown"));
-                Ok((Backend::Bun, program, version))
-            }
+            Some(program) => backend_for_program(kind, program),
             None => Err("bun: not on PATH".to_owned()),
         },
         CapabilityJsHost::Node => {
             let Some(program) = find_program("node") else {
                 return Err("node: not on PATH".to_owned());
             };
+            backend_for_program(kind, program)
+        }
+        // No `deno compile` backend here, and the honest reason is that nobody
+        // has written and run one — not that Deno cannot. Saying "not yet" and
+        // naming the two that work is what a reader can act on; silently
+        // compiling their Deno project with Bun is not.
+        CapabilityJsHost::Deno => {
+            Err("deno: `deno compile` is not a backend uf has written".to_owned())
+        }
+    }
+}
+
+/// The backend for one concrete runtime program.
+fn backend_for_program(
+    kind: CapabilityJsHost,
+    program: Utf8PathBuf,
+) -> Result<(Backend, Utf8PathBuf, String), String> {
+    match kind {
+        CapabilityJsHost::Bun => {
+            let version =
+                program_version(&program, "--version").unwrap_or_else(|| String::from("unknown"));
+            Ok((Backend::Bun, program, version))
+        }
+        CapabilityJsHost::Node => {
             let Some(version) = program_version(&program, "--version") else {
                 return Err(format!("node: {program} did not answer `--version`"));
             };
@@ -577,10 +641,6 @@ fn backend_for(kind: CapabilityJsHost) -> Result<(Backend, Utf8PathBuf, String),
                 None => Err(format!("node: could not read a version out of `{version}`")),
             }
         }
-        // No `deno compile` backend here, and the honest reason is that nobody
-        // has written and run one — not that Deno cannot. Saying "not yet" and
-        // naming the two that work is what a reader can act on; silently
-        // compiling their Deno project with Bun is not.
         CapabilityJsHost::Deno => {
             Err("deno: `deno compile` is not a backend uf has written".to_owned())
         }
@@ -620,6 +680,7 @@ fn finish(
     program: Utf8PathBuf,
     version: String,
     target: Option<Target>,
+    source: Option<tool_runtimes::RuntimeSource>,
 ) -> Result<Runtime> {
     let exec_argv = artefact_permissions(backend, config.permissions.as_ref())?;
     let (cache, cached) = match target {
@@ -639,6 +700,7 @@ fn finish(
         program,
         version,
         target,
+        source,
         cache,
         cached,
         exec_argv,
@@ -894,10 +956,10 @@ pub(crate) fn compile(
 /// hide a broken application, which is the objection this would otherwise
 /// have to answer.
 ///
-/// It is announced rather than silent, and it happens only where
-/// `capabilityJsHost.auto_detect` already says uf may infer a host: a project
-/// that pinned one has a list of one, and gets that backend's failure as the
-/// build's failure.
+/// It is announced rather than silent, and it happens only in the legacy
+/// fallback path where `capabilityJsHost.auto_detect` already says uf may
+/// infer a host. A project that declared `runtime` has a list of one, because
+/// the executable must run on that runtime's release.
 fn wrap<'a>(
     ui: &mut Ui,
     runtimes: &'a [Runtime],

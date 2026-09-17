@@ -10,6 +10,8 @@ use camino::Utf8Path;
 use serde_json::json;
 use uf_config::{CapabilityJsHost, Permissions, UniflowedConfig};
 
+use crate::commands::runtimes::RuntimeSource;
+
 use super::{
     Backend, NODE_SEA_FLOOR, TARGETS, Version, artefact_permissions, binary_name, finish,
     parse_target, refuse_target,
@@ -143,6 +145,7 @@ fn a_target_that_is_this_machine_needs_no_download() {
         "/usr/bin/bun".into(),
         "1.1.27".to_owned(),
         Some(host),
+        None,
     )
     .unwrap();
     assert!(
@@ -167,6 +170,7 @@ fn a_foreign_target_says_it_will_fetch_before_the_build_starts() {
         "/usr/bin/bun".into(),
         "1.1.27".to_owned(),
         Some(foreign),
+        None,
     )
     .unwrap();
     assert!(
@@ -174,6 +178,35 @@ fn a_foreign_target_says_it_will_fetch_before_the_build_starts() {
         "an empty project has no cached runtime for {}, so the build has to say it will download \
          one",
         foreign.triple
+    );
+}
+
+#[test]
+fn a_declared_runtime_release_is_the_label_the_summary_prints() {
+    let source = RuntimeSource {
+        key: "runtime".to_owned(),
+        spec: "node@26".to_owned(),
+        release: Some("26.8.2".to_owned()),
+    };
+    let resolved = finish(
+        Utf8Path::new("/tmp/project"),
+        &config_on(CapabilityJsHost::Node),
+        Backend::NodeSea,
+        "/usr/bin/node".into(),
+        "27.0.0-nightly20260901".to_owned(),
+        None,
+        Some(source),
+    )
+    .unwrap();
+    assert_eq!(
+        resolved.label(),
+        "node 26.8.2",
+        "the standalone summary names the release `runtime` resolved to, not whichever binary \
+         answered `--version` while producing it"
+    );
+    assert_eq!(
+        resolved.source.as_ref().map(|source| source.key.as_str()),
+        Some("runtime")
     );
 }
 
