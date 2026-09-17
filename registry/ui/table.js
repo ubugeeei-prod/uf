@@ -19,11 +19,10 @@
 // of its rows. The arrow is drawn from `aria-sort`. Rows are chosen with this
 // registry's `Checkbox`, and a select-all shows mixed while only some are.
 //
-// The part gives a caller no prop for its sort button or its announcement.
-// This file reaches the button through `render`, which hands it over as the
-// heading's child, and the announcement shows as a quiet line under the table:
-// ubugeeei-prod/uf#1074. The part's own select checkboxes are not used, because
-// they take no children and so cannot hold a box and its marks.
+// The part gives a caller no prop for its sort button. This file reaches the
+// button through `render`, which hands it over as the heading's child. The
+// part's own select checkboxes are not used, because they take no children and
+// so cannot hold a box and its marks.
 //
 // # What to keep true when you change it
 //

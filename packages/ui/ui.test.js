@@ -1365,6 +1365,46 @@ describe("Sidebar", () => {
     // end of it.
     expect(trigger).toHaveFocus();
   });
+
+  it("hands props to the narrow sheet panel", () => {
+    answerMediaQueries(true);
+    render(
+      <Sidebar.Root>
+        <Sidebar.Trigger>Menu</Sidebar.Trigger>
+        <Sidebar.Body
+          label="Main"
+          sheetProps={{ className: "sidebar-panel", "data-testid": "sidebar-panel" }}
+        >
+          <Sidebar.Item label="Settings">Settings</Sidebar.Item>
+        </Sidebar.Body>
+      </Sidebar.Root>,
+    );
+    const panel = screen.getByTestId("sidebar-panel");
+    expect(panel).toHaveAttribute("class", "sidebar-panel");
+    expect(panel).toHaveAttribute("role", "dialog");
+    expect(within(panel).getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+  });
+
+  it("hands props to a collapsed item's tooltip", () => {
+    render(
+      <Sidebar.Root defaultOpen={false}>
+        <Sidebar.Trigger>Menu</Sidebar.Trigger>
+        <Sidebar.Body label="Main">
+          <Sidebar.Item
+            label="Settings"
+            tooltipProps={{ className: "sidebar-tip", "data-testid": "sidebar-tip" }}
+          >
+            Settings
+          </Sidebar.Item>
+        </Sidebar.Body>
+      </Sidebar.Root>,
+    );
+    act(() => screen.getByRole("button", { name: "Settings" }).focus());
+    const tooltip = screen.getByTestId("sidebar-tip");
+    expect(tooltip).toHaveAttribute("class", "sidebar-tip");
+    expect(tooltip).toHaveAttribute("role", "tooltip");
+    expect(tooltip.textContent).toBe("Settings");
+  });
 });
 
 describe("Menu", () => {
@@ -2121,7 +2161,9 @@ describe("Menubar", () => {
     expect(file).toHaveAttribute("aria-expanded", "false");
     expect(file).not.toHaveAttribute("aria-controls");
     await userEvent.click(file);
+    const menu = screen.getByRole("menu", { name: "File" });
     expect(screen.getByRole("menuitem", { name: "File" })).toHaveAttribute("aria-expanded", "true");
+    expect(file.getAttribute("aria-controls")).toBe(menu.getAttribute("id"));
     expect(danglingReferences()).toEqual([]);
   });
 
@@ -6136,6 +6178,8 @@ describe("Table", () => {
     // document before the first sort or it announces nothing at all.
     const status = screen.getByRole("status");
     expect(status).toBeInTheDocument();
+    expect(status.style.position).toBe("absolute");
+    expect(status.style.clipPath).toBe("inset(50%)");
     expect(status.textContent).toBe("");
     await userEvent.click(screen.getByRole("button", { name: "Name" }));
     expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");

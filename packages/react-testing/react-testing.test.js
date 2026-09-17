@@ -729,6 +729,32 @@ describe("an accessible name that no rule supplies", () => {
     expect(screen.getByRole("link", { name: "Help" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Delivery" })).toBeInTheDocument();
   });
+
+  it("leaves aria-hidden descendants out of a name from content", () => {
+    const { container } = render(
+      <button type="button">
+        New file
+        <span aria-hidden="true">Ctrl N</span>
+      </button>,
+    );
+    const button: $FlowFixMe = container.querySelector("button");
+    expect(accessibleName(button)).toBe("New file");
+    expect(screen.getByRole("button", { name: "New file" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New fileCtrl N" })).toBe(null);
+  });
+
+  it("leaves hidden descendants out of a name from content", () => {
+    const { container } = render(
+      <button type="button">
+        New file
+        <span hidden>Ctrl N</span>
+      </button>,
+    );
+    const button: $FlowFixMe = container.querySelector("button");
+    expect(accessibleName(button)).toBe("New file");
+    expect(screen.getByRole("button", { name: "New file" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New fileCtrl N" })).toBe(null);
+  });
 });
 
 describe("a role query and aria-current", () => {

@@ -226,8 +226,8 @@ export type Uft = {
   readonly waitFor: typeof waitFor,
   readonly waitUntil: typeof waitUntil,
 
-  readonly useFakeTimers: typeof timers.useFakeTimers,
-  readonly useRealTimers: typeof timers.useRealTimers,
+  readonly useFakeTimers: typeof timers.installFakeClock,
+  readonly useRealTimers: typeof timers.restoreRealClock,
   readonly isFakeTimers: typeof timers.isFaked,
   readonly advanceTimersByTime: typeof timers.advanceTimersByTime,
   readonly advanceTimersByTimeAsync: typeof timers.advanceTimersByTimeAsync,
@@ -273,8 +273,8 @@ export const uft: Uft = Object.freeze({
 
   // The clock a test controls. A test about "after five minutes the session
   // expires" should not take five minutes.
-  useFakeTimers: timers.useFakeTimers,
-  useRealTimers: timers.useRealTimers,
+  useFakeTimers: timers.installFakeClock,
+  useRealTimers: timers.restoreRealClock,
   isFakeTimers: timers.isFaked,
   advanceTimersByTime: timers.advanceTimersByTime,
   advanceTimersByTimeAsync: timers.advanceTimersByTimeAsync,
