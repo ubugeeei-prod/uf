@@ -100,7 +100,7 @@ export type MenuState = {|
    * lands on the last item, and re-rendering the trigger to say so would be a
    * render whose only purpose is to carry a message to an effect.
    */
-  readonly pendingFocus: { current: "first" | "last" | null },
+  readonly pendingFocusRef: { current: "first" | "last" | null },
   /** The menu this one hangs off, or null for the outermost. */
   readonly parent: MenuState | null,
   /**
@@ -207,7 +207,7 @@ export component MenuLevel(
   const base = useId();
   const [isOpen, setOpen] = useControlled(open, defaultOpen, onOpenChange);
   const triggerRef = useRef<HTMLElement | null>(null);
-  const pendingFocus = useRef<"first" | "last" | null>(null);
+  const pendingFocusRef = useRef<"first" | "last" | null>(null);
   const [triggered, setTriggered] = useState(false);
 
   const state = useMemo(
@@ -216,7 +216,7 @@ export component MenuLevel(
       open: isOpen,
       setOpen,
       triggerRef,
-      pendingFocus,
+      pendingFocusRef,
       parent,
       triggered,
       registerTrigger: setTriggered,
