@@ -179,6 +179,8 @@ export component HoverCardTrigger(children?: React.Node, render?: RenderProp, ..
 
   // Annotated because this one is not written inside a `ref={...}`, and there
   // is nothing else here for Flow to infer the element's type from.
+  // React calls callback refs during commit; pointer and focus handlers read it later.
+  // uf-lint-disable-next-line react-compiler/refs
   const attach = composeRefs(rest.ref, (element: HTMLElement | null) => {
     triggerRef.current = element;
   });
@@ -317,6 +319,8 @@ export component HoverCardBody(
     "data-side": anchored.side,
     "data-state": "open",
     id: `${card.base}-body`,
+    // React calls callback refs during commit; placement effects read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       bodyRef.current = element;
     }),

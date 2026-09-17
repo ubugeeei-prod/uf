@@ -167,6 +167,8 @@ export component PopoverTrigger(children: React.Node, render?: RenderProp, ...re
     id: `${popover.base}-trigger`,
     onClick: composeHandlers(rest.onClick, () => popover.setOpen(!popover.open)),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      // React calls callback refs during commit; focus restoration reads it later.
+      // uf-lint-disable-next-line react-compiler/immutability
       popover.triggerRef.current = element;
     }),
   });
@@ -326,6 +328,8 @@ export component PopoverBody(
       event.stopPropagation();
       close();
     }),
+    // React calls callback refs during commit; placement effects and traps read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       bodyRef.current = element;
     }),
