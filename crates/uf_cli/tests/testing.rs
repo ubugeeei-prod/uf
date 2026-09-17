@@ -6,8 +6,9 @@
 //! runner's whole job is to drive a JavaScript host and a stubbed host would
 //! only prove the stub works.
 //!
-//! They skip — loudly — where Node or the installed workspace is missing, so a
-//! checkout that never ran `npm ci` still passes `cargo test`.
+//! They fail where Node or the installed workspace is missing unless
+//! `UF_ALLOW_FIXTURE_SKIP=1` says this machine genuinely cannot run them, so a
+//! checkout that never ran `npm ci` cannot silently pass `cargo test`.
 //!
 //! One test drives [`uf_test::Worker`] rather than the `uf` binary, because
 //! what it asserts is a promise the worker protocol makes and the protocol is
