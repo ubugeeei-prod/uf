@@ -2010,6 +2010,298 @@ fn dev_pre_bundles_the_flight_client_an_installed_router_imports() {
     });
 }
 
+/// A project whose browser module reaches each browser-facing `@uniflowed/*`
+/// package through an installed copy.
+fn installed_browser_package_app() -> Vec<(&'static str, &'static str)> {
+    let mut files = minimal_app();
+    files[2] = (
+        "app/$page.js",
+        r#"// @flow
+import * as React from "@uniflowed/react";
+
+import { InstalledPackages } from "./browser-packages.js";
+
+export component Page() {
+  return (
+    <main>
+      <InstalledPackages />
+    </main>
+  );
+}
+"#,
+    );
+    files.push((
+        "app/browser-packages.js",
+        r#""use client";
+// @flow
+import * as React from "@uniflowed/react";
+import { useState } from "@uniflowed/react";
+import { useMounted } from "@uniflowed/hooks/lifecycle";
+import { QueryClient, QueryClientProvider, useQuery } from "@uniflowed/query";
+import { atom, useAtom } from "@uniflowed/state";
+import { props as styleProps } from "@uniflowed/stylex";
+import { Switch } from "@uniflowed/ui";
+import { useForm } from "@uniflowed/form";
+import { validatorResolver } from "@uniflowed/form/validator";
+import { object, string } from "@uniflowed/validator";
+
+const countAtom = atom(0);
+const client = new QueryClient();
+const schema = object({ name: string() });
+const resolver = validatorResolver(schema);
+
+component Probe() {
+  const [checked, setChecked] = useState(false);
+  const [count, setCount] = useAtom(countAtom);
+  const mounted = useMounted();
+  const form = useForm({ defaultValues: { name: "Ada" }, resolver });
+  const query = useQuery({
+    queryKey: ["installed-packages"],
+    queryFn: () => Promise.resolve("ready"),
+  });
+
+  return (
+    <Switch
+      {...styleProps({ $$css: true, color: "installed-stylex" })}
+      aria-label={`installed-${mounted}-${form.formState.isDirty}-${query.status}`}
+      checked={checked || count > 0}
+      onCheckedChange={(next) => {
+        setChecked(next);
+        setCount(next ? 1 : 0);
+      }}
+    />
+  );
+}
+
+export component InstalledPackages() {
+  return (
+    <QueryClientProvider client={client}>
+      <Probe />
+    </QueryClientProvider>
+  );
+}
+"#,
+    ));
+    files
+}
+
+fn install_uniflowed_packages(project: &Project, packages: &[&str]) {
+    let workspace_packages = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages");
+    for package in packages {
+        copy_tree(
+            &workspace_packages.join(package),
+            &project
+                .path()
+                .join(format!("node_modules/@uniflowed/{package}")),
+        );
+    }
+}
+
+fn assert_pre_bundled_imports(
+    source: &str,
+    dependency: &str,
+    module: &str,
+    context: &dyn Fn(&str, &str) -> String,
+) {
+    let mut imports: Vec<&str> = source
+        .split('"')
+        .filter(|specifier| {
+            specifier.starts_with('/')
+                && !specifier.starts_with("/@id/")
+                && !specifier.starts_with("/@react-refresh")
+                && imports_dependency(specifier, dependency)
+        })
+        .collect();
+    imports.sort_unstable();
+    imports.dedup();
+    assert!(
+        !imports.is_empty(),
+        "{}",
+        context(
+            &format!("{module} did not import {dependency:?} from any browser URL"),
+            source
+        )
+    );
+    assert!(
+        imports
+            .iter()
+            .all(|specifier| specifier.contains("/.vite/deps/")),
+        "{}",
+        context(
+            &format!("{module} imported {dependency:?} without pre-bundling: {imports:?}"),
+            source
+        )
+    );
+}
+
+fn imports_dependency(specifier: &str, dependency: &str) -> bool {
+    match dependency {
+        "react" => {
+            specifier.contains("/.vite/deps/react.js")
+                || specifier.starts_with("/node_modules/react/")
+        }
+        "react-dom" => {
+            specifier.contains("/.vite/deps/react-dom.js")
+                || (specifier.starts_with("/node_modules/react-dom/")
+                    && !specifier.starts_with("/node_modules/react-dom/client"))
+        }
+        "react-dom/client" => {
+            specifier.contains("/.vite/deps/react-dom_client.js")
+                || specifier.starts_with("/node_modules/react-dom/client")
+        }
+        "react-server-dom-parcel" => specifier.contains("react-server-dom-parcel"),
+        _ => specifier.contains(dependency),
+    }
+}
+
+/// Every CommonJS peer that browser-facing `@uniflowed/*` packages import is
+/// pre-bundled when the package is installed rather than linked
+/// (ubugeeei-prod/uf#1138).
+///
+/// This is the general form of
+/// [`dev_pre_bundles_the_flight_client_an_installed_router_imports`]: Vite's
+/// optimizer skips `@uniflowed/*` packages because they ship Flow, so a
+/// CommonJS peer first seen from one of those installed packages must be named
+/// in `optimizeDeps.include`. Pure ESM edges are represented too:
+/// `happy-dom`, reached by `@uniflowed/react-testing`, resolves to the browser
+/// stub the package declares instead of a pre-bundle.
+#[test]
+fn dev_pre_bundles_commonjs_peers_installed_uniflowed_packages_import() {
+    if !fixture_ready() || !loopback_ready() {
+        return;
+    }
+    let project = Project::new(&installed_browser_package_app());
+    project.write(
+        "package.json",
+        "{\n  \"name\": \"uf-installed-browser-packages\",\n  \"private\": true,\n  \"type\": \"module\"\n}\n",
+    );
+    install_uniflowed_packages(
+        &project,
+        &[
+            "cell",
+            "core",
+            "form",
+            "hooks",
+            "query",
+            "react",
+            "react-testing",
+            "router",
+            "state",
+            "stylex",
+            "test",
+            "ui",
+            "validator",
+        ],
+    );
+
+    serve_dev_on_any_port(project.path(), |server, port, said, body| {
+        let context = |what: &str, response: &str| {
+            format!("`uf dev` {what}\n{response}\n{}", server_said(said))
+        };
+        assert!(
+            body.starts_with("HTTP/1.1 200")
+                && body.contains("role=\"switch\"")
+                && body.contains("installed-"),
+            "{}",
+            context("did not render the installed package probe", body)
+        );
+
+        for (module, path, dependencies) in [
+            (
+                "the client probe",
+                "/app/browser-packages.js",
+                &["react"] as &[&str],
+            ),
+            (
+                "@uniflowed/router/client",
+                "/node_modules/@uniflowed/router/client.js",
+                &["react", "react-dom/client"],
+            ),
+            (
+                "@uniflowed/router/runtime",
+                "/node_modules/@uniflowed/router/internal/runtime.js",
+                &["react", "react-dom"],
+            ),
+            (
+                "@uniflowed/router/flight-browser",
+                "/node_modules/@uniflowed/router/internal/flight-browser.js",
+                &["react-server-dom-parcel"],
+            ),
+            (
+                "@uniflowed/ui/switch",
+                "/node_modules/@uniflowed/ui/switch.js",
+                &["react"],
+            ),
+            (
+                "@uniflowed/hooks/render",
+                "/node_modules/@uniflowed/hooks/render.js",
+                &["react"],
+            ),
+            (
+                "@uniflowed/state",
+                "/node_modules/@uniflowed/state/index.js",
+                &["react"],
+            ),
+            (
+                "@uniflowed/query/react",
+                "/node_modules/@uniflowed/query/react.js",
+                &["react"],
+            ),
+            (
+                "@uniflowed/form/use-form",
+                "/node_modules/@uniflowed/form/use-form.js",
+                &["react"],
+            ),
+            (
+                "@uniflowed/react-testing/browser module shim",
+                "/node_modules/@uniflowed/react-testing/internal/browser/module.js",
+                &["react-dom/client"],
+            ),
+        ] {
+            let source = get(server, port, path, said);
+            assert!(
+                source.starts_with("HTTP/1.1 200"),
+                "{}",
+                context(&format!("did not serve {module}"), &source)
+            );
+            for dependency in dependencies {
+                assert_pre_bundled_imports(&source, dependency, module, &context);
+            }
+        }
+
+        let dom = get(
+            server,
+            port,
+            "/node_modules/@uniflowed/react-testing/internal/dom.js",
+            said,
+        );
+        assert!(
+            dom.starts_with("HTTP/1.1 200"),
+            "{}",
+            context(
+                "did not serve @uniflowed/react-testing's DOM installer",
+                &dom
+            )
+        );
+        assert!(
+            !dom.contains("/node_modules/happy-dom") && !dom.contains("\"happy-dom\""),
+            "{}",
+            context(
+                "served react-testing's DOM installer with the Node-only happy-dom import",
+                &dom
+            )
+        );
+        assert!(
+            dom.contains("/node_modules/@uniflowed/react-testing/internal/browser/happy-dom.js"),
+            "{}",
+            context(
+                "did not resolve happy-dom to react-testing's browser stub",
+                &dom
+            )
+        );
+    });
+}
+
 /// Vite's dependency cache stays inside the project, whatever is above it.
 ///
 /// Left to itself, Vite keeps the optimizer's cache in the nearest

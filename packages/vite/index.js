@@ -134,6 +134,25 @@ const resolved = (id) => `\0${id}`;
 const VIRTUAL_IDS = new Set([...Object.values(VIRTUAL), ...Object.values(FLIGHT_VIRTUAL)]);
 
 /**
+ * CommonJS packages the browser can reach only through an installed
+ * `@uniflowed/*` package.
+ *
+ * uf excludes its own packages from Vite's dependency optimizer because they
+ * ship Flow, so Vite will not discover a CommonJS peer through them once they
+ * live under a project's `node_modules`. React Testing's `happy-dom` edge is
+ * ESM and browser-mapped to a local stub, and the optional `axe-core` edge is
+ * named separately below only when the project actually installed it.
+ */
+const CLIENT_COMMONJS_DEPENDENCIES = Object.freeze([
+  "react",
+  "react/jsx-runtime",
+  "react/jsx-dev-runtime",
+  "react/compiler-runtime",
+  "react-dom",
+  "react-dom/client",
+]);
+
+/**
  * Prefix of the virtual module that carries one source module's StyleX rules.
  *
  * Not NUL-prefixed, unlike the virtual modules above: Vite's CSS pipeline keys
@@ -417,12 +436,7 @@ function flowPlugin({
         },
         optimizeDeps: {
           include: [
-            "react",
-            "react/jsx-runtime",
-            "react/jsx-dev-runtime",
-            "react/compiler-runtime",
-            "react-dom",
-            "react-dom/client",
+            ...CLIENT_COMMONJS_DEPENDENCIES,
             // React's Flight client, for an application whose routes render as
             // Server Components; `FLIGHT_BROWSER_DEPENDENCIES` says why.
             ...(flightState == null ? [] : FLIGHT_BROWSER_DEPENDENCIES),
