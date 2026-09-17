@@ -75,19 +75,19 @@ flow_flowlib = { path = "upstream/flow/rust_port/crates/flow_flowlib" }
 flow_lazy = { path = "upstream/flow/rust_port/crates/flow_lazy" }
 flow_lint_settings = { path = "upstream/flow/rust_port/crates/flow_lint_settings" }
 flow_parser = { path = "upstream/flow/rust_port/crates/flow_parser" }
-oxc_allocator = "0.147.0"
+oxc_allocator = "0.149.0"
 # The TypeScript syntax tree `uf_dts` reads declaration files into, and the
 # visitor it walks one with. Both are already in the graph under
 # `oxc_parser` and `oxc_semantic`; named here because `uf_dts` matches on the
 # tree itself rather than through either of them.
-oxc_ast = "0.147.0"
-oxc_ast_visit = "0.147.0"
-oxc_codegen = "0.147.0"
-oxc_parser = "0.147.0"
-oxc_semantic = "0.147.0"
+oxc_ast = "0.149.0"
+oxc_ast_visit = "0.149.0"
+oxc_codegen = "0.149.0"
+oxc_parser = "0.149.0"
+oxc_semantic = "0.149.0"
 oxc_sourcemap = "8.1.2"
-oxc_span = "0.147.0"
-oxc_transformer = "0.147.0"
+oxc_span = "0.149.0"
+oxc_transformer = "0.149.0"
 flow_parser_utils = { path = "upstream/flow/rust_port/crates/flow_parser_utils" }
 flow_parsing = { path = "upstream/flow/rust_port/crates/flow_parsing" }
 flow_type_sig = { path = "upstream/flow/rust_port/crates/flow_type_sig" }

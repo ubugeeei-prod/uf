@@ -115,7 +115,7 @@ fn every_declaration_file_parses_as_typescript() {
             oxc_parser::Parser::new(&allocator, &declarations, oxc_span::SourceType::d_ts())
                 .parse();
         assert!(
-            !parsed.panicked && parsed.diagnostics.is_empty(),
+            !parsed.fatal_error && parsed.diagnostics.is_empty(),
             "{}: the declarations do not parse as TypeScript:\n{declarations}\n{:?}",
             case.display(),
             parsed
