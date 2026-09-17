@@ -54,6 +54,11 @@ pub(super) static ENVIRONMENTS: &[Environment] = &[
     environment!("webassembly.js"),
     environment!("intl.js"),
     environment!("node.js"),
+    // TypeScript declarations name Intl's option dictionaries through the
+    // `Intl` namespace, while Flow's libdefs expose the older `$` aliases.
+    // This bridges those spellings for packages translated from `.d.ts`. See
+    // ubugeeei-prod/uf#1089.
+    ("uf-intl.js", include_str!("../../libdefs/intl.js")),
     // uf's own, and the only one not from the submodule. Vite ships its client
     // types as TypeScript and Flow's `core.js` types `import.meta` as
     // `{ [string]: unknown, url?: string, ... }`, so `import.meta.env`,
