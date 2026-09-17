@@ -24,7 +24,7 @@ export component BadList() {
   return <PostList>{child}</PostList>;
 }
 export component BadAction() {
-  const action = <button>Wrong action</button>;
+  const action = <button type="button">Wrong action</button>;
   return (
     // expect: does not render
     <EmptyState title="Empty" action={action}>
