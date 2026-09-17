@@ -356,26 +356,26 @@ export component ToastRegion(
   ...rest: Rest
 ) {
   const queued = useSyncExternalStore(subscribeToQueue, readQueue, readQueue);
-  const region = useElementRef<HTMLElement>();
+  const regionRef = useElementRef<HTMLElement>();
   // Where `F6` came from, so pressing it again gives focus back.
-  const cameFrom = useRef<HTMLElement | null>(null);
+  const cameFromRef = useRef<HTMLElement | null>(null);
   const passed = withoutComposed(rest, ["ref"]);
 
   useKeyCombo(
     "f6",
     () => {
-      const element = region.current;
+      const element = regionRef.current;
       if (element == null) {
         return;
       }
       const active: $FlowFixMe = element.ownerDocument.activeElement;
       if (active != null && element.contains(active)) {
-        const back = cameFrom.current;
-        cameFrom.current = null;
+        const back = cameFromRef.current;
+        cameFromRef.current = null;
         back?.focus?.();
         return;
       }
-      cameFrom.current = active;
+      cameFromRef.current = active;
       element.focus();
     },
     // The one case that matters is a notification arriving while the reader is
@@ -400,7 +400,7 @@ export component ToastRegion(
       {...passed}
       aria-label={label}
       ref={composeRefs(rest.ref, (element) => {
-        region.current = element;
+        regionRef.current = element;
       })}
       role="region"
       // So `F6` can put focus on the region itself, including while it is
@@ -430,13 +430,13 @@ export component ToastRegion(
 export component ToastRoot(children: React.Node, ...rest: Rest) {
   const notification = useNotification("Toast.Root");
   const base = useId();
-  const element = useElementRef<HTMLElement>();
+  const elementRef = useElementRef<HTMLElement>();
   const [titled, setTitled] = useState(false);
   const [described, setDescribed] = useState(false);
   const passed = withoutComposed(rest, ["ref"]);
 
-  const hovered = useHover(element);
-  const focusInside = useFocusWithin(element);
+  const hovered = useHover(elementRef);
+  const focusInside = useFocusWithin(elementRef);
   const documentVisible = useDocumentVisible();
   const paused = hovered || focusInside || !documentVisible;
 
@@ -486,7 +486,7 @@ export component ToastRoot(children: React.Node, ...rest: Rest) {
         aria-describedby={described ? parts.descriptionId : undefined}
         aria-labelledby={titled ? parts.titleId : undefined}
         ref={composeRefs(rest.ref, (node) => {
-          element.current = node;
+          elementRef.current = node;
         })}
         role="group"
       >
