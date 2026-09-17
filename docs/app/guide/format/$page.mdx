@@ -507,7 +507,10 @@ running it.
 | `no-invalid-html-attribute` | `markup/no-invalid-rel` — the plugin implements `rel` and so does uf, reporting a keyword that belongs to another element and the spellings the HTML standard calls non-conforming; an unrecognised keyword is left alone, because the registries `rel` draws on are open |
 | `style-prop-object` | `react/style-prop-object` |
 | `no-namespace` | `react/no-namespace` |
-| `no-unescaped-entities`, `button-has-type`, `checked-requires-onchange-or-readonly`, `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062) |
+| `no-unescaped-entities` | `react/no-unescaped-entities`, which reports `>` and `}` — the two that are usually the wreckage of a mistyped tag or a stray brace — and leaves `'` and `"` alone, because they render exactly as written and `don't` is the false positive this rule is known for. Text inside `<code>` and `<pre>` is meant as written, so it is not read |
+| `button-has-type` | `react/button-has-type` |
+| `checked-requires-onchange-or-readonly` | `react/checked-requires-onchange-or-readonly`, which stays silent when the companion is written in its HTML spelling (`readonly`, `onchange`) — that is `react/no-unknown-property`'s finding, so one line draws one diagnostic |
+| `no-this-in-sfc`, `no-unused-prop-types` | Not yet — [#1062](https://github.com/ubugeeei-prod/uf/issues/1062), waiting on the binding resolution in [#1161](https://github.com/ubugeeei-prod/uf/issues/1161) |
 
 #### eslint-plugin-react-hooks
 

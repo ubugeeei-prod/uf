@@ -12,6 +12,7 @@ mod a11y_interaction;
 mod a11y_tags;
 mod attribute_shape;
 mod catalogue;
+mod controls;
 mod driver;
 mod fetch;
 mod flow_expression;

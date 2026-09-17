@@ -9,6 +9,7 @@
 //! * `react/void-dom-elements-no-children` — `<img>`, `<br>` and the other
 //!   void elements hold nothing.
 //! * `react/jsx-no-comment-textnodes` — `//` and `/*` between tags are text.
+//! * `react/no-unescaped-entities` — a `>` or a `}` left in that text.
 //!
 //! Every one of them asks how nodes relate: which callback an element is
 //! returned from, which parameter a key names, what an element holds. So, like
@@ -82,6 +83,9 @@ const VOID_CHILDREN: &str = "react/void-dom-elements-no-children";
 
 /// `react/jsx-no-comment-textnodes`.
 const COMMENT_TEXT: &str = "react/jsx-no-comment-textnodes";
+
+/// `react/no-unescaped-entities`.
+const UNESCAPED_ENTITIES: &str = "react/no-unescaped-entities";
 
 /// Host elements that may hold neither children nor `dangerouslySetInnerHTML`.
 ///
@@ -174,6 +178,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &JsxWork) -> Vec<Finding> {
         children_prop: levels.children_prop.is_some(),
         void_children: levels.void_children.is_some(),
         comment_text: levels.comment_text.is_some(),
+        unescaped_entities: levels.unescaped_entities.is_some(),
         params: Vec::new(),
         pending_iteration: None,
         literal: 0,
@@ -233,6 +238,7 @@ struct Levels {
     children_prop: Option<Severity>,
     void_children: Option<Severity>,
     comment_text: Option<Severity>,
+    unescaped_entities: Option<Severity>,
 }
 
 impl Levels {
@@ -244,6 +250,7 @@ impl Levels {
             children_prop: severity(config, CHILDREN_PROP),
             void_children: severity(config, VOID_CHILDREN),
             comment_text: severity(config, COMMENT_TEXT),
+            unescaped_entities: severity(config, UNESCAPED_ENTITIES),
         }
     }
 
@@ -254,6 +261,7 @@ impl Levels {
             && self.children_prop.is_none()
             && self.void_children.is_none()
             && self.comment_text.is_none()
+            && self.unescaped_entities.is_none()
     }
 
     /// Whether a rule that also reads `createElement` and `cloneElement` is on.
@@ -269,6 +277,7 @@ impl Levels {
             CHILDREN_PROP => self.children_prop,
             VOID_CHILDREN => self.void_children,
             COMMENT_TEXT => self.comment_text,
+            UNESCAPED_ENTITIES => self.unescaped_entities,
             _ => None,
         }
     }
@@ -308,6 +317,7 @@ struct Walk<'ast> {
     children_prop: bool,
     void_children: bool,
     comment_text: bool,
+    unescaped_entities: bool,
     /// Parameters of the functions the walk is inside, innermost last, each
     /// with what it is to the iteration that calls its function.
     params: Vec<(&'ast str, Param)>,
@@ -429,6 +439,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
         if self.comment_text && self.literal == 0 && !literal {
             self.check_comment_text(&element.children.1);
         }
+        if self.unescaped_entities && self.literal == 0 && !literal {
+            self.check_unescaped_entities(&element.children.1);
+        }
 
         // An attribute value is an expression handed to this element, not
         // text rendered inside whatever encloses it.
@@ -460,6 +473,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
     ) -> Result<(), ()> {
         if self.comment_text && self.literal == 0 {
             self.check_comment_text(&fragment.frag_children.1);
+        }
+        if self.unescaped_entities && self.literal == 0 {
+            self.check_unescaped_entities(&fragment.frag_children.1);
         }
         self.children(&fragment.frag_children.1)
     }
@@ -874,6 +890,53 @@ impl<'ast> Walk<'ast> {
                     "`{opener}` between JSX tags is text, not a comment, so it shows on the page; \
                      write `{{/* … */}}` to comment it out, or `{{\"{opener} …\"}}` if the slashes \
                      are meant to be seen"
+                ),
+            });
+        }
+    }
+
+    // --- react/no-unescaped-entities ----------------------------------------
+
+    /// A `>` or a `}` left in JSX text.
+    ///
+    /// Both render, so this is a suspicion rather than a defect — and each is
+    /// usually the wreckage of something else. A stray `>` is what a mistyped
+    /// tag leaves behind, and a `}` what is left when a `{` was dropped or a
+    /// container closed twice.
+    ///
+    /// **`'` and `"` are deliberately not reported**, although the plugin
+    /// reports all four by default. They render exactly as written — they are
+    /// only special inside an attribute — so reporting them makes `don't` a
+    /// finding, which is the reason this is the rule projects most often switch
+    /// off. uf reports the two worth looking at and stays quiet about prose.
+    ///
+    /// The scan reads `raw` rather than `value`, so `&gt;` is the four
+    /// characters somebody already escaped and is not a finding.
+    ///
+    /// Text inside `<code>` and `<pre>` is not read, for the reason
+    /// [`Walk::check_comment_text`] does not read it: there it is meant as
+    /// written.
+    fn check_unescaped_entities(&mut self, children: &'ast [jsx::Child<Loc, Loc>]) {
+        for child in children {
+            let jsx::Child::Text { loc, inner } = child else {
+                continue;
+            };
+            let Some((at, found)) = inner
+                .raw
+                .char_indices()
+                .find(|(_, character)| matches!(character, '>' | '}'))
+            else {
+                continue;
+            };
+            let (line, column) = offset_position(loc, &inner.raw, at);
+            let escape = if found == '>' { "&gt;" } else { "{'}'}" };
+            self.found.push(Finding {
+                rule: UNESCAPED_ENTITIES,
+                line,
+                column,
+                message: format!(
+                    "`{found}` in JSX text renders as itself, and is usually what a mistyped tag \
+                     or a dropped brace left behind; write `{escape}` if it is meant to be read"
                 ),
             });
         }
