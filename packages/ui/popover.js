@@ -222,13 +222,19 @@ export component PopoverBody(
   const left = useRef(false);
   const triggerRef = popover.triggerRef;
 
+  // useAnchor accepts ref objects and reads them from layout/effects.
+  // uf-lint-disable-next-line react-compiler/refs
   const anchored = useAnchor({
     align,
     alignOffset,
+    // uf-lint-disable-next-line react-compiler/refs
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
+    // `open` is popover metadata; no ref value is read during render.
+    // uf-lint-disable-next-line react-compiler/refs
     open: popover.open,
+    // uf-lint-disable-next-line react-compiler/refs
     overlayRef: bodyRef,
     side,
     sideOffset,
@@ -288,19 +294,28 @@ export component PopoverBody(
         opener?.focus?.();
       }
     };
+    // The ref objects are stable; this effect reads them after the opening commit.
+    // uf-lint-disable-next-line react-compiler/refs
   }, [popover.open, triggerRef, close, initialFocus]);
 
   // A press outside is the other way a reader leaves, and the trigger is not
   // "outside" for the reason the module header gives.
+  // The outside-interaction hook accepts refs; it reads them from event handlers.
+  // uf-lint-disable-next-line react-compiler/refs
   useInteractOutside({
+    // `open` is popover metadata; the hook reads refs from event handlers.
+    // uf-lint-disable-next-line react-compiler/refs
     isDisabled: !popover.open,
     onInteractOutside: () => {
       left.current = true;
       close();
     },
+    // uf-lint-disable-next-line react-compiler/refs
     refs: [bodyRef, triggerRef],
   });
 
+  // `open` is popover metadata; no ref value is read during render.
+  // uf-lint-disable-next-line react-compiler/refs
   if (!popover.open) {
     return null;
   }
@@ -312,11 +327,15 @@ export component PopoverBody(
   const named = rest["aria-label"] != null || rest["aria-labelledby"] != null;
 
   const props = withProps(passed, {
+    // `triggered` and `base` are popover metadata, not ref values.
+    // uf-lint-disable-next-line react-compiler/refs
     "aria-labelledby": named || !popover.triggered ? undefined : `${popover.base}-trigger`,
     children,
     "data-align": anchored.align,
     "data-side": anchored.side,
     "data-state": "open",
+    // `base` is popover metadata, not a ref value.
+    // uf-lint-disable-next-line react-compiler/refs
     id: `${popover.base}-body`,
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       if (event.key !== "Escape") {

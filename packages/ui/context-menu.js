@@ -141,7 +141,9 @@ export component ContextMenuTrigger(children: React.Node, render?: RenderProp, .
     // No point: the menu goes against the element, which is where the reader's
     // focus already is.
     openAt(null);
-    menu.pendingFocus.current = "first";
+    // This is an instruction for the menu body after the opening commit.
+    // uf-lint-disable-next-line react-compiler/immutability
+    menu.pendingFocusRef.current = "first";
     menu.setOpen(true);
   }, [menu, openAt]);
 
@@ -150,7 +152,9 @@ export component ContextMenuTrigger(children: React.Node, render?: RenderProp, .
   useLongPress(triggerRef, (event: Event) => {
     const pointer: $FlowFixMe = event;
     openAt(pointAt(pointer.clientX ?? 0, pointer.clientY ?? 0));
-    menu.pendingFocus.current = "first";
+    // This is an instruction for the menu body after the opening commit.
+    // uf-lint-disable-next-line react-compiler/immutability
+    menu.pendingFocusRef.current = "first";
     menu.setOpen(true);
   });
 
@@ -173,7 +177,9 @@ export component ContextMenuTrigger(children: React.Node, render?: RenderProp, .
         // commands the page has for what they pressed on.
         press.preventDefault();
         openAt(pointAt(press.clientX ?? 0, press.clientY ?? 0));
-        menu.pendingFocus.current = "first";
+        // This is an instruction for the menu body after the opening commit.
+        // uf-lint-disable-next-line react-compiler/immutability
+        menu.pendingFocusRef.current = "first";
         menu.setOpen(true);
       }),
       onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
@@ -194,6 +200,7 @@ export component ContextMenuTrigger(children: React.Node, render?: RenderProp, .
         triggerRef.current = element;
         // What focus goes back to when the menu closes. It is deliberately not
         // registered as the menu's *name*; see the module header.
+        // uf-lint-disable-next-line react-compiler/immutability
         menu.triggerRef.current = element;
       }),
     },

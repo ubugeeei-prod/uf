@@ -165,7 +165,7 @@ type ComboboxState = {|
    * and the list does not exist to be measured until the next commit. A ref
    * rather than state because nothing renders it.
    */
-  readonly pendingActive: { current: "first" | "last" | null },
+  readonly pendingActiveRef: { current: "first" | "last" | null },
   readonly inputRef: { current: HTMLElement | null },
   readonly listRef: { current: HTMLElement | null },
   /** How many options are in the list, for the live region. */
@@ -231,7 +231,7 @@ export component ComboboxRoot(
   const [activeId, setActiveId] = useState<string | null>(null);
   const [count, setCount] = useState(0);
   const [labelled, setLabelled] = useState(false);
-  const pendingActive = useRef<"first" | "last" | null>(null);
+  const pendingActiveRef = useRef<"first" | "last" | null>(null);
   const inputRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLElement | null>(null);
 
@@ -265,7 +265,7 @@ export component ComboboxRoot(
       clear,
       activeId,
       setActiveId,
-      pendingActive,
+      pendingActiveRef,
       inputRef,
       listRef,
       count,
@@ -312,6 +312,8 @@ export component ComboboxLabel(children: React.Node, ...rest: Rest) {
 /** The text field, and every key the pattern defines. */
 export component ComboboxInput(...rest: Rest) {
   const combobox = useCombobox("Combobox.Input");
+  // `rest` filtering is render-time props work; ref objects are only passed through later.
+  // uf-lint-disable-next-line react-compiler/refs
   const passed = withoutComposed(rest, ["onChange", "onKeyDown", "ref"]);
 
   /** The options in the document right now, in document order. */
@@ -325,7 +327,8 @@ export component ComboboxInput(...rest: Rest) {
     if (items.length === 0) {
       // The list is not in the document yet, so leave an instruction for the
       // commit that puts it there.
-      combobox.pendingActive.current = movement === "next" ? "first" : "last";
+      // uf-lint-disable-next-line react-compiler/immutability
+      combobox.pendingActiveRef.current = movement === "next" ? "first" : "last";
       return;
     }
     const at = items.findIndex((item) => item.id === combobox.activeId);
@@ -358,6 +361,8 @@ export component ComboboxInput(...rest: Rest) {
       // The browser's own dropdown would sit on top of this one.
       autoComplete="off"
       id={`${combobox.base}-input`}
+      // Input events read list refs and update the virtual active descendant.
+      // uf-lint-disable-next-line react-compiler/refs
       onChange={composeHandlers(rest.onChange, (event: $FlowFixMe) => {
         combobox.setText(event.target.value);
         combobox.setOpen(true);
@@ -366,6 +371,8 @@ export component ComboboxInput(...rest: Rest) {
         // Enter takes something the reader can no longer see.
         combobox.setActiveId(null);
       })}
+      // Key events read list refs and update the virtual active descendant.
+      // uf-lint-disable-next-line react-compiler/refs
       onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
@@ -411,7 +418,10 @@ export component ComboboxInput(...rest: Rest) {
           combobox.setActiveId(null);
         }
       })}
+      // React calls callback refs during commit; keyboard handlers read the input later.
+      // uf-lint-disable-next-line react-compiler/refs
       ref={composeRefs(rest.ref, (element) => {
+        // uf-lint-disable-next-line react-compiler/immutability
         combobox.inputRef.current = element;
       })}
       role="combobox"
@@ -443,7 +453,7 @@ export component ComboboxList(
   ...rest: Rest
 ) {
   const combobox = useCombobox("Combobox.List");
-  const { activeId, count, listRef, inputRef, pendingActive, setActiveId, setCount } = combobox;
+  const { activeId, count, listRef, inputRef, pendingActiveRef, setActiveId, setCount } = combobox;
   const close = useStableCallback(() => {
     combobox.setOpen(false);
     combobox.setActiveId(null);
@@ -453,13 +463,19 @@ export component ComboboxList(
   // `align="start"` because a list of options belongs under the edge the text
   // starts at, and `--uf-anchor-trigger-width` is what a stylesheet reads to
   // make it exactly as wide as the field.
+  // useAnchor accepts ref objects and reads them from layout/effects.
+  // uf-lint-disable-next-line react-compiler/refs
   const anchored = useAnchor({
     align,
     alignOffset,
+    // uf-lint-disable-next-line react-compiler/refs
     anchorRef: inputRef,
     avoidCollisions,
     collisionPadding,
+    // `open` is combobox metadata; no ref value is read during render.
+    // uf-lint-disable-next-line react-compiler/refs
     open: combobox.open,
+    // uf-lint-disable-next-line react-compiler/refs
     overlayRef: listRef,
     side,
     sideOffset,
@@ -470,6 +486,8 @@ export component ComboboxList(
   // `children` that no dependency list can describe. Every write below is
   // guarded by a comparison, so the effect settles after one extra pass rather
   // than looping.
+  // This effect measures caller-rendered options after commit.
+  // uf-lint-disable-next-line react-compiler/immutability
   useEffect(() => {
     const list = listRef.current;
     if (list == null) {
@@ -485,9 +503,10 @@ export component ComboboxList(
       setCount(items.length);
     }
 
-    const wanted = pendingActive.current;
+    const wanted = pendingActiveRef.current;
     if (wanted != null) {
-      pendingActive.current = null;
+      // uf-lint-disable-next-line react-compiler/immutability
+      pendingActiveRef.current = null;
       setActiveId(moveTo(items, -1, wanted, false)?.id ?? null);
       return;
     }
