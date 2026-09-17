@@ -118,6 +118,9 @@ export hook useAsync<T>(
     // Guarded rather than unconditional: a reload that arrives while a call is
     // already in flight would otherwise build a new state object, and a new
     // object is a re-render that changes nothing anyone can see.
+    // This effect owns the request lifecycle; the synchronous write marks that
+    // external request as pending before its callbacks settle it.
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setState((current) => (current.pending ? current : { ...current, pending: true }));
 
     const run = (tries: number) => {

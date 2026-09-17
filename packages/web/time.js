@@ -171,6 +171,9 @@ export component Time(
 
   React.useEffect(() => {
     if (format === "local") {
+      // The local zone is a browser value; the server text stays deterministic
+      // until the client can replace it after hydration.
+      // uf-lint-disable-next-line react-compiler/set-state-in-effect
       setText(at.toZonedDateTimeISO(Temporal.Now.timeZoneId()).toLocaleString(locale));
     } else if (format === "relative") {
       setText(relative(at));

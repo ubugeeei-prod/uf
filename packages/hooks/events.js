@@ -213,6 +213,8 @@ export hook useEventSource(url: string | null, options?: EventSourceOptions): Us
   useEffect(() => {
     const Constructor = streamConstructor();
     if (Constructor == null || url == null || !enabled) {
+      // The connection state mirrors whether the external stream exists.
+      // uf-lint-disable-next-line react-compiler/set-state-in-effect
       setStatus(stopped ? "closed" : "idle");
       return;
     }

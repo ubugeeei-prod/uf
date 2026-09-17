@@ -33,6 +33,9 @@ export hook useTheme(): [Theme, (next: Theme) => void] {
   const [theme, setTheme] = useState<Theme>("system");
 
   useEffect(() => {
+    // This adopts browser storage after hydration; the server and first client
+    // render must keep the deterministic "system" value.
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setTheme(stored());
   }, []);
 
