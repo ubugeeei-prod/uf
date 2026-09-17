@@ -263,6 +263,8 @@ export component AvatarFallback(
 
   useEffect(() => {
     if (!waiting) {
+      // The fallback delay resets after the image leaves its loading window.
+      // uf-lint-disable-next-line react-compiler/set-state-in-effect
       setElapsed(false);
     }
   }, [waiting]);

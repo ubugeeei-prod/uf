@@ -465,6 +465,8 @@ export component ToastRoot(children: React.Node, ...rest: Rest) {
   // A notification whose duration was changed under it — "Uploading…" with no
   // duration becoming "Uploaded" with one — starts its countdown from there.
   useEffect(() => {
+    // The timeout duration is state because render hands it to useTimeout.
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setLeft(duration);
     startedAt.current = Date.now();
   }, [duration]);

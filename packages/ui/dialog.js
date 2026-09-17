@@ -182,6 +182,8 @@ export component DialogTrigger(children: React.Node, render?: RenderProp, ...res
     children,
     onClick: composeHandlers(rest.onClick, () => dialog.setOpen(true)),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      // React calls callback refs during commit; focus restoration reads it later.
+      // uf-lint-disable-next-line react-compiler/immutability
       dialog.triggerRef.current = element;
     }),
   });
@@ -315,6 +317,8 @@ export component DialogBody(
     "aria-modal": "true",
     children,
     id: `${dialog.base}-body`,
+    // Key handling closes the mounted dialog and restores focus after events.
+    // uf-lint-disable-next-line react-compiler/refs
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
