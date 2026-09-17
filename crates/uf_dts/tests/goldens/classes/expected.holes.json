@@ -15,6 +15,6 @@
     "declaration": "Mixed",
     "construct": "class-heritage",
     "reason": "`Mixed` extends an expression that is not a name, which a Flow declaration cannot; the class extends nothing",
-    "line": 43
+    "line": 49
   }
 ]

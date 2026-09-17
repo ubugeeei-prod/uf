@@ -218,14 +218,12 @@ fn method_properties<'s, 'a>(
         collect_function_properties(interface, &mut interface_properties);
     }
     for implemented in &class.implements {
-        let TSTypeName::IdentifierReference(identifier) = &implemented.expression else {
-            continue;
-        };
-        if let Some(interfaces) = merges.interfaces.get(identifier.name.as_str()) {
-            for interface in interfaces {
-                collect_function_properties(interface, &mut interface_properties);
-            }
-        }
+        collect_function_properties_from_name(
+            &implemented.expression,
+            implemented.type_arguments.as_deref(),
+            merges,
+            &mut interface_properties,
+        );
     }
     if interface_properties.is_empty() {
         return FxHashSet::default();
@@ -244,6 +242,117 @@ fn collect_function_properties(
     out: &mut FxHashSet<CompactString>,
 ) {
     out.extend(interface.body.body.iter().filter_map(function_property_key));
+}
+
+fn collect_function_properties_from_name<'s, 'a>(
+    name: &TSTypeName<'a>,
+    arguments: Option<&TSTypeParameterInstantiation<'a>>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+) {
+    let TSTypeName::IdentifierReference(identifier) = name else {
+        return;
+    };
+    let written = identifier.name.as_str();
+    if let Some(interfaces) = merges.interfaces.get(written) {
+        for interface in interfaces {
+            collect_function_properties(interface, out);
+        }
+        return;
+    }
+    let Some(arguments) = arguments else {
+        return;
+    };
+    match written {
+        "Partial" | "Required" | "Readonly" => {
+            if let Some(target) = arguments.params.first() {
+                collect_function_properties_from_type(target, merges, out);
+            }
+        }
+        "Omit" => {
+            let (Some(target), Some(omitted)) = (arguments.params.first(), arguments.params.get(1))
+            else {
+                return;
+            };
+            let Some(omitted) = literal_keys(omitted) else {
+                return;
+            };
+            let mut properties = FxHashSet::default();
+            collect_function_properties_from_type(target, merges, &mut properties);
+            properties.retain(|key| !omitted.contains(key));
+            out.extend(properties);
+        }
+        "Pick" => {
+            let (Some(target), Some(picked)) = (arguments.params.first(), arguments.params.get(1))
+            else {
+                return;
+            };
+            let Some(picked) = literal_keys(picked) else {
+                return;
+            };
+            let mut properties = FxHashSet::default();
+            collect_function_properties_from_type(target, merges, &mut properties);
+            properties.retain(|key| picked.contains(key));
+            out.extend(properties);
+        }
+        _ => {}
+    }
+}
+
+fn collect_function_properties_from_type<'s, 'a>(
+    ty: &TSType<'a>,
+    merges: &Merges<'s, 'a>,
+    out: &mut FxHashSet<CompactString>,
+) {
+    match ty {
+        TSType::TSParenthesizedType(parenthesized) => {
+            collect_function_properties_from_type(&parenthesized.type_annotation, merges, out);
+        }
+        TSType::TSTypeReference(reference) => collect_function_properties_from_name(
+            &reference.type_name,
+            reference.type_arguments.as_deref(),
+            merges,
+            out,
+        ),
+        TSType::TSIntersectionType(intersection) => {
+            for member in &intersection.types {
+                collect_function_properties_from_type(member, merges, out);
+            }
+        }
+        TSType::TSTypeLiteral(literal) => {
+            out.extend(literal.members.iter().filter_map(function_property_key));
+        }
+        _ => {}
+    }
+}
+
+fn literal_keys(ty: &TSType<'_>) -> Option<FxHashSet<CompactString>> {
+    let mut keys = FxHashSet::default();
+    collect_literal_keys(ty, &mut keys)?;
+    Some(keys)
+}
+
+fn collect_literal_keys(ty: &TSType<'_>, out: &mut FxHashSet<CompactString>) -> Option<()> {
+    match ty {
+        TSType::TSParenthesizedType(parenthesized) => {
+            collect_literal_keys(&parenthesized.type_annotation, out)
+        }
+        TSType::TSNeverKeyword(_) => Some(()),
+        TSType::TSUnionType(union) => {
+            for member in &union.types {
+                collect_literal_keys(member, out)?;
+            }
+            Some(())
+        }
+        TSType::TSLiteralType(literal) => match &literal.literal {
+            TSLiteral::StringLiteral(string) => {
+                out.insert(string.value.to_compact_string());
+                Some(())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 fn class_method_key(element: &ClassElement<'_>) -> Option<CompactString> {
