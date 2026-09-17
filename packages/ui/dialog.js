@@ -353,6 +353,8 @@ export component DialogBody(
         first.focus();
       }
     }),
+    // React calls callback refs during commit; focus effects and traps read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       bodyRef.current = element;
     }),

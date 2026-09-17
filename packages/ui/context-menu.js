@@ -188,6 +188,8 @@ export component ContextMenuTrigger(children: React.Node, render?: RenderProp, .
         event.preventDefault();
         openHere();
       }),
+      // React calls callback refs during commit; focus restoration reads these later.
+      // uf-lint-disable-next-line react-compiler/refs
       ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
         triggerRef.current = element;
         // What focus goes back to when the menu closes. It is deliberately not

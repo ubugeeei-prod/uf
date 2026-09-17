@@ -223,6 +223,8 @@ export component AvatarImage(
     alt,
     onError: composeHandlers(rest.onError, () => report(source, "error")),
     onLoad: composeHandlers(rest.onLoad, () => report(source, "loaded")),
+    // React calls callback refs during commit; the load effect reads it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (node: HTMLImageElement | null) => {
       element.current = node;
     }),

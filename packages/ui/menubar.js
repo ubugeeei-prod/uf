@@ -187,6 +187,8 @@ export component MenubarRoot(children: renders* MenubarMenu, render?: RenderProp
         setActive(value);
       }
     }),
+    // React calls callback refs during commit; keyboard handlers read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       barRef.current = element;
     }),
@@ -274,6 +276,8 @@ export component MenubarTrigger(children: React.Node, render?: RenderProp, ...re
       menu.pendingFocus.current = end;
       bar.setOpen(value);
     }),
+    // React calls callback refs during commit; menu focus restoration reads it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       menu.triggerRef.current = element;
     }),
