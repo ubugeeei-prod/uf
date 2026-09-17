@@ -23,7 +23,11 @@ the last six reading one attribute each (#1188), four weighing a role against
 the element it was put on (#1178), and seven about focus and the keyboard
 (#1176). Three `security/*` rules join them (#1197): a `javascript:` URL in a
 prop, a `target="_blank"` without `noreferrer`, and an `iframe` with no
-`sandbox`. Alongside those, five overlays stopped closing on the touch that
+`sandbox`. Four more read a name or a value that is not a thing (#1203) — a DOM
+attribute React does not bind, a namespaced element name, a `style` prop that is
+not an object, and an unusable `rel` keyword. Both sets stop short of guessing:
+uf keeps no table of every DOM property or `rel` keyword, because those sets grow
+and a stale table starts reporting markup that has become correct. Alongside those, five overlays stopped closing on the touch that
 starts a page scroll (#1193) — a `pointerdown` alone is no longer read as a
 press that landed outside, so scrolling with a menu open leaves it open. This
 release also carries a batch of accessibility and test-library fixes that landed
@@ -45,6 +49,7 @@ was written for it.
 ### Added
 
 - **build**: TypeScript declarations for a Flow library (#1200)
+- **lint**: four rules about a name or a value that is not a thing (#1203)
 - **lint**: three security rules about a dangerous attribute value (#1197)
 - **lint**: six a11y rules that read one attribute (#1188)
 - **lint**: four a11y rules that weigh a role against its element (#1178)
