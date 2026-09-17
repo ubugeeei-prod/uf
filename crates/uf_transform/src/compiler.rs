@@ -133,15 +133,6 @@ pub fn compile(
 }
 
 /// What the official compiler did with one module.
-#[expect(
-    clippy::large_enum_variant,
-    reason = "`Ran` carries the compiled `File` inline and is what almost every compile \
-              returns; `Fatal` is the rare one, so the usual value is not the one paying \
-              for the other. One of these is moved per module compiled, against a compile \
-              that has just walked the whole tree — and boxing the AST would put an \
-              allocation on the path `uf_lint`'s allocation budget measures, to save a \
-              move nobody can find."
-)]
 pub enum Compiled {
     /// The compiler ran. `ast` is `None` when it rewrote nothing and handed
     /// back no binding renames.
@@ -250,8 +241,8 @@ fn rewritten_ast(
 }
 
 struct BindingRenamer {
-    declarations: FxHashMap<(String, u32), BindingId>,
-    references: FxHashMap<u32, BindingId>,
+    declarations: Vec<(u32, BindingId)>,
+    references: Vec<(u32, BindingId)>,
 }
 
 impl BindingRenamer {
@@ -261,7 +252,7 @@ impl BindingRenamer {
             .iter()
             .filter_map(|binding| {
                 let start = binding.declaration_start?;
-                Some(((binding.name.clone(), start), binding.id))
+                Some((start, binding.id))
             })
             .collect();
         let references = scope
@@ -283,14 +274,14 @@ impl BindingRenamer {
         apply_binding_renames(ast, &self.references, &targets, false);
     }
 
-    fn targets(&self, renames: &[BindingRenameInfo]) -> FxHashMap<BindingId, String> {
+    fn targets<'a>(&self, renames: &'a [BindingRenameInfo]) -> Vec<(BindingId, &'a str)> {
         renames
             .iter()
             .filter_map(|rename| {
-                let binding = self
-                    .declarations
-                    .get(&(rename.original.clone(), rename.declaration_start))?;
-                Some((*binding, rename.renamed.clone()))
+                let binding = self.declarations.iter().find_map(|(start, binding)| {
+                    (*start == rename.declaration_start).then_some(*binding)
+                })?;
+                Some((binding, rename.renamed.as_str()))
             })
             .collect()
     }
@@ -298,8 +289,8 @@ impl BindingRenamer {
 
 fn apply_binding_renames(
     value: &mut Value,
-    references: &FxHashMap<u32, BindingId>,
-    targets: &FxHashMap<BindingId, String>,
+    references: &[(u32, BindingId)],
+    targets: &[(BindingId, &str)],
     is_property_key: bool,
 ) {
     match value {
@@ -312,10 +303,14 @@ fn apply_binding_renames(
             if !is_property_key
                 && matches!(kind.as_str(), "Identifier" | "JSXIdentifier")
                 && let Some(node_id) = node_id(map)
-                && let Some(binding) = references.get(&node_id)
-                && let Some(renamed) = targets.get(binding)
+                && let Some(binding) = references
+                    .iter()
+                    .find_map(|(reference, binding)| (*reference == node_id).then_some(*binding))
+                && let Some(renamed) = targets
+                    .iter()
+                    .find_map(|(target, renamed)| (*target == binding).then_some(*renamed))
             {
-                map.insert("name".to_owned(), Value::String(renamed.clone()));
+                map.insert("name".to_owned(), Value::String((*renamed).to_owned()));
             }
 
             let computed = map
