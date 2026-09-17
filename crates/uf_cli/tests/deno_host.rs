@@ -926,9 +926,9 @@ fn uf_test_coverage_on_deno_refuses_before_a_worker_starts() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success(), "stderr:\n{stderr}");
     assert!(stderr.contains("uf test --coverage"), "stderr:\n{stderr}");
-    assert!(stderr.contains("needs Node.js"), "stderr:\n{stderr}");
+    assert!(stderr.contains("Node-only today"), "stderr:\n{stderr}");
     assert!(
-        stderr.contains("Deno provides neither"),
+        stderr.contains("Deno cannot provide that same Flow-source report"),
         "stderr:\n{stderr}"
     );
     assert!(
