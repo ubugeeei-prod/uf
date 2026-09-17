@@ -253,18 +253,26 @@ const CalendarSettings: React.Context<CalendarSettingsValue> = createContext({
  */
 export component DatePickerInput(...rest: Rest) {
   const picker = useDatePicker("DatePicker.Input");
+  // `rest` filtering is render-time props work; ref objects are only passed through later.
+  // uf-lint-disable-next-line react-compiler/refs
   const passed = withoutComposed(rest, ["onBlur", "onChange", "onKeyDown", "ref"]);
 
   return (
     <input
       {...passed}
       aria-invalid={picker.invalid ? "true" : undefined}
+      // Input events commit typed text while focus stays on the field ref.
+      // uf-lint-disable-next-line react-compiler/refs
       onBlur={composeHandlers(rest.onBlur, (event) => {
         picker.commit((event.currentTarget: $FlowFixMe).value);
       })}
+      // Input events commit typed text while focus stays on the field ref.
+      // uf-lint-disable-next-line react-compiler/refs
       onChange={composeHandlers(rest.onChange, (event) => {
         picker.setDraft((event.currentTarget: $FlowFixMe).value);
       })}
+      // Key events commit typed text while focus stays on the field ref.
+      // uf-lint-disable-next-line react-compiler/refs
       onKeyDown={composeHandlers(rest.onKeyDown, (event) => {
         if (event.key !== "Enter") {
           return;
@@ -274,7 +282,10 @@ export component DatePickerInput(...rest: Rest) {
         event.preventDefault();
         picker.commit((event.currentTarget: $FlowFixMe).value);
       })}
+      // React calls callback refs during commit; the calendar and picker read the field later.
+      // uf-lint-disable-next-line react-compiler/refs
       ref={composeRefs(rest.ref, (element) => {
+        // uf-lint-disable-next-line react-compiler/immutability
         picker.fieldRef.current = element;
       })}
       type="text"
