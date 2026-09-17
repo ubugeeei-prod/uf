@@ -6138,6 +6138,8 @@ describe("Table", () => {
     // document before the first sort or it announces nothing at all.
     const status = screen.getByRole("status");
     expect(status).toBeInTheDocument();
+    expect(status.style.position).toBe("absolute");
+    expect(status.style.clipPath).toBe("inset(50%)");
     expect(status.textContent).toBe("");
     await userEvent.click(screen.getByRole("button", { name: "Name" }));
     expect(screen.getByRole("status").textContent).toBe("Sorted by Name, ascending.");
