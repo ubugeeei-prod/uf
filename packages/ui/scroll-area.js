@@ -72,10 +72,10 @@ type ScrollAreaState = {|
   readonly base: string,
   readonly label: string,
   readonly viewportRef: { current: HTMLElement | null },
-  readonly remembered: { current: Offset },
+  readonly rememberedRef: { current: Offset },
   /** Written by the viewport, read by every scrollbar. */
   readonly report: () => void,
-  readonly scrollbars: { current: Array<HTMLElement> },
+  readonly scrollbarsRef: { current: Array<HTMLElement> },
 |};
 
 const ScrollAreaContext: React.Context<ScrollAreaState | null> = createContext(null);
@@ -106,24 +106,24 @@ hook useScrollArea(part: string): ScrollAreaState {
 export component ScrollAreaRoot(children: React.Node, label: string, ...rest: Rest) {
   const base = useId();
   const viewportRef = useRef<HTMLElement | null>(null);
-  const remembered = useRef<Offset>({ x: 0, y: 0 });
-  const scrollbars = useRef<Array<HTMLElement>>([]);
+  const rememberedRef = useRef<Offset>({ x: 0, y: 0 });
+  const scrollbarsRef = useRef<Array<HTMLElement>>([]);
 
   const state = useMemo(
     () => ({
       base,
       label,
-      remembered,
+      rememberedRef,
       report: () => {
         const viewport = viewportRef.current;
         if (viewport == null) {
           return;
         }
-        for (const scrollbar of scrollbars.current) {
+        for (const scrollbar of scrollbarsRef.current) {
           write(scrollbar, viewport);
         }
       },
-      scrollbars,
+      scrollbarsRef,
       viewportRef,
     }),
     [base, label],
@@ -145,7 +145,7 @@ export component ScrollAreaRoot(children: React.Node, label: string, ...rest: Re
  */
 export component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
   const area = useScrollArea("ScrollArea.Viewport");
-  const { remembered, report, viewportRef } = area;
+  const { rememberedRef, report, viewportRef } = area;
   const passed = withoutComposed(rest, ["ref"]);
 
   useEventListener(viewportRef, "scroll", () => {
@@ -155,7 +155,7 @@ export component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
     }
     // The reader's own position, including a deliberate scroll back to the
     // top — which is why the restore below never fights them.
-    remembered.current = { x: viewport.scrollLeft, y: viewport.scrollTop };
+    rememberedRef.current = { x: viewport.scrollLeft, y: viewport.scrollTop };
     report();
   });
 
@@ -167,7 +167,7 @@ export component ScrollAreaViewport(children: React.Node, ...rest: Rest) {
     if (viewport == null) {
       return;
     }
-    const { x, y } = remembered.current;
+    const { x, y } = rememberedRef.current;
     if (y !== 0 && viewport.scrollTop === 0) {
       viewport.scrollTop = y;
     }
@@ -213,7 +213,7 @@ export component ScrollAreaScrollbar(
   ...rest: Rest
 ) {
   const area = useScrollArea("ScrollArea.Scrollbar");
-  const { report, scrollbars } = area;
+  const { report, scrollbarsRef } = area;
   const passed = withoutComposed(rest, ["ref"]);
 
   return (
@@ -225,8 +225,8 @@ export component ScrollAreaScrollbar(
       aria-hidden="true"
       data-orientation={orientation}
       ref={composeRefs(rest.ref, (element: HTMLElement | null) => {
-        const kept = scrollbars.current.filter((each) => each !== element);
-        scrollbars.current = element == null ? kept : [...kept, element];
+        const kept = scrollbarsRef.current.filter((each) => each !== element);
+        scrollbarsRef.current = element == null ? kept : [...kept, element];
         report();
       })}
     >

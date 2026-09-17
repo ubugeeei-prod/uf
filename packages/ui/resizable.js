@@ -332,6 +332,8 @@ export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
       aria-valuemax={group.max}
       aria-valuemin={group.min}
       aria-valuenow={group.value}
+      // Key and pointer handlers keep gesture state in refs between events.
+      // uf-lint-disable-next-line react-compiler/refs
       onKeyDown={composeHandlers(rest.onKeyDown, (event: $FlowFixMe) => {
         if (group.disabled) {
           return;
@@ -373,7 +375,9 @@ export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
           moveBy(amount);
         }
       })}
+      // uf-lint-disable-next-line react-compiler/refs
       onPointerCancel={composeHandlers(rest.onPointerCancel, endDrag)}
+      // uf-lint-disable-next-line react-compiler/refs
       onPointerDown={composeHandlers(rest.onPointerDown, (event: $FlowFixMe) => {
         if (group.disabled) {
           return;
@@ -395,6 +399,7 @@ export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
         // it to move. The module header says what a press does on a track
         // instead, and why the two are not the same gesture.
       })}
+      // uf-lint-disable-next-line react-compiler/refs
       onPointerMove={composeHandlers(rest.onPointerMove, (event: $FlowFixMe) => {
         if (!dragging.current) {
           return;
@@ -404,6 +409,7 @@ export component ResizableHandle(label?: string = "Resize", ...rest: Rest) {
           group.setValue(share);
         }
       })}
+      // uf-lint-disable-next-line react-compiler/refs
       onPointerUp={composeHandlers(rest.onPointerUp, endDrag)}
       role="separator"
       // A separator that is not in the tab sequence is the WCAG 2.1.1 failure
