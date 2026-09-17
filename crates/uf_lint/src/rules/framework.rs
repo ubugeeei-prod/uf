@@ -300,6 +300,20 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "the file must parse with the official Flow parser",
     },
     RuleDescriptor {
+        id: "import/no-absolute-path",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "imports must name packages or project-relative paths, not filesystem roots",
+    },
+    RuleDescriptor {
+        id: "import/no-duplicates",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "mergeable static imports from the same module belong together",
+    },
+    RuleDescriptor {
         id: "uniflowed/no-tabs",
         category: RuleCategory::Uniflowed,
         default_level: RuleLevel::Error,

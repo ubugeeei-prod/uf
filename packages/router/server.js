@@ -23,7 +23,7 @@
 // `internal/stream.js` holds the mechanics and says which React renderer serves
 // which.
 
-import { noteRoute } from "@uniflowed/server/host";
+import { currentNonce, noteRoute } from "@uniflowed/server/host";
 import * as React from "react";
 
 import {
@@ -44,7 +44,6 @@ import {
 } from "./internal/runtime.js";
 
 import { type StreamDiagnostic, streamReporter } from "./internal/inspector.js";
-import { currentNonce } from "@uniflowed/server/host";
 
 import { redirectDocument, redirectResult, shellFor } from "./internal/shell.js";
 

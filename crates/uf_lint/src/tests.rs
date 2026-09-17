@@ -19,6 +19,7 @@ mod flow_expression;
 mod flow_module;
 mod flow_syntax;
 mod flow_type;
+mod imports;
 mod input;
 mod package;
 mod react;

@@ -44,6 +44,8 @@ pub enum RuleCategory {
     Router,
     /// `package.json` rules.
     Package,
+    /// Rules over static JavaScript imports.
+    Import,
     /// `@uniflowed/fetch` rules.
     Fetch,
     /// `@uniflowed/vite` rules.
