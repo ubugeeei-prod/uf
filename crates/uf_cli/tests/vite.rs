@@ -3666,7 +3666,23 @@ fn assert_artefact_shape(adapter: &str, deployed: &Path) {
                 "the `bun` entry must reach the handler dynamically, or its version check runs \
                  after the parse it exists to prevent:\n{server}"
             );
-            let bundled = fs::read_to_string(deployed.join("handler.js")).unwrap();
+            // The whole artefact, not `handler.js` alone — the same shape the
+            // `deno` arm below reads, and now for the same reason. The entry
+            // reaches the handler through `await import()` so that the version
+            // check above can run before the parse, and a dynamic import is a
+            // chunk boundary: `@uniflowed/server/bun` stopped being folded into
+            // `handler.js` and became `chunks/bun-*.js`. Reading only
+            // `handler.js` therefore found no `Bun.serve` at all and failed on
+            // every Bun, which is what #1181's first run caught. What this
+            // asserts is unchanged — the artefact uses Bun's server and Bun's
+            // file — and only where it looks for it has moved.
+            let handler = fs::read_to_string(deployed.join("handler.js")).unwrap();
+            let chunks = fs::read_dir(deployed.join("chunks"))
+                .unwrap()
+                .map(|entry| fs::read_to_string(entry.unwrap().path()).unwrap())
+                .collect::<Vec<_>>()
+                .join("\n");
+            let bundled = format!("{server}\n{handler}\n{chunks}");
             for expected in ["Bun.serve", "Bun.file"] {
                 assert!(
                     bundled.contains(expected),
