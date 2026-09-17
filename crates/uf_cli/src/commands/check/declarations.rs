@@ -281,7 +281,10 @@ impl Declarations {
                 package.ask(&self.root, subpath);
                 return package.entries.contains_key(subpath);
             }
-            if let Some(package) = Package::read(&self.root, name, directory, directory, subpath) {
+            let declarations = real_directory(&self.root, directory);
+            if let Some(package) =
+                Package::read(&self.root, name, directory, &declarations, None, subpath)
+            {
                 self.packages.insert(directory.to_owned(), package);
                 return true;
             }
@@ -303,7 +306,15 @@ impl Declarations {
             package.ask(&self.root, subpath);
             return package.entries.contains_key(subpath);
         }
-        match Package::read(&self.root, name, &directory, &types, subpath) {
+        let declarations = real_directory(&self.root, &types);
+        match Package::read(
+            &self.root,
+            name,
+            &directory,
+            &declarations,
+            Some(uf_dts::types_package(name)),
+            subpath,
+        ) {
             Some(package) => {
                 self.packages.insert(directory, package);
                 true
@@ -489,6 +500,7 @@ impl Package {
         name: &str,
         directory: &str,
         declarations: &str,
+        types_package: Option<String>,
         subpath: &str,
     ) -> Option<Self> {
         let base = root.join(declarations);
@@ -499,7 +511,7 @@ impl Package {
             version: manifest.version().map(str::to_owned),
             directory: directory.to_owned(),
             declarations: declarations.to_owned(),
-            types_package: (declarations != directory).then(|| uf_dts::types_package(name)),
+            types_package,
             manifest,
             entries: BTreeMap::from([(subpath.to_owned(), entry)]),
             unanswered: BTreeSet::new(),
@@ -603,6 +615,37 @@ fn translate_package(base: &Path, entries: &[&str]) -> Option<(Translation, Vec<
 fn beside_types(types: &str, name: &str) -> Option<String> {
     let base = types.strip_suffix(&uf_dts::types_package(name))?;
     Some(format!("{base}{name}"))
+}
+
+/// The directory's real path, project-relative, when it resolves inside the
+/// project.
+///
+/// pnpm installs a public `node_modules/name` symlink to a package in
+/// `node_modules/.store/.../node_modules/name`. TypeScript declaration files
+/// inside that package resolve their own bare imports from the real store
+/// location, while the importing project still reaches the package through the
+/// public symlink. The synthetic manifest stays at the public path; translated
+/// declaration modules are filed at the real path so their imports climb from
+/// the same place Node and TypeScript use.
+fn real_directory(root: &Path, directory: &str) -> String {
+    let Ok(root) = root.canonicalize() else {
+        return directory.to_owned();
+    };
+    let Ok(resolved) = root.join(directory).canonicalize() else {
+        return directory.to_owned();
+    };
+    let Ok(relative) = resolved.strip_prefix(&root) else {
+        return directory.to_owned();
+    };
+    let Some(relative) = relative.to_str() else {
+        return directory.to_owned();
+    };
+    let relative = relative.replace('\\', "/");
+    if relative.is_empty() {
+        directory.to_owned()
+    } else {
+        relative
+    }
 }
 
 /// `file` under `declarations`, as an `exports` target written in the
@@ -835,6 +878,50 @@ mod tests {
         // Asked again, nothing changes and nothing is translated again.
         declarations.request("tiny", ".", Some("node_modules/tiny"), &mut || None);
         assert!(!declarations.flush());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_package_translates_declarations_from_its_real_directory() {
+        let directory = project(&[
+            (
+                "node_modules/.store/facade@1.0.0/node_modules/facade/package.json",
+                r#"{ "name": "facade", "version": "1.0.0", "types": "./index.d.ts" }"#,
+            ),
+            (
+                "node_modules/.store/facade@1.0.0/node_modules/facade/index.d.ts",
+                SCHEMA,
+            ),
+        ]);
+        std::os::unix::fs::symlink(
+            ".store/facade@1.0.0/node_modules/facade",
+            directory.path().join("node_modules/facade"),
+        )
+        .expect("the pnpm-style public package link is made");
+        let mut declarations = Declarations::uncached(&root_of(&directory));
+
+        declarations.request("facade", ".", Some("node_modules/facade"), &mut || None);
+        assert!(declarations.flush());
+
+        assert_eq!(
+            paths(&declarations),
+            [
+                "node_modules/facade/package.json",
+                "node_modules/.store/facade@1.0.0/node_modules/facade/index.d.ts.flow",
+            ]
+        );
+        let manifest: Value =
+            serde_json::from_str(&declarations.sources()[0].source).expect("the manifest is JSON");
+        assert_eq!(
+            manifest["exports"]["."]["flow"],
+            "./../.store/facade@1.0.0/node_modules/facade/index.d.ts.flow"
+        );
+        let translated = declarations.translated(&[]);
+        assert_eq!(translated[0].types_package, None);
+        assert_eq!(
+            translated[0].declarations,
+            "node_modules/.store/facade@1.0.0/node_modules/facade"
+        );
     }
 
     #[test]

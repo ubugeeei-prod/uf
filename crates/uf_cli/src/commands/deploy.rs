@@ -246,7 +246,8 @@ fn refuse_old_bun() -> Result<()> {
     );
 }
 
-/// `1.4.2` as three numbers, or `None` for anything that is not three numbers.
+/// A Bun version as three numbers, or `None` for anything that is not three
+/// numbers.
 ///
 /// `None` rather than a guess: a Bun that spells its version in a shape uf
 /// does not recognise is not a Bun uf should refuse on the strength of a
@@ -255,7 +256,7 @@ fn version_parts(version: &str) -> Option<(u64, u64, u64)> {
     let mut parts = version.trim_start_matches('v').split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
-    // `1.4.2-canary.3` is a patch of `2`, which is the comparison a person
+    // `1.3.14-canary.3` is a patch of `14`, which is the comparison a person
     // means when they ask whether a prerelease of the floor is the floor.
     let patch = parts
         .next()?

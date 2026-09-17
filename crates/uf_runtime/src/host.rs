@@ -101,12 +101,13 @@ pub struct HostSupport {
 /// construct is ordinary ES that has been legal since ES1, uf's own transform
 /// emits none of it, and asking for React's `bun` export condition resolves to
 /// a build that carries it too. What is left is to say which Bun a Bun
-/// deployment needs, which is what this is. See ubugeeei-prod/uf#1048.
+/// deployment needs, which is what this is. Bun 1.3.13 rejects the built
+/// `handler.js`; 1.3.14 imports it and serves it. See ubugeeei-prod/uf#1048.
 ///
 /// `packages/vite/driver.js` holds the same number for the generated entry,
 /// and `crates/uf_cli/tests/vite.rs` reads it back out of a built artefact so
 /// the two cannot drift.
-pub const BUN_MINIMUM: &str = "1.4.2";
+pub const BUN_MINIMUM: &str = "1.3.14";
 
 /// Every host, in the order they are documented.
 ///

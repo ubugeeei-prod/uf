@@ -1874,11 +1874,12 @@ serve({ handle: fetch, staticDir, beginRequest, routing${cron.option} }).catch((
  * labelled statement in `else` position — `else a: if (…)`, in every
  * `react-dom-server*.production.js` including the `bun` one — and Bun's engine
  * rejects it with `Cannot find scope for the label 'a'` before this release.
+ * Bun 1.3.13 rejects the built `handler.js`; 1.3.14 imports it and serves it.
  * It is ordinary ES that Node runs, uf does not emit it, and the `bun` export
  * condition does not avoid it, so there is nothing for uf to lower. See
  * ubugeeei-prod/uf#1048.
  */
-const MINIMUM_BUN = "1.4.2";
+const MINIMUM_BUN = "1.3.14";
 
 /**
  * The source of `server.js`: the Bun socket around that handler.
