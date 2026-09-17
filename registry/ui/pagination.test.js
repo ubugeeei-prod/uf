@@ -53,8 +53,10 @@ describe("Pagination", () => {
 
   it("does not link past the first page", () => {
     const { container } = render(<FirstPage />);
-    expect(screen.queryByRole("link", { name: "Previous page" })).toBeNull();
-    expect(container.querySelector('[aria-disabled="true"]')).not.toBeNull();
+    const previous = screen.getByRole("link", { name: "Previous page" });
+    expect(previous).toHaveAttribute("aria-disabled", "true");
+    expect(previous).not.toHaveAttribute("href");
+    expect(container.querySelector('[aria-disabled="true"]')).toBe(previous);
   });
 
   it("dresses every link", () => {
@@ -69,12 +71,8 @@ describe("Pagination", () => {
     await expect(container).toHaveNoAxeViolations();
   });
 
-  it("has no other accessibility violations on its first page", async () => {
-    // `aria-prohibited-attr` is off here alone: the part keeps `aria-label` on
-    // the disabled end after taking its `href`, which leaves a named `generic`,
-    // and that is `@uniflowed/ui`'s to fix, ubugeeei-prod/uf#1047. Every other
-    // rule still runs.
+  it("has no accessibility violations on its first page", async () => {
     const { container } = render(<FirstPage />);
-    await expect(container).toHaveNoAxeViolations({ disabledRules: ["aria-prohibited-attr"] });
+    await expect(container).toHaveNoAxeViolations();
   });
 });

@@ -19,10 +19,6 @@
 // it. The column's width and an item's label are drawn from `data-collapsed`,
 // and the current page's item from `aria-current`.
 //
-// On a narrow screen the part draws its sheet panel, and a collapsed item its
-// tooltip, with no prop for a class, so neither takes this file's look:
-// ubugeeei-prod/uf#1081.
-//
 // # What to keep true when you change it
 //
 // * **Name the navigation.** `label` on `SidebarContent` says which navigation
@@ -71,6 +67,32 @@ const styles = stylex.create({
     borderInlineEndWidth: "1px",
     borderInlineEndStyle: "solid",
     borderInlineEndColor: ufTokens.border,
+  },
+  panel: {
+    position: "fixed",
+    zIndex: 50,
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    top: 0,
+    bottom: 0,
+    width: "min(20rem, calc(100% - 48px))",
+    padding: 0,
+    overflowY: "auto",
+    backgroundColor: ufTokens.surface,
+    color: ufTokens.ink,
+    boxShadow: ufTokens.shadowPanel,
+    borderWidth: 0,
+    borderStyle: "solid",
+    borderColor: ufTokens.border,
+    borderLeftWidth: { default: 0, ":is([data-side=right])": "1px" },
+    borderRightWidth: { default: 0, ":is([data-side=left])": "1px" },
+    left: { default: 0, ":is([data-side=right])": "auto" },
+    right: { default: 0, ":is([data-side=left])": "auto" },
+    outlineWidth: { default: "0", ":focus-visible": "2px" },
+    outlineStyle: "solid",
+    outlineColor: ufTokens.focus,
+    outlineOffset: "-2px",
   },
   header: {
     display: "flex",
@@ -156,6 +178,23 @@ const styles = stylex.create({
     outlineColor: ufTokens.focus,
     outlineOffset: "2px",
   },
+  tooltip: {
+    zIndex: 60,
+    boxSizing: "border-box",
+    maxWidth: "20rem",
+    margin: 0,
+    paddingBlock: ufTokens.space1,
+    paddingInline: ufTokens.space2,
+    backgroundColor: ufTokens.ink,
+    color: ufTokens.canvas,
+    fontFamily: ufTokens.fontSans,
+    fontSize: ufTokens.textXs,
+    fontWeight: ufTokens.weightMedium,
+    lineHeight: ufTokens.leadingTight,
+    overflowWrap: "break-word",
+    borderRadius: ufTokens.radiusSm,
+    boxShadow: ufTokens.shadowCard,
+  },
 });
 
 /**
@@ -191,6 +230,8 @@ export component Sidebar(
 export component SidebarContent(
   children: React.Node,
   label: string,
+  panelXstyle?: StyleArgument,
+  panelClassName?: string,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
@@ -200,6 +241,9 @@ export component SidebarContent(
       {...forwarded(rest)}
       className={classNames(props(styles.content, xstyle).className, className)}
       label={label}
+      sheetProps={{
+        className: classNames(props(styles.panel, panelXstyle).className, panelClassName),
+      }}
     >
       {children}
     </Primitive.SidebarBody>
@@ -250,6 +294,8 @@ export component SidebarItem(
   label: string,
   icon?: React.Node,
   render?: RenderProp,
+  tooltipXstyle?: StyleArgument,
+  tooltipClassName?: string,
   xstyle?: StyleArgument,
   className?: string,
   ...rest: Rest
@@ -260,6 +306,9 @@ export component SidebarItem(
       className={classNames(props(styles.item, xstyle).className, className)}
       label={label}
       render={render}
+      tooltipProps={{
+        className: classNames(props(styles.tooltip, tooltipXstyle).className, tooltipClassName),
+      }}
     >
       {icon == null ? null : (
         <span {...props(styles.icon)} aria-hidden="true">

@@ -193,7 +193,6 @@ export component ToggleGroupRoot(
 
   const passed = withoutComposed(rest, ["onKeyDown", "ref"]);
   const rootProps = withProps(passed, {
-    "aria-orientation": orientation,
     children,
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       const group: $FlowFixMe = event.currentTarget;
