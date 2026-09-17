@@ -7635,6 +7635,46 @@ fn build_output(root: &Path) -> (bool, String) {
     (output.status.success(), said)
 }
 
+/// A freshly scaffolded application should start quiet.
+///
+/// The RSC client-reference table used to dynamically import two router
+/// internals that the server bundle had already imported synchronously, so
+/// Rollup warned about `INEFFECTIVE_DYNAMIC_IMPORT` before the user had written
+/// any code. See ubugeeei-prod/uf#1144.
+#[test]
+fn a_scaffolded_project_builds_without_uf_module_warnings() {
+    if !fixture_ready() {
+        return;
+    }
+    let project = Project::new(&[]);
+    let scaffold = uf()
+        .arg("--cwd")
+        .arg(project.path())
+        .args(["init", "--force", "--name", "quiet-build"])
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&scaffold.stdout),
+        String::from_utf8_lossy(&scaffold.stderr)
+    );
+    assert!(scaffold.status.success(), "the scaffold failed:\n{said}");
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "the scaffold's first build failed:\n{said}");
+    for unexpected in [
+        "INEFFECTIVE_DYNAMIC_IMPORT",
+        "virtual:uf/client-references",
+        "@uniflowed/router/internal/boundaries.js",
+        "@uniflowed/router/internal/error-view.js",
+    ] {
+        assert!(
+            !said.contains(unexpected),
+            "the scaffold's first build printed {unexpected:?}:\n{said}"
+        );
+    }
+}
+
 /// `rendering.modes: ["ssg"]` is a project saying it deploys to a static host.
 ///
 /// Before ubugeeei-prod/uf#336 the list was read by nothing: this project

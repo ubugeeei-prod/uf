@@ -82,7 +82,7 @@ function host(): $FlowFixMe {
  * formats a date sees a plausible one — and `setSystemTime` is how a test that
  * cares says which.
  */
-export function useFakeTimers(): void {
+export function installFakeClock(): void {
   if (installed != null) {
     return;
   }
@@ -120,7 +120,7 @@ export function useFakeTimers(): void {
 }
 
 /** Put the real scheduling globals back. */
-export function useRealTimers(): void {
+export function restoreRealClock(): void {
   if (installed == null) {
     return;
   }

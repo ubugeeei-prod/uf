@@ -102,6 +102,26 @@ function orphanedRuns(file: string): Array<{ line: number, text: string }> {
   return orphaned;
 }
 
+const INSTALL_COMMAND = /\b(?:npm\s+(?:install|i)|pnpm\s+add|yarn\s+add|bun\s+add)\b/g;
+const UNTAGGED_UNIFLOWED_PACKAGE = /@uniflowed\/[a-z0-9-]+(?![a-z0-9-])(?!@)/g;
+
+/** Untagged manual installs of packages that currently publish only alpha releases. */
+function untaggedInstalls(file: string): Array<{ line: number, text: string }> {
+  return fs
+    .readFileSync(file, "utf8")
+    .split("\n")
+    .flatMap((line, index) => {
+      if (!INSTALL_COMMAND.test(line)) {
+        INSTALL_COMMAND.lastIndex = 0;
+        return [];
+      }
+      INSTALL_COMMAND.lastIndex = 0;
+      const found = [...line.matchAll(UNTAGGED_UNIFLOWED_PACKAGE)];
+      UNTAGGED_UNIFLOWED_PACKAGE.lastIndex = 0;
+      return found.length === 0 ? [] : [{ line: index + 1, text: line.trim() }];
+    });
+}
+
 describe("the repository's Markdown tables", () => {
   it("has some to check", () => {
     // A walk that found nothing would pass every case below without looking at
@@ -117,6 +137,16 @@ describe("the repository's Markdown tables", () => {
       }
     }
     expect(orphaned).toEqual([]);
+  });
+
+  it("does not suggest untagged installs of prerelease @uniflowed packages", () => {
+    const untagged = [];
+    for (const file of documents()) {
+      for (const install of untaggedInstalls(file)) {
+        untagged.push(`${path.relative(REPO, file)}:${install.line} ${install.text}`);
+      }
+    }
+    expect(untagged).toEqual([]);
   });
 
   it("recognises an orphan when there is one", () => {
@@ -146,6 +176,12 @@ describe("the repository's Markdown tables", () => {
       const colonly = path.join(dir, "colon.md");
       fs.writeFileSync(colonly, ["| a | b |", "| : | : |", "| 1 | 2 |", ""].join("\n"));
       expect(orphanedRuns(colonly)).toEqual([{ line: 1, text: "| a | b |" }]);
+      const tagged = path.join(dir, "tagged.md");
+      fs.writeFileSync(tagged, "npm install @uniflowed/ui@alpha\n");
+      expect(untaggedInstalls(tagged)).toEqual([]);
+      const untagged = path.join(dir, "untagged.md");
+      fs.writeFileSync(untagged, "npm install @uniflowed/ui\n");
+      expect(untaggedInstalls(untagged)).toEqual([{ line: 1, text: "npm install @uniflowed/ui" }]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

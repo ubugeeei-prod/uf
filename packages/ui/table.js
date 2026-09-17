@@ -57,9 +57,8 @@
 // It is rendered by the root rather than offered as a part a caller places,
 // because a sort that announces nothing is the failure this component exists
 // to prevent and a part is a thing somebody forgets. The cost is one extra
-// element in the caller's layout, and a sentence that is visible until they
-// style it — which is not a bad thing to see, and a table that shows its sort
-// status in words is a table more people can use.
+// element after the table, hidden from layout and visible to the screen readers
+// watching it.
 
 "use client";
 
@@ -104,6 +103,19 @@ const TableContext: React.Context<TableState | null> = createContext(null);
 
 /** Whether the rows below are header rows, which decides `th` versus `td`. */
 const HeaderContext: React.Context<boolean> = createContext(false);
+
+const VISUALLY_HIDDEN_STYLE = Object.freeze({
+  border: 0,
+  clip: "rect(0, 0, 0, 0)",
+  clipPath: "inset(50%)",
+  height: 1,
+  margin: -1,
+  overflow: "hidden",
+  padding: 0,
+  position: "absolute",
+  whiteSpace: "nowrap",
+  width: 1,
+});
 
 hook useTable(part: string): TableState {
   const state = useContext(TableContext);
@@ -205,7 +217,13 @@ export component TableRoot(
         first render, holding nothing, because a live region that appears with
         its text is a live region that says nothing.
       */}
-      <div aria-atomic="true" aria-live="polite" data-uf-table-status="" role="status">
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        data-uf-table-status=""
+        role="status"
+        style={VISUALLY_HIDDEN_STYLE}
+      >
         {message}
       </div>
     </TableContext.Provider>

@@ -231,6 +231,12 @@ than a gap. They are plain Flow with no native bindings, so what runs in the
 browser is what you can read, and `uf_lib` in this repository is the registry
 they are all declared in.
 
+Every release so far is a prerelease. If you install an `@uniflowed/*` package
+by hand, name the prerelease tag — for example,
+`npm install @uniflowed/ui@alpha` — so the package you get is from the same
+current alpha line as the rest of the scope. `uf new` does not need that tag:
+it writes exact package versions for the binary that created the project.
+
 [Packages](https://docs.uniflowed.dev/reference/packages) is the annotated list,
 including which are on npm and which resolve only through this repository's
 workspace.

@@ -6,13 +6,24 @@
 // because a leaked fake clock is the failure mode that matters most: the next
 // file's `setTimeout` never fires and the run hangs with no explanation.
 
+import path from "node:path";
+
 import { afterEach, describe, expect, it, uft } from "@uniflowed/test";
+
+import { noDiagnosticsAreReported } from "../../tests/library/type-tests.js";
 
 afterEach(() => {
   uft.useRealTimers();
 });
 
 describe("installing and removing", () => {
+  it("does not look like a React hook to the checker", () => {
+    noDiagnosticsAreReported({
+      fixture: path.join("tests", "type-tests", "timers.js"),
+      alongside: ["packages/test"],
+    });
+  });
+
   it("reports whether it is installed", () => {
     expect(uft.isFakeTimers()).toBe(false);
     uft.useFakeTimers();

@@ -401,17 +401,14 @@ export component CalendarMonth(children?: (date: PlainDate) => renders CalendarD
           {columns.map((day) => (
             <th
               // The full day name is the accessible name and the short one is
-              // what is drawn, because a column of `Wednesday` is not a calendar
-              // and a screen reader saying "We" is not a day. `aria-hidden` on
-              // the visible text is what keeps the two from being announced one
-              // after the other.
+              // real header text, because axe rightly refuses an empty table
+              // header. `aria-label` wins over the contents for the announced
+              // name, so a reader still hears "Wednesday" rather than "Wed".
               aria-label={day.toLocaleString(calendar.locale, COLUMN_FORMAT)}
               key={day.dayOfWeek}
               scope="col"
             >
-              <span aria-hidden="true">
-                {day.toLocaleString(calendar.locale, COLUMN_ABBREVIATION)}
-              </span>
+              {day.toLocaleString(calendar.locale, COLUMN_ABBREVIATION)}
             </th>
           ))}
         </tr>
