@@ -210,6 +210,33 @@ fn interactive_to_noninteractive_accepts_the_documented_pass() {
     );
 }
 
+/// An `<a>` is a control only when it is a link.
+///
+/// Which it is, is a *role* question, so it is asked of the generated ARIA
+/// table rather than settled by the element's name: `a[href]` is a `link` — a
+/// widget — while a bare `<a>` is `generic`, which nothing focuses and no
+/// keyboard reaches. Telling somebody that an `<a>` with no `href` "is a
+/// control a keyboard reaches" would be telling them something untrue of the
+/// markup in front of them.
+#[test]
+fn an_anchor_is_a_control_only_when_it_is_a_link() {
+    reports(
+        "a11y/no-interactive-element-to-noninteractive-role",
+        &[r#"<a href="/x" role="article">Home</a>"#],
+    );
+    accepts(
+        "a11y/no-interactive-element-to-noninteractive-role",
+        &[
+            // No `href`: `generic`, so there is no control here to be told it
+            // is not one.
+            r#"<a role="article">Home</a>"#,
+            r#"<area role="article" />"#,
+            // A spread may be carrying the `href` in.
+            r#"<a role="article" {...rest}>Home</a>"#,
+        ],
+    );
+}
+
 // --- a11y/no-noninteractive-element-to-interactive-role ---------------------
 
 #[test]
@@ -294,6 +321,29 @@ fn noninteractive_element_interactions_accepts_the_documented_pass() {
             // A spread may carry a role in.
             r#"<article onClick={open} onKeyDown={open} {...rest}>Open</article>"#,
         ],
+    );
+}
+
+/// An event property the source settles as nothing is not a handler.
+///
+/// React installs no listener for `onKeyDown={null}`, so an element carrying
+/// only those answers neither a pointer nor a key and there is nothing to say
+/// about where its handlers sit. Attribute presence is not proof of a handler.
+#[test]
+fn a_statically_nullish_event_property_is_not_a_handler() {
+    accepts(
+        "a11y/no-noninteractive-element-interactions",
+        &[
+            r#"<article onClick={null} onKeyDown={null}>Open</article>"#,
+            // A real click and no real key press is one of the other two
+            // rules' markup: see `the_interaction_rules_divide_the_markup_three_ways`.
+            r#"<article onClick={open} onKeyDown={null}>Open</article>"#,
+        ],
+    );
+    // The same markup with handlers that are really installed.
+    reports(
+        "a11y/no-noninteractive-element-interactions",
+        &[r#"<article onClick={open} onKeyDown={open}>Open</article>"#],
     );
 }
 

@@ -702,6 +702,72 @@ fn control_has_associated_label_sees_the_label_it_is_wrapped_in() {
     );
 }
 
+/// A control the browser names by itself is not one to ask markup for.
+///
+/// `<input type="submit">` and `<input type="reset">` are announced by the
+/// user agent's own label — "Submit", "Reset" — when no `value` overrides it,
+/// so nothing is missing from them. `type="button"` has no such default: the
+/// `value` is its whole name, and an absent or empty one names nothing.
+#[test]
+fn control_has_associated_label_accepts_the_name_a_control_type_supplies() {
+    accepts(
+        "a11y/control-has-associated-label",
+        &[
+            r#"<input type="submit" />"#,
+            r#"<input type="reset" />"#,
+            r#"<input type="submit" value="Send" />"#,
+            r#"<input type="button" value="Send" />"#,
+            // A value this module does not hold may well be a name.
+            "<input type=\"button\" value={label} />",
+        ],
+    );
+    reports(
+        "a11y/control-has-associated-label",
+        &[
+            r#"<input type="button" />"#,
+            r#"<input type="button" value="" />"#,
+        ],
+    );
+}
+
+/// A `placeholder` is a hint, not a name.
+///
+/// Screen readers do not announce it by default, it is drawn at reduced
+/// contrast, and it disappears the moment anything is typed. A field whose
+/// only words are a placeholder is exactly the field this rule is for, and a
+/// `<label>` is exactly what its advice asks for.
+#[test]
+fn control_has_associated_label_does_not_take_a_placeholder_for_a_label() {
+    reports(
+        "a11y/control-has-associated-label",
+        &[
+            r#"<input placeholder="Email" />"#,
+            r#"<textarea placeholder="Comment" />"#,
+        ],
+    );
+}
+
+/// What is between a `<textarea>`'s tags is its value, not its label.
+///
+/// HTML gives a textarea no `value` attribute and takes the initial value from
+/// its content, and a `<select>`'s children are its options. Counting either
+/// as a name is how an unnamed field goes unreported. A `<button>`'s content
+/// *is* its label, and still counts.
+#[test]
+fn control_has_associated_label_reads_control_content_as_a_value() {
+    reports(
+        "a11y/control-has-associated-label",
+        &[
+            "<textarea>Write something here</textarea>",
+            "<select><option>One</option></select>",
+        ],
+    );
+    accepts(
+        "a11y/control-has-associated-label",
+        &["<button>Save</button>"],
+    );
+}
+
 /// Three rules ask what an element is announced as, and each owns its own
 /// elements: no markup is reported by two of them.
 ///

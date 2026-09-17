@@ -41,7 +41,7 @@ use uf_flow::ast::jsx;
 
 use super::aria::{self, Implied, Written};
 use super::value::Value;
-use super::{INTERACTIVE_ELEMENTS, KEY_HANDLERS, Tree, attribute, has_handler, has_spread};
+use super::{Tree, has_handler, has_key_handler, has_spread, is_interactive};
 use crate::{Severity, severity};
 
 /// `a11y/aria-unsupported-elements`.
@@ -358,7 +358,11 @@ fn interactive_to_noninteractive(
     host: &str,
     opening: &jsx::Opening<Loc, Loc>,
 ) {
-    if !INTERACTIVE_ELEMENTS.contains(host) {
+    // A `{...spread}` may be carrying the very attribute that decides whether
+    // this is a control at all — an `<a>` is a link only with an `href`. This
+    // is the one rule here that *reports* when the answer is "interactive", so
+    // an answer the source does not settle must not be read as a yes.
+    if has_spread(opening) || !is_interactive(tree.scope, host, opening) {
         return;
     }
     let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
@@ -392,7 +396,7 @@ fn noninteractive_to_interactive(
     host: &str,
     opening: &jsx::Opening<Loc, Loc>,
 ) {
-    if INTERACTIVE_ELEMENTS.contains(host) {
+    if is_interactive(tree.scope, host, opening) {
         return;
     }
     let Some((written, Written::Role(role))) = aria::written_role(tree.scope, opening) else {
@@ -449,7 +453,10 @@ fn noninteractive_element_interactions(
     host: &str,
     opening: &jsx::Opening<Loc, Loc>,
 ) {
-    if INTERACTIVE_ELEMENTS.contains(host) || has_spread(opening) || !has_handler(opening) {
+    if is_interactive(tree.scope, host, opening)
+        || has_spread(opening)
+        || !has_handler(tree.scope, opening)
+    {
         return;
     }
     // An element a keyboard can reach is not the defect this rule names. The
@@ -467,10 +474,7 @@ fn noninteractive_element_interactions(
     }
     // Without a key handler this is one of the other two rules' markup. See
     // the doc comment: the split exists so that nothing is reported twice.
-    if !KEY_HANDLERS
-        .iter()
-        .any(|handler| attribute(opening, handler).is_some())
-    {
+    if !has_key_handler(tree.scope, opening) {
         return;
     }
     let Some(role) = settled_role(tree, host, opening) else {

@@ -42,7 +42,9 @@ use uf_flow::Loc;
 use uf_flow::ast::jsx;
 
 use super::value::Value;
-use super::{INTERACTIVE_ELEMENTS, KEY_HANDLERS, Tree, aria, attribute, has_handler, has_spread};
+use super::{
+    Tree, aria, attribute, handler, has_handler, has_key_handler, has_spread, is_interactive,
+};
 use crate::{Severity, severity};
 
 /// `a11y/aria-activedescendant-has-tabindex`.
@@ -168,15 +170,8 @@ pub(super) fn tab_index(tree: &Tree<'_>, opening: &jsx::Opening<Loc, Loc>) -> Op
 pub(super) fn focusable(tree: &Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) -> bool {
     match tab_index(tree, opening) {
         Some(index) => index >= 0.0,
-        None => INTERACTIVE_ELEMENTS.contains(name),
+        None => is_interactive(tree.scope, name, opening),
     }
-}
-
-/// Whether the element answers a key press.
-fn has_key_handler(opening: &jsx::Opening<Loc, Loc>) -> bool {
-    KEY_HANDLERS
-        .iter()
-        .any(|handler| attribute(opening, handler).is_some())
 }
 
 /// The role written on this element, when one is.
@@ -284,10 +279,10 @@ fn activedescendant_has_tabindex(
 /// the mouse pair alone simply never opens for somebody tabbing through.
 fn mouse_events_have_key_events(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc, Loc>) {
     for (mouse, key) in [("onMouseOver", "onFocus"), ("onMouseOut", "onBlur")] {
-        let Some(written) = attribute(opening, mouse) else {
+        let Some(written) = handler(tree.scope, opening, mouse) else {
             continue;
         };
-        if attribute(opening, key).is_some() {
+        if handler(tree.scope, opening, key).is_some() {
             continue;
         }
         tree.report(
@@ -312,12 +307,12 @@ fn mouse_events_have_key_events(tree: &mut Tree<'_>, opening: &jsx::Opening<Loc,
 /// `a11y/no-static-element-interactions`, which is where the other half of
 /// this question lives — see the module documentation.
 fn click_events_have_key_events(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
-    let Some(written) = attribute(opening, "onClick") else {
+    let Some(written) = handler(tree.scope, opening, "onClick") else {
         return;
     };
     // The element HTML already works with a keyboard: a `<button>` answers
     // Enter and Space without being told, and its `onClick` fires for both.
-    if INTERACTIVE_ELEMENTS.contains(name) || has_key_handler(opening) {
+    if is_interactive(tree.scope, name, opening) || has_key_handler(tree.scope, opening) {
         return;
     }
     let Some(role) = written_role_name(tree, opening) else {
@@ -342,7 +337,7 @@ fn click_events_have_key_events(tree: &mut Tree<'_>, name: &str, opening: &jsx::
 /// reachable. Read from the generated ARIA table rather than from a list kept
 /// here, so that "is this a widget" has one answer across the crate.
 fn interactive_supports_focus(tree: &mut Tree<'_>, name: &str, opening: &jsx::Opening<Loc, Loc>) {
-    if attribute(opening, "onClick").is_none() && !has_key_handler(opening) {
+    if handler(tree.scope, opening, "onClick").is_none() && !has_key_handler(tree.scope, opening) {
         return;
     }
     let Some((written, aria::Written::Role(role))) = aria::written_role(tree.scope, opening) else {
@@ -381,7 +376,7 @@ fn no_noninteractive_tabindex(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
     let Some(index) = tab_index(tree, opening) else {
         return;
     };
-    if index < 0.0 || INTERACTIVE_ELEMENTS.contains(name) {
+    if index < 0.0 || is_interactive(tree.scope, name, opening) {
         return;
     }
     // A stop with something to do at it. An element that answers a pointer or
@@ -393,7 +388,7 @@ fn no_noninteractive_tabindex(tree: &mut Tree<'_>, name: &str, opening: &jsx::Op
     // the `tabIndex` this rule would ask for and the handlers become
     // unreachable, so that rule reports them. Nothing the author writes would
     // satisfy both, which is the one thing a pair of rules must never do.
-    if has_handler(opening) {
+    if has_handler(tree.scope, opening) {
         return;
     }
     // A written role decides it: a widget role is a control somebody is

@@ -252,3 +252,40 @@ fn the_focusable_container_rules_do_not_contradict_each_other() {
         &[r#"<div role="region" aria-label="Clips" onKeyDown={move}>x</div>"#],
     );
 }
+
+/// The pair stays non-contradictory when the handler is statically nothing.
+///
+/// `onKeyDown={null}` installs no listener, so there is nothing to do at the
+/// stop and this rule reports it — while the interactions rule stays silent,
+/// because there are no handlers to be unreachable. The two move together
+/// because they ask one shared question; if they ever stopped, obeying one
+/// would bring the other back.
+#[test]
+fn a_nullish_handler_gives_a_tab_stop_nothing_to_do() {
+    let nullish = r#"<article tabIndex={0} onKeyDown={null}>x</article>"#;
+    reports("a11y/no-noninteractive-tabindex", &[nullish]);
+    accepts("a11y/no-noninteractive-element-interactions", &[nullish]);
+
+    // A handler that is really installed still answers for the stop.
+    let wired = r#"<article tabIndex={0} onKeyDown={move}>x</article>"#;
+    accepts("a11y/no-noninteractive-tabindex", &[wired]);
+    accepts("a11y/no-noninteractive-element-interactions", &[wired]);
+}
+
+/// An `<a>` with no `href` is not a control, so a tab stop on one is a stop
+/// with nothing to do at it.
+///
+/// Whether the anchor is a link is asked of the generated ARIA table — with an
+/// `href` it is a `link`, without one it is `generic` — which is what keeps
+/// this rule and the two role rules from disagreeing about one anchor.
+#[test]
+fn an_anchor_that_is_not_a_link_is_not_a_control() {
+    reports(
+        "a11y/no-noninteractive-tabindex",
+        &[r#"<a tabIndex={0}>Docs</a>"#],
+    );
+    accepts(
+        "a11y/no-noninteractive-tabindex",
+        &[r#"<a href="/docs" tabIndex={0}>Docs</a>"#],
+    );
+}
