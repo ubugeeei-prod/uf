@@ -5,6 +5,10 @@ declare export class Base<out T> {
 export interface Service {
   start(): Promise<void>;
 }
+export interface MethodProperty {
+  readonly execute: (input: string) => Promise<string>;
+  readonly bound: (this: MethodProperty, input: string) => Promise<string>;
+}
 declare export abstract class Worker<out T = string> extends Base<T> implements Service {
 
 
@@ -30,6 +34,10 @@ declare export class Merged {
 
 
   readonly fromInterface: number;
+}
+declare export class Scheduler implements MethodProperty {
+  execute: (input: string) => Promise<string>;
+  bound: (this: MethodProperty, input: string) => Promise<string>;
 }
 declare export function mixin<T>(base: T): T;
 declare export class Mixed {

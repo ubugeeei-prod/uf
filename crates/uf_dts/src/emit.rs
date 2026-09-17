@@ -208,6 +208,100 @@ impl<'s, 'a> Merges<'s, 'a> {
     }
 }
 
+fn method_properties<'s, 'a>(
+    class: &'s Class<'a>,
+    merges: &Merges<'s, 'a>,
+    merged: &[&'s TSInterfaceDeclaration<'a>],
+) -> FxHashSet<CompactString> {
+    let mut interface_properties = FxHashSet::default();
+    for interface in merged {
+        collect_function_properties(interface, &mut interface_properties);
+    }
+    for implemented in &class.implements {
+        let TSTypeName::IdentifierReference(identifier) = &implemented.expression else {
+            continue;
+        };
+        if let Some(interfaces) = merges.interfaces.get(identifier.name.as_str()) {
+            for interface in interfaces {
+                collect_function_properties(interface, &mut interface_properties);
+            }
+        }
+    }
+    if interface_properties.is_empty() {
+        return FxHashSet::default();
+    }
+    class
+        .body
+        .body
+        .iter()
+        .filter_map(class_method_key)
+        .filter(|key| interface_properties.contains(key))
+        .collect()
+}
+
+fn collect_function_properties(
+    interface: &TSInterfaceDeclaration<'_>,
+    out: &mut FxHashSet<CompactString>,
+) {
+    out.extend(interface.body.body.iter().filter_map(function_property_key));
+}
+
+fn class_method_key(element: &ClassElement<'_>) -> Option<CompactString> {
+    let ClassElement::MethodDefinition(method) = element else {
+        return None;
+    };
+    if method.r#static
+        || method.optional
+        || method.kind != MethodDefinitionKind::Method
+        || method.r#type == MethodDefinitionType::TSAbstractMethodDefinition
+    {
+        return None;
+    }
+    key_text(&method.key, method.computed)
+}
+
+fn function_property_key(member: &TSSignature<'_>) -> Option<CompactString> {
+    let TSSignature::TSPropertySignature(property) = member else {
+        return None;
+    };
+    let annotation = property.type_annotation.as_deref()?;
+    if !matches!(annotation.type_annotation, TSType::TSFunctionType(_)) {
+        return None;
+    }
+    key_text(&property.key, property.computed)
+}
+
+fn key_text(key: &PropertyKey<'_>, _computed: bool) -> Option<CompactString> {
+    match key {
+        PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_compact_string()),
+        PropertyKey::PrivateIdentifier(_) => None,
+        PropertyKey::StringLiteral(literal) => Some(quoted(literal.value.as_str()).into()),
+        PropertyKey::NumericLiteral(literal) => Some(
+            literal
+                .raw
+                .as_ref()
+                .filter(|raw| !raw.contains('_'))
+                .map_or_else(|| number_text(literal.value), |raw| raw.to_compact_string()),
+        ),
+        PropertyKey::TemplateLiteral(template) if template.expressions.is_empty() => {
+            let cooked = template
+                .quasis
+                .first()
+                .and_then(|quasi| quasi.value.cooked.as_ref())
+                .map_or("", |cooked| cooked.as_str());
+            Some(quoted(cooked).into())
+        }
+        PropertyKey::StaticMemberExpression(member) if matches!(&member.object, Expression::Identifier(object) if object.name == "Symbol") => {
+            match member.property.name.as_str() {
+                "iterator" => Some(CompactString::const_new("@@iterator")),
+                "asyncIterator" => Some(CompactString::const_new("@@asyncIterator")),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 struct Emitter<'e> {
     oracle: &'e dyn Oracle,
     path: &'e str,
@@ -814,6 +908,7 @@ impl<'e> Emitter<'e> {
         self.printer.text(" {");
         self.printer.indent();
         let interfaces = merges.interfaces.get(name).cloned().unwrap_or_default();
+        let method_properties = method_properties(class, merges, &interfaces);
         let mut indexers: SmallVec<[&TSIndexSignature<'_>; 2]> = class
             .body
             .body
@@ -828,10 +923,14 @@ impl<'e> Emitter<'e> {
         }
         let outer_indexer = self.enter_indexers(&indexers);
         for element in &class.body.body {
-            self.class_member(element);
+            self.class_member(element, &method_properties);
         }
         for interface in &interfaces {
             for member in &interface.body.body {
+                if function_property_key(member).is_some_and(|key| method_properties.contains(&key))
+                {
+                    continue;
+                }
                 self.signature_member(member, ';');
             }
         }
@@ -874,7 +973,11 @@ impl<'e> Emitter<'e> {
         }
     }
 
-    fn class_member(&mut self, element: &ClassElement<'_>) {
+    fn class_member(
+        &mut self,
+        element: &ClassElement<'_>,
+        method_properties: &FxHashSet<CompactString>,
+    ) {
         match element {
             ClassElement::MethodDefinition(method) => {
                 // A private member is not part of what a consumer can touch.
@@ -922,7 +1025,19 @@ impl<'e> Emitter<'e> {
                             self.printer.text("abstract ");
                         }
                         self.printer.text(&key);
-                        if method.optional {
+                        if !method.r#static
+                            && method.r#type != MethodDefinitionType::TSAbstractMethodDefinition
+                            && method_properties.contains(&key)
+                        {
+                            self.printer.text(": ");
+                            self.signature(
+                                function.type_parameters.as_deref(),
+                                function.this_param.as_deref(),
+                                &function.params,
+                                Return::Annotation(function.return_type.as_deref()),
+                                true,
+                            );
+                        } else if method.optional {
                             self.printer.text("?: ");
                             self.signature(
                                 function.type_parameters.as_deref(),
@@ -2026,39 +2141,12 @@ impl<'e> Emitter<'e> {
     /// A member key as Flow spells it, or [`None`] — with a hole — when Flow
     /// has no spelling for it.
     fn key(&mut self, key: &PropertyKey<'_>, computed: bool, offset: u32) -> Option<CompactString> {
-        match key {
-            PropertyKey::StaticIdentifier(identifier) if !computed => {
-                Some(identifier.name.to_compact_string())
-            }
-            PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_compact_string()),
-            PropertyKey::PrivateIdentifier(_) => None,
-            PropertyKey::StringLiteral(literal) => Some(quoted(literal.value.as_str()).into()),
-            PropertyKey::NumericLiteral(literal) => Some(
-                literal
-                    .raw
-                    .as_ref()
-                    .filter(|raw| !raw.contains('_'))
-                    .map_or_else(|| number_text(literal.value), |raw| raw.to_compact_string()),
-            ),
-            PropertyKey::TemplateLiteral(template) if template.expressions.is_empty() => {
-                let cooked = template
-                    .quasis
-                    .first()
-                    .and_then(|quasi| quasi.value.cooked.as_ref())
-                    .map_or("", |cooked| cooked.as_str());
-                Some(quoted(cooked).into())
-            }
-            PropertyKey::StaticMemberExpression(member) if matches!(&member.object, Expression::Identifier(object) if object.name == "Symbol") => {
-                match member.property.name.as_str() {
-                    "iterator" => Some(CompactString::const_new("@@iterator")),
-                    "asyncIterator" => Some(CompactString::const_new("@@asyncIterator")),
-                    _ => {
-                        self.computed_key_hole(offset);
-                        None
-                    }
-                }
-            }
-            _ => {
+        if matches!(key, PropertyKey::PrivateIdentifier(_)) {
+            return None;
+        }
+        match key_text(key, computed) {
+            Some(key) => Some(key),
+            None => {
                 self.computed_key_hole(offset);
                 None
             }
