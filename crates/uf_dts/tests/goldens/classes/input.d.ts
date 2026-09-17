@@ -39,6 +39,12 @@ export declare class Scheduler implements MethodProperty {
     execute(input: string): Promise<string>;
     bound(this: MethodProperty, input: string): Promise<string>;
 }
+export declare class OmittedScheduler implements Omit<MethodProperty, "bound"> {
+    execute(input: string): Promise<string>;
+}
+export declare class PickedScheduler implements Pick<MethodProperty, "execute"> {
+    execute(input: string): Promise<string>;
+}
 declare function mixin<T>(base: T): T;
 export declare class Mixed extends mixin(Base) {
 }
