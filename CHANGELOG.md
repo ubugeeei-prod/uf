@@ -23,9 +23,17 @@ the last six reading one attribute each (#1188), four weighing a role against
 the element it was put on (#1178), and seven about focus and the keyboard
 (#1176). Three `security/*` rules join them (#1197): a `javascript:` URL in a
 prop, a `target="_blank"` without `noreferrer`, and an `iframe` with no
-`sandbox`. Alongside those, five overlays stopped closing on the touch that
+`sandbox`. Four more read a name or a value that is not a thing (#1203) — a DOM
+attribute React does not bind, a namespaced element name, a `style` prop that is
+not an object, and an unusable `rel` keyword. Both sets stop short of guessing:
+uf keeps no table of every DOM property or `rel` keyword, because those sets grow
+and a stale table starts reporting markup that has become correct. Alongside those, five overlays stopped closing on the touch that
 starts a page scroll (#1193) — a `pointerdown` alone is no longer read as a
-press that landed outside, so scrolling with a menu open leaves it open.
+press that landed outside, so scrolling with a menu open leaves it open. This
+release also carries a batch of accessibility and test-library fixes that landed
+together (#1180), the largest being that `@uniflowed/react-testing` now reads
+implicit roles from the same generated ARIA table `uf lint` uses, instead of a
+second hand-maintained copy that had already drifted.
 
 Two corrections to what uf said about itself. `uf build` now reports a
 prerendered document served under a header rule that mints a per-request nonce
@@ -41,6 +49,7 @@ was written for it.
 ### Added
 
 - **build**: TypeScript declarations for a Flow library (#1200)
+- **lint**: four rules about a name or a value that is not a thing (#1203)
 - **lint**: three security rules about a dangerous attribute value (#1197)
 - **lint**: six a11y rules that read one attribute (#1188)
 - **lint**: four a11y rules that weigh a role against its element (#1178)
@@ -49,12 +58,18 @@ was written for it.
 
 ### Fixed
 
+- **ui**: six accessibility fixes — menubar menus take their name from the trigger, calendar weekday headings are no longer empty to axe, a disabled pagination control is no longer an `<a>` with no `href`, a `multiple` toggle group drops `aria-orientation`, the table sort announcement is announced rather than shown beside the table, and a narrow-screen sidebar panel and collapsed tooltip take their styles (#1180)
+- **react-testing**: implicit roles are read from the generated ARIA table rather than a second hand-maintained map, a name built from content ignores `aria-hidden` descendants, and `screen` queries and `userEvent` agree on element types (#1180)
+- **test**: `uft.useFakeTimers` and `uft.useRealTimers` no longer read as hooks to `uf check` (#1180)
+- **vite**: a new project's first build no longer warns `INEFFECTIVE_DYNAMIC_IMPORT` about the router's internals (#1180)
 - **ui**: an overlay is dismissed by the gesture that ends outside it (#1193)
 - **deploy**: declare the Bun a `--adapter bun` deployment needs (#1181)
 
 ### Documentation
 
+- **assets**: the codecs and font work uf does not do are recorded as refusals rather than gaps — AVIF, lossy WebP, WOFF2 for a subsetted face, and text subsetting (#1199)
 - **testing**: re-measure against Bun and Vitest, and ship the suite behind it (#1198)
+- **release**: hand-installed `@uniflowed/*` packages are documented with the `@alpha` tag, held there by a test that rejects untagged install examples (#1180)
 
 ## uf@0.0.0-alpha.39
 
