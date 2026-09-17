@@ -283,21 +283,25 @@ export function suiteFiles(preset: Preset, name: Dialect): Array<SuiteFile> {
  */
 function installRoot(repoRoot: string): string {
   let at = path.resolve(repoRoot);
-  for (;;) {
+  // Bounded, and leaving the loop is the failure: a `for (;;)` whose every
+  // path returns or throws reads fine and does not check, because uf's Flow
+  // cannot prove it never falls through and infers `void` for the function.
+  for (let depth = 0; depth < 64; depth += 1) {
     const installed = path.join(at, "node_modules");
     if (fs.existsSync(path.join(installed, "react", "package.json"))) {
       return installed;
     }
     const parent = path.dirname(at);
     if (parent === at) {
-      throw new Error(
-        `found no node_modules with react in or above ${repoRoot}. The suite runs this ` +
-          "checkout's packages through the repository's own install, so run `npm ci` at " +
-          "the repository root first",
-      );
+      break;
     }
     at = parent;
   }
+  throw new Error(
+    `found no node_modules with react in or above ${repoRoot}. The suite runs this ` +
+      "checkout's packages through the repository's own install, so run `npm ci` at " +
+      "the repository root first",
+  );
 }
 
 /**
