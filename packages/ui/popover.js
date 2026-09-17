@@ -58,6 +58,8 @@ import {
 } from "@uniflowed/react";
 import { useStableCallback } from "@uniflowed/hooks/lifecycle";
 
+import { useInteractOutside } from "./interactions.js";
+
 import type { Align, LogicalSide } from "./internal/anchor.js";
 import type { PartEvent, RenderProp, Rest } from "./internal/merge-props.js";
 import {
@@ -247,17 +249,6 @@ export component PopoverBody(
       return node != null && !body.contains(node) && !(trigger?.contains(node) ?? false);
     };
 
-    const onOutsidePress = (event: Event) => {
-      if (!outside(event.target)) {
-        return;
-      }
-      left.current = true;
-      close();
-    };
-    // Capture, so a press is seen even where something below it stops the
-    // event — a menu inside the popover, for instance.
-    document.addEventListener("pointerdown", onOutsidePress, true);
-
     // Tab out is a dismissal, not an escape hatch that leaves a popover open
     // behind the reader: a non-modal overlay whose reader has gone is one they
     // can no longer press Escape at, because Escape is handled where focus is.
@@ -281,7 +272,6 @@ export component PopoverBody(
     ((named != null && body.contains(named) ? named : focusable(body)[0]) ?? body).focus();
 
     return () => {
-      document.removeEventListener("pointerdown", onOutsidePress, true);
       document.removeEventListener("focusin", onFocusMoved, true);
       if (left.current) {
         left.current = false;
@@ -297,6 +287,17 @@ export component PopoverBody(
       }
     };
   }, [popover.open, triggerRef, close, initialFocus]);
+
+  // A press outside is the other way a reader leaves, and the trigger is not
+  // "outside" for the reason the module header gives.
+  useInteractOutside({
+    isDisabled: !popover.open,
+    onInteractOutside: () => {
+      left.current = true;
+      close();
+    },
+    refs: [bodyRef, triggerRef],
+  });
 
   if (!popover.open) {
     return null;
