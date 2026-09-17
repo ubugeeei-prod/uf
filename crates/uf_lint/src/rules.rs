@@ -27,7 +27,8 @@ pub enum RuleCategory {
     Flow,
     /// Accessibility rules over JSX.
     A11y,
-    /// HTML nesting rules: markup the browser's parser would rewrite.
+    /// HTML correctness rules: markup the browser's parser would rewrite, or
+    /// an attribute value it would ignore.
     Markup,
     /// Toolchain-wide hygiene rules.
     Uniflowed,
