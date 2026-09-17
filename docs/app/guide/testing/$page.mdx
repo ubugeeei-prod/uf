@@ -1114,11 +1114,19 @@ to tell "not measured" from "measured, and bad".
 
 ### What it does not do yet
 
-Coverage is **Node only**. It is V8's own count, written through
-`NODE_V8_COVERAGE` and mapped through the source map Node's loader attached;
-Bun implements neither, and Deno counts in a profile format of its own that uf
-does not read. `uf test --coverage` on either says so rather than reporting
-zeroes.
+Coverage is **Node only** today. It is V8's own count, written through
+`NODE_V8_COVERAGE` and mapped through the source-map cache Node writes beside
+the transformed script. That is the one report uf can honestly map back to the
+Flow source.
+
+Bun can run a suite, and Bun's own runner can count the JavaScript it executed,
+but that is not the same report: it is coverage of the JavaScript the preload
+produced, not of the Flow lines uf maps for Node. Deno has `--coverage`, but it
+writes a profile format of its own and does not write the source-map cache this
+reader needs. So `uf test --coverage` on Bun or Deno refuses before reporting
+zeroes in a table that looks official. The host notes keep the short version for
+[Bun](https://github.com/ubugeeei-prod/uf/blob/main/docs/hosts.md#bun) and
+[Deno](https://github.com/ubugeeei-prod/uf/blob/main/docs/hosts.md#deno).
 
 `--watch` and `--coverage` cannot be combined: watch mode re-runs the files an
 edit affected, so its coverage would be a number about three files wearing the
