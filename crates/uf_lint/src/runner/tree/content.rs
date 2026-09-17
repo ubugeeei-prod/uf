@@ -31,7 +31,10 @@ use uf_flow::ast::jsx;
 use uf_flow::{Loc, ast};
 
 use super::value::{Scope, Value, spread_may_set};
-use super::{Tree, attribute, has_spread, heading_level, host_name, string_attribute};
+use super::{
+    Tree, attribute, cleaned_url, has_javascript_scheme, has_spread, heading_level, host_name,
+    string_attribute,
+};
 use crate::{Severity, severity};
 
 /// `a11y/anchor-ambiguous-text`.
@@ -669,22 +672,15 @@ enum DeadHref {
 }
 
 fn dead_href(href: &str) -> Option<DeadHref> {
-    // The URL parser drops leading and trailing C0 controls and spaces, and
-    // every tab and newline inside, before it reads a scheme — which is how
-    // `java\tscript:` still runs.
-    let cleaned: String = href
-        .trim_matches(|c: char| c <= ' ')
-        .chars()
-        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
-        .collect();
+    // Read the way the URL parser reads it; `super::cleaned_url` says how, and
+    // `security/no-script-url` asks the scheme question through the same pair
+    // so that the two rules cannot come to disagree about what runs.
+    let cleaned = cleaned_url(href);
     if cleaned.is_empty() {
         Some(DeadHref::Empty)
     } else if cleaned == "#" {
         Some(DeadHref::Fragment)
-    } else if cleaned
-        .get(..11)
-        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("javascript:"))
-    {
+    } else if has_javascript_scheme(&cleaned) {
         Some(DeadHref::Script)
     } else {
         None

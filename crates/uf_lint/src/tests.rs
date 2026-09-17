@@ -26,6 +26,7 @@ mod react_native;
 mod react_tree;
 mod router;
 mod security;
+mod security_markup;
 mod server;
 mod structure;
 mod suppression;

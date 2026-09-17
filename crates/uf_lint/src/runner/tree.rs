@@ -87,6 +87,7 @@ mod content;
 mod interaction;
 mod roles;
 mod tags;
+mod trust;
 mod value;
 
 use uf_config::UniflowedConfig;
@@ -152,8 +153,9 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
     if !wants_jsx && !wants_hot {
         return None;
     }
-    let looks_for_undefined = (levels.content.any() || levels.roles.any() || levels.tags.any())
-        && scan.file.source.contains("undefined");
+    let looks_for_undefined =
+        (levels.content.any() || levels.roles.any() || levels.tags.any() || levels.trust.any())
+            && scan.file.source.contains("undefined");
     Some(TreeWork {
         levels,
         wants_hot,
@@ -206,6 +208,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
         roles: levels.roles,
         tags: levels.tags,
         interaction: levels.interaction,
+        trust: levels.trust,
         scope: value::Scope::of(parsed, work.looks_for_undefined),
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
@@ -277,6 +280,8 @@ struct Levels {
     tags: tags::Levels,
     /// The rules that ask whether a pointer is the only way in.
     interaction: interaction::Levels,
+    /// The rules about markup that hands control across a trust boundary.
+    trust: trust::Levels,
     aria_props: Option<Severity>,
     heading_order: Option<Severity>,
     label_control: Option<Severity>,
@@ -294,6 +299,7 @@ impl Levels {
             roles: roles::Levels::for_config(config),
             tags: tags::Levels::for_config(config),
             interaction: interaction::Levels::for_config(config),
+            trust: trust::Levels::for_config(config),
             aria_props: severity(config, ARIA_PROPS),
             heading_order: severity(config, HEADING_ORDER),
             label_control: severity(config, LABEL_CONTROL),
@@ -315,6 +321,7 @@ impl Levels {
             || self.roles.any()
             || self.tags.any()
             || self.interaction.any()
+            || self.trust.any()
             || self.aria_props.is_some()
             || self.heading_order.is_some()
             || self.label_control.is_some()
@@ -337,7 +344,8 @@ impl Levels {
                 .or_else(|| self.roles.of(rule))
                 .or_else(|| self.tags.of(rule))
                 .or_else(|| self.interaction.of(rule))
-                .or_else(|| self.attributes.of(rule)),
+                .or_else(|| self.attributes.of(rule))
+                .or_else(|| self.trust.of(rule)),
         }
     }
 }
@@ -377,6 +385,8 @@ struct Tree<'a> {
     tags: tags::Levels,
     /// Levels for the rules in [`interaction`], copied for the same reason.
     interaction: interaction::Levels,
+    /// Levels for the rules in [`trust`], copied for the same reason.
+    trust: trust::Levels,
     /// How attribute values are read in this module.
     scope: value::Scope,
     aria_props: bool,
@@ -447,6 +457,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
             }
             if self.attributes.any() {
                 attributes::check(self, name, opening);
+            }
+            if self.trust.any() {
+                trust::check(self, name, opening);
             }
             if self.static_interactions {
                 self.check_static_interactions(name, opening);
@@ -917,6 +930,36 @@ pub(super) fn has_spread(opening: &jsx::Opening<Loc, Loc>) -> bool {
         .attributes
         .iter()
         .any(|attribute| matches!(attribute, jsx::OpeningAttribute::SpreadAttribute(_)))
+}
+
+/// `url` with the characters the URL parser ignores removed.
+///
+/// The parser drops leading and trailing C0 controls and spaces, and every tab
+/// and newline *inside* the string, before it looks at a scheme — which is how
+/// a `javascript:` URL with a tab in the middle of the word still runs.
+pub(super) fn cleaned_url(url: &str) -> String {
+    url.trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect()
+}
+
+/// Whether an already-[`cleaned_url`] string carries the `javascript:` scheme.
+pub(super) fn has_javascript_scheme(cleaned: &str) -> bool {
+    cleaned
+        .get(..11)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("javascript:"))
+}
+
+/// Whether `url`, as written, runs as script.
+///
+/// Here rather than in a rule module because `a11y/anchor-is-valid` and
+/// `security/no-script-url` both ask it, and they must not answer it
+/// differently: two copies would drift, and the copy that stopped matching the
+/// parser would be a rule that quietly stopped firing — the failure this crate
+/// is least able to notice on its own.
+pub(super) fn is_javascript_url(url: &str) -> bool {
+    has_javascript_scheme(&cleaned_url(url))
 }
 
 /// Whether the element answers a pointer or a key.
