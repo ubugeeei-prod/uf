@@ -243,10 +243,14 @@ export component MenuTrigger(children: React.Node, render?: RenderProp, ...rest:
         return;
       }
       event.preventDefault();
-      menu.pendingFocus.current = end;
+      // This is an instruction for the menu body after the opening commit.
+      // uf-lint-disable-next-line react-compiler/immutability
+      menu.pendingFocusRef.current = end;
       menu.setOpen(true);
     }),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      // React calls callback refs during commit; the menu body reads the trigger later.
+      // uf-lint-disable-next-line react-compiler/immutability
       menu.triggerRef.current = element;
     }),
   });
@@ -296,7 +300,9 @@ export component MenuBody(
   // it re-ran on every parent render and re-took focus each time, dragging the
   // reader back to the first item while they were arrowing.
   const triggerRef = menu.triggerRef;
-  const pendingFocus = menu.pendingFocus;
+  const pendingFocusRef = menu.pendingFocusRef;
+  // `parent` is menu-tree metadata; no ref value is read during render.
+  // uf-lint-disable-next-line react-compiler/refs
   const isRoot = menu.parent == null;
   const closeAll = useStableCallback(() => closeTree(menu));
   // A root menu drops from its button; a submenu comes out of the side of the
@@ -304,14 +310,20 @@ export component MenuBody(
   // be a parameter default because it is not a constant: it is the answer to
   // "is this the outermost menu", which only this component knows.
   const placement = side ?? (isRoot ? "bottom" : "inline-end");
+  // useAnchor accepts ref objects and reads them from layout/effects.
+  // uf-lint-disable-next-line react-compiler/refs
   const anchored = useAnchor({
     align,
     alignOffset,
     anchorRect: point,
+    // uf-lint-disable-next-line react-compiler/refs
     anchorRef: triggerRef,
     avoidCollisions,
     collisionPadding,
+    // `open` is menu-tree metadata; no ref value is read during render.
+    // uf-lint-disable-next-line react-compiler/refs
     open: menu.open,
+    // uf-lint-disable-next-line react-compiler/refs
     overlayRef: bodyRef,
     side: placement,
     sideOffset,
@@ -328,8 +340,8 @@ export component MenuBody(
     const document = body.ownerDocument;
     const trigger = triggerRef.current;
 
-    const wanted = pendingFocus.current;
-    pendingFocus.current = null;
+    const wanted = pendingFocusRef.current;
+    pendingFocusRef.current = null;
     const items = itemsOf(body, ITEM_SELECTOR, MENU_SELECTOR);
     const landing = moveTo(items, -1, wanted === "last" ? "last" : "first", false);
     // The menu itself when it holds nothing focusable, so focus is inside it
@@ -352,32 +364,47 @@ export component MenuBody(
         trigger?.focus?.();
       }
     };
-  }, [menu.open, triggerRef, pendingFocus]);
+    // The ref objects are stable; this effect reads them after the opening commit.
+    // uf-lint-disable-next-line react-compiler/refs
+  }, [menu.open, triggerRef, pendingFocusRef]);
 
   // Only the outermost menu listens. A submenu closes with the tree, and two
   // of these would each answer the same press.
+  // The outside-interaction hook accepts refs; it reads them from event handlers.
+  // uf-lint-disable-next-line react-compiler/refs
   useInteractOutside({
+    // `open` is menu-tree metadata; the hook reads refs from event handlers.
+    // uf-lint-disable-next-line react-compiler/refs
     isDisabled: !menu.open || !isRoot,
     onInteractOutside: () => {
       dismissed.current = true;
       closeAll();
     },
+    // uf-lint-disable-next-line react-compiler/refs
     refs: [bodyRef, triggerRef],
   });
 
   const list = useMemo(() => ({ activeId, setActiveId }), [activeId]);
 
+  // `open` is menu-tree metadata; no ref value is read during render.
+  // uf-lint-disable-next-line react-compiler/refs
   if (!menu.open) {
     return null;
   }
 
   const props = withProps(withoutComposed(rest, ["onKeyDown", "ref"]), {
+    // `triggered` and `base` are menu-tree metadata, not ref values.
+    // uf-lint-disable-next-line react-compiler/refs
     "aria-labelledby": menu.triggered ? `${menu.base}-trigger` : undefined,
     "aria-orientation": "vertical",
     children,
     "data-align": anchored.align,
     "data-side": anchored.side,
+    // `base` is menu-tree metadata, not a ref value.
+    // uf-lint-disable-next-line react-compiler/refs
     id: `${menu.base}-body`,
+    // Key handling moves real DOM focus and records the active item after events.
+    // uf-lint-disable-next-line react-compiler/refs
     onKeyDown: composeHandlers(rest.onKeyDown, (event: PartEvent) => {
       const body: $FlowFixMe = event.currentTarget;
       const items = itemsOf(body, ITEM_SELECTOR, MENU_SELECTOR);
@@ -438,6 +465,8 @@ export component MenuBody(
         }
       }
     }),
+    // React calls callback refs during commit; placement and keyboard effects read it later.
+    // uf-lint-disable-next-line react-compiler/refs
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
       bodyRef.current = element;
     }),
@@ -709,7 +738,9 @@ export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...re
   const id = `${menu.base}-trigger`;
 
   const open = () => {
-    menu.pendingFocus.current = "first";
+    // This is an instruction for the submenu body after the opening commit.
+    // uf-lint-disable-next-line react-compiler/immutability
+    menu.pendingFocusRef.current = "first";
     menu.setOpen(true);
   };
 
@@ -733,6 +764,8 @@ export component MenuSubTrigger(children: React.Node, render?: RenderProp, ...re
       open();
     }),
     ref: composeRefs(rest.ref, (element: HTMLElement | null) => {
+      // React calls callback refs during commit; the submenu body reads the trigger later.
+      // uf-lint-disable-next-line react-compiler/immutability
       menu.triggerRef.current = element;
     }),
     role: "menuitem",
