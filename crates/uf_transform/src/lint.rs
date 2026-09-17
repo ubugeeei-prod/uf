@@ -47,7 +47,7 @@ use serde_json::Value;
 use uf_profiler::profile_span;
 
 use crate::TransformError;
-use crate::compiler::{Compiled, compile_with_options, lint_plugin_options, reported_at};
+use crate::compiler::{compile_events_with_options, lint_plugin_options, reported_at};
 
 /// The Flow suppression codes `eslint-plugin-react-hooks` treats as Flow having
 /// reported a finding already.
@@ -242,9 +242,7 @@ pub fn lint(
     let options = lint_plugin_options(source, filename, switches)?;
     // A fatal result still carries the events logged before it, and the
     // plugin reports those too: its logger collects them as they happen.
-    let events = match compile_with_options(file, scope, options, None)? {
-        Compiled::Ran { events, .. } | Compiled::Fatal { events, .. } => events,
-    };
+    let events = compile_events_with_options(file, scope, options, None)?;
 
     let suppressed = flow_suppression_lines(file);
     let mut found = Vec::new();

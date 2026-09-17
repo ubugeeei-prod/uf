@@ -217,6 +217,22 @@ pub fn compile_with_options(
     })
 }
 
+pub(crate) fn compile_events_with_options(
+    file: &Value,
+    mut scope: ScopeInfo,
+    options: PluginOptions,
+    source_filename: Option<&str>,
+) -> Result<Vec<LoggerEvent>, TransformError> {
+    teach_facade_provenance(&mut scope);
+    let mut ast = File::deserialize(file).map_err(|error| {
+        TransformError::Internal(format!("Babel AST rejected by the React Compiler: {error}"))
+    })?;
+    stamp_source_filename(&mut ast, source_filename);
+    Ok(match compile_program(ast, scope, options) {
+        CompileResult::Success { events, .. } | CompileResult::Error { events, .. } => events,
+    })
+}
+
 fn rewritten_ast(
     original: &Value,
     ast: Option<File>,
@@ -295,13 +311,22 @@ fn apply_binding_renames(
 ) {
     match value {
         Value::Object(map) => {
-            let kind = map
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
+            let kind = map.get("type").and_then(Value::as_str).unwrap_or_default();
+            let is_identifier = matches!(kind, "Identifier" | "JSXIdentifier");
+            let skips_static_key_rename = matches!(
+                kind,
+                "ObjectProperty"
+                    | "ObjectMethod"
+                    | "ClassProperty"
+                    | "ClassMethod"
+                    | "ClassPrivateProperty"
+                    | "ClassPrivateMethod"
+                    | "ObjectTypeProperty"
+                    | "ObjectTypeIndexer"
+            );
+            let is_object_property = kind == "ObjectProperty";
             if !is_property_key
-                && matches!(kind.as_str(), "Identifier" | "JSXIdentifier")
+                && is_identifier
                 && let Some(node_id) = node_id(map)
                 && let Some(binding) = references
                     .iter()
@@ -310,7 +335,7 @@ fn apply_binding_renames(
                     .iter()
                     .find_map(|(target, renamed)| (*target == binding).then_some(*renamed))
             {
-                map.insert("name".to_owned(), Value::String((*renamed).to_owned()));
+                rename_identifier(map, renamed);
             }
 
             let computed = map
@@ -318,23 +343,11 @@ fn apply_binding_renames(
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
             for (key, child) in map.iter_mut() {
-                let child_is_property_key = key == "key"
-                    && !computed
-                    && matches!(
-                        kind.as_str(),
-                        "ObjectProperty"
-                            | "ObjectMethod"
-                            | "ClassProperty"
-                            | "ClassMethod"
-                            | "ClassPrivateProperty"
-                            | "ClassPrivateMethod"
-                            | "ObjectTypeProperty"
-                            | "ObjectTypeIndexer"
-                    );
+                let child_is_property_key = key == "key" && !computed && skips_static_key_rename;
                 apply_binding_renames(child, references, targets, child_is_property_key);
             }
 
-            if kind == "ObjectProperty" {
+            if is_object_property {
                 expand_renamed_shorthand(map);
             }
         }
@@ -344,6 +357,20 @@ fn apply_binding_renames(
             }
         }
         _ => {}
+    }
+}
+
+fn rename_identifier(map: &mut serde_json::Map<String, Value>, renamed: &str) {
+    let Some(name) = map.get_mut("name") else {
+        map.insert("name".to_owned(), Value::String(renamed.to_owned()));
+        return;
+    };
+    match name {
+        Value::String(name) => {
+            name.clear();
+            name.push_str(renamed);
+        }
+        other => *other = Value::String(renamed.to_owned()),
     }
 }
 
