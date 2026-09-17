@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Anonymous",
+    "construct": "exact-object",
+    "reason": "this is an exact object type, and TypeScript's object types are inexact: every property is still declared and still checked, but a consumer passing an object with an extra property will not be stopped",
+    "line": 12
+  }
+]

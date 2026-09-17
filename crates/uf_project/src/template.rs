@@ -322,6 +322,15 @@ fn app_package_json(name: &str) -> String {
 /// * **`version`, because a library is published.** The application template
 ///   says `"private": true`; this one is the opposite kind of project, and a
 ///   manifest with no version cannot be published at all.
+/// * **`"types"`, because most people who install a Flow library write
+///   TypeScript.** `uf build` translates the exported Flow types into
+///   `dist/index.d.ts` — see `uf_declare` and ubugeeei-prod/uf#969 — and this
+///   is the condition TypeScript reads to find them. It sits before
+///   `"default"` because TypeScript takes the first condition it matches, and
+///   after `"flow"` because a Flow consumer wants the source rather than a
+///   translation of it. Without this line the package still installs and its
+///   types are still built; they are simply never looked at, which is the
+///   failure that is hardest to notice.
 ///
 /// There is no `.js.flow` and there never will be: `docs/architecture.md` says
 /// a shipped module owns its own declarations, so the Flow source *is* the
@@ -338,6 +347,7 @@ fn lib_package_json(name: &str) -> String {
   "exports": {{
     ".": {{
       "flow": "./index.js",
+      "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }}
   }},

@@ -38,6 +38,11 @@ uf_assets = { path = "../uf_assets" }
 uf_bundle = { path = "../uf_bundle" }
 uf_check = { path = "../uf_check", optional = true }
 uf_config = { path = "../uf_config" }
+# The TypeScript declarations a library build publishes beside its JavaScript.
+# Not optional and not behind `upstream-typecheck`: `uf build` writes them for
+# every library, and a library whose `.d.ts` depended on a feature flag would
+# publish a different package depending on how uf was compiled.
+uf_declare = { path = "../uf_declare" }
 uf_doc = { path = "../uf_doc" }
 uf_dts = { path = "../uf_dts", optional = true }
 uf_flow = { path = "../uf_flow" }

@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "(module)",
+    "construct": "ambient-module",
+    "reason": "an ambient declaration describes a module other than this one, and a library's declaration file is only about itself",
+    "line": 3
+  }
+]

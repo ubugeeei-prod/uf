@@ -1,0 +1,26 @@
+[
+  {
+    "declaration": "Exact",
+    "construct": "exact-object",
+    "reason": "this is an exact object type, and TypeScript's object types are inexact: every property is still declared and still checked, but a consumer passing an object with an extra property will not be stopped",
+    "line": 3
+  },
+  {
+    "declaration": "Contravariant",
+    "construct": "write-only-property",
+    "reason": "this property is write-only in Flow, and TypeScript has `readonly` and nothing on the other side, so it is published as an ordinary property a consumer may also read",
+    "line": 11
+  },
+  {
+    "declaration": "Unkeyable",
+    "construct": "indexer-key",
+    "reason": "TypeScript indexes only by `string`, `number` or `symbol`, so this indexer is left out and the properties it described are not declared",
+    "line": 15
+  },
+  {
+    "declaration": "Spread",
+    "construct": "object-spread",
+    "reason": "a spread copies one object type's properties into another and lets later ones win; a TypeScript intersection keeps both types of a shared property, which is a different type, so the spread is left out",
+    "line": 24
+  }
+]

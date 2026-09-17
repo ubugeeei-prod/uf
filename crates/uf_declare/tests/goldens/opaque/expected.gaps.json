@@ -1,0 +1,14 @@
+[
+  {
+    "declaration": "Id",
+    "construct": "opaque-type",
+    "reason": "TypeScript has no opaque type, so this is published as a branded type: a consumer can hold one and pass it back, and cannot construct one, which is what `opaque` means from outside this module",
+    "line": 3
+  },
+  {
+    "declaration": "Token",
+    "construct": "opaque-type",
+    "reason": "TypeScript has no opaque type, so this is published as a branded type: a consumer can hold one and pass it back, and cannot construct one, which is what `opaque` means from outside this module",
+    "line": 5
+  }
+]

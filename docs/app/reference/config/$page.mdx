@@ -354,6 +354,7 @@ more than the defaults, and the defaults are what `uf new --lib` scaffolds:
 | `entries` | `["index.js"]` | The modules to build. `internal/parse.js` is written to `dist/internal/parse.js` — the path, so two entries cannot collide |
 | `formats` | `["es"]` | `"es"` writes `<name>.js`; `"cjs"` writes `<name>.cjs`, for a consumer that calls `require`. `"umd"` and `"iife"` are refused by name: each needs a global name per entry, and what a Flow library's global should be is not a decision uf has made |
 | `external` | `[]` | Extra package names to leave as imports |
+| `declarations` | `true` | Write a TypeScript declaration file beside each entry — see [below](#typescript-declarations) |
 
 **Dependencies are external by default**, which is the opposite of the
 application build: everything in `dependencies`, `peerDependencies` and
@@ -377,7 +378,13 @@ compiled from it — and names them with export conditions:
 
 ```json
 {
-  "exports": { ".": { "flow": "./index.js", "default": "./dist/index.js" } },
+  "exports": {
+    ".": {
+      "flow": "./index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": ["index.js", "dist"],
   "sideEffects": false
 }
@@ -397,6 +404,69 @@ The full argument, including why uf's own `@uniflowed/*` packages ship source
 and nothing else and why a uf application does not select the `"flow"`
 condition yet, is in
 [Architecture](https://github.com/ubugeeei-prod/uf/blob/main/docs/architecture.md#what-a-published-flow-library-ships).
+
+#### TypeScript declarations
+
+Most people who install a Flow library write TypeScript. Without a `.d.ts` the
+package is `any` to every one of them: no completion, no checking, and a rename
+of the library's API that breaks nothing at their build and everything at
+runtime. So `uf build` translates the exported Flow types of each entry into a
+declaration file beside the JavaScript — `index.js` becomes `dist/index.d.ts`,
+`internal/parse.js` becomes `dist/internal/parse.d.ts` — and `"types"` in
+`exports` is what a TypeScript consumer reads to find them.
+
+The `"types"` condition goes **before `"default"`**, because TypeScript takes
+the first condition it matches. A library that builds declarations and does not
+name them in `exports` is the failure hardest to notice — everything is built,
+published and installed, and consumers are still on `any` — so the build says
+so rather than leaving it to be discovered.
+
+**Translation is honest rather than total.** Flow has constructs with no
+TypeScript meaning, and the rule is to translate what maps cleanly, refuse to
+guess at what does not, and *name every refusal in the build report*. A `.d.ts`
+in which everything quietly became `any` type-checks perfectly and is worthless;
+an author told "these three exports could not be translated" is far better
+served. What is refused is published as `unknown` rather than `any`, so a
+consumer cannot use it by accident.
+
+What maps exactly:
+
+| Flow | TypeScript |
+| --- | --- |
+| `mixed`, `empty` | `unknown`, `never` |
+| `?T` | `T \| null \| undefined` — Flow's maybe type admits both |
+| `+x: T`, `-x: T` | `readonly x: T`; a write-only property has no counterpart |
+| `+T`, `-T` on a type parameter | `out T`, `in T` |
+| `$ReadOnly`, `$ReadOnlyArray`, `$NonMaybeType` | `Readonly`, `readonly T[]`, `NonNullable` |
+| `$Keys`, `$Values`, `$ElementType` | `keyof T`, `T[keyof T]`, `T[K]` |
+| `x is T` | `x is T` |
+
+What is reported instead of guessed at — exact object types, object spreads,
+`$Diff`/`$Shape`/`$ObjMap`-style utilities, Flow enums, `component` syntax,
+`renders`, React types, write-only properties, and bindings whose type Flow
+infers. `opaque type` is the one that is neither: it is published as a **branded
+type**, because nominality is what `opaque` means from outside the module and
+publishing the underlying type would let a consumer build one out of thin air —
+the exact call Flow exists to refuse.
+
+The build prints each one with the export it is in:
+
+```
+declarations
+    files  3
+    gaps   2
+
+    where          export     construct
+    index.js:12    makeId     opaque-type
+    index.js:31    Options    exact-object
+```
+
+The reason for each — what the consumer gets instead, in a sentence — is in
+`.uf/build/meta/uf-build-manifest.json` under `declarations.gaps`.
+
+Set `declarations: false` to publish none. It is for a library that would rather
+ship nothing than ship declarations with gaps in them; it is not a way to stop
+hearing about the gaps, which is what a project reaching for it usually wants.
 
 ### build.staticBuild
 

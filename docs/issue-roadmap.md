@@ -245,7 +245,7 @@
 - [x] Make `@uniflowed/test` execute full Flow suites through Capability JS
       Hosts while keeping scheduling and reporting in Rust.
 - [x] Benchmark `@uniflowed/test` against Bun Test and Vitest and keep the faster-than-Bun target visible.
-      Measured: 9x faster than Vitest, 3x slower than Bun. See docs/architecture.md.
+      Measured: 10x faster than Vitest, 2.2x slower than Bun. See docs/architecture.md.
 - [x] Implement React Testing Library-compatible DOM queries. `@uniflowed/
       react-testing` mounts into a real document, queries by role, label,
       text, placeholder and test id, and tells React it is a test — so

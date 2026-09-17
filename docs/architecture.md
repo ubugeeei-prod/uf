@@ -130,6 +130,7 @@ the fix from leaking away while the next slice is being cut.
 - `uf_assets`: image resizing and re-encoding, and the font metrics behind `Image` and `Font`
 - `uf_bundle`: bundle size measurement and `build.budgets` enforcement
 - `uf_check`: Flow type inference, driven from `upstream/flow`
+- `uf_declare`: a library's exported Flow types, translated into the TypeScript declarations it publishes with every gap named
 - `uf_dts`: a dependency's TypeScript declaration files, translated into Flow declaration modules with every hole named
 - `uf_flow`: Flow parser/typechecker adapter boundary over `upstream/flow`
 - `uf_fmt`: native formatter runner
@@ -1154,24 +1155,33 @@ so.
 
 ### Measured
 
-50 files, 1,000 tests, 2,000 assertions, on an 8-core M-series Mac, best of
-five, each tool running its own idiomatic input:
+50 files, 1,000 tests, 2,000 assertions, each tool running its own idiomatic
+copy of the same suite. Apple M3, 8 cores, Node 26.8.1, Bun 1.3.13, Vitest
+5.0.1; 25 timed rounds alternating in a rotating order, 3 warm-up rounds
+discarded, on a machine shared with other work — so these are ratios rather
+than quiet-machine absolutes. `uf run bench:testing` writes the suite, and
+[the testing guide](app/guide/testing) has the spreads and the commands.
 
-| Runner | Time |
-| --- | --- |
-| `bun test` | **0.06 s** |
-| `uf test` (Node or Bun host, warm transform cache) | 0.20 s |
-| `uf test` (cold transform cache) | 0.30 s |
-| `vitest run` | 1.96 s |
+| Runner | Wall, median | CPU |
+| --- | --- | --- |
+| `bun test` | **58 ms** | 70 ms |
+| `uf test` (Node or Bun host, warm transform cache) | 125 ms | 360 ms |
+| `uf test` (cold transform cache) | 429 ms | 1,650 ms |
+| `vitest run` | 1,310 ms | 6,750 ms |
 
-So `uf test` is about **nine times faster than Vitest** and about **three times
+So `uf test` is about **ten times faster than Vitest** and about **2.2 times
 slower than Bun's built-in runner**. The stated product bar is to beat Bun, and
-this does not meet it yet. The gap is process start-up and inter-process
-messaging: Bun runs everything in one process with a runner written into the
-engine, while `uf` spawns a worker per core and each one loads the test API
-before it can do anything. `-j 4` is faster than `-j 8` on this suite for the
-same reason. The way to close it is a worker pool that survives between runs
-and a worker whose imports are pre-bundled, neither of which is done.
+this does not meet it yet. What is left is worker start-up, paid once per
+worker rather than per file: with the transform cache warm, uf's whole front
+half — config, scan, discovery and scheduling — is about 7 ms, each of the 50
+files costs about 1 ms, and a worker is 30–55 ms old before it can run its
+first case (Node itself about 15 ms, the Flow loader about 5 ms,
+`@uniflowed/test`'s own module graph 8 to 25 ms). uf measures that start-up and
+records it as `workerStartMicros`, then sizes the pool from it, which is why a
+warm run of this suite starts two workers rather than eight. Bun's runner is in
+the engine and pays none of it — which is why the gap is far wider in CPU
+(360 ms against 70 ms) than on the wall clock. Closing it needs a worker that
+is already running when the run begins, or one whose imports are pre-bundled.
 
 ## Build And Dev
 

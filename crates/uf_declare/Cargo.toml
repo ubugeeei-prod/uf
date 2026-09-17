@@ -1,0 +1,31 @@
+[package]
+name = "uf_declare"
+description = "Flow modules translated into the TypeScript declarations a uf library publishes."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+compact_str.workspace = true
+serde.workspace = true
+# The Flow syntax tree this crate reads. Through `uf_flow` rather than
+# `flow_parser` directly, which is the rule that crate's header sets: one place
+# pins the port's version.
+uf_flow = { path = "../uf_flow" }
+uf_infra = { path = "../uf_infra" }
+
+[dev-dependencies]
+# The goldens are checked by parsing the emitted declarations back with the
+# TypeScript parser already in the workspace. A declaration TypeScript cannot
+# read is worse than none, and asserting on the text alone would not notice.
+oxc_allocator.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+serde_json.workspace = true
+similar-asserts.workspace = true

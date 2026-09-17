@@ -1,7 +1,12 @@
 use camino::Utf8PathBuf;
 use uf_config::{LibraryConfig, LibraryFormat, LibraryPlan, UniflowedConfig};
 
-use super::{arguments, declared_dependencies, unpublished_exports, unresolved_exports};
+use uf_declare::{Construct, Gap};
+
+use super::{
+    Declarations, arguments, declared_dependencies, gap_summary, missing_types_condition,
+    unpublished_exports, unresolved_exports,
+};
 
 /// A project directory holding `package.json` with `manifest` in it.
 fn project(manifest: &str) -> (tempfile::TempDir, Utf8PathBuf) {
@@ -308,4 +313,111 @@ fn a_manifest_with_no_files_has_no_files_allowlist_warning() {
     );
 
     assert!(unpublished_exports(&root).is_empty());
+}
+
+/// Declarations written into a package whose `exports` never names them.
+///
+/// The quietest way to fail ubugeeei-prod/uf#969: the types are translated,
+/// written and published, the build succeeds, the package installs — and every
+/// TypeScript consumer is still on `any`, because TypeScript looks for a
+/// `"types"` condition and there is none. Nothing else in the build has a
+/// reason to notice, which is the whole argument for this check.
+#[test]
+fn exports_without_a_types_condition_is_reported() {
+    let (_dir, root) = project(
+        r#"{
+  "name": "lib",
+  "exports": { ".": { "flow": "./index.js", "default": "./dist/index.js" } }
+}"#,
+    );
+    let declarations = Declarations {
+        enabled: true,
+        files: vec![root.join("dist/index.d.ts")],
+        gaps: Vec::new(),
+    };
+
+    let found = missing_types_condition(&root, &declarations);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("types"), "{found:?}");
+}
+
+/// The shape the scaffold writes, which is the one that works.
+#[test]
+fn exports_that_names_the_declarations_reports_nothing() {
+    let (_dir, root) = project(
+        r#"{
+  "name": "lib",
+  "exports": {
+    ".": {
+      "flow": "./index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  }
+}"#,
+    );
+    let declarations = Declarations {
+        enabled: true,
+        files: vec![root.join("dist/index.d.ts")],
+        gaps: Vec::new(),
+    };
+
+    assert!(missing_types_condition(&root, &declarations).is_empty());
+}
+
+/// A build that wrote no declarations has nothing to say about finding them.
+#[test]
+fn a_build_without_declarations_says_nothing_about_a_types_condition() {
+    let (_dir, root) = project(
+        r#"{
+  "name": "lib",
+  "exports": { ".": { "flow": "./index.js", "default": "./dist/index.js" } }
+}"#,
+    );
+
+    assert!(missing_types_condition(&root, &Declarations::default()).is_empty());
+}
+
+/// The headline over the gap list counts two different kinds of news.
+///
+/// An exact object type still publishes every member it has; a `$Diff<A, B>`
+/// publishes `unknown`. Reporting one number for both would tell an author
+/// that twelve things went wrong without telling them that eleven of those
+/// twelve still type-check their consumers.
+#[test]
+fn the_gap_summary_separates_a_widening_from_a_refusal() {
+    let declarations = Declarations {
+        enabled: true,
+        files: Vec::new(),
+        gaps: vec![
+            (
+                String::from("index.js"),
+                Gap {
+                    declaration: "Options".into(),
+                    construct: Construct::ExactObject,
+                    reason: "widened".into(),
+                    line: 3,
+                },
+            ),
+            (
+                String::from("index.js"),
+                Gap {
+                    declaration: "Diffed".into(),
+                    construct: Construct::FlowUtility,
+                    reason: "refused".into(),
+                    line: 9,
+                },
+            ),
+        ],
+    };
+
+    let summary = gap_summary(&declarations);
+    assert_eq!(summary.len(), 1, "{summary:?}");
+    assert!(summary[0].contains("2 declaration"), "{summary:?}");
+    assert!(summary[0].contains("1 of them"), "{summary:?}");
+}
+
+#[test]
+fn a_build_with_no_gaps_prints_no_headline() {
+    assert!(gap_summary(&Declarations::default()).is_empty());
 }
