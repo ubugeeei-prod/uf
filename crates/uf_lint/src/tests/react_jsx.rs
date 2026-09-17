@@ -181,6 +181,28 @@ fn jsx_key_accepts_every_list_that_is_keyed_or_cannot_be_seen() {
     }
 }
 
+#[test]
+fn jsx_key_checks_children_by_binding_not_spelling() {
+    let local_children = lint_js(
+        KEY,
+        &module(
+            "component Page(items: Array<Item>) {\n  const Children = items;\n  return <ul>{Children.map((item) => <li>{item.label}</li>)}</ul>;\n}\n",
+        ),
+    );
+
+    assert_eq!(local_children.len(), 1, "{local_children:?}");
+
+    let imported_alias = lint_js(
+        KEY,
+        &module(
+            "import { Children as kids } from \"react\";\n\
+             component Page(children: React.Node) {\n  return <ul>{kids.map(children, (child) => <li>{child}</li>)}</ul>;\n}\n",
+        ),
+    );
+
+    assert!(imported_alias.is_empty(), "{imported_alias:?}");
+}
+
 // --- react/no-array-index-key -----------------------------------------------
 
 #[test]
@@ -369,6 +391,37 @@ fn children_prop_accepts_children_where_they_belong() {
         let diagnostics = lint_js(CHILDREN, &page(markup));
         assert!(diagnostics.is_empty(), "{markup}: {diagnostics:?}");
     }
+}
+
+#[test]
+fn children_prop_reads_element_factories_by_binding_not_spelling() {
+    let alias = lint_js(
+        CHILDREN,
+        "// @flow\nimport { createElement as h } from \"react\";\nconst view = h(\"div\", { children: \"Children\" });\n",
+    );
+
+    assert_eq!(alias.len(), 1, "{alias:?}");
+
+    let namespace = lint_js(
+        CHILDREN,
+        "// @flow\nimport * as R from \"react\";\nconst view = R.createElement(\"div\", { children: \"Children\" });\n",
+    );
+
+    assert_eq!(namespace.len(), 1, "{namespace:?}");
+
+    let parameter_shadow = lint_js(
+        CHILDREN,
+        "// @flow\nimport { createElement } from \"react\";\nfunction render(createElement) {\n  return createElement(\"div\", { children: \"Children\" });\n}\n",
+    );
+
+    assert!(parameter_shadow.is_empty(), "{parameter_shadow:?}");
+
+    let commonjs = lint_js(
+        CHILDREN,
+        "// @flow\nconst { createElement: h } = require(\"react\");\nconst view = h(\"div\", { children: \"Children\" });\n",
+    );
+
+    assert_eq!(commonjs.len(), 1, "{commonjs:?}");
 }
 
 // --- react/void-dom-elements-no-children ------------------------------------
