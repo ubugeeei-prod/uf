@@ -26,6 +26,7 @@ import {
 } from "@uniflowed/react-testing";
 
 import { elementIn, valueIn } from "../../tests/library/dom.js";
+import { noDiagnosticsAreReported } from "../../tests/library/type-tests.js";
 
 component Greeting(name: string) {
   return <p>Hello, {name}</p>;
@@ -1006,6 +1007,13 @@ describe("fireEvent", () => {
 });
 
 describe("userEvent", () => {
+  it("accepts elements returned by queries", () => {
+    noDiagnosticsAreReported({
+      fixture: path.join("tests", "type-tests", "react-testing-events.js"),
+      alongside: ["packages/react", "packages/react-testing"],
+    });
+  });
+
   it("clicks", async () => {
     render(<Counter />);
     await userEvent.click(screen.getByRole("button"));
