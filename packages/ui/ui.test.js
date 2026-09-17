@@ -2121,7 +2121,9 @@ describe("Menubar", () => {
     expect(file).toHaveAttribute("aria-expanded", "false");
     expect(file).not.toHaveAttribute("aria-controls");
     await userEvent.click(file);
+    const menu = screen.getByRole("menu", { name: "File" });
     expect(screen.getByRole("menuitem", { name: "File" })).toHaveAttribute("aria-expanded", "true");
+    expect(file.getAttribute("aria-controls")).toBe(menu.getAttribute("id"));
     expect(danglingReferences()).toEqual([]);
   });
 

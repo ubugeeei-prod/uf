@@ -48,9 +48,7 @@ describe("Menubar", () => {
     expect(file).toHaveAttribute("aria-haspopup", "menu");
     await userEvent.click(file);
     expect(file).toHaveAttribute("aria-expanded", "true");
-    // Followed through `aria-controls` rather than found by the name "File"
-    // until #1060: a menubar's trigger does not name the menu it opens yet.
-    expect(screen.getByRole("menu").id).toBe(file.getAttribute("aria-controls"));
+    expect(screen.getByRole("menu", { name: "File" }).id).toBe(file.getAttribute("aria-controls"));
     expect(screen.getByRole("menuitem", { name: "Open" })).toBeInTheDocument();
   });
 

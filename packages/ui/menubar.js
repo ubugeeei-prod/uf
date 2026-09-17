@@ -82,7 +82,7 @@ import {
   moveTo,
   useFirstItem,
 } from "./internal/roving-focus.js";
-import { MenuLevel, useMenu } from "./internal/menu-tree.js";
+import { MenuLevel, useMenu, useTriggerRegistration } from "./internal/menu-tree.js";
 
 /**
  * The bar's own items, and the two things that may own one.
@@ -239,6 +239,7 @@ export component MenubarTrigger(children: React.Node, render?: RenderProp, ...re
   const bar = useMenubar("Menubar.Trigger");
   const menu = useMenu("Menubar.Trigger");
   const value = useContext(MenubarMenuContext);
+  useTriggerRegistration(menu);
   if (value == null) {
     throw new Error("Menubar.Trigger must be rendered inside a Menubar.Menu");
   }
