@@ -8468,6 +8468,189 @@ fn explain_build_names_the_build_that_will_run() {
     assert!(said.contains("prerender"), "{said}");
 }
 
+/// TypeScript's own compiler, for the declaration tests.
+///
+/// Found the way [`fixture_ready`] finds the Vite driver, and gated the same
+/// way: a missing `tsc` is a failure rather than a silent skip, because the
+/// test below is the only thing standing between a library that publishes
+/// broken declarations and a release.
+fn typescript() -> Option<PathBuf> {
+    let tsc = docs_root().join("../node_modules/typescript/bin/tsc");
+    if tsc.is_file() {
+        return Some(tsc);
+    }
+    assert!(
+        std::env::var_os("UF_ALLOW_FIXTURE_SKIP").is_some(),
+        "typescript is not installed, so this test would prove nothing: {} does not exist; run \
+         `npm ci`",
+        tsc.display()
+    );
+    eprintln!("skipping: {} does not exist", tsc.display());
+    None
+}
+
+/// Run `tsc --noEmit` over one project file in `consumer`.
+fn type_check(consumer: &Path, tsc: &Path, project_file: &str) -> (bool, String) {
+    let output = Command::new("node")
+        .arg(tsc)
+        .args(["--project", project_file])
+        .current_dir(consumer)
+        .output()
+        .unwrap();
+    let said = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    (output.status.success(), said)
+}
+
+/// The first acceptance item of ubugeeei-prod/uf#969, both halves of it.
+///
+/// A library build writes `.d.ts` beside the JavaScript, a TypeScript consumer
+/// of the published package type-checks under `tsc --noEmit`, **and a misuse
+/// is an error**. The second half is what makes the first worth anything: a
+/// declaration file in which every export became `any` type-checks perfectly
+/// and tells the consumer nothing, so a test that only compiled correct code
+/// would pass just as happily against a worthless translation.
+///
+/// The misuses are chosen to fail for three different reasons — a wrong
+/// element type, a wrong argument type, and an `opaque` type built out of a
+/// raw string — because the third is the one a translator that published
+/// `type Id = string` would let through, and that is the mistake Flow exists
+/// to refuse.
+///
+/// The consumer is installed the way a consumer installs it: a directory with
+/// nothing else in it, no `uf.config.js`, no `@uniflowed/*`, no Flow
+/// transform. It resolves the package by name, so what is under test is the
+/// `exports` map — specifically that `"types"` is there and points at what the
+/// build wrote.
+#[test]
+fn a_librarys_declarations_type_check_a_typescript_consumer_and_a_misuse_is_an_error() {
+    if !fixture_ready() {
+        return;
+    }
+    let Some(tsc) = typescript() else {
+        return;
+    };
+
+    let project = Project::new(&[]);
+    scaffold_library(&project, "typed-lib");
+    project.write(
+        "index.js",
+        r#"// @flow
+
+export opaque type Id = string;
+
+export type User = {| id: Id, name: string, tags: Array<string> |};
+
+export function makeId(raw: string): Id {
+  return raw;
+}
+
+export function label(user: User): string {
+  return user.name;
+}
+
+export function count(values: Array<string>): number {
+  return values.length;
+}
+"#,
+    );
+
+    let (succeeded, said) = build_output(project.path());
+    assert!(succeeded, "the library build failed:\n{said}");
+
+    // The declarations were written, and the build said what it could not
+    // translate — the issue's second acceptance item, which is what keeps the
+    // first honest.
+    let declarations = project.path().join("dist/index.d.ts");
+    assert!(
+        declarations.is_file(),
+        "no declarations were written:\n{said}"
+    );
+    let text = fs::read_to_string(&declarations).unwrap();
+    assert!(
+        text.contains("export declare function label"),
+        "the declarations do not describe the API:\n{text}"
+    );
+    assert!(said.contains("declarations"), "{said}");
+    assert!(
+        said.contains("opaque-type"),
+        "the build did not name the untranslatable declaration:\n{said}"
+    );
+
+    // Installed with nothing of uf's anywhere above it.
+    let consumer = tempfile::tempdir().unwrap();
+    let installed = consumer.path().join("node_modules/typed-lib");
+    fs::create_dir_all(&installed).unwrap();
+    for file in ["package.json", "index.js"] {
+        fs::copy(project.path().join(file), installed.join(file)).unwrap();
+    }
+    copy_tree(&project.path().join("dist"), &installed.join("dist"));
+
+    let options = r#""strict": true, "noEmit": true, "target": "es2022",
+      "module": "nodenext", "moduleResolution": "nodenext", "types": []"#;
+    fs::write(
+        consumer.path().join("tsconfig.good.json"),
+        format!("{{ \"compilerOptions\": {{ {options} }}, \"files\": [\"good.ts\"] }}"),
+    )
+    .unwrap();
+    fs::write(
+        consumer.path().join("tsconfig.bad.json"),
+        format!("{{ \"compilerOptions\": {{ {options} }}, \"files\": [\"bad.ts\"] }}"),
+    )
+    .unwrap();
+
+    fs::write(
+        consumer.path().join("good.ts"),
+        r#"import { makeId, label, count } from "typed-lib";
+
+const id = makeId("abc");
+export const shown: string = label({ id, name: "ada", tags: ["x"] });
+export const total: number = count(["a", "b"]);
+"#,
+    )
+    .unwrap();
+    fs::write(
+        consumer.path().join("bad.ts"),
+        r#"import { makeId, label, count } from "typed-lib";
+
+// `count` takes string[].
+export const wrongElement: number = count([1, 2, 3]);
+// `label` takes a User, not a string.
+export const wrongArgument: string = label("not-a-user");
+// `id` is opaque: a raw string is not one, however much it looks like one.
+export const forgedId: string = label({ id: "raw", name: "ada", tags: [] });
+// And the return type is known, so this is not assignable either.
+export const wrongReturn: number = makeId("abc");
+"#,
+    )
+    .unwrap();
+
+    let (compiled, reported) = type_check(consumer.path(), &tsc, "tsconfig.good.json");
+    assert!(
+        compiled,
+        "correct usage of the published declarations did not type-check:\n{reported}\n\
+         the declarations were:\n{text}"
+    );
+
+    let (compiled, reported) = type_check(consumer.path(), &tsc, "tsconfig.bad.json");
+    assert!(
+        !compiled,
+        "a misuse type-checked, so the declarations are not saying anything:\n{reported}\n\
+         the declarations were:\n{text}"
+    );
+    // Each misuse fails on its own line, which is what says the declarations
+    // describe the API rather than merely parsing.
+    for line in ["bad.ts(4", "bad.ts(6", "bad.ts(8", "bad.ts(10"] {
+        assert!(
+            reported.contains(line),
+            "no error reported at {line}:\n{reported}"
+        );
+    }
+}
+
 /// `uf explain build` in `root`, as one string.
 fn explain_build(root: &Path) -> String {
     let output = uf()

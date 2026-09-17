@@ -1,0 +1,26 @@
+[
+  {
+    "declaration": "Rendered",
+    "construct": "react-type",
+    "reason": "this names a React type, whose TypeScript spelling depends on which `@types/react` the consumer installed, so it is published as `unknown`",
+    "line": 3
+  },
+  {
+    "declaration": "Element",
+    "construct": "react-type",
+    "reason": "this names a React type, whose TypeScript spelling depends on which `@types/react` the consumer installed, so it is published as `unknown`",
+    "line": 5
+  },
+  {
+    "declaration": "Renders",
+    "construct": "renders-type",
+    "reason": "a `renders` type states what a component renders, which TypeScript has no way to say, so it is published as `unknown`",
+    "line": 7
+  },
+  {
+    "declaration": "Button",
+    "construct": "component-type",
+    "reason": "Flow's `component` syntax has no TypeScript spelling, and the props type it implies depends on which `@types/react` the consumer installed, so only its name is published, as `unknown`",
+    "line": 9
+  }
+]

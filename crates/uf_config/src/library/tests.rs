@@ -36,6 +36,7 @@ fn build_lib_says_what_a_library_builds() {
         entries: vec!["index.js".into(), "internal/parse.js".into()],
         formats: vec![LibraryFormat::Es, LibraryFormat::Cjs],
         external: vec!["react".into()],
+        declarations: true,
     });
     let plan = LibraryPlan::resolve(&config).expect("a library");
     assert_eq!(plan.entries(), ["index.js", "internal/parse.js"]);

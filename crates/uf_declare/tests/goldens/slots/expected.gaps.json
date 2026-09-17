@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Callable",
+    "construct": "internal-slot",
+    "reason": "an internal slot is not a property a consumer can name, so it is left out of the declarations",
+    "line": 4
+  }
+]

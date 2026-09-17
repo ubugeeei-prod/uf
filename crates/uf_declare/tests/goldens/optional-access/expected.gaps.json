@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Optional",
+    "construct": "optional-indexed-access",
+    "reason": "`?.[]` indexes a type that may be null, and TypeScript indexes only types that cannot be, so the result is published as `unknown`",
+    "line": 9
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "declaration": "count",
+    "construct": "missing-annotation",
+    "reason": "Flow infers this binding's type from its value, and translating declarations does not run inference, so it is published as `unknown`",
+    "line": 3
+  },
+  {
+    "declaration": "guess",
+    "construct": "missing-annotation",
+    "reason": "Flow infers this function's return type, and translating declarations does not run inference, so it is published as `unknown`",
+    "line": 5
+  },
+  {
+    "declaration": "default",
+    "construct": "missing-annotation",
+    "reason": "this module's default export is an expression whose type Flow infers, and a declaration file cannot infer, so it is published as `unknown`",
+    "line": 11
+  }
+]

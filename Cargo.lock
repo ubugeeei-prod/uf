@@ -3612,6 +3612,7 @@ dependencies = [
  "uf_bundle",
  "uf_check",
  "uf_config",
+ "uf_declare",
  "uf_doc",
  "uf_dts",
  "uf_env",
@@ -3656,6 +3657,21 @@ dependencies = [
  "uf_bundle",
  "uf_flow",
  "uf_runtime",
+]
+
+[[package]]
+name = "uf_declare"
+version = "0.0.0-alpha.39"
+dependencies = [
+ "compact_str",
+ "oxc_allocator",
+ "oxc_parser",
+ "oxc_span",
+ "serde",
+ "serde_json",
+ "similar-asserts",
+ "uf_flow",
+ "uf_infra",
 ]
 
 [[package]]

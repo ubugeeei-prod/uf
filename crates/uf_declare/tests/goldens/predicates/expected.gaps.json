@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "isString",
+    "construct": "predicate-function",
+    "reason": "this function's return type is a Flow assertion, which changes what a call proves rather than what it returns, so it is published as `boolean`",
+    "line": 7
+  }
+]

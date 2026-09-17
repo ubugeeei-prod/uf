@@ -141,6 +141,20 @@ pub struct LibraryConfig {
     /// what a manifest cannot say: a peer a consumer supplies under a
     /// different name, an import that resolves through an alias.
     pub external: Vec<CompactString>,
+    /// Write a TypeScript declaration file beside each entry.
+    ///
+    /// On by default, which is the whole point of ubugeeei-prod/uf#969: most
+    /// people who install a Flow library write TypeScript, and to them a
+    /// package with no `.d.ts` is `any` — every call into it unchecked. A
+    /// library that says nothing gets declarations, because a library that
+    /// says nothing is the one that most needs them.
+    ///
+    /// The key exists for the project that would rather ship none. Every Flow
+    /// construct with no TypeScript meaning is named in the build report
+    /// rather than silently widened, so turning this off is a decision about
+    /// what to *publish* — not a way to stop hearing about the gaps, which is
+    /// what a project reaching for this usually wants and will not get.
+    pub declarations: bool,
 }
 
 impl Default for LibraryConfig {
@@ -149,6 +163,7 @@ impl Default for LibraryConfig {
             entries: vec![CompactString::const_new("index.js")],
             formats: vec![LibraryFormat::Es],
             external: Vec::new(),
+            declarations: true,
         }
     }
 }
@@ -162,6 +177,7 @@ pub struct LibraryPlan {
     entries: Vec<CompactString>,
     formats: Vec<LibraryFormat>,
     external: Vec<CompactString>,
+    declarations: bool,
     /// Whether the project wrote `build.lib` itself, so a message can quote
     /// the key that decided rather than a default nobody typed.
     declared: bool,
@@ -185,6 +201,7 @@ impl LibraryPlan {
             entries: lib.entries,
             formats: lib.formats,
             external: lib.external,
+            declarations: lib.declarations,
             declared,
         })
     }
@@ -205,6 +222,12 @@ impl LibraryPlan {
     #[must_use]
     pub fn external(&self) -> &[CompactString] {
         &self.external
+    }
+
+    /// Whether this build writes TypeScript declarations.
+    #[must_use]
+    pub fn declarations(&self) -> bool {
+        self.declarations
     }
 
     /// The clause that says which build ran and why.

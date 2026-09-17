@@ -1,0 +1,8 @@
+[
+  {
+    "declaration": "Status",
+    "construct": "flow-enum",
+    "reason": "a Flow enum is a runtime object with `cast`, `isValid`, `members` and `getName` on it, which TypeScript's own `enum` is not, so only its name is published, as `unknown`",
+    "line": 3
+  }
+]

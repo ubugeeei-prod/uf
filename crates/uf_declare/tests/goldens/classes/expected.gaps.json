@@ -1,0 +1,14 @@
+[
+  {
+    "declaration": "Store",
+    "construct": "private-field",
+    "reason": "a private field is not part of what a consumer can use, so it is left out of the declarations",
+    "line": 6
+  },
+  {
+    "declaration": "Remote",
+    "construct": "exact-object",
+    "reason": "this is an exact object type, and TypeScript's object types are inexact: every property is still declared and still checked, but a consumer passing an object with an extra property will not be stopped",
+    "line": 28
+  }
+]

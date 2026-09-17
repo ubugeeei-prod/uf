@@ -5,6 +5,7 @@ members = [
   "crates/uf_check",
   "crates/uf_cli",
   "crates/uf_config",
+  "crates/uf_declare",
   "crates/uf_doc",
   "crates/uf_dts",
   "crates/uf_env",

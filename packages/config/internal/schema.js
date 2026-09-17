@@ -625,6 +625,18 @@ export type UniflowedConfig = {
       // `peerDependencies`, `optionalDependencies` and the host's built-in
       // modules; this is for what a manifest cannot say.
       readonly external?: $ReadOnlyArray<string>,
+      /**
+       * Write a TypeScript declaration file beside each entry. On by
+       * default.
+       *
+       * Most people who install a Flow library write TypeScript, and to them
+       * a package with no `.d.ts` is `any`. Every Flow construct that has no
+       * TypeScript meaning is named in the build report rather than silently
+       * widened, so turning this off is for a library that would rather ship
+       * no declarations than ones with gaps in them — not for one that wants
+       * to stop hearing about the gaps.
+       */
+      readonly declarations?: boolean,
     },
     /**
      * What `uf dev`, `uf build` and `uf preview` run on, when it is not the
