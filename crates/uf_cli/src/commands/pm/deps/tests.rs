@@ -922,3 +922,68 @@ fn pnpms_check_names_the_packages_it_would_collapse() {
     assert_eq!(pnpm_named(said), vec!["ms 2.0.0 → 2.1.2".to_owned()]);
     assert!(pnpm_named("Progress: resolved 1, reused 0\n").is_empty());
 }
+
+fn captured(
+    manager: uf_pm::PackageManager,
+    succeeded: bool,
+    stdout: &str,
+    stderr: &str,
+) -> uf_pm::run::CapturedRun {
+    uf_pm::run::CapturedRun {
+        manager,
+        invocation: uf_pm::command_for(manager, Operation::Dedupe { check: true }).unwrap(),
+        succeeded,
+        stdout: stdout.to_owned(),
+        stderr: stderr.to_owned(),
+    }
+}
+
+/// pnpm 12 prints the same marker and tree as pnpm 10. The manager row proves
+/// it comes through `uf`; this pins the branch that turns that answer into the
+/// package list.
+#[test]
+fn pnpms_non_zero_check_answer_is_the_packages_it_named() {
+    let stdout = "Progress: resolved 2, reused 1, downloaded 0, added 0, done\n\
+         \n[ERR_PNPM_DEDUPE_CHECK_ISSUES] Dedupe --check found changes to the lockfile\n\
+         \nImporters\n.\n└── ms 2.0.0 → 2.1.2\n\n\nPackages\n- ms@2.0.0\n";
+    let run = captured(uf_pm::PackageManager::Pnpm, false, stdout, "");
+
+    assert_eq!(
+        would_collapse(uf_pm::PackageManager::Pnpm, &run),
+        WouldCollapse::These(vec!["ms 2.0.0 → 2.1.2".to_owned()])
+    );
+
+    let failed = captured(
+        uf_pm::PackageManager::Pnpm,
+        false,
+        "",
+        "ERR_PNPM_FETCH_404 not found\n",
+    );
+    assert_eq!(
+        would_collapse(uf_pm::PackageManager::Pnpm, &failed),
+        WouldCollapse::Failed
+    );
+}
+
+/// Yarn 2+ exits non-zero for duplicates but its output is the list. uf keeps
+/// that output and reports the generic "something" answer.
+#[test]
+fn yarn_berrys_non_zero_check_answer_keeps_what_the_manager_said() {
+    let stdout = "➤ YN0000: ┌ Deduplication step\n\
+         ➤ YN0000: │ ms@npm:^2.0.0 can be deduped from ms@npm:2.0.0 to ms@npm:2.1.2\n\
+         ➤ YN0000: │ One package can be deduped using the highest strategy\n\
+         ➤ YN0000: └ Completed\n";
+    let manager = uf_pm::PackageManager::Yarn(uf_pm::YarnEdition::Berry);
+    let run = captured(manager, false, stdout, "");
+
+    assert_eq!(would_collapse(manager, &run), WouldCollapse::Something);
+    assert_eq!(
+        manager_said(&run),
+        vec![
+            "➤ YN0000: ┌ Deduplication step".to_owned(),
+            "➤ YN0000: │ ms@npm:^2.0.0 can be deduped from ms@npm:2.0.0 to ms@npm:2.1.2".to_owned(),
+            "➤ YN0000: │ One package can be deduped using the highest strategy".to_owned(),
+            "➤ YN0000: └ Completed".to_owned(),
+        ]
+    );
+}

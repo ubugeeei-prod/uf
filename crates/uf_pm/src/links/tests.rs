@@ -459,6 +459,31 @@ fn a_masked_answer_from_npm_is_put_back_from_the_filesystem() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn a_windows_masked_npm_global_root_is_put_back_before_registry_lookup() {
+    let (_dir, root) = project();
+    let registry = root.join(
+        "Users/runner/AppData/Local/8c1d5f02-4a6b-4c3e-9f70-2b8e1a4d6c59/npm-global/node_modules",
+    );
+    fs::create_dir_all(registry.join("managers-lib")).unwrap();
+
+    let unmasked = unmasked(&root.join("Users/runner/AppData/Local/***/npm-global/node_modules"))
+        .expect("the masked segment is the one directory the rest of the path fits");
+    let dirs = GlobalDirs {
+        npm: Some(unmasked),
+        ..GlobalDirs::default()
+    };
+    let entries = registry_entries(PackageManager::Npm, "managers-lib", &dirs);
+
+    assert_eq!(entries, [registry.join("managers-lib")]);
+    assert_eq!(
+        registration(&entries, &root.join("package")),
+        Registration::Installed(registry.join("managers-lib")),
+        "the restored npm root is the directory unlink inspects"
+    );
+}
+
 /// A mask uf cannot put back is no answer at all: `uf unlink` removes what it
 /// finds in this directory, so a guess is worse than saying it cannot find it.
 #[test]

@@ -180,6 +180,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &JsxWork) -> Vec<Finding> {
         comment_text: levels.comment_text.is_some(),
         unescaped_entities: levels.unescaped_entities.is_some(),
         params: Vec::new(),
+        bindings: Vec::new(),
         pending_iteration: None,
         literal: 0,
         found: Vec::new(),
@@ -309,6 +310,16 @@ enum ElementApi {
     Clone,
 }
 
+/// What a local value binding names, when a React JSX rule cares.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Binding {
+    Other,
+    ReactNamespace,
+    ReactCreateElement,
+    ReactCloneElement,
+    ReactChildren,
+}
+
 /// The walk: one pass over the tree, carrying what the rules need to know.
 struct Walk<'ast> {
     jsx_key: bool,
@@ -321,6 +332,8 @@ struct Walk<'ast> {
     /// Parameters of the functions the walk is inside, innermost last, each
     /// with what it is to the iteration that calls its function.
     params: Vec<(&'ast str, Param)>,
+    /// Value bindings in the active scopes, innermost last.
+    bindings: Vec<(&'ast str, Binding)>,
     /// The iteration whose callback is the function about to be entered.
     pending_iteration: Option<Iteration>,
     /// How many `<code>` and `<pre>` elements enclose the node being visited.
@@ -349,6 +362,18 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
         ast_visitor::array_default(self, loc, array)
     }
 
+    /// A block is a value scope for declarations that can shadow React.
+    fn block(
+        &mut self,
+        loc: &'ast Loc,
+        block: &'ast ast::statement::Block<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let outer = self.bindings.len();
+        let walked = ast_visitor::block_default(self, loc, block);
+        self.bindings.truncate(outer);
+        walked
+    }
+
     /// The list callbacks and the element factories, and then a walk that
     /// marks the index parameter of the callback an iteration method is given.
     fn call(
@@ -364,7 +389,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
         }
 
         let iteration = if self.index_key {
-            iteration_of(&call.callee)
+            self.iteration_of(&call.callee)
         } else {
             None
         };
@@ -394,6 +419,7 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
     fn function_(&mut self, loc: &'ast Loc, function: &'ast Function) -> Result<(), ()> {
         let iteration = self.pending_iteration.take();
         let outer = self.params.len();
+        let outer_bindings = self.bindings.len();
         for (position, param) in function.params.params.iter().enumerate() {
             let ast::function::Param::RegularParam { argument, .. } = param else {
                 continue;
@@ -405,11 +431,77 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Walk<'ast> {
                     _ => Param::Other,
                 };
                 self.params.push((&inner.name.name, role));
+                self.bind(&inner.name.name, Binding::Other);
             }
         }
         let walked = ast_visitor::function_default(self, loc, function);
         self.params.truncate(outer);
+        self.bindings.truncate(outer_bindings);
         walked
+    }
+
+    /// Imports give React APIs their precise local names.
+    fn import_declaration(
+        &mut self,
+        loc: &'ast Loc,
+        declaration: &'ast ast::statement::ImportDeclaration<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let walked = ast_visitor::import_declaration_default(self, loc, declaration);
+        if declaration.import_kind == ast::statement::ImportKind::ImportValue
+            && is_react_source(&declaration.source.1.value)
+        {
+            if let Some(default) = &declaration.default {
+                self.bind(&default.identifier.name, Binding::ReactNamespace);
+            }
+            if let Some(specifiers) = &declaration.specifiers {
+                match specifiers {
+                    ast::statement::import_declaration::Specifier::ImportNamespaceSpecifier((
+                        _,
+                        local,
+                    )) => self.bind(&local.name, Binding::ReactNamespace),
+                    ast::statement::import_declaration::Specifier::ImportNamedSpecifiers(named) => {
+                        for specifier in named.iter() {
+                            if specifier.kind.is_some() {
+                                continue;
+                            }
+                            if let Some(binding) = react_named_binding(&specifier.remote.name) {
+                                let local = specifier.local.as_ref().unwrap_or(&specifier.remote);
+                                self.bind(&local.name, binding);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        walked
+    }
+
+    /// Local declarations shadow React imports, and CommonJS can introduce the
+    /// same API bindings.
+    fn variable_declarator(
+        &mut self,
+        kind: ast::VariableKind,
+        declarator: &'ast ast::statement::variable::Declarator<Loc, Loc>,
+    ) -> Result<(), ()> {
+        let walked = ast_visitor::variable_declarator_default(self, kind, declarator);
+        if let Some(init) = &declarator.init
+            && is_react_require(init)
+        {
+            self.bind_react_require_pattern(&declarator.id);
+        }
+        walked
+    }
+
+    /// Every value binding can shadow a React import.
+    fn pattern_identifier(
+        &mut self,
+        kind: Option<ast::VariableKind>,
+        ident: &'ast ast::Identifier<Loc, Loc>,
+    ) -> Result<(), ()> {
+        if kind.is_some() {
+            self.bind(&ident.name, Binding::Other);
+        }
+        ast_visitor::pattern_identifier_default(self, kind, ident)
     }
 
     /// A JSX element, walked by this module rather than by the default so an
@@ -513,6 +605,40 @@ impl<'ast> Walk<'ast> {
         });
     }
 
+    fn bind(&mut self, name: &'ast str, binding: Binding) {
+        self.bindings.push((name, binding));
+    }
+
+    fn binding(&self, name: &str) -> Option<Binding> {
+        self.bindings
+            .iter()
+            .rev()
+            .find(|(binding, _)| *binding == name)
+            .map(|(_, value)| *value)
+    }
+
+    fn bind_react_require_pattern(&mut self, pattern: &'ast ast::pattern::Pattern<Loc, Loc>) {
+        match pattern {
+            ast::pattern::Pattern::Identifier { inner, .. } => {
+                self.bind(&inner.name.name, Binding::ReactNamespace);
+            }
+            ast::pattern::Pattern::Object { inner, .. } => {
+                for property in inner.properties.iter() {
+                    let ast::pattern::object::Property::NormalProperty(property) = property else {
+                        continue;
+                    };
+                    let Some(binding) = react_pattern_key(&property.key) else {
+                        continue;
+                    };
+                    for name in pattern_names(&property.pattern) {
+                        self.bind(name, binding);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
     // --- react/jsx-key ------------------------------------------------------
 
     /// Every element an array literal holds, and every literal `key` it holds
@@ -560,7 +686,7 @@ impl<'ast> Walk<'ast> {
 
     /// The elements a `map`, `flatMap` or `Array.from` callback returns.
     fn check_callback_keys(&mut self, call: &'ast ast::expression::Call<Loc, Loc>) {
-        let Some((method, callback)) = list_callback(call) else {
+        let Some((method, callback)) = self.list_callback(call) else {
             return;
         };
         let Some(function) = as_function(callback) else {
@@ -810,7 +936,7 @@ impl<'ast> Walk<'ast> {
     /// The three rules that read `React.createElement` and
     /// `React.cloneElement` as well as JSX.
     fn check_element_call(&mut self, loc: &'ast Loc, call: &'ast ast::expression::Call<Loc, Loc>) {
-        let Some(api) = element_api(&call.callee) else {
+        let Some(api) = self.element_api(&call.callee) else {
             return;
         };
         let arguments = &call.arguments.arguments;
@@ -941,6 +1067,87 @@ impl<'ast> Walk<'ast> {
             });
         }
     }
+
+    /// The callback of a call that builds a list of elements, with the name to
+    /// report it under: `map` and `flatMap` on anything but `React.Children`,
+    /// and `Array.from`'s second argument.
+    fn list_callback(
+        &self,
+        call: &'ast ast::expression::Call<Loc, Loc>,
+    ) -> Option<(&'static str, &'ast Expression)> {
+        let member = member_of(&call.callee)?;
+        let (method, at) = match property_name(member)? {
+            "map" if !self.is_children_api(&member.object) => ("map", 0),
+            "flatMap" => ("flatMap", 0),
+            "from" if is_identifier(&member.object, "Array") => ("Array.from", 1),
+            _ => return None,
+        };
+        match call.arguments.arguments.get(at)? {
+            ExpressionOrSpread::Expression(callback) => Some((method, callback)),
+            ExpressionOrSpread::Spread(_) => None,
+        }
+    }
+
+    /// The iteration a call makes, when its callee is an iteration method.
+    fn iteration_of(&self, callee: &Expression) -> Option<Iteration> {
+        let member = member_of(callee)?;
+        let method = property_name(member)?;
+        let at = |callback, item, index| Iteration {
+            callback,
+            item,
+            index,
+        };
+        if self.is_children_api(&member.object) {
+            return matches!(method, "map" | "forEach").then(|| at(1, 0, 1));
+        }
+        match method {
+            "every" | "filter" | "find" | "findIndex" | "findLast" | "findLastIndex"
+            | "flatMap" | "forEach" | "map" | "some" => Some(at(0, 0, 1)),
+            "reduce" | "reduceRight" => Some(at(0, 1, 2)),
+            _ => None,
+        }
+    }
+
+    /// `React.createElement`, `React.cloneElement`, or either imported bare.
+    fn element_api(&self, callee: &Expression) -> Option<ElementApi> {
+        match &**callee {
+            ExpressionInner::Identifier { inner, .. } => match self.binding(&inner.name) {
+                Some(Binding::ReactCreateElement) => Some(ElementApi::Create),
+                Some(Binding::ReactCloneElement) => Some(ElementApi::Clone),
+                _ => None,
+            },
+            _ => {
+                let member = member_of(callee)?;
+                if !self.is_react_namespace(&member.object) {
+                    return None;
+                }
+                match property_name(member)? {
+                    "createElement" => Some(ElementApi::Create),
+                    "cloneElement" => Some(ElementApi::Clone),
+                    _ => None,
+                }
+            }
+        }
+    }
+
+    /// `React.Children`, or `Children` imported from React.
+    fn is_children_api(&self, expression: &Expression) -> bool {
+        match &**expression {
+            ExpressionInner::Identifier { inner, .. } => {
+                self.binding(&inner.name) == Some(Binding::ReactChildren)
+            }
+            _ => member_of(expression).is_some_and(|member| {
+                self.is_react_namespace(&member.object) && property_name(member) == Some("Children")
+            }),
+        }
+    }
+
+    fn is_react_namespace(&self, expression: &Expression) -> bool {
+        expression_binding(expression)
+            .and_then(|name| self.binding(name))
+            .is_some_and(|binding| binding == Binding::ReactNamespace)
+            || is_react_require(expression)
+    }
 }
 
 /// The elements `expression` evaluates to: itself, either branch of a
@@ -1016,23 +1223,6 @@ fn return_in<'ast>(statement: &'ast Statement, out: &mut Vec<&'ast Expression>) 
     }
 }
 
-/// The callback of a call that builds a list of elements, with the name to
-/// report it under: `map` and `flatMap` on anything but `React.Children`, and
-/// `Array.from`'s second argument.
-fn list_callback(call: &ast::expression::Call<Loc, Loc>) -> Option<(&'static str, &Expression)> {
-    let member = member_of(&call.callee)?;
-    let (method, at) = match property_name(member)? {
-        "map" if !is_children_api(&member.object) => ("map", 0),
-        "flatMap" => ("flatMap", 0),
-        "from" if is_identifier(&member.object, "Array") => ("Array.from", 1),
-        _ => return None,
-    };
-    match call.arguments.arguments.get(at)? {
-        ExpressionOrSpread::Expression(callback) => Some((method, callback)),
-        ExpressionOrSpread::Spread(_) => None,
-    }
-}
-
 /// What a callback parameter is to the iteration that calls the callback.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Param {
@@ -1054,26 +1244,6 @@ struct Iteration {
     item: usize,
     /// Which parameter of the callback is the index.
     index: usize,
-}
-
-/// The iteration a call makes, when its callee is an iteration method.
-fn iteration_of(callee: &Expression) -> Option<Iteration> {
-    let member = member_of(callee)?;
-    let method = property_name(member)?;
-    let at = |callback, item, index| Iteration {
-        callback,
-        item,
-        index,
-    };
-    if is_children_api(&member.object) {
-        return matches!(method, "map" | "forEach").then(|| at(1, 0, 1));
-    }
-    match method {
-        "every" | "filter" | "find" | "findIndex" | "findLast" | "findLastIndex" | "flatMap"
-        | "forEach" | "map" | "some" => Some(at(0, 0, 1)),
-        "reduce" | "reduceRight" => Some(at(0, 1, 2)),
-        _ => None,
-    }
 }
 
 /// The value `x.toString()` or `String(x)` converts, when `call` is one.
@@ -1111,35 +1281,6 @@ static STATEFUL_ELEMENTS: phf::Set<&'static str> = phf::phf_set! {
     "select", "textarea", "video",
 };
 
-/// `React.createElement`, `React.cloneElement`, or either imported bare.
-fn element_api(callee: &Expression) -> Option<ElementApi> {
-    let name = match &**callee {
-        ExpressionInner::Identifier { inner, .. } => &*inner.name,
-        _ => {
-            let member = member_of(callee)?;
-            if !is_identifier(&member.object, "React") {
-                return None;
-            }
-            property_name(member)?
-        }
-    };
-    match name {
-        "createElement" => Some(ElementApi::Create),
-        "cloneElement" => Some(ElementApi::Clone),
-        _ => None,
-    }
-}
-
-/// `React.Children`, or `Children` imported from React.
-fn is_children_api(expression: &Expression) -> bool {
-    if is_identifier(expression, "Children") {
-        return true;
-    }
-    member_of(expression).is_some_and(|member| {
-        is_identifier(&member.object, "React") && property_name(member) == Some("Children")
-    })
-}
-
 fn member_of(expression: &Expression) -> Option<&ast::expression::Member<Loc, Loc>> {
     match &**expression {
         ExpressionInner::Member { inner, .. } => Some(inner),
@@ -1157,6 +1298,88 @@ fn property_name(member: &ast::expression::Member<Loc, Loc>) -> Option<&str> {
 
 fn is_identifier(expression: &Expression, name: &str) -> bool {
     matches!(&**expression, ExpressionInner::Identifier { inner, .. } if &*inner.name == name)
+}
+
+fn expression_binding(expression: &Expression) -> Option<&str> {
+    match &**expression {
+        ExpressionInner::Identifier { inner, .. } => Some(&inner.name),
+        _ => None,
+    }
+}
+
+fn is_react_source(source: &str) -> bool {
+    matches!(source, "react" | "@uniflowed/react")
+}
+
+fn react_named_binding(name: &str) -> Option<Binding> {
+    match name {
+        "createElement" => Some(Binding::ReactCreateElement),
+        "cloneElement" => Some(Binding::ReactCloneElement),
+        "Children" => Some(Binding::ReactChildren),
+        _ => None,
+    }
+}
+
+fn is_react_require(expression: &Expression) -> bool {
+    let ExpressionInner::Call { inner, .. } = &**expression else {
+        return false;
+    };
+    is_identifier(&inner.callee, "require")
+        && matches!(
+            &*inner.arguments.arguments,
+            [ExpressionOrSpread::Expression(source)]
+                if matches!(&**source, ExpressionInner::StringLiteral { inner, .. } if is_react_source(&inner.value))
+        )
+}
+
+fn react_pattern_key(key: &ast::pattern::object::Key<Loc, Loc>) -> Option<Binding> {
+    let name = match key {
+        ast::pattern::object::Key::Identifier(identifier) => &*identifier.name,
+        ast::pattern::object::Key::StringLiteral((_, literal)) => &*literal.value,
+        _ => return None,
+    };
+    react_named_binding(name)
+}
+
+fn pattern_names(pattern: &ast::pattern::Pattern<Loc, Loc>) -> Vec<&str> {
+    let mut names = Vec::new();
+    collect_pattern_names(pattern, &mut names);
+    names
+}
+
+fn collect_pattern_names<'ast>(
+    pattern: &'ast ast::pattern::Pattern<Loc, Loc>,
+    names: &mut Vec<&'ast str>,
+) {
+    match pattern {
+        ast::pattern::Pattern::Identifier { inner, .. } => names.push(&inner.name.name),
+        ast::pattern::Pattern::Object { inner, .. } => {
+            for property in inner.properties.iter() {
+                match property {
+                    ast::pattern::object::Property::NormalProperty(property) => {
+                        collect_pattern_names(&property.pattern, names);
+                    }
+                    ast::pattern::object::Property::RestElement(rest) => {
+                        collect_pattern_names(&rest.argument, names);
+                    }
+                }
+            }
+        }
+        ast::pattern::Pattern::Array { inner, .. } => {
+            for element in inner.elements.iter() {
+                match element {
+                    ast::pattern::array::Element::NormalElement(element) => {
+                        collect_pattern_names(&element.argument, names);
+                    }
+                    ast::pattern::array::Element::RestElement(rest) => {
+                        collect_pattern_names(&rest.argument, names);
+                    }
+                    ast::pattern::array::Element::Hole(_) => {}
+                }
+            }
+        }
+        ast::pattern::Pattern::Expression { .. } => {}
+    }
 }
 
 fn as_function(expression: &Expression) -> Option<&Function> {
