@@ -189,7 +189,81 @@ pub(crate) fn resolve(
             }
         );
     }
+    // And the Bun on this machine against the floor the adapter declares —
+    // here, before the bundle is built, for the reason the refusal above is
+    // here: a build that spends a minute and then says the target cannot run
+    // it has spent a minute on the wrong answer.
+    if adapter == DeployAdapter::Bun {
+        refuse_old_bun()?;
+    }
     Ok(Some(adapter))
+}
+
+/// Refuse when the `bun` on this machine is older than uf's declared floor.
+///
+/// Only when there *is* one: building a Bun artefact on a machine with no Bun
+/// is ordinary — the directory is meant to be copied somewhere else — and a
+/// build that demanded the target runtime be installed locally would refuse
+/// every CI job that cross-builds. What this catches is the other case, where
+/// the machine has a Bun that cannot run what is about to be written, which
+/// until now produced a directory that failed at start-up with a syntax error
+/// from inside React.
+///
+/// The generated entry carries the same refusal for the machine that actually
+/// runs it; this one is so that a person who types `uf build --adapter bun`
+/// and then `bun server.js` hears it from the command rather than from the
+/// bundle. See ubugeeei-prod/uf#1048.
+fn refuse_old_bun() -> Result<()> {
+    let Some(reported) = std::process::Command::new("bun")
+        .arg("--version")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+    else {
+        return Ok(());
+    };
+    let (Some(found), Some(floor)) = (
+        version_parts(reported.trim()),
+        version_parts(uf_runtime::BUN_MINIMUM),
+    ) else {
+        return Ok(());
+    };
+    if found >= floor {
+        return Ok(());
+    }
+    bail!(
+        "bun: {} is older than {}, and a `--adapter bun` deployment needs {}.\n  React's \
+         server build uses a labelled statement Bun rejects before {}, so the `handler.js` \
+         this would write cannot be parsed by the `bun` on this machine — it would fail at \
+         start-up rather than serve anything.\n  Upgrade with `bun upgrade`, or build \
+         `--adapter node` and run it on Node.\n  \
+         https://github.com/ubugeeei-prod/uf/issues/1048",
+        reported.trim(),
+        uf_runtime::BUN_MINIMUM,
+        uf_runtime::BUN_MINIMUM,
+        uf_runtime::BUN_MINIMUM
+    );
+}
+
+/// `1.4.2` as three numbers, or `None` for anything that is not three numbers.
+///
+/// `None` rather than a guess: a Bun that spells its version in a shape uf
+/// does not recognise is not a Bun uf should refuse on the strength of a
+/// comparison it could not make.
+fn version_parts(version: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = version.trim_start_matches('v').split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    // `1.4.2-canary.3` is a patch of `2`, which is the comparison a person
+    // means when they ask whether a prerelease of the floor is the floor.
+    let patch = parts
+        .next()?
+        .split(|character: char| !character.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()?;
+    Some((major, minor, patch))
 }
 
 /// Link the application, then copy the build beside it.

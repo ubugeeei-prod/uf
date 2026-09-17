@@ -54,6 +54,40 @@ fn postponed_hermes_contract_remains_explicit() {
     assert!(contract.has_capability(RuntimeCapability::NativePackages));
 }
 
+/// The Bun floor is a version, and it is Bun's row that carries it.
+///
+/// Both halves matter. A floor that is not three numbers cannot be compared
+/// against `Bun.version` by the generated entry, which is the thing that
+/// actually refuses an old Bun; and a floor recorded against the wrong host
+/// would be enforced nowhere. See ubugeeei-prod/uf#1048.
+#[test]
+fn bun_is_the_host_that_declares_a_minimum_version() {
+    assert_eq!(
+        HostSupport::for_host(RuntimeHost::Bun).minimum_version(),
+        Some(BUN_MINIMUM)
+    );
+    for support in HOSTS {
+        if support.host != RuntimeHost::Bun {
+            assert_eq!(
+                support.minimum_version(),
+                None,
+                "{:?} declares a minimum version and nothing enforces one for it",
+                support.host
+            );
+        }
+    }
+
+    let parts: Vec<&str> = BUN_MINIMUM.split('.').collect();
+    assert_eq!(parts.len(), 3, "the floor is `major.minor.patch`");
+    for part in parts {
+        assert!(
+            part.parse::<u64>().is_ok(),
+            "`{BUN_MINIMUM}` has a part that is not a number, and the generated entry compares \
+             it numerically"
+        );
+    }
+}
+
 /// Every host has a row, so `HostSupport::for_host` cannot panic.
 ///
 /// The table is a `const` slice rather than a match, which is what makes it

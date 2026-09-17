@@ -7,7 +7,7 @@ mod kind;
 pub mod permissions;
 
 pub use crate::contract::{CapabilityList, HostList, RuntimeContract};
-pub use crate::host::{HOSTS, HostSupport, SupportLevel};
+pub use crate::host::{BUN_MINIMUM, HOSTS, HostSupport, SupportLevel};
 pub use crate::kind::{
     EventLoopModel, JavaScriptEngine, NativeIoModel, RuntimeCapability, RuntimeHost,
     RuntimeLanguage, RuntimeStandard,

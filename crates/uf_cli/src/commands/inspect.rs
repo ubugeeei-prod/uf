@@ -502,6 +502,12 @@ fn host_support_rows<'a>(
                 .collect::<Vec<_>>(),
             "verifiedBy": support.verified_by,
             "missing": support.missing,
+            // The floor, where the host has one. `null` for every row but
+            // Bun's, and Bun's is here because `uf inspect --json` is what a
+            // person pastes into an issue: "my Bun deployment dies at
+            // start-up" and "this uf needs Bun 1.4.2" are the same fact, and
+            // only one of them was printed anywhere. See ubugeeei-prod/uf#1048.
+            "minimumVersion": support.minimum_version(),
             "trackingIssue": support.tracking_issue,
         }))
         .collect::<Vec<_>>()

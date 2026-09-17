@@ -1863,12 +1863,40 @@ serve({ handle: fetch, staticDir, beginRequest, routing${cron.option} }).catch((
 }
 
 /**
+ * The oldest Bun that can run what this adapter writes.
+ *
+ * Kept equal to `uf_runtime`'s `BUN_MINIMUM` by
+ * `the_bun_entry_refuses_a_bun_older_than_the_declared_minimum`, which reads
+ * the number out of the artefact rather than out of this file — two places
+ * holding one version is exactly the shape that lets them disagree.
+ *
+ * Why there is a floor at all: React's published server build contains a
+ * labelled statement in `else` position — `else a: if (…)`, in every
+ * `react-dom-server*.production.js` including the `bun` one — and Bun's engine
+ * rejects it with `Cannot find scope for the label 'a'` before this release.
+ * It is ordinary ES that Node runs, uf does not emit it, and the `bun` export
+ * condition does not avoid it, so there is nothing for uf to lower. See
+ * ubugeeei-prod/uf#1048.
+ */
+const MINIMUM_BUN = "1.4.2";
+
+/**
  * The source of `server.js`: the Bun socket around that handler.
  *
  * `nodeEntrySource`'s twin, and identical but for the module it imports
  * `serve` from — `@uniflowed/server/bun` exports the same signature on
  * purpose, so that the two adapters are one contract and a project moving
  * between them changes a flag and nothing else.
+ *
+ * # Why the handler is imported dynamically
+ *
+ * The one place this is *not* `nodeEntrySource`'s twin. A static
+ * `import … from "./handler.js"` is linked before a single statement of this
+ * file runs, so a version check written above it would never execute: Bun
+ * would fail parsing `handler.js` and the sentence explaining why would never
+ * be reached. `await import()` puts the check first, which is the same move
+ * `denoEntrySource` makes to get its globals in before the handler is
+ * evaluated.
  */
 function bunEntrySource(handlerSpecifier, schedules) {
   const cron = scheduleLines("@uniflowed/server/schedule", schedules);
@@ -1878,11 +1906,42 @@ import { fileURLToPath } from "node:url";
 
 import { serve } from "@uniflowed/server/bun";
 ${cron.imports}
+// The Bun this build needs. React's server build carries a labelled statement
+// in \`else\` position that Bun's engine rejects before this release, so an
+// older Bun cannot parse \`handler.js\` at all — see ubugeeei-prod/uf#1048.
+//
+// This runs *before* the handler is imported, and that ordering is the whole
+// point: a static import would be linked first and the parse would fail with
+// Bun's message rather than this one.
+const MINIMUM_BUN = ${JSON.stringify(MINIMUM_BUN)};
+
+function ufBunIsOlderThanMinimum(version) {
+  const actual = String(version).split(".");
+  const floor = MINIMUM_BUN.split(".");
+  for (let index = 0; index < floor.length; index += 1) {
+    const mine = Number.parseInt(actual[index], 10);
+    const want = Number.parseInt(floor[index], 10);
+    if (!Number.isFinite(mine)) return true;
+    if (mine !== want) return mine < want;
+  }
+  return false;
+}
+
+if (typeof Bun !== "undefined" && ufBunIsOlderThanMinimum(Bun.version)) {
+  process.stderr.write(
+    \`uf: this build needs Bun \${MINIMUM_BUN} or newer, and this is Bun \${Bun.version}. \` +
+      "React's server build uses a labelled statement Bun rejects before " +
+      \`\${MINIMUM_BUN}, so \\\`handler.js\\\` beside this file cannot be parsed here. \` +
+      "Upgrade with \`bun upgrade\`, or build with \`--adapter node\` and run it on Node.\\n",
+  );
+  process.exit(1);
+}
+
 // \`beginRequest\` comes from the handler beside this file rather than from
 // \`@uniflowed/server/bun\` above, because the request has to be established in
 // the storage the *application* reads, which is the copy bundled into
 // \`handler.js\`. See ubugeeei-prod/uf#389.
-import { beginRequest, fetch, routing } from ${JSON.stringify(handlerSpecifier)};
+const { beginRequest, fetch, routing } = await import(${JSON.stringify(handlerSpecifier)});
 
 // Resolved from this file and not from the working directory: a process
 // manager, a container entrypoint and a person in a shell each start a server
