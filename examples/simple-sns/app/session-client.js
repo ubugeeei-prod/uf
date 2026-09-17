@@ -37,7 +37,7 @@ export component SignOut() {
 
   return (
     <form action={submit}>
-      <button className="icon-button" aria-label="Sign out" disabled={pending}>
+      <button type="submit" className="icon-button" aria-label="Sign out" disabled={pending}>
         <Icon name="logout" size={18} />
       </button>
       {error ? (
