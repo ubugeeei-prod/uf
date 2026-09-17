@@ -7430,7 +7430,8 @@ describe("ToggleGroup", () => {
         <ToggleGroup.Item value="italic">Italic</ToggleGroup.Item>
       </ToggleGroup.Root>,
     );
-    expect(screen.getByRole("group")).toHaveAttribute("aria-orientation", "horizontal");
+    expect(screen.getByRole("group")).not.toHaveAttribute("aria-orientation");
+    await expect(screen.getByRole("group")).toHaveNoAxeViolations();
     expect(screen.queryByRole("radiogroup")).toBe(null);
     await userEvent.click(screen.getByRole("button", { name: "Bold" }));
     await userEvent.click(screen.getByRole("button", { name: "Italic" }));
