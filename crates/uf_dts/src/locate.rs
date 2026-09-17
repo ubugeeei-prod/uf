@@ -30,7 +30,7 @@ pub fn declaration_at(source: &str, line: u32) -> Option<String> {
     let bounds = line_bounds(source, line)?;
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::d_ts()).parse();
-    if parsed.panicked {
+    if parsed.fatal_error {
         return None;
     }
     let mut path = Vec::new();

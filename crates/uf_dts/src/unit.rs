@@ -347,7 +347,7 @@ fn parse_failure(
     parsed: &oxc_parser::ParserReturn<'_>,
     source: &str,
 ) -> Option<(CompactString, u32)> {
-    if !parsed.panicked && parsed.diagnostics.is_empty() {
+    if !parsed.fatal_error && parsed.diagnostics.is_empty() {
         return None;
     }
     let first = parsed.diagnostics.iter().next();
