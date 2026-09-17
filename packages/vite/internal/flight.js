@@ -581,10 +581,21 @@ export function loadClientModule(url) {
  * @param {Map<string, string>} chunkUrls
  */
 export function builtReferencesSource(chunkUrls) {
-  const entries = [...chunkUrls].map(
-    ([file, url]) => `  [${JSON.stringify(url)}, () => import(${JSON.stringify(file)})],`,
-  );
-  return `const table = new Map([
+  const imports = [];
+  const entries = [];
+  let staticIndex = 0;
+  for (const [file, url] of chunkUrls) {
+    if (serverBundleAlreadyImportsClientReference(file)) {
+      const name = `staticReference${staticIndex}`;
+      staticIndex += 1;
+      imports.push(`import * as ${name} from ${JSON.stringify(file)};`);
+      entries.push(`  [${JSON.stringify(url)}, () => Promise.resolve(${name})],`);
+    } else {
+      entries.push(`  [${JSON.stringify(url)}, () => import(${JSON.stringify(file)})],`);
+    }
+  }
+  const prelude = imports.length === 0 ? "" : `${imports.join("\n")}\n`;
+  return `${prelude}const table = new Map([
 ${entries.join("\n")}
 ]);
 export function loadClientModule(url) {
@@ -598,6 +609,28 @@ export function loadClientModule(url) {
 }
 `;
 }
+
+/**
+ * Router internals that are client modules and also already in the server
+ * bundle through the router's own synchronous imports.
+ *
+ * They still need entries in the client-reference table, because a Flight
+ * payload can name their chunks. Loading them with `import()`, however, makes
+ * Rollup print INEFFECTIVE_DYNAMIC_IMPORT: the dynamic import cannot split a
+ * module the server chunk has already imported. Return the namespace the
+ * server loaded anyway.
+ */
+function serverBundleAlreadyImportsClientReference(file) {
+  const normalized = file.split(path.sep).join("/");
+  return ROUTER_CLIENT_REFERENCES_IN_SERVER.some((suffix) => normalized.endsWith(suffix));
+}
+
+const ROUTER_CLIENT_REFERENCES_IN_SERVER = Object.freeze([
+  "/@uniflowed/router/internal/boundaries.js",
+  "/@uniflowed/router/internal/error-view.js",
+  "/packages/router/internal/boundaries.js",
+  "/packages/router/internal/error-view.js",
+]);
 
 /**
  * `virtual:uf/client` for an application React Server Components render.

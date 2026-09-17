@@ -17,6 +17,7 @@ import uniflowed from "./index.js";
 import {
   FLIGHT_BROWSER_DEPENDENCIES,
   RSC_ENVIRONMENT,
+  builtReferencesSource,
   clientExportNames,
   clientModuleUrlPlugin,
   clientReferencePlugin,
@@ -179,6 +180,35 @@ describe("a client module in the rsc graph", () => {
     );
     expect(out).toBe(null);
     expect(state.clientModules.size).toBe(0);
+  });
+});
+
+describe("client references in the server bundle", () => {
+  it("does not dynamically import router internals the server imports already", () => {
+    const installed = "/project/node_modules/@uniflowed/router/internal/error-view.js";
+    const workspace = "/repo/packages/router/internal/boundaries.js";
+    const app = "/project/app/counter.js";
+    const source = builtReferencesSource(
+      new Map([
+        [installed, "/assets/error-view.js"],
+        [workspace, "/assets/boundaries.js"],
+        [app, "/assets/counter.js"],
+      ]),
+    );
+
+    expect(source).toContain(`import * as staticReference0 from ${JSON.stringify(installed)};`);
+    expect(source).toContain(`import * as staticReference1 from ${JSON.stringify(workspace)};`);
+    expect(source).toContain(
+      `[${JSON.stringify("/assets/error-view.js")}, () => Promise.resolve(staticReference0)]`,
+    );
+    expect(source).toContain(
+      `[${JSON.stringify("/assets/boundaries.js")}, () => Promise.resolve(staticReference1)]`,
+    );
+    expect(source).not.toContain(`import(${JSON.stringify(installed)})`);
+    expect(source).not.toContain(`import(${JSON.stringify(workspace)})`);
+    expect(source).toContain(
+      `[${JSON.stringify("/assets/counter.js")}, () => import(${JSON.stringify(app)})]`,
+    );
   });
 });
 
