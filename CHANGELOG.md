@@ -13,7 +13,7 @@ survives, so a consumer's build stops instead of quietly accepting something the
 compiler never checked. An `opaque type` is published as a branded type, because
 nominality is what `opaque` means from outside the module. And `uf build
 --adapter bun` now declares the Bun a deployment needs (#1181): React's own
-published server build carries a construct Bun could not parse before 1.4.2, so
+published server build carries a construct Bun could not parse before 1.3.14, so
 a deployment onto an older Bun died at start-up with a syntax error and nothing
 said why. CI now runs the adapter test on the declared minimum as well as the
 newest, because a floor no job exercises is a floor nobody has checked.
@@ -61,9 +61,11 @@ was written for it.
 - **ui**: six accessibility fixes — menubar menus take their name from the trigger, calendar weekday headings are no longer empty to axe, a disabled pagination control is no longer an `<a>` with no `href`, a `multiple` toggle group drops `aria-orientation`, the table sort announcement is announced rather than shown beside the table, and a narrow-screen sidebar panel and collapsed tooltip take their styles (#1180)
 - **react-testing**: implicit roles are read from the generated ARIA table rather than a second hand-maintained map, a name built from content ignores `aria-hidden` descendants, and `screen` queries and `userEvent` agree on element types (#1180)
 - **test**: `uft.useFakeTimers` and `uft.useRealTimers` no longer read as hooks to `uf check` (#1180)
+- **test**: a readiness guard now fails instead of returning, so a test cannot pass having asserted nothing when its host is absent (#1204)
 - **vite**: a new project's first build no longer warns `INEFFECTIVE_DYNAMIC_IMPORT` about the router's internals (#1180)
 - **ui**: an overlay is dismissed by the gesture that ends outside it (#1193)
-- **deploy**: declare the Bun a `--adapter bun` deployment needs (#1181)
+- **deploy**: declare the Bun a `--adapter bun` deployment needs (#1181), and narrow that floor to 1.3.14 once the first version that parses the artefact was measured rather than assumed (#1206)
+- **check**: Flow's library definitions gain Intl's option types, and a `.d.ts` that re-exports another package keeps it under pnpm's layout (#1206)
 
 ### Documentation
 
