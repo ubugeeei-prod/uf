@@ -35,25 +35,6 @@ export default defineConfig({
     },
   },
 
-  // Three of the React Compiler's rules sit at `warn` here, and only here. The
-  // shipped defaults in `crates/uf_config/src/lint.rs` keep the levels
-  // `eslint-plugin-react-hooks` gives them, so nothing is weakened for anyone
-  // using uf. What is true is that uf's own packages break them 120 times, 112
-  // of those in `packages/ui`, and the rules are right to say so:
-  // `packages/hooks/lifecycle.js` returns `previous.current` during render, and
-  // `packages/ui/alert-dialog.js` writes `describedBy.current += 1` while
-  // rendering. Suppressing 120 sites would bury the fixes behind the
-  // suppressions, so the findings stay visible as warnings until the code is
-  // fixed, package by package, and each rule goes back to its shipped level as
-  // its package is cleaned. ubugeeei-prod/uf#1157.
-  lint: {
-    rules: {
-      "react-compiler/refs": "warn",
-      "react-compiler/immutability": "warn",
-      "react-compiler/set-state-in-effect": "warn",
-    },
-  },
-
   // What no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test` and
   // `uf doc` all read this one list, which is why it is here rather than under
   // `lint`, where it used to be and where it only ever looked like one
@@ -239,25 +220,16 @@ export default defineConfig({
     // check in the pipeline — which is why it is now in `ci` rather than
     // described there.
     //
-    // Zero errors, and every warning from one of four rules:
-    // `react/component-syntax`, `react/no-default-export-component`,
-    // `flow/unsafe-getters-setters` and `react-native/platform-split`. `uf
-    // lint` fails on errors only, so those are not a countdown to a broken
-    // build — each of the four has a row in the default table calling it a
-    // style preference, a migration aid, or a pattern that is legitimate in
-    // some code, which is exactly what `warn` is for. A rule that should block
-    // belongs at `error` in `crates/uf_config/src/lint.rs`; a warning nobody
-    // intends to act on belongs at `off` with the argument written on its row.
+    // Zero errors. Warnings are not a countdown to a broken build: each one is
+    // a rule whose default table says `warn`, because it is a style preference,
+    // a migration aid, or a pattern that is legitimate in some code. A rule
+    // that should block belongs at `error` in `crates/uf_config/src/lint.rs`; a
+    // warning nobody intends to act on belongs at `off` with the argument
+    // written on its row.
     //
-    // Two more kinds of warning stand beside those four now that the React
-    // Compiler's own diagnostics are uf's React rules.
-    // `react-compiler/memo-dependencies` is `warn` in the shipped table,
-    // because it stands in for ESLint's `exhaustive-deps` and the compiler
-    // reports it on code that works. `react-compiler/refs`, `immutability` and
-    // `set-state-in-effect` are `error` everywhere except here: this
-    // repository holds them at `warn` in its own `lint.rules` above, with the
-    // argument written there, until uf's packages stop breaking them.
-    // ubugeeei-prod/uf#1157 is where that gets fixed and each one goes back.
+    // The blocking React Compiler rules run at their shipped levels here too;
+    // legitimate exceptions are local suppressions with the reason beside the
+    // line they silence. See #1157.
     //
     // The condition rather than a count, deliberately. This paragraph used to
     // say "14 warnings over 322 files"; the file count was wrong within a

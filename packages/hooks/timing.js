@@ -306,6 +306,9 @@ export hook useNow(millis: number | null = 1000, serverValue: Date | null = null
 
   useEffect(() => {
     if (since != null) {
+      // A prerender starts from the server's timestamp for hydration, then
+      // adopts the live clock once effects can run.
+      // uf-lint-disable-next-line react-compiler/set-state-in-effect
       setNow(new Date(currentClock().now()));
     }
   }, [since]);
@@ -427,6 +430,9 @@ export hook useTimeAgo(
 
   const wanted = cadence(Math.abs(now.getTime() - instant));
   useEffect(() => {
+    // The schedule is derived from the ticking external clock. Storing it here
+    // lets the interval slow down without adding a second clock source.
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setSchedule(wanted);
   }, [wanted]);
 

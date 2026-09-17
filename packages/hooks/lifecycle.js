@@ -70,6 +70,9 @@ export hook usePrevious<T>(value: T): T | void {
   useEffect(() => {
     previous.current = value;
   }, [value]);
+  // This hook's public value is the last committed render; reading the ref
+  // during render is the contract rather than hidden reactive input.
+  // uf-lint-disable-next-line react-compiler/refs
   return previous.current;
 }
 
@@ -83,6 +86,9 @@ export hook usePrevious<T>(value: T): T | void {
 export hook useMounted(): boolean {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    // The first client render intentionally matches the server, then flips
+    // after mount for hydration-sensitive values.
+    // uf-lint-disable-next-line react-compiler/set-state-in-effect
     setMounted(true);
   }, []);
   return mounted;
