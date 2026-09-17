@@ -86,6 +86,7 @@ mod attributes;
 mod content;
 mod interaction;
 mod roles;
+mod shape;
 mod tags;
 mod trust;
 mod value;
@@ -153,9 +154,12 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
     if !wants_jsx && !wants_hot {
         return None;
     }
-    let looks_for_undefined =
-        (levels.content.any() || levels.roles.any() || levels.tags.any() || levels.trust.any())
-            && scan.file.source.contains("undefined");
+    let looks_for_undefined = (levels.content.any()
+        || levels.roles.any()
+        || levels.tags.any()
+        || levels.trust.any()
+        || levels.shape.any())
+        && scan.file.source.contains("undefined");
     Some(TreeWork {
         levels,
         wants_hot,
@@ -209,6 +213,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
         tags: levels.tags,
         interaction: levels.interaction,
         trust: levels.trust,
+        shape: levels.shape,
         scope: value::Scope::of(parsed, work.looks_for_undefined),
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
@@ -282,6 +287,8 @@ struct Levels {
     interaction: interaction::Levels,
     /// The rules about markup that hands control across a trust boundary.
     trust: trust::Levels,
+    /// The rules that ask whether a name or a value is a thing at all.
+    shape: shape::Levels,
     aria_props: Option<Severity>,
     heading_order: Option<Severity>,
     label_control: Option<Severity>,
@@ -300,6 +307,7 @@ impl Levels {
             tags: tags::Levels::for_config(config),
             interaction: interaction::Levels::for_config(config),
             trust: trust::Levels::for_config(config),
+            shape: shape::Levels::for_config(config),
             aria_props: severity(config, ARIA_PROPS),
             heading_order: severity(config, HEADING_ORDER),
             label_control: severity(config, LABEL_CONTROL),
@@ -322,6 +330,7 @@ impl Levels {
             || self.tags.any()
             || self.interaction.any()
             || self.trust.any()
+            || self.shape.any()
             || self.aria_props.is_some()
             || self.heading_order.is_some()
             || self.label_control.is_some()
@@ -345,7 +354,8 @@ impl Levels {
                 .or_else(|| self.tags.of(rule))
                 .or_else(|| self.interaction.of(rule))
                 .or_else(|| self.attributes.of(rule))
-                .or_else(|| self.trust.of(rule)),
+                .or_else(|| self.trust.of(rule))
+                .or_else(|| self.shape.of(rule)),
         }
     }
 }
@@ -387,6 +397,8 @@ struct Tree<'a> {
     interaction: interaction::Levels,
     /// Levels for the rules in [`trust`], copied for the same reason.
     trust: trust::Levels,
+    /// Levels for the rules in [`shape`], copied for the same reason.
+    shape: shape::Levels,
     /// How attribute values are read in this module.
     scope: value::Scope,
     aria_props: bool,
@@ -438,6 +450,12 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
         if self.aria_props {
             self.check_aria_props(opening);
         }
+        // Before the host-element gate, because a namespaced name is exactly
+        // what `host_name` refuses: `react/no-namespace` is the only rule that
+        // answers one, and it would never be reached from below.
+        if self.shape.any() {
+            shape::check_name(self, &opening.name);
+        }
         let tag = host_name(&opening.name);
         if self.roles.any() {
             roles::check(self, tag, opening);
@@ -460,6 +478,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
             }
             if self.trust.any() {
                 trust::check(self, name, opening);
+            }
+            if self.shape.any() {
+                shape::check(self, name, opening);
             }
             if self.static_interactions {
                 self.check_static_interactions(name, opening);

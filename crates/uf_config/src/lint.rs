@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 123] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 127] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -374,6 +374,13 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 123] = [
     // `<p><div>` is a hydration bug rather than a style opinion: the browser's
     // parser repairs it before React sees it, and the repair is the mismatch.
     ("markup/no-invalid-nesting", RuleLevel::Error),
+    // `warn`: the registries `rel` draws on are open — IANA's, the HTML
+    // standard's, and the microformats wiki the standard points at — so uf
+    // reports only the certainly-wrong pair, a keyword that belongs to another
+    // element and the spellings the standard calls non-conforming. A browser
+    // ignores the keyword rather than breaking, and a build should not fail
+    // over a link relation nothing acts on.
+    ("markup/no-invalid-rel", RuleLevel::Warn),
     // The official React Compiler's diagnostics: a rule for every category a
     // module can produce under `eslint-plugin-react-hooks`' options, at the
     // level that plugin's `recommended-latest` preset gives the category.
@@ -448,6 +455,19 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 123] = [
     // false, because then the hand-written one is the only memoization there
     // is.
     ("react/no-redundant-memo", RuleLevel::Warn),
+    // JSX reads a lowercase name as an HTML tag and a capitalised one as a
+    // value in scope; a namespaced name is neither, so there is nothing for
+    // React to render.
+    ("react/no-namespace", RuleLevel::Error),
+    // The HTML spelling of an attribute React spells differently — `class` for
+    // `className`, a lowercase `onclick` for `onClick`. Reported only where the
+    // correct spelling is known and can be named, never for an attribute uf has
+    // simply not heard of: the platform keeps growing, and a stale table would
+    // report markup that had become correct.
+    ("react/no-unknown-property", RuleLevel::Error),
+    // React throws on a `style` that is not an object, so this is a crash the
+    // module can see rather than a matter of taste.
+    ("react/style-prop-object", RuleLevel::Error),
     // React throws when it renders a void element such as `<img>` with
     // children or `dangerouslySetInnerHTML`.
     ("react/void-dom-elements-no-children", RuleLevel::Error),
