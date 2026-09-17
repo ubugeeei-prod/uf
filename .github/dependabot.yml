@@ -13,11 +13,12 @@ updates:
     directory: "/tools/fuzz"
     schedule:
       interval: "weekly"
-    # The fuzz workspace reaches uf crates through path dependencies. Keep this
-    # updater to dependencies declared directly in tools/fuzz/Cargo.toml; the
-    # root cargo updater owns the main workspace manifest.
+    # The fuzz workspace reaches uf crates through path dependencies. Dependabot
+    # still sees their workspace dependencies as direct, so keep this updater to
+    # the external dependency declared in tools/fuzz/Cargo.toml; the root cargo
+    # updater owns the main workspace manifest.
     allow:
-      - dependency-type: "direct"
+      - dependency-name: "libfuzzer-sys"
     groups:
       fuzz:
         patterns:
