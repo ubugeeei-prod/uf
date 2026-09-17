@@ -208,7 +208,12 @@ export component SidebarTrigger(children: React.Node, ...rest: Rest) {
  * announced as "navigation" — and a page with two of those has told the reader
  * there are two and which is which is a guess.
  */
-export component SidebarBody(children: React.Node, label: string, ...rest: Rest) {
+export component SidebarBody(
+  children: React.Node,
+  label: string,
+  sheetProps?: Rest,
+  ...rest: Rest
+) {
   const sidebar = useSidebar("Sidebar.Body");
   const nav = (
     <nav
@@ -230,7 +235,9 @@ export component SidebarBody(children: React.Node, label: string, ...rest: Rest)
   return (
     <>
       <SheetOverlay />
-      <SheetBody aria-label={label}>{nav}</SheetBody>
+      <SheetBody {...forwarded(sheetProps ?? {})} aria-label={label}>
+        {nav}
+      </SheetBody>
     </>
   );
 }
@@ -264,6 +271,7 @@ export component SidebarItem(
   children: React.Node,
   label: string,
   render?: RenderProp,
+  tooltipProps?: Rest,
   ...rest: Rest
 ) {
   const sidebar = useSidebar("Sidebar.Item");
@@ -294,7 +302,12 @@ export component SidebarItem(
   return (
     <TooltipRoot>
       <TooltipTrigger ref={rest.ref} render={(props: Rest) => entry(props)} />
-      <TooltipBody side={sidebar.side === "left" ? "right" : "left"}>{label}</TooltipBody>
+      <TooltipBody
+        {...forwarded(tooltipProps ?? {})}
+        side={sidebar.side === "left" ? "right" : "left"}
+      >
+        {label}
+      </TooltipBody>
     </TooltipRoot>
   );
 }
