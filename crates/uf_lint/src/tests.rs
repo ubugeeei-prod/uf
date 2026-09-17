@@ -6,6 +6,7 @@
 //! that happens to fire on the same line.
 
 mod a11y_aria;
+mod a11y_attributes;
 mod a11y_content;
 mod a11y_interaction;
 mod a11y_tags;

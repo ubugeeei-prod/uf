@@ -76,6 +76,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "the elements ARIA reserves take no `role` and no `aria-*`",
     },
     RuleDescriptor {
+        id: "a11y/autocomplete-valid",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "an autofill token the browser knows is what fills the field",
+    },
+    RuleDescriptor {
         id: "a11y/click-events-have-key-events",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
@@ -139,6 +146,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "a `label` must name a control, by `htmlFor` or by holding it",
     },
     RuleDescriptor {
+        id: "a11y/lang",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "the `lang` on `html` has to be a language tag",
+    },
+    RuleDescriptor {
         id: "a11y/media-has-caption",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Warn,
@@ -153,11 +167,32 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "`onMouseOver` and `onMouseOut` need `onFocus` and `onBlur` beside them",
     },
     RuleDescriptor {
+        id: "a11y/no-access-key",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`accessKey` asks for a shortcut the browser has already given out",
+    },
+    RuleDescriptor {
         id: "a11y/no-aria-hidden-on-focusable",
         category: RuleCategory::A11y,
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "`aria-hidden` does not belong on an element that takes focus",
+    },
+    RuleDescriptor {
+        id: "a11y/no-autofocus",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`autoFocus` moves focus before the reader knows where they are",
+    },
+    RuleDescriptor {
+        id: "a11y/no-distracting-elements",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`marquee` and `blink` move with no way for the reader to stop them",
     },
     RuleDescriptor {
         id: "a11y/no-interactive-element-to-noninteractive-role",
@@ -221,6 +256,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "an element carries only the `aria-*` its role takes",
+    },
+    RuleDescriptor {
+        id: "a11y/scope",
+        category: RuleCategory::A11y,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "`scope` belongs on a `th` and is ignored anywhere else",
     },
     RuleDescriptor {
         id: "a11y/tabindex-no-positive",

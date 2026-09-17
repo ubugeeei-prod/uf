@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 114] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 120] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -242,6 +242,11 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 114] = [
     // are not in the accessibility tree for a role or an `aria-*` to say
     // anything about: whatever was meant is said nowhere.
     ("a11y/aria-unsupported-elements", RuleLevel::Error),
+    // A token the browser knows is what lets it fill a field from what the
+    // reader has already typed once, which is WCAG 1.3.5 and which matters most
+    // to somebody for whom typing an address again is the hard part. An unknown
+    // token fills nothing and nothing on the page says so.
+    ("a11y/autocomplete-valid", RuleLevel::Error),
     // The other half of `a11y/no-static-element-interactions`: this one takes
     // the element that *has* a `role`, where somebody has said what it is and
     // a keyboard still cannot work it, so the missing handler is the whole of
@@ -276,6 +281,10 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 114] = [
     // A label attached to nothing leaves its field with no accessible name and
     // makes the label itself dead to a click. Both are defects, not opinions.
     ("a11y/label-has-associated-control", RuleLevel::Error),
+    // `a11y/html-has-lang` asks whether the page says what language it is in;
+    // this asks whether what it says is a language tag at all. A value that is
+    // not one leaves a screen reader in whatever voice it was already using.
+    ("a11y/lang", RuleLevel::Error),
     // Media with no captions shuts out whoever cannot hear it, but whether it
     // has speech to caption is something only the media knows, so `warn`.
     ("a11y/media-has-caption", RuleLevel::Warn),
@@ -283,10 +292,23 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 114] = [
     // tooltip built on them never opens for somebody tabbing through.
     // `onFocus` and `onBlur` are the same two moments for a keyboard.
     ("a11y/mouse-events-have-key-events", RuleLevel::Error),
+    // The shortcut an `accessKey` asks for is the browser's or the screen
+    // reader's to give, and which modifier reaches it differs per browser, per
+    // platform and per assistive technology: it either does nothing or takes a
+    // key away from somebody relying on it.
+    ("a11y/no-access-key", RuleLevel::Error),
     // Hidden from assistive technology and still in the tab order is the worst
     // of both: focus lands on an element a screen reader has nothing to say
     // about, and the reader is told nothing about where they are.
     ("a11y/no-aria-hidden-on-focusable", RuleLevel::Error),
+    // Focus moved before the reader has been told where they are: a screen
+    // reader begins at the control instead of the top of the page, so the
+    // heading that says what the page is never gets read.
+    ("a11y/no-autofocus", RuleLevel::Error),
+    // `<marquee>` and `<blink>` animate forever with no way for the reader to
+    // stop them, which WCAG 2.2.2 requires. HTML removed both and browsers
+    // still render them, so the markup keeps working and keeps being a problem.
+    ("a11y/no-distracting-elements", RuleLevel::Error),
     // A `<button role="presentation">` still focuses, still fires and still
     // sits in the tab order: the role removes the announcement and none of the
     // behaviour, leaving a control nobody is told about.
@@ -339,6 +361,11 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 114] = [
     // nowhere to put it — and the state the author described is never
     // announced.
     ("a11y/role-supports-aria-props", RuleLevel::Error),
+    // `scope` is what says whether a header names its column or its row, and
+    // HTML defines it on `<th>` alone: anywhere else it is ignored, so a table
+    // whose headers are `<td scope="col">` has no headers at all as far as a
+    // screen reader is concerned.
+    ("a11y/scope", RuleLevel::Error),
     // A positive `tabIndex` does not move an element one place forward, it
     // moves it ahead of everything the document orders itself, and every other
     // positive value on the page joins the same queue: the tab order and the
