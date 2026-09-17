@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 127] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 130] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -455,10 +455,28 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 127] = [
     // false, because then the hand-written one is the only memoization there
     // is.
     ("react/no-redundant-memo", RuleLevel::Warn),
+    // `warn`: HTML defaults a button to `type="submit"`, so one written for an
+    // `onClick` inside a form submits and navigates away. A button outside a
+    // form has nothing to submit, and uf cannot see the form a component is
+    // rendered into, so this is guidance rather than a defect everywhere.
+    ("react/button-has-type", RuleLevel::Warn),
+    // `checked` makes an input controlled: React puts the prop's value back
+    // after every click, so with neither `onChange` nor `readOnly` the reader
+    // cannot move it. React reports it in development and the fix is exact.
+    (
+        "react/checked-requires-onchange-or-readonly",
+        RuleLevel::Error,
+    ),
     // JSX reads a lowercase name as an HTML tag and a capitalised one as a
     // value in scope; a namespaced name is neither, so there is nothing for
     // React to render.
     ("react/no-namespace", RuleLevel::Error),
+    // `warn`: a `>` or a `}` left in JSX text renders, so this is a suspicion
+    // rather than a defect — but each is usually the wreckage of a mistyped tag
+    // or a stray brace. `'` and `"` are deliberately not reported: they render
+    // exactly as written, and `don't` is the false positive this rule is best
+    // known for.
+    ("react/no-unescaped-entities", RuleLevel::Warn),
     // The HTML spelling of an attribute React spells differently — `class` for
     // `className`, a lowercase `onclick` for `onClick`. Reported only where the
     // correct spelling is known and can be named, never for an attribute uf has

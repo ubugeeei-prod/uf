@@ -15,6 +15,7 @@ const DUPLICATE: &str = "react/jsx-no-duplicate-props";
 const CHILDREN: &str = "react/no-children-prop";
 const VOID: &str = "react/void-dom-elements-no-children";
 const COMMENT: &str = "react/jsx-no-comment-textnodes";
+const UNESCAPED: &str = "react/no-unescaped-entities";
 
 /// A Flow module with React in scope and a list item type to map over.
 fn module(body: &str) -> String {
@@ -515,6 +516,71 @@ fn comment_textnodes_accept_real_comments_and_slashes_that_are_not_one() {
         let diagnostics = lint_js(COMMENT, &page(markup));
         assert!(diagnostics.is_empty(), "{markup}: {diagnostics:?}");
     }
+}
+
+// --- react/no-unescaped-entities ---------------------------------------------
+
+#[test]
+fn unescaped_entities_reports_the_two_that_are_worth_looking_at() {
+    for markup in ["<p>a > b</p>", "<p>a lost } brace</p>"] {
+        let diagnostics = lint_js(UNESCAPED, &page(markup));
+        assert_eq!(diagnostics.len(), 1, "{markup}: {diagnostics:?}");
+    }
+}
+
+#[test]
+fn unescaped_entities_names_the_escape_to_write() {
+    let diagnostics = lint_js(UNESCAPED, &page("<p>a > b</p>"));
+
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
+    assert!(diagnostics[0].message.contains("&gt;"), "{diagnostics:?}");
+}
+
+/// One pass over a text child says everything there is to say about it.
+///
+/// Stopping at the first offender would drip-feed: escape it, run again, and a
+/// second finding appears on the same line.
+#[test]
+fn unescaped_entities_reports_every_offending_character() {
+    let diagnostics = lint_js(UNESCAPED, &page("<p>a > b } c</p>"));
+
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+}
+
+#[test]
+fn unescaped_entities_leaves_prose_and_escaped_text_alone() {
+    for markup in [
+        // Render exactly as written; reporting these makes `don't` a finding,
+        // which is where uf answers less than the plugin.
+        "<p>don't stop</p>",
+        "<p>she said \"hi\"</p>",
+        // Already escaped: the scan reads `raw`, where this is four characters.
+        "<p>a &gt; b</p>",
+        // Meant as written, like the comment rule leaves these alone.
+        "<code>a > b</code>",
+        "<pre>if (a > b)</pre>",
+        // An expression container is not text.
+        "<p>{value}</p>",
+        "<p>plain words</p>",
+    ] {
+        let diagnostics = lint_js(UNESCAPED, &page(markup));
+        assert!(diagnostics.is_empty(), "{markup}: {diagnostics:?}");
+    }
+}
+
+/// `react/no-unescaped-entities` and the shipped
+/// `react/jsx-no-comment-textnodes` read the same text children and ask
+/// different questions of them, so the markup either reports is silent from the
+/// other. A change that lets both answer one of these fails here.
+#[test]
+fn the_two_text_rules_divide_the_text_between_them() {
+    let stray = "<p>a > b</p>";
+    assert_eq!(lint_js(UNESCAPED, &page(stray)).len(), 1);
+    assert!(lint_js(COMMENT, &page(stray)).is_empty());
+
+    let commented = "<p>// a note</p>";
+    assert_eq!(lint_js(COMMENT, &page(commented)).len(), 1);
+    assert!(lint_js(UNESCAPED, &page(commented)).is_empty());
 }
 
 // --- shared -----------------------------------------------------------------

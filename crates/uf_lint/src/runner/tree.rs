@@ -84,6 +84,7 @@
 mod aria;
 mod attributes;
 mod content;
+mod controls;
 mod interaction;
 mod roles;
 mod shape;
@@ -158,7 +159,8 @@ pub(super) fn wanted(scan: &FileScan<'_>, config: &UniflowedConfig) -> Option<Tr
         || levels.roles.any()
         || levels.tags.any()
         || levels.trust.any()
-        || levels.shape.any())
+        || levels.shape.any()
+        || levels.controls.any())
         && scan.file.source.contains("undefined");
     Some(TreeWork {
         levels,
@@ -214,6 +216,7 @@ pub(super) fn walk(parsed: &uf_flow::Parsed, work: &TreeWork) -> Vec<Finding> {
         interaction: levels.interaction,
         trust: levels.trust,
         shape: levels.shape,
+        controls: levels.controls,
         scope: value::Scope::of(parsed, work.looks_for_undefined),
         aria_props: levels.aria_props.is_some(),
         heading_order: levels.heading_order.is_some(),
@@ -289,6 +292,8 @@ struct Levels {
     trust: trust::Levels,
     /// The rules that ask whether a name or a value is a thing at all.
     shape: shape::Levels,
+    /// The rules about a control missing the prop that makes it behave.
+    controls: controls::Levels,
     aria_props: Option<Severity>,
     heading_order: Option<Severity>,
     label_control: Option<Severity>,
@@ -308,6 +313,7 @@ impl Levels {
             interaction: interaction::Levels::for_config(config),
             trust: trust::Levels::for_config(config),
             shape: shape::Levels::for_config(config),
+            controls: controls::Levels::for_config(config),
             aria_props: severity(config, ARIA_PROPS),
             heading_order: severity(config, HEADING_ORDER),
             label_control: severity(config, LABEL_CONTROL),
@@ -331,6 +337,7 @@ impl Levels {
             || self.interaction.any()
             || self.trust.any()
             || self.shape.any()
+            || self.controls.any()
             || self.aria_props.is_some()
             || self.heading_order.is_some()
             || self.label_control.is_some()
@@ -355,7 +362,8 @@ impl Levels {
                 .or_else(|| self.interaction.of(rule))
                 .or_else(|| self.attributes.of(rule))
                 .or_else(|| self.trust.of(rule))
-                .or_else(|| self.shape.of(rule)),
+                .or_else(|| self.shape.of(rule))
+                .or_else(|| self.controls.of(rule)),
         }
     }
 }
@@ -399,6 +407,8 @@ struct Tree<'a> {
     trust: trust::Levels,
     /// Levels for the rules in [`shape`], copied for the same reason.
     shape: shape::Levels,
+    /// Levels for the rules in [`controls`], copied for the same reason.
+    controls: controls::Levels,
     /// How attribute values are read in this module.
     scope: value::Scope,
     aria_props: bool,
@@ -481,6 +491,9 @@ impl<'ast> AstVisitor<'ast, Loc, Loc, &'ast Loc, ()> for Tree<'ast> {
             }
             if self.shape.any() {
                 shape::check(self, name, opening);
+            }
+            if self.controls.any() {
+                controls::check(self, name, opening);
             }
             if self.static_interactions {
                 self.check_static_interactions(name, opening);

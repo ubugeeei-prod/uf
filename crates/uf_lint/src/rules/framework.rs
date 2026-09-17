@@ -561,11 +561,32 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "drop a `useMemo`/`useCallback` the React Compiler already did",
     },
     RuleDescriptor {
+        id: "react/button-has-type",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "a `button` defaults to `submit`, so say which kind it is",
+    },
+    RuleDescriptor {
+        id: "react/checked-requires-onchange-or-readonly",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a `checked` input needs an `onChange` or a `readOnly`",
+    },
+    RuleDescriptor {
         id: "react/no-namespace",
         category: RuleCategory::React,
         default_level: RuleLevel::Error,
         requirement: SourceText,
         description: "React has no way to render a namespaced element name",
+    },
+    RuleDescriptor {
+        id: "react/no-unescaped-entities",
+        category: RuleCategory::React,
+        default_level: RuleLevel::Warn,
+        requirement: SourceText,
+        description: "a `>` or `}` left in JSX text is usually a mistyped tag",
     },
     RuleDescriptor {
         id: "react/no-unknown-property",
