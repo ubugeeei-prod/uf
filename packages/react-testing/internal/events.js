@@ -581,7 +581,7 @@ function firing(): FireEvent {
 export const fireEvent: FireEvent = firing();
 
 /** Set a control's value the way a browser does, so React sees the change. */
-function setValue(element: HTMLElement, value: string): void {
+function setValue(element: Element, value: string): void {
   // React tracks the last value it wrote on the node and skips an `input`
   // event whose value it believes it already knows. Writing through the
   // prototype's setter is what a browser does and what clears that.
@@ -657,7 +657,7 @@ function tabbable(): Array<HTMLElement> {
  * the markup and not a property, which is why the old test was `=== true`
  * rather than truthiness, and why the answer for one is still `false`.
  */
-function isDisabled(element: HTMLElement): boolean {
+function isDisabled(element: Element): boolean {
   return (
     (element instanceof HTMLButtonElement ||
       element instanceof HTMLInputElement ||
@@ -676,10 +676,14 @@ function isDisabled(element: HTMLElement): boolean {
  * a fetch, a transition, a lazily loaded panel — a synchronous helper would
  * return before the result existed, and the test would need a sleep. Awaiting
  * from the start means adding that behaviour later changes nothing.
+ *
+ * They take `Element` because that is what a query returns. The pieces only
+ * HTML elements can do — focus, blur and value mutation — narrow at the point
+ * where they are needed.
  */
 export const userEvent = {
   /** Press and release, with the events a real click produces, in order. */
-  async click(element: HTMLElement, init?: EventInit): Promise<void> {
+  async click(element: Element, init?: EventInit): Promise<void> {
     if (isDisabled(element)) {
       return;
     }
@@ -693,7 +697,7 @@ export const userEvent = {
   },
 
   /** Two clicks and a dblclick. */
-  async dblClick(element: HTMLElement): Promise<void> {
+  async dblClick(element: Element): Promise<void> {
     await userEvent.click(element);
     await userEvent.click(element);
     dispatch(element, "dblclick");
@@ -708,7 +712,7 @@ export const userEvent = {
    * rejects a character — behaves differently, and the difference is the thing
    * usually being tested.
    */
-  async type(element: HTMLElement, text: string): Promise<void> {
+  async type(element: Element, text: string): Promise<void> {
     focus(element);
     for (const character of text) {
       const { key, code, text: printable } = describeKey(character);
@@ -726,7 +730,7 @@ export const userEvent = {
   },
 
   /** Empty a control, the way selecting everything and deleting would. */
-  async clear(element: HTMLElement): Promise<void> {
+  async clear(element: Element): Promise<void> {
     focus(element);
     setValue(element, "");
     dispatch(element, "input", {});
@@ -767,7 +771,7 @@ export const userEvent = {
     const active = documentOf().activeElement;
     // `indexOf` needs an element; a document with nothing focused is the same
     // "not in the order" that `indexOf` answers `-1` to, said in front.
-    const at = active == null ? -1 : order.indexOf(active);
+    const at = active instanceof HTMLElement ? order.indexOf(active) : -1;
     const shift = options?.shift ?? false;
     const next =
       at < 0
@@ -780,10 +784,7 @@ export const userEvent = {
   },
 
   /** Choose options in a select. */
-  async selectOptions(
-    element: HTMLElement,
-    values: string | $ReadOnlyArray<string>,
-  ): Promise<void> {
+  async selectOptions(element: Element, values: string | $ReadOnlyArray<string>): Promise<void> {
     const wanted = typeof values === "string" ? [values] : values;
     // Only a `select` has options; anything else has none, which is what
     // `select.options ?? []` used to say. The events are dispatched either
@@ -800,14 +801,19 @@ export const userEvent = {
   },
 
   /** Move focus away, which is what makes a blur-validated field validate. */
-  async tabAway(element: HTMLElement): Promise<void> {
+  async tabAway(element: Element): Promise<void> {
     dispatch(element, "blur");
-    element.blur();
+    if (element instanceof HTMLElement) {
+      element.blur();
+    }
     await settle();
   },
 };
 
-function focus(element: HTMLElement): void {
+function focus(element: Element): void {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
   if (documentOf().activeElement === element) {
     return;
   }
