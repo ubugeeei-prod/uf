@@ -96,6 +96,11 @@ has. `uf inspect` and `uf explain <command>` print each tool, the key it came
 from and the release it is locked at. [Environments](/guide/env) is the whole
 of it.
 
+These names are command hosts, not deploy adapters. Cloudflare Workers and
+`workerd` are reached through `runtime.deploy.adapters` and
+`uf build --adapter edge`, and the generated Worker is smoke-tested under
+Wrangler; they are not valid `test.runtime` values.
+
 ## app
 
 | Key | Default | Meaning |
@@ -765,10 +770,10 @@ uf's rule table, and a test asserts the table matches the descriptors.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `runtime` | the runner's, then [`runtime`](#runtime-and-packagemanager) | What `uf test` runs tests on: `"bun@1.4"` |
+| `runtime` | the runner's, then [`runtime`](#runtime-and-packagemanager) | What `uf test` runs tests on: `"bun@1.4"`. It names Node, Bun or Deno, not `workerd` or an edge adapter |
 | `runner` | `"uf"` | The runner. `"uf"` is the one built into uf. `"bun@1.4"` runs the suite with `bun test` and implies Bun 1.4 as the test runtime ([Choosing a runner](/guide/testing#choosing-a-runner)); beside a `runtime` naming anything else it is an error naming both keys |
 | `module` | `"@uniflowed/test"` | The module test files import |
-| `runner.jsHosts` | `["node", "deno", "bun"]` | Hosts that may run workers |
+| `runner.jsHosts` | `["node", "deno", "bun"]` | Hosts that may run workers; the set is source-level hosts, not deploy targets |
 | `runner.scheduler` | `"native-work-stealing"` | How files are handed to workers |
 | `runner.officialFlowParser` | `true` | Discovery reads Flow with the official parser |
 | `reactTestingLibraryNative` | `false` | Whether component tests can run without a DOM |
