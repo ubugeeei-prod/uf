@@ -1,0 +1,2 @@
+export type Omit<out TObject, out TKey> = TObject;
+export type OmitKeyof<out TObject, out TKey extends keyof any> = Omit<TObject, TKey>;

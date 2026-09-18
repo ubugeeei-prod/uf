@@ -353,6 +353,19 @@ fn collect_omitted_function_properties<'s, 'a>(
     out.extend(properties);
 }
 
+fn is_type_reference_identifier(ty: &TSType<'_>, name: &str) -> bool {
+    let TSType::TSTypeReference(reference) = unparenthesized(ty) else {
+        return false;
+    };
+    if reference.type_arguments.is_some() {
+        return false;
+    }
+    let TSTypeName::IdentifierReference(identifier) = &reference.type_name else {
+        return false;
+    };
+    identifier.name == name
+}
+
 fn collect_function_properties_from_type_inner<'s, 'a>(
     ty: &TSType<'a>,
     merges: &Merges<'s, 'a>,
@@ -837,7 +850,15 @@ impl<'e> Emitter<'e> {
                                 uses.ty(&alias.type_annotation, Polarity::Positive);
                             })
                         });
-                self.type_parameters_with_variance(alias.type_parameters.as_deref(), &inferred);
+                if self.is_omit_keyof_alias(alias) {
+                    self.type_parameters_with_variance_skipping_constraints(
+                        alias.type_parameters.as_deref(),
+                        &inferred,
+                        &["TKey"],
+                    );
+                } else {
+                    self.type_parameters_with_variance(alias.type_parameters.as_deref(), &inferred);
+                }
                 self.printer.text(" = ");
                 self.ty(&alias.type_annotation, Prec::Any);
                 self.printer.char(';');
@@ -2296,6 +2317,15 @@ impl<'e> Emitter<'e> {
         declaration: Option<&TSTypeParameterDeclaration<'_>>,
         inferred: &[Option<&'static str>],
     ) {
+        self.type_parameters_with_variance_skipping_constraints(declaration, inferred, &[]);
+    }
+
+    fn type_parameters_with_variance_skipping_constraints(
+        &mut self,
+        declaration: Option<&TSTypeParameterDeclaration<'_>>,
+        inferred: &[Option<&'static str>],
+        unconstrained: &[&str],
+    ) {
         let Some(declaration) = declaration else {
             return;
         };
@@ -2328,7 +2358,9 @@ impl<'e> Emitter<'e> {
                 self.printer.char(' ');
             }
             self.printer.text(parameter.name.name.as_str());
-            if let Some(constraint) = &parameter.constraint {
+            if let Some(constraint) = &parameter.constraint
+                && !unconstrained.contains(&parameter.name.name.as_str())
+            {
                 self.printer.text(" extends ");
                 self.ty(constraint, Prec::Union);
             }
@@ -2906,6 +2938,27 @@ impl<'e> Emitter<'e> {
     fn is_global(&self, reference: &TSTypeReference<'_>, name: &str) -> bool {
         matches!(&reference.type_name, TSTypeName::IdentifierReference(identifier)
             if identifier.name == name && !self.is_bound(identifier.name.as_str()))
+    }
+
+    fn is_omit_keyof_alias(&self, alias: &TSTypeAliasDeclaration<'_>) -> bool {
+        if alias.id.name.as_str() != "OmitKeyof" {
+            return false;
+        }
+        let TSType::TSTypeReference(reference) = unparenthesized(&alias.type_annotation) else {
+            return false;
+        };
+        if !self.is_global(reference, "Omit") {
+            return false;
+        }
+        let Some(arguments) = &reference.type_arguments else {
+            return false;
+        };
+        matches!(
+            arguments.params.as_slice(),
+            [target, key]
+                if is_type_reference_identifier(target, "TObject")
+                    && is_type_reference_identifier(key, "TKey")
+        )
     }
 
     /// Whether a type is a key *type* — `string`, `number`, `symbol`,
