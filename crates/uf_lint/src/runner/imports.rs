@@ -1,5 +1,7 @@
 //! Static import rules that do not need the project module graph.
 
+use std::path::{Component, Path, PathBuf};
+
 use uf_config::UniflowedConfig;
 use uf_flow::scan::{Token, TokenKind, starts_statement, tokenize};
 
@@ -53,6 +55,30 @@ pub(crate) fn run_import_no_duplicates(
             );
         } else {
             seen.push(import);
+        }
+    }
+}
+
+pub(crate) fn run_import_no_self_import(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-self-import";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+
+    for import in static_imports(&scan.file.source) {
+        if is_self_import(&scan.file.path, import.source) {
+            push_import(
+                diagnostics,
+                scan,
+                rule,
+                severity,
+                import.source_at,
+                "a module must not import itself; move shared code to another module",
+            );
         }
     }
 }
@@ -181,6 +207,52 @@ fn is_absolute_import(source: &str) -> bool {
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes[2], b'/' | b'\\')
+}
+
+fn is_self_import(file: &str, source: &str) -> bool {
+    if !is_relative_import(source) {
+        return false;
+    }
+
+    let file = Path::new(file);
+    let Some(parent) = file.parent() else {
+        return false;
+    };
+
+    let current = normalize_path(file);
+    let target = normalize_path(&parent.join(source));
+    if target == current {
+        return true;
+    }
+
+    if target.extension().is_none()
+        && current
+            .file_stem()
+            .map(|stem| target == normalize_path(&current.with_file_name(stem)))
+            .unwrap_or(false)
+    {
+        return true;
+    }
+
+    current.file_stem().is_some_and(|stem| stem == "index") && target == normalize_path(parent)
+}
+
+fn is_relative_import(source: &str) -> bool {
+    source == "." || source == ".." || source.starts_with("./") || source.starts_with("../")
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir if normalized.pop() => {}
+            Component::ParentDir => normalized.push(".."),
+            Component::Normal(segment) => normalized.push(segment),
+            Component::RootDir | Component::Prefix(_) => normalized.push(component.as_os_str()),
+        }
+    }
+    normalized
 }
 
 fn push_import(

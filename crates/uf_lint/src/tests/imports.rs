@@ -96,6 +96,51 @@ fn no_duplicates_rejects_two_namespace_imports_from_the_same_module() {
 }
 
 #[test]
+fn no_self_import_rejects_a_file_importing_itself_with_an_extension() {
+    let diagnostics = lint_one(
+        "import/no-self-import",
+        "app/page.jsx",
+        "// @flow\nimport Page from \"./page.jsx\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 18));
+}
+
+#[test]
+fn no_self_import_rejects_a_file_importing_itself_without_an_extension() {
+    let diagnostics = lint_one(
+        "import/no-self-import",
+        "app/page.jsx",
+        "// @flow\nimport Page from \"./page\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+}
+
+#[test]
+fn no_self_import_rejects_an_index_file_importing_its_directory() {
+    let diagnostics = lint_one(
+        "import/no-self-import",
+        "app/index.js",
+        "// @flow\nimport app from \".\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+}
+
+#[test]
+fn no_self_import_accepts_neighbouring_relative_imports() {
+    let diagnostics = lint_one(
+        "import/no-self-import",
+        "app/page.jsx",
+        "// @flow\nimport index from \"./index.js\";\nimport parent from \"../page.jsx\";\nimport React from \"react\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn import_rules_ignore_strings_that_talk_about_imports() {
     let diagnostics = lint_js(
         "import/no-duplicates",
