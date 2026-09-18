@@ -2845,6 +2845,9 @@ impl<'e> Emitter<'e> {
             }
             TSType::TSTypeOperatorType(operator) => match operator.operator {
                 TSTypeOperatorOperator::Keyof => {
+                    if self.keyof_nested_indexed_access(&operator.type_annotation, context) {
+                        return;
+                    }
                     let wrap = context > Prec::Prefix;
                     self.open(wrap);
                     self.printer.text("keyof ");
@@ -3038,6 +3041,26 @@ impl<'e> Emitter<'e> {
         self.ty(&conditional.false_type, Prec::Any);
         self.printer.text(" : ");
         self.ty(&conditional.false_type, Prec::Any);
+        self.close(wrap);
+        true
+    }
+
+    fn keyof_nested_indexed_access(&mut self, ty: &TSType<'_>, context: Prec) -> bool {
+        let Some((base, outer, inner)) = nested_string_indexed_access(ty) else {
+            return false;
+        };
+        if type_reference_identifier(base).is_none() {
+            return false;
+        }
+        let wrap = context > Prec::Any;
+        self.open(wrap);
+        self.ty(base, Prec::Union);
+        self.printer.text(" extends interface { readonly ");
+        self.property_name(&outer);
+        self.printer
+            .text(": infer Z } ? Z extends interface { readonly ");
+        self.property_name(&inner);
+        self.printer.text(": infer I } ? keyof I : empty : empty");
         self.close(wrap);
         true
     }
