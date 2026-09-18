@@ -52,12 +52,25 @@ export type RouteState = {|
   readonly viewTransition: ?string,
   readonly status: 200 | 401 | 403 | 404 | 500,
   readonly error: ?RouteError,
+  readonly interception?: ?FlightInterception,
 |};
 
 /** Row 0 of a route's payload: the route, and the tree it rendered. */
 export type FlightRoot = {|
   readonly route: RouteState,
   readonly tree: Node,
+|};
+
+/** The intercepted URL a Flight payload rendered, and the page it rendered over. */
+export type FlightInterception = {|
+  readonly pathname: string,
+  readonly search: string,
+  readonly from: string,
+|};
+
+/** What the browser may send with a payload request. */
+export type FlightFetchOptions = {|
+  readonly interceptedFrom?: string,
 |};
 
 /**
@@ -88,6 +101,7 @@ export type FetchedFlight =
 
 /** The part of a resolved route that crosses to the browser. */
 export function routeState(resolved: ResolvedRoute): RouteState {
+  const interception = resolved.interception;
   return {
     pathname: resolved.pathname,
     search: resolved.search,
@@ -100,6 +114,14 @@ export function routeState(resolved: ResolvedRoute): RouteState {
     viewTransition: resolved.viewTransition,
     status: resolved.status,
     error: resolved.error,
+    interception:
+      interception == null
+        ? null
+        : {
+            pathname: interception.pathname,
+            search: interception.search,
+            from: interception.base.pathname + interception.base.search,
+          },
   };
 }
 
@@ -122,6 +144,9 @@ export const FLIGHT_SEGMENT: string = "__uf.flight";
 
 /** The content type a payload is answered with. */
 export const FLIGHT_CONTENT_TYPE: string = "text/x-component";
+
+/** The request header that carries the page an intercepted payload is rendered over. */
+export const INTERCEPTED_FROM_HEADER: string = "uf-intercepted-from";
 
 /**
  * The URL of `url`'s payload: its pathname with [`FLIGHT_SEGMENT`] appended,

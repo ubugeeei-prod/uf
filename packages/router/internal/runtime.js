@@ -75,7 +75,13 @@ import {
 import { BoundaryReporter } from "./boundaries.js";
 import { routeBoundaries } from "./boundary-data.js";
 import { composeRoute, pageComponent } from "./compose.js";
-import { type FetchedFlight, type FlightRoot, type RouteState, routeState } from "./flight.js";
+import {
+  type FetchedFlight,
+  type FlightFetchOptions,
+  type FlightRoot,
+  type RouteState,
+  routeState,
+} from "./flight.js";
 import { Head } from "./head.js";
 import { addressOf, applicationPathOf, canonicalAddress } from "./base-path.js";
 import {
@@ -427,15 +433,19 @@ export function navigationMode(): Navigation {
  * shown, whether or not anything calls it, so an import here would put that
  * package in every one of those bundles, or fail the build where it is absent.
  */
-let installedFlightFetch: ((url: string) => Promise<FetchedFlight>) | null = null;
+let installedFlightFetch:
+  | ((url: string, options?: FlightFetchOptions) => Promise<FetchedFlight>)
+  | null = null;
 
 /** Hand the router the payload fetch. Called once, by `hydrateFlight`, before the first render. */
-export function installFlightFetch(fetcher: (url: string) => Promise<FetchedFlight>): void {
+export function installFlightFetch(
+  fetcher: (url: string, options?: FlightFetchOptions) => Promise<FetchedFlight>,
+): void {
   installedFlightFetch = fetcher;
 }
 
 /** The next route's payload, through the fetch `hydrateFlight` installed. */
-function fetchFlight(url: string): Promise<FetchedFlight> {
+function fetchFlight(url: string, options?: FlightFetchOptions): Promise<FetchedFlight> {
   if (installedFlightFetch == null) {
     return Promise.reject(
       new Error(
@@ -445,7 +455,7 @@ function fetchFlight(url: string): Promise<FetchedFlight> {
       ),
     );
   }
-  return installedFlightFetch(url);
+  return installedFlightFetch(url, options);
 }
 
 /** Register the generated route table. Called once by the client and server entries. */
@@ -571,6 +581,12 @@ function historyStateFor(resolved: ResolvedRoute): mixed {
   return { [INTERCEPTED_FROM]: interception.base.pathname + interception.base.search };
 }
 
+/** The state a history entry for a Flight route is written with. */
+function historyStateForRoute(route: RouteState): mixed {
+  const from = route.interception?.from;
+  return from == null ? null : { [INTERCEPTED_FROM]: from };
+}
+
 /** Where the history entry holding `state` was intercepted from, if it was. */
 function interceptedFrom(state: mixed): ?string {
   if (state == null || typeof state !== "object" || Array.isArray(state)) {
@@ -598,6 +614,22 @@ function withoutInterception(state: mixed): mixed {
     }
   }
   return Object.keys(rest).length === 0 ? null : rest;
+}
+
+/** The page a Flight navigation is leaving from, as an application path and query. */
+function flightNavigationOrigin(root: FlightRoot): string {
+  return root.route.interception?.from ?? root.route.pathname + root.route.search;
+}
+
+/** The optional fetch settings for an intercepted payload request. */
+function flightFetchOptions(from: ?string): FlightFetchOptions | void {
+  return from == null ? undefined : { interceptedFrom: from };
+}
+
+/** The cache key for a Flight payload, separated by the page it renders over. */
+function flightNavigationKey(pathname: string, search: string, from: ?string): string {
+  const key = navigationKey(pathname, search);
+  return from == null ? key : `${key}\0${from}`;
 }
 
 /**
@@ -944,6 +976,11 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
   const [current, setCurrent] = useState<Promise<FlightRoot>>(flight);
   const [pending, setPending] = useState<boolean>(false);
   const root = use(current);
+  const shown = useRef<FlightRoot>(root);
+  const show = (payload: Promise<FlightRoot>, nextRoot: FlightRoot) => {
+    shown.current = nextRoot;
+    setCurrent(payload);
+  };
   // Read once per render, for the reason `ModuleRouter` reads it once.
   const navigation = navigationMode();
 
@@ -968,11 +1005,13 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     try {
       // The route this page already has while it is fresh, then a prefetch
       // still in hand, then the network. See `./navigation-cache.js`.
-      const key = navigationKey(target.pathname, target.search);
+      const from = flightNavigationOrigin(shown.current);
+      const ordinaryKey = navigationKey(target.pathname, target.search);
+      const key = flightNavigationKey(target.pathname, target.search, from);
       const fetched = await (
         flightNavigations.read(key) ??
-        takePrefetched(next) ??
-        keepFlight(key, fetchFlight(next))
+        takePrefetched(next, from) ??
+        keepFlight(key, fetchFlight(next, flightFetchOptions(from)), ordinaryKey)
       );
       // Not a payload: a redirect off this origin, or a host that has no payload
       // for this URL. The browser loads it as a document, which is what the
@@ -990,13 +1029,14 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       // address the server answers without a redirect.
       const arrived = new URL(fetched.url, window.location.href);
       const landed = canonicalAddress(arrived.pathname) + arrived.search + target.hash;
+      const state = historyStateForRoute(nextRoot.route);
       if (options?.replace === true) {
-        window.history.replaceState(null, "", landed);
+        window.history.replaceState(state, "", landed);
       } else {
-        window.history.pushState(null, "", landed);
+        window.history.pushState(state, "", landed);
       }
       const commit = () => {
-        setCurrent(payload);
+        show(payload, nextRoot);
         setPending(false);
       };
       if (options?.transition === false) {
@@ -1004,7 +1044,9 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       } else {
         withViewTransition(nextRoot.route.viewTransition, commit);
       }
-      if (options?.scroll !== false) {
+      const scroll =
+        nextRoot.route.interception == null ? options?.scroll !== false : options?.scroll === true;
+      if (scroll) {
         if (target.hash !== "") {
           const element = document.getElementById(target.hash.slice(1));
           if (element != null) {
@@ -1024,6 +1066,13 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
     if (!isBrowser()) {
       return undefined;
     }
+    // A document reload rendered the URL's ordinary page. If the browser kept
+    // an intercepted history marker for it, clear that marker before a later
+    // back/forward asks for a modal over a page this document did not show.
+    const restored = window.history.state;
+    if (interceptedFrom(restored) != null) {
+      window.history.replaceState(withoutInterception(restored), "", window.location.href);
+    }
     // No history entry was pushed, so there is nothing to pop back into; see
     // `ModuleRouter`.
     if (navigation === "document") {
@@ -1034,8 +1083,13 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       // The history entry already moved; a payload that cannot be had for it is
       // a document to load, and a reload is the browser's way to load it. While
       // this page keeps the route fresh, what it kept is what comes back.
-      const key = navigationKey(window.location.pathname, window.location.search);
-      (flightNavigations.read(key) ?? keepFlight(key, fetchFlight(next))).then(
+      const from = interceptedFrom(window.history.state);
+      const ordinaryKey = navigationKey(window.location.pathname, window.location.search);
+      const key = flightNavigationKey(window.location.pathname, window.location.search, from);
+      (
+        flightNavigations.read(key) ??
+        keepFlight(key, fetchFlight(next, flightFetchOptions(from)), ordinaryKey)
+      ).then(
         (fetched) => {
           if (fetched.kind === "document") {
             window.location.reload();
@@ -1045,7 +1099,7 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
           payload.then(
             (nextRoot) => {
               withViewTransition(nextRoot.route.viewTransition, () => {
-                setCurrent(payload);
+                show(payload, nextRoot);
               });
             },
             () => {
@@ -1078,14 +1132,19 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
         return;
       }
       const next = target.pathname + target.search;
+      const from = flightNavigationOrigin(shown.current);
       // Kept for every navigation to it while it is fresh, when a project set
       // `app.rendering.staleTime`; otherwise held for the one click after it.
       if (keepsNavigations()) {
-        const key = navigationKey(target.pathname, target.search);
-        await (flightNavigations.read(key) ?? keepFlight(key, fetchFlight(next)));
+        const ordinaryKey = navigationKey(target.pathname, target.search);
+        const key = flightNavigationKey(target.pathname, target.search, from);
+        await (
+          flightNavigations.read(key) ??
+          keepFlight(key, fetchFlight(next, flightFetchOptions(from)), ordinaryKey)
+        );
         return;
       }
-      await prefetchFlight(next);
+      await prefetchFlight(next, from);
     },
     refresh: async () => {
       if (!isBrowser()) {
@@ -1098,20 +1157,23 @@ component FlightRouter(flight: Promise<FlightRoot>, children: React.Node) {
       // Everything a navigation kept is older than what this asks for, so none
       // of it is shown again; see `./navigation-cache.js`.
       clearNavigationCache();
+      const from = root.route.interception?.from ?? null;
+      const ordinaryKey = navigationKey(window.location.pathname, window.location.search);
       const fetched = await keepFlight(
-        navigationKey(window.location.pathname, window.location.search),
-        fetchFlight(window.location.pathname + window.location.search),
+        flightNavigationKey(window.location.pathname, window.location.search, from),
+        fetchFlight(window.location.pathname + window.location.search, flightFetchOptions(from)),
+        ordinaryKey,
       );
       if (fetched.kind === "document") {
         window.location.reload();
         return;
       }
       const payload = fetched.root;
-      await payload;
+      const nextRoot = await payload;
       // No view transition: a refresh is the same URL rendered again. See
       // `ModuleRouter`'s refresh.
       startTransition(() => {
-        setCurrent(payload);
+        show(payload, nextRoot);
       });
     },
     back: () => {
@@ -1158,13 +1220,20 @@ const prefetchedFlights: Map<
  * request that failed, an answer that was a document rather than a payload, or
  * a payload React could not read.
  */
-function keepFlight(key: string, fetched: Promise<FetchedFlight>): Promise<FetchedFlight> {
+function keepFlight(
+  key: string,
+  fetched: Promise<FetchedFlight>,
+  ordinaryKey?: string,
+): Promise<FetchedFlight> {
   if (!keepsNavigations()) {
     return fetched;
   }
   flightNavigations.store(key, fetched);
   const forget = () => {
     flightNavigations.forget(key, fetched);
+    if (ordinaryKey != null) {
+      flightNavigations.forget(ordinaryKey, fetched);
+    }
   };
   void fetched.then((answer) => {
     if (answer.kind === "document") {
@@ -1176,6 +1245,10 @@ function keepFlight(key: string, fetched: Promise<FetchedFlight>): Promise<Fetch
     void answer.root.then((root) => {
       if (root.route.status !== 200) {
         forget();
+        return;
+      }
+      if (ordinaryKey != null && root.route.interception == null) {
+        flightNavigations.store(ordinaryKey, fetched);
       }
     }, forget);
   }, forget);
@@ -1203,8 +1276,13 @@ function keepRoute(key: string, resolved: Promise<ResolvedRoute>): Promise<Resol
   return resolved;
 }
 
-function prefetchFlight(url: string): Promise<FetchedFlight> {
-  const existing = prefetchedFlights.get(url);
+function prefetchedFlightKey(url: string, from: ?string): string {
+  return from == null ? url : `${url}\0${from}`;
+}
+
+function prefetchFlight(url: string, from: ?string): Promise<FetchedFlight> {
+  const key = prefetchedFlightKey(url, from);
+  const existing = prefetchedFlights.get(key);
   if (existing != null && Date.now() - existing.at < PREFETCH_LIFETIME_MS) {
     return existing.fetched;
   }
@@ -1214,17 +1292,18 @@ function prefetchFlight(url: string): Promise<FetchedFlight> {
       prefetchedFlights.delete(oldest.value);
     }
   }
-  const fetched = fetchFlight(url);
-  prefetchedFlights.set(url, { fetched, at: Date.now() });
+  const fetched = fetchFlight(url, flightFetchOptions(from));
+  prefetchedFlights.set(key, { fetched, at: Date.now() });
   fetched.catch(() => {
-    prefetchedFlights.delete(url);
+    prefetchedFlights.delete(key);
   });
   return fetched;
 }
 
-function takePrefetched(url: string): Promise<FetchedFlight> | null {
-  const entry = prefetchedFlights.get(url);
-  prefetchedFlights.delete(url);
+function takePrefetched(url: string, from: ?string): Promise<FetchedFlight> | null {
+  const key = prefetchedFlightKey(url, from);
+  const entry = prefetchedFlights.get(key);
+  prefetchedFlights.delete(key);
   if (entry == null || Date.now() - entry.at >= PREFETCH_LIFETIME_MS) {
     return null;
   }

@@ -59,7 +59,7 @@ import { ErrorRoutePage } from "./internal/error-view.js";
 import { type FlightRoot, routeState } from "./internal/flight.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
 import type { ErrorModule, PageModule, ResolvedRoute, ResolvedSlot } from "./internal/resolve.js";
-import { resolveFailure, resolveMatch } from "./internal/resolve.js";
+import { resolveFailure, resolveInterception, resolveMatch } from "./internal/resolve.js";
 import type { RouteParams, RouteTable, SearchParams } from "./internal/routing.js";
 import { RedirectError, nearestBoundary } from "./internal/routing.js";
 import { withServerRoute } from "./internal/server-route.js";
@@ -95,6 +95,14 @@ export type FlightOptions = {|
    * did not.
    */
   readonly failure?: {| readonly error: mixed |},
+  /**
+   * The page a browser was showing when it asked for this payload.
+   *
+   * A document request never sets it. A client navigation may, because only the
+   * browser knows the page it is navigating from, while only this renderer can
+   * render the intercepted tree.
+   */
+  readonly interceptedFrom?: string,
   /** Stops the render, for a reader that went away. */
   readonly signal?: AbortSignal,
 |};
@@ -155,12 +163,22 @@ export function createFlightRenderer(options: {|
     let resolved: ResolvedRoute;
     try {
       const failure = settings?.failure;
-      resolved =
-        failure == null
-          ? // `onMatch` records the route pattern on the request before the
-            // loader runs, so every line the loader logs names its route.
-            await resolveMatch(table, url, { defer: settings?.defer !== false, onMatch: noteRoute })
-          : await resolveFailure(table, url, failure.error);
+      if (failure == null) {
+        const defer = settings?.defer !== false;
+        const intercepted = await resolveFlightInterception(
+          table,
+          url,
+          settings?.interceptedFrom,
+          defer,
+        );
+        resolved =
+          intercepted ??
+          // `onMatch` records the route pattern on the request before the
+          // loader runs, so every line the loader logs names its route.
+          (await resolveMatch(table, url, { defer, onMatch: noteRoute }));
+      } else {
+        resolved = await resolveFailure(table, url, failure.error);
+      }
     } catch (error) {
       if (error instanceof RedirectError) {
         return { kind: "redirect", status: error.permanent ? 308 : 307, location: error.to };
@@ -194,6 +212,35 @@ export function createFlightRenderer(options: {|
     );
     return { kind: "route", status: route.status, stream, failure: renderFailure(route) };
   };
+}
+
+async function resolveFlightInterception(
+  table: RouteTable,
+  url: string,
+  from: ?string,
+  defer: boolean,
+): Promise<?ResolvedRoute> {
+  const baseUrl = usableInterceptionBase(from);
+  if (baseUrl == null) {
+    return null;
+  }
+  try {
+    const base = await resolveMatch(table, baseUrl, { defer });
+    return await resolveInterception(table, base, url);
+  } catch (error) {
+    if (error instanceof RedirectError) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function usableInterceptionBase(from: ?string): ?string {
+  if (from == null || !from.startsWith("/") || from.startsWith("//")) {
+    return null;
+  }
+  const hash = from.indexOf("#");
+  return hash === -1 ? from : from.slice(0, hash);
 }
 
 /**

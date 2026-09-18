@@ -27,7 +27,7 @@ import {
   installServerModules,
   readPayload,
 } from "./internal/flight-ssr.js";
-import { FLIGHT_CONTENT_TYPE, flightUrl } from "./internal/flight.js";
+import { FLIGHT_CONTENT_TYPE, INTERCEPTED_FROM_HEADER, flightUrl } from "./internal/flight.js";
 import { type StreamRecord, streamReporter } from "./internal/inspector.js";
 import { requireServerComponentsReact } from "./internal/react-version.js";
 import { RedirectError } from "./internal/routing.js";
@@ -312,9 +312,15 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
 
   async function flight(
     url: string,
-    settings?: {| readonly onError?: (error: mixed) => void |},
+    settings?: {|
+      readonly onError?: (error: mixed) => void,
+      readonly interceptedFrom?: string,
+    |},
   ): Promise<FlightResponse> {
-    const rendered = await renderFlight(url, { onError: settings?.onError });
+    const rendered = await renderFlight(url, {
+      onError: settings?.onError,
+      interceptedFrom: settings?.interceptedFrom,
+    });
     if (rendered.kind === "redirect") {
       const { location } = rendered;
       // A redirect on this origin points at its target's payload, so the
@@ -330,7 +336,7 @@ export function createDocumentRenderer(options: DocumentRendererOptions): Render
     }
     return {
       status: rendered.status,
-      headers: { "content-type": FLIGHT_CONTENT_TYPE },
+      headers: { "content-type": FLIGHT_CONTENT_TYPE, vary: INTERCEPTED_FROM_HEADER },
       stream: rendered.stream,
       error: rendered.failure,
     };

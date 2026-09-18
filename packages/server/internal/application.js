@@ -74,7 +74,10 @@ export type Application = {|
    */
   readonly flight?: (
     url: string,
-    options?: {| readonly onError?: (error: mixed) => void |},
+    options?: {|
+      readonly onError?: (error: mixed) => void,
+      readonly interceptedFrom?: string,
+    |},
   ) => Promise<{|
     readonly status: number,
     readonly headers: { readonly [string]: string },

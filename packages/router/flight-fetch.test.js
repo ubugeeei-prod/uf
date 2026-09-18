@@ -12,6 +12,7 @@
 import { afterEach, describe, expect, it } from "@uniflowed/test";
 
 import { fetchFlight } from "./internal/flight-browser.js";
+import { INTERCEPTED_FROM_HEADER } from "./internal/flight.js";
 
 const globals: $FlowFixMe = globalThis;
 const saved = { fetch: globals.fetch, window: globals.window };
@@ -22,7 +23,10 @@ afterEach(() => {
 });
 
 /** A page at `href`, whose `fetch` answers every request with `answer`. */
-function pageAt(href: string, answer: () => Promise<Response>): void {
+function pageAt(
+  href: string,
+  answer: (input?: mixed, init?: $FlowFixMe) => Promise<Response>,
+): void {
   globals.window = { location: new URL(href) };
   globals.fetch = answer;
 }
@@ -49,5 +53,21 @@ describe("fetching a route's payload", () => {
     pageAt("http://uf.test/feed", () => Promise.resolve(signIn));
 
     expect(await fetchFlight("/account")).toEqual({ kind: "document", url: "/account" });
+  });
+
+  it("sends the page an intercepted payload should render over", async () => {
+    let headers = new Headers();
+    pageAt("http://uf.test/feed", async (_input, init) => {
+      headers = new Headers(init?.headers);
+      const payload = new Response("", { headers: { "content-type": "text/x-component" } });
+      Object.defineProperty(payload, "url", {
+        value: "http://uf.test/feed/photo/1/__uf.flight",
+      });
+      return payload;
+    });
+
+    await fetchFlight("/feed/photo/1", { interceptedFrom: "/feed" });
+
+    expect(headers.get(INTERCEPTED_FROM_HEADER)).toBe("/feed");
   });
 });

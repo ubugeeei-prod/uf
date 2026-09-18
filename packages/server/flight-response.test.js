@@ -8,15 +8,18 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import { flightResponse } from "./internal/flight.js";
+import { INTERCEPTED_FROM_HEADER, flightResponse } from "./internal/flight.js";
 
 /** A server bundle whose `flight` answers with `answer`, and records its URL. */
 function appAnswering(answer: mixed): $FlowFixMe {
   const asked: Array<string> = [];
+  const options: Array<$FlowFixMe> = [];
   return {
     asked,
-    flight: async (url: string) => {
+    options,
+    flight: async (url: string, flightOptions: mixed) => {
       asked.push(url);
+      options.push(flightOptions);
       return answer;
     },
   };
@@ -69,5 +72,22 @@ describe("answering a payload request", () => {
 
     expect(response).toBe(null);
     expect(app.asked).toEqual([]);
+  });
+
+  it("passes the intercepted-from page to the renderer", async () => {
+    const app = appAnswering({ status: 200, headers: {}, stream: null });
+
+    await flightResponse(
+      app,
+      new Request("http://uf.test/feed/photo/1/__uf.flight", {
+        headers: { [INTERCEPTED_FROM_HEADER]: "/feed" },
+      }),
+      {
+        onError: () => {},
+      },
+    );
+
+    expect(app.asked).toEqual(["/feed/photo/1"]);
+    expect(app.options.map((option) => option?.interceptedFrom)).toEqual(["/feed"]);
   });
 });

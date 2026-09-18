@@ -97,6 +97,7 @@ import {
   DEV_RSC_HOOK,
   FLIGHT_BROWSER_DEPENDENCIES,
   FLIGHT_VIRTUAL,
+  INTERCEPTED_FROM_HEADER,
   RSC_ENVIRONMENT,
   builtBridgeSource,
   builtReferencesSource,
@@ -1008,8 +1009,10 @@ function flowPlugin({
               if (payloadFor != null && (request.method === "GET" || request.method === "HEAD")) {
                 const query = url.includes("?") ? url.slice(url.indexOf("?")) : "";
                 const target = payloadFor + query;
+                const fromHeader = request.headers[INTERCEPTED_FROM_HEADER];
                 const answered = await entry.flight(target, {
                   onError: (error) => reportRenderError(devServer, target, error),
+                  interceptedFrom: Array.isArray(fromHeader) ? fromHeader[0] : fromHeader,
                 });
                 if (answered.error != null) reportRenderError(devServer, target, answered.error);
                 if (request.method === "HEAD") await answered.stream?.cancel();

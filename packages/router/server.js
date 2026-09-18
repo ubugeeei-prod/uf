@@ -287,7 +287,10 @@ export type Renderer = {|
    */
   readonly flight?: (
     url: string,
-    options?: {| readonly onError?: (error: mixed) => void |},
+    options?: {|
+      readonly onError?: (error: mixed) => void,
+      readonly interceptedFrom?: string,
+    |},
   ) => Promise<FlightResponse>,
 |};
 

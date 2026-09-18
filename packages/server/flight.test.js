@@ -11,12 +11,20 @@
 
 import { describe, expect, it } from "@uniflowed/test";
 
-import { FLIGHT_SEGMENT as ROUTER_SEGMENT, flightUrl } from "../router/internal/flight.js";
-import { FLIGHT_SEGMENT, flightDocumentPath } from "./internal/flight.js";
+import {
+  FLIGHT_SEGMENT as ROUTER_SEGMENT,
+  INTERCEPTED_FROM_HEADER as ROUTER_INTERCEPTED_FROM_HEADER,
+  flightUrl,
+} from "../router/internal/flight.js";
+import { FLIGHT_SEGMENT, INTERCEPTED_FROM_HEADER, flightDocumentPath } from "./internal/flight.js";
 
 describe("the payload URL", () => {
   it("is the same segment in the router and in the server", () => {
     expect(FLIGHT_SEGMENT).toBe(ROUTER_SEGMENT);
+  });
+
+  it("uses the same intercepted-from header in the router and in the server", () => {
+    expect(INTERCEPTED_FROM_HEADER).toBe(ROUTER_INTERCEPTED_FROM_HEADER);
   });
 
   it("leads every URL the router writes back to the document it is for", () => {
@@ -31,6 +39,7 @@ describe("the payload URL", () => {
     // spells the segment a third time.
     const vite = await import("../vite/internal/flight.js");
     expect(vite.FLIGHT_SEGMENT).toBe(FLIGHT_SEGMENT);
+    expect(vite.INTERCEPTED_FROM_HEADER).toBe(INTERCEPTED_FROM_HEADER);
     for (const pathname of ["/", "/guide", "/guide/rendering"]) {
       const written = new URL(flightUrl(pathname), "http://uf.test").pathname;
       expect(vite.flightDocumentPath(written)).toBe(pathname);

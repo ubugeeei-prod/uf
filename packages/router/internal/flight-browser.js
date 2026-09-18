@@ -28,7 +28,9 @@ import { createFromFetch, createFromReadableStream } from "react-server-dom-parc
 import { FLIGHT_CHUNK_ATTRIBUTE, flightChunkBytes } from "./flight-chunks.js";
 import {
   FLIGHT_CONTENT_TYPE,
+  INTERCEPTED_FROM_HEADER,
   type FetchedFlight,
+  type FlightFetchOptions,
   type FlightRoot,
   documentPathOf,
   flightUrl,
@@ -186,16 +188,24 @@ export function readDocumentPayload(
  * static host's `404.html` for a file it does not have, a middleware's own
  * refusal — is a document, whatever its status.
  */
-export async function fetchFlight(url: string): Promise<FetchedFlight> {
+export async function fetchFlight(
+  url: string,
+  options?: FlightFetchOptions,
+): Promise<FetchedFlight> {
   // Outside the `try` below, which answers every failure to fetch with a
   // document load: too old a React is not a network failure, and a navigation
   // that quietly reloaded the page would hide it.
   requireServerComponentsReact(ENTRY);
+  const headers = new Headers({ accept: FLIGHT_CONTENT_TYPE });
+  const interceptedFrom = options?.interceptedFrom;
+  if (interceptedFrom != null) {
+    headers.set(INTERCEPTED_FROM_HEADER, interceptedFrom);
+  }
   let response: Response;
   try {
     response = await fetch(flightUrl(url), {
       credentials: "same-origin",
-      headers: { accept: FLIGHT_CONTENT_TYPE },
+      headers,
     });
   } catch {
     // A request that could not be made or followed: a dropped connection, or a
