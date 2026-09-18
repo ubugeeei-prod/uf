@@ -64,6 +64,11 @@ export function statSync(_path) {
   unavailable("the filesystem");
 }
 
+/** Filesystem directory reads, which only the host can perform. */
+export function readdirSync(_path) {
+  unavailable("the filesystem");
+}
+
 /** A filesystem write, which only the host can perform. */
 export function mkdtempSync(_prefix) {
   unavailable("the filesystem");
@@ -121,6 +126,7 @@ export default {
   fileURLToPath,
   mkdtempSync,
   pathToFileURL,
+  readdirSync,
   registerHooks,
   sep,
   spawn,
