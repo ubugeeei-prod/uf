@@ -231,7 +231,9 @@ from `@uniflowed/react-testing`.
    and `useParams()` and `useLocation()` are `useRoute()`'s `params`, `pathname`
    and `searchParams`. There is no supported way to keep React Router:
    `app.router.enabled: false` makes the project a library, and nothing in uf
-   runs `<BrowserRouter>` inside its own router.
+   runs `<BrowserRouter>` inside its own router. Even as a client component, a
+   nested `<BrowserRouter>` is prerendered during `uf build` and fails on
+   `document is not defined`, so move those routes rather than nesting routers.
 7. **Rename what reaches the browser.** uf defines no `process.env` for browser
    code: `process.env.REACT_APP_API` becomes `import.meta.env.REACT_APP_API`,
    with `vite: { envPrefix: "REACT_APP_" }` in `uf.config.js` — or rename the
