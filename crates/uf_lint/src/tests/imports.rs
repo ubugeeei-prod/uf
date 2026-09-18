@@ -259,7 +259,7 @@ fn no_extraneous_dependencies_ignores_non_package_specifiers() {
             ("package.json", r#"{ "name": "app" }"#),
             (
                 "app/page.js",
-                "// @flow\nimport fs from \"fs\";\nimport path from \"node:path\";\nimport local from \"./local.js\";\nimport privateName from \"#app/env\";\nimport alias from \"@/components/Button\";\n",
+                "// @flow\nimport fs from \"fs\";\nimport sys from \"sys\";\nimport path from \"node:path\";\nimport local from \"./local.js\";\nimport privateName from \"#app/env\";\nimport alias from \"@/components/Button\";\n",
             ),
         ],
     );

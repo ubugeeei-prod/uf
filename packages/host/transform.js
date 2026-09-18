@@ -116,7 +116,7 @@ export const FLOW_MODULE_PATTERN = new RegExp(
 export function uniflowedPackages(root) {
   const names = new Set();
   let directory = root;
-  for (let depth = 0; depth < 16; depth += 1) {
+  for (;;) {
     const scope = path.join(directory, "node_modules", "@uniflowed");
     try {
       for (const entry of readdirSync(scope)) names.add(`@uniflowed/${entry}`);

@@ -135,4 +135,33 @@ describe("which modules uf is responsible for", () => {
       "@uniflowed/state",
     ]);
   });
+
+  it("walks every ancestor when listing uniflowed packages", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "uf-flow-modules-"));
+    roots.push(root);
+    const app = path.join(
+      root,
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+      "i",
+      "j",
+      "k",
+      "l",
+      "m",
+      "n",
+      "o",
+      "p",
+      "q",
+      "app",
+    );
+    fs.mkdirSync(path.join(root, "node_modules", "@uniflowed", "far"), { recursive: true });
+
+    expect(host.uniflowedPackages(app)).toEqual(["@uniflowed/far"]);
+  });
 });
