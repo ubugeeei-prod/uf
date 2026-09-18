@@ -414,8 +414,11 @@ deployment record does not have yet.
 4. **Move data fetching into a `loader`.** A page or layout exports `loader`,
    which runs before it renders and hands it the data; a promise left in what it
    returns streams behind a `<Suspense>`
-   ([Loading data](/guide/routing#loading-data)). `generateMetadata` is read from
-   a page, and a route that uses it waits for its data rather than streaming.
+   ([Loading data](/guide/routing#loading-data)). Do not make the page component
+   itself `async`: `uf check` rejects async component syntax, so data that needs
+   `await` belongs in the loader and the page takes the loader's returned data.
+   `generateMetadata` is read from a page, and a route that uses it waits for
+   its data rather than streaming.
 5. **Split `middleware.ts` by directory.** There is no `matcher`: a
    `$middleware.js` guards the directory it sits in, and middleware composes down
    the tree the way layouts do. Return a `Response` to answer, or nothing to
