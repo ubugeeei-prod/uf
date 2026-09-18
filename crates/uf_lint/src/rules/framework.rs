@@ -321,6 +321,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "a module must not import itself",
     },
     RuleDescriptor {
+        id: "import/no-relative-packages",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "workspace packages should import each other by package name",
+    },
+    RuleDescriptor {
         id: "import/no-useless-path-segments",
         category: RuleCategory::Import,
         default_level: RuleLevel::Error,
