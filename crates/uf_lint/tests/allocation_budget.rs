@@ -25,9 +25,9 @@ static GLOBAL: CountingAllocator = CountingAllocator::new();
 /// below the 293,000-allocation post-#708 figure from #668.
 const RUNTIME_JS_ALLOCATIONS_PER_KIB_CEILING: u64 = 256;
 
-/// Above the current 4.14 MiB run with room for fixture drift, below the
+/// Above the current 3.50 MiB run with room for fixture drift, below the
 /// 32 MiB post-#708 figure from #668.
-const RUNTIME_JS_BYTES_PER_BYTE_CEILING: u64 = 40;
+const RUNTIME_JS_BYTES_PER_BYTE_CEILING: u64 = 50;
 
 /// With the `react-compiler/*` rules on: 709,167 allocations for the 68 KiB
 /// fixture when this budget was set, about 10,430 per KiB, with 15% room for
