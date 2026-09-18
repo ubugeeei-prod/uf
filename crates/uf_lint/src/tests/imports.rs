@@ -141,6 +141,41 @@ fn no_self_import_accepts_neighbouring_relative_imports() {
 }
 
 #[test]
+fn no_relative_packages_rejects_a_relative_path_into_another_workspace_package() {
+    let diagnostics = lint_one(
+        "import/no-relative-packages",
+        "packages/web/src/page.js",
+        "// @flow\nimport state from \"../../state/index.js\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 19));
+    assert!(diagnostics[0].message.contains("`state` package"));
+}
+
+#[test]
+fn no_relative_packages_accepts_package_imports_and_same_package_relatives() {
+    let diagnostics = lint_one(
+        "import/no-relative-packages",
+        "packages/web/src/page.js",
+        "// @flow\nimport state from \"@uniflowed/state\";\nimport local from \"../state/index.js\";\nimport sibling from \"./button.js\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn no_relative_packages_ignores_non_workspace_paths() {
+    let diagnostics = lint_one(
+        "import/no-relative-packages",
+        "app/src/page.js",
+        "// @flow\nimport shared from \"../shared/index.js\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_useless_path_segments_rejects_dotdot_segments_that_cancel_out() {
     let diagnostics = lint_one(
         "import/no-useless-path-segments",

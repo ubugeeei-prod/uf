@@ -83,6 +83,30 @@ pub(crate) fn run_import_no_self_import(
     }
 }
 
+pub(crate) fn run_import_no_relative_packages(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-relative-packages";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+
+    for import in static_imports(&scan.file.source) {
+        if let Some(target) = relative_workspace_package(&scan.file.path, import.source) {
+            push_import(
+                diagnostics,
+                scan,
+                rule,
+                severity,
+                import.source_at,
+                format!("use the `{target}` package name instead of a relative path into it"),
+            );
+        }
+    }
+}
+
 pub(crate) fn run_import_no_useless_path_segments(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
@@ -259,6 +283,48 @@ fn is_self_import(file: &str, source: &str) -> bool {
     }
 
     current.file_stem().is_some_and(|stem| stem == "index") && target == normalize_path(parent)
+}
+
+fn relative_workspace_package(file: &str, source: &str) -> Option<String> {
+    let (source, _) = split_import_suffix(source);
+    if !is_relative_import(source) {
+        return None;
+    }
+
+    let file = normalize_path(Path::new(file));
+    let parent = file.parent()?;
+    let target = normalize_path(&parent.join(source));
+
+    let current = workspace_package(&file)?;
+    let target = workspace_package(&target)?;
+    (current.root == target.root && current.name != target.name).then_some(target.name)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct WorkspacePackage {
+    root: PathBuf,
+    name: String,
+}
+
+fn workspace_package(path: &Path) -> Option<WorkspacePackage> {
+    let components = path.components().collect::<Vec<_>>();
+    for (index, component) in components.iter().enumerate() {
+        if component.as_os_str() != "packages" {
+            continue;
+        }
+        let Some(Component::Normal(name)) = components.get(index + 1) else {
+            continue;
+        };
+        let mut root = PathBuf::new();
+        for component in &components[..index] {
+            root.push(component.as_os_str());
+        }
+        return Some(WorkspacePackage {
+            root,
+            name: name.to_string_lossy().into_owned(),
+        });
+    }
+    None
 }
 
 fn is_relative_import(source: &str) -> bool {
