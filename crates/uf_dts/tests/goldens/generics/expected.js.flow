@@ -29,4 +29,5 @@ export type Utility = Partial<Settings> & Required<Settings> & Readonly<Settings
 export type Returned = ReturnType<() => string>;
 export type Settled = Awaited<Promise<string>>;
 export type NonNull = NonNullable<string | null>;
+export type NestedValue<T> = T extends interface { readonly meta: infer Z } ? Z extends interface { readonly value: infer I } ? I : mixed : mixed;
 export type Apply<in TArgs extends $ReadOnlyArray<mixed> = []> = (...args: TArgs) => void;
