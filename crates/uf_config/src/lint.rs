@@ -134,7 +134,7 @@ pub enum FlowLintParser {
 /// A project's `lint.rules` is merged **over** this table rather than replacing
 /// it — see [`rules_over_defaults`] for what naming one rule used to do to the
 /// other fifty.
-const DEFAULT_LINT_RULES: [(&str, RuleLevel); 140] = [
+const DEFAULT_LINT_RULES: [(&str, RuleLevel); 141] = [
     // --- Flow built-in lints ------------------------------------------------
     // Exactness must be stated, not inferred from a config flag.
     // Off: the ambiguity is gone. Flow has been exact-by-default since 2023 and
@@ -214,6 +214,8 @@ const DEFAULT_LINT_RULES: [(&str, RuleLevel); 140] = [
     ("import/no-extraneous-dependencies", RuleLevel::Error),
     // A default import named like a named export points at the wrong API.
     ("import/no-named-as-default", RuleLevel::Error),
+    // Deprecated exports should stop at the module boundary that declared them.
+    ("import/no-deprecated", RuleLevel::Error),
     // A module that imports itself creates an unusable cycle with no boundary.
     ("import/no-self-import", RuleLevel::Error),
     // A workspace package boundary is a package import boundary too.

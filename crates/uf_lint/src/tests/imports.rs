@@ -373,6 +373,92 @@ fn no_named_as_default_accepts_other_import_shapes() {
 }
 
 #[test]
+fn no_deprecated_rejects_a_named_import_marked_deprecated() {
+    let diagnostics = lint_many(
+        "import/no-deprecated",
+        &[
+            (
+                "app/api.js",
+                "// @flow\n/** @deprecated use `currentApi` */\nexport function oldApi() {}\nexport function currentApi() {}\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport { oldApi, currentApi } from \"./api\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 10));
+    assert!(diagnostics[0].message.contains("`oldApi`"));
+}
+
+#[test]
+fn no_deprecated_reads_deprecated_export_lists() {
+    let diagnostics = lint_many(
+        "import/no-deprecated",
+        &[
+            (
+                "app/icons.js",
+                "// @flow\nconst Icon = 1;\n/** @deprecated use `Icon` */\nexport { Icon as LegacyIcon };\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport { LegacyIcon as Icon } from \"./icons\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+    assert!(diagnostics[0].message.contains("`LegacyIcon`"));
+}
+
+#[test]
+fn no_deprecated_rejects_deprecated_default_imports() {
+    let diagnostics = lint_many(
+        "import/no-deprecated",
+        &[
+            (
+                "app/legacy.js",
+                "// @flow\n/** @deprecated use named exports */\nexport default function Legacy() {}\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport Legacy, { default as AlsoLegacy } from \"./legacy\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 2);
+    assert!(diagnostics.iter().all(|diagnostic| {
+        diagnostic.path.as_deref() == Some("app/page.js")
+            && diagnostic.rule == "import/no-deprecated"
+            && diagnostic.message.contains("`default`")
+    }));
+}
+
+#[test]
+fn no_deprecated_accepts_non_deprecated_and_non_value_imports() {
+    let diagnostics = lint_many(
+        "import/no-deprecated",
+        &[
+            (
+                "app/types.js",
+                "// @flow\n/** @deprecated */\nexport type Old = number;\nexport const fresh = 1;\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport { fresh } from \"./types\";\nimport type { Old } from \"./types\";\nimport { oldPackageApi } from \"legacy-package\";\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_self_import_rejects_a_file_importing_itself_with_an_extension() {
     let diagnostics = lint_one(
         "import/no-self-import",

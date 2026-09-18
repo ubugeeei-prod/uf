@@ -321,6 +321,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "relative import graphs must not cycle back to the importing module",
     },
     RuleDescriptor {
+        id: "import/no-deprecated",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "relative value imports must not use exports marked @deprecated",
+    },
+    RuleDescriptor {
         id: "import/no-extraneous-dependencies",
         category: RuleCategory::Import,
         default_level: RuleLevel::Error,
