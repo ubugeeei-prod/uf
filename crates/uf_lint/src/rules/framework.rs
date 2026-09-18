@@ -314,6 +314,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "mergeable static imports from the same module belong together",
     },
     RuleDescriptor {
+        id: "import/no-extraneous-dependencies",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "bare package imports must be declared by the nearest package.json",
+    },
+    RuleDescriptor {
         id: "import/no-self-import",
         category: RuleCategory::Import,
         default_level: RuleLevel::Error,

@@ -26,6 +26,9 @@ mod runner;
 mod scan;
 mod suppression;
 
+use std::collections::BTreeSet;
+
+use serde_json::Value;
 use thiserror::Error;
 use uf_config::{RuleLevel, UniflowedConfig};
 
@@ -40,7 +43,8 @@ use crate::runner::{
     run_flow_export_renamed_default, run_flow_internal_type, run_flow_mixed_import_and_require,
     run_flow_non_const_var_export, run_flow_unclear_type, run_flow_unnecessary_optional_chain,
     run_flow_unsafe_getters_setters, run_flow_unsafe_object_assign, run_import_no_absolute_path,
-    run_import_no_duplicates, run_import_no_relative_packages, run_import_no_self_import,
+    run_import_no_duplicates, run_import_no_extraneous_dependencies,
+    run_import_no_relative_packages, run_import_no_self_import,
     run_import_no_useless_path_segments, run_module_tree_rules, run_no_npm_script_invocation,
     run_no_tabs, run_no_trailing_whitespace, run_package_no_npm_scripts,
     run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
@@ -133,6 +137,84 @@ impl LintReport {
     }
 }
 
+/// Project-wide facts a source-text rule can read without touching the
+/// filesystem.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct LintContext {
+    packages: Vec<PackageManifest>,
+}
+
+/// One `package.json` that belongs to the linted source batch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PackageManifest {
+    /// Directory containing the manifest, relative to the lint root. Empty is
+    /// the project root.
+    dir: String,
+    /// The package's own name, which its files may import by package name.
+    pub(crate) name: Option<String>,
+    /// Dependency names declared by any dependency field this rule treats as a
+    /// package declaration.
+    pub(crate) declared: BTreeSet<String>,
+}
+
+impl LintContext {
+    fn from_sources(files: &[SourceFile]) -> Self {
+        let mut packages = files
+            .iter()
+            .filter_map(PackageManifest::from_source)
+            .collect::<Vec<_>>();
+        packages.sort_by(|a, b| a.dir.cmp(&b.dir));
+        Self { packages }
+    }
+
+    pub(crate) fn nearest_package(&self, file: &str) -> Option<&PackageManifest> {
+        self.packages
+            .iter()
+            .filter(|package| package.contains(file))
+            .max_by_key(|package| package.dir.len())
+    }
+}
+
+impl PackageManifest {
+    fn from_source(file: &SourceFile) -> Option<Self> {
+        let dir = if file.path == "package.json" {
+            ""
+        } else {
+            file.path.strip_suffix("/package.json")?
+        };
+        let value = serde_json::from_str::<Value>(&file.source).ok()?;
+        let object = value.as_object()?;
+        let name = object
+            .get("name")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned);
+        let mut declared = BTreeSet::new();
+        for field in [
+            "dependencies",
+            "devDependencies",
+            "peerDependencies",
+            "optionalDependencies",
+        ] {
+            if let Some(dependencies) = object.get(field).and_then(Value::as_object) {
+                declared.extend(dependencies.keys().cloned());
+            }
+        }
+        Some(Self {
+            dir: dir.to_owned(),
+            name,
+            declared,
+        })
+    }
+
+    fn contains(&self, file: &str) -> bool {
+        self.dir.is_empty()
+            || file == self.dir
+            || file
+                .strip_prefix(self.dir.as_str())
+                .is_some_and(|rest| rest.starts_with('/'))
+    }
+}
+
 /// Anything that can stop a lint run before it produces a report.
 #[derive(Debug, Error)]
 pub enum LintError {
@@ -146,7 +228,22 @@ pub fn lint_sources(
     files: &[SourceFile],
     config: &UniflowedConfig,
 ) -> Result<LintReport, LintError> {
-    let per_file = uf_infra::parallel::map(files, |file| lint_file(file, config))?;
+    lint_sources_with_context(files, files, config)
+}
+
+/// Lint `files`, using `context_files` for project-wide facts such as
+/// `package.json` ownership.
+///
+/// Narrowed command-line runs pass only the selected source files in `files`,
+/// but rules such as `import/no-extraneous-dependencies` still need the
+/// manifests from the full project to avoid becoming a silent no-op.
+pub fn lint_sources_with_context(
+    files: &[SourceFile],
+    context_files: &[SourceFile],
+    config: &UniflowedConfig,
+) -> Result<LintReport, LintError> {
+    let context = LintContext::from_sources(context_files);
+    let per_file = uf_infra::parallel::map(files, |file| lint_file(file, config, &context))?;
 
     let mut diagnostics = per_file.into_iter().flatten().collect::<Vec<_>>();
     sort_diagnostics(&mut diagnostics);
@@ -160,7 +257,8 @@ pub fn lint_sources(
 
 /// Lint a single file.
 pub fn lint_source(file: &SourceFile, config: &UniflowedConfig) -> Result<LintReport, LintError> {
-    let mut diagnostics = lint_file(file, config)?;
+    let context = LintContext::default();
+    let mut diagnostics = lint_file(file, config, &context)?;
     sort_diagnostics(&mut diagnostics);
 
     Ok(LintReport {
@@ -198,7 +296,11 @@ fn sort_diagnostics(diagnostics: &mut [Diagnostic]) {
     });
 }
 
-fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnostic>, LintError> {
+fn lint_file(
+    file: &SourceFile,
+    config: &UniflowedConfig,
+    context: &LintContext,
+) -> Result<Vec<Diagnostic>, LintError> {
     // Blanked before anything reads a line, so no rule has to know that a
     // comment can sit in the middle of one. See `scan::mask_inline_comments`.
     let masked = crate::scan::mask_inline_comments(&file.source);
@@ -239,6 +341,7 @@ fn lint_file(file: &SourceFile, config: &UniflowedConfig) -> Result<Vec<Diagnost
     run_flow_export_renamed_default(&scan, config, &mut diagnostics);
     run_import_no_absolute_path(&scan, config, &mut diagnostics);
     run_import_no_duplicates(&scan, config, &mut diagnostics);
+    run_import_no_extraneous_dependencies(&scan, config, context, &mut diagnostics);
     run_import_no_self_import(&scan, config, &mut diagnostics);
     run_import_no_relative_packages(&scan, config, &mut diagnostics);
     run_import_no_useless_path_segments(&scan, config, &mut diagnostics);

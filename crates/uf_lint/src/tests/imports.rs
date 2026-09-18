@@ -96,6 +96,111 @@ fn no_duplicates_rejects_two_namespace_imports_from_the_same_module() {
 }
 
 #[test]
+fn no_extraneous_dependencies_rejects_packages_missing_from_the_nearest_manifest() {
+    let diagnostics = lint_many(
+        "import/no-extraneous-dependencies",
+        &[
+            (
+                "package.json",
+                r#"{ "name": "app", "dependencies": { "react": "^19.0.0" } }"#,
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport * as React from \"react\";\nimport leftPad from \"left-pad\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (3, 21));
+    assert!(diagnostics[0].message.contains("`left-pad`"));
+}
+
+#[test]
+fn no_extraneous_dependencies_uses_context_manifests_for_narrowed_runs() {
+    let selected = [at(
+        "app/page.js",
+        "// @flow\nimport leftPad from \"left-pad\";\n",
+    )];
+    let context = [at("package.json", r#"{ "name": "app" }"#)];
+    let diagnostics = lint_sources_with_context(
+        &selected,
+        &context,
+        &only("import/no-extraneous-dependencies"),
+    )
+    .expect("lint")
+    .diagnostics;
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+}
+
+#[test]
+fn no_extraneous_dependencies_accepts_declared_dependencies_and_self_imports() {
+    let diagnostics = lint_many(
+        "import/no-extraneous-dependencies",
+        &[
+            (
+                "package.json",
+                r#"{
+                  "name": "@acme/app",
+                  "dependencies": { "react": "^19.0.0" },
+                  "devDependencies": { "@testing-library/react": "^16.0.0" },
+                  "peerDependencies": { "react-dom": "^19.0.0" },
+                  "optionalDependencies": { "fsevents": "^2.0.0" }
+                }"#,
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport * as React from \"react/jsx-runtime\";\nimport { render } from \"@testing-library/react\";\nimport { createRoot } from \"react-dom/client\";\nimport fsevents from \"fsevents\";\nimport own from \"@acme/app/internal\";\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn no_extraneous_dependencies_uses_the_nearest_package_manifest() {
+    let diagnostics = lint_many(
+        "import/no-extraneous-dependencies",
+        &[
+            (
+                "package.json",
+                r#"{ "name": "root", "dependencies": { "left-pad": "^1.0.0" } }"#,
+            ),
+            (
+                "packages/ui/package.json",
+                r#"{ "name": "@acme/ui", "dependencies": { "react": "^19.0.0" } }"#,
+            ),
+            (
+                "packages/ui/index.js",
+                "// @flow\nimport * as React from \"react\";\nimport leftPad from \"left-pad\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("`left-pad`"));
+}
+
+#[test]
+fn no_extraneous_dependencies_ignores_non_package_specifiers() {
+    let diagnostics = lint_many(
+        "import/no-extraneous-dependencies",
+        &[
+            ("package.json", r#"{ "name": "app" }"#),
+            (
+                "app/page.js",
+                "// @flow\nimport fs from \"fs\";\nimport path from \"node:path\";\nimport local from \"./local.js\";\nimport privateName from \"#app/env\";\nimport alias from \"@/components/Button\";\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_self_import_rejects_a_file_importing_itself_with_an_extension() {
     let diagnostics = lint_one(
         "import/no-self-import",

@@ -6,7 +6,7 @@ use uf_config::UniflowedConfig;
 use uf_flow::scan::{Token, TokenKind, starts_statement, tokenize};
 
 use crate::scan::FileScan;
-use crate::{Diagnostic, Severity, push, severity};
+use crate::{Diagnostic, LintContext, Severity, push, severity};
 
 pub(crate) fn run_import_no_absolute_path(
     scan: &FileScan<'_>,
@@ -56,6 +56,38 @@ pub(crate) fn run_import_no_duplicates(
         } else {
             seen.push(import);
         }
+    }
+}
+
+pub(crate) fn run_import_no_extraneous_dependencies(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    context: &LintContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-extraneous-dependencies";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+    let Some(manifest) = context.nearest_package(&scan.file.path) else {
+        return;
+    };
+
+    for import in static_imports(&scan.file.source) {
+        let Some(package) = imported_package_name(import.source) else {
+            continue;
+        };
+        if manifest.name.as_deref() == Some(package) || manifest.declared.contains(package) {
+            continue;
+        }
+        push_import(
+            diagnostics,
+            scan,
+            rule,
+            severity,
+            import.source_at,
+            format!("`{package}` must be declared in the nearest package.json"),
+        );
     }
 }
 
@@ -255,6 +287,86 @@ fn is_absolute_import(source: &str) -> bool {
         && bytes[0].is_ascii_alphabetic()
         && bytes[1] == b':'
         && matches!(bytes[2], b'/' | b'\\')
+}
+
+fn imported_package_name(source: &str) -> Option<&str> {
+    let (source, _) = split_import_suffix(source);
+    if is_relative_import(source)
+        || is_absolute_import(source)
+        || source.starts_with('#')
+        || source.starts_with("@/")
+        || source.contains(':')
+    {
+        return None;
+    }
+
+    let package = if let Some(rest) = source.strip_prefix('@') {
+        let (scope, rest) = rest.split_once('/')?;
+        let (name, _) = rest.split_once('/').unwrap_or((rest, ""));
+        if scope.is_empty() || name.is_empty() {
+            return None;
+        }
+        &source[..1 + scope.len() + 1 + name.len()]
+    } else {
+        let (name, _) = source.split_once('/').unwrap_or((source, ""));
+        if !name
+            .as_bytes()
+            .first()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        {
+            return None;
+        }
+        name
+    };
+
+    (!is_node_builtin_package(package)).then_some(package)
+}
+
+fn is_node_builtin_package(package: &str) -> bool {
+    matches!(
+        package,
+        "assert"
+            | "async_hooks"
+            | "buffer"
+            | "child_process"
+            | "cluster"
+            | "console"
+            | "constants"
+            | "crypto"
+            | "dgram"
+            | "diagnostics_channel"
+            | "dns"
+            | "domain"
+            | "events"
+            | "fs"
+            | "http"
+            | "http2"
+            | "https"
+            | "inspector"
+            | "module"
+            | "net"
+            | "os"
+            | "path"
+            | "perf_hooks"
+            | "process"
+            | "punycode"
+            | "querystring"
+            | "readline"
+            | "repl"
+            | "stream"
+            | "string_decoder"
+            | "timers"
+            | "tls"
+            | "trace_events"
+            | "tty"
+            | "url"
+            | "util"
+            | "v8"
+            | "vm"
+            | "wasi"
+            | "worker_threads"
+            | "zlib"
+    )
 }
 
 fn is_self_import(file: &str, source: &str) -> bool {

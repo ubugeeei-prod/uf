@@ -32,7 +32,9 @@ use camino::{Utf8Path, Utf8PathBuf};
 use serde_json::json;
 use uf_config::load_config;
 use uf_infra::FxHashSet;
-use uf_lint::{Diagnostic, LintReport, Severity, SourceFile, lint_sources};
+use uf_lint::{
+    Diagnostic, LintReport, Severity, SourceFile, lint_sources, lint_sources_with_context,
+};
 use uf_project::{SourceKind, scan_selected_source_files_matching};
 use uf_term::{
     Cell, CodeFrame, Column, DiagnosticLevel, KeyValue, Status, Table, Tone, push_spaces,
@@ -161,12 +163,13 @@ pub(crate) struct LintRun {
     /// Every Flow source and manifest the scan collected, before `paths`
     /// narrowed it — empty when nothing was narrowed away.
     ///
-    /// The linter has no use for this: a rule reads one file, so a file nobody
-    /// asked about is a file nobody should be told about. The *checker* does,
-    /// because an import is only typed against a file in the same batch, and
-    /// the file a narrowed run imports is exactly the file narrowing removed.
-    /// `uf check` walks this set to find what its selection reaches; see
-    /// `uf_check::module_closure`.
+    /// A narrowed lint run still needs the manifest files in this set for
+    /// project-wide context such as `import/no-extraneous-dependencies`, but
+    /// diagnostics are still emitted only for [`Self::sources`]. The *checker*
+    /// uses the rest too, because an import is only typed against a file in the
+    /// same batch, and the file a narrowed run imports is exactly the file
+    /// narrowing removed. `uf check` walks this set to find what its selection
+    /// reaches; see `uf_check::module_closure`.
     ///
     /// Empty rather than a copy when `paths` selected everything, because then
     /// [`Self::sources`] already is the whole scan and holding a second copy of
@@ -249,7 +252,11 @@ pub(crate) fn run_lint(cwd: &Utf8Path, paths: &[String]) -> Result<LintRun> {
         }
         bail!("no file matched {}", quoted_list(paths));
     }
-    let mut report = lint_sources(&sources, &resolved.config)?;
+    let mut report = if available.is_empty() {
+        lint_sources(&sources, &resolved.config)?
+    } else {
+        lint_sources_with_context(&sources, &available, &resolved.config)?
+    };
     // Over the same narrowed sources, so a path argument means the same thing
     // to a project rule as to uf's own. Nothing starts when none is enabled.
     let mut project_rules = plugins::run(&resolved.root, &resolved.config, &sources)?;
