@@ -314,6 +314,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "mergeable static imports from the same module belong together",
     },
     RuleDescriptor {
+        id: "import/no-cycle",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "relative import graphs must not cycle back to the importing module",
+    },
+    RuleDescriptor {
         id: "import/no-extraneous-dependencies",
         category: RuleCategory::Import,
         default_level: RuleLevel::Error,

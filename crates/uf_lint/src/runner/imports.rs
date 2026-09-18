@@ -1,12 +1,13 @@
 //! Static import rules that do not need the project module graph.
 
+use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 
 use uf_config::UniflowedConfig;
 use uf_flow::scan::{Token, TokenKind, starts_statement, tokenize};
 
 use crate::scan::FileScan;
-use crate::{Diagnostic, LintContext, Severity, push, severity};
+use crate::{Diagnostic, LintContext, Severity, SourceFile, push, severity};
 
 pub(crate) fn run_import_no_absolute_path(
     scan: &FileScan<'_>,
@@ -57,6 +58,33 @@ pub(crate) fn run_import_no_duplicates(
             seen.push(import);
         }
     }
+}
+
+pub(crate) fn run_import_no_cycle(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    context: &LintContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-cycle";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+    let Some(cycle) = context.import_graph().cycle_from(&scan.file.path) else {
+        return;
+    };
+
+    push_import(
+        diagnostics,
+        scan,
+        rule,
+        severity,
+        cycle.source_at,
+        format!(
+            "this import creates a cycle through `{}`",
+            cycle.target_path
+        ),
+    );
 }
 
 pub(crate) fn run_import_no_extraneous_dependencies(
@@ -347,6 +375,185 @@ fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
         };
         file == native
     })
+}
+
+struct Cycle {
+    source_at: usize,
+    target_path: String,
+}
+
+/// Relative import graph over the source batch available to lint rules.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ImportGraph {
+    paths: Vec<String>,
+    edges: Vec<Vec<ImportEdge>>,
+    by_path: HashMap<String, usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ImportEdge {
+    to: usize,
+    source_at: usize,
+}
+
+impl ImportGraph {
+    /// Build the graph from the files the caller made available.
+    pub(crate) fn new(files: &[SourceFile]) -> Self {
+        let mut candidates = files.iter().filter(|file| is_graph_module_path(&file.path));
+        let Some(first) = candidates.next() else {
+            return Self::default();
+        };
+        let Some(second) = candidates.next() else {
+            return Self::default();
+        };
+        let mut files = Vec::with_capacity(2);
+        files.push(first);
+        files.push(second);
+        files.extend(candidates);
+
+        let mut paths = Vec::new();
+        let mut by_path = HashMap::new();
+        for file in &files {
+            let path = normalize_graph_path(&file.path);
+            if by_path.contains_key(&path) {
+                continue;
+            }
+            let index = paths.len();
+            by_path.insert(path.clone(), index);
+            paths.push(path);
+        }
+
+        let mut graph = Self {
+            edges: (0..paths.len()).map(|_| Vec::new()).collect(),
+            paths,
+            by_path,
+        };
+        for file in files {
+            graph.add_edges(file);
+        }
+        graph
+    }
+
+    fn add_edges(&mut self, file: &SourceFile) {
+        let importer = normalize_graph_path(&file.path);
+        let Some(from) = self.by_path.get(&importer).copied() else {
+            return;
+        };
+        let imports = static_imports(&file.source)
+            .into_iter()
+            .filter_map(|import| {
+                let (source, suffix) = split_import_suffix(import.source);
+                if suffix.is_empty() {
+                    self.resolve(source, &importer).map(|to| ImportEdge {
+                        to,
+                        source_at: import.source_at,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        self.edges[from].extend(imports);
+    }
+
+    fn cycle_from(&self, file: &str) -> Option<Cycle> {
+        if self.paths.is_empty() {
+            return None;
+        }
+        let start = *self.by_path.get(&normalize_graph_path(file))?;
+        self.edges[start].iter().find_map(|edge| {
+            if edge.to != start && self.reaches(edge.to, start, &mut vec![false; self.paths.len()])
+            {
+                Some(Cycle {
+                    source_at: edge.source_at,
+                    target_path: self.paths[edge.to].clone(),
+                })
+            } else {
+                None
+            }
+        })
+    }
+
+    fn reaches(&self, current: usize, target: usize, seen: &mut [bool]) -> bool {
+        if current == target {
+            return true;
+        }
+        if seen[current] {
+            return false;
+        }
+        seen[current] = true;
+        self.edges[current]
+            .iter()
+            .any(|edge| self.reaches(edge.to, target, seen))
+    }
+
+    fn resolve(&self, specifier: &str, importer: &str) -> Option<usize> {
+        if !is_relative_import(specifier) {
+            return None;
+        }
+        let base = graph_join(importer, specifier)?;
+        self.lookup(&base).or_else(|| {
+            let extensions = ["js", "mjs", "cjs", "jsx"];
+            extensions
+                .iter()
+                .find_map(|extension| self.lookup(&format!("{base}.{extension}")))
+                .or_else(|| {
+                    extensions
+                        .iter()
+                        .find_map(|extension| self.lookup(&format!("{base}/index.{extension}")))
+                })
+        })
+    }
+
+    fn lookup(&self, path: &str) -> Option<usize> {
+        self.by_path
+            .get(path)
+            .or_else(|| self.by_path.get(&format!("{path}.flow")))
+            .copied()
+    }
+}
+
+fn is_graph_module_path(path: &str) -> bool {
+    matches!(
+        Path::new(path)
+            .extension()
+            .and_then(|extension| extension.to_str()),
+        Some("js" | "jsx" | "mjs" | "cjs" | "flow")
+    )
+}
+
+fn graph_join(importer: &str, specifier: &str) -> Option<String> {
+    let directory = importer.rsplit_once('/').map_or("", |(head, _)| head);
+    let mut segments = Vec::new();
+    for segment in directory
+        .split('/')
+        .chain(specifier.split('/'))
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+    {
+        if segment == ".." {
+            segments.pop()?;
+        } else {
+            segments.push(segment);
+        }
+    }
+    (!segments.is_empty()).then(|| segments.join("/"))
+}
+
+fn normalize_graph_path(path: &str) -> String {
+    let mut segments = Vec::new();
+    for segment in path
+        .split('/')
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+    {
+        if segment == ".." {
+            if segments.pop().is_none() {
+                return path.to_owned();
+            }
+        } else {
+            segments.push(segment);
+        }
+    }
+    segments.join("/")
 }
 
 fn is_node_builtin_package(package: &str) -> bool {
