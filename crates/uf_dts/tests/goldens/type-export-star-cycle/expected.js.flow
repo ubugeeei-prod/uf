@@ -1,0 +1,6 @@
+import type { Locale } from "./locale/types.d.ts.flow";
+export type { FormatDistanceOptions, Locale } from "./locale/types.d.ts.flow";
+
+export interface LocalizedOptions<out LocaleFields extends keyof Locale> {
+  readonly locale?: Pick<Locale, LocaleFields>;
+}

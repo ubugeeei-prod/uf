@@ -242,6 +242,18 @@ declare const missingKeyOmit: MissingKeyOmit;
 }
 
 #[test]
+fn a_class_override_keeps_an_inherited_optional_parameter() {
+    let consumer = "// @flow
+import { RequiredParser, type ParserBase } from './input.d.ts.flow';
+const parser: ParserBase = new RequiredParser();
+parser.validate('value');
+parser.validate('value', { strict: true });
+parser.validate('value', { strict: 'yes' });
+";
+    assert_eq!(consumer_errors("class-override-optional", consumer), [6]);
+}
+
+#[test]
 fn an_overload_a_guard_and_a_generic_bound_are_checked() {
     let consumer = "// @flow
 import { parse, isString, generic } from './input.d.ts.flow';
@@ -258,6 +270,18 @@ generic(1, 2);
 }
 
 #[test]
+fn a_tuple_default_satisfies_a_rest_argument_constraint() {
+    let consumer = "// @flow
+import type { Apply } from './input.d.ts.flow';
+declare const apply: Apply<[string, number]>;
+apply('value', 1);
+apply('value');
+apply('value', 'wrong');
+";
+    assert_eq!(consumer_errors("generics", consumer), [5, 6]);
+}
+
+#[test]
 fn a_re_exported_class_and_a_split_name_resolve_through_the_chain() {
     let consumer = "// @flow
 import { Model, MergedAgain, value } from './input.d.ts.flow';
@@ -268,6 +292,17 @@ const kind: Kind = value;
 const wrong: Kind = 'c';
 ";
     assert_eq!(consumer_errors("imports-and-re-exports", consumer), [4, 7]);
+}
+
+#[test]
+fn a_type_export_star_cycle_is_checked() {
+    let consumer = "// @flow
+import type { FormatDistanceOptions, Locale, LocalizedOptions } from './input.d.ts.flow';
+const locale: Locale = { code: 'en', formatDistance: { addSuffix: true } };
+const options: LocalizedOptions<'formatDistance'> = { locale };
+const wrong: FormatDistanceOptions = { addSuffix: 'yes' };
+";
+    assert_eq!(consumer_errors("type-export-star-cycle", consumer), [5]);
 }
 
 #[test]

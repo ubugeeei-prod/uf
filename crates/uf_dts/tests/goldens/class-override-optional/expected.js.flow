@@ -1,0 +1,11 @@
+export interface ParserOptions {
+  readonly strict?: boolean;
+}
+
+declare export abstract class ParserBase {
+  validate(input: string, options?: ParserOptions): boolean;
+}
+
+declare export class RequiredParser extends ParserBase {
+  validate(input: string, options?: ParserOptions): boolean;
+}

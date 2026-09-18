@@ -29,3 +29,4 @@ export type Utility = Partial<Settings> & Required<Settings> & Readonly<Settings
 export type Returned = ReturnType<() => string>;
 export type Settled = Awaited<Promise<string>>;
 export type NonNull = NonNullable<string | null>;
+export type Apply<TArgs extends unknown[] = []> = (...args: TArgs) => void;
