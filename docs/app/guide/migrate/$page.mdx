@@ -12,7 +12,8 @@ From `create-react-app`, from Vite and React, or from Next.js: what carries over
 unchanged, the moves in the order to make them, and what is still different once
 you have made them. There is no `uf migrate` command yet
 ([#970](https://github.com/ubugeeei-prod/uf/issues/970)), so every step below is
-one you make by hand, and there is no measured migration to quote.
+one you make by hand. The paths that have been checked end to end are called out
+where they apply.
 </div>
 
 **What you will be able to do:** decide whether your application can move today,
@@ -237,7 +238,9 @@ from `@uniflowed/react-testing`.
 7. **Rename what reaches the browser.** uf defines no `process.env` for browser
    code: `process.env.REACT_APP_API` becomes `import.meta.env.REACT_APP_API`,
    with `vite: { envPrefix: "REACT_APP_" }` in `uf.config.js` — or rename the
-   variables to `VITE_API`, the prefix uf uses when you set none.
+   variables to `VITE_API`, the prefix uf uses when you set none. A direct unit
+   test that imports a component is not running under Vite's app entry, so pass
+   the env-derived value into a testable child component, or guard the read.
 8. **Keep SVGs as components** by adding `vite-plugin-svgr` to `plugins`, or move
    icons to [`uf:icon/…`](/guide/assets#an-icon). A plain `import url from
    "./logo.svg"` is still a URL.
@@ -268,6 +271,15 @@ export component Page(params: {| readonly id: string |}) {
 }
 ```
 
+This path was checked end to end with `uf 0.0.0-alpha.40` from a CRA 5.1.0 app
+using React Router 6.30.2, a `REACT_APP_` environment variable and React Testing
+Library tests. The CRA side passed `npm run build` and `npm test`;
+`react-router-dom@7.18.4` did not run under CRA's Jest resolver because it
+looked for `react-router/dom`, so the fixture stayed on v6.30.2. The uf target
+passed `uf install`, `uf fmt --check`, `uf check`, `uf test` and `uf build`.
+`create-react-app` printed its deprecation warning and npm audit findings, but
+neither changed the uf migration steps.
+
 ### Moving the tests
 
 | Jest or Vitest | `uf test` |
@@ -283,6 +295,11 @@ export component Page(params: {| readonly id: string |}) {
 | `import.meta.vitest` | [`import.meta.uf.test`](/guide/testing#a-test-beside-the-code-it-tests) |
 | a coverage provider and its thresholds | `uf test --coverage`, and `test.coverage` in `uf.config.js` — [Coverage](/guide/testing#coverage) |
 | `testMatch`, `include` | nothing: a file that declares a test is a test file |
+
+If a route component imports `Link` or a router hook, render it with router
+context, or move the plain UI into a child component and test that child.
+Rendering the route component by itself fails because `@uniflowed/router` hooks
+only run inside the app router.
 
 ### Deploying it
 
