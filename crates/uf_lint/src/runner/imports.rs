@@ -3,8 +3,8 @@
 use std::path::{Component, Path, PathBuf};
 
 use uf_config::UniflowedConfig;
-use uf_flow::scan::{Token, TokenKind, starts_statement, tokenize};
-use uf_infra::FxHashMap;
+use uf_flow::scan::{Token, TokenKind, matching_close, starts_statement, tokenize};
+use uf_infra::{FxHashMap, FxHashSet};
 
 use crate::scan::FileScan;
 use crate::{Diagnostic, LintContext, Severity, SourceFile, push, severity};
@@ -122,6 +122,48 @@ pub(crate) fn run_import_no_extraneous_dependencies(
     }
 }
 
+pub(crate) fn run_import_no_named_as_default(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    context: &LintContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-named-as-default";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+    if !may_have_default_import(&scan.file.source) {
+        return;
+    }
+
+    for import in static_imports(&scan.file.source) {
+        if import.kind != ImportKind::Value {
+            continue;
+        }
+        let Some(default) = import.default else {
+            continue;
+        };
+        let Some(target) =
+            context
+                .import_graph()
+                .named_export_from(&scan.file.path, import.source, default.name)
+        else {
+            continue;
+        };
+        push_import(
+            diagnostics,
+            scan,
+            rule,
+            severity,
+            default.name_at,
+            format!(
+                "`{}` is a named export of `{target}`; import it by name instead of as the default",
+                default.name
+            ),
+        );
+    }
+}
+
 pub(crate) fn run_import_no_self_import(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
@@ -200,6 +242,13 @@ struct StaticImport<'a> {
     source_at: usize,
     kind: ImportKind,
     shape: ImportShape,
+    default: Option<DefaultImport<'a>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DefaultImport<'a> {
+    name: &'a str,
+    name_at: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -236,6 +285,44 @@ fn static_imports(source: &str) -> Vec<StaticImport<'_>> {
     imports
 }
 
+fn may_have_default_import(source: &str) -> bool {
+    for line in source.lines() {
+        let Some(after_import) = line.trim_start().strip_prefix("import") else {
+            continue;
+        };
+        if after_import.starts_with("/*") {
+            return true;
+        }
+        if !after_import
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_whitespace)
+        {
+            continue;
+        }
+        let clause = after_import.trim_start();
+        if clause.is_empty() {
+            return true;
+        }
+        if clause.starts_with(['{', '*', '"', '\''])
+            || starts_with_import_word(clause, "type")
+            || starts_with_import_word(clause, "typeof")
+        {
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
+fn starts_with_import_word(text: &str, word: &str) -> bool {
+    text.strip_prefix(word).is_some_and(|rest| {
+        rest.as_bytes()
+            .first()
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+    })
+}
+
 fn static_import<'a>(
     source: &'a str,
     tokens: &[Token],
@@ -256,8 +343,14 @@ fn static_import<'a>(
     let clause = import_at + 1 + usize::from(matches!(kind, ImportKind::Type | ImportKind::Typeof));
 
     if next.kind == TokenKind::String {
-        return import_source(source, next, kind, ImportShape::SideEffect);
+        return import_source(source, next, kind, ImportShape::SideEffect, None);
     }
+    let default = tokens.get(clause).and_then(|token| {
+        (token.kind == TokenKind::Ident).then_some(DefaultImport {
+            name: token.text(source),
+            name_at: token.start,
+        })
+    });
     let shape = if tokens.get(clause).is_some_and(|token| token.is_punct(b'*')) {
         ImportShape::Namespace
     } else {
@@ -272,7 +365,7 @@ fn static_import<'a>(
             return None;
         }
         if first.is_ident(source, "from") && second.kind == TokenKind::String {
-            return import_source(source, second, kind, shape);
+            return import_source(source, second, kind, shape, default);
         }
     }
 
@@ -284,6 +377,7 @@ fn import_source<'a>(
     token: &Token,
     kind: ImportKind,
     shape: ImportShape,
+    default: Option<DefaultImport<'a>>,
 ) -> Option<StaticImport<'a>> {
     let text = token.text(source);
     let quote = text.as_bytes().first().copied()?;
@@ -295,6 +389,7 @@ fn import_source<'a>(
         source_at: token.start,
         kind,
         shape,
+        default,
     })
 }
 
@@ -377,6 +472,316 @@ fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
     })
 }
 
+fn named_value_exports(source: &str) -> FxHashSet<String> {
+    let tokens = tokenize(source);
+    let mut exports = FxHashSet::default();
+    let mut at = 0usize;
+
+    while let Some(token) = tokens.get(at) {
+        if !token.is_ident(source, "export") || !starts_statement(&tokens, at) {
+            at += 1;
+            continue;
+        }
+
+        let mut declaration = at + 1;
+        if tokens
+            .get(declaration)
+            .is_some_and(|token| token.is_ident(source, "declare"))
+        {
+            declaration += 1;
+        }
+        if tokens
+            .get(declaration)
+            .is_some_and(|token| token.is_ident(source, "default"))
+        {
+            at += 1;
+            continue;
+        }
+        if tokens
+            .get(declaration)
+            .is_some_and(|token| matches!(token.text(source), "type" | "interface" | "opaque"))
+        {
+            at += 1;
+            continue;
+        }
+        if tokens
+            .get(declaration)
+            .is_some_and(|token| token.is_punct(b'{'))
+        {
+            collect_export_list_names(source, &tokens, declaration, &mut exports);
+            at += 1;
+            continue;
+        }
+
+        let declaration = if tokens
+            .get(declaration)
+            .is_some_and(|token| token.is_ident(source, "async"))
+        {
+            declaration + 1
+        } else {
+            declaration
+        };
+        if tokens
+            .get(declaration)
+            .is_some_and(|token| matches!(token.text(source), "const" | "let" | "var"))
+        {
+            collect_variable_export_names(source, &tokens, declaration + 1, &mut exports);
+        } else if tokens.get(declaration).is_some_and(|token| {
+            matches!(
+                token.text(source),
+                "class" | "component" | "enum" | "function"
+            )
+        }) && let Some(name) = tokens
+            .get(declaration + 1)
+            .filter(|token| token.kind == TokenKind::Ident)
+        {
+            exports.insert(name.text(source).to_owned());
+        }
+
+        at += 1;
+    }
+
+    exports
+}
+
+fn collect_variable_export_names(
+    source: &str,
+    tokens: &[Token],
+    start: usize,
+    exports: &mut FxHashSet<String>,
+) {
+    let mut at = start;
+    let mut depth = 0usize;
+    let mut expect_binding = true;
+    while let Some(token) = tokens.get(at) {
+        if depth == 0 && token.is_punct(b';') {
+            return;
+        }
+        if expect_binding && depth == 0 && token.kind == TokenKind::Ident {
+            exports.insert(token.text(source).to_owned());
+            expect_binding = false;
+        } else if expect_binding && depth == 0 && token.is_punct(b'{') {
+            collect_object_binding_names(source, tokens, at, exports);
+            expect_binding = false;
+        } else if expect_binding && depth == 0 && token.is_punct(b'[') {
+            collect_array_binding_names(source, tokens, at, exports);
+            expect_binding = false;
+        }
+        if matches!(
+            token.kind,
+            TokenKind::Punct(b'(' | b'[' | b'{') | TokenKind::JsxTagOpen
+        ) {
+            depth += 1;
+        } else if matches!(
+            token.kind,
+            TokenKind::Punct(b')' | b']' | b'}') | TokenKind::JsxTagClose
+        ) {
+            depth = depth.saturating_sub(1);
+        } else if depth == 0 && token.is_punct(b',') {
+            expect_binding = true;
+        }
+        at += 1;
+    }
+}
+
+fn collect_binding_name(
+    source: &str,
+    tokens: &[Token],
+    mut at: usize,
+    limit: usize,
+    exports: &mut FxHashSet<String>,
+) -> usize {
+    if is_rest(tokens, at) {
+        at += 3;
+    }
+    let Some(token) = tokens.get(at).filter(|_| at < limit) else {
+        return at;
+    };
+    if token.kind == TokenKind::Ident {
+        exports.insert(token.text(source).to_owned());
+        at += 1;
+    } else if token.is_punct(b'{') {
+        collect_object_binding_names(source, tokens, at, exports);
+        at = matching_close(tokens, at, b'{', b'}').map_or(at + 1, |close| close + 1);
+    } else if token.is_punct(b'[') {
+        collect_array_binding_names(source, tokens, at, exports);
+        at = matching_close(tokens, at, b'[', b']').map_or(at + 1, |close| close + 1);
+    } else {
+        at += 1;
+    }
+    if tokens
+        .get(at)
+        .is_some_and(|token| at < limit && token.is_punct(b'='))
+    {
+        skip_binding_initializer(tokens, at + 1, limit)
+    } else {
+        at
+    }
+}
+
+fn collect_object_binding_names(
+    source: &str,
+    tokens: &[Token],
+    open: usize,
+    exports: &mut FxHashSet<String>,
+) {
+    let Some(close) = matching_close(tokens, open, b'{', b'}') else {
+        return;
+    };
+    let mut at = open + 1;
+    while at < close {
+        let Some(token) = tokens.get(at) else {
+            return;
+        };
+        if token.is_punct(b',') {
+            at += 1;
+            continue;
+        }
+        if is_rest(tokens, at) {
+            at = collect_binding_name(source, tokens, at, close, exports);
+            continue;
+        }
+        if token.is_punct(b'[')
+            && let Some(key_close) = matching_close(tokens, at, b'[', b']')
+        {
+            at = key_close + 1;
+            if tokens
+                .get(at)
+                .is_some_and(|token| at < close && token.is_punct(b':'))
+            {
+                at = collect_binding_name(source, tokens, at + 1, close, exports);
+            }
+            continue;
+        }
+        if matches!(
+            token.kind,
+            TokenKind::Ident | TokenKind::String | TokenKind::Number
+        ) {
+            if tokens.get(at + 1).is_some_and(|token| token.is_punct(b':')) {
+                at = collect_binding_name(source, tokens, at + 2, close, exports);
+                continue;
+            }
+            if token.kind == TokenKind::Ident {
+                exports.insert(token.text(source).to_owned());
+            }
+            at += 1;
+            if tokens
+                .get(at)
+                .is_some_and(|token| at < close && token.is_punct(b'='))
+            {
+                at = skip_binding_initializer(tokens, at + 1, close);
+            }
+            continue;
+        }
+        if token.is_punct(b'{') || token.is_punct(b'[') {
+            at = collect_binding_name(source, tokens, at, close, exports);
+            continue;
+        }
+        at += 1;
+    }
+}
+
+fn collect_array_binding_names(
+    source: &str,
+    tokens: &[Token],
+    open: usize,
+    exports: &mut FxHashSet<String>,
+) {
+    let Some(close) = matching_close(tokens, open, b'[', b']') else {
+        return;
+    };
+    let mut at = open + 1;
+    while at < close {
+        if tokens.get(at).is_some_and(|token| token.is_punct(b',')) {
+            at += 1;
+            continue;
+        }
+        at = collect_binding_name(source, tokens, at, close, exports);
+        while at < close {
+            let Some(token) = tokens.get(at) else {
+                return;
+            };
+            if token.is_punct(b',') {
+                break;
+            }
+            at += 1;
+        }
+    }
+}
+
+fn skip_binding_initializer(tokens: &[Token], mut at: usize, limit: usize) -> usize {
+    let mut depth = 0usize;
+    while at < limit {
+        let Some(token) = tokens.get(at) else {
+            return at;
+        };
+        if depth == 0 && token.is_punct(b',') {
+            return at;
+        }
+        if matches!(token.kind, TokenKind::Punct(b'(' | b'[' | b'{')) {
+            depth += 1;
+        } else if matches!(token.kind, TokenKind::Punct(b')' | b']' | b'}')) {
+            depth = depth.saturating_sub(1);
+        }
+        at += 1;
+    }
+    at
+}
+
+fn is_rest(tokens: &[Token], at: usize) -> bool {
+    tokens.get(at).is_some_and(|token| token.is_punct(b'.'))
+        && tokens.get(at + 1).is_some_and(|token| token.is_punct(b'.'))
+        && tokens.get(at + 2).is_some_and(|token| token.is_punct(b'.'))
+}
+
+fn collect_export_list_names(
+    source: &str,
+    tokens: &[Token],
+    open: usize,
+    exports: &mut FxHashSet<String>,
+) {
+    let mut at = open + 1;
+    let mut type_only = false;
+    while let Some(token) = tokens.get(at) {
+        if token.is_punct(b'}') {
+            return;
+        }
+        if token.is_punct(b',') {
+            type_only = false;
+            at += 1;
+            continue;
+        }
+        if token.kind != TokenKind::Ident {
+            at += 1;
+            continue;
+        }
+        if matches!(token.text(source), "type" | "typeof") {
+            type_only = true;
+            at += 1;
+            continue;
+        }
+
+        let mut exported = token.text(source);
+        if tokens
+            .get(at + 1)
+            .is_some_and(|token| token.is_ident(source, "as"))
+            && let Some(alias) = tokens.get(at + 2)
+        {
+            exported = alias.text(source);
+        }
+        if !type_only && exported != "default" {
+            exports.insert(exported.to_owned());
+        }
+
+        while let Some(token) = tokens.get(at) {
+            if token.is_punct(b',') || token.is_punct(b'}') {
+                break;
+            }
+            at += 1;
+        }
+    }
+}
+
 struct Cycle {
     source_at: usize,
     target_path: String,
@@ -388,6 +793,7 @@ pub(crate) struct ImportGraph {
     paths: Vec<String>,
     edges: Vec<Vec<ImportEdge>>,
     by_path: FxHashMap<String, usize>,
+    named_exports: Vec<FxHashSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -425,11 +831,13 @@ impl ImportGraph {
 
         let mut graph = Self {
             edges: (0..paths.len()).map(|_| Vec::new()).collect(),
+            named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
             paths,
             by_path,
         };
         for file in files {
             graph.add_edges(file);
+            graph.add_exports(file);
         }
         graph
     }
@@ -454,6 +862,14 @@ impl ImportGraph {
             })
             .collect::<Vec<_>>();
         self.edges[from].extend(imports);
+    }
+
+    fn add_exports(&mut self, file: &SourceFile) {
+        let path = normalize_graph_path(&file.path);
+        let Some(module) = self.by_path.get(&path).copied() else {
+            return;
+        };
+        self.named_exports[module].extend(named_value_exports(&file.source));
     }
 
     fn cycle_from(&self, file: &str) -> Option<Cycle> {
@@ -510,6 +926,19 @@ impl ImportGraph {
             .get(path)
             .or_else(|| self.by_path.get(&format!("{path}.flow")))
             .copied()
+    }
+
+    fn named_export_from(&self, file: &str, specifier: &str, name: &str) -> Option<&str> {
+        let (specifier, suffix) = split_import_suffix(specifier);
+        if !suffix.is_empty() {
+            return None;
+        }
+        let importer = normalize_graph_path(file);
+        let target = self.resolve(specifier, &importer)?;
+        self.named_exports
+            .get(target)
+            .is_some_and(|exports| exports.contains(name))
+            .then(|| self.paths[target].as_str())
     }
 }
 

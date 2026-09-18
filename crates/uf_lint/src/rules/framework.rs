@@ -328,6 +328,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "bare package imports must be declared by the nearest package.json",
     },
     RuleDescriptor {
+        id: "import/no-named-as-default",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a default import must not be named like one of the module's named exports",
+    },
+    RuleDescriptor {
         id: "import/no-self-import",
         category: RuleCategory::Import,
         default_level: RuleLevel::Error,

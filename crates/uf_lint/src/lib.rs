@@ -45,7 +45,7 @@ use crate::runner::{
     run_flow_unnecessary_optional_chain, run_flow_unsafe_getters_setters,
     run_flow_unsafe_object_assign, run_import_no_absolute_path, run_import_no_cycle,
     run_import_no_duplicates, run_import_no_extraneous_dependencies,
-    run_import_no_relative_packages, run_import_no_self_import,
+    run_import_no_named_as_default, run_import_no_relative_packages, run_import_no_self_import,
     run_import_no_useless_path_segments, run_module_tree_rules, run_no_npm_script_invocation,
     run_no_tabs, run_no_trailing_whitespace, run_package_no_npm_scripts,
     run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
@@ -353,6 +353,7 @@ fn lint_file(
     run_import_no_duplicates(&scan, config, &mut diagnostics);
     run_import_no_cycle(&scan, config, context, &mut diagnostics);
     run_import_no_extraneous_dependencies(&scan, config, context, &mut diagnostics);
+    run_import_no_named_as_default(&scan, config, context, &mut diagnostics);
     run_import_no_self_import(&scan, config, &mut diagnostics);
     run_import_no_relative_packages(&scan, config, &mut diagnostics);
     run_import_no_useless_path_segments(&scan, config, &mut diagnostics);

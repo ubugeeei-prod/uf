@@ -268,6 +268,111 @@ fn no_extraneous_dependencies_ignores_non_package_specifiers() {
 }
 
 #[test]
+fn no_named_as_default_rejects_a_default_import_named_like_a_named_export() {
+    let diagnostics = lint_many(
+        "import/no-named-as-default",
+        &[
+            (
+                "app/Button.js",
+                "// @flow\nexport const Button = 1;\nexport default function View() {}\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport Button from \"./Button\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 8));
+    assert!(diagnostics[0].message.contains("`Button`"));
+}
+
+#[test]
+fn no_named_as_default_reads_export_lists() {
+    let diagnostics = lint_many(
+        "import/no-named-as-default",
+        &[
+            (
+                "app/icons.js",
+                "// @flow\nconst Icon = 1;\nexport { Icon as Button };\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport Button from \"./icons.js\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+}
+
+#[test]
+fn no_named_as_default_reads_multiple_variable_exports() {
+    let diagnostics = lint_many(
+        "import/no-named-as-default",
+        &[
+            (
+                "app/icons.js",
+                "// @flow\nexport const Icon = 1, Button = 2;\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport Button from \"./icons.js\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("app/page.js"));
+}
+
+#[test]
+fn no_named_as_default_reads_destructured_variable_exports() {
+    let diagnostics = lint_many(
+        "import/no-named-as-default",
+        &[
+            (
+                "app/icons.js",
+                "// @flow\nexport const { icon: Button, nested: { Label }, ...Rest } = icons;\nexport const [First, , { Second = fallback }] = moreIcons;\n",
+            ),
+            (
+                "app/page.js",
+                "// @flow\nimport Button from \"./icons.js\";\nimport Label from \"./icons.js\";\nimport Rest from \"./icons.js\";\nimport First from \"./icons.js\";\nimport Second from \"./icons.js\";\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 5);
+    assert!(diagnostics.iter().all(|diagnostic| {
+        diagnostic.path.as_deref() == Some("app/page.js")
+            && diagnostic.rule == "import/no-named-as-default"
+    }));
+}
+
+#[test]
+fn no_named_as_default_accepts_other_import_shapes() {
+    let diagnostics = lint_many(
+        "import/no-named-as-default",
+        &[
+            (
+                "app/Button.js",
+                "// @flow\nexport type Button = number;\nexport default function Button() {}\n",
+            ),
+            ("app/card.js", "// @flow\nexport const Card = 1;\n"),
+            (
+                "app/page.js",
+                "// @flow\nimport Button from \"./Button\";\nimport RenamedCard from \"./card\";\nimport type Card from \"./card\";\nimport CardPackage from \"card\";\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_self_import_rejects_a_file_importing_itself_with_an_extension() {
     let diagnostics = lint_one(
         "import/no-self-import",
