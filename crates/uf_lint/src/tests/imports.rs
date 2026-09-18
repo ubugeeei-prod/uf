@@ -141,6 +141,55 @@ fn no_self_import_accepts_neighbouring_relative_imports() {
 }
 
 #[test]
+fn no_useless_path_segments_rejects_dotdot_segments_that_cancel_out() {
+    let diagnostics = lint_one(
+        "import/no-useless-path-segments",
+        "app/page.js",
+        "// @flow\nimport model from \"./features/../model.js\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (2, 19));
+    assert!(diagnostics[0].message.contains("`./model.js`"));
+}
+
+#[test]
+fn no_useless_path_segments_rejects_js_index_modules() {
+    let diagnostics = lint_one(
+        "import/no-useless-path-segments",
+        "app/page.js",
+        "// @flow\nimport route from \"./routes/index.js\";\nimport local from \"./index\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 2);
+    assert!(diagnostics[0].message.contains("`./routes`"));
+    assert!(diagnostics[1].message.contains("`.`"));
+}
+
+#[test]
+fn no_useless_path_segments_keeps_asset_index_files_with_query_suffixes() {
+    let diagnostics = lint_one(
+        "import/no-useless-path-segments",
+        "app/page.js",
+        "// @flow\nimport text from \"./content/index.js?raw\";\nimport data from \"./data/../data.json?raw\";\n",
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0].message.contains("`./data.json?raw`"));
+}
+
+#[test]
+fn no_useless_path_segments_accepts_already_short_relative_imports() {
+    let diagnostics = lint_one(
+        "import/no-useless-path-segments",
+        "app/page.js",
+        "// @flow\nimport local from \"./model.js\";\nimport parent from \"../shared.js\";\nimport pkg from \"react\";\n",
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn import_rules_ignore_strings_that_talk_about_imports() {
     let diagnostics = lint_js(
         "import/no-duplicates",
