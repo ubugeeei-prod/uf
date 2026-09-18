@@ -2486,7 +2486,7 @@ impl<'e> Emitter<'e> {
                 && !unconstrained.contains(&parameter.name.name.as_str())
             {
                 self.printer.text(" extends ");
-                self.ty(constraint, Prec::Union);
+                self.type_parameter_constraint(constraint, parameter.default.as_ref());
             }
             if let Some(default) = &parameter.default {
                 self.printer.text(" = ");
@@ -2494,6 +2494,18 @@ impl<'e> Emitter<'e> {
             }
         }
         self.printer.char('>');
+    }
+
+    fn type_parameter_constraint(&mut self, constraint: &TSType<'_>, default: Option<&TSType<'_>>) {
+        if default.is_some_and(tuple_like_type)
+            && let TSType::TSArrayType(array) = unparenthesized(constraint)
+        {
+            self.printer.text("$ReadOnlyArray<");
+            self.ty(&array.element_type, Prec::Any);
+            self.printer.char('>');
+            return;
+        }
+        self.ty(constraint, Prec::Union);
     }
 
     fn type_arguments(&mut self, arguments: Option<&TSTypeParameterInstantiation<'_>>) {
@@ -3757,6 +3769,21 @@ fn rest_inner<'r, 'a>(ty: &'r TSType<'a>) -> &'r TSType<'a> {
             other => unparenthesized(other.to_ts_type()),
         },
         other => other,
+    }
+}
+
+fn tuple_like_type(ty: &TSType<'_>) -> bool {
+    match unparenthesized(ty) {
+        TSType::TSTupleType(_) => true,
+        TSType::TSTypeOperatorType(operator)
+            if operator.operator == TSTypeOperatorOperator::Readonly =>
+        {
+            matches!(
+                unparenthesized(&operator.type_annotation),
+                TSType::TSTupleType(_)
+            )
+        }
+        _ => false,
     }
 }
 
