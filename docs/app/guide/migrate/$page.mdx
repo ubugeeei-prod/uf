@@ -327,9 +327,10 @@ Vite itself, and every plugin. Vite's options, under the `vite` key.
    `dev.host`, `dev.strictPort`, `dev.allowedHosts` and `dev.fs`; `build.outDir`
    and `build.sourcemap` keep their names under `build`; `plugins` stays
    `plugins`. Everything else — `resolve.alias`, `build.target`, `define` — goes
-   under `vite` unchanged, where objects merge key by key and arrays replace.
-   `root` and `configFile` stay uf's, and so do uf's own plugins, which come
-   first. See [`vite`](/reference/config#vite).
+   under `vite` unchanged, where objects merge key by key and arrays replace. A
+   dev-server proxy stays there too, as `vite: { server: { proxy } }`, rather
+   than under `dev`. `root` and `configFile` stay uf's, and so do uf's own
+   plugins, which come first. See [`vite`](/reference/config#vite).
 2. **Turn `index.html` into `app/$layout.js`.** Vite runs with
    `appType: "custom"` under uf: there is no HTML entry to fall back to, and the
    document is the layout.
