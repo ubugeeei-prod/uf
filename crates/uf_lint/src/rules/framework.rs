@@ -314,6 +314,13 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         description: "mergeable static imports from the same module belong together",
     },
     RuleDescriptor {
+        id: "import/no-self-import",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Error,
+        requirement: SourceText,
+        description: "a module must not import itself",
+    },
+    RuleDescriptor {
         id: "uniflowed/no-tabs",
         category: RuleCategory::Uniflowed,
         default_level: RuleLevel::Error,
