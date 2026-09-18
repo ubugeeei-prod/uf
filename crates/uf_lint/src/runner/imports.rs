@@ -122,6 +122,49 @@ pub(crate) fn run_import_no_extraneous_dependencies(
     }
 }
 
+pub(crate) fn run_import_no_deprecated(
+    scan: &FileScan<'_>,
+    config: &UniflowedConfig,
+    context: &LintContext,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    let rule = "import/no-deprecated";
+    let Some(severity) = severity(config, rule) else {
+        return;
+    };
+    if !scan.facts.has_esm_import || !context.import_graph().has_deprecated_exports() {
+        return;
+    }
+
+    for import in static_value_imported_bindings(&scan.file.source) {
+        let target = match import.member {
+            ImportedMember::Default => context
+                .import_graph()
+                .deprecated_default_export_from(&scan.file.path, import.source),
+            ImportedMember::Named(name) => context.import_graph().deprecated_named_export_from(
+                &scan.file.path,
+                import.source,
+                name,
+            ),
+        };
+        let Some(target) = target else {
+            continue;
+        };
+        let name = match import.member {
+            ImportedMember::Default => "default",
+            ImportedMember::Named(name) => name,
+        };
+        push_import(
+            diagnostics,
+            scan,
+            rule,
+            severity,
+            import.member_at,
+            format!("`{name}` is deprecated by `{target}`; use a supported export instead"),
+        );
+    }
+}
+
 pub(crate) fn run_import_no_named_as_default(
     scan: &FileScan<'_>,
     config: &UniflowedConfig,
@@ -251,6 +294,19 @@ struct DefaultImport<'a> {
     name_at: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct ImportedBinding<'a> {
+    source: &'a str,
+    member: ImportedMember<'a>,
+    member_at: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ImportedMember<'a> {
+    Default,
+    Named(&'a str),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ImportKind {
     Value,
@@ -313,6 +369,150 @@ fn may_have_default_import(source: &str) -> bool {
         return true;
     }
     false
+}
+
+fn static_value_imported_bindings(source: &str) -> Vec<ImportedBinding<'_>> {
+    let tokens = tokenize(source);
+    let mut imports = Vec::new();
+    let mut at = 0usize;
+
+    while let Some(token) = tokens.get(at) {
+        if !token.is_ident(source, "import") || !starts_statement(&tokens, at) {
+            at += 1;
+            continue;
+        }
+
+        collect_static_value_imported_bindings(source, &tokens, at, &mut imports);
+        at += 1;
+    }
+
+    imports
+}
+
+fn collect_static_value_imported_bindings<'a>(
+    source: &'a str,
+    tokens: &[Token],
+    import_at: usize,
+    imports: &mut Vec<ImportedBinding<'a>>,
+) {
+    let Some(next) = tokens.get(import_at + 1) else {
+        return;
+    };
+    if next.is_punct(b'.')
+        || next.is_punct(b'(')
+        || next.kind == TokenKind::String
+        || next.is_ident(source, "type")
+        || next.is_ident(source, "typeof")
+    {
+        return;
+    }
+
+    let Some(source_token) = static_import_source_token(source, tokens, import_at) else {
+        return;
+    };
+    let Some(import_source) = import_source_text(source, source_token) else {
+        return;
+    };
+    let mut members = Vec::new();
+    let clause = import_at + 1;
+    if tokens
+        .get(clause)
+        .is_some_and(|token| token.kind == TokenKind::Ident)
+    {
+        members.push((ImportedMember::Default, tokens[clause].start));
+    }
+
+    if let Some(open) = tokens[clause..]
+        .iter()
+        .position(|token| token.is_punct(b'{') || token.is_ident(source, "from"))
+        .and_then(|offset| {
+            let at = clause + offset;
+            tokens[at].is_punct(b'{').then_some(at)
+        })
+    {
+        collect_import_list_members(source, tokens, open, &mut members);
+    }
+
+    imports.extend(
+        members
+            .into_iter()
+            .map(|(member, member_at)| ImportedBinding {
+                source: import_source,
+                member,
+                member_at,
+            }),
+    );
+}
+
+fn static_import_source_token<'a>(
+    source: &str,
+    tokens: &'a [Token],
+    import_at: usize,
+) -> Option<&'a Token> {
+    for pair in tokens[import_at + 1..].windows(2) {
+        let [first, second] = pair else {
+            unreachable!();
+        };
+        if first.is_punct(b';') {
+            return None;
+        }
+        if first.is_ident(source, "from") && second.kind == TokenKind::String {
+            return Some(second);
+        }
+    }
+    None
+}
+
+fn collect_import_list_members<'a>(
+    source: &'a str,
+    tokens: &[Token],
+    open: usize,
+    members: &mut Vec<(ImportedMember<'a>, usize)>,
+) {
+    let Some(close) = matching_close(tokens, open, b'{', b'}') else {
+        return;
+    };
+    let mut at = open + 1;
+    let mut type_only = false;
+    while at < close {
+        let Some(token) = tokens.get(at) else {
+            return;
+        };
+        if token.is_punct(b',') {
+            type_only = false;
+            at += 1;
+            continue;
+        }
+        if token.kind != TokenKind::Ident {
+            at += 1;
+            continue;
+        }
+        let name = token.text(source);
+        if matches!(name, "type" | "typeof") {
+            type_only = true;
+            at += 1;
+            continue;
+        }
+
+        if !type_only {
+            let member = if name == "default" {
+                ImportedMember::Default
+            } else {
+                ImportedMember::Named(name)
+            };
+            members.push((member, token.start));
+        }
+
+        while at < close {
+            let Some(token) = tokens.get(at) else {
+                return;
+            };
+            if token.is_punct(b',') || token.is_punct(b'}') {
+                break;
+            }
+            at += 1;
+        }
+    }
 }
 
 fn starts_with_import_word(text: &str, word: &str) -> bool {
@@ -379,18 +579,23 @@ fn import_source<'a>(
     shape: ImportShape,
     default: Option<DefaultImport<'a>>,
 ) -> Option<StaticImport<'a>> {
-    let text = token.text(source);
-    let quote = text.as_bytes().first().copied()?;
-    if !matches!(quote, b'\'' | b'"') || text.as_bytes().last().copied() != Some(quote) {
-        return None;
-    }
+    let source_text = import_source_text(source, token)?;
     Some(StaticImport {
-        source: &text[1..text.len().saturating_sub(1)],
+        source: source_text,
         source_at: token.start,
         kind,
         shape,
         default,
     })
+}
+
+fn import_source_text<'a>(source: &'a str, token: &Token) -> Option<&'a str> {
+    let text = token.text(source);
+    let quote = text.as_bytes().first().copied()?;
+    if !matches!(quote, b'\'' | b'"') || text.as_bytes().last().copied() != Some(quote) {
+        return None;
+    }
+    Some(&text[1..text.len().saturating_sub(1)])
 }
 
 fn duplicates(first: StaticImport<'_>, second: StaticImport<'_>) -> bool {
@@ -472,9 +677,16 @@ fn is_router_manifest_file(file: &str, manifest: &str) -> bool {
     })
 }
 
-fn named_value_exports(source: &str) -> FxHashSet<String> {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ExportFacts {
+    named: FxHashSet<String>,
+    deprecated_named: FxHashSet<String>,
+    deprecated_default: bool,
+}
+
+fn value_export_facts(source: &str) -> ExportFacts {
     let tokens = tokenize(source);
-    let mut exports = FxHashSet::default();
+    let mut facts = ExportFacts::default();
     let mut at = 0usize;
 
     while let Some(token) = tokens.get(at) {
@@ -483,6 +695,7 @@ fn named_value_exports(source: &str) -> FxHashSet<String> {
             continue;
         }
 
+        let export_deprecated = deprecated_gap_before(source, &tokens, at);
         let mut declaration = at + 1;
         if tokens
             .get(declaration)
@@ -490,10 +703,15 @@ fn named_value_exports(source: &str) -> FxHashSet<String> {
         {
             declaration += 1;
         }
+        let declaration_deprecated =
+            export_deprecated || deprecated_gap_before(source, &tokens, declaration);
         if tokens
             .get(declaration)
             .is_some_and(|token| token.is_ident(source, "default"))
         {
+            if declaration_deprecated {
+                facts.deprecated_default = true;
+            }
             at += 1;
             continue;
         }
@@ -508,7 +726,12 @@ fn named_value_exports(source: &str) -> FxHashSet<String> {
             .get(declaration)
             .is_some_and(|token| token.is_punct(b'{'))
         {
-            collect_export_list_names(source, &tokens, declaration, &mut exports);
+            let mut names = FxHashSet::default();
+            collect_export_list_names(source, &tokens, declaration, &mut names);
+            if declaration_deprecated {
+                facts.deprecated_named.extend(names.iter().cloned());
+            }
+            facts.named.extend(names);
             at += 1;
             continue;
         }
@@ -521,11 +744,18 @@ fn named_value_exports(source: &str) -> FxHashSet<String> {
         } else {
             declaration
         };
+        let declaration_deprecated =
+            declaration_deprecated || deprecated_gap_before(source, &tokens, declaration);
         if tokens
             .get(declaration)
             .is_some_and(|token| matches!(token.text(source), "const" | "let" | "var"))
         {
-            collect_variable_export_names(source, &tokens, declaration + 1, &mut exports);
+            let mut names = FxHashSet::default();
+            collect_variable_export_names(source, &tokens, declaration + 1, &mut names);
+            if declaration_deprecated {
+                facts.deprecated_named.extend(names.iter().cloned());
+            }
+            facts.named.extend(names);
         } else if tokens.get(declaration).is_some_and(|token| {
             matches!(
                 token.text(source),
@@ -535,13 +765,30 @@ fn named_value_exports(source: &str) -> FxHashSet<String> {
             .get(declaration + 1)
             .filter(|token| token.kind == TokenKind::Ident)
         {
-            exports.insert(name.text(source).to_owned());
+            let name = name.text(source).to_owned();
+            if declaration_deprecated {
+                facts.deprecated_named.insert(name.clone());
+            }
+            facts.named.insert(name);
         }
 
         at += 1;
     }
 
-    exports
+    facts
+}
+
+fn deprecated_gap_before(source: &str, tokens: &[Token], at: usize) -> bool {
+    let Some(token) = tokens.get(at) else {
+        return false;
+    };
+    let previous_end = at
+        .checked_sub(1)
+        .and_then(|previous| tokens.get(previous))
+        .map_or(0, |token| token.end);
+    source
+        .get(previous_end..token.start)
+        .is_some_and(|gap| gap.contains("@deprecated"))
 }
 
 fn collect_variable_export_names(
@@ -794,6 +1041,8 @@ pub(crate) struct ImportGraph {
     edges: Vec<Vec<ImportEdge>>,
     by_path: FxHashMap<String, usize>,
     named_exports: Vec<FxHashSet<String>>,
+    deprecated_named_exports: Vec<FxHashSet<String>>,
+    deprecated_default_exports: Vec<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -832,6 +1081,8 @@ impl ImportGraph {
         let mut graph = Self {
             edges: (0..paths.len()).map(|_| Vec::new()).collect(),
             named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
+            deprecated_named_exports: (0..paths.len()).map(|_| FxHashSet::default()).collect(),
+            deprecated_default_exports: vec![false; paths.len()],
             paths,
             by_path,
         };
@@ -869,7 +1120,10 @@ impl ImportGraph {
         let Some(module) = self.by_path.get(&path).copied() else {
             return;
         };
-        self.named_exports[module].extend(named_value_exports(&file.source));
+        let facts = value_export_facts(&file.source);
+        self.named_exports[module].extend(facts.named);
+        self.deprecated_named_exports[module].extend(facts.deprecated_named);
+        self.deprecated_default_exports[module] |= facts.deprecated_default;
     }
 
     fn cycle_from(&self, file: &str) -> Option<Cycle> {
@@ -938,6 +1192,48 @@ impl ImportGraph {
         self.named_exports
             .get(target)
             .is_some_and(|exports| exports.contains(name))
+            .then(|| self.paths[target].as_str())
+    }
+
+    fn has_deprecated_exports(&self) -> bool {
+        self.deprecated_default_exports
+            .iter()
+            .any(|deprecated| *deprecated)
+            || self
+                .deprecated_named_exports
+                .iter()
+                .any(|exports| !exports.is_empty())
+    }
+
+    fn deprecated_named_export_from(
+        &self,
+        file: &str,
+        specifier: &str,
+        name: &str,
+    ) -> Option<&str> {
+        let (specifier, suffix) = split_import_suffix(specifier);
+        if !suffix.is_empty() {
+            return None;
+        }
+        let importer = normalize_graph_path(file);
+        let target = self.resolve(specifier, &importer)?;
+        self.deprecated_named_exports
+            .get(target)
+            .is_some_and(|exports| exports.contains(name))
+            .then(|| self.paths[target].as_str())
+    }
+
+    fn deprecated_default_export_from(&self, file: &str, specifier: &str) -> Option<&str> {
+        let (specifier, suffix) = split_import_suffix(specifier);
+        if !suffix.is_empty() {
+            return None;
+        }
+        let importer = normalize_graph_path(file);
+        let target = self.resolve(specifier, &importer)?;
+        self.deprecated_default_exports
+            .get(target)
+            .copied()
+            .unwrap_or_default()
             .then(|| self.paths[target].as_str())
     }
 }

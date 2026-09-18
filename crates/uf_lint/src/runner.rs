@@ -39,9 +39,9 @@ pub(crate) use flow_type::{
     run_flow_unclear_type,
 };
 pub(crate) use imports::{
-    ImportGraph, run_import_no_absolute_path, run_import_no_cycle, run_import_no_duplicates,
-    run_import_no_extraneous_dependencies, run_import_no_named_as_default,
-    run_import_no_relative_packages, run_import_no_self_import,
+    ImportGraph, run_import_no_absolute_path, run_import_no_cycle, run_import_no_deprecated,
+    run_import_no_duplicates, run_import_no_extraneous_dependencies,
+    run_import_no_named_as_default, run_import_no_relative_packages, run_import_no_self_import,
     run_import_no_useless_path_segments,
 };
 pub(crate) use module_tree::run_module_tree_rules;
