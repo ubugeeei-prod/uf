@@ -413,10 +413,10 @@ pub(crate) fn test(cwd: &Utf8Path, ui: &mut Ui, args: TestArgs) -> Result<()> {
     let settings = &resolved.config.test.coverage;
     if coverage_on && !host_kind_can_collect_coverage(host_kind) {
         bail!(
-            "`uf test --coverage` needs Node.js: coverage is V8's own count, written out \
-             through `NODE_V8_COVERAGE` and mapped back through the source map the Node \
-             loader attaches. {} provides neither, and reporting zeroes would be worse than \
-             saying so.",
+            "`uf test --coverage` is Node-only today: uf reads V8 counts written through \
+             `NODE_V8_COVERAGE` and maps them back through the source-map cache the Node loader \
+             writes. {} cannot provide that same Flow-source report, and reporting zeroes would \
+             be worse than saying so.",
             host_kind.name()
         );
     }
