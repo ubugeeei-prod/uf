@@ -15,6 +15,15 @@ export type ReplaceReturnType<T, R> = T extends (input: infer I) => any ? (input
 export interface ReplacedMethodProperty {
     readonly transform: ReplaceReturnType<(input: string) => string, Promise<number>>;
 }
+export declare class IndexedSource {
+    read(input: string): number;
+}
+export interface ReplacedIndexedMethod {
+    readonly read: ReplaceReturnType<IndexedSource["read"], Promise<number>>;
+}
+export declare class IndexedScheduler implements ReplacedIndexedMethod {
+    read(input: string): Promise<number>;
+}
 export declare abstract class Worker<T = string> extends Base<T> implements Service {
     #secret;
     private hidden;

@@ -211,7 +211,7 @@ const string: Color = 'RED';
 #[test]
 fn a_class_method_implementing_a_function_property_is_typed() {
     let consumer = "// @flow
-import { AliasScheduler, KeyofOmittedScheduler, OmittedScheduler, PickedScheduler, Scheduler, TransformScheduler, type MethodProperty, type OmitKeyof } from './input.d.ts.flow';
+import { AliasScheduler, IndexedScheduler, KeyofOmittedScheduler, OmittedScheduler, PickedScheduler, Scheduler, TransformScheduler, type MethodProperty, type OmitKeyof } from './input.d.ts.flow';
 const scheduler = new Scheduler();
 const ok: Promise<string> = scheduler.execute('job');
 scheduler.execute(1);
@@ -228,12 +228,16 @@ const transform = new TransformScheduler();
 const transformed: Promise<number> = transform.transform('job');
 transform.transform(1);
 const transformedWrong: Promise<string> = transform.transform('job');
+const indexed = new IndexedScheduler();
+const indexedOk: Promise<number> = indexed.read('job');
+indexed.read(1);
+const indexedWrong: Promise<string> = indexed.read('job');
 type MissingKeyOmit = OmitKeyof<MethodProperty, 'missing'>;
 declare const missingKeyOmit: MissingKeyOmit;
 ";
     assert_eq!(
         consumer_errors("classes", consumer),
-        [5, 6, 8, 10, 12, 14, 17, 18]
+        [5, 6, 8, 10, 12, 14, 17, 18, 21, 22]
     );
 }
 

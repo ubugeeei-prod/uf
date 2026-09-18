@@ -411,6 +411,20 @@ fn literal_keys(ty: &TSType<'_>) -> Option<FxHashSet<CompactString>> {
     Some(keys)
 }
 
+fn string_indexed_access(ty: &TSType<'_>) -> bool {
+    match ty {
+        TSType::TSParenthesizedType(parenthesized) => {
+            string_indexed_access(&parenthesized.type_annotation)
+        }
+        TSType::TSIndexedAccessType(indexed) => matches!(
+            unparenthesized(&indexed.index_type),
+            TSType::TSLiteralType(literal)
+                if matches!(&literal.literal, TSLiteral::StringLiteral(_))
+        ),
+        _ => false,
+    }
+}
+
 fn collect_literal_keys(ty: &TSType<'_>, out: &mut FxHashSet<CompactString>) -> Option<()> {
     match ty {
         TSType::TSParenthesizedType(parenthesized) => {
@@ -2995,6 +3009,23 @@ impl<'e> Emitter<'e> {
         }
         if self.is_global(reference, "ThisType") {
             self.printer.text("mixed");
+            return;
+        }
+        // `ReplaceReturnType<C["method"], R>` is a common TypeScript helper
+        // around an unbound class method type. Flow rejects the unbinding
+        // before it gets to the replacement, so keep the useful part: callers
+        // see the declared return type, with parameter precision sacrificed.
+        if let TSTypeName::IdentifierReference(identifier) = &reference.type_name
+            && identifier.name.as_str() == "ReplaceReturnType"
+            && let Some(arguments) = &reference.type_arguments
+            && let [function, returns] = arguments.params.as_slice()
+            && string_indexed_access(function)
+        {
+            let wrap = context > Prec::Function;
+            self.open(wrap);
+            self.printer.text("(...args: Array<any>) => ");
+            self.ty(returns, Prec::Function);
+            self.close(wrap);
             return;
         }
         // Flow's `Record` is an object type, which no interface is a subtype
