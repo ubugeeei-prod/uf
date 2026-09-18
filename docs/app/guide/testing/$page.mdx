@@ -715,6 +715,16 @@ that on. `uf explain test` names the host, the key that chose it and the
 release it is locked at, and is the fuller answer when a permission, loader or
 runtime question is involved.
 
+Those hosts are source-level JavaScript runtimes: Node, Bun and Deno. A
+Cloudflare Worker, `workerd` or the `edge` adapter is a deployment target, not a
+place `uf test` runs test files today. Test files still need uf's Flow loader at
+run time, and the test worker still speaks to Rust over stdin and stdout; a
+Worker has neither. Edge confidence comes from the built output instead:
+`uf build --adapter edge`, then CI's `tools/ci/edge-worker-smoke.sh`, which runs
+the generated Worker under `wrangler dev --local`. The host matrix has the
+longer note on
+[why `uf test` does not run on workerd](https://github.com/ubugeeei-prod/uf/blob/main/docs/hosts.md#why-uf-test-does-not-run-on-workerd).
+
 A missing host, a host without the requested capability, or a feature that would
 be silently partial is a command refusal. A test case that belongs in the suite
 but cannot run on the current host is a skip:
