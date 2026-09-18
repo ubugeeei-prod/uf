@@ -459,6 +459,170 @@ fn no_deprecated_accepts_non_deprecated_and_non_value_imports() {
 }
 
 #[test]
+fn no_unused_modules_reports_a_module_with_no_relative_importer() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            ("app.js", "// @flow\nimport \"./used\";\n"),
+            ("used.js", "// @flow\nconsole.log(\"used\");\n"),
+            ("orphan.js", "// @flow\nconsole.log(\"orphan\");\n"),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("orphan.js"));
+    assert_eq!((diagnostics[0].line, diagnostics[0].column), (1, 1));
+    assert!(diagnostics[0].message.contains("no relative import"));
+}
+
+#[test]
+fn no_unused_modules_reports_unused_value_exports() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            ("app.js", "// @flow\nimport { used } from \"./lib\";\n"),
+            (
+                "lib.js",
+                "// @flow\nexport const used = 1;\nexport const unused = 2;\nexport default function DefaultThing() {}\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("lib.js"));
+    assert!(diagnostics[0].message.contains("`default`"));
+    assert!(diagnostics[0].message.contains("`unused`"));
+    assert!(!diagnostics[0].message.contains("`used`"));
+}
+
+#[test]
+fn no_unused_modules_treats_namespace_imports_as_using_the_module_surface() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            ("app.js", "// @flow\nimport * as lib from \"./lib\";\n"),
+            (
+                "lib.js",
+                "// @flow\nexport const first = 1;\nexport const second = 2;\nexport default function DefaultThing() {}\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn no_unused_modules_reports_a_single_non_entry_module() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[("lib.js", "// @flow\nexport const unused = 1;\n")],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("lib.js"));
+    assert!(diagnostics[0].message.contains("no relative import"));
+}
+
+#[test]
+fn no_unused_modules_reports_export_list_default_exports() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            ("app.js", "// @flow\nimport { used } from \"./lib\";\n"),
+            (
+                "lib.js",
+                "// @flow\nconst DefaultThing = 1;\nexport const used = 1;\nexport { DefaultThing as default };\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("lib.js"));
+    assert!(diagnostics[0].message.contains("`default`"));
+    assert!(!diagnostics[0].message.contains("`used`"));
+}
+
+#[test]
+fn no_unused_modules_treats_default_plus_namespace_imports_as_using_the_module_surface() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            (
+                "app.js",
+                "// @flow\nimport DefaultThing, * as lib from \"./lib\";\n",
+            ),
+            (
+                "lib.js",
+                "// @flow\nexport const named = 1;\nexport default function DefaultThing() {}\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn no_unused_modules_tracks_reexported_bindings() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            (
+                "app.js",
+                "// @flow\nimport { DefaultThing, renamed } from \"./barrel\";\nimport { used } from \"./star\";\n",
+            ),
+            (
+                "barrel.js",
+                "// @flow\nexport { default as DefaultThing, used as renamed } from \"./lib\";\n",
+            ),
+            ("star.js", "// @flow\nexport * from \"./lib\";\n"),
+            (
+                "lib.js",
+                "// @flow\nexport const used = 1;\nexport const alsoUsed = 2;\nexport default function DefaultThing() {}\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
+fn no_unused_modules_keeps_default_unused_for_export_star() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            ("app.js", "// @flow\nimport { used } from \"./barrel\";\n"),
+            ("barrel.js", "// @flow\nexport * from \"./lib\";\n"),
+            (
+                "lib.js",
+                "// @flow\nexport const used = 1;\nexport default function DefaultThing() {}\n",
+            ),
+        ],
+    );
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].path.as_deref(), Some("lib.js"));
+    assert!(diagnostics[0].message.contains("`default`"));
+    assert!(!diagnostics[0].message.contains("`used`"));
+}
+
+#[test]
+fn no_unused_modules_treats_export_namespace_as_using_the_module_surface() {
+    let diagnostics = lint_many(
+        "import/no-unused-modules",
+        &[
+            ("app.js", "// @flow\nimport { ns } from \"./barrel\";\n"),
+            ("barrel.js", "// @flow\nexport * as ns from \"./lib\";\n"),
+            (
+                "lib.js",
+                "// @flow\nexport const used = 1;\nexport default function DefaultThing() {}\n",
+            ),
+        ],
+    );
+
+    assert!(diagnostics.is_empty(), "{diagnostics:#?}");
+}
+
+#[test]
 fn no_self_import_rejects_a_file_importing_itself_with_an_extension() {
     let diagnostics = lint_one(
         "import/no-self-import",

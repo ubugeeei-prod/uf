@@ -341,6 +341,15 @@ pub(crate) static OWN_RULES: &[RuleDescriptor] = &[
         requirement: SourceText,
         description: "a default import must not be named like one of the module's named exports",
     },
+    // `off`: module and export reachability is a project API decision. The rule
+    // is available for apps that want a closed relative graph.
+    RuleDescriptor {
+        id: "import/no-unused-modules",
+        category: RuleCategory::Import,
+        default_level: RuleLevel::Off,
+        requirement: SourceText,
+        description: "relative modules and value exports should be imported somewhere",
+    },
     RuleDescriptor {
         id: "import/no-self-import",
         category: RuleCategory::Import,

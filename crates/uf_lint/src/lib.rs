@@ -46,13 +46,14 @@ use crate::runner::{
     run_flow_unsafe_object_assign, run_import_no_absolute_path, run_import_no_cycle,
     run_import_no_deprecated, run_import_no_duplicates, run_import_no_extraneous_dependencies,
     run_import_no_named_as_default, run_import_no_relative_packages, run_import_no_self_import,
-    run_import_no_useless_path_segments, run_module_tree_rules, run_no_npm_script_invocation,
-    run_no_tabs, run_no_trailing_whitespace, run_package_no_npm_scripts,
-    run_react_component_syntax, run_react_hook_syntax, run_react_native_platform_split,
-    run_react_no_default_export_component, run_router_reserved_files,
-    run_router_unsupported_segment, run_security_no_dangerously_set_inner_html,
-    run_security_no_eval, run_server_no_client_secret, run_server_no_server_only_import_in_client,
-    run_server_use_client_directive_position, run_server_use_server_actions, run_structure_rules,
+    run_import_no_unused_modules, run_import_no_useless_path_segments, run_module_tree_rules,
+    run_no_npm_script_invocation, run_no_tabs, run_no_trailing_whitespace,
+    run_package_no_npm_scripts, run_react_component_syntax, run_react_hook_syntax,
+    run_react_native_platform_split, run_react_no_default_export_component,
+    run_router_reserved_files, run_router_unsupported_segment,
+    run_security_no_dangerously_set_inner_html, run_security_no_eval, run_server_no_client_secret,
+    run_server_no_server_only_import_in_client, run_server_use_client_directive_position,
+    run_server_use_server_actions, run_structure_rules,
 };
 use crate::scan::FileScan;
 use crate::suppression::UNKNOWN_SUPPRESSION_RULE;
@@ -161,7 +162,7 @@ pub(crate) struct PackageManifest {
 }
 
 impl LintContext {
-    fn from_sources(files: &[SourceFile]) -> Self {
+    fn from_sources(files: &[SourceFile], config: &UniflowedConfig) -> Self {
         let mut packages = files
             .iter()
             .filter_map(PackageManifest::from_source)
@@ -169,7 +170,11 @@ impl LintContext {
         packages.sort_by(|a, b| a.dir.cmp(&b.dir));
         Self {
             packages,
-            import_graph: ImportGraph::new(files),
+            import_graph: ImportGraph::new(
+                files,
+                configured_level(config, "import/no-unused-modules")
+                    .is_some_and(RuleLevel::is_enabled),
+            ),
         }
     }
 
@@ -252,7 +257,7 @@ pub fn lint_sources_with_context(
     context_files: &[SourceFile],
     config: &UniflowedConfig,
 ) -> Result<LintReport, LintError> {
-    let context = LintContext::from_sources(context_files);
+    let context = LintContext::from_sources(context_files, config);
     let per_file = uf_infra::parallel::map(files, |file| lint_file(file, config, &context))?;
 
     let mut diagnostics = per_file.into_iter().flatten().collect::<Vec<_>>();
@@ -355,6 +360,7 @@ fn lint_file(
     run_import_no_deprecated(&scan, config, context, &mut diagnostics);
     run_import_no_extraneous_dependencies(&scan, config, context, &mut diagnostics);
     run_import_no_named_as_default(&scan, config, context, &mut diagnostics);
+    run_import_no_unused_modules(&scan, config, context, &mut diagnostics);
     run_import_no_self_import(&scan, config, &mut diagnostics);
     run_import_no_relative_packages(&scan, config, &mut diagnostics);
     run_import_no_useless_path_segments(&scan, config, &mut diagnostics);
