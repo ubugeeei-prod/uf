@@ -35,6 +35,19 @@ export default defineConfig({
     },
   },
 
+  lint: {
+    rules: {
+      // The import rules now ship as blocking defaults for user projects, but
+      // this repository still has existing workspace-package and graph cleanup
+      // to do. Keep the findings visible in CI while that work is split into
+      // reviewable changes, rather than hiding them or blocking unrelated
+      // releases on the whole backlog at once.
+      "import/no-cycle": "warn",
+      "import/no-extraneous-dependencies": "warn",
+      "import/no-relative-packages": "warn",
+    },
+  },
+
   // What no command walks into: `uf fmt`, `uf lint`, `uf check`, `uf test` and
   // `uf doc` all read this one list, which is why it is here rather than under
   // `lint`, where it used to be and where it only ever looked like one
