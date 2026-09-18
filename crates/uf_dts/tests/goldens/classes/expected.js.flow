@@ -5,6 +5,15 @@ declare export class Base<out T> {
 export interface Service {
   start(): Promise<void>;
 }
+export interface MethodProperty {
+  readonly execute: (input: string) => Promise<string>;
+  readonly bound: (this: MethodProperty, input: string) => Promise<string>;
+}
+export type MethodPropertyAlias = MethodProperty;
+export type ReplaceReturnType<T, out R> = T extends (input: infer I) => any ? (input: I) => R : empty;
+export interface ReplacedMethodProperty {
+  readonly transform: ReplaceReturnType<(input: string) => string, Promise<number>>;
+}
 declare export abstract class Worker<out T = string> extends Base<T> implements Service {
 
 
@@ -30,6 +39,23 @@ declare export class Merged {
 
 
   readonly fromInterface: number;
+}
+declare export class Scheduler implements MethodProperty {
+  execute: (input: string) => Promise<string>;
+  bound: (this: MethodProperty, input: string) => Promise<string>;
+}
+declare export class OmittedScheduler implements Omit<MethodProperty, "bound"> {
+  execute: (input: string) => Promise<string>;
+}
+declare export class PickedScheduler implements Pick<MethodProperty, "execute"> {
+  execute: (input: string) => Promise<string>;
+}
+declare export class AliasScheduler implements MethodPropertyAlias {
+  execute: (input: string) => Promise<string>;
+  bound: (this: MethodProperty, input: string) => Promise<string>;
+}
+declare export class TransformScheduler implements ReplacedMethodProperty {
+  transform: (input: string) => Promise<number>;
 }
 declare export function mixin<T>(base: T): T;
 declare export class Mixed {
