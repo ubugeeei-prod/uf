@@ -367,6 +367,19 @@ Vite itself, and every plugin. Vite's options, under the `vite` key.
 8. **Swap `vite preview` for `uf preview`**, on 4173 as before. It serves the
    route handlers and per-request renders a static preview cannot.
 
+This path was checked end to end with `uf 0.0.0-alpha.40` from a
+`create-vite@9.2.1` React app using Vite 8.3.0, React 19.2.8,
+`@vitejs/plugin-react`, Vitest 5.0.1, `server.proxy`, and a `VITE_`
+environment variable. The Vite side passed `npm run build`, `npm test`, and
+`vite preview`; the uf target passed `uf install`, `uf fmt --check`,
+`uf check`, `uf test`, `uf build`, and `uf preview`. The migrated target kept
+the proxy under `vite.server.proxy`, declared `runtime`, `packageManager`,
+`build.runtime`, `build.builder`, `test.runtime` and `test.runner`, and kept the
+environment variable visible to the client. Two small moves were needed: a test
+that imports a route directly should render a CSS-free child component instead,
+and a Vite image import may need its `src` read when the server prerender sees
+an asset object.
+
 ### What is still different
 
 - **The Vite version is uf's.** A project that needs another one names a builder
@@ -506,8 +519,8 @@ directory `$middleware.js`. `uf install`, `uf fmt --check`, `uf check`,
 
 ## Estimating your own migration
 
-There is no measured migration to quote, so here is the arithmetic instead. The
-job is four numbers you can count today:
+The measured paths above are deliberately small, so use this arithmetic for the
+application in front of you. The job is four numbers you can count today:
 
 1. **Modules to convert.** Mechanical, and mostly
    [the table above](#converting-the-types).
